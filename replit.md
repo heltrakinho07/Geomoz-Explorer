@@ -1,45 +1,66 @@
-# [Project name]
+# GeoMoz Explorer
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+WebGIS platform for visualising and analysing geospatial data of Mozambique using the `geomoz` library, Streamlit, Folium, and GeoPandas.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `cd geomoz-explorer && streamlit run app.py` — run the Streamlit app (port 5000)
+- Workflow: **GeoMoz Explorer** (auto-starts on port 5000)
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Python 3.11
+- Streamlit (UI framework)
+- Folium + streamlit-folium (interactive maps)
+- GeoPandas + Shapely (spatial data)
+- geomoz (Mozambique administrative + geological data)
+- pandas / numpy / matplotlib
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `geomoz-explorer/app.py` — main Streamlit application
+- `geomoz-explorer/utils/data_loader.py` — cached GeoMoz data loading & spatial filtering
+- `geomoz-explorer/utils/mapping.py` — Folium map building, layer helpers, legend
+- `geomoz-explorer/utils/analysis.py` — geological statistics & area calculations (km²)
+- `geomoz-explorer/utils/export.py` — HTML / CSV / GeoJSON export helpers
+- `geomoz-explorer/.streamlit/config.toml` — Streamlit server config (port 5000, headless)
+- `geomoz-explorer/outputs/` — exported files land here
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- All geomoz data loads are wrapped in `@st.cache_data` to avoid re-fetching on each interaction.
+- Geometries are simplified (tolerance tuned per layer) before rendering to keep the web map fast.
+- Geology colouring is deterministic via MD5 hash of the field value, so colours are stable across sessions.
+- Area calculations reproject to EPSG:32736 (UTM 36S) for metric accuracy in Mozambique.
+- Future modules (Satellite / GEE, GeoMoz AI) are scaffolded as code stubs in separate tabs — ready to activate.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+A functional WebGIS MVP where users can:
+- View an interactive map of Mozambique with toggleable layers (provinces, districts, admin posts, villages, geology)
+- Select a province or district and see clipped geological data for that area
+- Read tooltips on every feature (name, code, era, period, etc.)
+- See geological statistics (area km², percentages, dominant lithology)
+- Export the map as HTML, statistics as CSV, and filtered geology as GeoJSON
+- Browse scaffolded code stubs for future Sentinel-2 / GEE and ML mineral targeting modules
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+_Populate as you build._
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Geometries are simplified at load time — if precision matters, reduce tolerance in `data_loader.py`.
+- `geomoz.read_village()` can return a large dataset; villages layer is off by default.
+- Area calculation uses UTM 36S (EPSG:32736) — suitable for Mozambique but review for edge zones.
+- Column names vary across geomoz releases; `_find_col()` in `data_loader.py` handles fallbacks.
+
+## Future evolution
+
+1. **GEE integration**: `pip install earthengine-api`, then implement `utils/satellite.py`
+2. **GeoMoz AI**: `pip install scikit-learn xgboost`, then implement `utils/ml_models.py`
+3. **Mineral targeting**: build training data from known deposits + geological features → Random Forest / XGBoost
 
 ## Pointers
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- See `geomoz-explorer/README.md` for full evolution guide

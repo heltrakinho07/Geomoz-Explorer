@@ -1,0 +1,142 @@
+Quero criar uma aplicação web chamada GeoMoz Explorer.
+
+Objetivo:
+Construir uma plataforma WebGIS funcional para visualizar e analisar dados geoespaciais de Moçambique usando a biblioteca Python geomoz, dados públicos de satélite e ferramentas de análise espacial.
+
+Contexto:
+Já existe uma biblioteca Python chamada geomoz, disponível via pip, que permite carregar dados administrativos e geológicos de Moçambique:
+
+pip install geomoz
+
+Funções principais:
+- geomoz.read_province()
+- geomoz.read_district()
+- geomoz.read_admin_post()
+- geomoz.read_village()
+- geomoz.read_geology()
+
+A aplicação deve ser criada inicialmente como MVP funcional, simples e expansível.
+
+Stack preferida:
+- Python
+- Streamlit
+- Folium ou streamlit-folium
+- GeoPandas
+- Shapely
+- Rasterio se necessário
+- Google Earth Engine opcional para fase futura
+- Scikit-learn opcional para GeoMoz AI futura
+
+Funcionalidades principais do MVP:
+
+1. Interface inicial
+- Título: GeoMoz Explorer
+- Breve descrição da plataforma
+- Sidebar para seleção de camadas e parâmetros
+
+2. Visualização de camadas GeoMoz
+Permitir visualizar:
+- Províncias
+- Distritos
+- Postos administrativos
+- Aldeias
+- Geologia
+
+Cada camada deve poder ser ativada/desativada.
+
+3. Tooltips no mapa
+Ao passar o mouse ou clicar:
+- Província: mostrar nome da província
+- Distrito: mostrar nome do distrito
+- Posto: mostrar nome do posto administrativo
+- Aldeia: mostrar nome da aldeia/localidade
+- Geologia: mostrar code2006, Legend, ERA, PERIOD se existirem
+
+4. Seleção de área
+Permitir ao utilizador selecionar:
+- Uma província
+- Um distrito
+Depois, recortar/filtrar a geologia para essa área.
+
+5. Mapa interativo
+Usar Folium com:
+- base map OpenStreetMap ou CartoDB Positron
+- LayerControl
+- zoom
+- popup/tooltip
+- boa simbologia
+- geologia com cores por code2006 ou Legend
+
+6. Análise básica
+Para a área selecionada:
+- contar número de unidades geológicas
+- listar principais litologias
+- calcular área aproximada por litologia em km² usando CRS adequado
+- mostrar tabela no Streamlit
+
+7. Exportação
+Permitir exportar:
+- mapa HTML
+- tabela CSV com estatísticas
+- GeoJSON da geologia filtrada
+
+8. Integração com Sentinel / GEE
+Preparar uma seção chamada “Satellite Analysis (Future Module)”.
+Nesta fase, criar placeholders para:
+- carregar Sentinel-2
+- calcular NDVI
+- calcular índice de óxidos de ferro
+- calcular índice de argilas
+- gerar mapas de alteração hidrotermal
+
+Não implementar completamente se for complexo, mas deixar a estrutura do código pronta para expansão.
+
+9. GeoMoz AI futura
+Criar uma seção chamada “GeoMoz AI (Future Module)” com estrutura preparada para:
+- clustering geológico
+- modelos preditivos
+- mineral targeting
+- mapa de favorabilidade mineral
+- Random Forest / XGBoost no futuro
+
+10. Organização do projeto
+Criar estrutura limpa:
+
+geomoz-explorer/
+├── app.py
+├── requirements.txt
+├── README.md
+├── utils/
+│   ├── data_loader.py
+│   ├── mapping.py
+│   ├── analysis.py
+│   └── export.py
+└── outputs/
+
+11. Requisitos importantes
+- Código limpo e comentado
+- Evitar complexidade desnecessária
+- O MVP deve rodar com:
+  streamlit run app.py
+- Tratar erros caso alguma coluna não exista
+- Usar nomes reais das colunas do geomoz:
+  Provincia, Distrito, Posto, Legend, code2006, ERA, PERIOD quando disponíveis
+- Usar cache do Streamlit para carregar dados
+- Garantir que o app não quebre se alguma camada for pesada
+- Simplificar geometrias para visualização web quando necessário
+
+12. Resultado esperado
+Quero uma aplicação funcional onde eu consiga:
+- abrir um mapa de Moçambique
+- ligar/desligar camadas administrativas e geológicas
+- selecionar uma província/distrito
+- visualizar geologia da área
+- ver tooltip com litologia
+- gerar estatísticas
+- exportar mapa e dados
+
+Depois de criar o MVP, explique como executar no Replit e como evoluir para:
+- integração real com Google Earth Engine
+- GeoMoz AI
+- modelos de machine learning
+- mineral targeting
