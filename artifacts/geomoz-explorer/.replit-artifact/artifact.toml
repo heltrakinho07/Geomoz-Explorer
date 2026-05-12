@@ -1,12 +1,12 @@
 kind = "web"
-previewPath = "/"
-title = "GeoMoz Explorer"
+previewPath = "/geomoz-api"
+title = "GeoMoz Python API"
 version = "1.0.0"
 
 [[services]]
-localPort = 5000
-name = "GeoMoz Explorer"
-paths = ["/"]
+localPort = 5001
+name = "GeoMoz Python API"
+paths = ["/geomoz-api"]
 
 [services.development]
-run = "cd /home/runner/workspace/geomoz-explorer && streamlit run app.py"
+run = "cd /home/runner/workspace/geomoz-explorer && uvicorn api:app --host 0.0.0.0 --port 5001"
