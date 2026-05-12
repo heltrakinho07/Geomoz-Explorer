@@ -10,7 +10,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import Response
 
 app = FastAPI(title="GeoMoz API", version="1.0.0")
 
@@ -25,22 +25,25 @@ app.add_middleware(
 
 @lru_cache(maxsize=1)
 def _provinces():
-    import geomoz, geopandas as gpd
+    import geomoz
     gdf = geomoz.read_province().to_crs("EPSG:4326")
+    gdf = gdf.copy()
     gdf.geometry = gdf.geometry.simplify(0.01, preserve_topology=True)
     return gdf
 
 @lru_cache(maxsize=1)
 def _districts():
-    import geomoz, geopandas as gpd
+    import geomoz
     gdf = geomoz.read_district().to_crs("EPSG:4326")
+    gdf = gdf.copy()
     gdf.geometry = gdf.geometry.simplify(0.005, preserve_topology=True)
     return gdf
 
 @lru_cache(maxsize=1)
 def _geology():
-    import geomoz, geopandas as gpd
+    import geomoz
     gdf = geomoz.read_geology().to_crs("EPSG:4326")
+    gdf = gdf.copy()
     gdf.geometry = gdf.geometry.simplify(0.005, preserve_topology=True)
     return gdf
 
@@ -50,34 +53,6 @@ def _find_col(gdf, candidates):
         if c in gdf.columns:
             return c
     return None
-
-
-def _gdf_to_geojson(gdf):
-    """Convert GeoDataFrame to GeoJSON dict, dropping NaN safely."""
-    import numpy as np
-    cols = [c for c in gdf.columns if c != "geometry"]
-    features = []
-    for _, row in gdf.iterrows():
-        props = {}
-        for c in cols:
-            v = row[c]
-            if isinstance(v, float) and np.isnan(v):
-                props[c] = None
-            else:
-                try:
-                    json.dumps(v)
-                    props[c] = v
-                except Exception:
-                    props[c] = str(v)
-        geom = row.geometry
-        if geom is None or geom.is_empty:
-            continue
-        features.append({
-            "type": "Feature",
-            "properties": props,
-            "geometry": json.loads(geom.to_json()) if hasattr(geom, "to_json") else None,
-        })
-    return {"type": "FeatureCollection", "features": features}
 
 
 def _color_for(value: str) -> str:
@@ -90,6 +65,13 @@ def _color_for(value: str) -> str:
     h = int(hashlib.md5(str(value).encode()).hexdigest(), 16)
     return palette[h % len(palette)]
 
+
+def _gdf_to_geojson_response(gdf) -> Response:
+    """Use geopandas built-in to_json() — handles geometries and NaN correctly."""
+    geojson_str = gdf.to_json(na="null", show_bbox=False)
+    return Response(content=geojson_str, media_type="application/json")
+
+
 # ── endpoints ──────────────────────────────────────────────────────────────────
 
 @app.get("/geomoz-api/health")
@@ -99,8 +81,7 @@ def health():
 
 @app.get("/geomoz-api/provinces")
 def get_provinces():
-    gdf = _provinces()
-    return JSONResponse(_gdf_to_geojson(gdf))
+    return _gdf_to_geojson_response(_provinces())
 
 
 @app.get("/geomoz-api/province-names")
@@ -108,7 +89,7 @@ def get_province_names():
     gdf = _provinces()
     col = _find_col(gdf, ["Provincia", "PROVINCIA", "NAME_1", "name"])
     if not col:
-        return {"names": []}
+        return {"names": [], "column": None}
     names = sorted(gdf[col].dropna().unique().tolist())
     return {"names": names, "column": col}
 
@@ -127,7 +108,7 @@ def get_districts(province: Optional[str] = Query(None)):
                     gdf = gpd.clip(gdf, prov_shape.geometry.union_all())
                 except Exception:
                     pass
-    return JSONResponse(_gdf_to_geojson(gdf))
+    return _gdf_to_geojson_response(gdf)
 
 
 @app.get("/geomoz-api/district-names")
@@ -158,9 +139,8 @@ def get_geology(
     color_by: str = Query("code2006"),
 ):
     import geopandas as gpd
-    gdf = _geology()
+    gdf = _geology().copy()
 
-    # Clip to province or district if selected
     if district:
         dist_gdf = _districts()
         dist_col = _find_col(dist_gdf, ["Distrito", "DISTRITO", "NAME_2", "name"])
@@ -182,13 +162,11 @@ def get_geology(
                 except Exception:
                     pass
 
-    # Add color property
     color_col = color_by if color_by in gdf.columns else _find_col(gdf, ["code2006", "Legend", "ERA", "PERIOD"])
     if color_col:
-        gdf = gdf.copy()
         gdf["_color"] = gdf[color_col].fillna("Unknown").astype(str).apply(_color_for)
 
-    return JSONResponse(_gdf_to_geojson(gdf))
+    return _gdf_to_geojson_response(gdf)
 
 
 @app.get("/geomoz-api/stats")
@@ -197,11 +175,9 @@ def get_stats(
     district: Optional[str] = Query(None),
 ):
     import geopandas as gpd
-    import numpy as np
 
-    gdf = _geology()
+    gdf = _geology().copy()
 
-    # Clip area
     if district:
         dist_gdf = _districts()
         dist_col = _find_col(dist_gdf, ["Distrito", "DISTRITO", "NAME_2", "name"])
@@ -226,7 +202,6 @@ def get_stats(
     if len(gdf) == 0:
         return {"totalFeatures": 0, "totalUnits": 0, "totalAreaKm2": 0, "dominant": "N/A", "lithologies": []}
 
-    # Area calculation in UTM 36S
     try:
         gdf_proj = gdf.to_crs("EPSG:32736")
         gdf_proj = gdf_proj.copy()
@@ -236,13 +211,9 @@ def get_stats(
         gdf_proj["_area_m2"] = 0.0
 
     legend_col = _find_col(gdf_proj, ["Legend", "LEGEND", "code2006", "ERA"])
-    code_col = _find_col(gdf_proj, ["code2006", "CODE2006"])
-    era_col = _find_col(gdf_proj, ["ERA", "era"])
-    period_col = _find_col(gdf_proj, ["PERIOD", "Period", "period"])
 
     total_area_km2 = round(gdf_proj["_area_m2"].sum() / 1e6, 2)
 
-    # Top lithologies
     lithologies = []
     if legend_col:
         grouped = (
@@ -276,7 +247,6 @@ def get_stats(
 
 @app.get("/geomoz-api/geology-colors")
 def get_geology_colors(color_by: str = Query("code2006")):
-    """Return unique values and their deterministic colours."""
     gdf = _geology()
     col = color_by if color_by in gdf.columns else _find_col(gdf, ["code2006", "Legend", "ERA", "PERIOD"])
     if not col:
