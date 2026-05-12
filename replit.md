@@ -1,66 +1,100 @@
 # GeoMoz Explorer
 
-WebGIS platform for visualising and analysing geospatial data of Mozambique using the `geomoz` library, Streamlit, Folium, and GeoPandas.
+A professional WebGIS platform for visualising and analysing geospatial data of Mozambique.
+
+## Architecture
+
+Two-artifact system:
+
+| Artifact | URL | Stack | Purpose |
+|---|---|---|---|
+| GeoMoz Explorer | `/` | React + Vite + Leaflet | Interactive map dashboard |
+| GeoMoz Python API | `/geomoz-api` | FastAPI + uvicorn | Geomoz data REST endpoints |
 
 ## Run & Operate
 
-- `cd geomoz-explorer && streamlit run app.py` — run the Streamlit app (port 5000)
-- Workflow: **GeoMoz Explorer** (auto-starts on port 5000)
+- **React frontend** — workflow `artifacts/geomoz-react: web` (auto-starts, port env-managed)
+- **Python API** — workflow `artifacts/geomoz-explorer: GeoMoz Python API` (port 5001)
 
-## Stack
+## Frontend Stack
 
-- Python 3.11
-- Streamlit (UI framework)
-- Folium + streamlit-folium (interactive maps)
-- GeoPandas + Shapely (spatial data)
-- geomoz (Mozambique administrative + geological data)
-- pandas / numpy / matplotlib
+- React 19 + Vite + TypeScript
+- react-leaflet + Leaflet (interactive maps with CartoDB Light base tiles)
+- TanStack Query (data fetching & caching)
+- Tailwind CSS + shadcn/ui components
+- Lucide React icons
+
+## Python API Stack
+
+- FastAPI + uvicorn (port 5001, served at `/geomoz-api`)
+- geomoz library (Mozambique administrative + geological data)
+- GeoPandas + Shapely (spatial ops, clipping, area calculations)
+- All geomoz reads cached with `@lru_cache`
 
 ## Where things live
 
-- `geomoz-explorer/app.py` — main Streamlit application
-- `geomoz-explorer/utils/data_loader.py` — cached GeoMoz data loading & spatial filtering
-- `geomoz-explorer/utils/mapping.py` — Folium map building, layer helpers, legend
-- `geomoz-explorer/utils/analysis.py` — geological statistics & area calculations (km²)
-- `geomoz-explorer/utils/export.py` — HTML / CSV / GeoJSON export helpers
-- `geomoz-explorer/.streamlit/config.toml` — Streamlit server config (port 5000, headless)
-- `geomoz-explorer/outputs/` — exported files land here
+### React (artifacts/geomoz-react/src/)
+- `App.tsx` — QueryClient provider + Explorer root
+- `pages/Explorer.tsx` — main page, holds all state (province, district, layers, colorBy)
+- `components/Sidebar.tsx` — filter dropdowns, layer toggles, color-by radio
+- `components/MapView.tsx` — react-leaflet map with geology + province + district layers
+- `components/StatsPanel.tsx` — stat cards, lithology bars, analysis table, CSV export
+- `hooks/useGeoMoz.ts` — TanStack Query hooks for all API endpoints
 
-## Architecture decisions
+### Python API (geomoz-explorer/)
+- `api.py` — FastAPI app with all endpoints
+- `utils/` — legacy Streamlit utilities (not used by FastAPI, kept for reference)
 
-- All geomoz data loads are wrapped in `@st.cache_data` to avoid re-fetching on each interaction.
-- Geometries are simplified (tolerance tuned per layer) before rendering to keep the web map fast.
-- Geology colouring is deterministic via MD5 hash of the field value, so colours are stable across sessions.
-- Area calculations reproject to EPSG:32736 (UTM 36S) for metric accuracy in Mozambique.
-- Future modules (Satellite / GEE, GeoMoz AI) are scaffolded as code stubs in separate tabs — ready to activate.
+## Python API Endpoints
 
-## Product
+All under `/geomoz-api`:
 
-A functional WebGIS MVP where users can:
-- View an interactive map of Mozambique with toggleable layers (provinces, districts, admin posts, villages, geology)
-- Select a province or district and see clipped geological data for that area
-- Read tooltips on every feature (name, code, era, period, etc.)
-- See geological statistics (area km², percentages, dominant lithology)
-- Export the map as HTML, statistics as CSV, and filtered geology as GeoJSON
-- Browse scaffolded code stubs for future Sentinel-2 / GEE and ML mineral targeting modules
+| Endpoint | Description |
+|---|---|
+| `GET /health` | Health check |
+| `GET /province-names` | List of province names |
+| `GET /provinces` | Province boundaries GeoJSON |
+| `GET /district-names?province=X` | District names for a province |
+| `GET /districts?province=X` | District boundaries GeoJSON |
+| `GET /geology?province=X&district=Y&color_by=code2006` | Geology GeoJSON with `_color` property |
+| `GET /stats?province=X&district=Y` | Area stats + top lithologies |
+| `GET /geology-colors?color_by=code2006` | Deterministic color map for legend |
 
-## User preferences
+## UI Features
 
-_Populate as you build._
+- Interactive CartoDB Light map with zoom/pan
+- Toggle layers: Geology, Provinces, Districts
+- Filter by Province → District (cascading dropdowns)
+- Color geology by: code2006 / Legend / ERA / PERIOD
+- Gradient stat cards: Features, Geological Units, Area km², Dominant lithology
+- Progress bar chart: top lithologies by area %
+- Detailed analysis table (sortable by %)
+- CSV export of statistics
+- Color legend synced to current color-by field
+
+## Architecture Decisions
+
+- All geomoz data reads are `@lru_cache`'d in the FastAPI layer — first load is slow (~5–10s for full Mozambique geology), subsequent requests are instant.
+- Geometries are simplified at load time (tolerance 0.005–0.01) for fast Leaflet rendering.
+- Geology colors are MD5-hash-based (deterministic across sessions).
+- Area calculations use EPSG:32736 (UTM 36S) for metric accuracy.
+- React Query caches responses: `staleTime: Infinity` for static data (provinces, names), `30s` for dynamic (geology, stats).
+- The `_color` property is injected server-side on geology GeoJSON — the client reads it directly without recomputing colors.
 
 ## Gotchas
 
-- Geometries are simplified at load time — if precision matters, reduce tolerance in `data_loader.py`.
-- `geomoz.read_village()` can return a large dataset; villages layer is off by default.
-- Area calculation uses UTM 36S (EPSG:32736) — suitable for Mozambique but review for edge zones.
-- Column names vary across geomoz releases; `_find_col()` in `data_loader.py` handles fallbacks.
+- First load of geology/stats for full Mozambique can take 10–20s while geomoz reads files and computes areas. Subsequent requests are fast (lru_cache).
+- The districts layer is off by default — it adds many features. Enable only after selecting a province.
+- `@types/leaflet` peer dependency warning against React 19 is harmless — leaflet works fine.
 
-## Future evolution
+## User Preferences
 
-1. **GEE integration**: `pip install earthengine-api`, then implement `utils/satellite.py`
-2. **GeoMoz AI**: `pip install scikit-learn xgboost`, then implement `utils/ml_models.py`
-3. **Mineral targeting**: build training data from known deposits + geological features → Random Forest / XGBoost
+_Populate as you build._
 
-## Pointers
+## Future Evolution
 
-- See `geomoz-explorer/README.md` for full evolution guide
+1. **Satellite/GEE tab**: Add Sentinel-2 imagery via earthengine-api
+2. **Mineral Targeting AI tab**: scikit-learn / XGBoost on geological features
+3. **Search bar**: geocoding via Nominatim API
+4. **Export map**: Leaflet's `leaflet-image` plugin for PNG export
+5. **Admin Posts / Villages layers**: already available in geomoz
