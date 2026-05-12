@@ -66,7 +66,8 @@ export function useStats(province: string | null, district: string | null) {
 export function useGeologyGeoJSON(
   province: string | null,
   district: string | null,
-  colorBy: string
+  colorBy: string,
+  enabled: boolean = true
 ) {
   return useQuery({
     queryKey: ["geology", province, district, colorBy],
@@ -76,7 +77,8 @@ export function useGeologyGeoJSON(
       if (district) params.set("district", district);
       return fetchJson<GeoJSON.FeatureCollection>(`${BASE}/geology?${params}`);
     },
-    staleTime: 30_000,
+    enabled: enabled && !!province, // Only fetch when a province is selected
+    staleTime: 60_000,
   });
 }
 
@@ -100,13 +102,14 @@ export function useDistrictsGeoJSON(province: string | null) {
   });
 }
 
-export function useGeologyColors(colorBy: string) {
+export function useGeologyColors(colorBy: string, province: string | null) {
   return useQuery({
     queryKey: ["geology-colors", colorBy],
     queryFn: () =>
       fetchJson<{ column: string; items: ColorItem[] }>(
         `${BASE}/geology-colors?color_by=${encodeURIComponent(colorBy)}`
       ),
+    enabled: !!province, // Only fetch legend when geology is visible
     staleTime: Infinity,
   });
 }

@@ -1,4 +1,4 @@
-import { Activity, BarChart2, TrendingUp, Hash, Layers, Maximize, Box, Download, Loader2 } from "lucide-react";
+import { Activity, BarChart2, TrendingUp, Hash, Layers, Maximize, Box, Download, Loader2, MapPin } from "lucide-react";
 import { useStats, useGeologyColors } from "@/hooks/useGeoMoz";
 
 interface StatsPanelProps {
@@ -15,7 +15,7 @@ function fmt(n: number): string {
 
 export default function StatsPanel({ province, district, colorBy }: StatsPanelProps) {
   const { data: stats, isLoading } = useStats(province, district);
-  const { data: colors } = useGeologyColors(colorBy);
+  const { data: colors } = useGeologyColors(colorBy, province);
 
   const handleExport = () => {
     if (!stats) return;
@@ -28,7 +28,7 @@ export default function StatsPanel({ province, district, colorBy }: StatsPanelPr
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `geomoz-stats-${province ?? "mozambique"}-${district ?? "all"}.csv`;
+    a.download = `geomoz-${province ?? "mozambique"}-${district ?? "all"}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -42,7 +42,14 @@ export default function StatsPanel({ province, district, colorBy }: StatsPanelPr
           {district ? district : province ? province : "Moçambique"}
         </h2>
 
-        {isLoading ? (
+        {!province && !isLoading ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-6 text-slate-400">
+            <MapPin size={24} className="text-slate-300" />
+            <p className="text-xs text-center text-slate-400">
+              Selecione uma província<br />para ver as métricas de geologia
+            </p>
+          </div>
+        ) : isLoading ? (
           <div className="flex items-center justify-center h-32 text-slate-400">
             <Loader2 className="animate-spin w-6 h-6" />
           </div>
@@ -100,7 +107,11 @@ export default function StatsPanel({ province, district, colorBy }: StatsPanelPr
           </h3>
         </div>
 
-        {isLoading ? (
+        {!province ? (
+          <p className="text-xs text-slate-400 text-center py-4">
+            Selecione uma província para ver as litologias
+          </p>
+        ) : isLoading ? (
           <div className="flex items-center justify-center h-20 text-slate-400">
             <Loader2 className="animate-spin w-5 h-5" />
           </div>
@@ -143,7 +154,13 @@ export default function StatsPanel({ province, district, colorBy }: StatsPanelPr
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {isLoading ? (
+              {!province ? (
+                <tr>
+                  <td colSpan={3} className="py-6 text-center text-slate-400 text-xs">
+                    Selecione uma província
+                  </td>
+                </tr>
+              ) : isLoading ? (
                 <tr>
                   <td colSpan={3} className="py-6 text-center text-slate-400">
                     <Loader2 className="animate-spin w-4 h-4 inline" />
@@ -157,10 +174,16 @@ export default function StatsPanel({ province, district, colorBy }: StatsPanelPr
                 </tr>
               ) : (
                 (stats?.lithologies ?? []).slice(0, 8).map((item, i) => {
-                  const colorClass = ["text-sky-600", "text-violet-600", "text-emerald-600", "text-amber-600", "text-rose-600"];
+                  const colorClass = [
+                    "text-sky-600", "text-violet-600", "text-emerald-600",
+                    "text-amber-600", "text-rose-600",
+                  ];
                   return (
                     <tr key={item.name} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-2 px-3 font-medium text-slate-700 truncate max-w-[100px]" title={item.name}>
+                      <td
+                        className="py-2 px-3 font-medium text-slate-700 truncate max-w-[100px]"
+                        title={item.name}
+                      >
                         {item.name.length > 14 ? item.name.slice(0, 13) + "…" : item.name}
                       </td>
                       <td className="py-2 px-2 text-right text-slate-500">
@@ -179,7 +202,8 @@ export default function StatsPanel({ province, district, colorBy }: StatsPanelPr
 
         <button
           onClick={handleExport}
-          className="w-full mt-4 flex items-center justify-center gap-2 py-2 px-4 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-md hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-sm"
+          disabled={!province || !stats}
+          className="w-full mt-4 flex items-center justify-center gap-2 py-2 px-4 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-md hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Download size={14} />
           Exportar CSV
@@ -187,16 +211,16 @@ export default function StatsPanel({ province, district, colorBy }: StatsPanelPr
       </div>
 
       {/* Color legend */}
-      {colors && colors.items.length > 0 && (
+      {province && colors && colors.items.length > 0 && (
         <div className="p-4 border-t border-slate-200">
           <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-            Legenda
+            Legenda — {colorBy}
           </h4>
           <div className="space-y-1.5 max-h-48 overflow-y-auto">
             {colors.items.slice(0, 20).map((item) => (
               <div key={item.value} className="flex items-center gap-2">
                 <div
-                  className="w-3 h-3 rounded-sm shrink-0"
+                  className="w-3 h-3 rounded-sm shrink-0 border border-white/40 shadow-sm"
                   style={{ backgroundColor: item.color }}
                 />
                 <span className="text-xs text-slate-600 truncate" title={item.value}>

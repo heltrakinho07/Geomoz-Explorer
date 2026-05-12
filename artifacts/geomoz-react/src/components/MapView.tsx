@@ -5,7 +5,7 @@ import {
   GeoJSON,
   useMap,
 } from "react-leaflet";
-import type { Layer, LeafletMouseEvent } from "leaflet";
+import type { Layer } from "leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -28,53 +28,80 @@ interface MapViewProps {
   onProvinceClick?: (name: string) => void;
 }
 
-function FitBounds({ data }: { data: GeoJSON.FeatureCollection | undefined }) {
+function FitBounds({
+  data,
+  deps,
+}: {
+  data: GeoJSON.FeatureCollection | undefined;
+  deps?: unknown[];
+}) {
   const map = useMap();
-  const hasZoomed = useRef(false);
+  const prevDeps = useRef<unknown[]>([]);
 
   useEffect(() => {
-    if (data && !hasZoomed.current) {
-      try {
-        const layer = L.geoJSON(data);
-        const bounds = layer.getBounds();
-        if (bounds.isValid()) {
-          map.fitBounds(bounds, { padding: [20, 20] });
-          hasZoomed.current = true;
-        }
-      } catch {}
-    }
-  }, [data, map]);
+    if (!data) return;
+    const changed = (deps ?? []).some((d, i) => d !== prevDeps.current[i]);
+    if (!changed && prevDeps.current.length > 0) return;
+    prevDeps.current = deps ?? [];
+    try {
+      const layer = L.geoJSON(data);
+      const bounds = layer.getBounds();
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [30, 30] });
+      }
+    } catch {}
+  }, [data, ...(deps ?? [])]);
 
   return null;
 }
 
 function GeoJSONLayer({
   data,
+  layerKey,
   style,
   onEachFeature,
 }: {
   data: GeoJSON.FeatureCollection | undefined;
+  layerKey: string;
   style?: (feature: GeoJSON.Feature | undefined) => L.PathOptions;
   onEachFeature?: (feature: GeoJSON.Feature, layer: Layer) => void;
 }) {
   if (!data) return null;
-  return <GeoJSON key={JSON.stringify(data.features?.length)} data={data} style={style} onEachFeature={onEachFeature} />;
+  return (
+    <GeoJSON
+      key={layerKey}
+      data={data}
+      style={style}
+      onEachFeature={onEachFeature}
+    />
+  );
 }
 
-export default function MapView({ province, district, layers, colorBy, onProvinceClick }: MapViewProps) {
+export default function MapView({
+  province,
+  district,
+  layers,
+  colorBy,
+  onProvinceClick,
+}: MapViewProps) {
   const { data: provinceGeoJSON } = useProvincesGeoJSON();
   const { data: districtGeoJSON } = useDistrictsGeoJSON(province);
-  const { data: geologyGeoJSON, isFetching: loadingGeology } = useGeologyGeoJSON(province, district, colorBy);
+  const { data: geologyGeoJSON, isFetching: loadingGeology } = useGeologyGeoJSON(
+    province,
+    district,
+    colorBy,
+    layers.geology
+  );
 
   const provinceStyle = (): L.PathOptions => ({
-    color: "#94a3b8",
+    color: "#64748b",
     weight: 1.5,
-    fillColor: "#f1f5f9",
-    fillOpacity: 0.1,
+    fillColor: "#e2e8f0",
+    fillOpacity: province ? 0.05 : 0.2,
   });
 
   const districtStyle = (): L.PathOptions => ({
-    color: "#cbd5e1",
+    color: "#94a3b8",
     weight: 0.8,
     fillColor: "#f8fafc",
     fillOpacity: 0.05,
@@ -82,23 +109,34 @@ export default function MapView({ province, district, layers, colorBy, onProvinc
 
   const geologyStyle = (feature: GeoJSON.Feature | undefined): L.PathOptions => ({
     color: "#ffffff",
-    weight: 0.5,
+    weight: 0.4,
     fillColor: (feature?.properties as Record<string, string>)?._color ?? "#64748b",
-    fillOpacity: 0.75,
+    fillOpacity: 0.82,
   });
 
   function onEachProvince(feature: GeoJSON.Feature, layer: Layer) {
     const props = feature.properties as Record<string, string>;
-    const name = props?.Provincia || props?.PROVINCIA || props?.NAME_1 || props?.name || "Province";
-    layer.bindTooltip(name, { sticky: true, className: "text-xs font-medium" });
+    const name =
+      props?.Provincia ||
+      props?.PROVINCIA ||
+      props?.NAME_1 ||
+      props?.name ||
+      "Province";
+    layer.bindTooltip(`<b>${name}</b><br/><span style="color:#64748b;font-size:11px">Clique para ver geologia</span>`, {
+      sticky: true,
+    });
     layer.on("click", () => {
       if (onProvinceClick) onProvinceClick(name);
     });
     (layer as L.Path).on("mouseover", function () {
-      (this as L.Path).setStyle({ fillOpacity: 0.3, weight: 2 });
+      (this as L.Path).setStyle({ fillOpacity: 0.35, weight: 2, fillColor: "#0ea5e9" });
     });
     (layer as L.Path).on("mouseout", function () {
-      (this as L.Path).setStyle({ fillOpacity: 0.1, weight: 1.5 });
+      (this as L.Path).setStyle({
+        fillOpacity: province ? 0.05 : 0.2,
+        weight: 1.5,
+        fillColor: "#e2e8f0",
+      });
     });
   }
 
@@ -113,24 +151,44 @@ export default function MapView({ province, district, layers, colorBy, onProvinc
     if (code) lines.push(`Code: ${code}`);
     if (era) lines.push(`Era: ${era}`);
     if (period) lines.push(`Period: ${period}`);
-    layer.bindTooltip(lines.join("<br/>"), { sticky: true, className: "text-xs" });
+    layer.bindTooltip(lines.join("<br/>"), { sticky: true });
   }
 
   function onEachDistrict(feature: GeoJSON.Feature, layer: Layer) {
     const props = feature.properties as Record<string, string>;
-    const name = props?.Distrito || props?.DISTRITO || props?.NAME_2 || props?.name || "District";
-    layer.bindTooltip(name, { sticky: true, className: "text-xs font-medium" });
+    const name =
+      props?.Distrito ||
+      props?.DISTRITO ||
+      props?.NAME_2 ||
+      props?.name ||
+      "District";
+    layer.bindTooltip(name, { sticky: true });
   }
+
+  const geologyKey = `geo-${province}-${district}-${colorBy}-${geologyGeoJSON?.features?.length ?? 0}`;
+  const provKey = `prov-${provinceGeoJSON?.features?.length ?? 0}-${province}`;
+  const distKey = `dist-${districtGeoJSON?.features?.length ?? 0}-${district}`;
 
   return (
     <main className="flex-1 relative overflow-hidden">
-      {loadingGeology && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[500] bg-white border border-slate-200 shadow-md rounded-full px-4 py-1.5 text-xs font-medium text-slate-600 flex items-center gap-2">
+      {/* Loading indicator */}
+      {loadingGeology && province && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[500] bg-white border border-slate-200 shadow-md rounded-full px-4 py-1.5 text-xs font-medium text-slate-600 flex items-center gap-2 pointer-events-none">
           <svg className="animate-spin w-3.5 h-3.5 text-sky-500" viewBox="0 0 24 24" fill="none">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
           </svg>
-          A carregar dados...
+          A carregar geologia...
+        </div>
+      )}
+
+      {/* No-province hint */}
+      {!province && (
+        <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-[500] bg-white/90 backdrop-blur-sm border border-sky-200 shadow-lg rounded-xl px-5 py-3 text-sm text-slate-700 flex items-center gap-2.5 pointer-events-none max-w-xs text-center">
+          <svg className="w-4 h-4 text-sky-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Clique numa <strong>&nbsp;Província&nbsp;</strong> no mapa ou no filtro para ver a geologia
         </div>
       )}
 
@@ -142,23 +200,44 @@ export default function MapView({ province, district, layers, colorBy, onProvinc
       >
         <TileLayer
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
           maxZoom={19}
         />
 
-        {layers.geology && geologyGeoJSON && (
-          <GeoJSONLayer data={geologyGeoJSON} style={geologyStyle} onEachFeature={onEachGeology} />
-        )}
-
-        {layers.provinces && provinceGeoJSON && (
+        {/* Geology layer — only when province is selected */}
+        {layers.geology && province && geologyGeoJSON && (
           <>
-            <FitBounds data={provinceGeoJSON} />
-            <GeoJSONLayer data={provinceGeoJSON} style={provinceStyle} onEachFeature={onEachProvince} />
+            <FitBounds data={geologyGeoJSON} deps={[province, district]} />
+            <GeoJSONLayer
+              data={geologyGeoJSON}
+              layerKey={geologyKey}
+              style={geologyStyle}
+              onEachFeature={onEachGeology}
+            />
           </>
         )}
 
+        {/* Province layer */}
+        {layers.provinces && provinceGeoJSON && (
+          <>
+            {!province && <FitBounds data={provinceGeoJSON} deps={[]} />}
+            <GeoJSONLayer
+              data={provinceGeoJSON}
+              layerKey={provKey}
+              style={provinceStyle}
+              onEachFeature={onEachProvince}
+            />
+          </>
+        )}
+
+        {/* District layer */}
         {layers.districts && province && districtGeoJSON && (
-          <GeoJSONLayer data={districtGeoJSON} style={districtStyle} onEachFeature={onEachDistrict} />
+          <GeoJSONLayer
+            data={districtGeoJSON}
+            layerKey={distKey}
+            style={districtStyle}
+            onEachFeature={onEachDistrict}
+          />
         )}
       </MapContainer>
     </main>
