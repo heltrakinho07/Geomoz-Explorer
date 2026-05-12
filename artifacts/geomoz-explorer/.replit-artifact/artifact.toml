@@ -1,0 +1,12 @@
+kind = "web"
+previewPath = "/"
+title = "GeoMoz Explorer"
+version = "1.0.0"
+
+[[services]]
+localPort = 5000
+name = "GeoMoz Explorer"
+paths = ["/"]
+
+[services.development]
+run = "cd /home/runner/workspace/geomoz-explorer && streamlit run app.py"
