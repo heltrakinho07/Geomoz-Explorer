@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import Sidebar, { LayerState } from "@/components/Sidebar";
 import MapView from "@/components/MapView";
 import StatsPanel from "@/components/StatsPanel";
+import ExportPanel from "@/components/ExportPanel";
 
 export default function Explorer() {
   const [province, setProvince] = useState<string | null>(null);
@@ -16,10 +17,15 @@ export default function Explorer() {
     geology: true,
   });
   const [activeTab, setActiveTab] = useState("Mapa");
+  const [isStatsExpanded, setIsStatsExpanded] = useState(false);
+  const [mapCenter, setMapCenter] = useState<[number, number]>([-18, 35]);
+  const [mapZoom, setMapZoom] = useState(5);
 
   function toggleLayer(key: keyof LayerState) {
     setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
   }
+
+  const tabs = ["Mapa", "Análise", "Exportar"];
 
   return (
     <div className="flex flex-col h-screen w-full bg-white text-slate-900 font-sans overflow-hidden">
@@ -37,7 +43,7 @@ export default function Explorer() {
           </div>
 
           <nav className="hidden md:flex items-center gap-1 ml-4">
-            {["Mapa", "Análise", "Exportar"].map((item) => (
+            {tabs.map((item) => (
               <button
                 key={item}
                 onClick={() => setActiveTab(item)}
@@ -73,31 +79,91 @@ export default function Explorer() {
       </header>
 
       {/* Body */}
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar
-          province={province}
-          district={district}
-          onProvinceChange={setProvince}
-          onDistrictChange={setDistrict}
-          layers={layers}
-          onLayerToggle={toggleLayer}
-          colorBy={colorBy}
-          onColorByChange={setColorBy}
-        />
-
-        <MapView
-          province={province}
-          district={district}
-          layers={layers}
-          colorBy={colorBy}
-          onProvinceClick={(name) => {
-            setProvince(name);
-            setDistrict(null);
-          }}
-        />
-
-        <StatsPanel province={province} district={district} colorBy={colorBy} />
-      </div>
+      {activeTab === "Exportar" ? (
+        /* Export tab: full-width panel */
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar
+            province={province}
+            district={district}
+            onProvinceChange={setProvince}
+            onDistrictChange={setDistrict}
+            layers={layers}
+            onLayerToggle={toggleLayer}
+            colorBy={colorBy}
+            onColorByChange={setColorBy}
+          />
+          <ExportPanel
+            province={province}
+            district={district}
+            colorBy={colorBy}
+            layers={layers}
+            mapCenter={mapCenter}
+            mapZoom={mapZoom}
+          />
+        </div>
+      ) : activeTab === "Análise" ? (
+        /* Analysis tab: hide map, expand stats panel */
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar
+            province={province}
+            district={district}
+            onProvinceChange={setProvince}
+            onDistrictChange={setDistrict}
+            layers={layers}
+            onLayerToggle={toggleLayer}
+            colorBy={colorBy}
+            onColorByChange={setColorBy}
+          />
+          <StatsPanel
+            province={province}
+            district={district}
+            colorBy={colorBy}
+            isExpanded
+            onToggleExpand={() => setActiveTab("Mapa")}
+          />
+        </div>
+      ) : (
+        /* Map tab: default layout */
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar
+            province={province}
+            district={district}
+            onProvinceChange={setProvince}
+            onDistrictChange={setDistrict}
+            layers={layers}
+            onLayerToggle={toggleLayer}
+            colorBy={colorBy}
+            onColorByChange={setColorBy}
+          />
+          <MapView
+            province={province}
+            district={district}
+            layers={layers}
+            colorBy={colorBy}
+            onProvinceClick={(name) => {
+              setProvince(name);
+              setDistrict(null);
+            }}
+            onMapState={(center, zoom) => {
+              setMapCenter(center);
+              setMapZoom(zoom);
+            }}
+          />
+          <StatsPanel
+            province={province}
+            district={district}
+            colorBy={colorBy}
+            isExpanded={isStatsExpanded}
+            onToggleExpand={() => {
+              if (isStatsExpanded) {
+                setIsStatsExpanded(false);
+              } else {
+                setIsStatsExpanded(true);
+              }
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
