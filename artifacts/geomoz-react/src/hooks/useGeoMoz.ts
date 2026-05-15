@@ -28,11 +28,22 @@ export interface ColorItem {
   color: string;
 }
 
+/** Per-province summary item returned by /province-summary — used by GeoMoz AI */
+export interface ProvinceSummaryItem {
+  province: string;
+  totalFeatures: number;
+  totalUnits: number;
+  totalAreaKm2: number;
+  dominant: string;
+  eras: string[];
+  periods: string[];
+  lithologies: string[];
+}
+
 export function useProvinceNames() {
   return useQuery({
     queryKey: ["province-names"],
-    queryFn: () =>
-      fetchJson<{ names: string[]; column: string }>(`${BASE}/province-names`),
+    queryFn: () => fetchJson<{ names: string[]; column: string }>(`${BASE}/province-names`),
     staleTime: Infinity,
   });
 }
@@ -77,7 +88,7 @@ export function useGeologyGeoJSON(
       if (district) params.set("district", district);
       return fetchJson<GeoJSON.FeatureCollection>(`${BASE}/geology?${params}`);
     },
-    enabled: enabled && !!province, // Only fetch when a province is selected
+    enabled: enabled && !!province,
     staleTime: 60_000,
   });
 }
@@ -85,8 +96,7 @@ export function useGeologyGeoJSON(
 export function useProvincesGeoJSON() {
   return useQuery({
     queryKey: ["provinces"],
-    queryFn: () =>
-      fetchJson<GeoJSON.FeatureCollection>(`${BASE}/provinces`),
+    queryFn: () => fetchJson<GeoJSON.FeatureCollection>(`${BASE}/provinces`),
     staleTime: Infinity,
   });
 }
@@ -109,7 +119,24 @@ export function useGeologyColors(colorBy: string, province: string | null) {
       fetchJson<{ column: string; items: ColorItem[] }>(
         `${BASE}/geology-colors?color_by=${encodeURIComponent(colorBy)}`
       ),
-    enabled: !!province, // Only fetch legend when geology is visible
+    enabled: !!province,
     staleTime: Infinity,
+  });
+}
+
+/**
+ * Province-level geological summary for ALL provinces.
+ * Used by the GeoMoz AI module for clustering and favorability analysis.
+ * First call triggers the province-summary endpoint (may take 10–30 s server-side).
+ * Subsequent calls hit the lru_cache and are instant.
+ */
+export function useProvinceSummary(enabled = true) {
+  return useQuery({
+    queryKey: ["province-summary"],
+    queryFn: () =>
+      fetchJson<{ provinces: ProvinceSummaryItem[] }>(`${BASE}/province-summary`),
+    enabled,
+    staleTime: Infinity,
+    gcTime: Infinity,
   });
 }

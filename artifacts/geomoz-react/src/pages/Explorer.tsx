@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Globe, Settings, Search, X, Loader2, MapPin } from "lucide-react";
+import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, BrainCircuit } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import L from "leaflet";
@@ -7,6 +7,8 @@ import Sidebar, { LayerState } from "@/components/Sidebar";
 import MapView from "@/components/MapView";
 import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
+import GeoAnalises from "@/pages/GeoAnalises";
+import GeoMozAI from "@/pages/GeoMozAI";
 
 interface NominatimResult {
   place_id: number;
@@ -14,16 +16,24 @@ interface NominatimResult {
   lat: string;
   lon: string;
   boundingbox: [string, string, string, string];
-  type: string;
-  class: string;
 }
+
+type Tab = "Mapa" | "Análise" | "GeoAnálises" | "GeoMoz AI" | "Exportar";
+
+const TABS: { id: Tab; icon: React.ReactNode; label: string }[] = [
+  { id: "Mapa",        icon: <Globe size={13} />,         label: "Mapa" },
+  { id: "Análise",     icon: null,                        label: "Análise" },
+  { id: "GeoAnálises", icon: <Satellite size={13} />,     label: "GeoAnálises" },
+  { id: "GeoMoz AI",   icon: <BrainCircuit size={13} />,  label: "GeoMoz AI" },
+  { id: "Exportar",    icon: null,                        label: "Exportar" },
+];
 
 export default function Explorer() {
   const [province, setProvince] = useState<string | null>(null);
   const [district, setDistrict] = useState<string | null>(null);
   const [colorBy, setColorBy] = useState("code2006");
   const [layers, setLayers] = useState<LayerState>({ provinces: true, districts: false, geology: true });
-  const [activeTab, setActiveTab] = useState("Mapa");
+  const [activeTab, setActiveTab] = useState<Tab>("Mapa");
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
   const [mapCenter, setMapCenter] = useState<[number, number]>([-18, 35]);
   const [mapZoom, setMapZoom] = useState(5);
@@ -37,7 +47,7 @@ export default function Explorer() {
   const mapRef = useRef<L.Map | null>(null);
 
   function toggleLayer(key: keyof LayerState) {
-    setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
+    setLayers(prev => ({ ...prev, [key]: !prev[key] }));
   }
 
   // Close search dropdown on outside click
@@ -55,7 +65,7 @@ export default function Explorer() {
     if (!q.trim()) { setSearchResults([]); setShowResults(false); return; }
     setSearchLoading(true);
     try {
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&countrycodes=mz&limit=6&addressdetails=1`;
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&countrycodes=mz&limit=6`;
       const res = await fetch(url, { headers: { "Accept-Language": "pt" } });
       const data: NominatimResult[] = await res.json();
       setSearchResults(data);
@@ -69,24 +79,22 @@ export default function Explorer() {
 
   function handleSearchKey(e: React.KeyboardEvent) {
     if (e.key === "Enter") runSearch(searchQuery);
-    if (e.key === "Escape") { setShowResults(false); }
+    if (e.key === "Escape") setShowResults(false);
   }
 
   function flyToResult(result: NominatimResult) {
     const [latMin, latMax, lonMin, lonMax] = result.boundingbox.map(Number);
     mapRef.current?.flyToBounds([[latMin, lonMin], [latMax, lonMax]], { padding: [30, 30], duration: 1.2 });
     setShowResults(false);
-    const shortName = result.display_name.split(",")[0];
-    setSearchQuery(shortName);
+    setSearchQuery(result.display_name.split(",")[0]);
+    setActiveTab("Mapa");
   }
-
-  const tabs = ["Mapa", "Análise", "Exportar"];
 
   const sharedSidebar = (
     <Sidebar
       province={province}
       district={district}
-      onProvinceChange={(p) => { setProvince(p); setDistrict(null); }}
+      onProvinceChange={p => { setProvince(p); setDistrict(null); }}
       onDistrictChange={setDistrict}
       layers={layers}
       onLayerToggle={toggleLayer}
@@ -94,6 +102,12 @@ export default function Explorer() {
       onColorByChange={setColorBy}
     />
   );
+
+  // Tab accent colours
+  const tabAccent: Partial<Record<Tab, string>> = {
+    "GeoAnálises": "bg-indigo-500 shadow-indigo-200",
+    "GeoMoz AI": "bg-violet-500 shadow-violet-200",
+  };
 
   return (
     <div className="flex flex-col h-screen w-full bg-white text-slate-900 font-sans overflow-hidden">
@@ -111,82 +125,76 @@ export default function Explorer() {
           </div>
 
           <nav className="hidden md:flex items-center gap-0.5">
-            {tabs.map((item) => (
+            {TABS.map(tab => (
               <button
-                key={item}
-                onClick={() => setActiveTab(item)}
-                className={`px-3.5 py-1.5 text-sm font-medium rounded-lg transition-all ${
-                  activeTab === item
-                    ? "bg-sky-500 text-white shadow-sm shadow-sky-200"
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium rounded-lg transition-all ${
+                  activeTab === tab.id
+                    ? `${tabAccent[tab.id] ?? "bg-sky-500 shadow-sky-200"} text-white shadow-sm`
                     : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
                 }`}
               >
-                {item}
+                {tab.icon}
+                {tab.label}
               </button>
             ))}
           </nav>
         </div>
 
         <div className="flex items-center gap-2.5">
-          {/* Search with geocoding */}
-          <div className="relative hidden md:block" ref={searchRef}>
-            <div className="relative flex items-center">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={handleSearchKey}
-                onFocus={() => { if (searchResults.length) setShowResults(true); }}
-                placeholder="Pesquisar localização em MZ…"
-                className="pl-8 pr-8 py-1.5 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white focus:border-sky-300 w-64 transition-all"
-              />
-              {searchLoading ? (
-                <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 animate-spin" />
-              ) : searchQuery ? (
-                <button
-                  onClick={() => { setSearchQuery(""); setSearchResults([]); setShowResults(false); }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  <X size={14} />
-                </button>
-              ) : null}
-            </div>
+          {/* Geocoding search (visible on Mapa tab) */}
+          {activeTab === "Mapa" && (
+            <div className="relative hidden md:block" ref={searchRef}>
+              <div className="relative flex items-center">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  onKeyDown={handleSearchKey}
+                  onFocus={() => { if (searchResults.length) setShowResults(true); }}
+                  placeholder="Pesquisar localização em MZ…"
+                  className="pl-8 pr-8 py-1.5 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white focus:border-sky-300 w-60 transition-all"
+                />
+                {searchLoading ? (
+                  <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 animate-spin" />
+                ) : searchQuery ? (
+                  <button
+                    onClick={() => { setSearchQuery(""); setSearchResults([]); setShowResults(false); }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X size={14} />
+                  </button>
+                ) : null}
+              </div>
 
-            {/* Search results dropdown */}
-            {showResults && searchResults.length > 0 && (
-              <div className="absolute top-full mt-1.5 left-0 right-0 z-[1000] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
-                {searchResults.map((r) => (
-                  <button
-                    key={r.place_id}
-                    onClick={() => flyToResult(r)}
-                    className="w-full flex items-center gap-2.5 px-3.5 py-2.5 hover:bg-sky-50 transition-colors text-left border-b border-slate-50 last:border-0"
-                  >
-                    <MapPin size={13} className="text-sky-400 shrink-0" />
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-slate-800 truncate">{r.display_name.split(",")[0]}</div>
-                      <div className="text-xs text-slate-400 truncate">{r.display_name.split(",").slice(1, 3).join(",").trim()}</div>
-                    </div>
-                  </button>
-                ))}
-                <div className="px-3 py-1.5 text-xs text-slate-400 bg-slate-50 flex items-center justify-between">
-                  <span>© Nominatim / OpenStreetMap</span>
-                  <button
-                    onClick={() => runSearch(searchQuery)}
-                    className="text-sky-500 hover:text-sky-700 font-medium"
-                  >
-                    Ver mais
-                  </button>
+              {showResults && searchResults.length > 0 && (
+                <div className="absolute top-full mt-1.5 left-0 right-0 z-[1000] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                  {searchResults.map(r => (
+                    <button
+                      key={r.place_id}
+                      onClick={() => flyToResult(r)}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 hover:bg-sky-50 transition-colors text-left border-b border-slate-50 last:border-0"
+                    >
+                      <MapPin size={13} className="text-sky-400 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-slate-800 truncate">{r.display_name.split(",")[0]}</div>
+                        <div className="text-xs text-slate-400 truncate">{r.display_name.split(",").slice(1, 3).join(",").trim()}</div>
+                      </div>
+                    </button>
+                  ))}
+                  <div className="px-3 py-1.5 text-xs text-slate-400 bg-slate-50">© Nominatim / OpenStreetMap</div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {showResults && searchResults.length === 0 && !searchLoading && searchQuery && (
-              <div className="absolute top-full mt-1.5 left-0 right-0 z-[1000] bg-white border border-slate-200 rounded-xl shadow-lg p-3 text-sm text-slate-400 text-center">
-                Nenhum resultado encontrado em Moçambique
-              </div>
-            )}
-          </div>
+              {showResults && !searchLoading && searchResults.length === 0 && searchQuery && (
+                <div className="absolute top-full mt-1.5 left-0 right-0 z-[1000] bg-white border border-slate-200 rounded-xl shadow-lg p-3 text-sm text-slate-400 text-center">
+                  Nenhum resultado encontrado em Moçambique
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="h-5 w-px bg-slate-200" />
           <button className="text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors">
@@ -209,7 +217,20 @@ export default function Explorer() {
           {sharedSidebar}
           <StatsPanel province={province} district={district} colorBy={colorBy} isExpanded onToggleExpand={() => setActiveTab("Mapa")} />
         </div>
+      ) : activeTab === "GeoAnálises" ? (
+        <div className="flex flex-1 overflow-hidden">
+          <GeoAnalises
+            province={province}
+            district={district}
+            onProvinceChange={p => { setProvince(p); setDistrict(null); }}
+          />
+        </div>
+      ) : activeTab === "GeoMoz AI" ? (
+        <div className="flex flex-1 overflow-hidden">
+          <GeoMozAI />
+        </div>
       ) : (
+        /* Default: Mapa */
         <div className="flex flex-1 overflow-hidden">
           {sharedSidebar}
           <MapView
@@ -218,7 +239,7 @@ export default function Explorer() {
             layers={layers}
             colorBy={colorBy}
             mapRef={mapRef}
-            onProvinceClick={(name) => { setProvince(name); setDistrict(null); }}
+            onProvinceClick={name => { setProvince(name); setDistrict(null); }}
             onMapState={(c, z) => { setMapCenter(c); setMapZoom(z); }}
           />
           <StatsPanel
@@ -226,7 +247,7 @@ export default function Explorer() {
             district={district}
             colorBy={colorBy}
             isExpanded={isStatsExpanded}
-            onToggleExpand={() => setIsStatsExpanded((v) => !v)}
+            onToggleExpand={() => setIsStatsExpanded(v => !v)}
           />
         </div>
       )}

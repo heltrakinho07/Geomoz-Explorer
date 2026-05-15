@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { FileText, Globe, Download, Loader2, CheckCircle2, Info } from "lucide-react";
+import { FileText, Globe, Download, Loader2, CheckCircle2, Info, Map } from "lucide-react";
 import jsPDF from "jspdf";
 import type { Stats } from "@/hooks/useGeoMoz";
 import type { LayerState } from "./Sidebar";
@@ -439,13 +439,13 @@ function generatePdf(
 // ─── COMPONENT ────────────────────────────────────────────────────────────────
 export default function ExportPanel({ province, district, colorBy, layers, mapCenter, mapZoom }: ExportPanelProps) {
   const qc = useQueryClient();
-  const [busy, setBusy] = useState<"pdf" | "html" | "csv" | null>(null);
-  const [done, setDone] = useState<"pdf" | "html" | "csv" | null>(null);
+  const [busy, setBusy] = useState<"pdf" | "html" | "csv" | "geojson" | null>(null);
+  const [done, setDone] = useState<"pdf" | "html" | "csv" | "geojson" | null>(null);
 
   const title = district ? `${district}, ${province}` : province ?? "Moçambique";
   const hasData = !!province;
 
-  function flash(k: "pdf" | "html" | "csv") { setDone(k); setTimeout(() => setDone(null), 2500); }
+  function flash(k: "pdf" | "html" | "csv" | "geojson") { setDone(k); setTimeout(() => setDone(null), 2500); }
 
   function getStats() { return qc.getQueryData<Stats>(["stats", province, district]); }
   function getProvinces() { return qc.getQueryData<GeoJSON.FeatureCollection>(["provinces"]); }
@@ -510,10 +510,31 @@ export default function ExportPanel({ province, district, colorBy, layers, mapCe
     }
   }
 
+  function handleGeoJson() {
+    setBusy("geojson");
+    try {
+      const geoJSON = qc.getQueryData<GeoJSON.FeatureCollection>(["geology", province, district, colorBy]);
+      if (!geoJSON) {
+        alert("GeoJSON não disponível em cache. Certifique-se de que a geologia da área seleccionada foi carregada no mapa.");
+        return;
+      }
+      const blob = new Blob([JSON.stringify(geoJSON, null, 2)], { type: "application/geo+json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `GeoMoz_Geologia_${province ?? "Mocambique"}${district ? `_${district}` : ""}_${colorBy}_${new Date().toISOString().slice(0, 10)}.geojson`;
+      a.click();
+      URL.revokeObjectURL(url);
+      flash("geojson");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const ExportCard = ({
     id, icon, title: cardTitle, desc, btnLabel, btnClass, onClick, disabled, disabledMsg,
   }: {
-    id: "pdf" | "html" | "csv"; icon: React.ReactNode; title: string; desc: string;
+    id: "pdf" | "html" | "csv" | "geojson"; icon: React.ReactNode; title: string; desc: string;
     btnLabel: string; btnClass: string; onClick: () => void; disabled?: boolean; disabledMsg?: string;
   }) => (
     <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col gap-4 shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5">
@@ -606,6 +627,17 @@ export default function ExportPanel({ province, district, colorBy, layers, mapCe
             btnClass="bg-emerald-500 hover:bg-emerald-600 shadow-emerald-200"
             onClick={handleCsv}
             disabled={!hasData || !getStats()}
+            disabledMsg="Selecione uma província para activar"
+          />
+          <ExportCard
+            id="geojson"
+            icon={<Map className="text-violet-500" size={22} />}
+            title="GeoJSON — Geologia Filtrada"
+            desc="GeoJSON da camada de geologia actualmente filtrada (província / distrito), com todas as propriedades originais e a cor _color calculada. Compatível com QGIS, ArcGIS, Mapbox, Python/GeoPandas."
+            btnLabel="Descarregar GeoJSON"
+            btnClass="bg-violet-500 hover:bg-violet-600 shadow-violet-200"
+            onClick={handleGeoJson}
+            disabled={!hasData}
             disabledMsg="Selecione uma província para activar"
           />
         </div>

@@ -12,7 +12,7 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
-app = FastAPI(title="GeoMoz API", version="1.0.0")
+app = FastAPI(title="GeoMoz API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -72,11 +72,70 @@ def _gdf_to_geojson_response(gdf) -> Response:
     return Response(content=geojson_str, media_type="application/json")
 
 
+# ── province summary (for AI module) ─────────────────────────────────────────
+
+@lru_cache(maxsize=1)
+def _province_summary_cached():
+    """
+    Spatial join geology → provinces, returning per-province summary.
+    Cached after first call; first call may be slow (full geology read + join).
+    """
+    import geopandas as gpd
+    import pandas as pd
+
+    geo = _geology().copy()
+    prov = _provinces().copy()
+
+    prov_col = _find_col(prov, ["Provincia", "PROVINCIA", "NAME_1", "name"])
+    leg_col  = _find_col(geo,  ["Legend", "LEGEND", "code2006"])
+    era_col  = _find_col(geo,  ["ERA"])
+    period_col = _find_col(geo, ["PERIOD"])
+
+    if not prov_col or not leg_col:
+        return []
+
+    # Compute areas once (UTM 36S)
+    geo_proj = geo.to_crs("EPSG:32736")
+    geo["_area_m2"] = geo_proj.geometry.area
+
+    # Use centroids to assign each geology polygon to a province (fast, avoids duplicates)
+    geo_cent = geo.copy()
+    geo_cent.geometry = geo.geometry.centroid
+
+    join_cols = [c for c in [leg_col, era_col, period_col, "_area_m2"] if c] + ["geometry"]
+    joined = gpd.sjoin(geo_cent[join_cols], prov[[prov_col, "geometry"]],
+                       how="left", predicate="within")
+
+    results = []
+    for prov_name, group in joined.groupby(prov_col):
+        if pd.isna(prov_name):
+            continue
+
+        lith     = [str(v) for v in group[leg_col].dropna().unique().tolist()[:40]]
+        eras     = [str(v) for v in group[era_col].dropna().unique().tolist()[:15]] if era_col else []
+        periods  = [str(v) for v in group[period_col].dropna().unique().tolist()[:15]] if period_col else []
+        dominant = str(group[leg_col].mode().iloc[0]) if len(group) > 0 else "N/A"
+        area_km2 = round(float(group["_area_m2"].sum()) / 1e6, 1)
+
+        results.append({
+            "province":      str(prov_name),
+            "totalFeatures": int(len(group)),
+            "totalUnits":    int(group[leg_col].nunique()),
+            "totalAreaKm2":  area_km2,
+            "dominant":      dominant,
+            "eras":          eras,
+            "periods":       periods,
+            "lithologies":   lith,
+        })
+
+    return results
+
+
 # ── endpoints ──────────────────────────────────────────────────────────────────
 
 @app.get("/geomoz-api/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": "2.0.0"}
 
 
 @app.get("/geomoz-api/provinces")
@@ -222,7 +281,7 @@ def get_stats(
             .reset_index()
             .sort_values("_area_m2", ascending=False)
         )
-        for _, row in grouped.head(10).iterrows():
+        for _, row in grouped.iterrows():
             name = str(row[legend_col]) if row[legend_col] else "Unknown"
             area_km2 = round(row["_area_m2"] / 1e6, 2)
             pct = round(area_km2 / total_area_km2 * 100, 1) if total_area_km2 > 0 else 0
@@ -254,5 +313,16 @@ def get_geology_colors(color_by: str = Query("code2006")):
     vals = sorted(gdf[col].dropna().unique().tolist())
     return {
         "column": col,
-        "items": [{"value": str(v), "color": _color_for(str(v))} for v in vals[:40]],
+        "items": [{"value": str(v), "color": _color_for(str(v))} for v in vals[:60]],
     }
+
+
+@app.get("/geomoz-api/province-summary")
+def get_province_summary():
+    """
+    Lightweight geological summary for ALL provinces — used by GeoMoz AI module.
+    Includes: totalFeatures, totalUnits, totalAreaKm2, dominant lithology,
+    list of eras, periods, and lithology names.
+    First call may take 10–30 s (full geology join); subsequent calls are instant (lru_cache).
+    """
+    return {"provinces": _province_summary_cached()}
