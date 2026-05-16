@@ -260,23 +260,10 @@ def compute_index_tile(
     composite, scene_count, region = _compute_s2_composite(bbox, start_date, end_date, cloud_pct)
     idx_img = _build_index_image(composite, index)
 
-    # Visualize → RGB → get tile URL
+    # Visualize → RGB → get tile URL (sub-second, no pixel computation)
     vis_img  = idx_img.visualize(**cfg["vis"])
     map_data = vis_img.getMapId()
     tile_url = map_data["tile_fetcher"].url_format
-
-    # Lightweight percentile stats (scale=200m, fast)
-    try:
-        stats_raw = idx_img.reduceRegion(
-            reducer=ee.Reducer.percentile([10, 25, 50, 75, 90]),
-            geometry=region,
-            scale=200,
-            maxPixels=1_000_000,
-            bestEffort=True,
-        ).getInfo()
-        stats = {k.replace("index_", "p"): round(v, 4) for k, v in (stats_raw or {}).items()}
-    except Exception:
-        stats = {}
 
     return {
         "tileUrl":    tile_url,
@@ -285,5 +272,5 @@ def compute_index_tile(
         "bands":      cfg["bands"],
         "sceneCount": scene_count,
         "dateRange":  f"{start_date} → {end_date}",
-        "stats":      stats,
+        "stats":      {},
     }
