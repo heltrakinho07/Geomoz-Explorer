@@ -132,7 +132,10 @@ function hashStr(s: string): number {
   return h >>> 0;
 }
 
-export type SpectralIndex = "ndvi" | "fe_oxide" | "clay" | "hydrothermal" | "bare_soil";
+export type SpectralIndex =
+  | "ndvi" | "fe_oxide" | "clay" | "hydrothermal" | "bare_soil"
+  | "ndvi_l8"
+  | "elevation" | "hipsometry" | "slope" | "hillshade" | "topo_class";
 
 /**
  * Compute a proxy spectral index value [0, 1] for a geological unit.
@@ -195,21 +198,40 @@ export function computeSpectralValue(
       const ndviVal = computeSpectralValue(legend, era, period, "ndvi");
       return Math.max(0, Math.min(1, 1 - ndviVal + noise * 0.5));
     }
+    // Terrain indices have no meaningful proxy — return neutral; UI will
+    // require GEE mode for these.
+    case "ndvi_l8":   return computeSpectralValue(legend, era, period, "ndvi");
+    case "elevation": return 0.5 + noise;
+    case "hipsometry": return 0.5 + noise;
+    case "slope":     return 0.3 + noise;
+    case "hillshade": return 0.5 + noise;
+    case "topo_class":return 0.5 + noise;
     default:
       return 0.5 + noise;
   }
 }
+
+/** Indices that require real GEE (no meaningful proxy from geology attributes). */
+export const GEE_ONLY_INDICES: SpectralIndex[] = [
+  "ndvi_l8", "elevation", "hipsometry", "slope", "hillshade", "topo_class",
+];
 
 /** Apply a scientific color ramp to a [0,1] value */
 export function applyColormap(t: number, index: SpectralIndex): string {
   t = Math.max(0, Math.min(1, t));
 
   const ramps: Record<SpectralIndex, [number, number, number][]> = {
-    ndvi: [[139,90,43],[189,138,90],[240,220,130],[180,230,120],[60,180,60],[0,100,0]],
-    fe_oxide: [[255,255,240],[255,220,150],[255,160,50],[200,60,20],[120,0,0]],
-    clay: [[255,255,255],[200,225,255],[130,180,240],[50,120,200],[0,50,140]],
-    hydrothermal: [[255,255,200],[255,220,100],[255,140,50],[200,40,160],[100,0,100]],
-    bare_soil: [[0,120,0],[130,200,100],[255,240,150],[230,130,60],[160,40,0]],
+    ndvi:        [[139,90,43],[189,138,90],[240,220,130],[180,230,120],[60,180,60],[0,100,0]],
+    fe_oxide:    [[255,255,240],[255,220,150],[255,160,50],[200,60,20],[120,0,0]],
+    clay:        [[255,255,255],[200,225,255],[130,180,240],[50,120,200],[0,50,140]],
+    hydrothermal:[[255,255,200],[255,220,100],[255,140,50],[200,40,160],[100,0,100]],
+    bare_soil:   [[0,120,0],[130,200,100],[255,240,150],[230,130,60],[160,40,0]],
+    ndvi_l8:     [[255,255,255],[206,126,69],[252,209,99],[116,169,1],[6,98,1],[1,29,1]],
+    elevation:   [[10,79,10],[247,247,200],[212,176,107],[141,85,36],[255,255,255]],
+    hipsometry:  [[0,63,92],[70,88,129],[140,154,166],[181,192,200],[247,178,103],[228,87,46],[183,28,28]],
+    slope:       [[26,152,80],[145,207,96],[217,239,139],[254,224,139],[252,141,89],[215,48,39]],
+    hillshade:   [[0,0,0],[255,255,255]],
+    topo_class:  [[208,240,255],[160,224,96],[255,255,102],[255,179,102],[255,102,102],[51,102,255]],
   };
 
   const ramp = ramps[index];
@@ -227,42 +249,88 @@ export function applyColormap(t: number, index: SpectralIndex): string {
 
 export type MineralType = "gold" | "gemstones" | "coal" | "graphite" | "heavy_minerals" | "base_metals" | "hydrocarbons";
 
+// Keywords use lowercase substrings matched against the union of lithology + era + period.
+// Both English and Portuguese variants are listed because GTK / geomoz data is mixed.
 const MINERAL_KEYWORDS: Record<MineralType, Record<string, number>> = {
   gold: {
-    "gneiss": 0.65, "schist": 0.65, "migmatite": 0.75, "greenstone": 0.92,
-    "bif": 0.82, "iron formation": 0.85, "granite": 0.55, "quartzite": 0.60,
-    "amphibolite": 0.50, "greenstone belt": 0.95, "archean": 0.70,
-    "proterozoic": 0.60, "shear zone": 0.85, "lode": 0.90,
+    "greenstone": 0.95, "lode": 0.90, "shear zone": 0.85,
+    "iron formation": 0.85, "bif": 0.82, "migmatite": 0.75,
+    "archean": 0.70, "arcaico": 0.70,
+    "gneiss": 0.55, "gnaisse": 0.55,
+    "schist": 0.55, "xisto": 0.55,
+    "quartzite": 0.60, "quartzito": 0.60,
+    "amphibolite": 0.50, "anfibolito": 0.50,
+    "granite": 0.45, "granito": 0.45,
+    "proterozoic": 0.55, "proterozoico": 0.55, "proterozóico": 0.55,
   },
   gemstones: {
-    "marble": 0.88, "calc-silicate": 0.82, "pegmatite": 0.95, "gneiss": 0.62,
-    "migmatite": 0.70, "amphibolite": 0.60, "skarn": 0.85, "tourmaline": 0.90,
-    "ruby": 0.99, "corundum": 0.95, "garnet": 0.72, "precambrian": 0.55,
+    "ruby": 0.99, "rubi": 0.99,
+    "corundum": 0.95, "coríndon": 0.95,
+    "pegmatite": 0.95, "pegmatito": 0.95,
+    "tourmaline": 0.90, "turmalina": 0.90,
+    "marble": 0.88, "mármore": 0.88, "marmore": 0.88,
+    "skarn": 0.85, "calc-silicate": 0.82, "calcio-silicat": 0.82,
+    "garnet": 0.72, "granada": 0.72,
+    "migmatite": 0.65, "amphibolite": 0.60, "anfibolito": 0.60,
+    "gneiss": 0.55, "gnaisse": 0.55,
+    "precambrian": 0.55, "pré-cambric": 0.55, "pre-cambric": 0.55,
   },
   coal: {
-    "permo-carboniferous": 0.95, "karoo": 0.92, "gondwana": 0.88,
-    "carboniferous": 0.92, "coal": 0.99, "sandstone": 0.28, "shale": 0.38,
-    "lacustrine": 0.60, "fluvial": 0.45, "deltaic": 0.55,
+    "coal": 0.99, "carvão": 0.99, "carvao": 0.99,
+    "permo-carboniferous": 0.95, "karoo": 0.92, "carbonífer": 0.92, "carbonifer": 0.92,
+    "gondwana": 0.85, "permian": 0.80, "permiano": 0.80,
+    "lacustrine": 0.55, "lacustre": 0.55,
+    "deltaic": 0.55, "delta": 0.50,
+    "shale": 0.35, "argilito": 0.35, "folhelho": 0.35,
+    "sandstone": 0.25, "arenito": 0.25,
   },
   graphite: {
-    "gneiss": 0.80, "schist": 0.72, "precambrian": 0.72, "marble": 0.62,
-    "quartzite": 0.52, "migmatite": 0.62, "crystalline": 0.68,
-    "metamorphic": 0.75, "archean": 0.70, "granulite": 0.65,
+    "graphite": 0.95, "grafite": 0.95, "grafita": 0.95,
+    "granulite": 0.78, "granulito": 0.78,
+    "gneiss": 0.72, "gnaisse": 0.72,
+    "migmatite": 0.65, "schist": 0.62, "xisto": 0.62,
+    "marble": 0.55, "mármore": 0.55, "marmore": 0.55,
+    "metamorphic": 0.65, "metamórfic": 0.65, "metamorfic": 0.65,
+    "archean": 0.60, "arcaico": 0.60,
+    "precambrian": 0.55, "pré-cambric": 0.55, "pre-cambric": 0.55,
   },
   heavy_minerals: {
-    "alluvial": 0.92, "quaternary": 0.88, "coastal": 0.92, "fluvial": 0.72,
-    "beach": 0.95, "aeolian": 0.62, "marine": 0.72, "sand": 0.62,
-    "placer": 0.95, "holocene": 0.85, "pleistocene": 0.78,
+    "placer": 0.95, "beach": 0.95, "praia": 0.92,
+    "alluvial": 0.92, "aluvial": 0.92, "aluvião": 0.92, "aluviao": 0.92,
+    "coastal": 0.85, "costeir": 0.85,
+    "quaternary": 0.85, "quaternári": 0.85, "quaternari": 0.85,
+    "holocene": 0.80, "holocénic": 0.80, "holocenic": 0.80,
+    "pleistocene": 0.72, "pleistocénic": 0.72, "pleistocenic": 0.72,
+    "aeolian": 0.55, "eólic": 0.55, "eolic": 0.55,
+    "sand": 0.45, "areia": 0.45, "duna": 0.55,
+    "fluvial": 0.50, "marine": 0.55, "marinho": 0.55,
   },
   base_metals: {
-    "mafic": 0.72, "ultramafic": 0.92, "basalt": 0.62, "gabbro": 0.72,
-    "peridotite": 0.82, "serpentinite": 0.78, "dunite": 0.72, "ophiolite": 0.88,
-    "komatiite": 0.85, "norite": 0.75, "pyroxenite": 0.68,
+    "ophiolite": 0.92, "ofiolito": 0.92,
+    "ultramafic": 0.90, "ultramáfic": 0.90,
+    "komatiite": 0.85, "komatiíto": 0.85,
+    "peridotite": 0.82, "peridotito": 0.82,
+    "serpentinite": 0.78, "serpentinito": 0.78,
+    "norite": 0.75, "norito": 0.75,
+    "gabbro": 0.72, "gabro": 0.72,
+    "dunite": 0.70, "dunito": 0.70,
+    "pyroxenite": 0.68, "piroxenito": 0.68,
+    "mafic": 0.55, "máfic": 0.55,
+    "basalt": 0.50, "basalto": 0.50,
+    "dolerite": 0.55, "dolerito": 0.55,
   },
   hydrocarbons: {
-    "mesozoic": 0.72, "triassic": 0.68, "jurassic": 0.82, "cretaceous": 0.78,
-    "limestone": 0.72, "sedimentary": 0.62, "dolomite": 0.62, "evaporite": 0.52,
-    "shale": 0.65, "sandstone": 0.58, "carbonate": 0.70,
+    "jurassic": 0.82, "jurássic": 0.82,
+    "cretaceous": 0.78, "cretácic": 0.78,
+    "limestone": 0.72, "calcário": 0.72, "calcario": 0.72,
+    "carbonate": 0.70, "carbonato": 0.70,
+    "mesozoic": 0.65, "mesozóic": 0.65,
+    "triassic": 0.62, "triásic": 0.62,
+    "dolomite": 0.60, "dolomito": 0.60,
+    "shale": 0.55, "folhelho": 0.55, "argilito": 0.55,
+    "sandstone": 0.45, "arenito": 0.45,
+    "evaporite": 0.50, "evaporito": 0.50,
+    "sedimentary": 0.45, "sedimentar": 0.45,
   },
 };
 
@@ -273,6 +341,22 @@ export interface FavorabilityResult {
   classification: "Alta" | "Moderada" | "Baixa" | "Muito Baixa";
 }
 
+/**
+ * Favorability score in [0,1] combining BOTH:
+ *  - the strongest single piece of geological evidence (top weight)
+ *  - the breadth of matched indicators (coverage)
+ *
+ * This avoids the old "mean weight" pitfall where matching two unrelated weak
+ * keywords pulled the score down even though one strong keyword should have
+ * boosted it.
+ *
+ *   topW         = max weight among matched keywords (signal strength)
+ *   coverageW    = weighted sum of matches, asymptotically saturated
+ *   score        = 0.55·topW + 0.45·(1 − exp(−coverageW))
+ *
+ * Duplicate keyword roots (English/Portuguese variants) are deduplicated by
+ * keeping only the highest weight per root to avoid double-counting.
+ */
 export function scoreFavorability(
   province: string,
   lithologies: string[],
@@ -283,14 +367,28 @@ export function scoreFavorability(
   const keywords = MINERAL_KEYWORDS[mineralType] ?? {};
   const corpus = [...lithologies, ...eras, ...periods].join(" ").toLowerCase();
 
-  const matched: { kw: string; w: number }[] = [];
+  // Match keywords; group by "root" (first 4 chars) so PT/EN duplicates collapse
+  const matchedRaw: { kw: string; w: number }[] = [];
   for (const [kw, weight] of Object.entries(keywords)) {
-    if (corpus.includes(kw.toLowerCase())) matched.push({ kw, w: weight });
+    if (corpus.includes(kw.toLowerCase())) matchedRaw.push({ kw, w: weight });
   }
+  const byRoot = new Map<string, { kw: string; w: number }>();
+  for (const m of matchedRaw) {
+    const root = m.kw.slice(0, 4).toLowerCase();
+    const existing = byRoot.get(root);
+    if (!existing || existing.w < m.w) byRoot.set(root, m);
+  }
+  const matched = Array.from(byRoot.values()).sort((a, b) => b.w - a.w);
 
-  const score = matched.length === 0
-    ? 0.04
-    : Math.min(1, matched.reduce((s, m) => s + m.w, 0) / matched.length);
+  let score: number;
+  if (matched.length === 0) {
+    score = 0.02;
+  } else {
+    const topW = matched[0].w;
+    const coverageW = matched.reduce((s, m) => s + m.w, 0);
+    const coverageScore = 1 - Math.exp(-coverageW / 1.6); // saturates near 1 after ~3–4 strong matches
+    score = Math.min(1, 0.55 * topW + 0.45 * coverageScore);
+  }
 
   const classification: FavorabilityResult["classification"] =
     score >= 0.75 ? "Alta" : score >= 0.50 ? "Moderada" : score >= 0.25 ? "Baixa" : "Muito Baixa";
@@ -298,9 +396,68 @@ export function scoreFavorability(
   return {
     province,
     score,
-    matchedKeywords: matched.map(m => m.kw),
+    matchedKeywords: matched.slice(0, 6).map(m => m.kw),
     classification,
   };
+}
+
+// ── Lithology Family Profiling (for clustering) ───────────────────────────────
+
+/**
+ * Group raw lithology / era strings into 6 broad geological families and return
+ * a normalized [0,1] composition vector. These families separate provinces by
+ * actual geological character — not just by size — and are the right input for
+ * K-Means clustering.
+ *
+ * Returns an object with one fraction per family, summing to 1 (if any matches).
+ */
+export interface LithologyProfile {
+  metamorphic:  number; // gneiss, schist, granulite, migmatite, amphibolite, marble
+  felsicIgneous:number; // granite, granodiorite, syenite, monzonite, pegmatite
+  maficIgneous: number; // basalt, gabbro, dolerite, mafic, ultramafic, peridotite
+  sedimentary:  number; // sandstone, limestone, shale, dolomite, conglomerate
+  quaternary:   number; // alluvial, beach, dune, holocene, pleistocene, sand
+  volcanic:     number; // rhyolite, tuff, ignimbrite, andesite, volcanic
+}
+
+const FAMILY_PATTERNS: Record<keyof LithologyProfile, string[]> = {
+  metamorphic:  ["gneiss","gnaisse","schist","xisto","migmatite","granulite","granulito",
+                 "amphibolite","anfibolito","quartzite","quartzito","marble","mármore","marmore",
+                 "metamorph","metamórfic","metamorfic"],
+  felsicIgneous:["granite","granito","granodiorit","syenite","sienito","pegmatite","pegmatito",
+                 "monzonit","tonalit","aplite","aplito","felsic","félsic"],
+  maficIgneous: ["basalt","basalto","gabbro","gabro","dolerite","dolerito","mafic","máfic",
+                 "ultramafic","ultramáfic","peridotite","peridotito","serpentinit","norite","norito",
+                 "pyroxenit","piroxenit","komatiite","komatiit","dunite","dunito"],
+  sedimentary:  ["sandstone","arenito","limestone","calcário","calcario","shale","folhelho",
+                 "argilito","mudstone","dolomite","dolomito","conglomerate","conglomerado",
+                 "marl","marga","sediment","evaporit","arkose","arcoz"],
+  quaternary:   ["alluv","aluv","beach","praia","dune","duna","holoc","pleistoc","quaternár",
+                 "quaternari","coastal","costeir","aeolian","eólic","eolic","fluvial","colluvi",
+                 "regolith","saprolit"],
+  volcanic:     ["rhyolite","riolito","andesit","tuff","tufo","ignimbrit","volcanic","vulcâni",
+                 "vulcanic","trachyte","traquito","pyroclast","piroclást","lava"],
+};
+
+export function lithologyProfile(
+  lithologies: string[], eras: string[], periods: string[]
+): LithologyProfile {
+  const corpus = [...lithologies, ...eras, ...periods].map(s => s.toLowerCase()).join(" | ");
+  const raw: LithologyProfile = {
+    metamorphic: 0, felsicIgneous: 0, maficIgneous: 0,
+    sedimentary: 0, quaternary: 0, volcanic: 0,
+  };
+  for (const [family, patterns] of Object.entries(FAMILY_PATTERNS) as [keyof LithologyProfile, string[]][]) {
+    for (const p of patterns) {
+      // Count unique unit hits per pattern (avoid double-count of long strings)
+      const occurrences = lithologies.filter(l => l.toLowerCase().includes(p)).length;
+      raw[family] += occurrences;
+    }
+  }
+  const total = Object.values(raw).reduce((s, v) => s + v, 0);
+  if (total === 0) return raw;
+  for (const k of Object.keys(raw) as (keyof LithologyProfile)[]) raw[k] = raw[k] / total;
+  return raw;
 }
 
 // ── PCA (2-component) ──────────────────────────────────────────────────────────

@@ -27,8 +27,24 @@ import {
 import { useProvinceSummary, useProvincesGeoJSON, ProvinceSummaryItem } from "@/hooks/useGeoMoz";
 import {
   kmeans, normalize, pca2, scoreFavorability,
+  lithologyProfile,
   FavorabilityResult, MineralType, KMeansResult,
 } from "@/lib/geoml";
+
+/** Build a geology-driven feature vector per province. The vector mixes the
+ *  6 lithology family fractions (real geological character) with a small,
+ *  log-scaled area component so clusters separate by composition first and
+ *  scale second. This replaces the older [features, units, area] vector that
+ *  ended up clustering provinces by *size* rather than by geology. */
+function buildProvinceFeatures(p: ProvinceSummaryItem): number[] {
+  const prof = lithologyProfile(p.lithologies, p.eras, p.periods);
+  const logArea = Math.log10(Math.max(1, p.totalAreaKm2)) / 6; // 0..~1 over 1–1e6 km²
+  return [
+    prof.metamorphic, prof.felsicIgneous, prof.maficIgneous,
+    prof.sedimentary, prof.quaternary, prof.volcanic,
+    logArea * 0.3, // down-weighted so size never dominates composition
+  ];
+}
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -73,7 +89,7 @@ function ClusteringTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[] }
   function runClustering() {
     setRunning(true);
     setTimeout(() => {
-      const features = summaryItems.map(p => [p.totalFeatures, p.totalUnits, p.totalAreaKm2]);
+      const features = summaryItems.map(buildProvinceFeatures);
       const { data: norm } = normalize(features);
       const res = kmeans(norm, k);
       const provinceLabels: Record<string, number> = {};
@@ -119,10 +135,11 @@ function ClusteringTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[] }
               </div>
             </div>
             <div className="bg-slate-50 rounded-lg p-3 text-xs text-slate-500 space-y-1">
-              <div><strong>Features usadas:</strong></div>
-              <div>· Feições totais</div>
-              <div>· Unidades geológicas</div>
-              <div>· Área total (km²)</div>
+              <div><strong>Features usadas (vector litológico):</strong></div>
+              <div>· Frações das 6 famílias de rocha</div>
+              <div>&nbsp;&nbsp;(ígnea, vulcânica, metamórfica, sedimentar, aluvial, carbonato)</div>
+              <div>· Log-escala da área (peso reduzido)</div>
+              <div className="pt-1 text-slate-400">→ Agrupa por composição, não por tamanho.</div>
             </div>
           </div>
           <button
@@ -355,7 +372,7 @@ function FavorabilityTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[]
 
 function PCATab({ summaryItems }: { summaryItems: ProvinceSummaryItem[] }) {
   const { projected, explained } = useMemo(() => {
-    const features = summaryItems.map(p => [p.totalFeatures, p.totalUnits, p.totalAreaKm2]);
+    const features = summaryItems.map(buildProvinceFeatures);
     const { data: norm } = normalize(features);
     return pca2(norm);
   }, [summaryItems]);
@@ -377,7 +394,7 @@ function PCATab({ summaryItems }: { summaryItems: ProvinceSummaryItem[] }) {
         <h3 className="text-lg font-bold text-slate-900 mb-1">Análise de Componentes Principais (PCA 2D)</h3>
         <p className="text-sm text-slate-500 mb-4">
           PC1 explica <strong>{explained[0]}%</strong> · PC2 explica <strong>{explained[1]}%</strong> da variância total.
-          Features: feições, unidades geológicas, área (km²).
+          Features: frações litológicas (6 famílias) + log(área) com peso reduzido — separa provícias por composição, não por tamanho.
         </p>
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="w-full">
