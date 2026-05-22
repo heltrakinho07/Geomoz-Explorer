@@ -91,10 +91,19 @@ All under `/geomoz-api`:
 
 _Populate as you build._
 
-## Future Evolution
+## GeoAnálises (Sprint 1 — completo)
 
-1. **Satellite/GEE tab**: Add Sentinel-2 imagery via earthengine-api
-2. **Mineral Targeting AI tab**: scikit-learn / XGBoost on geological features
-3. **Search bar**: geocoding via Nominatim API
-4. **Export map**: Leaflet's `leaflet-image` plugin for PNG export
-5. **Admin Posts / Villages layers**: already available in geomoz
+- **Estruturas — Lineamentos automáticos** (`/gee/lineaments`): hillshade multi-azimute do DEM Copernicus GLO-30 → Canny (4 azimutes, max) + Sobel atan2 para direcção. Saída: tile densidade focal (raio 750 m default), tile edges, rosa de direcções 18 bins (10°), orientação dominante (N–S / NE–SW / E–W / NW–SE), densidade média.
+- **Targeting — Potencial Mineral** (`/gee/targeting`, `/gee/minerals`): score 0–100 multi-critério ponderado por preset mineral. 8 presets: Ouro, Fe-óxidos, Cobre, Pegmatitos, Bauxite, Grafite, Carvão, Areias Pesadas. Suporta lista `invert` (e.g. slope invertido para minerais que preferem áreas planas). UI mostra gauge de favorabilidade (180° arc, palette plasma), P90/P95/P99, área favorável em km² (limiar ajustável).
+- Ambos requerem GEE. Edges/density combinam-se como overlay com toggle.
+- Stats usam `score.unmask(0)` antes de `reduceRegion` para evitar nulls quando bands têm máscaras parciais.
+
+## Future Evolution (Sprints 2–4)
+
+1. **Cruzamento espacial automático**: targeting × admin/villages/rios para relatório de overlap.
+2. **Perfil topográfico A–B**: linha desenhada no mapa → query DEM → gráfico elevação.
+3. **AI interpretador**: LLM resume área seleccionada com base em geologia + targeting (aguarda manuais do user para escolha de LLM).
+4. **Exportador PDF/PNG/Shapefile**: `leaflet-image` + jsPDF + geopandas para SHP.
+5. **Time-series NDVI 2018→2025**: comparador temporal Sentinel-2.
+6. **Search bar**: geocoding Nominatim.
+7. **Admin Posts / Villages layers**: já disponíveis em geomoz.
