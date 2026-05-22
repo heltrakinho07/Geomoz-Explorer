@@ -223,6 +223,7 @@ export default function Explorer() {
             province={province}
             district={district}
             onProvinceChange={p => { setProvince(p); setDistrict(null); }}
+            onDistrictChange={setDistrict}
           />
         </div>
       ) : activeTab === "GeoMoz AI" ? (

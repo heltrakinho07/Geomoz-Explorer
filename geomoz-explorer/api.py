@@ -72,20 +72,46 @@ def _gdf_to_geojson_response(gdf) -> Response:
     return Response(content=geojson_str, media_type="application/json")
 
 
-# ── province bbox helper ───────────────────────────────────────────────────────
+# ── region geometry helper (used by GEE endpoints) ─────────────────────────────
 
-def _province_bbox(province: Optional[str]) -> tuple[float, float, float, float]:
-    """Return (west, south, east, north) for a province, or full MZ if None."""
+def _region_geojson(province: Optional[str], district: Optional[str]) -> Optional[dict]:
+    """
+    Return a simplified GeoJSON geometry dict for the selected area:
+      - district (if both given)
+      - province (if only province given)
+      - None      → full Mozambique (GEE fallback uses a bbox internally)
+
+    The geometry is simplified before being shipped to GEE so the request stays light.
+    """
+    from shapely.geometry import mapping
+
+    if district:
+        dist_gdf = _districts()
+        dcol = _find_col(dist_gdf, ["Distrito", "DISTRITO", "NAME_2", "name"])
+        if dcol:
+            sub = dist_gdf[dist_gdf[dcol] == district]
+            # Disambiguate by province when both are given — district names
+            # are repeated across provinces (e.g. "Chibuto", "Mocuba").
+            if province and len(sub) > 0:
+                pcol = _find_col(dist_gdf, ["Provincia", "PROVINCIA", "NAME_1"])
+                if pcol:
+                    sub_p = sub[sub[pcol] == province]
+                    if len(sub_p) > 0:
+                        sub = sub_p
+            if len(sub) > 0:
+                geom = sub.geometry.union_all().simplify(0.01, preserve_topology=True)
+                return mapping(geom)
+
     if province:
         prov_gdf = _provinces()
-        prov_col = _find_col(prov_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name"])
-        if prov_col:
-            mask = prov_gdf[prov_col] == province
-            if mask.any():
-                bounds = prov_gdf[mask].total_bounds  # (minx, miny, maxx, maxy)
-                # add small buffer
-                return (bounds[0] - 0.05, bounds[1] - 0.05, bounds[2] + 0.05, bounds[3] + 0.05)
-    return (30.2, -26.9, 40.8, -10.4)  # full Mozambique
+        pcol = _find_col(prov_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name"])
+        if pcol:
+            sub = prov_gdf[prov_gdf[pcol] == province]
+            if len(sub) > 0:
+                geom = sub.geometry.union_all().simplify(0.02, preserve_topology=True)
+                return mapping(geom)
+
+    return None
 
 
 # ── province summary (for AI module) ─────────────────────────────────────────
@@ -340,13 +366,21 @@ class GEEIndexRequest(BaseModel):
     cloud_pct:  int = 30
 
 
+class GEECompositeRequest(BaseModel):
+    weights:    dict           # {"ndvi": 0.4, "fe_oxide": 0.3, ...}
+    province:   Optional[str] = None
+    district:   Optional[str] = None
+    start_date: str = "2023-01-01"
+    end_date:   str = "2023-12-31"
+    cloud_pct:  int = 30
+
+
 @app.post("/geomoz-api/gee/index")
 async def gee_index(req: GEEIndexRequest):
     """
-    Compute a Sentinel-2 spectral index via Google Earth Engine.
-
-    Returns a GEE-hosted tile URL (valid ~24 h) for use in Leaflet as a TileLayer.
-    Processing time: typically 5–20 s for a province-sized area.
+    Compute a spectral / terrain index via Google Earth Engine, precisely
+    clipped to the selected province / district (or full Mozambique).
+    Returns a GEE-hosted tile URL (~24h validity).
     """
     import asyncio
     from concurrent.futures import ThreadPoolExecutor
@@ -355,8 +389,7 @@ async def gee_index(req: GEEIndexRequest):
     if req.index not in INDEX_REGISTRY:
         raise HTTPException(400, f"Unknown index '{req.index}'. Valid: {list(INDEX_REGISTRY)}")
 
-    # Get bounding box (province or full MZ)
-    bbox = _province_bbox(req.province)
+    region = _region_geojson(req.province, req.district)
 
     executor = ThreadPoolExecutor(max_workers=4)
     loop = asyncio.get_event_loop()
@@ -364,7 +397,7 @@ async def gee_index(req: GEEIndexRequest):
     try:
         result = await loop.run_in_executor(
             executor,
-            lambda: compute_index_tile(req.index, bbox, req.start_date, req.end_date, req.cloud_pct),
+            lambda: compute_index_tile(req.index, region, req.start_date, req.end_date, req.cloud_pct),
         )
         result["province"] = req.province
         result["district"] = req.district
@@ -377,9 +410,41 @@ async def gee_index(req: GEEIndexRequest):
         raise HTTPException(500, f"GEE computation failed: {exc}")
 
 
+@app.post("/geomoz-api/gee/composite")
+async def gee_composite(req: GEECompositeRequest):
+    """
+    Compute a weighted, normalized sum of multiple indices.
+    Each index is normalized to [0,1] using its registry range, multiplied by
+    the user-provided weight (renormalized so weights sum to 1), and summed.
+    """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from gee_module import compute_composite_tile
+
+    region = _region_geojson(req.province, req.district)
+
+    executor = ThreadPoolExecutor(max_workers=4)
+    loop = asyncio.get_event_loop()
+
+    try:
+        result = await loop.run_in_executor(
+            executor,
+            lambda: compute_composite_tile(req.weights, region, req.start_date, req.end_date, req.cloud_pct),
+        )
+        result["province"] = req.province
+        result["district"] = req.district
+        return result
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE composite failed: {exc}")
+
+
 @app.get("/geomoz-api/gee/indices")
 def gee_indices():
-    """List available spectral indices and their metadata."""
+    """List available indices with metadata, grouped (spectral/landsat/terrain)."""
     from gee_module import INDEX_REGISTRY
     return {
         "indices": [
@@ -388,6 +453,8 @@ def gee_indices():
                 "name":    v["name"],
                 "formula": v["formula"],
                 "bands":   v["bands"],
+                "group":   v["group"],
+                "classNames": v.get("class_names"),
             }
             for k, v in INDEX_REGISTRY.items()
         ]
