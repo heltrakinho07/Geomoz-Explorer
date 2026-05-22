@@ -7,3 +7,7 @@ pandas>=2.0.0
 numpy>=1.26.0
 earthengine-api>=1.7.0
 httpx>=0.25.0
+# Security: GHSA-65pc-fj4g-8rjx — idna 3.14 is vulnerable; fixed in 3.16
+idna>=3.16
+# Security: PYSEC-2026-161 — starlette 1.0.0 is vulnerable; fixed in 1.0.1
+starlette>=1.0.1
