@@ -158,3 +158,33 @@ overrides:
   # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
   esbuild: "0.27.3"
+  # ============================================================================
+  # SECURITY: Force patched versions of vulnerable transitive dependencies
+  # ============================================================================
+  # picomatch: ReDoS via extglob quantifiers (GHSA-c2c7-rcm5-vvqj)
+  #            Method Injection in POSIX Character Classes (GHSA-3v7f-55p6-f55p)
+  #            Affected: <2.3.2 and >=4.0.0 <4.0.4  — fixed: >=4.0.4
+  picomatch: ">=4.0.4"
+  # path-to-regexp: DoS via sequential optional groups (GHSA-j3q9-mxjg-w52f)
+  #                 ReDoS via multiple wildcards (GHSA-27v5-c462-wpq7)
+  #                 Affected: >=8.0.0 <8.4.0  — fixed: >=8.4.0
+  path-to-regexp: ">=8.4.0"
+  # lodash: Code Injection via _.template (GHSA-r5fr-rjxr-66jc)
+  #         Prototype Pollution via array path bypass (GHSA-f23m-r3pf-42rh)
+  #         Affected: <=4.17.23  — fixed: >=4.18.0
+  lodash: ">=4.18.0"
+  # fast-uri: path traversal (GHSA-q3j6-qgpj-74h6) and host confusion (GHSA-v39h-62p7-jpjc)
+  #           Affected: <=3.1.1  — fixed: >=3.1.2
+  fast-uri: ">=3.1.2"
+  # brace-expansion: Zero-step sequence DoS (GHSA-f886-m6hf-6m8v)
+  #                  Affected: >=2.0.0 <2.0.3  — fixed: >=2.0.3
+  brace-expansion: ">=2.0.3"
+  # yaml: Stack Overflow via deeply nested YAML collections (GHSA-48c2-rrv3-qjmp)
+  #       Affected: >=2.0.0 <2.8.3  — fixed: >=2.8.3
+  yaml: ">=2.8.3"
+  # postcss: XSS via unescaped </style> in CSS stringify (GHSA-qx2v-qp2m-jg93)
+  #          Affected: <8.5.10  — fixed: >=8.5.10
+  postcss: ">=8.5.10"
+  # qs: DoS via TypeError on null/undefined comma-format entries (GHSA-q8mj-m7cp-5q26)
+  #     Affected: >=6.11.1 <=6.15.1  — fixed: >=6.15.2
+  qs: ">=6.15.2"
