@@ -20,6 +20,7 @@ import {
   CheckCircle2, XCircle, Loader2, Play, RefreshCw,
   ExternalLink, ShieldCheck,
   Mountain, MountainSnow, TrendingUp, Sun, Trees, Sliders, Sparkles, MapPin,
+  Activity, Target, Compass, Gem,
 } from "lucide-react";
 
 import { useGeologyGeoJSON, useProvincesGeoJSON, useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
@@ -27,9 +28,54 @@ import { computeSpectralValue, applyColormap, SpectralIndex, GEE_ONLY_INDICES } 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type SpectralTab = "s2" | "composite" | SpectralIndex;
+type SpectralTab = "s2" | "composite" | "lineaments" | "targeting" | SpectralIndex;
 
 type IndexGroup = "spectral" | "landsat" | "terrain";
+
+interface RoseBin { bin_deg: number; count: number; pct: number; }
+
+interface LineamentsResult {
+  tileUrl: string;
+  edgesTileUrl: string;
+  name: string;
+  formula: string;
+  rose: RoseBin[];
+  sampleCount: number;
+  meanDensity: number | null;
+  province?: string | null;
+  district?: string | null;
+}
+
+interface MineralPreset {
+  id: string;
+  name: string;
+  description: string;
+  weights: Record<string, number>;
+  invert: string[];
+}
+
+interface TargetingResult {
+  tileUrl: string;
+  name: string;
+  mineral: string;
+  mineralName: string;
+  description: string;
+  weights: Record<string, number>;
+  inverted: string[];
+  formula: string;
+  sceneCount: number;
+  dateRange: string;
+  scoreThreshold: number;
+  stats: {
+    meanScore?: number | null;
+    p90?: number | null;
+    p95?: number | null;
+    p99?: number | null;
+    favorableKm2?: number | null;
+  };
+  province?: string | null;
+  district?: string | null;
+}
 
 interface GeeStatus {
   connected: boolean;
@@ -548,6 +594,438 @@ function CompositePanel({
   );
 }
 
+// ── Lineaments (structural) Panel ──────────────────────────────────────────────
+
+function RoseDiagram({ rose }: { rose: RoseBin[] }) {
+  const size = 200;
+  const r = 78;
+  const cx = size / 2, cy = size / 2;
+  const max = Math.max(0.0001, ...rose.map(b => b.pct));
+  // 18 bins × 10° each, doubled for 360° visualization (bidirectional)
+  const wedges = rose.flatMap((b, i) => {
+    const len = (b.pct / max) * r;
+    return [0, 1].map(side => {
+      const a0 = ((b.bin_deg + side * 180) - 90) * Math.PI / 180;
+      const a1 = ((b.bin_deg + 10 + side * 180) - 90) * Math.PI / 180;
+      const x0 = cx + len * Math.cos(a0), y0 = cy + len * Math.sin(a0);
+      const x1 = cx + len * Math.cos(a1), y1 = cy + len * Math.sin(a1);
+      return (
+        <path key={`${i}-${side}`}
+          d={`M ${cx} ${cy} L ${x0} ${y0} A ${len} ${len} 0 0 1 ${x1} ${y1} Z`}
+          fill="#a855f7" fillOpacity={0.55} stroke="#7e22ce" strokeWidth={0.4} />
+      );
+    });
+  });
+  return (
+    <svg viewBox={`0 0 ${size} ${size}`} className="w-full">
+      {/* Reference circles */}
+      {[r * 0.33, r * 0.66, r].map((rr, k) => (
+        <circle key={k} cx={cx} cy={cy} r={rr} fill="none" stroke="#e2e8f0" strokeWidth={0.6} />
+      ))}
+      {/* Cardinal axes */}
+      <line x1={cx} y1={cy - r} x2={cx} y2={cy + r} stroke="#cbd5e1" strokeWidth={0.6} />
+      <line x1={cx - r} y1={cy} x2={cx + r} y2={cy} stroke="#cbd5e1" strokeWidth={0.6} />
+      {wedges}
+      <text x={cx} y={cy - r - 4} fontSize={9} fill="#64748b" textAnchor="middle">N</text>
+      <text x={cx + r + 4} y={cy + 3} fontSize={9} fill="#64748b" textAnchor="start">E</text>
+      <text x={cx} y={cy + r + 9} fontSize={9} fill="#64748b" textAnchor="middle">S</text>
+      <text x={cx - r - 4} y={cy + 3} fontSize={9} fill="#64748b" textAnchor="end">W</text>
+    </svg>
+  );
+}
+
+function dominantOrientation(rose: RoseBin[]): string {
+  if (!rose.length) return "—";
+  const top = rose.reduce((a, b) => (b.count > a.count ? b : a));
+  const deg = top.bin_deg;
+  // Compass quadrant label
+  if (deg < 22.5 || deg >= 157.5) return "N–S";
+  if (deg < 67.5)  return "NE–SW";
+  if (deg < 112.5) return "E–W";
+  return "NW–SE";
+}
+
+function LineamentsPanel({
+  province, district, onResult,
+}: {
+  province: string | null;
+  district: string | null;
+  onResult: (r: LineamentsResult | null) => void;
+}) {
+  const [smoothM, setSmoothM]   = useState(30);
+  const [radiusM, setRadiusM]   = useState(750);
+  const [running, setRunning]   = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+  const [result, setResult]     = useState<LineamentsResult | null>(null);
+
+  async function run() {
+    setRunning(true); setError(null); onResult(null);
+    try {
+      const res = await fetch("/geomoz-api/gee/lineaments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          province: province || null, district: district || null,
+          smooth_m: smoothM, density_radius_m: radiusM, rose_samples: 4000,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail ?? "Erro GEE");
+      }
+      const data: LineamentsResult = await res.json();
+      setResult(data); onResult(data);
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally { setRunning(false); }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
+          Parâmetros Estruturais
+        </h4>
+        <div className="space-y-2.5">
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">
+              Suavização DEM — <strong className="text-slate-700">{smoothM} m</strong>
+            </label>
+            <input type="range" min={10} max={120} step={10} value={smoothM}
+              onChange={e => setSmoothM(Number(e.target.value))}
+              className="w-full accent-fuchsia-500" />
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              Filtra ruído. 30 m = detalhe fino, 120 m = grandes lineamentos.
+            </p>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">
+              Raio densidade — <strong className="text-slate-700">{radiusM} m</strong>
+            </label>
+            <input type="range" min={250} max={2500} step={250} value={radiusM}
+              onChange={e => setRadiusM(Number(e.target.value))}
+              className="w-full accent-fuchsia-500" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Área (clipping)</label>
+            <div className="text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 flex items-center gap-1.5">
+              <MapPin size={12} className="text-fuchsia-500" />
+              {district
+                ? <span>{district} <span className="text-slate-400">·</span> {province}</span>
+                : province
+                  ? <span>{province} <span className="text-slate-400">(toda a província)</span></span>
+                  : <span className="text-slate-500">Moçambique (toda)</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button onClick={run} disabled={running}
+        className="w-full flex items-center justify-center gap-2 py-2.5 bg-fuchsia-600 hover:bg-fuchsia-700 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-fuchsia-200">
+        {running
+          ? <><Loader2 size={14} className="animate-spin" /> A detectar estruturas…</>
+          : <><Activity size={14} /> Detectar Lineamentos</>}
+      </button>
+
+      {running && (
+        <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-xl p-3 text-xs text-fuchsia-700 leading-relaxed">
+          <Loader2 size={12} className="inline animate-spin mr-1.5" />
+          Hillshade multi-azimute + Canny + Sobel. Tipicamente 15–40 s.
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+          <strong>Erro:</strong> {error}
+        </div>
+      )}
+
+      {result && !running && (
+        <div className="space-y-3">
+          <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-xl p-3">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <CheckCircle2 size={13} className="text-fuchsia-600" />
+              <span className="text-xs font-semibold text-fuchsia-700">Lineamentos detectados</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 mt-2">
+              <div className="bg-white/70 rounded-lg p-2 text-center">
+                <div className="text-[10px] text-slate-500 uppercase">Orientação</div>
+                <div className="text-sm font-bold text-fuchsia-700">{dominantOrientation(result.rose)}</div>
+              </div>
+              <div className="bg-white/70 rounded-lg p-2 text-center">
+                <div className="text-[10px] text-slate-500 uppercase">Densidade média</div>
+                <div className="text-sm font-bold text-fuchsia-700">
+                  {result.meanDensity != null ? result.meanDensity.toFixed(3) : "—"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+              <Compass size={12} /> Rosa de Direcções
+            </h5>
+            <div className="bg-white border border-slate-200 rounded-xl p-2">
+              <RoseDiagram rose={result.rose} />
+              <p className="text-[10px] text-center text-slate-400 mt-1">
+                {result.sampleCount.toLocaleString()} pixels amostrados
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Mineral Targeting Panel ────────────────────────────────────────────────────
+
+function FavorabilityGauge({ score }: { score: number }) {
+  const clamped = Math.max(0, Math.min(100, score));
+  const ang = (clamped / 100) * 180 - 180;          // -180..0 (left → right)
+  const r = 70, cx = 90, cy = 90;
+  const ax = cx + r * Math.cos((ang) * Math.PI / 180);
+  const ay = cy + r * Math.sin((ang) * Math.PI / 180);
+  // Gradient stops along the 180° arc
+  return (
+    <svg viewBox="0 0 180 110" className="w-full">
+      <defs>
+        <linearGradient id="favgrad" x1="0" x2="1">
+          <stop offset="0%"   stopColor="#0d0887" />
+          <stop offset="25%"  stopColor="#8b0aa5" />
+          <stop offset="50%"  stopColor="#db5c68" />
+          <stop offset="75%"  stopColor="#febc2a" />
+          <stop offset="100%" stopColor="#ffff96" />
+        </linearGradient>
+      </defs>
+      <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
+        fill="none" stroke="url(#favgrad)" strokeWidth={14} strokeLinecap="round" />
+      <line x1={cx} y1={cy} x2={ax} y2={ay} stroke="#0f172a" strokeWidth={2.5} strokeLinecap="round" />
+      <circle cx={cx} cy={cy} r={5} fill="#0f172a" />
+      <text x={cx} y={cy + 28} fontSize={26} fontWeight={700}
+        fill="#0f172a" textAnchor="middle">{clamped.toFixed(0)}</text>
+      <text x={cx} y={cy - r - 4} fontSize={9} fill="#94a3b8" textAnchor="middle">
+        FAVORABILIDADE
+      </text>
+    </svg>
+  );
+}
+
+function TargetingPanel({
+  province, district, onResult,
+}: {
+  province: string | null;
+  district: string | null;
+  onResult: (r: TargetingResult | null) => void;
+}) {
+  const [presets, setPresets]   = useState<MineralPreset[]>([]);
+  const [mineral, setMineral]   = useState("gold");
+  const [startDate, setStart]   = useState("2023-01-01");
+  const [endDate, setEnd]       = useState("2023-12-31");
+  const [cloudPct, setCloudPct] = useState(30);
+  const [threshold, setTh]      = useState(0.7);
+  const [running, setRunning]   = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+  const [result, setResult]     = useState<TargetingResult | null>(null);
+
+  useEffect(() => {
+    fetch("/geomoz-api/gee/minerals").then(r => r.json())
+      .then(d => setPresets(d.minerals ?? [])).catch(() => {});
+  }, []);
+
+  const current = presets.find(p => p.id === mineral);
+
+  async function run() {
+    setRunning(true); setError(null); onResult(null);
+    try {
+      const res = await fetch("/geomoz-api/gee/targeting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mineral, province: province || null, district: district || null,
+          start_date: startDate, end_date: endDate, cloud_pct: cloudPct,
+          score_threshold: threshold,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail ?? "Erro GEE");
+      }
+      const data: TargetingResult = await res.json();
+      setResult(data); onResult(data);
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally { setRunning(false); }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
+          Alvo Mineral
+        </h4>
+        <div className="space-y-2.5">
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Mineral</label>
+            <div className="relative">
+              <select value={mineral} onChange={e => setMineral(e.target.value)}
+                className="w-full appearance-none text-sm bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
+            </div>
+          </div>
+          {current && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-[11px] text-amber-800 leading-relaxed">
+              {current.description}
+            </div>
+          )}
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Data início</label>
+            <input type="date" value={startDate} onChange={e => setStart(e.target.value)}
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Data fim</label>
+            <input type="date" value={endDate} onChange={e => setEnd(e.target.value)}
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">
+              Nuvens máx — <strong className="text-slate-700">{cloudPct}%</strong>
+            </label>
+            <input type="range" min={5} max={80} value={cloudPct}
+              onChange={e => setCloudPct(Number(e.target.value))}
+              className="w-full accent-amber-500" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">
+              Limiar favorável — <strong className="text-slate-700">{Math.round(threshold * 100)}</strong>
+            </label>
+            <input type="range" min={0.4} max={0.9} step={0.05} value={threshold}
+              onChange={e => setTh(Number(e.target.value))}
+              className="w-full accent-amber-500" />
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              Área favorável = pixels com score ≥ limiar.
+            </p>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Área (clipping)</label>
+            <div className="text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 flex items-center gap-1.5">
+              <MapPin size={12} className="text-amber-500" />
+              {district
+                ? <span>{district} <span className="text-slate-400">·</span> {province}</span>
+                : province
+                  ? <span>{province} <span className="text-slate-400">(toda a província)</span></span>
+                  : <span className="text-slate-500">Moçambique (toda)</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {current && (
+        <div>
+          <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+            Pesos do modelo
+          </h5>
+          <div className="space-y-1">
+            {Object.entries(current.weights).map(([k, v]) => {
+              const inv = current.invert.includes(k);
+              return (
+                <div key={k} className="flex items-center gap-2 text-xs">
+                  <span className="w-24 text-slate-600 truncate">
+                    {inv && <span className="text-rose-500 mr-0.5">¬</span>}{k}
+                  </span>
+                  <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">
+                    <div className="h-full bg-amber-500" style={{ width: `${v * 100}%` }} />
+                  </div>
+                  <span className="font-mono text-slate-500 w-9 text-right">{(v * 100).toFixed(0)}%</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <button onClick={run} disabled={running || !mineral}
+        className="w-full flex items-center justify-center gap-2 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-amber-200">
+        {running
+          ? <><Loader2 size={14} className="animate-spin" /> A calcular favorabilidade…</>
+          : <><Target size={14} /> Calcular Potencial Mineral</>}
+      </button>
+
+      {running && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 leading-relaxed">
+          <Loader2 size={12} className="inline animate-spin mr-1.5" />
+          A combinar Sentinel-2 + DEM + lineamentos. Pode demorar 30–60 s.
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+          <strong>Erro:</strong> {error}
+        </div>
+      )}
+
+      {result && !running && (
+        <div className="space-y-3">
+          <div className="bg-white border border-amber-200 rounded-xl p-3">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Gem size={13} className="text-amber-600" />
+              <span className="text-xs font-semibold text-amber-700">{result.mineralName}</span>
+            </div>
+            <FavorabilityGauge score={(result.stats.meanScore ?? 0) * 100} />
+            <p className="text-[10px] text-center text-slate-400 -mt-2">
+              Score médio da região
+            </p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-1.5">
+            <div className="bg-slate-50 rounded-lg p-2 text-center">
+              <div className="text-[10px] text-slate-400 uppercase">P90</div>
+              <div className="text-sm font-bold text-slate-800">
+                {result.stats.p90 != null ? (result.stats.p90 * 100).toFixed(0) : "—"}
+              </div>
+            </div>
+            <div className="bg-slate-50 rounded-lg p-2 text-center">
+              <div className="text-[10px] text-slate-400 uppercase">P95</div>
+              <div className="text-sm font-bold text-slate-800">
+                {result.stats.p95 != null ? (result.stats.p95 * 100).toFixed(0) : "—"}
+              </div>
+            </div>
+            <div className="bg-slate-50 rounded-lg p-2 text-center">
+              <div className="text-[10px] text-slate-400 uppercase">P99</div>
+              <div className="text-sm font-bold text-slate-800">
+                {result.stats.p99 != null ? (result.stats.p99 * 100).toFixed(0) : "—"}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+            <div className="text-[10px] text-amber-700 uppercase tracking-wider">
+              Área favorável (score ≥ {Math.round(result.scoreThreshold * 100)})
+            </div>
+            <div className="text-xl font-bold text-amber-800 mt-0.5">
+              {result.stats.favorableKm2 != null
+                ? `${result.stats.favorableKm2.toFixed(1)} km²`
+                : "—"}
+            </div>
+            <div className="text-[10px] text-amber-600 mt-1 font-mono break-all">
+              {result.formula}
+            </div>
+          </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-[10px] text-slate-500 leading-relaxed">
+            <strong className="text-slate-700">Aviso:</strong> Targeting heurístico — combina
+            sensoriamento remoto + DEM. Resultado é indicativo e não substitui
+            campanhas geofísicas / amostragem geoquímica.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 interface GeoAnalisesProps {
@@ -565,6 +1043,9 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   const [geeStatus, setGeeStatus]     = useState<GeeStatus | null>(null);
   const [geeLoading, setGeeLoading]   = useState(false);
   const [geeTile, setGeeTile]         = useState<GeeResult | null>(null);
+  const [lineamentsTile, setLineamentsTile] = useState<LineamentsResult | null>(null);
+  const [targetingTile, setTargetingTile]   = useState<TargetingResult | null>(null);
+  const [showEdges, setShowEdges]     = useState(true);
   const [useGEE, setUseGEE]           = useState(true);
   const [showSetup, setShowSetup]     = useState(false);
 
@@ -598,8 +1079,12 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
     if (geeStatus && !geeStatus.connected) setUseGEE(false);
   }, [geeStatus]);
 
-  // Clear GEE tile when switching index
-  useEffect(() => { setGeeTile(null); }, [activeTab]);
+  // Clear GEE tiles when switching index
+  useEffect(() => {
+    setGeeTile(null);
+    setLineamentsTile(null);
+    setTargetingTile(null);
+  }, [activeTab]);
 
   // Synthetic spectral overlay (proxy mode) — disabled for s2/composite/terrain
   const spectralGeoJSON = useMemo(() => {
@@ -633,10 +1118,13 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   }, [geologyGeoJSON, activeTab, useGEE]);
 
   const activeDef = INDEX_DEFS.find(d => d.id === activeTab);
-  const isComposite = activeTab === "composite";
-  const isTerrain   = activeDef?.group === "terrain";
-  const isGeeOnly   = activeDef && GEE_ONLY_INDICES.includes(activeDef.id);
-  const isTopoClass = activeTab === "topo_class";
+  const isComposite   = activeTab === "composite";
+  const isLineaments  = activeTab === "lineaments";
+  const isTargeting   = activeTab === "targeting";
+  const isTerrain     = activeDef?.group === "terrain";
+  const isGeeOnly     = (activeDef && GEE_ONLY_INDICES.includes(activeDef.id))
+                        || isLineaments || isTargeting;
+  const isTopoClass   = activeTab === "topo_class";
   const spectralKey = `spectral-${activeTab}-${province}-${district}-${geologyGeoJSON?.features?.length ?? 0}`;
   const geeTileKey  = `gee-${activeTab}-${geeTile?.tileUrl ?? ""}`;
 
@@ -649,12 +1137,14 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
     { name: "Espectral", tabs: INDEX_DEFS.filter(d => d.group === "spectral").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
     { name: "Landsat",   tabs: INDEX_DEFS.filter(d => d.group === "landsat").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
     { name: "Relevo",    tabs: INDEX_DEFS.filter(d => d.group === "terrain").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Composto",  tabs: [{ id: "composite", label: "Composto", icon: <Sliders size={13} /> }] },
+    { name: "Composto",   tabs: [{ id: "composite",  label: "Composto",     icon: <Sliders size={13} /> }] },
+    { name: "Estruturas", tabs: [{ id: "lineaments", label: "Lineamentos",  icon: <Activity size={13} /> }] },
+    { name: "Targeting",  tabs: [{ id: "targeting",  label: "Potencial Mineral", icon: <Target size={13} /> }] },
   ];
 
   const geeReady = geeStatus?.connected && useGEE;
-  // Composite & GEE-only indices require GEE — force-toggle if needed
-  const requiresGee = isComposite || isGeeOnly;
+  // Composite, lineaments, targeting & GEE-only indices require GEE
+  const requiresGee = isComposite || isLineaments || isTargeting || isGeeOnly;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
@@ -792,8 +1282,46 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
             </div>
           )}
 
+          {/* Lineaments Panel */}
+          {!showSetup && isLineaments && (
+            <div className="p-4 border-b border-slate-100">
+              {!geeStatus?.connected ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                  <strong>GEE necessário.</strong> Detecção estrutural requer DEM via Google Earth Engine.
+                </div>
+              ) : (
+                <>
+                  <LineamentsPanel province={province} district={district} onResult={setLineamentsTile} />
+                  {lineamentsTile && (
+                    <div className="mt-3 pt-3 border-t border-slate-100">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-600">
+                        <input type="checkbox" checked={showEdges}
+                          onChange={e => setShowEdges(e.target.checked)}
+                          className="accent-fuchsia-500" />
+                        Mostrar linhas (edges)
+                      </label>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Targeting Panel */}
+          {!showSetup && isTargeting && (
+            <div className="p-4 border-b border-slate-100">
+              {!geeStatus?.connected ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                  <strong>GEE necessário.</strong> Targeting requer Sentinel-2 + DEM via GEE.
+                </div>
+              ) : (
+                <TargetingPanel province={province} district={district} onResult={setTargetingTile} />
+              )}
+            </div>
+          )}
+
           {/* GEE Analysis Panel (real mode, single index) */}
-          {!showSetup && !isComposite && geeReady && activeTab !== "s2" && activeDef && (
+          {!showSetup && !isComposite && !isLineaments && !isTargeting && geeReady && activeTab !== "s2" && activeDef && (
             <div className="p-4 border-b border-slate-100">
               <GeeAnalysisPanel
                 activeIndex={activeTab as SpectralIndex}
@@ -806,16 +1334,16 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
           )}
 
           {/* GEE-only warning when proxy is forced */}
-          {!showSetup && !isComposite && !geeReady && isGeeOnly && (
+          {!showSetup && !isComposite && !isLineaments && !isTargeting && !geeReady && isGeeOnly && activeDef && (
             <div className="p-4 border-b border-slate-100">
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
-                <strong>Índice apenas GEE.</strong> {activeDef?.short} requer dados raster reais (DEM / Landsat). Active GEE no topo para calcular.
+                <strong>Índice apenas GEE.</strong> {activeDef.short} requer dados raster reais (DEM / Landsat). Active GEE no topo para calcular.
               </div>
             </div>
           )}
 
           {/* Proxy mode controls (only spectral indices have meaningful proxy) */}
-          {!showSetup && !isComposite && !geeReady && activeTab !== "s2" && !isGeeOnly && (
+          {!showSetup && !isComposite && !isLineaments && !isTargeting && !geeReady && activeTab !== "s2" && !isGeeOnly && (
             <div className="p-4 border-b border-slate-100">
               <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Opacidade</h4>
               <input type="range" min={0.1} max={1} step={0.05} value={opacity}
@@ -846,7 +1374,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
           )}
 
           {/* Index info */}
-          {!showSetup && !isComposite && activeDef && activeTab !== "s2" && (
+          {!showSetup && !isComposite && !isLineaments && !isTargeting && activeDef && activeTab !== "s2" && (
             <div className="p-4 flex-1 space-y-4">
               <div>
                 <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Fórmula</h4>
@@ -888,6 +1416,56 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                   <p className="text-xs text-amber-700 leading-relaxed">Estimativa baseada em atributos geológicos. Active GEE para dados raster reais.</p>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Lineaments info */}
+          {!showSetup && isLineaments && (
+            <div className="p-4 flex-1 space-y-3">
+              <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Activity size={12} className="text-fuchsia-600" />
+                  <span className="text-xs font-semibold text-fuchsia-700">Detecção Estrutural</span>
+                </div>
+                <p className="text-xs text-fuchsia-700 leading-relaxed">
+                  Lineamentos topográficos (falhas, fracturas, drenagens) extraídos do
+                  DEM Copernicus GLO-30 com Canny multi-azimute e Sobel.
+                </p>
+              </div>
+              <div>
+                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Escala — densidade</h4>
+                <div className="h-3 w-full rounded" style={{
+                  background: "linear-gradient(to right, #000033, #330099, #9933cc, #ff3366, #ff6600, #ffff00)",
+                }} />
+                <div className="flex justify-between text-xs text-slate-400 mt-0.5">
+                  <span>Baixa</span><span>Alta densidade estrutural</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Targeting info */}
+          {!showSetup && isTargeting && (
+            <div className="p-4 flex-1 space-y-3">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Target size={12} className="text-amber-600" />
+                  <span className="text-xs font-semibold text-amber-700">Mineral Targeting AI</span>
+                </div>
+                <p className="text-xs text-amber-700 leading-relaxed">
+                  Modelo multi-critério ponderado por mineral. Combina assinatura
+                  espectral, relevo e densidade estrutural para gerar score 0–100.
+                </p>
+              </div>
+              <div>
+                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Escala — favorabilidade</h4>
+                <div className="h-3 w-full rounded" style={{
+                  background: "linear-gradient(to right, #0d0887, #8b0aa5, #db5c68, #febc2a, #ffff96)",
+                }} />
+                <div className="flex justify-between text-xs text-slate-400 mt-0.5">
+                  <span>0</span><span>100</span>
+                </div>
+              </div>
             </div>
           )}
 
@@ -984,11 +1562,44 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
             )}
 
             {/* GEE real tile layer (single index or composite) */}
-            {(geeReady || isComposite) && geeTile && activeTab !== "s2" && (
+            {(geeReady || isComposite) && !isLineaments && !isTargeting && geeTile && activeTab !== "s2" && (
               <TileLayer
                 key={geeTileKey}
                 url={geeTile.tileUrl}
                 attribution={`GEE · ${geeTile.name}`}
+                opacity={opacity}
+                maxZoom={18}
+              />
+            )}
+
+            {/* Lineaments — density (heat) + optional edges (cyan lines) */}
+            {isLineaments && lineamentsTile && (
+              <>
+                <TileLayer
+                  key={`lin-density-${lineamentsTile.tileUrl}`}
+                  url={lineamentsTile.tileUrl}
+                  attribution="GEE · Lineamentos (densidade)"
+                  opacity={0.7}
+                  maxZoom={18}
+                />
+                {showEdges && (
+                  <TileLayer
+                    key={`lin-edges-${lineamentsTile.edgesTileUrl}`}
+                    url={lineamentsTile.edgesTileUrl}
+                    attribution="GEE · Lineamentos (edges)"
+                    opacity={0.9}
+                    maxZoom={18}
+                  />
+                )}
+              </>
+            )}
+
+            {/* Targeting score tile */}
+            {isTargeting && targetingTile && (
+              <TileLayer
+                key={`tgt-${targetingTile.tileUrl}`}
+                url={targetingTile.tileUrl}
+                attribution={`GEE · ${targetingTile.mineralName}`}
                 opacity={opacity}
                 maxZoom={18}
               />
@@ -1028,8 +1639,43 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
               </div>
             </div>
           )}
+          {/* Lineaments result badge */}
+          {isLineaments && lineamentsTile && (
+            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-fuchsia-200 p-3 w-64 pointer-events-none">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Activity size={12} className="text-fuchsia-500" />
+                <div className="text-xs font-semibold text-fuchsia-700">Lineamentos (DEM)</div>
+              </div>
+              <div className="text-xs text-slate-500">
+                Orientação dominante: <strong className="text-fuchsia-700">{dominantOrientation(lineamentsTile.rose)}</strong>
+              </div>
+              <div className="text-xs text-slate-400">
+                {lineamentsTile.sampleCount.toLocaleString()} pixels · densidade média {(lineamentsTile.meanDensity ?? 0).toFixed(3)}
+              </div>
+            </div>
+          )}
+
+          {/* Targeting result badge */}
+          {isTargeting && targetingTile && (
+            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-amber-200 p-3 w-64 pointer-events-none">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Gem size={12} className="text-amber-500" />
+                <div className="text-xs font-semibold text-amber-700">Potencial: {targetingTile.mineralName}</div>
+              </div>
+              <div className="text-xs text-slate-500">
+                Score médio: <strong className="text-amber-700">{((targetingTile.stats.meanScore ?? 0) * 100).toFixed(0)}/100</strong>
+                {" · "}P95: <strong className="text-amber-700">{((targetingTile.stats.p95 ?? 0) * 100).toFixed(0)}</strong>
+              </div>
+              <div className="text-xs text-slate-400">
+                Área favorável: {targetingTile.stats.favorableKm2 != null
+                  ? `${targetingTile.stats.favorableKm2.toFixed(1)} km²`
+                  : "—"}
+              </div>
+            </div>
+          )}
+
           {/* GEE / Composite result badge */}
-          {activeTab !== "s2" && geeTile && (geeReady || isComposite) && (
+          {activeTab !== "s2" && !isLineaments && !isTargeting && geeTile && (geeReady || isComposite) && (
             <div className={`absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border p-3 w-64 pointer-events-none ${
               isComposite ? "border-violet-200" : "border-emerald-200"
             }`}>
@@ -1063,11 +1709,19 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
         <span>
           {activeTab === "s2"
             ? `Sentinel-2 cloudless ${selectedYear} — EOX IT Services (CC BY 4.0)`
-            : isComposite && geeTile
-              ? `Composto Ponderado · ${geeTile.formula}`
-              : geeReady && geeTile
-                ? `GEE Real · ${geeTile.formula}${geeTile.sceneCount ? ` · ${geeTile.sceneCount} cenas` : ""}`
-                : `${isGeeOnly ? "GEE necessário" : "Proxy"} · ${activeDef?.formula ?? ""}`}
+            : isLineaments
+              ? lineamentsTile
+                ? `Lineamentos · ${lineamentsTile.formula} · ${lineamentsTile.sampleCount.toLocaleString()} pixels`
+                : "Lineamentos · pronto para executar"
+              : isTargeting
+                ? targetingTile
+                  ? `Targeting · ${targetingTile.formula}`
+                  : "Targeting · escolha um mineral e execute"
+                : isComposite && geeTile
+                  ? `Composto Ponderado · ${geeTile.formula}`
+                  : geeReady && geeTile
+                    ? `GEE Real · ${geeTile.formula}${geeTile.sceneCount ? ` · ${geeTile.sceneCount} cenas` : ""}`
+                    : `${isGeeOnly ? "GEE necessário" : "Proxy"} · ${activeDef?.formula ?? ""}`}
         </span>
         {province && (
           <span className="ml-auto text-sky-500 font-medium">

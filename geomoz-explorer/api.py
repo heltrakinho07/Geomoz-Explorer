@@ -442,6 +442,105 @@ async def gee_composite(req: GEECompositeRequest):
         raise HTTPException(500, f"GEE composite failed: {exc}")
 
 
+class GEELineamentsRequest(BaseModel):
+    province:        Optional[str] = None
+    district:        Optional[str] = None
+    smooth_m:        int   = 30
+    density_radius_m: int  = 750
+    rose_samples:    int   = 4000
+
+
+class GEETargetingRequest(BaseModel):
+    mineral:          str
+    province:         Optional[str] = None
+    district:         Optional[str] = None
+    start_date:       str = "2023-01-01"
+    end_date:         str = "2023-12-31"
+    cloud_pct:        int = 30
+    weights_override: Optional[dict] = None
+    invert_override:  Optional[list] = None
+    score_threshold:  float = 0.7
+
+
+@app.post("/geomoz-api/gee/lineaments")
+async def gee_lineaments(req: GEELineamentsRequest):
+    """Topographic lineaments (Canny on multi-azimuth hillshades) + rose diagram."""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from gee_module import compute_lineaments_tile
+
+    region = _region_geojson(req.province, req.district)
+
+    executor = ThreadPoolExecutor(max_workers=4)
+    loop = asyncio.get_event_loop()
+
+    try:
+        result = await loop.run_in_executor(
+            executor,
+            lambda: compute_lineaments_tile(
+                region, req.smooth_m, req.density_radius_m, req.rose_samples,
+            ),
+        )
+        result["province"] = req.province
+        result["district"] = req.district
+        return result
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE lineaments failed: {exc}")
+
+
+@app.get("/geomoz-api/gee/minerals")
+def gee_minerals():
+    """List available mineral targeting presets."""
+    from gee_module import MINERAL_PRESETS
+    return {
+        "minerals": [
+            {
+                "id":          k,
+                "name":        v["name"],
+                "description": v["description"],
+                "weights":     v["weights"],
+                "invert":      v["invert"],
+            }
+            for k, v in MINERAL_PRESETS.items()
+        ]
+    }
+
+
+@app.post("/geomoz-api/gee/targeting")
+async def gee_targeting(req: GEETargetingRequest):
+    """Mineral favorability score (0–100) via weighted preset + lineaments."""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from gee_module import compute_targeting_tile
+
+    region = _region_geojson(req.province, req.district)
+
+    executor = ThreadPoolExecutor(max_workers=4)
+    loop = asyncio.get_event_loop()
+
+    try:
+        result = await loop.run_in_executor(
+            executor,
+            lambda: compute_targeting_tile(
+                req.mineral, region, req.start_date, req.end_date, req.cloud_pct,
+                req.weights_override, req.invert_override, req.score_threshold,
+            ),
+        )
+        result["province"] = req.province
+        result["district"] = req.district
+        return result
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE targeting failed: {exc}")
+
+
 @app.get("/geomoz-api/gee/indices")
 def gee_indices():
     """List available indices with metadata, grouped (spectral/landsat/terrain)."""

@@ -515,3 +515,405 @@ def compute_composite_tile(
         "weights":    pos,
         "stats":      {},
     }
+
+
+# ── Lineaments / structural analysis ──────────────────────────────────────────
+#
+# Workflow:
+#   1. Build smoothed DEM (Copernicus GLO-30)
+#   2. Generate multi-azimuth hillshades (4 directions, sun elev 35°)
+#   3. Apply Canny edge detector to each → take the per-pixel max
+#   4. Convert to binary edge map (1 = edge)
+#   5. Density: focal_mean over ~750 m radius → "lineament density" 0..1
+#   6. Orientation: Sobel gradient direction sampled where edges exist →
+#      build 18-bin rose-diagram (0..180°, bidirectional)
+#
+# This is a heuristic — it captures topographic lineaments (faults, fractures,
+# major drainage). It is not a substitute for expert structural mapping.
+
+_LINEAMENT_DENSITY_PALETTE = [
+    "000033", "1a0066", "330099", "6600cc", "9933cc",
+    "cc3399", "ff3366", "ff6600", "ffaa00", "ffff00",
+]
+
+_SOBEL_X = [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]]
+_SOBEL_Y = [[-1, -2, -1], [0, 0, 0], [1, 2, 1]]
+
+
+def _build_lineament_layers(region, smooth_m: int = 30, density_radius_m: int = 750):
+    """
+    Return a dict with:
+      'edges_bin'  — binary edge image (1 = edge, masked elsewhere)
+      'density'    — focal_mean over `density_radius_m` of edges (0..1)
+      'direction'  — Sobel gradient direction in degrees (0..180, bidirectional)
+    """
+    import ee
+    dem = _build_dem(region)
+    dem_s = dem.focal_mean(smooth_m, "circle", "meters")
+
+    # Sobel gradients for orientation
+    kx = ee.Kernel.fixed(3, 3, _SOBEL_X, -1, -1, False)
+    ky = ee.Kernel.fixed(3, 3, _SOBEL_Y, -1, -1, False)
+    gx = dem_s.convolve(kx)
+    gy = dem_s.convolve(ky)
+    # Bidirectional orientation in degrees [0,180)
+    direction = (
+        gy.atan2(gx).multiply(180.0 / 3.141592653589793)
+          .add(360).mod(180)
+          .rename("dir")
+    )
+
+    # Multi-azimuth Canny → union (max)
+    edges = None
+    for az in (0, 45, 90, 135):
+        hs = ee.Terrain.hillshade(dem_s, az, 35)
+        canny = ee.Algorithms.CannyEdgeDetector(image=hs, threshold=8, sigma=1)
+        edges = canny if edges is None else edges.max(canny)
+
+    edges_bin = edges.gt(0).rename("edge").selfMask()
+    density = (
+        edges_bin.unmask(0)
+                 .focal_mean(density_radius_m, "circle", "meters")
+                 .rename("density")
+    )
+    return {"edges_bin": edges_bin, "density": density, "direction": direction}
+
+
+def compute_lineaments_tile(
+    region_geojson: Optional[dict],
+    smooth_m: int = 30,
+    density_radius_m: int = 750,
+    rose_samples: int = 4000,
+) -> dict:
+    """
+    Detect topographic lineaments from the DEM and return:
+      - density tile (heat-style)
+      - edges tile (crisp cyan lines)
+      - rose-diagram bins (18 × 10°)
+      - approximate mean density inside the region
+    """
+    import ee
+    _init_gee()
+    region = _to_ee_region(region_geojson)
+
+    layers = _build_lineament_layers(region, smooth_m=smooth_m,
+                                     density_radius_m=density_radius_m)
+    density = layers["density"].clip(region)
+    edges = layers["edges_bin"].clip(region)
+
+    density_vis = density.visualize(min=0, max=0.35,
+                                    palette=_LINEAMENT_DENSITY_PALETTE)
+    edges_vis = edges.visualize(palette=["00f0ff"])
+
+    density_map = density_vis.getMapId()
+    edges_map = edges_vis.getMapId()
+
+    # Orientation rose
+    masked_dir = layers["direction"].updateMask(layers["edges_bin"])
+    sample_fc = masked_dir.sample(
+        region=region, scale=90, numPixels=rose_samples, dropNulls=True, seed=42,
+    )
+    try:
+        dirs = sample_fc.aggregate_array("dir").getInfo() or []
+    except Exception:
+        dirs = []
+
+    bins = [0] * 18
+    for d in dirs:
+        try:
+            idx = int(float(d) // 10) % 18
+            bins[idx] += 1
+        except Exception:
+            continue
+    total = sum(bins) or 1
+    rose = [{"bin_deg": i * 10, "count": c, "pct": c / total}
+            for i, c in enumerate(bins)]
+
+    # Mean density (rough estimate). unmask(0) so partial nodata doesn't null
+    # the reducer over large regions.
+    try:
+        mean_density = density.unmask(0).reduceRegion(
+            reducer=ee.Reducer.mean(), geometry=region,
+            scale=200, bestEffort=True, maxPixels=int(1e9),
+        ).get("density").getInfo()
+    except Exception:
+        mean_density = None
+
+    return {
+        "tileUrl":        density_map["tile_fetcher"].url_format,
+        "edgesTileUrl":   edges_map["tile_fetcher"].url_format,
+        "name":           "Lineamentos — Densidade Estrutural",
+        "formula":        "Canny multi-azimute (DEM) → densidade focal 750 m",
+        "bands":          "Copernicus GLO-30 DEM",
+        "group":          "structural",
+        "rose":           rose,
+        "sampleCount":    len(dirs),
+        "meanDensity":    mean_density,
+        "palette":        _LINEAMENT_DENSITY_PALETTE,
+        "vis":            {"min": 0, "max": 0.35, "palette": _LINEAMENT_DENSITY_PALETTE},
+    }
+
+
+# ── Mineral targeting (presets over weighted composite + lineaments) ──────────
+#
+# Each preset declares which indices to combine (positive weights) and which
+# to invert (1 - x) before summing. "lineaments" is a pseudo-index computed
+# from the DEM on the fly. Weights are renormalized to sum to 1.
+
+MINERAL_PRESETS: dict = {
+    "gold": {
+        "name": "Ouro (hidrotermal)",
+        "description": (
+            "Targeting clássico de ouro orogénico/epitermal: alteração "
+            "hidrotermal, capeamento de Fe-óxidos e densidade estrutural."
+        ),
+        "weights": {
+            "hydrothermal": 0.35,
+            "fe_oxide":     0.20,
+            "lineaments":   0.25,
+            "clay":         0.10,
+            "slope":        0.10,
+        },
+        "invert": ["slope"],
+    },
+    "fe_oxide": {
+        "name": "Ferro / Fe-óxidos",
+        "description": "BIFs e capeamentos lateríticos ricos em hematita/goethita.",
+        "weights": {
+            "fe_oxide":   0.50,
+            "bare_soil":  0.20,
+            "hydrothermal": 0.15,
+            "lineaments": 0.15,
+        },
+        "invert": [],
+    },
+    "copper": {
+        "name": "Cobre (pórfiro / IOCG)",
+        "description": "Sistemas porfiríticos / IOCG — argilas, Fe-óxidos e estruturas.",
+        "weights": {
+            "hydrothermal": 0.30,
+            "fe_oxide":     0.25,
+            "clay":         0.15,
+            "lineaments":   0.20,
+            "slope":        0.10,
+        },
+        "invert": ["slope"],
+    },
+    "pegmatite": {
+        "name": "Pegmatitos (Li, Ta, gemas)",
+        "description": (
+            "Pegmatitos LCT — controlo estrutural forte (zonas de cisalhamento), "
+            "associados a granitos com solo exposto."
+        ),
+        "weights": {
+            "lineaments": 0.35,
+            "clay":       0.20,
+            "fe_oxide":   0.15,
+            "bare_soil":  0.15,
+            "slope":      0.15,
+        },
+        "invert": ["slope"],
+    },
+    "bauxite": {
+        "name": "Bauxite",
+        "description": "Lateritas em superfícies planas elevadas, ricas em argila.",
+        "weights": {
+            "clay":       0.35,
+            "bare_soil":  0.20,
+            "hipsometry": 0.20,
+            "ndvi":       0.15,
+            "slope":      0.10,
+        },
+        "invert": ["ndvi", "slope"],
+    },
+    "graphite": {
+        "name": "Grafite",
+        "description": "Xistos grafitosos — controlo estrutural + assinatura clay/hydrothermal.",
+        "weights": {
+            "clay":         0.25,
+            "hydrothermal": 0.20,
+            "lineaments":   0.30,
+            "bare_soil":    0.15,
+            "slope":        0.10,
+        },
+        "invert": ["slope"],
+    },
+    "coal": {
+        "name": "Carvão (proxy)",
+        "description": (
+            "Apenas indicativo: bacias sedimentares planas, baixa elevação, "
+            "solo exposto. Confirmação requer mapeamento estratigráfico."
+        ),
+        "weights": {
+            "bare_soil":  0.30,
+            "hipsometry": 0.25,
+            "hydrothermal": 0.15,
+            "lineaments": 0.10,
+            "ndvi":       0.10,
+            "slope":      0.10,
+        },
+        "invert": ["hipsometry", "ndvi", "slope"],
+    },
+    "heavy_sands": {
+        "name": "Areias Pesadas (Ti, Zr)",
+        "description": "Depósitos costeiros — solo exposto, baixa elevação, Fe-óxidos.",
+        "weights": {
+            "bare_soil":  0.35,
+            "ndvi":       0.20,
+            "hipsometry": 0.20,
+            "fe_oxide":   0.15,
+            "slope":      0.10,
+        },
+        "invert": ["ndvi", "hipsometry", "slope"],
+    },
+}
+
+
+_TARGETING_PALETTE = [
+    "0d0887", "5302a3", "8b0aa5", "b83289", "db5c68",
+    "f48849", "febc2a", "ffeb24", "ffff96",
+]
+
+
+def compute_targeting_tile(
+    mineral: str,
+    region_geojson: Optional[dict],
+    start_date: str = "2023-01-01",
+    end_date: str = "2023-12-31",
+    cloud_pct: int = 30,
+    weights_override: Optional[dict] = None,
+    invert_override: Optional[list] = None,
+    score_threshold: float = 0.7,
+) -> dict:
+    """
+    Build a mineral favorability score (0–100) by combining normalized indices
+    according to a per-mineral preset. Returns tile URL + favorability stats.
+    """
+    import ee
+    _init_gee()
+
+    if mineral not in MINERAL_PRESETS:
+        raise ValueError(
+            f"Mineral desconhecido '{mineral}'. "
+            f"Disponíveis: {list(MINERAL_PRESETS)}"
+        )
+
+    preset = MINERAL_PRESETS[mineral]
+    raw_weights = dict(weights_override) if weights_override else dict(preset["weights"])
+    invert_set = set(invert_override if invert_override is not None else preset["invert"])
+
+    # Validate keys: must be registry index OR the "lineaments" pseudo-index
+    pos = {}
+    for k, v in raw_weights.items():
+        if v is None:
+            continue
+        f = float(v)
+        if f <= 0:
+            continue
+        if k != "lineaments" and k not in INDEX_REGISTRY:
+            continue
+        pos[k] = f
+    if not pos:
+        raise ValueError("Preset sem pesos positivos válidos.")
+    total = sum(pos.values())
+    pos = {k: v / total for k, v in pos.items()}
+
+    region = _to_ee_region(region_geojson)
+
+    needs_set = set()
+    for k in pos:
+        if k == "lineaments":
+            needs_set.add("dem")
+        else:
+            needs_set.update(INDEX_REGISTRY[k]["needs"])
+
+    s2 = l8 = dem = rivers = None
+    scene_count = 0
+    if "s2" in needs_set:
+        s2, scene_count = _build_s2_composite(region, start_date, end_date, cloud_pct)
+    if "l8" in needs_set:
+        l8_c, l8_n = _build_l8_composite(region, start_date, end_date, cloud_pct)
+        l8 = l8_c
+        scene_count = max(scene_count, l8_n)
+    if "dem" in needs_set:
+        dem = _build_dem(region)
+    if "rivers" in needs_set:
+        rivers = _build_rivers_raster(region)
+
+    lin_density = None
+    if "lineaments" in pos:
+        lin_density = _build_lineament_layers(region)["density"]
+
+    composite = None
+    for k, w in pos.items():
+        if k == "lineaments":
+            # density already in [0,1] but typically peaks ~0.3 → rescale by 3, clamp
+            norm = lin_density.multiply(3).clamp(0, 1)
+        else:
+            cfg = INDEX_REGISTRY[k]
+            img = _build_index_image(k, region, s2=s2, l8=l8, dem=dem, rivers=rivers)
+            nmin, nmax = cfg["norm"]
+            norm = img.subtract(nmin).divide(nmax - nmin).clamp(0, 1)
+        if k in invert_set:
+            norm = ee.Image(1).subtract(norm)
+        weighted = norm.multiply(w)
+        composite = weighted if composite is None else composite.add(weighted)
+
+    score = composite.clamp(0, 1).clip(region).rename("score")   # 0..1
+    score_pct = score.multiply(100).rename("score")              # 0..100
+
+    vis_img = score_pct.visualize(min=0, max=100, palette=_TARGETING_PALETTE)
+    map_data = vis_img.getMapId()
+
+    # Stats: mean, p90/p95/p99, area where score >= threshold.
+    # Unmask(0) ensures stats cover the full region even when individual
+    # bands have nodata gaps (otherwise ee.Image.add propagates masks and
+    # reduceRegion returns None for partially-masked composites).
+    score_for_stats = score.unmask(0)
+    try:
+        stat_dict = score_for_stats.reduceRegion(
+            reducer=ee.Reducer.mean().combine(
+                ee.Reducer.percentile([90, 95, 99]), sharedInputs=True,
+            ),
+            geometry=region, scale=200, bestEffort=True, maxPixels=int(1e9),
+        ).getInfo() or {}
+    except Exception:
+        stat_dict = {}
+
+    try:
+        favorable_mask = score_for_stats.gte(score_threshold)
+        area_img = favorable_mask.multiply(ee.Image.pixelArea()).rename("area")
+        area_m2 = area_img.reduceRegion(
+            reducer=ee.Reducer.sum(), geometry=region,
+            scale=200, bestEffort=True, maxPixels=int(1e9),
+        ).get("area").getInfo()
+        favorable_km2 = (area_m2 or 0) / 1e6
+    except Exception:
+        favorable_km2 = None
+
+    return {
+        "tileUrl":        map_data["tile_fetcher"].url_format,
+        "name":           f"Potencial Mineral — {preset['name']}",
+        "mineral":        mineral,
+        "mineralName":    preset["name"],
+        "description":    preset["description"],
+        "weights":        pos,
+        "inverted":       sorted(list(invert_set)),
+        "formula":        " + ".join(
+                              f"{w:.2f}×{'¬' if k in invert_set else ''}{k}"
+                              for k, w in pos.items()
+                          ),
+        "group":          "targeting",
+        "sceneCount":     scene_count,
+        "dateRange":      f"{start_date} → {end_date}",
+        "scoreThreshold": score_threshold,
+        "stats": {
+            "meanScore":      stat_dict.get("score_mean"),
+            "p90":            stat_dict.get("score_p90"),
+            "p95":            stat_dict.get("score_p95"),
+            "p99":            stat_dict.get("score_p99"),
+            "favorableKm2":   favorable_km2,
+        },
+        "palette":        _TARGETING_PALETTE,
+        "vis":            {"min": 0, "max": 100, "palette": _TARGETING_PALETTE},
+    }
