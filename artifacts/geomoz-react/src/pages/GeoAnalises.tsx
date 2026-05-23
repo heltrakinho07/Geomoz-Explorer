@@ -9,9 +9,10 @@
  * directly by Google's infrastructure — Leaflet fetches them with no additional auth.
  */
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   MapContainer, TileLayer, GeoJSON, WMSTileLayer, ScaleControl,
+  Polyline, CircleMarker, useMapEvents,
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
@@ -21,14 +22,20 @@ import {
   ExternalLink, ShieldCheck,
   Mountain, MountainSnow, TrendingUp, Sun, Trees, Sliders, Sparkles, MapPin,
   Activity, Target, Compass, Gem,
+  TrendingDown, Route, Waves, X,
 } from "lucide-react";
+
+import {
+  LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine, Area, ComposedChart,
+} from "recharts";
 
 import { useGeologyGeoJSON, useProvincesGeoJSON, useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
 import { computeSpectralValue, applyColormap, SpectralIndex, GEE_ONLY_INDICES } from "@/lib/geoml";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type SpectralTab = "s2" | "composite" | "lineaments" | "targeting" | SpectralIndex;
+type SpectralTab = "s2" | "composite" | "lineaments" | "targeting"
+                  | "profile" | "contours" | SpectralIndex;
 
 type IndexGroup = "spectral" | "landsat" | "terrain";
 
@@ -52,6 +59,38 @@ interface MineralPreset {
   description: string;
   weights: Record<string, number>;
   invert: string[];
+}
+
+interface ProfileResult {
+  points:        { lon: number; lat: number }[];
+  distances_m:   number[];
+  elevations_m:  (number | null)[];
+  stats: {
+    totalDistanceM: number;
+    minElevM:       number;
+    maxElevM:       number;
+    meanElevM:      number;
+    gainM:          number;
+    lossM:          number;
+    sampleCount:    number;
+  };
+  name:    string;
+  formula: string;
+}
+
+interface ContoursResult {
+  tileUrl:         string;
+  indexTileUrl:    string;
+  name:            string;
+  formula:         string;
+  intervalM:       number;
+  indexEvery:      number;
+  indexIntervalM:  number;
+  minElevM:        number | null;
+  maxElevM:        number | null;
+  intervals:       number[];
+  province?:       string | null;
+  district?:       string | null;
 }
 
 interface TargetingResult {
@@ -1026,6 +1065,341 @@ function TargetingPanel({
   );
 }
 
+// ── Topographic Profile (A→B) ──────────────────────────────────────────────────
+
+type LonLat = [number, number];   // [lon, lat]
+
+function ProfileClickHandler({
+  enabled, onPick,
+}: {
+  enabled: boolean;
+  onPick: (p: LonLat) => void;
+}) {
+  useMapEvents({
+    click(e) {
+      if (!enabled) return;
+      onPick([e.latlng.lng, e.latlng.lat]);
+    },
+  });
+  return null;
+}
+
+function ProfileChart({ result }: { result: ProfileResult }) {
+  const data = result.distances_m.map((d, i) => ({
+    distance_km: d / 1000,
+    elev: result.elevations_m[i],
+  }));
+  const yMin = Math.floor(result.stats.minElevM / 50) * 50;
+  const yMax = Math.ceil(result.stats.maxElevM / 50) * 50;
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <ComposedChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 18 }}>
+        <defs>
+          <linearGradient id="elevFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor="#0ea5e9" stopOpacity={0.45} />
+            <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0.05} />
+          </linearGradient>
+        </defs>
+        <XAxis
+          dataKey="distance_km" type="number"
+          domain={[0, "dataMax"]}
+          tickFormatter={v => `${v.toFixed(1)} km`}
+          fontSize={10} stroke="#94a3b8"
+          label={{ value: "Distância (km)", position: "insideBottom", offset: -8, fontSize: 10, fill: "#64748b" }}
+        />
+        <YAxis
+          domain={[yMin, yMax]}
+          tickFormatter={v => `${v}`}
+          fontSize={10} stroke="#94a3b8"
+          label={{ value: "Elevação (m)", angle: -90, position: "insideLeft", fontSize: 10, fill: "#64748b" }}
+        />
+        <Tooltip
+          contentStyle={{ fontSize: 11, padding: "4px 8px", borderRadius: 6 }}
+          formatter={(v: number) => [`${(v ?? 0).toFixed(1)} m`, "Elevação"]}
+          labelFormatter={l => `${Number(l).toFixed(2)} km`}
+        />
+        <ReferenceLine y={result.stats.meanElevM} stroke="#64748b" strokeDasharray="3 3"
+          label={{ value: `média ${result.stats.meanElevM.toFixed(0)} m`, position: "right", fontSize: 9, fill: "#64748b" }} />
+        <Area type="monotone" dataKey="elev" stroke="none" fill="url(#elevFill)" />
+        <Line type="monotone" dataKey="elev" stroke="#0369a1" strokeWidth={1.8} dot={false} isAnimationActive={false} />
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}
+
+function ProfilePanel({
+  points, samples, onSamplesChange, onReset, onRun, running, error, result,
+}: {
+  points:           LonLat[];
+  samples:          number;
+  onSamplesChange:  (n: number) => void;
+  onReset:          () => void;
+  onRun:            () => void;
+  running:          boolean;
+  error:            string | null;
+  result:           ProfileResult | null;
+}) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
+          Perfil Topográfico
+        </h4>
+        <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-xs text-sky-800 leading-relaxed">
+          <strong>Como usar:</strong> Clique no mapa para colocar pontos A → B (ou mais).
+          Cada clique adiciona um ponto. Mínimo 2.
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            Pontos ({points.length})
+          </h5>
+          {points.length > 0 && (
+            <button onClick={onReset}
+              className="text-xs text-slate-500 hover:text-rose-600 flex items-center gap-1">
+              <X size={11} /> Limpar
+            </button>
+          )}
+        </div>
+        {points.length === 0 ? (
+          <div className="text-xs text-slate-400 italic px-3 py-4 bg-slate-50 border border-dashed border-slate-200 rounded-lg text-center">
+            Clique no mapa para começar
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {points.map((p, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs bg-slate-50 rounded-lg px-2 py-1.5">
+                <span className="w-5 h-5 rounded-full bg-sky-500 text-white flex items-center justify-center font-bold text-[10px]">
+                  {String.fromCharCode(65 + i)}
+                </span>
+                <span className="font-mono text-slate-600">
+                  {p[1].toFixed(3)}, {p[0].toFixed(3)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <label className="text-xs text-slate-500 mb-1 block">
+          Amostragem — <strong className="text-slate-700">{samples} pontos</strong>
+        </label>
+        <input type="range" min={50} max={500} step={50} value={samples}
+          onChange={e => onSamplesChange(Number(e.target.value))}
+          className="w-full accent-sky-500" />
+        <p className="text-[10px] text-slate-400 mt-0.5">
+          Mais pontos = perfil mais detalhado (DEM nativo 30 m).
+        </p>
+      </div>
+
+      <button onClick={onRun} disabled={running || points.length < 2}
+        className="w-full flex items-center justify-center gap-2 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-sky-200">
+        {running
+          ? <><Loader2 size={14} className="animate-spin" /> A amostrar DEM…</>
+          : <><Route size={14} /> Calcular Perfil</>}
+      </button>
+
+      {running && (
+        <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-xs text-sky-700">
+          <Loader2 size={12} className="inline animate-spin mr-1.5" />
+          A amostrar elevações no DEM Copernicus GLO-30. ~5–15 s.
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+          <strong>Erro:</strong> {error}
+        </div>
+      )}
+
+      {result && !running && (
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-1.5">
+            <div className="bg-slate-50 rounded-lg p-2 text-center">
+              <div className="text-[10px] text-slate-400 uppercase">Distância</div>
+              <div className="text-sm font-bold text-slate-800">
+                {(result.stats.totalDistanceM / 1000).toFixed(2)} km
+              </div>
+            </div>
+            <div className="bg-slate-50 rounded-lg p-2 text-center">
+              <div className="text-[10px] text-slate-400 uppercase">Amplitude</div>
+              <div className="text-sm font-bold text-slate-800">
+                {(result.stats.maxElevM - result.stats.minElevM).toFixed(0)} m
+              </div>
+            </div>
+            <div className="bg-emerald-50 rounded-lg p-2 text-center">
+              <div className="text-[10px] text-emerald-600 uppercase flex items-center justify-center gap-1">
+                <TrendingUp size={9} /> Subida
+              </div>
+              <div className="text-sm font-bold text-emerald-700">
+                +{result.stats.gainM.toFixed(0)} m
+              </div>
+            </div>
+            <div className="bg-rose-50 rounded-lg p-2 text-center">
+              <div className="text-[10px] text-rose-600 uppercase flex items-center justify-center gap-1">
+                <TrendingDown size={9} /> Descida
+              </div>
+              <div className="text-sm font-bold text-rose-700">
+                −{result.stats.lossM.toFixed(0)} m
+              </div>
+            </div>
+            <div className="bg-slate-50 rounded-lg p-2 text-center">
+              <div className="text-[10px] text-slate-400 uppercase">Mín</div>
+              <div className="text-sm font-bold text-slate-800">{result.stats.minElevM.toFixed(0)} m</div>
+            </div>
+            <div className="bg-slate-50 rounded-lg p-2 text-center">
+              <div className="text-[10px] text-slate-400 uppercase">Máx</div>
+              <div className="text-sm font-bold text-slate-800">{result.stats.maxElevM.toFixed(0)} m</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Contours Panel ─────────────────────────────────────────────────────────────
+
+const CONTOUR_INTERVALS = [10, 20, 25, 50, 100, 200, 500];
+
+function ContoursPanel({
+  province, district, onResult,
+}: {
+  province: string | null;
+  district: string | null;
+  onResult: (r: ContoursResult | null) => void;
+}) {
+  const [intervalM, setIntervalM]   = useState(50);
+  const [indexEvery, setIndexEvery] = useState(5);
+  const [running, setRunning]       = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+  const [result, setResult]         = useState<ContoursResult | null>(null);
+
+  async function run() {
+    setRunning(true); setError(null); onResult(null);
+    try {
+      const res = await fetch("/geomoz-api/gee/contours", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          province: province || null, district: district || null,
+          interval_m: intervalM, index_every: indexEvery,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail ?? "Erro GEE");
+      }
+      const data: ContoursResult = await res.json();
+      setResult(data); onResult(data);
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally { setRunning(false); }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
+          Curvas de Nível
+        </h4>
+        <div className="space-y-2.5">
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">
+              Equidistância
+            </label>
+            <div className="grid grid-cols-4 gap-1">
+              {CONTOUR_INTERVALS.map(v => (
+                <button key={v} onClick={() => setIntervalM(v)}
+                  className={`text-xs py-1.5 rounded-md border transition-colors ${
+                    intervalM === v
+                      ? "bg-amber-600 text-white border-amber-600 font-semibold"
+                      : "bg-white text-slate-600 border-slate-200 hover:border-amber-400"
+                  }`}>
+                  {v} m
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-slate-400 mt-1">
+              50 m é o padrão cartográfico para escala 1:100 000.
+            </p>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">
+              Linhas-mestras (índice) — a cada{" "}
+              <strong className="text-slate-700">{indexEvery}×</strong> ({intervalM * indexEvery} m)
+            </label>
+            <input type="range" min={2} max={10} value={indexEvery}
+              onChange={e => setIndexEvery(Number(e.target.value))}
+              className="w-full accent-amber-500" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Área (clipping)</label>
+            <div className="text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 flex items-center gap-1.5">
+              <MapPin size={12} className="text-amber-500" />
+              {district
+                ? <span>{district} <span className="text-slate-400">·</span> {province}</span>
+                : province
+                  ? <span>{province} <span className="text-slate-400">(toda a província)</span></span>
+                  : <span className="text-slate-500">Moçambique (toda)</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button onClick={run} disabled={running}
+        className="w-full flex items-center justify-center gap-2 py-2.5 bg-amber-700 hover:bg-amber-800 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-amber-200">
+        {running
+          ? <><Loader2 size={14} className="animate-spin" /> A gerar curvas…</>
+          : <><Waves size={14} /> Gerar Curvas de Nível</>}
+      </button>
+
+      {running && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+          <Loader2 size={12} className="inline animate-spin mr-1.5" />
+          A processar DEM e gerar tiles. ~10–20 s.
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+          <strong>Erro:</strong> {error}
+        </div>
+      )}
+
+      {result && !running && (
+        <div className="space-y-2">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <CheckCircle2 size={13} className="text-amber-600" />
+              <span className="text-xs font-semibold text-amber-700">
+                {result.intervals.length} curvas geradas
+              </span>
+            </div>
+            <div className="text-xs text-amber-700">
+              Elevação na região: {result.minElevM?.toFixed(0) ?? "—"} m →{" "}
+              {result.maxElevM?.toFixed(0) ?? "—"} m
+            </div>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-xl p-2.5">
+            <div className="flex items-center gap-2 text-xs mb-1.5">
+              <span className="inline-block w-6 h-0.5 bg-[#8b5a2b]" />
+              <span className="text-slate-600">Curva ({result.intervalM} m)</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="inline-block w-6 h-[2px] bg-[#3a1c0c]" />
+              <span className="text-slate-600">Linha-mestra ({result.indexIntervalM} m)</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 interface GeoAnalisesProps {
@@ -1045,6 +1419,12 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   const [geeTile, setGeeTile]         = useState<GeeResult | null>(null);
   const [lineamentsTile, setLineamentsTile] = useState<LineamentsResult | null>(null);
   const [targetingTile, setTargetingTile]   = useState<TargetingResult | null>(null);
+  const [contoursTile, setContoursTile]     = useState<ContoursResult | null>(null);
+  const [profilePoints, setProfilePoints]   = useState<LonLat[]>([]);
+  const [profileSamples, setProfileSamples] = useState(200);
+  const [profileResult, setProfileResult]   = useState<ProfileResult | null>(null);
+  const [profileRunning, setProfileRunning] = useState(false);
+  const [profileError, setProfileError]     = useState<string | null>(null);
   const [showEdges, setShowEdges]     = useState(true);
   const [useGEE, setUseGEE]           = useState(true);
   const [showSetup, setShowSetup]     = useState(false);
@@ -1084,7 +1464,30 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
     setGeeTile(null);
     setLineamentsTile(null);
     setTargetingTile(null);
+    if (activeTab !== "contours") setContoursTile(null);
+    if (activeTab !== "profile") {
+      setProfileError(null);
+    }
   }, [activeTab]);
+
+  const runProfile = useCallback(async () => {
+    if (profilePoints.length < 2) return;
+    setProfileRunning(true); setProfileError(null); setProfileResult(null);
+    try {
+      const res = await fetch("/geomoz-api/gee/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coords: profilePoints, samples: profileSamples }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail ?? "Erro GEE");
+      }
+      setProfileResult(await res.json());
+    } catch (e) {
+      setProfileError(String(e instanceof Error ? e.message : e));
+    } finally { setProfileRunning(false); }
+  }, [profilePoints, profileSamples]);
 
   // Synthetic spectral overlay (proxy mode) — disabled for s2/composite/terrain
   const spectralGeoJSON = useMemo(() => {
@@ -1121,9 +1524,16 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   const isComposite   = activeTab === "composite";
   const isLineaments  = activeTab === "lineaments";
   const isTargeting   = activeTab === "targeting";
+  const isProfile     = activeTab === "profile";
+  const isContours    = activeTab === "contours";
+
+  // Ref so the province GeoJSON click handler (captured in a stable closure)
+  // can see the current tab and skip onProvinceChange while picking profile points.
+  const isProfileRef = useRef(isProfile);
+  useEffect(() => { isProfileRef.current = isProfile; }, [isProfile]);
   const isTerrain     = activeDef?.group === "terrain";
   const isGeeOnly     = (activeDef && GEE_ONLY_INDICES.includes(activeDef.id))
-                        || isLineaments || isTargeting;
+                        || isLineaments || isTargeting || isProfile || isContours;
   const isTopoClass   = activeTab === "topo_class";
   const spectralKey = `spectral-${activeTab}-${province}-${district}-${geologyGeoJSON?.features?.length ?? 0}`;
   const geeTileKey  = `gee-${activeTab}-${geeTile?.tileUrl ?? ""}`;
@@ -1136,7 +1546,11 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
     { name: "Mosaico",   tabs: [{ id: "s2", label: "Sentinel-2", icon: <Satellite size={13} /> }] },
     { name: "Espectral", tabs: INDEX_DEFS.filter(d => d.group === "spectral").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
     { name: "Landsat",   tabs: INDEX_DEFS.filter(d => d.group === "landsat").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Relevo",    tabs: INDEX_DEFS.filter(d => d.group === "terrain").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
+    { name: "Relevo",    tabs: [
+      ...INDEX_DEFS.filter(d => d.group === "terrain").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
+      { id: "profile",  label: "Perfil A-B",   icon: <Route size={13} /> },
+      { id: "contours", label: "Curvas Nível", icon: <Waves size={13} /> },
+    ]},
     { name: "Composto",   tabs: [{ id: "composite",  label: "Composto",     icon: <Sliders size={13} /> }] },
     { name: "Estruturas", tabs: [{ id: "lineaments", label: "Lineamentos",  icon: <Activity size={13} /> }] },
     { name: "Targeting",  tabs: [{ id: "targeting",  label: "Potencial Mineral", icon: <Target size={13} /> }] },
@@ -1144,7 +1558,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
 
   const geeReady = geeStatus?.connected && useGEE;
   // Composite, lineaments, targeting & GEE-only indices require GEE
-  const requiresGee = isComposite || isLineaments || isTargeting || isGeeOnly;
+  const requiresGee = isComposite || isLineaments || isTargeting || isProfile || isContours || isGeeOnly;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
@@ -1307,6 +1721,41 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
             </div>
           )}
 
+          {/* Profile Panel */}
+          {!showSetup && isProfile && (
+            <div className="p-4 border-b border-slate-100">
+              {!geeStatus?.connected ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                  <strong>GEE necessário.</strong> Amostragem do DEM requer Google Earth Engine.
+                </div>
+              ) : (
+                <ProfilePanel
+                  points={profilePoints}
+                  samples={profileSamples}
+                  onSamplesChange={setProfileSamples}
+                  onReset={() => { setProfilePoints([]); setProfileResult(null); setProfileError(null); }}
+                  onRun={runProfile}
+                  running={profileRunning}
+                  error={profileError}
+                  result={profileResult}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Contours Panel */}
+          {!showSetup && isContours && (
+            <div className="p-4 border-b border-slate-100">
+              {!geeStatus?.connected ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                  <strong>GEE necessário.</strong> Curvas de nível requerem DEM via Google Earth Engine.
+                </div>
+              ) : (
+                <ContoursPanel province={province} district={district} onResult={setContoursTile} />
+              )}
+            </div>
+          )}
+
           {/* Targeting Panel */}
           {!showSetup && isTargeting && (
             <div className="p-4 border-b border-slate-100">
@@ -1321,7 +1770,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
           )}
 
           {/* GEE Analysis Panel (real mode, single index) */}
-          {!showSetup && !isComposite && !isLineaments && !isTargeting && geeReady && activeTab !== "s2" && activeDef && (
+          {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && geeReady && activeTab !== "s2" && activeDef && (
             <div className="p-4 border-b border-slate-100">
               <GeeAnalysisPanel
                 activeIndex={activeTab as SpectralIndex}
@@ -1334,7 +1783,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
           )}
 
           {/* GEE-only warning when proxy is forced */}
-          {!showSetup && !isComposite && !isLineaments && !isTargeting && !geeReady && isGeeOnly && activeDef && (
+          {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !geeReady && isGeeOnly && activeDef && (
             <div className="p-4 border-b border-slate-100">
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
                 <strong>Índice apenas GEE.</strong> {activeDef.short} requer dados raster reais (DEM / Landsat). Active GEE no topo para calcular.
@@ -1343,7 +1792,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
           )}
 
           {/* Proxy mode controls (only spectral indices have meaningful proxy) */}
-          {!showSetup && !isComposite && !isLineaments && !isTargeting && !geeReady && activeTab !== "s2" && !isGeeOnly && (
+          {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !geeReady && activeTab !== "s2" && !isGeeOnly && (
             <div className="p-4 border-b border-slate-100">
               <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Opacidade</h4>
               <input type="range" min={0.1} max={1} step={0.05} value={opacity}
@@ -1374,7 +1823,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
           )}
 
           {/* Index info */}
-          {!showSetup && !isComposite && !isLineaments && !isTargeting && activeDef && activeTab !== "s2" && (
+          {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && activeDef && activeTab !== "s2" && (
             <div className="p-4 flex-1 space-y-4">
               <div>
                 <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Fórmula</h4>
@@ -1554,6 +2003,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                   const name = p?.Provincia || p?.NAME_1 || p?.name || "";
                   if (name) layer.bindTooltip(`<b>${name}</b>`, { sticky: true });
                   layer.on("click", () => {
+                    if (isProfileRef.current) return;     // profile mode: clicks add A/B/… points
                     const n = p?.Provincia || p?.NAME_1 || p?.name;
                     if (n) onProvinceChange(n);
                   });
@@ -1593,6 +2043,45 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                 )}
               </>
             )}
+
+            {/* Contour tiles (minor + major lines) */}
+            {isContours && contoursTile && (
+              <>
+                <TileLayer
+                  key={`ctr-${contoursTile.tileUrl}`}
+                  url={contoursTile.tileUrl}
+                  attribution={`GEE · Curvas ${contoursTile.intervalM} m`}
+                  opacity={0.85}
+                  maxZoom={18}
+                />
+                <TileLayer
+                  key={`ctr-idx-${contoursTile.indexTileUrl}`}
+                  url={contoursTile.indexTileUrl}
+                  attribution={`GEE · Linhas-mestras ${contoursTile.indexIntervalM} m`}
+                  opacity={1}
+                  maxZoom={18}
+                />
+              </>
+            )}
+
+            {/* Profile — click handler, polyline + markers */}
+            <ProfileClickHandler
+              enabled={isProfile}
+              onPick={(p) => setProfilePoints(prev => [...prev, p])}
+            />
+            {isProfile && profilePoints.length >= 2 && (
+              <Polyline
+                positions={profilePoints.map(([lon, lat]) => [lat, lon])}
+                pathOptions={{ color: "#0369a1", weight: 3, opacity: 0.9, dashArray: "6 4" }}
+              />
+            )}
+            {isProfile && profilePoints.map((p, i) => (
+              <CircleMarker key={`pp-${i}`}
+                center={[p[1], p[0]]}
+                radius={8}
+                pathOptions={{ color: "#ffffff", weight: 2, fillColor: "#0ea5e9", fillOpacity: 1 }}
+              />
+            ))}
 
             {/* Targeting score tile */}
             {isTargeting && targetingTile && (
@@ -1651,6 +2140,45 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
               </div>
               <div className="text-xs text-slate-400">
                 {lineamentsTile.sampleCount.toLocaleString()} pixels · densidade média {(lineamentsTile.meanDensity ?? 0).toFixed(3)}
+              </div>
+            </div>
+          )}
+
+          {/* Contours result badge */}
+          {isContours && contoursTile && (
+            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-amber-200 p-3 w-64 pointer-events-none">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Waves size={12} className="text-amber-700" />
+                <div className="text-xs font-semibold text-amber-800">Curvas de Nível ({contoursTile.intervalM} m)</div>
+              </div>
+              <div className="text-xs text-slate-500">
+                Elevação: {contoursTile.minElevM?.toFixed(0) ?? "—"} m → {contoursTile.maxElevM?.toFixed(0) ?? "—"} m
+              </div>
+              <div className="text-xs text-slate-400">
+                {contoursTile.intervals.length} curvas · linhas-mestras a cada {contoursTile.indexIntervalM} m
+              </div>
+            </div>
+          )}
+
+          {/* Profile chart overlay */}
+          {isProfile && profileResult && (
+            <div className="absolute bottom-8 left-4 right-4 z-[500] bg-white/97 backdrop-blur rounded-xl shadow-lg border border-sky-200 px-4 pt-3 pb-1"
+                 style={{ height: 200 }}>
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-1.5">
+                  <Route size={12} className="text-sky-600" />
+                  <div className="text-xs font-semibold text-sky-800">
+                    Perfil Topográfico — {(profileResult.stats.totalDistanceM / 1000).toFixed(2)} km ·{" "}
+                    Δ {(profileResult.stats.maxElevM - profileResult.stats.minElevM).toFixed(0)} m
+                  </div>
+                </div>
+                <button onClick={() => { setProfileResult(null); setProfilePoints([]); }}
+                  className="text-xs text-slate-400 hover:text-rose-600 flex items-center gap-1">
+                  <X size={11} /> fechar
+                </button>
+              </div>
+              <div style={{ height: 165 }}>
+                <ProfileChart result={profileResult} />
               </div>
             </div>
           )}

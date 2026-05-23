@@ -541,6 +541,68 @@ async def gee_targeting(req: GEETargetingRequest):
         raise HTTPException(500, f"GEE targeting failed: {exc}")
 
 
+class GEEProfileRequest(BaseModel):
+    coords:    list           # [[lon,lat], [lon,lat], ...]
+    samples:   int = 200
+
+
+class GEEContoursRequest(BaseModel):
+    province:    Optional[str] = None
+    district:    Optional[str] = None
+    interval_m:  int = 50
+    index_every: int = 5
+
+
+@app.post("/geomoz-api/gee/profile")
+async def gee_profile(req: GEEProfileRequest):
+    """Topographic profile (DEM elevation sampled along a polyline)."""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from gee_module import compute_profile
+
+    executor = ThreadPoolExecutor(max_workers=4)
+    loop = asyncio.get_event_loop()
+
+    try:
+        return await loop.run_in_executor(
+            executor, lambda: compute_profile(req.coords, req.samples),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE profile failed: {exc}")
+
+
+@app.post("/geomoz-api/gee/contours")
+async def gee_contours(req: GEEContoursRequest):
+    """Contour-line tiles at user-defined equidistance from Copernicus GLO-30."""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from gee_module import compute_contours_tile
+
+    region = _region_geojson(req.province, req.district)
+
+    executor = ThreadPoolExecutor(max_workers=4)
+    loop = asyncio.get_event_loop()
+
+    try:
+        result = await loop.run_in_executor(
+            executor,
+            lambda: compute_contours_tile(region, req.interval_m, req.index_every),
+        )
+        result["province"] = req.province
+        result["district"] = req.district
+        return result
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE contours failed: {exc}")
+
+
 @app.get("/geomoz-api/gee/indices")
 def gee_indices():
     """List available indices with metadata, grouped (spectral/landsat/terrain)."""
