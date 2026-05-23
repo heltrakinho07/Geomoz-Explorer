@@ -104,6 +104,11 @@ _Populate as you build._
 - **Curvas de Nível** (`POST /gee/contours`): equidistância configurável (10/20/25/50/100/200/500 m), linhas-mestras a cada N× (slider 2–10). Backend usa `dem.mod(interval).abs().lt(interval*0.05)` → máscara binária visualizada como linhas finas castanhas (#8b5a2b) + linhas-mestras mais escuras (#3a1c0c). Retorna 2 tile URLs + min/max elevação + lista de intervals presentes na região. Frontend mostra como duas TileLayers sobrepostas com legenda lateral.
 - Ambos GEE-only, sob grupo "Relevo". Ícones Route (perfil) e Waves (curvas).
 
+## GeoAnálises (Sprint 3 — em curso)
+
+- **Classes Topográficas Customizáveis** (`POST /gee/topo-classes`): user define N limites de elevação (m) e N+1 classes com cor + nome editáveis. Backend usa `dem.gte(b)` somado iterativamente para classificar pixels em índice 1..N+1, opcional overlay de água (HydroSHEDS) como classe extra. Retorna tile + áreas por classe (km² + %). UI tem editor de cores (HTML color picker), nomes editáveis, slider de limites, botão "Aplicar Classes". Validação client-side: limites têm de ser estritamente crescentes (botão Run desabilita + warning visual se não). `hasWater` no response indica se overlay foi realmente aplicado (não apenas pedido).
+- **Perfil Topográfico — Cursor Sincronizado**: hover no gráfico Recharts (`onMouseMove` com `isTooltipActive`+`activeTooltipIndex`) emite índice → marker âmbar pisca-pisca aparece no mapa na posição correspondente da polyline A→B. Limpa em `onMouseLeave` ou quando cursor sai da área do tooltip.
+
 ## Future Evolution (Sprints 3+)
 
 1. **Cruzamento espacial automático**: targeting × admin/villages/rios para relatório de overlap.

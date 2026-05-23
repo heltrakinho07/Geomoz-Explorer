@@ -1109,3 +1109,97 @@ def compute_contours_tile(
         "maxElevM":      max_elev,
         "intervals":     intervals,
     }
+
+
+# ── Custom topographic classes (user-defined breaks) ──────────────────────────
+
+def compute_topo_classes_tile(
+    region_geojson: Optional[dict],
+    breaks:        list,
+    colors:        list,
+    labels:        list,
+    include_water: bool = True,
+    water_color:   str  = "#3366ff",
+    water_label:   str  = "Água & Rios",
+) -> dict:
+    """
+    Build an elevation-classified raster from user-defined break points.
+
+    breaks  : sorted list of elevation thresholds in meters, e.g. [5, 10, 30, 60].
+              N breaks → N+1 classes (the first is "< breaks[0]", the last is "≥ breaks[-1]").
+    colors  : list of hex colors, length == N+1 (one per class).
+    labels  : list of human-readable labels, length == N+1.
+    include_water : if True, overlay water/rivers as an extra class on top.
+    """
+    import ee
+    _init_gee()
+
+    if not breaks or len(breaks) < 1:
+        raise ValueError("Precisa de pelo menos um limite de elevação.")
+    breaks_sorted = sorted(float(b) for b in breaks)
+    n_classes = len(breaks_sorted) + 1
+    if len(colors) != n_classes:
+        raise ValueError(f"colors deve ter {n_classes} valores ({len(breaks_sorted)} limites + 1).")
+    if len(labels) != n_classes:
+        raise ValueError(f"labels deve ter {n_classes} valores.")
+
+    region = _to_ee_region(region_geojson)
+    dem = _build_dem(region).clip(region)
+
+    # Class index 1..n_classes  (class = 1 + count of breaks where DEM >= break)
+    classified = ee.Image(1)
+    for b in breaks_sorted:
+        classified = classified.add(dem.gte(b))
+    classified = classified.toInt().rename("class")
+
+    all_colors = [c.lstrip("#") for c in colors]
+    all_labels = list(labels)
+    max_class = n_classes
+    water_applied = False
+
+    if include_water:
+        try:
+            rivers = _build_rivers_raster(region).unmask(0)
+            water_idx = n_classes + 1
+            classified = classified.where(rivers.eq(1), water_idx)
+            all_colors.append(water_color.lstrip("#"))
+            all_labels.append(water_label)
+            max_class = water_idx
+            water_applied = True
+        except Exception:
+            # Rivers source unavailable for this region — silently skip
+            water_applied = False
+
+    vis = classified.visualize(min=1, max=max_class, palette=all_colors)
+    tile_url = vis.getMapId()["tile_fetcher"].url_format
+
+    # Per-class area (km²)
+    try:
+        groups_data = (
+            ee.Image.pixelArea().addBands(classified)
+            .reduceRegion(
+                reducer=ee.Reducer.sum().group(groupField=1, groupName="class"),
+                geometry=region, scale=90, bestEffort=True, maxPixels=int(1e9),
+            ).getInfo() or {}
+        )
+        groups = groups_data.get("groups", []) or []
+        per_class = {int(g["class"]): float(g.get("sum", 0)) / 1e6 for g in groups}
+    except Exception:
+        per_class = {}
+
+    areas_km2 = [per_class.get(i + 1, 0.0) for i in range(max_class)]
+    total = sum(areas_km2) or 1
+    pct = [round(a / total * 100, 2) for a in areas_km2]
+
+    return {
+        "tileUrl":   tile_url,
+        "name":      "Classes Topográficas (custom)",
+        "formula":   f"DEM com {len(breaks_sorted)} limite(s) ({', '.join(f'{b:g}m' for b in breaks_sorted)})"
+                     + (" + Água & Rios" if include_water else ""),
+        "breaks":    breaks_sorted,
+        "colors":    [f"#{c}" for c in all_colors],
+        "labels":    all_labels,
+        "areasKm2":  areas_km2,
+        "areasPct":  pct,
+        "hasWater":  water_applied,
+    }
