@@ -917,3 +917,195 @@ def compute_targeting_tile(
         "palette":        _TARGETING_PALETTE,
         "vis":            {"min": 0, "max": 100, "palette": _TARGETING_PALETTE},
     }
+
+
+# ── Topographic profile (A→B) ──────────────────────────────────────────────────
+
+def _haversine_m(lon1, lat1, lon2, lat2):
+    """Great-circle distance in meters between two lon/lat pairs."""
+    import math
+    R = 6371000.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dl   = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dl / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+
+def _interpolate_polyline(coords, n_samples: int):
+    """Generate n_samples (lon,lat) points evenly along a polyline by arc length."""
+    if len(coords) < 2 or n_samples < 2:
+        return list(coords), [0.0] * len(coords)
+    seg_lens = [_haversine_m(coords[i][0], coords[i][1],
+                              coords[i + 1][0], coords[i + 1][1])
+                for i in range(len(coords) - 1)]
+    total = sum(seg_lens)
+    if total <= 0:
+        return list(coords), [0.0] * len(coords)
+    out_pts, out_dists = [], []
+    for i in range(n_samples):
+        t = (i / (n_samples - 1)) * total            # target distance from start
+        d_accum = 0.0
+        for j, sl in enumerate(seg_lens):
+            if d_accum + sl >= t or j == len(seg_lens) - 1:
+                frac = (t - d_accum) / sl if sl > 0 else 0
+                lon = coords[j][0] + frac * (coords[j + 1][0] - coords[j][0])
+                lat = coords[j][1] + frac * (coords[j + 1][1] - coords[j][1])
+                out_pts.append((lon, lat))
+                out_dists.append(t)
+                break
+            d_accum += sl
+    return out_pts, out_dists
+
+
+def compute_profile(coords: list, n_samples: int = 200) -> dict:
+    """
+    Sample Copernicus GLO-30 DEM elevation along a polyline (A→B[→C…]).
+    coords: [[lon,lat], [lon,lat], ...]  (≥2 points)
+    Returns distance_m + elevation_m arrays + summary stats.
+    """
+    import ee
+    _init_gee()
+
+    if not coords or len(coords) < 2:
+        raise ValueError("Perfil requer pelo menos 2 pontos.")
+    n_samples = max(20, min(int(n_samples), 500))
+
+    pts, dists = _interpolate_polyline(coords, n_samples)
+    line = ee.Geometry.LineString(coords, proj="EPSG:4326", geodesic=False)
+    dem = _build_dem(line.bounds().buffer(500))
+
+    # Sample all points in one batched call
+    features = [ee.Feature(ee.Geometry.Point([p[0], p[1]]), {"i": i})
+                for i, p in enumerate(pts)]
+    fc = ee.FeatureCollection(features)
+    sampled = dem.sampleRegions(collection=fc, scale=30, geometries=False)
+    rows = sampled.getInfo().get("features", [])
+
+    # Re-order by index "i" (sampleRegions doesn't guarantee order)
+    by_idx = {int(r["properties"]["i"]): r["properties"].get("DEM")
+              for r in rows}
+    elevations = [by_idx.get(i) for i in range(len(pts))]
+    valid = [e for e in elevations if e is not None]
+
+    if not valid:
+        raise ValueError("DEM sem dados sobre o traçado (área marítima ou fora do DEM).")
+
+    # Gain / loss along the profile (ignore null gaps)
+    gain = loss = 0.0
+    prev = None
+    for e in elevations:
+        if e is None:
+            continue
+        if prev is not None:
+            d = e - prev
+            if d > 0:
+                gain += d
+            else:
+                loss -= d
+        prev = e
+
+    total_distance = dists[-1] if dists else 0.0
+    return {
+        "points":      [{"lon": p[0], "lat": p[1]} for p in pts],
+        "distances_m": dists,
+        "elevations_m": elevations,
+        "stats": {
+            "totalDistanceM": total_distance,
+            "minElevM":      min(valid),
+            "maxElevM":      max(valid),
+            "meanElevM":     sum(valid) / len(valid),
+            "gainM":         gain,
+            "lossM":         loss,
+            "sampleCount":   len(valid),
+        },
+        "name":    "Perfil Topográfico — Copernicus GLO-30",
+        "formula": f"DEM amostrado em {len(pts)} pontos (scale 30 m)",
+    }
+
+
+# ── Contour lines (equidistance configurable) ─────────────────────────────────
+
+_CONTOUR_PALETTE = ["8b5a2b"]            # contour-line brown
+_INDEX_CONTOUR_PALETTE = ["3a1c0c"]      # index contour darker brown
+
+
+def compute_contours_tile(
+    region_geojson: Optional[dict],
+    interval_m: int = 50,
+    index_every: int = 5,
+) -> dict:
+    """
+    Generate contour-line tiles from the DEM at a given equidistance.
+    Returns:
+      - tileUrl       : minor contours (every interval_m)
+      - indexTileUrl  : major contours (every interval_m * index_every)
+      - intervals     : list of contour elevations actually present in region
+      - min/max elev  : DEM extent in region
+    """
+    import ee
+    _init_gee()
+
+    interval_m = max(5, min(int(interval_m), 1000))
+    index_every = max(2, min(int(index_every), 10))
+
+    region = _to_ee_region(region_geojson)
+    dem = _build_dem(region).clip(region)
+
+    # Min/max elevation in region (for UI context + intervals list)
+    try:
+        mm = dem.reduceRegion(
+            reducer=ee.Reducer.minMax(),
+            geometry=region, scale=90, bestEffort=True, maxPixels=int(1e9),
+        ).getInfo() or {}
+        min_elev = mm.get("DEM_min")
+        max_elev = mm.get("DEM_max")
+    except Exception:
+        min_elev = max_elev = None
+
+    # Contour mask = pixels whose elevation is within a small band of any multiple
+    # of `interval_m`. Use symmetric distance-to-nearest-multiple for centered lines.
+    line_thresh = max(0.8, interval_m * 0.05)     # ~5% of interval as line width
+
+    minor_mod = dem.mod(interval_m)
+    minor_dist = minor_mod.min(
+        ee.Image.constant(interval_m).subtract(minor_mod)
+    )
+    minor_mask = minor_dist.lt(line_thresh).selfMask()
+
+    # Index contours: distance to nearest multiple of interval * index_every
+    major_thresh = max(line_thresh * 1.2, 1.2)
+    major_step = interval_m * index_every
+    major_mod = dem.mod(major_step)
+    major_dist = major_mod.min(
+        ee.Image.constant(major_step).subtract(major_mod)
+    )
+    major_mask = major_dist.lt(major_thresh).selfMask()
+
+    minor_vis = minor_mask.visualize(palette=_CONTOUR_PALETTE)
+    major_vis = major_mask.visualize(palette=_INDEX_CONTOUR_PALETTE)
+
+    minor_map = minor_vis.getMapId()
+    major_map = major_vis.getMapId()
+
+    # Build intervals list (every interval_m between min and max)
+    intervals = []
+    if min_elev is not None and max_elev is not None:
+        start = (int(min_elev) // interval_m + 1) * interval_m
+        cur = start
+        while cur < max_elev and len(intervals) < 200:
+            intervals.append(cur)
+            cur += interval_m
+
+    return {
+        "tileUrl":       minor_map["tile_fetcher"].url_format,
+        "indexTileUrl":  major_map["tile_fetcher"].url_format,
+        "name":          f"Curvas de Nível — equidistância {interval_m} m",
+        "formula":       f"DEM mod {interval_m} m < {line_thresh:.1f} m (linhas-mestras a cada {interval_m * index_every} m)",
+        "intervalM":     interval_m,
+        "indexEvery":    index_every,
+        "indexIntervalM": interval_m * index_every,
+        "minElevM":      min_elev,
+        "maxElevM":      max_elev,
+        "intervals":     intervals,
+    }

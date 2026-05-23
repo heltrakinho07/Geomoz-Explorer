@@ -98,12 +98,17 @@ _Populate as you build._
 - Ambos requerem GEE. Edges/density combinam-se como overlay com toggle.
 - Stats usam `score.unmask(0)` antes de `reduceRegion` para evitar nulls quando bands têm máscaras parciais.
 
-## Future Evolution (Sprints 2–4)
+## GeoAnálises (Sprint 2 — completo)
+
+- **Perfil Topográfico A→B** (`POST /gee/profile`): user clica 2+ pontos no mapa, polyline desenhada (tracejado azul + markers A/B/…), backend amostra DEM Copernicus GLO-30 em N pontos (50–500, default 200) via `dem.sampleRegions(scale=30)` numa única chamada batched. Saída: distance/elevation arrays + stats (min/max/mean/gain/loss/totalDistance). Frontend renderiza Recharts ComposedChart (Area + Line, eixo distância km, eixo elevação m, ReferenceLine média) num overlay 200px no fundo do mapa.
+- **Curvas de Nível** (`POST /gee/contours`): equidistância configurável (10/20/25/50/100/200/500 m), linhas-mestras a cada N× (slider 2–10). Backend usa `dem.mod(interval).abs().lt(interval*0.05)` → máscara binária visualizada como linhas finas castanhas (#8b5a2b) + linhas-mestras mais escuras (#3a1c0c). Retorna 2 tile URLs + min/max elevação + lista de intervals presentes na região. Frontend mostra como duas TileLayers sobrepostas com legenda lateral.
+- Ambos GEE-only, sob grupo "Relevo". Ícones Route (perfil) e Waves (curvas).
+
+## Future Evolution (Sprints 3+)
 
 1. **Cruzamento espacial automático**: targeting × admin/villages/rios para relatório de overlap.
-2. **Perfil topográfico A–B**: linha desenhada no mapa → query DEM → gráfico elevação.
-3. **AI interpretador**: LLM resume área seleccionada com base em geologia + targeting (aguarda manuais do user para escolha de LLM).
-4. **Exportador PDF/PNG/Shapefile**: `leaflet-image` + jsPDF + geopandas para SHP.
-5. **Time-series NDVI 2018→2025**: comparador temporal Sentinel-2.
-6. **Search bar**: geocoding Nominatim.
-7. **Admin Posts / Villages layers**: já disponíveis em geomoz.
+2. **AI interpretador**: LLM resume área seleccionada com base em geologia + targeting (aguarda manuais do user; LLM escolhido = Claude Anthropic via `.local/skills/ai-integrations-anthropic`).
+3. **Exportador PDF/PNG/Shapefile**: `leaflet-image` + jsPDF + geopandas para SHP.
+4. **Time-series NDVI 2018→2025**: comparador temporal Sentinel-2.
+5. **Search bar**: geocoding Nominatim.
+6. **Admin Posts / Villages layers**: já disponíveis em geomoz.
