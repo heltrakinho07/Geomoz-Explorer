@@ -35,7 +35,7 @@ import { computeSpectralValue, applyColormap, SpectralIndex, GEE_ONLY_INDICES } 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type SpectralTab = "s2" | "composite" | "lineaments" | "targeting"
-                  | "profile" | "contours" | SpectralIndex;
+                  | "profile" | "contours" | "topo_custom" | SpectralIndex;
 
 type IndexGroup = "spectral" | "landsat" | "terrain";
 
@@ -76,6 +76,22 @@ interface ProfileResult {
   };
   name:    string;
   formula: string;
+}
+
+interface TopoClassConfig {
+  label: string;
+  color: string;
+}
+interface TopoClassesResult {
+  tileUrl:    string;
+  name:       string;
+  formula:    string;
+  breaks:     number[];
+  colors:     string[];
+  labels:     string[];
+  areasKm2:   number[];
+  areasPct:   number[];
+  hasWater:   boolean;
 }
 
 interface ContoursResult {
@@ -1084,7 +1100,10 @@ function ProfileClickHandler({
   return null;
 }
 
-function ProfileChart({ result }: { result: ProfileResult }) {
+function ProfileChart({ result, onCursorChange }: {
+  result: ProfileResult;
+  onCursorChange?: (idx: number | null) => void;
+}) {
   const data = result.distances_m.map((d, i) => ({
     distance_km: d / 1000,
     elev: result.elevations_m[i],
@@ -1093,7 +1112,17 @@ function ProfileChart({ result }: { result: ProfileResult }) {
   const yMax = Math.ceil(result.stats.maxElevM / 50) * 50;
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 18 }}>
+      <ComposedChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 18 }}
+        onMouseMove={(s: { activeTooltipIndex?: number; isTooltipActive?: boolean }) => {
+          if (!onCursorChange) return;
+          if (s?.isTooltipActive && typeof s.activeTooltipIndex === "number") {
+            onCursorChange(s.activeTooltipIndex);
+          } else {
+            onCursorChange(null);
+          }
+        }}
+        onMouseLeave={() => onCursorChange?.(null)}
+      >
         <defs>
           <linearGradient id="elevFill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%"   stopColor="#0ea5e9" stopOpacity={0.45} />
@@ -1409,6 +1438,195 @@ interface GeoAnalisesProps {
   onDistrictChange?: (d: string | null) => void;
 }
 
+// Defaults for custom topographic classes (user can edit)
+const DEFAULT_TOPO_BREAKS = [5, 10, 30, 60];
+const DEFAULT_TOPO_CLASSES: TopoClassConfig[] = [
+  { label: "Planície",        color: "#d0f0ff" },
+  { label: "Planície Baixa",  color: "#a0e060" },
+  { label: "Planície Média",  color: "#ffff66" },
+  { label: "Colinas Baixas",  color: "#ffb366" },
+  { label: "Colinas Altas",   color: "#ff6666" },
+];
+
+function TopoClassesPanel({
+  province, district, onResult,
+}: {
+  province: string | null;
+  district: string | null;
+  onResult: (r: TopoClassesResult | null) => void;
+}) {
+  const [breaks, setBreaks]     = useState<number[]>(DEFAULT_TOPO_BREAKS);
+  const [classes, setClasses]   = useState<TopoClassConfig[]>(DEFAULT_TOPO_CLASSES);
+  const [waterOn, setWaterOn]   = useState(true);
+  const [waterColor]            = useState("#3366ff");
+  const [running, setRunning]   = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+  const [result, setResult]     = useState<TopoClassesResult | null>(null);
+
+  // Keep classes length = breaks.length + 1
+  function setBreakAt(i: number, v: number) {
+    const next = [...breaks]; next[i] = v; setBreaks(next);
+  }
+  function addClass() {
+    const lastBreak = breaks.length ? breaks[breaks.length - 1] : 0;
+    const newBreak = lastBreak + 50;
+    setBreaks([...breaks, newBreak]);
+    setClasses([...classes, { label: `Classe ${classes.length + 1}`, color: "#888888" }]);
+  }
+  function removeLast() {
+    if (breaks.length <= 1) return;
+    setBreaks(breaks.slice(0, -1));
+    setClasses(classes.slice(0, -1));
+  }
+  function setLabel(i: number, v: string) {
+    const next = [...classes]; next[i] = { ...next[i], label: v }; setClasses(next);
+  }
+  function setColor(i: number, v: string) {
+    const next = [...classes]; next[i] = { ...next[i], color: v }; setClasses(next);
+  }
+
+  // Breaks must be strictly increasing — labels/colors[i] map to range (breaks[i-1], breaks[i])
+  const breaksSorted = breaks.every((b, i) => i === 0 || b > breaks[i - 1]);
+
+  async function run() {
+    if (!breaksSorted) {
+      setError("Os limites devem estar em ordem estritamente crescente.");
+      return;
+    }
+    setRunning(true); setError(null); onResult(null); setResult(null);
+    try {
+      const res = await fetch("/geomoz-api/gee/topo-classes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          province, district,
+          breaks,
+          colors: classes.map(c => c.color),
+          labels: classes.map(c => c.label),
+          include_water: waterOn,
+          water_color: waterColor,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail ?? "Erro GEE");
+      }
+      const data: TopoClassesResult = await res.json();
+      setResult(data); onResult(data);
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally { setRunning(false); }
+  }
+
+  const n = classes.length;
+  return (
+    <div className="space-y-4">
+      <div>
+        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+          Classes Topográficas (Personalizadas)
+        </h4>
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 leading-relaxed">
+          Defina os <strong>limites de elevação (m)</strong>. {breaks.length} limite(s) → {n} classe(s).
+          Cada classe tem cor e nome editáveis.
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        {classes.map((c, i) => {
+          const lo = i === 0 ? null : breaks[i - 1];
+          const hi = i < breaks.length ? breaks[i] : null;
+          const rangeLabel =
+            lo == null ? `< ${hi} m` :
+            hi == null ? `≥ ${lo} m` :
+            `${lo}–${hi} m`;
+          return (
+            <div key={i} className="flex items-center gap-2 bg-slate-50 rounded-lg px-2 py-1.5">
+              <input
+                type="color"
+                value={c.color}
+                onChange={e => setColor(i, e.target.value)}
+                className="w-7 h-7 rounded cursor-pointer border border-slate-200 shrink-0"
+              />
+              <input
+                type="text"
+                value={c.label}
+                onChange={e => setLabel(i, e.target.value)}
+                className="flex-1 text-xs bg-white border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-w-0"
+              />
+              <span className="text-[10px] font-mono text-slate-400 w-16 text-right shrink-0">{rangeLabel}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div>
+        <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Limites (m)</h5>
+        <div className="grid grid-cols-4 gap-1.5">
+          {breaks.map((b, i) => (
+            <input
+              key={i}
+              type="number"
+              value={b}
+              onChange={e => setBreakAt(i, Number(e.target.value))}
+              className="text-xs bg-white border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+          ))}
+        </div>
+        <div className="flex gap-1.5 mt-2">
+          <button onClick={addClass}
+            className="flex-1 text-xs py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded">
+            + Adicionar classe
+          </button>
+          <button onClick={removeLast} disabled={breaks.length <= 1}
+            className="flex-1 text-xs py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 text-slate-700 border border-slate-200 rounded">
+            − Remover última
+          </button>
+        </div>
+      </div>
+
+      <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-600">
+        <input type="checkbox" checked={waterOn} onChange={e => setWaterOn(e.target.checked)}
+          className="accent-emerald-500" />
+        <span className="inline-block w-3 h-3 rounded" style={{ background: waterColor }} />
+        Incluir Água &amp; Rios (HydroSHEDS)
+      </label>
+
+      {!breaksSorted && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[11px] text-amber-700">
+          ⚠ Os limites têm de ser estritamente crescentes (cada um maior que o anterior).
+        </div>
+      )}
+
+      <button onClick={run} disabled={running || !breaksSorted}
+        className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-emerald-200">
+        {running
+          ? <><Loader2 size={14} className="animate-spin" /> A classificar DEM…</>
+          : <><Play size={14} /> Aplicar Classes</>}
+      </button>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+          <strong>Erro:</strong> {error}
+        </div>
+      )}
+
+      {result && !running && (
+        <div className="space-y-1.5 pt-2 border-t border-slate-100">
+          <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Distribuição (km² · %)</div>
+          {result.labels.map((lbl, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs">
+              <span className="inline-block w-3 h-3 rounded shrink-0" style={{ background: result.colors[i] }} />
+              <span className="flex-1 truncate text-slate-700">{lbl}</span>
+              <span className="text-slate-400 font-mono">{result.areasKm2[i].toFixed(1)} km²</span>
+              <span className="w-10 text-right font-semibold text-emerald-700">{result.areasPct[i].toFixed(1)}%</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function GeoAnalises({ province, district, onProvinceChange, onDistrictChange }: GeoAnalisesProps) {
   const [activeTab, setActiveTab]     = useState<SpectralTab>("s2");
   const [opacity, setOpacity]         = useState(0.82);
@@ -1420,9 +1638,11 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   const [lineamentsTile, setLineamentsTile] = useState<LineamentsResult | null>(null);
   const [targetingTile, setTargetingTile]   = useState<TargetingResult | null>(null);
   const [contoursTile, setContoursTile]     = useState<ContoursResult | null>(null);
+  const [topoClassesTile, setTopoClassesTile] = useState<TopoClassesResult | null>(null);
   const [profilePoints, setProfilePoints]   = useState<LonLat[]>([]);
   const [profileSamples, setProfileSamples] = useState(200);
   const [profileResult, setProfileResult]   = useState<ProfileResult | null>(null);
+  const [profileCursorIdx, setProfileCursorIdx] = useState<number | null>(null);
   const [profileRunning, setProfileRunning] = useState(false);
   const [profileError, setProfileError]     = useState<string | null>(null);
   const [showEdges, setShowEdges]     = useState(true);
@@ -1465,8 +1685,10 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
     setLineamentsTile(null);
     setTargetingTile(null);
     if (activeTab !== "contours") setContoursTile(null);
+    if (activeTab !== "topo_custom") setTopoClassesTile(null);
     if (activeTab !== "profile") {
       setProfileError(null);
+      setProfileCursorIdx(null);
     }
   }, [activeTab]);
 
@@ -1526,6 +1748,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   const isTargeting   = activeTab === "targeting";
   const isProfile     = activeTab === "profile";
   const isContours    = activeTab === "contours";
+  const isTopoCustom  = activeTab === "topo_custom";
 
   // Ref so the province GeoJSON click handler (captured in a stable closure)
   // can see the current tab and skip onProvinceChange while picking profile points.
@@ -1548,6 +1771,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
     { name: "Landsat",   tabs: INDEX_DEFS.filter(d => d.group === "landsat").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
     { name: "Relevo",    tabs: [
       ...INDEX_DEFS.filter(d => d.group === "terrain").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
+      { id: "topo_custom", label: "Classes Custom", icon: <Sliders size={13} /> },
       { id: "profile",  label: "Perfil A-B",   icon: <Route size={13} /> },
       { id: "contours", label: "Curvas Nível", icon: <Waves size={13} /> },
     ]},
@@ -1558,7 +1782,12 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
 
   const geeReady = geeStatus?.connected && useGEE;
   // Composite, lineaments, targeting & GEE-only indices require GEE
-  const requiresGee = isComposite || isLineaments || isTargeting || isProfile || isContours || isGeeOnly;
+  const requiresGee = isComposite || isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isGeeOnly;
+  void requiresGee;
+  const profileCursorLatLon = (isProfile && profileResult && profileCursorIdx != null
+    && profileCursorIdx >= 0 && profileCursorIdx < profileResult.points.length)
+    ? profileResult.points[profileCursorIdx]
+    : null;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
@@ -1743,6 +1972,19 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
             </div>
           )}
 
+          {/* Custom Topo Classes Panel */}
+          {!showSetup && isTopoCustom && (
+            <div className="p-4 border-b border-slate-100">
+              {!geeStatus?.connected ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                  <strong>GEE necessário.</strong> Classificação topográfica usa o DEM Copernicus via Google Earth Engine.
+                </div>
+              ) : (
+                <TopoClassesPanel province={province} district={district} onResult={setTopoClassesTile} />
+              )}
+            </div>
+          )}
+
           {/* Contours Panel */}
           {!showSetup && isContours && (
             <div className="p-4 border-b border-slate-100">
@@ -1770,7 +2012,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
           )}
 
           {/* GEE Analysis Panel (real mode, single index) */}
-          {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && geeReady && activeTab !== "s2" && activeDef && (
+          {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !isTopoCustom && geeReady && activeTab !== "s2" && activeDef && (
             <div className="p-4 border-b border-slate-100">
               <GeeAnalysisPanel
                 activeIndex={activeTab as SpectralIndex}
@@ -1783,7 +2025,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
           )}
 
           {/* GEE-only warning when proxy is forced */}
-          {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !geeReady && isGeeOnly && activeDef && (
+          {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !isTopoCustom && !geeReady && isGeeOnly && activeDef && (
             <div className="p-4 border-b border-slate-100">
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
                 <strong>Índice apenas GEE.</strong> {activeDef.short} requer dados raster reais (DEM / Landsat). Active GEE no topo para calcular.
@@ -1792,7 +2034,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
           )}
 
           {/* Proxy mode controls (only spectral indices have meaningful proxy) */}
-          {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !geeReady && activeTab !== "s2" && !isGeeOnly && (
+          {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !isTopoCustom && !geeReady && activeTab !== "s2" && !isGeeOnly && (
             <div className="p-4 border-b border-slate-100">
               <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Opacidade</h4>
               <input type="range" min={0.1} max={1} step={0.05} value={opacity}
@@ -2083,6 +2325,26 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
               />
             ))}
 
+            {/* Custom Topo Classes tile */}
+            {isTopoCustom && topoClassesTile && (
+              <TileLayer
+                key={`tc-${topoClassesTile.tileUrl}`}
+                url={topoClassesTile.tileUrl}
+                attribution="GEE · Classes Topográficas"
+                opacity={opacity}
+                maxZoom={18}
+              />
+            )}
+
+            {/* Profile cursor marker (synced from chart hover) */}
+            {isProfile && profileCursorLatLon && (
+              <CircleMarker
+                center={[profileCursorLatLon.lat, profileCursorLatLon.lon]}
+                radius={9}
+                pathOptions={{ color: "#ffffff", weight: 3, fillColor: "#f59e0b", fillOpacity: 1 }}
+              />
+            )}
+
             {/* Targeting score tile */}
             {isTargeting && targetingTile && (
               <TileLayer
@@ -2178,7 +2440,27 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                 </button>
               </div>
               <div style={{ height: 165 }}>
-                <ProfileChart result={profileResult} />
+                <ProfileChart result={profileResult} onCursorChange={setProfileCursorIdx} />
+              </div>
+            </div>
+          )}
+
+          {/* Custom Topo Classes legend */}
+          {isTopoCustom && topoClassesTile && (
+            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-emerald-200 p-3 w-64 pointer-events-none">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Sliders size={12} className="text-emerald-600" />
+                <div className="text-xs font-semibold text-emerald-800">Classes Topográficas</div>
+              </div>
+              <div className="space-y-0.5">
+                {topoClassesTile.labels.map((lbl, i) => (
+                  <div key={i} className="flex items-center gap-1.5 text-[10px]">
+                    <span className="inline-block w-2.5 h-2.5 rounded shrink-0"
+                      style={{ background: topoClassesTile.colors[i] }} />
+                    <span className="truncate flex-1 text-slate-700">{lbl}</span>
+                    <span className="text-slate-400 font-mono">{topoClassesTile.areasPct[i].toFixed(1)}%</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}

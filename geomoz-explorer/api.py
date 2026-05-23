@@ -603,6 +603,47 @@ async def gee_contours(req: GEEContoursRequest):
         raise HTTPException(500, f"GEE contours failed: {exc}")
 
 
+class GEETopoClassesRequest(BaseModel):
+    province:       Optional[str] = None
+    district:       Optional[str] = None
+    breaks:         list           # e.g. [5, 10, 30, 60]
+    colors:         list           # hex, len == len(breaks)+1
+    labels:         list           # len == len(breaks)+1
+    include_water:  bool = True
+    water_color:    str  = "#3366ff"
+    water_label:    str  = "Água & Rios"
+
+
+@app.post("/geomoz-api/gee/topo-classes")
+async def gee_topo_classes(req: GEETopoClassesRequest):
+    """User-defined topographic classes from the DEM."""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from gee_module import compute_topo_classes_tile
+
+    region = _region_geojson(req.province, req.district)
+    executor = ThreadPoolExecutor(max_workers=4)
+    loop = asyncio.get_event_loop()
+
+    try:
+        result = await loop.run_in_executor(
+            executor,
+            lambda: compute_topo_classes_tile(
+                region, req.breaks, req.colors, req.labels,
+                req.include_water, req.water_color, req.water_label,
+            ),
+        )
+        result["province"] = req.province
+        result["district"] = req.district
+        return result
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE topo-classes failed: {exc}")
+
+
 @app.get("/geomoz-api/gee/indices")
 def gee_indices():
     """List available indices with metadata, grouped (spectral/landsat/terrain)."""
