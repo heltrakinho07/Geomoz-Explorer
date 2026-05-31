@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Globe, Settings, Search, X, Loader2, MapPin, Satellite } from "lucide-react";
+import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import L from "leaflet";
@@ -8,6 +8,7 @@ import MapView from "@/components/MapView";
 import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
 import GeoAnalises from "@/pages/GeoAnalises";
+import HidroGeoMoz from "@/pages/HidroGeoMoz";
 
 interface NominatimResult {
   place_id: number;
@@ -17,13 +18,14 @@ interface NominatimResult {
   boundingbox: [string, string, string, string];
 }
 
-type Tab = "Mapa" | "Análise" | "GeoAnálises" | "Exportar";
+type Tab = "Mapa" | "Análise" | "GeoAnálises" | "Bacias Hidrográficas" | "Exportar";
 
 const TABS: { id: Tab; icon: React.ReactNode; label: string }[] = [
-  { id: "Mapa",        icon: <Globe size={13} />,         label: "Mapa" },
-  { id: "Análise",     icon: null,                        label: "Análise" },
-  { id: "GeoAnálises", icon: <Satellite size={13} />,     label: "GeoAnálises" },
-  { id: "Exportar",    icon: null,                        label: "Exportar" },
+  { id: "Mapa",                 icon: <Globe size={13} />,    label: "Mapa" },
+  { id: "Análise",              icon: null,                   label: "Análise" },
+  { id: "GeoAnálises",         icon: <Satellite size={13} />, label: "GeoAnálises" },
+  { id: "Bacias Hidrográficas", icon: <Droplets size={13} />, label: "Bacias Hidrográficas" },
+  { id: "Exportar",             icon: null,                   label: "Exportar" },
 ];
 
 export default function Explorer() {
@@ -103,7 +105,8 @@ export default function Explorer() {
 
   // Tab accent colours
   const tabAccent: Partial<Record<Tab, string>> = {
-    "GeoAnálises": "bg-indigo-500 shadow-indigo-200",
+    "GeoAnálises":          "bg-indigo-500 shadow-indigo-200",
+    "Bacias Hidrográficas": "bg-blue-600 shadow-blue-200",
   };
 
   return (
@@ -217,6 +220,15 @@ export default function Explorer() {
       ) : activeTab === "GeoAnálises" ? (
         <div className="flex flex-1 overflow-hidden">
           <GeoAnalises
+            province={province}
+            district={district}
+            onProvinceChange={p => { setProvince(p); setDistrict(null); }}
+            onDistrictChange={setDistrict}
+          />
+        </div>
+      ) : activeTab === "Bacias Hidrográficas" ? (
+        <div className="flex flex-1 overflow-hidden">
+          <HidroGeoMoz
             province={province}
             district={district}
             onProvinceChange={p => { setProvince(p); setDistrict(null); }}

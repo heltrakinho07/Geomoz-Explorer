@@ -1614,18 +1614,24 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   const { data: districtNames } = useDistrictNames(province);
 
   // Tabs grouped by category — rendered below with section labels
-  const tabGroups: { name: string; tabs: { id: string; label: string; icon: React.ReactNode }[] }[] = [
-    { name: "Mosaico",   tabs: [{ id: "s2", label: "Sentinel-2", icon: <Satellite size={13} /> }] },
-    { name: "Espectral", tabs: INDEX_DEFS.filter(d => d.group === "spectral").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Landsat",   tabs: INDEX_DEFS.filter(d => d.group === "landsat").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Relevo",    tabs: [
-      ...INDEX_DEFS.filter(d => d.group === "terrain").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
-      { id: "topo_custom", label: "Classes Custom", icon: <Sliders size={13} /> },
-      { id: "profile",  label: "Perfil A-B",   icon: <Route size={13} /> },
-      { id: "contours", label: "Curvas Nível", icon: <Waves size={13} /> },
-    ]},
-    { name: "Estruturas", tabs: [{ id: "lineaments", label: "Lineamentos",  icon: <Activity size={13} /> }] },
-    { name: "Targeting",  tabs: [{ id: "targeting",  label: "Potencial Mineral", icon: <Target size={13} /> }] },
+  const tabGroups: { name: string; badge: string; badgeColor: string; tabs: { id: string; label: string; icon: React.ReactNode }[] }[] = [
+    { name: "Mosaico Óptico",         badge: "Sentinel-2 · EOX",    badgeColor: "bg-sky-100 text-sky-700",
+      tabs: [{ id: "s2", label: "S-2 Cloudless", icon: <Satellite size={13} /> }] },
+    { name: "Vegetação & Mineralogia", badge: "Sentinel-2 · 10–20 m", badgeColor: "bg-emerald-100 text-emerald-700",
+      tabs: INDEX_DEFS.filter(d => d.group === "spectral").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
+    { name: "Landsat 8",              badge: "Landsat · 30 m",       badgeColor: "bg-orange-100 text-orange-700",
+      tabs: INDEX_DEFS.filter(d => d.group === "landsat").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
+    { name: "Relevo & Morfologia",    badge: "DEM GLO-30 · 30 m",   badgeColor: "bg-amber-100 text-amber-700",
+      tabs: [
+        ...INDEX_DEFS.filter(d => d.group === "terrain").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
+        { id: "topo_custom", label: "Classes Custom", icon: <Sliders size={13} /> },
+        { id: "profile",     label: "Perfil A→B",     icon: <Route size={13} /> },
+        { id: "contours",    label: "Curvas Nível",   icon: <Waves size={13} /> },
+      ]},
+    { name: "Estruturas Geológicas",  badge: "GEE · DEM + Sobel",   badgeColor: "bg-fuchsia-100 text-fuchsia-700",
+      tabs: [{ id: "lineaments", label: "Lineamentos", icon: <Activity size={13} /> }] },
+    { name: "Potencial Mineral",      badge: "GEE · Multi-critério", badgeColor: "bg-yellow-100 text-yellow-700",
+      tabs: [{ id: "targeting",  label: "Targeting",   icon: <Target size={13} /> }] },
   ];
 
   const geeReady = geeStatus?.connected && useGEE;
@@ -1679,16 +1685,22 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
       <div className="bg-white border-b border-slate-200 px-3 flex items-center gap-1 shrink-0 overflow-x-auto">
         {tabGroups.map((grp, gi) => (
           <div key={grp.name} className="flex items-center gap-1 shrink-0">
-            {gi > 0 && <span className="text-slate-200 mx-1">·</span>}
-            <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mr-1 hidden md:inline">{grp.name}</span>
+            {gi > 0 && <span className="text-slate-200 mx-1.5">│</span>}
+            <div className="hidden md:flex flex-col mr-0.5">
+              <span className="text-[9px] uppercase tracking-wider text-slate-500 font-bold leading-tight">{grp.name}</span>
+              <span className={`text-[8px] rounded px-1 leading-tight font-medium ${grp.badgeColor}`}>{grp.badge}</span>
+            </div>
             {grp.tabs.map(tab => {
-              const isTerrainTab = INDEX_DEFS.find(d => d.id === tab.id)?.group === "terrain";
-              const isCompTab = tab.id === "composite";
+              const def = INDEX_DEFS.find(d => d.id === tab.id);
+              const isTerrainTab = def?.group === "terrain";
+              const isStructure = tab.id === "lineaments";
+              const isTarget    = tab.id === "targeting";
               return (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id as SpectralTab)}
                   className={`flex items-center gap-1.5 px-2.5 py-2.5 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${
                     activeTab === tab.id
-                      ? isCompTab ? "border-violet-500 text-violet-600"
+                      ? isStructure ? "border-fuchsia-500 text-fuchsia-600"
+                      : isTarget    ? "border-yellow-500 text-yellow-700"
                       : isTerrainTab ? "border-amber-500 text-amber-600"
                       : "border-sky-500 text-sky-600"
                       : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"
@@ -1899,51 +1911,74 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
             </div>
           )}
 
-          {/* Index info */}
-          {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && activeDef && activeTab !== "s2" && (
-            <div className="p-4 flex-1 space-y-4">
-              <div>
-                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Fórmula</h4>
-                <code className="block bg-slate-900 text-emerald-300 text-xs rounded-lg p-2.5 font-mono leading-relaxed">{activeDef.formula}</code>
-                <p className="text-xs text-slate-400 mt-1.5">Fonte: {activeDef.bands}</p>
-              </div>
-              {!geeReady && !isGeeOnly && (
-                <div>
-                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Escala (proxy)</h4>
-                  <ColormapLegend index={activeTab as SpectralIndex} />
-                </div>
-              )}
-              {isTopoClass && (
-                <div>
-                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Classes Topográficas</h4>
-                  <div className="space-y-1">
-                    {["#1a9850","#66bd63","#fee08b","#fdae61","#a50026","#3690c0"].map((c, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
-                        <span className="inline-block w-3.5 h-3.5 rounded" style={{ background: c }} />
-                        {TERRAIN_CLASS_NAMES[i]}
-                      </div>
-                    ))}
+          {/* Index info — geocientific legend card */}
+          {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && activeDef && activeTab !== "s2" && (() => {
+            const activeGroup = tabGroups.find(g => g.tabs.some(t => t.id === activeTab));
+            return (
+              <div className="p-4 flex-1 space-y-4">
+                {/* Group badge */}
+                {activeGroup && (
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${activeGroup.badgeColor}`}>
+                      {activeGroup.name}
+                    </span>
+                    <span className="text-[10px] text-slate-400">{activeGroup.badge}</span>
                   </div>
+                )}
+
+                {/* Colormap legend — always visible */}
+                {!isGeeOnly && !isTopoClass && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                      Escala {geeReady ? "(GEE)" : "(proxy)"}
+                    </h4>
+                    <ColormapLegend index={activeTab as SpectralIndex} />
+                  </div>
+                )}
+                {isTopoClass && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Classes Topográficas</h4>
+                    <div className="space-y-1">
+                      {["#1a9850","#66bd63","#fee08b","#fdae61","#a50026","#3690c0"].map((c, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
+                          <span className="inline-block w-3.5 h-3.5 rounded" style={{ background: c }} />
+                          {TERRAIN_CLASS_NAMES[i]}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Interpretation */}
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Interpretação Geocientífica</h4>
+                  <p className="text-xs text-slate-600 leading-relaxed">{activeDef.interpretation}</p>
                 </div>
-              )}
-              <div>
-                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Interpretação</h4>
-                <p className="text-xs text-slate-600 leading-relaxed">{activeDef.interpretation}</p>
+
+                {/* Formula + bands */}
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Fórmula</h4>
+                  <code className="block bg-slate-900 text-emerald-300 text-xs rounded-lg p-2.5 font-mono leading-relaxed">{activeDef.formula}</code>
+                  <p className="text-xs text-slate-400 mt-1.5">
+                    <span className="font-medium text-slate-500">Bandas: </span>{activeDef.bands}
+                  </p>
+                </div>
+
+                {isTerrain && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                    <div className="flex items-center gap-1.5 mb-1"><Mountain size={12} className="text-amber-600" /><span className="text-xs font-semibold text-amber-700">DEM Copernicus GLO-30</span></div>
+                    <p className="text-xs text-amber-700 leading-relaxed">Resolução 30 m · recortado ao polígono administrativo · projecção UTM 36S para métricas de área.</p>
+                  </div>
+                )}
+                {!geeReady && !isGeeOnly && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                    <div className="flex items-center gap-1.5 mb-1"><Info size={12} className="text-slate-500" /><span className="text-xs font-semibold text-slate-600">Modo Proxy</span></div>
+                    <p className="text-xs text-slate-500 leading-relaxed">Estimativa baseada em atributos geológicos. Active GEE no topo para dados raster reais.</p>
+                  </div>
+                )}
               </div>
-              {isTerrain && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                  <div className="flex items-center gap-1.5 mb-1"><Mountain size={12} className="text-amber-600" /><span className="text-xs font-semibold text-amber-700">Análise de Relevo</span></div>
-                  <p className="text-xs text-amber-700 leading-relaxed">Baseado no script GEE de referência (Sofala): DEM Copernicus GLO-30 + rios HydroSHEDS, com recorte ao polígono administrativo seleccionado.</p>
-                </div>
-              )}
-              {!geeReady && !isGeeOnly && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                  <div className="flex items-center gap-1.5 mb-1"><Info size={12} className="text-amber-600" /><span className="text-xs font-semibold text-amber-700">Modo Proxy</span></div>
-                  <p className="text-xs text-amber-700 leading-relaxed">Estimativa baseada em atributos geológicos. Active GEE para dados raster reais.</p>
-                </div>
-              )}
-            </div>
-          )}
+            );
+          })()}
 
           {/* Lineaments info */}
           {!showSetup && isLineaments && (
