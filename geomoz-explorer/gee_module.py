@@ -601,8 +601,10 @@ def compute_lineaments_tile(
     density = layers["density"].clip(region)
     edges = layers["edges_bin"].clip(region)
 
-    density_vis = density.visualize(min=0, max=0.35,
-                                    palette=_LINEAMENT_DENSITY_PALETTE)
+    # Mask out near-zero density so background is transparent (not dark navy)
+    density_masked = density.updateMask(density.gt(0.003))
+    density_vis = density_masked.visualize(min=0.003, max=0.35,
+                                           palette=_LINEAMENT_DENSITY_PALETTE)
     edges_vis = edges.visualize(palette=["00f0ff"])
 
     density_map = density_vis.getMapId()

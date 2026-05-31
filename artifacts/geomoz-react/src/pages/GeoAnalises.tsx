@@ -20,7 +20,7 @@ import {
   Cpu, FlaskConical, CloudSun, Droplets, Flame,
   CheckCircle2, XCircle, Loader2, Play, RefreshCw,
   ExternalLink, ShieldCheck,
-  Mountain, MountainSnow, TrendingUp, Sun, Trees, Sliders, Sparkles, MapPin,
+  Mountain, TrendingUp, Trees, Sliders, MapPin,
   Activity, Target, Compass, Gem,
   TrendingDown, Route, Waves, X,
 } from "lucide-react";
@@ -34,7 +34,7 @@ import { computeSpectralValue, applyColormap, SpectralIndex, GEE_ONLY_INDICES } 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type SpectralTab = "s2" | "composite" | "lineaments" | "targeting"
+type SpectralTab = "s2" | "lineaments" | "targeting"
                   | "profile" | "contours" | "topo_custom" | SpectralIndex;
 
 type IndexGroup = "spectral" | "landsat" | "terrain";
@@ -210,16 +210,6 @@ const INDEX_DEFS: IndexDef[] = [
     bands: "Copernicus DEM GLO-30",
     interpretation: "Distribuição relativa de altitudes dentro da área seleccionada. Realça contrastes topográficos locais.",
     lowLabel: "Cotas baixas", highLabel: "Cotas altas" },
-  { id: "slope", label: "Declive", short: "Declive", icon: <MountainSnow size={13} />, group: "terrain",
-    formula: "ee.Terrain.slope(DEM) em graus",
-    bands: "Copernicus DEM GLO-30",
-    interpretation: "Inclinação do terreno em graus. >30° indica encostas íngremes — risco geotécnico, erosão.",
-    lowLabel: "0° plano", highLabel: "≥35° muito íngreme" },
-  { id: "hillshade", label: "Hillshade", short: "Sombreado", icon: <Sun size={13} />, group: "terrain",
-    formula: "ee.Terrain.hillshade(DEM, azimuth=315°, elevation=45°)",
-    bands: "Copernicus DEM GLO-30",
-    interpretation: "Sombreado de relevo iluminado a NW — usado como camada visual para realçar morfologia.",
-    lowLabel: "Sombra", highLabel: "Iluminado" },
   { id: "topo_class", label: "Classes Topo", short: "Classes Topo", icon: <Layers size={13} />, group: "terrain",
     formula: "DEM em [<5, 5–10, 10–30, 30–60, >60] m + rios HydroSHEDS",
     bands: "Copernicus DEM + HydroSHEDS FreeFlowingRivers",
@@ -508,148 +498,6 @@ function GeeAnalysisPanel({
     </div>
   );
 }
-
-// ── Composite (weighted) Panel ─────────────────────────────────────────────────
-
-const DEFAULT_WEIGHTS: Record<string, number> = {
-  ndvi: 0.30, hipsometry: 0.25, slope: 0.20, fe_oxide: 0.15, hydrothermal: 0.10,
-};
-
-function CompositePanel({
-  province, district, onTileReady,
-}: {
-  province: string | null;
-  district: string | null;
-  onTileReady: (result: GeeResult | null) => void;
-}) {
-  const [weights, setWeights]     = useState<Record<string, number>>(DEFAULT_WEIGHTS);
-  const [startDate, setStartDate] = useState("2023-01-01");
-  const [endDate, setEndDate]     = useState("2023-12-31");
-  const [cloudPct, setCloudPct]   = useState(30);
-  const [running, setRunning]     = useState(false);
-  const [error, setError]         = useState<string | null>(null);
-  const [result, setResult]       = useState<GeeResult | null>(null);
-
-  const totalWeight = Object.values(weights).reduce((s, v) => s + v, 0);
-
-  function setW(id: string, v: number) {
-    setWeights(w => ({ ...w, [id]: v }));
-  }
-
-  async function run() {
-    setRunning(true); setError(null); onTileReady(null);
-    try {
-      const res = await fetch("/geomoz-api/gee/composite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          weights, province: province || null, district: district || null,
-          start_date: startDate, end_date: endDate, cloud_pct: cloudPct,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail ?? "Erro GEE desconhecido");
-      }
-      const data: GeeResult = await res.json();
-      setResult(data); onTileReady(data);
-    } catch (e) {
-      setError(String(e instanceof Error ? e.message : e));
-    } finally { setRunning(false); }
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-gradient-to-br from-violet-50 to-sky-50 border border-violet-200 rounded-xl p-3">
-        <div className="flex items-center gap-1.5 mb-1">
-          <Sparkles size={12} className="text-violet-600" />
-          <span className="text-xs font-semibold text-violet-700">Combinação Ponderada</span>
-        </div>
-        <p className="text-xs text-violet-700 leading-relaxed">
-          Cada índice é normalizado para [0,1] e combinado com o peso atribuído.
-          Os pesos são renormalizados para somar 1 antes do cálculo.
-        </p>
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-2.5">
-          <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pesos dos Índices</h4>
-          <span className="text-xs text-slate-400">Σ {totalWeight.toFixed(2)}</span>
-        </div>
-        <div className="space-y-2.5">
-          {INDEX_DEFS.map(def => {
-            const w = weights[def.id] ?? 0;
-            return (
-              <div key={def.id}>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs text-slate-600 flex items-center gap-1.5">
-                    {def.icon} {def.short}
-                  </label>
-                  <span className={`text-xs font-mono ${w > 0 ? "text-violet-600 font-semibold" : "text-slate-300"}`}>
-                    {w.toFixed(2)}
-                  </span>
-                </div>
-                <input type="range" min={0} max={1} step={0.05} value={w}
-                  onChange={e => setW(def.id, Number(e.target.value))}
-                  className={`w-full ${w > 0 ? "accent-violet-500" : "accent-slate-300"}`} />
-              </div>
-            );
-          })}
-        </div>
-        <button
-          onClick={() => setWeights(DEFAULT_WEIGHTS)}
-          className="mt-2 text-xs text-slate-400 hover:text-slate-600 underline">
-          Repor pesos padrão
-        </button>
-      </div>
-
-      <div className="border-t border-slate-100 pt-3 space-y-2.5">
-        <div>
-          <label className="text-xs text-slate-500 mb-1 block">Data início (S2/L8)</label>
-          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500" />
-        </div>
-        <div>
-          <label className="text-xs text-slate-500 mb-1 block">Data fim</label>
-          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500" />
-        </div>
-        <div>
-          <label className="text-xs text-slate-500 mb-1 block">
-            Nuvens máx — <strong className="text-slate-700">{cloudPct}%</strong>
-          </label>
-          <input type="range" min={5} max={80} value={cloudPct}
-            onChange={e => setCloudPct(Number(e.target.value))} className="w-full accent-violet-500" />
-        </div>
-      </div>
-
-      <button onClick={run} disabled={running || totalWeight <= 0}
-        className="w-full flex items-center justify-center gap-2 py-2.5 bg-violet-500 hover:bg-violet-600 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-violet-200">
-        {running
-          ? <><Loader2 size={14} className="animate-spin" /> A computar composto…</>
-          : <><Sliders size={14} /> Calcular Composto Ponderado</>}
-      </button>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
-          <strong>Erro:</strong> {error}
-        </div>
-      )}
-
-      {result && !running && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-          <div className="flex items-center gap-1.5 mb-1">
-            <CheckCircle2 size={12} className="text-emerald-600" />
-            <span className="text-xs font-semibold text-emerald-700">Composto calculado</span>
-          </div>
-          <div className="text-xs text-emerald-700 font-mono break-all">{result.formula}</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Lineaments (structural) Panel ──────────────────────────────────────────────
 
 function RoseDiagram({ rose }: { rose: RoseBin[] }) {
   const size = 200;
@@ -1713,7 +1561,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
 
   // Synthetic spectral overlay (proxy mode) — disabled for s2/composite/terrain
   const spectralGeoJSON = useMemo(() => {
-    if (!geologyGeoJSON || activeTab === "s2" || activeTab === "composite" || useGEE) return null;
+    if (!geologyGeoJSON || activeTab === "s2" || useGEE) return null;
     if (GEE_ONLY_INDICES.includes(activeTab as SpectralIndex)) return null;
     const index = activeTab as SpectralIndex;
     return {
@@ -1743,7 +1591,8 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   }, [geologyGeoJSON, activeTab, useGEE]);
 
   const activeDef = INDEX_DEFS.find(d => d.id === activeTab);
-  const isComposite   = activeTab === "composite";
+  const isComposite   = false;
+  void isComposite;
   const isLineaments  = activeTab === "lineaments";
   const isTargeting   = activeTab === "targeting";
   const isProfile     = activeTab === "profile";
@@ -1775,14 +1624,13 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
       { id: "profile",  label: "Perfil A-B",   icon: <Route size={13} /> },
       { id: "contours", label: "Curvas Nível", icon: <Waves size={13} /> },
     ]},
-    { name: "Composto",   tabs: [{ id: "composite",  label: "Composto",     icon: <Sliders size={13} /> }] },
     { name: "Estruturas", tabs: [{ id: "lineaments", label: "Lineamentos",  icon: <Activity size={13} /> }] },
     { name: "Targeting",  tabs: [{ id: "targeting",  label: "Potencial Mineral", icon: <Target size={13} /> }] },
   ];
 
   const geeReady = geeStatus?.connected && useGEE;
   // Composite, lineaments, targeting & GEE-only indices require GEE
-  const requiresGee = isComposite || isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isGeeOnly;
+  const requiresGee = isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isGeeOnly;
   void requiresGee;
   const profileCursorLatLon = (isProfile && profileResult && profileCursorIdx != null
     && profileCursorIdx >= 0 && profileCursorIdx < profileResult.points.length)
@@ -1909,19 +1757,6 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-
-          {/* Composite Panel */}
-          {!showSetup && isComposite && (
-            <div className="p-4 border-b border-slate-100">
-              {!geeStatus?.connected ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
-                  <strong>GEE necessário.</strong> O modo composto requer Google Earth Engine. Configure as credenciais primeiro.
-                </div>
-              ) : (
-                <CompositePanel province={province} district={district} onTileReady={setGeeTile} />
-              )}
             </div>
           )}
 
@@ -2160,26 +1995,6 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
             </div>
           )}
 
-          {/* Composite info */}
-          {!showSetup && isComposite && (
-            <div className="p-4 flex-1 space-y-3">
-              <div className="bg-violet-50 border border-violet-200 rounded-xl p-3">
-                <div className="flex items-center gap-1.5 mb-1"><Sparkles size={12} className="text-violet-600" /><span className="text-xs font-semibold text-violet-700">Composto Ponderado</span></div>
-                <p className="text-xs text-violet-700 leading-relaxed">Modelo de favorabilidade multi-critério: combina vegetação, relevo e alteração espectral. Útil para análise integrada de áreas potenciais.</p>
-              </div>
-              <div>
-                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Escala</h4>
-                <div className="h-3 w-full rounded" style={{
-                  background: "linear-gradient(to right, #0d0887, #6a00a8, #b12a90, #e16462, #fca636, #f0f921)",
-                }} />
-                <div className="flex justify-between text-xs text-slate-400 mt-0.5">
-                  <span>Baixa favorabilidade</span>
-                  <span>Alta favorabilidade</span>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* S2 cloudless info */}
           {!showSetup && activeTab === "s2" && (
             <div className="p-4 flex-1 space-y-3">
@@ -2253,8 +2068,8 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
               />
             )}
 
-            {/* GEE real tile layer (single index or composite) */}
-            {(geeReady || isComposite) && !isLineaments && !isTargeting && geeTile && activeTab !== "s2" && (
+            {/* GEE real tile layer (single index) */}
+            {geeReady && !isLineaments && !isTargeting && geeTile && activeTab !== "s2" && (
               <TileLayer
                 key={geeTileKey}
                 url={geeTile.tileUrl}
@@ -2378,7 +2193,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
           </MapContainer>
 
           {/* Map overlay legend — proxy mode */}
-          {activeTab !== "s2" && !isComposite && !geeReady && !isGeeOnly && activeDef && (
+          {activeTab !== "s2" && !geeReady && !isGeeOnly && activeDef && (
             <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-slate-200 p-3 w-52 pointer-events-none">
               <div className="text-xs font-semibold text-slate-700 mb-1.5">{activeDef.label} (Proxy)</div>
               <div className="h-3 w-full rounded" style={{
@@ -2484,16 +2299,12 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
             </div>
           )}
 
-          {/* GEE / Composite result badge */}
-          {activeTab !== "s2" && !isLineaments && !isTargeting && geeTile && (geeReady || isComposite) && (
-            <div className={`absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border p-3 w-64 pointer-events-none ${
-              isComposite ? "border-violet-200" : "border-emerald-200"
-            }`}>
+          {/* GEE result badge */}
+          {activeTab !== "s2" && !isLineaments && !isTargeting && geeTile && geeReady && (
+            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-emerald-200 p-3 w-64 pointer-events-none">
               <div className="flex items-center gap-1.5 mb-1">
-                <CheckCircle2 size={12} className={isComposite ? "text-violet-500" : "text-emerald-500"} />
-                <div className={`text-xs font-semibold ${isComposite ? "text-violet-700" : "text-emerald-700"}`}>
-                  {isComposite ? "Composto Ponderado GEE" : "GEE Real"}
-                </div>
+                <CheckCircle2 size={12} className="text-emerald-500" />
+                <div className="text-xs font-semibold text-emerald-700">GEE Real</div>
               </div>
               <div className="text-xs text-slate-500">{geeTile.name.split("—")[0].trim()}</div>
               {geeTile.sceneCount > 0 && (
@@ -2527,9 +2338,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                 ? targetingTile
                   ? `Targeting · ${targetingTile.formula}`
                   : "Targeting · escolha um mineral e execute"
-                : isComposite && geeTile
-                  ? `Composto Ponderado · ${geeTile.formula}`
-                  : geeReady && geeTile
+                : geeReady && geeTile
                     ? `GEE Real · ${geeTile.formula}${geeTile.sceneCount ? ` · ${geeTile.sceneCount} cenas` : ""}`
                     : `${isGeeOnly ? "GEE necessário" : "Proxy"} · ${activeDef?.formula ?? ""}`}
         </span>
