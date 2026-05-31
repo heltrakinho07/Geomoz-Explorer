@@ -115,12 +115,17 @@ _Populate as you build._
 - **Legendas geocientíficas por índice**: painel lateral mostra badge do grupo, escala de cor (sempre visível, proxy ou GEE), interpretação geocientífica completa, fórmula em destaque, bandas utilizadas.
 - Separadores visuais `│` entre grupos; badge de fonte em cor por grupo.
 
-## Bacias Hidrográficas — HidroGeoMoz (completo)
+## Bacias Hidrográficas — HidroGeoMoz (completo + sprint 2)
 
 - **Nova tab "Bacias Hidrográficas"** (ícone Droplets, accent azul) no nav do Explorer.
-- **Backend** (`gee_module.py`): `compute_basins()` (HydroBASINS L5–L8 África), `compute_basin_stats()` (elev/slope/NDVI/NDWI/CHIRPS/riscos), `compute_drainage_tile()` (HydroSHEDS 15ACC treshold).
-- **API** (`api.py`): `POST /gee/basins`, `POST /gee/basin-stats`, `POST /gee/drainage`.
-- **Frontend** (`HidroGeoMoz.tsx`): mapa react-leaflet com basins GeoJSON clicável + rede de drenagem tile; sidebar com filtros (prov/dist), nível HydroBASINS (5–8), threshold drenagem, botão "Carregar Bacias"; painel stats por bacia seleccionada: morfometria (área, perímetro, elevação min/média/máx, declive médio), vegetação (NDVI, NDWI, precipitação CHIRPS), gauges de risco (erosão, cheia, potencial hidrogeológico 0–100); painel direito com gráficos Recharts (litologias + unidades geológicas GeoMoz), tabela completa; export CSV + GeoJSON.
+- **Dois modos** via toggle na sidebar:
+  - **"Explorar Bacias"**: HydroBASINS L5–L8 clicáveis (tenta múltiplos IDs de colecção; se indisponível, sugere modo delimitar).
+  - **"Delimitar Bacia"**: clique em qualquer ponto do mapa → watershed delineado por algoritmo D8 em HydroSHEDS 15DIR + snap automático ao canal mais próximo. Configura expansão máxima (passos 20–200, ~500 m/passo). Mostra polígono + stats automáticos.
+- **Gerador de Linhas de Água** multi-ordem (aprox. Strahler 1–5 via ACC thresholds: 100/500/2k/10k/50k). Toggle "todas as ordens vs rios principais". Paleta azul clara→escura.
+- **Backend** (`gee_module.py`): `compute_basins()` (HydroBASINS, múltiplos IDs + fallback gracioso), `compute_basin_stats()`, `compute_drainage_tile()`, `compute_river_network()` (multi-ordem), `compute_watershed_from_point()` (D8 iterativo).
+- **API** (`api.py`): `POST /gee/basins`, `/gee/basin-stats`, `/gee/drainage`, `/gee/river-network`, `/gee/watershed`.
+- **D8 algorithm**: tradução pixel-a-pixel usando `Image.translate(-1,0,"pixels",proj)` para cada um dos 8 vizinhos; acumula basin mask em `max_iter` iterações; converte para polígono via `reduceToVectors`.
+- **Nota**: HydroBASINS `WWF/HydroSHEDS/v1/Basins/hybas_af_lev0X_v1c` pode não estar disponível neste service account — usa-se D8/DEM como alternativa principal.
 - Índices de risco: erosão (slope 50% + NDVI inv 30% + precip 20%), cheia (flatness 40% + precip 40% + NDWI 20%), hidrogeológico (slope Gaussian pico 10° + precip + NDVI).
 
 ## Future Evolution (Sprints 3+)

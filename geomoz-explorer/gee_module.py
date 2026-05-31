@@ -1207,43 +1207,71 @@ def compute_topo_classes_tile(
     }
 
 
-# ── Bacias Hidrográficas (HydroBASINS + HydroSHEDS) ─────────────────────────
+# ── Bacias Hidrográficas (HydroBASINS + HydroSHEDS + DEM) ───────────────────
 
 import math as _math
 
-_HYDROBASINS: dict = {
-    5: "WWF/HydroSHEDS/v1/Basins/hybas_af_lev05_v1c",
-    6: "WWF/HydroSHEDS/v1/Basins/hybas_af_lev06_v1c",
-    7: "WWF/HydroSHEDS/v1/Basins/hybas_af_lev07_v1c",
-    8: "WWF/HydroSHEDS/v1/Basins/hybas_af_lev08_v1c",
+# Multiple candidate collection IDs for HydroBASINS Africa (GEE availability varies)
+_HYDROBASINS_CANDIDATES: dict = {
+    5: [
+        "WWF/HydroSHEDS/v1/Basins/hybas_af_lev05_v1c",
+        "WWF/HydroSHEDS/v1/Basins/hybas_af_lev05",
+    ],
+    6: [
+        "WWF/HydroSHEDS/v1/Basins/hybas_af_lev06_v1c",
+        "WWF/HydroSHEDS/v1/Basins/hybas_af_lev06",
+    ],
+    7: [
+        "WWF/HydroSHEDS/v1/Basins/hybas_af_lev07_v1c",
+        "WWF/HydroSHEDS/v1/Basins/hybas_af_lev07",
+    ],
+    8: [
+        "WWF/HydroSHEDS/v1/Basins/hybas_af_lev08_v1c",
+        "WWF/HydroSHEDS/v1/Basins/hybas_af_lev08",
+    ],
 }
 
 
 def compute_basins(region_geojson: Optional[dict], level: int = 6) -> dict:
     """
     Return HydroBASINS polygons (level 5–8) that intersect the region.
-    Returns tile URL (GEE) + simplified GeoJSON for click interaction.
+    Tries multiple collection IDs; if all fail, returns empty result with
+    'source': 'unavailable' so the frontend can suggest DEM delineation.
     """
     import ee
     _init_gee()
-    region  = _to_ee_region(region_geojson)
-    coll_id = _HYDROBASINS.get(level, _HYDROBASINS[6])
+    region = _to_ee_region(region_geojson)
 
-    basins_fc = ee.FeatureCollection(coll_id).filterBounds(region)
+    candidates = _HYDROBASINS_CANDIDATES.get(level, _HYDROBASINS_CANDIDATES[6])
+    last_error = "Collection not found"
 
-    # Styled tile for map overlay
-    styled    = basins_fc.style(color="1a73e8", fillColor="1a73e818", width=1.5)
-    tile_url  = styled.getMapId()["tile_fetcher"].url_format
+    for coll_id in candidates:
+        try:
+            basins_fc = ee.FeatureCollection(coll_id).filterBounds(region)
+            count     = basins_fc.size().getInfo()
+            geojson   = basins_fc.limit(300).getInfo()
+            styled    = basins_fc.style(color="1a73e8", fillColor="1a73e818", width=1.5)
+            tile_url  = styled.getMapId()["tile_fetcher"].url_format
+            return {
+                "tileUrl":  tile_url,
+                "geojson":  geojson,
+                "count":    count,
+                "level":    level,
+                "source":   "hydrobasins",
+                "collId":   coll_id,
+            }
+        except Exception as exc:
+            last_error = str(exc)
+            continue
 
-    # GeoJSON for click interaction (limited to 300 polygons)
-    count   = basins_fc.size().getInfo()
-    geojson = basins_fc.limit(300).getInfo()
-
+    # All candidates failed — return empty result flagged for frontend
     return {
-        "tileUrl": tile_url,
-        "geojson": geojson,
-        "count":   count,
-        "level":   level,
+        "tileUrl":  None,
+        "geojson":  None,
+        "count":    0,
+        "level":    level,
+        "source":   "unavailable",
+        "error":    last_error,
     }
 
 
@@ -1358,3 +1386,169 @@ def compute_drainage_tile(region_geojson: Optional[dict], threshold: int = 500) 
     vis     = rivers.visualize(palette=["1565c0"])
     tile_url = vis.getMapId()["tile_fetcher"].url_format
     return {"tileUrl": tile_url, "threshold": threshold}
+
+
+def compute_river_network(region_geojson: Optional[dict]) -> dict:
+    """
+    Multi-order river network derived from HydroSHEDS flow accumulation.
+
+    Stream order classification (approximate Strahler via ACC thresholds):
+      1 — headwaters   (ACC ≥ 100 cells)
+      2 — small        (ACC ≥ 500)
+      3 — medium       (ACC ≥ 2 000)
+      4 — large        (ACC ≥ 10 000)
+      5 — major rivers (ACC ≥ 50 000)
+
+    Returns one classified tile URL with palette light→dark blue, plus a
+    second major-rivers-only tile for quick overlay.
+    """
+    import ee
+    _init_gee()
+    region = _to_ee_region(region_geojson)
+    acc    = ee.Image("WWF/HydroSHEDS/15ACC").select("b1").clip(region)
+
+    classified = (
+        ee.Image(0)
+        .where(acc.gte(100),    1)
+        .where(acc.gte(500),    2)
+        .where(acc.gte(2_000),  3)
+        .where(acc.gte(10_000), 4)
+        .where(acc.gte(50_000), 5)
+    ).selfMask()
+
+    # Palette: progressively darker blue per order
+    palette = ["a8d5f7", "5badf5", "1a73e8", "0d47a1", "002171"]
+    tile_all = classified.visualize(min=1, max=5, palette=palette) \
+                         .getMapId()["tile_fetcher"].url_format
+
+    tile_major = acc.gte(10_000).selfMask().visualize(palette=["002171"], opacity=0.9) \
+                    .getMapId()["tile_fetcher"].url_format
+
+    return {
+        "tileUrl":       tile_all,
+        "majorTileUrl":  tile_major,
+        "orders": {
+            "1_headwaters": 100,
+            "2_small":      500,
+            "3_medium":     2_000,
+            "4_large":      10_000,
+            "5_major":      50_000,
+        },
+        "palette": palette,
+    }
+
+
+def compute_watershed_from_point(
+    lat: float,
+    lon: float,
+    region_geojson: Optional[dict],
+    max_iter: int = 60,
+) -> dict:
+    """
+    Delineate a watershed (upstream catchment) from a pour point using the
+    D8 flow-direction algorithm on HydroSHEDS 15-arc-second data.
+
+    Algorithm:
+      1. Snap pour point to nearest stream pixel (ACC ≥ 500).
+      2. Seed a 1-pixel basin at the snapped location.
+      3. Iteratively expand the basin by one pixel upstream per iteration
+         using HydroSHEDS 15DIR flow-direction image (D8 values:
+         1=E 2=SE 4=S 8=SW 16=W 32=NW 64=N 128=NE).
+      4. Convert pixel mask → vector polygon.
+
+    In pixel space (row 0 = North, row increases going South, col increases East):
+      translate(dx, dy): result(col,row) = original(col-dx, row-dy)
+      East  neighbor = translate(-1, 0)
+      SE    neighbor = translate(-1, -1)  [col+1, row+1]
+      South neighbor = translate( 0, -1)  [row+1]
+      SW    neighbor = translate( 1, -1)
+      West  neighbor = translate( 1,  0)
+      NW    neighbor = translate( 1,  1)
+      North neighbor = translate( 0,  1)
+      NE    neighbor = translate(-1,  1)
+    """
+    import ee
+    _init_gee()
+
+    fdir = ee.Image("WWF/HydroSHEDS/15DIR").select("b1")
+    acc  = ee.Image("WWF/HydroSHEDS/15ACC").select("b1")
+    proj = fdir.projection()   # EPSG:4326 at 15 arc-sec
+
+    pour_pt = ee.Geometry.Point([lon, lat])
+
+    # 1. Snap pour point to nearest high-accumulation pixel within 15 km
+    snap_buf = pour_pt.buffer(15_000)
+    snapped_pt = (
+        acc.gte(500).selfMask()
+        .addBands(ee.Image.pixelLonLat())
+        .clip(snap_buf)
+        .reduceRegion(
+            reducer  = ee.Reducer.first().setOutputs(["b1", "longitude", "latitude"]),
+            geometry = snap_buf,
+            scale    = 500,
+            maxPixels= int(1e7),
+            bestEffort=True,
+        )
+    )
+    # Build snapped geometry from the nearest stream pixel; fall back to pour_pt
+    snap_lon = snapped_pt.get("longitude")
+    snap_lat = snapped_pt.get("latitude")
+    seed_pt  = ee.Algorithms.If(
+        snap_lon,
+        ee.Geometry.Point([snap_lon, snap_lat]),
+        pour_pt,
+    )
+
+    # 2. Seed basin: a 600-m buffer around the pour point (≈ 1 pixel at 500 m scale)
+    seed_geom = ee.Geometry(seed_pt).buffer(600)
+    basin = (
+        ee.Image.constant(1)
+        .clip(seed_geom)
+        .reproject(proj)
+        .toByte()
+        .rename("b")
+        .unmask(0)
+    )
+
+    # 3. Iterative D8 upstream expansion
+    for _ in range(max_iter):
+        upstream = (
+            fdir.eq(1  ).And(basin.translate(-1,  0, "pixels", proj))
+            .Or(fdir.eq(2  ).And(basin.translate(-1, -1, "pixels", proj)))
+            .Or(fdir.eq(4  ).And(basin.translate( 0, -1, "pixels", proj)))
+            .Or(fdir.eq(8  ).And(basin.translate( 1, -1, "pixels", proj)))
+            .Or(fdir.eq(16 ).And(basin.translate( 1,  0, "pixels", proj)))
+            .Or(fdir.eq(32 ).And(basin.translate( 1,  1, "pixels", proj)))
+            .Or(fdir.eq(64 ).And(basin.translate( 0,  1, "pixels", proj)))
+            .Or(fdir.eq(128).And(basin.translate(-1,  1, "pixels", proj)))
+        ).rename("b").toByte()
+        basin = basin.Or(upstream).reproject(proj).unmask(0)
+
+    basin = basin.selfMask()
+
+    # 4. Vectorize
+    clip_region = _to_ee_region(region_geojson) or pour_pt.buffer(max_iter * 600)
+    vec = basin.reduceToVectors(
+        geometry       = clip_region,
+        scale          = 500,
+        geometryType   = "polygon",
+        bestEffort     = True,
+        maxPixels      = int(1e9),
+        labelProperty  = "basin",
+    )
+
+    area_km2 = vec.geometry().area(maxError=100).divide(1e6)
+
+    # 5. Tile for visualization
+    tile_url = (
+        basin.visualize(palette=["0d47a1"], opacity=0.45)
+        .getMapId()["tile_fetcher"].url_format
+    )
+
+    return {
+        "tileUrl":    tile_url,
+        "geojson":    vec.getInfo(),
+        "pourPoint":  [lat, lon],
+        "areaKm2":    round(float(area_km2.getInfo()), 2),
+        "maxIter":    max_iter,
+    }
