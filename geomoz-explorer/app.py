@@ -93,8 +93,12 @@ with st.sidebar:
 
 # ── load data ──────────────────────────────────────────────────────────────────
 with st.spinner("A carregar dados geoespaciais..."):
-    provinces_gdf = load_provinces() if show_provinces or filter_mode != "Nenhum" else None
-    districts_gdf = load_districts() if show_districts or filter_mode == "Distrito" else None
+    provinces_gdf = (
+        load_provinces() if show_provinces or filter_mode != "Nenhum" else None
+    )
+    districts_gdf = (
+        load_districts() if show_districts or filter_mode == "Distrito" else None
+    )
     admin_posts_gdf = load_admin_posts() if show_admin_posts else None
     villages_gdf = load_villages() if show_villages else None
     geology_gdf = load_geology() if show_geology or filter_mode != "Nenhum" else None
@@ -106,9 +110,13 @@ with st.sidebar:
         if province_names:
             selected_province = st.selectbox("Selecionar Província", province_names)
             if selected_province and provinces_gdf is not None:
-                prov_col = _find_col(provinces_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name", "NAME"])
+                prov_col = _find_col(
+                    provinces_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name", "NAME"]
+                )
                 if prov_col:
-                    province_gdf = provinces_gdf[provinces_gdf[prov_col] == selected_province]
+                    province_gdf = provinces_gdf[
+                        provinces_gdf[prov_col] == selected_province
+                    ]
         else:
             st.info("Províncias não disponíveis.")
 
@@ -122,11 +130,13 @@ with st.sidebar:
                 )
                 district_names = get_district_names(filtered_districts)
                 if district_names:
-                    selected_district = st.selectbox("Selecionar Distrito", district_names)
+                    selected_district = st.selectbox(
+                        "Selecionar Distrito", district_names
+                    )
                     if selected_district and filtered_districts is not None:
                         dist_col = _find_col(
                             filtered_districts,
-                            ["Distrito", "DISTRITO", "NAME_2", "name", "NAME"]
+                            ["Distrito", "DISTRITO", "NAME_2", "name", "NAME"],
                         )
                         if dist_col:
                             district_filter_gdf = filtered_districts[
@@ -143,7 +153,11 @@ if filter_mode == "Província" and province_gdf is not None and len(province_gdf
     area_label = f"Geologia — {selected_province}"
     area_boundary_gdf = province_gdf
 
-elif filter_mode == "Distrito" and district_filter_gdf is not None and len(district_filter_gdf) > 0:
+elif (
+    filter_mode == "Distrito"
+    and district_filter_gdf is not None
+    and len(district_filter_gdf) > 0
+):
     filtered_geology = filter_geology_by_area(geology_gdf, district_filter_gdf)
     area_label = f"Geologia — {selected_district}"
     area_boundary_gdf = district_filter_gdf
@@ -168,7 +182,9 @@ if show_villages and villages_gdf is not None:
 
 if show_geology and geology_to_display is not None:
     layer_name = area_label if area_label else "Geologia"
-    m = add_geology_layer(m, geology_to_display, color_by=geology_color_by, name=layer_name)
+    m = add_geology_layer(
+        m, geology_to_display, color_by=geology_color_by, name=layer_name
+    )
 
 if area_boundary_gdf is not None:
     m = add_selected_area_layer(m, area_boundary_gdf, label="Área selecionada")
@@ -186,7 +202,9 @@ with col_map:
 with col_legend:
     if show_geology and geology_to_display is not None:
         st.subheader("🎨 Legenda — Geologia")
-        legend_html = build_geology_legend(geology_to_display, color_by=geology_color_by)
+        legend_html = build_geology_legend(
+            geology_to_display, color_by=geology_color_by
+        )
         if legend_html:
             st.markdown(legend_html, unsafe_allow_html=True)
         else:
@@ -195,7 +213,11 @@ with col_legend:
         st.info("Ative a camada de geologia para ver a legenda.")
 
 # ── analysis panel ─────────────────────────────────────────────────────────────
-if filter_mode != "Nenhum" and filtered_geology is not None and len(filtered_geology) > 0:
+if (
+    filter_mode != "Nenhum"
+    and filtered_geology is not None
+    and len(filtered_geology) > 0
+):
     st.divider()
     st.subheader(f"📊 Análise Geológica — {area_label}")
 
@@ -204,8 +226,12 @@ if filter_mode != "Nenhum" and filtered_geology is not None and len(filtered_geo
     metric_cols = st.columns(4)
     metric_cols[0].metric("Feições geológicas", summary.get("total_features", 0))
     metric_cols[1].metric("Unidades distintas", summary.get("total_units", 0))
-    metric_cols[2].metric("Área total (km²)", f"{summary.get('total_area_km2', 0):,.2f}")
-    metric_cols[3].metric("Litologia dominante", summary.get("dominant_lithology", "N/A"))
+    metric_cols[2].metric(
+        "Área total (km²)", f"{summary.get('total_area_km2', 0):,.2f}"
+    )
+    metric_cols[3].metric(
+        "Litologia dominante", summary.get("dominant_lithology", "N/A")
+    )
 
     stats_df = calculate_geology_stats(filtered_geology)
     if not stats_df.empty:
@@ -215,9 +241,7 @@ if filter_mode != "Nenhum" and filtered_geology is not None and len(filtered_geo
         st.info("Não foi possível calcular as estatísticas para a área selecionada.")
 
 elif filter_mode != "Nenhum":
-    st.info(
-        "Selecione uma área válida com geologia disponível para ver a análise."
-    )
+    st.info("Selecione uma área válida com geologia disponível para ver a análise.")
 
 # ── export panel ───────────────────────────────────────────────────────────────
 st.divider()
@@ -274,10 +298,12 @@ with exp_col3:
 # ── future modules ─────────────────────────────────────────────────────────────
 st.divider()
 
-tab_satellite, tab_ai = st.tabs([
-    "🛰️ Satellite Analysis (Future Module)",
-    "🤖 GeoMoz AI (Future Module)",
-])
+tab_satellite, tab_ai = st.tabs(
+    [
+        "🛰️ Satellite Analysis (Future Module)",
+        "🤖 GeoMoz AI (Future Module)",
+    ]
+)
 
 with tab_satellite:
     st.info(
