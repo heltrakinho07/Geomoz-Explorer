@@ -104,10 +104,24 @@ _Populate as you build._
 - **Curvas de Nível** (`POST /gee/contours`): equidistância configurável (10/20/25/50/100/200/500 m), linhas-mestras a cada N× (slider 2–10). Backend usa `dem.mod(interval).abs().lt(interval*0.05)` → máscara binária visualizada como linhas finas castanhas (#8b5a2b) + linhas-mestras mais escuras (#3a1c0c). Retorna 2 tile URLs + min/max elevação + lista de intervals presentes na região. Frontend mostra como duas TileLayers sobrepostas com legenda lateral.
 - Ambos GEE-only, sob grupo "Relevo". Ícones Route (perfil) e Waves (curvas).
 
-## GeoAnálises (Sprint 3 — em curso)
+## GeoAnálises (Sprint 3 — completo)
 
 - **Classes Topográficas Customizáveis** (`POST /gee/topo-classes`): user define N limites de elevação (m) e N+1 classes com cor + nome editáveis. Backend usa `dem.gte(b)` somado iterativamente para classificar pixels em índice 1..N+1, opcional overlay de água (HydroSHEDS) como classe extra. Retorna tile + áreas por classe (km² + %). UI tem editor de cores (HTML color picker), nomes editáveis, slider de limites, botão "Aplicar Classes". Validação client-side: limites têm de ser estritamente crescentes (botão Run desabilita + warning visual se não). `hasWater` no response indica se overlay foi realmente aplicado (não apenas pedido).
 - **Perfil Topográfico — Cursor Sincronizado**: hover no gráfico Recharts (`onMouseMove` com `isTooltipActive`+`activeTooltipIndex`) emite índice → marker âmbar pisca-pisca aparece no mapa na posição correspondente da polyline A→B. Limpa em `onMouseLeave` ou quando cursor sai da área do tooltip.
+
+## GeoAnálises (Sprint 4 — completo)
+
+- **Reorganização por tipo de índice**: tab bar dividida em 6 grupos com nome + badge de fonte: "Mosaico Óptico" (Sentinel-2 EOX), "Vegetação & Mineralogia" (S2 · 10–20 m), "Landsat 8" (· 30 m), "Relevo & Morfologia" (DEM GLO-30 · 30 m), "Estruturas Geológicas" (GEE DEM + Sobel), "Potencial Mineral" (GEE Multi-critério).
+- **Legendas geocientíficas por índice**: painel lateral mostra badge do grupo, escala de cor (sempre visível, proxy ou GEE), interpretação geocientífica completa, fórmula em destaque, bandas utilizadas.
+- Separadores visuais `│` entre grupos; badge de fonte em cor por grupo.
+
+## Bacias Hidrográficas — HidroGeoMoz (completo)
+
+- **Nova tab "Bacias Hidrográficas"** (ícone Droplets, accent azul) no nav do Explorer.
+- **Backend** (`gee_module.py`): `compute_basins()` (HydroBASINS L5–L8 África), `compute_basin_stats()` (elev/slope/NDVI/NDWI/CHIRPS/riscos), `compute_drainage_tile()` (HydroSHEDS 15ACC treshold).
+- **API** (`api.py`): `POST /gee/basins`, `POST /gee/basin-stats`, `POST /gee/drainage`.
+- **Frontend** (`HidroGeoMoz.tsx`): mapa react-leaflet com basins GeoJSON clicável + rede de drenagem tile; sidebar com filtros (prov/dist), nível HydroBASINS (5–8), threshold drenagem, botão "Carregar Bacias"; painel stats por bacia seleccionada: morfometria (área, perímetro, elevação min/média/máx, declive médio), vegetação (NDVI, NDWI, precipitação CHIRPS), gauges de risco (erosão, cheia, potencial hidrogeológico 0–100); painel direito com gráficos Recharts (litologias + unidades geológicas GeoMoz), tabela completa; export CSV + GeoJSON.
+- Índices de risco: erosão (slope 50% + NDVI inv 30% + precip 20%), cheia (flatness 40% + precip 40% + NDWI 20%), hidrogeológico (slope Gaussian pico 10° + precip + NDVI).
 
 ## Future Evolution (Sprints 3+)
 

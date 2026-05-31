@@ -1205,3 +1205,156 @@ def compute_topo_classes_tile(
         "areasPct":  pct,
         "hasWater":  water_applied,
     }
+
+
+# ── Bacias Hidrográficas (HydroBASINS + HydroSHEDS) ─────────────────────────
+
+import math as _math
+
+_HYDROBASINS: dict = {
+    5: "WWF/HydroSHEDS/v1/Basins/hybas_af_lev05_v1c",
+    6: "WWF/HydroSHEDS/v1/Basins/hybas_af_lev06_v1c",
+    7: "WWF/HydroSHEDS/v1/Basins/hybas_af_lev07_v1c",
+    8: "WWF/HydroSHEDS/v1/Basins/hybas_af_lev08_v1c",
+}
+
+
+def compute_basins(region_geojson: Optional[dict], level: int = 6) -> dict:
+    """
+    Return HydroBASINS polygons (level 5–8) that intersect the region.
+    Returns tile URL (GEE) + simplified GeoJSON for click interaction.
+    """
+    import ee
+    _init_gee()
+    region  = _to_ee_region(region_geojson)
+    coll_id = _HYDROBASINS.get(level, _HYDROBASINS[6])
+
+    basins_fc = ee.FeatureCollection(coll_id).filterBounds(region)
+
+    # Styled tile for map overlay
+    styled    = basins_fc.style(color="1a73e8", fillColor="1a73e818", width=1.5)
+    tile_url  = styled.getMapId()["tile_fetcher"].url_format
+
+    # GeoJSON for click interaction (limited to 300 polygons)
+    count   = basins_fc.size().getInfo()
+    geojson = basins_fc.limit(300).getInfo()
+
+    return {
+        "tileUrl": tile_url,
+        "geojson": geojson,
+        "count":   count,
+        "level":   level,
+    }
+
+
+def compute_basin_stats(basin_geometry: dict) -> dict:
+    """
+    Compute elevation, slope, NDVI, NDWI, precipitation and derived
+    risk indices (erosão, cheia, potencial hidrogeológico) for one basin.
+
+    basin_geometry : GeoJSON geometry dict (Polygon / MultiPolygon).
+    """
+    import ee
+    _init_gee()
+
+    region = ee.Geometry(basin_geometry)
+
+    # DEM → elevation + slope
+    dem   = _build_dem(region).rename("elev")
+    slope = ee.Terrain.slope(dem).rename("slope")
+
+    # Sentinel-2 NDVI + NDWI
+    has_s2 = False
+    ndvi = ndwi = None
+    try:
+        s2, _ = _build_s2_composite(region, "2023-01-01", "2023-12-31", 60)
+        ndvi = s2.normalizedDifference(["B8", "B4"]).rename("ndvi")
+        ndwi = s2.normalizedDifference(["B3", "B8"]).rename("ndwi")
+        has_s2 = True
+    except Exception:
+        pass
+
+    # CHIRPS precipitation (2022 annual sum, mm)
+    has_precip = False
+    chirps = None
+    try:
+        chirps = (
+            ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY")
+            .filterDate("2022-01-01", "2023-01-01")
+            .sum()
+            .rename("precip")
+        )
+        has_precip = True
+    except Exception:
+        pass
+
+    max_px = int(1e9)
+    reducer_mm = ee.Reducer.min().combine(ee.Reducer.max(), sharedInputs=True).combine(ee.Reducer.mean(), sharedInputs=True)
+
+    elev_info  = dem.unmask(0).reduceRegion(reducer=reducer_mm, geometry=region, scale=90, bestEffort=True, maxPixels=max_px).getInfo()
+    slope_info = slope.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=90, bestEffort=True, maxPixels=max_px).getInfo()
+
+    ndvi_mean = ndwi_mean = None
+    if has_s2:
+        try:
+            nv = ndvi.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=30, bestEffort=True, maxPixels=max_px).getInfo()
+            nw = ndwi.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=30, bestEffort=True, maxPixels=max_px).getInfo()
+            ndvi_mean = nv.get("ndvi_mean")
+            ndwi_mean = nw.get("ndwi_mean")
+        except Exception:
+            pass
+
+    precip_mm_yr = 800.0  # fallback
+    if has_precip:
+        try:
+            pr = chirps.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=5000, bestEffort=True, maxPixels=max_px).getInfo()
+            precip_mm_yr = float(pr.get("precip_mean") or 800)
+        except Exception:
+            pass
+
+    area_km2 = region.area(maxError=100).getInfo() / 1e6
+    perim_km = region.perimeter(maxError=100).getInfo() / 1e3
+
+    # ── Risk indices (0–100) ──────────────────────────────────────────────────
+    mean_slope = float(slope_info.get("slope_mean") or 0)
+    mean_ndvi  = float(ndvi_mean or 0.3)
+    precip_n   = min(1.0, precip_mm_yr / 2000.0)
+    slope_n    = min(1.0, mean_slope / 45.0)
+    veg_n      = max(0.0, min(1.0, mean_ndvi))
+
+    erosion_risk = round(slope_n * 50 + (1 - veg_n) * 30 + precip_n * 20, 1)
+    flat_n       = max(0.0, 1.0 - slope_n)
+    ndwi_n       = max(0.0, min(1.0, float(ndwi_mean or 0) * 2))
+    flood_risk   = round(flat_n * 40 + precip_n * 40 + ndwi_n * 20, 1)
+    slope_hydro  = _math.exp(-((mean_slope - 10) ** 2) / 200.0)
+    hydro_pot    = round(slope_hydro * 30 + precip_n * 40 + veg_n * 30, 1)
+
+    return {
+        "areaKm2":        round(area_km2, 2),
+        "perimeterKm":    round(perim_km, 2),
+        "elevMinM":       round(float(elev_info.get("elev_min")  or 0), 1),
+        "elevMeanM":      round(float(elev_info.get("elev_mean") or 0), 1),
+        "elevMaxM":       round(float(elev_info.get("elev_max")  or 0), 1),
+        "slopeMeanDeg":   round(mean_slope, 2),
+        "ndviMean":       round(float(ndvi_mean), 3) if ndvi_mean is not None else None,
+        "ndwiMean":       round(float(ndwi_mean), 3) if ndwi_mean is not None else None,
+        "precipMmYr":     round(precip_mm_yr, 1),
+        "erosionRisk":    erosion_risk,
+        "floodRisk":      flood_risk,
+        "hydroPotential": hydro_pot,
+    }
+
+
+def compute_drainage_tile(region_geojson: Optional[dict], threshold: int = 500) -> dict:
+    """
+    HydroSHEDS 15-arc-second flow accumulation thresholded → drainage network.
+    threshold: minimum accumulation cells (500 ≈ medium rivers).
+    """
+    import ee
+    _init_gee()
+    region  = _to_ee_region(region_geojson)
+    acc     = ee.Image("WWF/HydroSHEDS/15ACC").select("b1")
+    rivers  = acc.gte(threshold).selfMask().clip(region)
+    vis     = rivers.visualize(palette=["1565c0"])
+    tile_url = vis.getMapId()["tile_fetcher"].url_format
+    return {"tileUrl": tile_url, "threshold": threshold}

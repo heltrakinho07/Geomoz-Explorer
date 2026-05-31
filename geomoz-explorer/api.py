@@ -661,3 +661,83 @@ def gee_indices():
             for k, v in INDEX_REGISTRY.items()
         ]
     }
+
+
+# ── Bacias Hidrográficas ──────────────────────────────────────────────────────
+
+class GEEBasinsRequest(BaseModel):
+    province:  Optional[str] = None
+    district:  Optional[str] = None
+    level:     int            = 6   # HydroBASINS level 5–8
+
+
+class GEEBasinStatsRequest(BaseModel):
+    geometry: dict  # GeoJSON geometry dict (Polygon / MultiPolygon)
+
+
+class GEEDrainageRequest(BaseModel):
+    province:  Optional[str] = None
+    district:  Optional[str] = None
+    threshold: int            = 500
+
+
+@app.post("/geomoz-api/gee/basins")
+async def gee_basins(req: GEEBasinsRequest):
+    """HydroBASINS polygons that intersect the selected region."""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from gee_module import compute_basins
+
+    region   = _region_geojson(req.province, req.district)
+    executor = ThreadPoolExecutor(max_workers=4)
+    loop     = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            executor, lambda: compute_basins(region, req.level)
+        )
+        return result
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE basins failed: {exc}")
+
+
+@app.post("/geomoz-api/gee/basin-stats")
+async def gee_basin_stats(req: GEEBasinStatsRequest):
+    """Elevation, slope, NDVI, NDWI, precipitation + risk indices for one basin."""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from gee_module import compute_basin_stats
+
+    executor = ThreadPoolExecutor(max_workers=4)
+    loop     = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            executor, lambda: compute_basin_stats(req.geometry)
+        )
+        return result
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE basin-stats failed: {exc}")
+
+
+@app.post("/geomoz-api/gee/drainage")
+async def gee_drainage(req: GEEDrainageRequest):
+    """HydroSHEDS drainage network tile for the selected region."""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from gee_module import compute_drainage_tile
+
+    region   = _region_geojson(req.province, req.district)
+    executor = ThreadPoolExecutor(max_workers=4)
+    loop     = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            executor, lambda: compute_drainage_tile(region, req.threshold)
+        )
+        return result
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE drainage failed: {exc}")
