@@ -741,3 +741,65 @@ async def gee_drainage(req: GEEDrainageRequest):
         raise HTTPException(503, str(exc))
     except Exception as exc:
         raise HTTPException(500, f"GEE drainage failed: {exc}")
+
+
+class GEERiverNetRequest(BaseModel):
+    province: Optional[str] = None
+    district: Optional[str] = None
+
+
+@app.post("/geomoz-api/gee/river-network")
+async def gee_river_network(req: GEERiverNetRequest):
+    """Multi-order river network tile (Strahler-like classification via HydroSHEDS ACC)."""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from gee_module import compute_river_network
+
+    region   = _region_geojson(req.province, req.district)
+    executor = ThreadPoolExecutor(max_workers=4)
+    loop     = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            executor, lambda: compute_river_network(region)
+        )
+        return result
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE river-network failed: {exc}")
+
+
+class GEEWatershedRequest(BaseModel):
+    lat:      float
+    lon:      float
+    province: Optional[str] = None
+    district: Optional[str] = None
+    max_iter: int            = 60
+
+
+@app.post("/geomoz-api/gee/watershed")
+async def gee_watershed(req: GEEWatershedRequest):
+    """
+    D8 watershed delineation from a pour point using HydroSHEDS 15DIR.
+    Returns tile URL + GeoJSON polygon + area km².
+    max_iter controls how many upstream pixels to expand (~500 m/step).
+    """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from gee_module import compute_watershed_from_point
+
+    region   = _region_geojson(req.province, req.district)
+    executor = ThreadPoolExecutor(max_workers=4)
+    loop     = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            executor,
+            lambda: compute_watershed_from_point(
+                req.lat, req.lon, region, req.max_iter
+            ),
+        )
+        return result
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE watershed failed: {exc}")
