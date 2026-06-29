@@ -1396,9 +1396,11 @@ def compute_basin_stats(basin_geometry: dict) -> dict:
 
     region = ee.Geometry(basin_geometry)
 
-    # DEM → elevation + slope
+    # DEM → elevation + slope. ee.Terrain.slope on a *mosaic* (no fixed
+    # projection) returns null, so pin the DEM to its native 30 m projection.
+    dem_proj = ee.ImageCollection("COPERNICUS/DEM/GLO30").select("DEM").first().projection()
     dem   = _build_dem(region).rename("elev")
-    slope = ee.Terrain.slope(dem).rename("slope")
+    slope = ee.Terrain.slope(dem.setDefaultProjection(dem_proj)).rename("slope")
 
     # Sentinel-2 NDVI + NDWI
     has_s2 = False
@@ -1436,8 +1438,9 @@ def compute_basin_stats(basin_geometry: dict) -> dict:
         try:
             nv = ndvi.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=30, bestEffort=True, maxPixels=max_px).getInfo()
             nw = ndwi.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=30, bestEffort=True, maxPixels=max_px).getInfo()
-            ndvi_mean = nv.get("ndvi_mean")
-            ndwi_mean = nw.get("ndwi_mean")
+            # Plain ee.Reducer.mean() keys outputs by band name, not "<band>_mean".
+            ndvi_mean = nv.get("ndvi")
+            ndwi_mean = nw.get("ndwi")
         except Exception:
             pass
 
@@ -1445,7 +1448,7 @@ def compute_basin_stats(basin_geometry: dict) -> dict:
     if has_precip:
         try:
             pr = chirps.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=5000, bestEffort=True, maxPixels=max_px).getInfo()
-            precip_mm_yr = float(pr.get("precip_mean") or 800)
+            precip_mm_yr = float(pr.get("precip") or 800)
         except Exception:
             pass
 
@@ -1453,7 +1456,7 @@ def compute_basin_stats(basin_geometry: dict) -> dict:
     perim_km = region.perimeter(maxError=100).getInfo() / 1e3
 
     # ── Risk indices (0–100) ──────────────────────────────────────────────────
-    mean_slope = float(slope_info.get("slope_mean") or 0)
+    mean_slope = float(slope_info.get("slope") or 0)
     mean_ndvi  = float(ndvi_mean or 0.3)
     precip_n   = min(1.0, precip_mm_yr / 2000.0)
     slope_n    = min(1.0, mean_slope / 45.0)
@@ -1503,8 +1506,10 @@ def compute_basin_report(basin_geometry: dict) -> dict:
     max_px = int(1e9)
 
     # ── Morfometria ────────────────────────────────────────────────────────────
+    # Slope on a mosaic needs a fixed projection or ee.Terrain.slope returns null.
+    dem_proj = ee.ImageCollection("COPERNICUS/DEM/GLO30").select("DEM").first().projection()
     dem   = _build_dem(region).rename("elev")
-    slope = ee.Terrain.slope(dem).rename("slope")
+    slope = ee.Terrain.slope(dem.setDefaultProjection(dem_proj)).rename("slope")
     relief = dem.addBands(slope)
     reducer_ms = (ee.Reducer.min().combine(ee.Reducer.max(), sharedInputs=True)
                   .combine(ee.Reducer.mean(), sharedInputs=True))
