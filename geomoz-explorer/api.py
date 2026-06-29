@@ -771,6 +771,37 @@ async def gee_topo_classes(req: GEETopoClassesRequest):
         raise HTTPException(500, f"GEE topo-classes failed: {exc}")
 
 
+class GEELandcoverRequest(BaseModel):
+    province: Optional[str] = None
+    district: Optional[str] = None
+
+
+@app.post("/geomoz-api/gee/landcover")
+async def gee_landcover(req: GEELandcoverRequest):
+    """Land cover (ESA WorldCover 2021, 10 m) with per-class area analysis."""
+    import asyncio
+    from .gee_module import compute_landcover_tile
+
+    region = _region_geojson(req.province, req.district)
+
+    loop = asyncio.get_event_loop()
+
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_landcover_tile(region),
+        )
+        result["province"] = req.province
+        result["district"] = req.district
+        return result
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE landcover failed: {exc}")
+
+
 @app.get("/geomoz-api/gee/indices")
 def gee_indices():
     """List available indices with metadata, grouped (spectral/landsat/terrain)."""

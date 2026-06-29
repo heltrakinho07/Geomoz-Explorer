@@ -15,8 +15,11 @@ Authentication priority:
 
 import os
 import json
+import logging
 import threading
 from typing import Optional, Any
+
+logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 _gee_initialized = False
@@ -43,18 +46,42 @@ def _init_gee() -> None:
         sa_key_raw = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
         project_id = os.environ.get("GEE_PROJECT_ID", "").strip() or None
 
+        # Try service account from environment variable
+        key_data = None
         if sa_key_raw:
             try:
                 key_data = json.loads(sa_key_raw)
+            except json.JSONDecodeError as e:
+                logger.warning("Failed to parse GEE_SERVICE_ACCOUNT_KEY JSON: %s", e)
+                pass
+        
+        if key_data:
+            try:
+                from google.auth.transport.requests import Request
+                from google.oauth2 import service_account
+                
                 sa_email = key_data.get("client_email", "")
                 project_id = project_id or key_data.get("project_id") or None
                 if not sa_email:
                     raise ValueError("client_email missing in service account JSON")
-                credentials = ee.ServiceAccountCredentials(sa_email, key_data=sa_key_raw)
-                ee.Initialize(credentials, project=project_id)
+                
+                pk = key_data.get("private_key", "")
+                logger.info("Creating credentials for service account: %s", sa_email)
+                # Create credentials from service account info
+                creds = service_account.Credentials.from_service_account_info(
+                    key_data,
+                    scopes=[
+                        "https://www.googleapis.com/auth/earthengine",
+                        "https://www.googleapis.com/auth/cloud-platform",
+                    ]
+                )
+                logger.info("Initializing EE with project: %s", project_id)
+                ee.Initialize(creds, project=project_id)
+                logger.info("EE initialized successfully")
                 _gee_initialized = True
                 return
             except Exception as exc:
+                logger.error("Service account auth failed: %s", exc, exc_info=True)
                 _gee_error = f"Service account auth failed: {exc}"
                 raise RuntimeError(_gee_error)
 
@@ -65,8 +92,8 @@ def _init_gee() -> None:
         except Exception as exc:
             _gee_error = (
                 "GEE not configured. "
-                "Set GEE_SERVICE_ACCOUNT_KEY (service account JSON) or run "
-                "`earthengine authenticate` and set GEE_PROJECT_ID."
+                "Set GEE_SERVICE_ACCOUNT_KEY (service account JSON as string) or run "
+                "`earthencine authenticate` and set GEE_PROJECT_ID."
             )
             raise RuntimeError(_gee_error)
 
@@ -1204,6 +1231,88 @@ def compute_topo_classes_tile(
         "areasKm2":  areas_km2,
         "areasPct":  pct,
         "hasWater":  water_applied,
+    }
+
+
+# ── Cobertura do Solo (ESA WorldCover 10 m) ─────────────────────────────────
+
+# (código, rótulo PT, cor hex) — classes oficiais ESA WorldCover v200 (2021)
+_ESA_WORLDCOVER = [
+    (10,  "Floresta / Árvores",          "006400"),
+    (20,  "Arbustos",                    "ffbb22"),
+    (30,  "Pradaria / Herbáceo",         "ffff4c"),
+    (40,  "Agricultura",                 "f096ff"),
+    (50,  "Áreas construídas",           "fa0000"),
+    (60,  "Solo nu / veg. esparsa",      "b4b4b4"),
+    (70,  "Neve e gelo",                 "f0f0f0"),
+    (80,  "Água permanente",             "0064c8"),
+    (90,  "Zonas húmidas herbáceas",     "0096a0"),
+    (95,  "Mangais",                     "00cf75"),
+    (100, "Musgos e líquenes",           "fae6a0"),
+]
+
+
+def compute_landcover_tile(region_geojson: Optional[dict], stats_scale: int = 100) -> dict:
+    """
+    Cobertura do solo a partir do ESA WorldCover v200 (2021, 10 m), com análise
+    de área (km²/%) por classe na região selecionada.
+
+    stats_scale: resolução (m) usada apenas na redução de área — 100 m mantém o
+    cálculo rápido para uma província inteira; os tiles renderizam a 10 m.
+    """
+    import ee
+    _init_gee()
+
+    region = _to_ee_region(region_geojson)
+    img = ee.ImageCollection("ESA/WorldCover/v200").first().select("Map").clip(region)
+
+    codes  = [c   for c, _, _ in _ESA_WORLDCOVER]
+    colors = [col for _, _, col in _ESA_WORLDCOVER]
+
+    # Remapear códigos (10,20,…,100,95) → 1..N para uma paleta contígua.
+    remapped = img.remap(codes, list(range(1, len(codes) + 1))).rename("class")
+    vis = remapped.visualize(min=1, max=len(codes), palette=colors)
+    tile_url = vis.getMapId()["tile_fetcher"].url_format
+
+    # Área por classe (km²) sobre os códigos originais.
+    per_code: dict = {}
+    try:
+        groups_data = (
+            ee.Image.pixelArea().addBands(img)
+            .reduceRegion(
+                reducer=ee.Reducer.sum().group(groupField=1, groupName="code"),
+                geometry=region, scale=stats_scale, bestEffort=True, maxPixels=int(1e9),
+            ).getInfo() or {}
+        )
+        for g in groups_data.get("groups", []) or []:
+            per_code[int(g["code"])] = float(g.get("sum", 0)) / 1e6
+    except Exception as exc:
+        raise RuntimeError(f"Falha ao calcular áreas de cobertura do solo: {exc}")
+
+    total = sum(per_code.values()) or 1.0
+    classes = []
+    for code, label, color in _ESA_WORLDCOVER:
+        area = per_code.get(code, 0.0)
+        classes.append({
+            "code":    code,
+            "label":   label,
+            "color":   f"#{color}",
+            "areaKm2": round(area, 2),
+            "pct":     round(area / total * 100, 2),
+        })
+    # Ordenar a análise por área (maior → menor), mantendo a legenda completa.
+    ranked = sorted(classes, key=lambda c: c["areaKm2"], reverse=True)
+
+    return {
+        "tileUrl":      tile_url,
+        "name":         "Cobertura do Solo — ESA WorldCover 2021",
+        "source":       "ESA/WorldCover/v200",
+        "year":         2021,
+        "resolution_m": 10,
+        "totalKm2":     round(total, 2),
+        "classes":      classes,   # ordem oficial (para a legenda)
+        "ranked":       ranked,    # ordenada por área (para a análise)
+        "group":        "landcover",
     }
 
 
