@@ -57,6 +57,19 @@ interface BasinStats {
 interface DrainageResult   { tileUrl: string; threshold: number }
 interface RiverNetResult   { tileUrl: string; majorTileUrl: string; orders: Record<string, number>; palette: string[] }
 interface WatershedResult  { tileUrl: string; geojson: GeoJSON.FeatureCollection; pourPoint: [number, number]; areaKm2: number; maxIter: number }
+interface LandCoverClass   { code: number; label: string; color: string; areaKm2: number; pct: number }
+interface BasinReport {
+  morphometry: {
+    areaKm2: number; perimeterKm: number; elevMinM: number; elevMeanM: number; elevMaxM: number;
+    reliefM: number; slopeMeanDeg: number; slopeMaxDeg: number;
+    drainageDensity: number; compactness: number; formFactor: number;
+  };
+  landcover: LandCoverClass[];
+  landcoverTile: string;
+  precipMonthly: number[];
+  precipAnnualMm: number;
+  runoff: { cnMean: number | null; cnTile: string; note: string };
+}
 
 type Mode = "explore" | "delineate";
 
@@ -160,6 +173,11 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
   const [loadingWS,     setLoadingWS]     = useState(false);
   const [wsStats,       setWsStats]       = useState<BasinStats | null>(null);
   const [loadingWsSt,   setLoadingWsSt]   = useState(false);
+
+  // Full hydro-environmental basin report
+  const [basinReport,   setBasinReport]   = useState<BasinReport | null>(null);
+  const [loadingReport, setLoadingReport] = useState(false);
+  const [reportLayer,   setReportLayer]   = useState<"none" | "lulc" | "cn">("none");
 
   // River network
   const [riverNet,      setRiverNet]      = useState<RiverNetResult | null>(null);
@@ -277,7 +295,8 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
   // Watershed delineation
   async function onMapClick(lat: number, lng: number) {
     if (mode !== "delineate") return;
-    setError(null); setPourPoint([lat, lng]); setWatershedData(null); setWsStats(null); setLoadingWS(true);
+    setError(null); setPourPoint([lat, lng]); setWatershedData(null); setWsStats(null);
+    setBasinReport(null); setReportLayer("none"); setLoadingWS(true);
     const ok = await checkGEE();
     if (!ok) { setLoadingWS(false); return; }
     try {
@@ -307,6 +326,24 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
       });
     }
     finally { setLoadingWS(false); }
+  }
+
+  // Generate the full hydro-environmental report for the delineated basin
+  async function runBasinReport() {
+    const geom = watershedData?.geojson?.features?.[0]?.geometry;
+    if (!geom) return;
+    setLoadingReport(true); setError(null);
+    try {
+      const r = await fetch(apiUrl("/geomoz-api/gee/basin-report"), { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ geometry: geom }) });
+      if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+      setBasinReport(await r.json());
+    } catch (e) {
+      const errorMsg = String(e instanceof Error ? e.message : e);
+      setError(errorMsg);
+      toast({ variant: "destructive", title: "Erro ao gerar relatório", description: errorMsg });
+    } finally { setLoadingReport(false); }
   }
 
   // Style
@@ -561,6 +598,16 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
             </>
           )}
 
+          {/* Basin report overlays (toggleable): land cover / SCS-CN runoff */}
+          {basinReport && reportLayer === "lulc" && (
+            <TileLayer key={`rep-lulc-${basinReport.landcoverTile}`} url={basinReport.landcoverTile}
+              attribution="GEE · ESA WorldCover 2021" opacity={0.75} maxZoom={18} />
+          )}
+          {basinReport && reportLayer === "cn" && (
+            <TileLayer key={`rep-cn-${basinReport.runoff.cnTile}`} url={basinReport.runoff.cnTile}
+              attribution="GEE · SCS Curve Number" opacity={0.7} maxZoom={18} />
+          )}
+
           {/* Pour point marker */}
           {pourPoint && (
             <CircleMarker center={pourPoint} radius={9}
@@ -725,6 +772,81 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
                         </button>
                       )}
                     </div>
+                  </div>
+
+                  {/* Full hydro-environmental report */}
+                  <div>
+                    <SectionHeader title="Relatório de Bacia" icon={FileText} />
+                    {!basinReport && (
+                      <button onClick={runBasinReport} disabled={loadingReport}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-60 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm">
+                        {loadingReport
+                          ? <><Loader2 size={12} className="animate-spin" /> A processar no GEE… (~10 s)</>
+                          : <><BarChart2 size={12} /> Gerar Relatório Completo</>}
+                      </button>
+                    )}
+                    {basinReport && (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {([
+                            ["Relevo", `${basinReport.morphometry.reliefM} m`],
+                            ["Declive méd.", `${basinReport.morphometry.slopeMeanDeg}°`],
+                            ["Elev. máx.", `${basinReport.morphometry.elevMaxM} m`],
+                            ["Dens. dren.", `${basinReport.morphometry.drainageDensity}`],
+                            ["Compacidade", `${basinReport.morphometry.compactness}`],
+                            ["Fator forma", `${basinReport.morphometry.formFactor}`],
+                          ] as const).map(([k, v]) => (
+                            <div key={k} className="bg-slate-50 rounded-lg p-2 text-center">
+                              <div className="text-[9px] text-slate-400 uppercase tracking-wide leading-tight">{k}</div>
+                              <div className="text-xs font-bold text-slate-700">{v}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Uso do Solo</div>
+                          <div className="space-y-1">
+                            {basinReport.landcover.slice(0, 6).map(c => (
+                              <div key={c.code} className="flex items-center gap-2 text-[11px]">
+                                <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: c.color }} />
+                                <span className="text-slate-600 flex-1 truncate">{c.label}</span>
+                                <span className="text-slate-400 font-mono">{c.pct}%</span>
+                              </div>
+                            ))}
+                          </div>
+                          <button onClick={() => setReportLayer(l => l === "lulc" ? "none" : "lulc")}
+                            className={`mt-1.5 w-full text-[10px] py-1 rounded-lg border transition-colors ${reportLayer === "lulc" ? "bg-lime-100 border-lime-300 text-lime-700" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
+                            {reportLayer === "lulc" ? "Ocultar no mapa" : "Ver no mapa"}
+                          </button>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Chuva mensal · {basinReport.precipAnnualMm.toLocaleString("pt-PT")} mm/ano</div>
+                          <ResponsiveContainer width="100%" height={110}>
+                            <BarChart data={basinReport.precipMonthly.map((v, i) => ({ m: "JFMAMJJASOND"[i], mm: v }))}
+                              margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                              <XAxis dataKey="m" tick={{ fontSize: 9 }} interval={0} axisLine={false} tickLine={false} />
+                              <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={28} />
+                              <Tooltip formatter={(v: number) => [`${v} mm`, "Chuva"]} />
+                              <Bar dataKey="mm" fill="#3b82f6" radius={[2, 2, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+
+                        <div className="bg-slate-50 rounded-xl p-2.5">
+                          <div className="flex items-center justify-between">
+                            <div className="text-[11px] text-slate-600">Escoamento — CN médio</div>
+                            <div className="text-sm font-bold text-slate-800">{basinReport.runoff.cnMean ?? "—"}</div>
+                          </div>
+                          <div className="h-2 rounded-full mt-1.5" style={{ background: "linear-gradient(to right,#1a9850,#fee08b,#d73027)" }} />
+                          <div className="flex justify-between text-[9px] text-slate-400 mt-0.5"><span>40 · infiltra</span><span>escoa · 100</span></div>
+                          <button onClick={() => setReportLayer(l => l === "cn" ? "none" : "cn")}
+                            className={`mt-1.5 w-full text-[10px] py-1 rounded-lg border transition-colors ${reportLayer === "cn" ? "bg-red-100 border-red-300 text-red-700" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
+                            {reportLayer === "cn" ? "Ocultar no mapa" : "Ver mapa de escoamento"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Note */}
