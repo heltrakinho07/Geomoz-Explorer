@@ -1320,24 +1320,17 @@ def compute_landcover_tile(region_geojson: Optional[dict], stats_scale: int = 10
 
 import math as _math
 
-# Multiple candidate collection IDs for HydroBASINS Africa (GEE availability varies)
+# Candidate collection IDs for HydroBASINS by level (availability varies by project).
+# WWF/HydroATLAS/v1/Basins/level0N is the global, currently-available source (carries
+# HYBAS_ID + the full HydroBASINS geometry); the legacy per-continent hybas_af_* assets
+# are kept as fallbacks.
 _HYDROBASINS_CANDIDATES: dict = {
-    5: [
-        "WWF/HydroSHEDS/v1/Basins/hybas_af_lev05_v1c",
-        "WWF/HydroSHEDS/v1/Basins/hybas_af_lev05",
-    ],
-    6: [
-        "WWF/HydroSHEDS/v1/Basins/hybas_af_lev06_v1c",
-        "WWF/HydroSHEDS/v1/Basins/hybas_af_lev06",
-    ],
-    7: [
-        "WWF/HydroSHEDS/v1/Basins/hybas_af_lev07_v1c",
-        "WWF/HydroSHEDS/v1/Basins/hybas_af_lev07",
-    ],
-    8: [
-        "WWF/HydroSHEDS/v1/Basins/hybas_af_lev08_v1c",
-        "WWF/HydroSHEDS/v1/Basins/hybas_af_lev08",
-    ],
+    lv: [
+        f"WWF/HydroATLAS/v1/Basins/level{lv:02d}",
+        f"WWF/HydroSHEDS/v1/Basins/hybas_af_lev{lv:02d}_v1c",
+        f"WWF/HydroSHEDS/v1/Basins/hybas_af_lev{lv:02d}",
+    ]
+    for lv in (5, 6, 7, 8)
 }
 
 
@@ -1354,9 +1347,13 @@ def compute_basins(region_geojson: Optional[dict], level: int = 6) -> dict:
     candidates = _HYDROBASINS_CANDIDATES.get(level, _HYDROBASINS_CANDIDATES[6])
     last_error = "Collection not found"
 
+    # Keep only lightweight identity/area props (HydroATLAS carries 100s of columns).
+    keep_props = ["HYBAS_ID", "UP_AREA", "SUB_AREA", "ORDER_", "MAIN_BAS", "NEXT_DOWN"]
+
     for coll_id in candidates:
         try:
-            basins_fc = ee.FeatureCollection(coll_id).filterBounds(region)
+            basins_fc = (ee.FeatureCollection(coll_id).filterBounds(region)
+                         .select(keep_props, None, True))
             count     = basins_fc.size().getInfo()
             geojson   = basins_fc.limit(300).getInfo()
             styled    = basins_fc.style(color="1a73e8", fillColor="1a73e818", width=1.5)
