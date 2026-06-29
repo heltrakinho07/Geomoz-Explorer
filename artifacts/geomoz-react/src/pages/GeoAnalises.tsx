@@ -1647,6 +1647,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   const [topoClassesTile, setTopoClassesTile] = useState<TopoClassesResult | null>(null);
   const [landCoverTile, setLandCoverTile]   = useState<LandCoverResult | null>(null);
   const [sidebarOpen, setSidebarOpen]       = useState(true);
+  const [openGroup, setOpenGroup]           = useState<string | null>(null);
   const [profilePoints, setProfilePoints]   = useState<LonLat[]>([]);
   const [profileSamples, setProfileSamples] = useState(200);
   const [profileResult, setProfileResult]   = useState<ProfileResult | null>(null);
@@ -1798,6 +1799,13 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
       tabs: [{ id: "landcover", label: "Cobertura do Solo", icon: <Sprout size={13} /> }] },
   ];
 
+  // Keep the accordion group of the active analysis expanded.
+  useEffect(() => {
+    const g = tabGroups.find(grp => grp.tabs.some(t => t.id === activeTab));
+    if (g) setOpenGroup(g.name);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
   const geeReady = geeStatus?.connected && useGEE;
   // Composite, lineaments, targeting & GEE-only indices require GEE
   const requiresGee = isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isGeeOnly;
@@ -1845,49 +1853,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
         </div>
       </div>
 
-      {/* Sub-tab bar (grouped) */}
-      <div className="bg-white border-b border-slate-200 px-3 flex items-center gap-1 shrink-0 overflow-x-auto">
-        {tabGroups.map((grp, gi) => (
-          <div key={grp.name} className="flex items-center gap-1 shrink-0">
-            {gi > 0 && <span className="text-slate-200 mx-1.5">│</span>}
-            <div className="hidden md:flex flex-col mr-0.5">
-              <span className="text-[9px] uppercase tracking-wider text-slate-500 font-bold leading-tight">{grp.name}</span>
-              <span className={`text-[8px] rounded px-1 leading-tight font-medium ${grp.badgeColor}`}>{grp.badge}</span>
-            </div>
-            {grp.tabs.map(tab => {
-              const def = INDEX_DEFS.find(d => d.id === tab.id);
-              const isTerrainTab = def?.group === "terrain";
-              const isStructure = tab.id === "lineaments";
-              const isTarget    = tab.id === "targeting";
-              const isLandCoverTab = tab.id === "landcover";
-              return (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id as SpectralTab)}
-                  className={`flex items-center gap-1.5 px-2.5 py-2.5 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${
-                    activeTab === tab.id
-                      ? isStructure ? "border-fuchsia-500 text-fuchsia-600"
-                      : isTarget    ? "border-yellow-500 text-yellow-700"
-                      : isLandCoverTab ? "border-lime-500 text-lime-600"
-                      : isTerrainTab ? "border-amber-500 text-amber-600"
-                      : "border-sky-500 text-sky-600"
-                      : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"
-                  }`}>
-                  {tab.icon} {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        ))}
-        {geeReady && activeTab !== "s2" && (
-          <span className="ml-auto text-xs bg-sky-50 text-sky-600 border border-sky-200 px-2 py-0.5 rounded-full mr-1 shrink-0">
-            ✦ GEE Real
-          </span>
-        )}
-        {!geeReady && activeTab !== "s2" && !requiresGee && (
-          <span className="ml-auto text-xs bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-full mr-1 shrink-0">
-            Proxy
-          </span>
-        )}
-      </div>
+      {/* Analyses now live in the collapsible accordion inside the sidebar (below). */}
 
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden relative">
@@ -1944,6 +1910,52 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                     <ChevronDown className="absolute right-2.5 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Analysis selector (accordion) */}
+          {!showSetup && (
+            <div className="border-b border-slate-100">
+              <div className="flex items-center justify-between px-4 pt-4 pb-2">
+                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Análises</h4>
+                {geeReady
+                  ? <span className="text-[10px] bg-sky-50 text-sky-600 border border-sky-200 px-1.5 py-0.5 rounded-full">✦ GEE Real</span>
+                  : !requiresGee && <span className="text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded-full">Proxy</span>}
+              </div>
+              <div className="pb-2">
+                {tabGroups.map(grp => {
+                  const open = openGroup === grp.name;
+                  const hasActive = grp.tabs.some(t => t.id === activeTab);
+                  return (
+                    <div key={grp.name}>
+                      <button
+                        onClick={() => setOpenGroup(open ? null : grp.name)}
+                        className={`w-full flex items-center justify-between px-4 py-2 text-left hover:bg-slate-50 transition-colors ${hasActive ? "bg-slate-50/70" : ""}`}>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 leading-tight">{grp.name}</span>
+                          <span className={`text-[8px] rounded px-1 leading-tight font-medium w-fit ${grp.badgeColor}`}>{grp.badge}</span>
+                        </div>
+                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+                      </button>
+                      {open && (
+                        <div className="pb-1">
+                          {grp.tabs.map(tab => (
+                            <button key={tab.id}
+                              onClick={() => setActiveTab(tab.id as SpectralTab)}
+                              className={`w-full flex items-center gap-2 pl-6 pr-4 py-1.5 text-xs transition-colors border-l-2 ${
+                                activeTab === tab.id
+                                  ? "bg-sky-50 text-sky-700 font-semibold border-sky-500"
+                                  : "text-slate-600 hover:bg-slate-50 border-transparent"
+                              }`}>
+                              {tab.icon} {tab.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
