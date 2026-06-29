@@ -27,6 +27,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useProvinceNames, useDistrictNames, useProvincesGeoJSON, useStats } from "@/hooks/useGeoMoz";
 import { apiUrl } from "@/lib/api";
+import MapTools from "@/components/MapTools";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -552,6 +553,7 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
       <div className={`flex-1 relative overflow-hidden ${mode === "delineate" ? "cursor-crosshair" : ""}`}>
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} ref={mapRef} zoomControl={false}>
           <ZoomControl position="topright" />
+          <MapTools />
           <ScaleControl position="bottomright" imperial={false} />
           <MapClickHandler onMapClick={onMapClick} active={mode === "delineate"} />
 

@@ -13,6 +13,7 @@ import "leaflet/dist/leaflet.css";
 
 import { useGeologyGeoJSON, useProvincesGeoJSON, useDistrictsGeoJSON } from "@/hooks/useGeoMoz";
 import type { LayerState } from "./Sidebar";
+import MapTools from "./MapTools";
 
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -208,6 +209,7 @@ export default function MapView({ province, district, layers, colorBy, onProvinc
         {layers.districts && province && districtGeoJSON && (
           <GeoJSONLayer data={districtGeoJSON} layerKey={distKey} style={districtStyle} onEachFeature={onEachDistrict} />
         )}
+        <MapTools />
       </MapContainer>
     </main>
   );

@@ -33,6 +33,7 @@ import {
 import { useGeologyGeoJSON, useProvincesGeoJSON, useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
 import { computeSpectralValue, applyColormap, SpectralIndex, GEE_ONLY_INDICES } from "@/lib/geoml";
 import { apiUrl } from "@/lib/api";
+import MapTools from "@/components/MapTools";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -2438,6 +2439,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                 }}
               />
             )}
+            <MapTools />
           </MapContainer>
 
           {/* Map overlay legend — proxy mode */}

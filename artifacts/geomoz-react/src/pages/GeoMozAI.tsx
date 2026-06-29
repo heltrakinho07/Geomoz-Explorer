@@ -30,6 +30,7 @@ import {
   lithologyProfile,
   FavorabilityResult, MineralType, KMeansResult,
 } from "@/lib/geoml";
+import MapTools from "@/components/MapTools";
 
 /** Build a geology-driven feature vector per province. The vector mixes the
  *  6 lithology family fractions (real geological character) with a small,
@@ -232,6 +233,7 @@ function ClusteringTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[] }
               }}
             />
           )}
+          <MapTools />
         </MapContainer>
       </div>
     </div>
@@ -362,6 +364,7 @@ function FavorabilityTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[]
               }}
             />
           )}
+          <MapTools />
         </MapContainer>
       </div>
     </div>
