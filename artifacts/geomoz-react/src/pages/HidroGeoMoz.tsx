@@ -24,8 +24,9 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer,
 } from "recharts";
-
+import { useToast } from "@/hooks/use-toast";
 import { useProvinceNames, useDistrictNames, useProvincesGeoJSON, useStats } from "@/hooks/useGeoMoz";
+import { apiUrl } from "@/lib/api";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -133,6 +134,7 @@ interface Props {
 }
 
 export default function HidroGeoMoz({ province, district, onProvinceChange, onDistrictChange }: Props) {
+  const { toast } = useToast();
   const mapRef = useRef<LMap | null>(null);
 
   // Layout
@@ -179,11 +181,19 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
   // GEE check
   const checkGEE = useCallback(async () => {
     try {
-      const r = await fetch("/geomoz-api/gee/status");
+      const r = await fetch(apiUrl("/geomoz-api/gee/status"));
       const d = await r.json();
       setGeeStatus(d);
       return d.connected as boolean;
-    } catch { setGeeStatus({ connected: false }); return false; }
+    } catch {
+      setGeeStatus({ connected: false });
+      toast({
+        variant: "destructive",
+        title: "Erro de conexão",
+        description: "Não foi possível conectar ao Google Earth Engine.",
+      });
+      return false;
+    }
   }, []);
 
   // Load basins
@@ -194,10 +204,10 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
     if (!ok) { setLoadingBasins(false); return; }
     try {
       const [bRes, dRes] = await Promise.all([
-        fetch("/geomoz-api/gee/basins", { method: "POST", headers: { "Content-Type": "application/json" },
+        fetch(apiUrl("/geomoz-api/gee/basins"), { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ province, district, level: basinLevel }) }),
         showDrainage
-          ? fetch("/geomoz-api/gee/drainage", { method: "POST", headers: { "Content-Type": "application/json" },
+          ? fetch(apiUrl("/geomoz-api/gee/drainage"), { method: "POST", headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ province, district, threshold: drainThresh }) })
           : Promise.resolve(null),
       ]);
@@ -207,7 +217,15 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
       if (bd.source === "unavailable")
         setError(`HydroBASINS não disponível. Use "Delimitar Bacia" para delinear por DEM.`);
       if (dRes?.ok) setDrainageTile(await dRes.json());
-    } catch (e) { setError(String(e instanceof Error ? e.message : e)); }
+    } catch (e) {
+      const errorMsg = String(e instanceof Error ? e.message : e);
+      setError(errorMsg);
+      toast({
+        variant: "destructive",
+        title: "Erro ao carregar bacias",
+        description: errorMsg,
+      });
+    }
     finally { setLoadingBasins(false); }
   }
 
@@ -215,12 +233,20 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
   async function onBasinClick(feat: GeoJSON.Feature) {
     setSelectedFeat(feat); setBasinStats(null); setLoadingStats(true);
     try {
-      const r = await fetch("/geomoz-api/gee/basin-stats", { method: "POST",
+      const r = await fetch(apiUrl("/geomoz-api/gee/basin-stats"), { method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ geometry: feat.geometry }) });
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
       setBasinStats(await r.json());
-    } catch (e) { setError(String(e instanceof Error ? e.message : e)); }
+    } catch (e) {
+      const errorMsg = String(e instanceof Error ? e.message : e);
+      setError(errorMsg);
+      toast({
+        variant: "destructive",
+        title: "Erro ao carregar estatísticas",
+        description: errorMsg,
+      });
+    }
     finally { setLoadingStats(false); }
   }
 
@@ -230,12 +256,20 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
     const ok = await checkGEE();
     if (!ok) { setLoadingRN(false); return; }
     try {
-      const r = await fetch("/geomoz-api/gee/river-network", { method: "POST",
+      const r = await fetch(apiUrl("/geomoz-api/gee/river-network"), { method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ province, district }) });
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
       setRiverNet(await r.json()); setShowRiverNet(true);
-    } catch (e) { setError(String(e instanceof Error ? e.message : e)); }
+    } catch (e) {
+      const errorMsg = String(e instanceof Error ? e.message : e);
+      setError(errorMsg);
+      toast({
+        variant: "destructive",
+        title: "Erro ao carregar rede fluvial",
+        description: errorMsg,
+      });
+    }
     finally { setLoadingRN(false); }
   }
 
@@ -246,7 +280,7 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
     const ok = await checkGEE();
     if (!ok) { setLoadingWS(false); return; }
     try {
-      const r = await fetch("/geomoz-api/gee/watershed", { method: "POST",
+      const r = await fetch(apiUrl("/geomoz-api/gee/watershed"), { method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lat, lon: lng, province, district, max_iter: maxIter }) });
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
@@ -256,13 +290,21 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
       if (wd.geojson?.features?.length) {
         setLoadingWsSt(true);
         try {
-          const sr = await fetch("/geomoz-api/gee/basin-stats", { method: "POST",
+          const sr = await fetch(apiUrl("/geomoz-api/gee/basin-stats"), { method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ geometry: wd.geojson.features[0]?.geometry ?? wd.geojson }) });
           if (sr.ok) setWsStats(await sr.json());
         } catch { /* silent */ } finally { setLoadingWsSt(false); }
       }
-    } catch (e) { setError(String(e instanceof Error ? e.message : e)); }
+    } catch (e) {
+      const errorMsg = String(e instanceof Error ? e.message : e);
+      setError(errorMsg);
+      toast({
+        variant: "destructive",
+        title: "Erro ao delinear bacia",
+        description: errorMsg,
+      });
+    }
     finally { setLoadingWS(false); }
   }
 

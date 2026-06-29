@@ -31,6 +31,7 @@ import {
 
 import { useGeologyGeoJSON, useProvincesGeoJSON, useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
 import { computeSpectralValue, applyColormap, SpectralIndex, GEE_ONLY_INDICES } from "@/lib/geoml";
+import { apiUrl } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -370,7 +371,7 @@ function GeeAnalysisPanel({
     setError(null);
     onTileReady(null);
     try {
-      const res = await fetch("/geomoz-api/gee/index", {
+      const res = await fetch(apiUrl("/geomoz-api/gee/index"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -564,7 +565,7 @@ function LineamentsPanel({
   async function run() {
     setRunning(true); setError(null); onResult(null);
     try {
-      const res = await fetch("/geomoz-api/gee/lineaments", {
+      const res = await fetch(apiUrl("/geomoz-api/gee/lineaments"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -732,7 +733,7 @@ function TargetingPanel({
   const [result, setResult]     = useState<TargetingResult | null>(null);
 
   useEffect(() => {
-    fetch("/geomoz-api/gee/minerals").then(r => r.json())
+    fetch(apiUrl("/geomoz-api/gee/minerals")).then(r => r.json())
       .then(d => setPresets(d.minerals ?? [])).catch(() => {});
   }, []);
 
@@ -741,7 +742,7 @@ function TargetingPanel({
   async function run() {
     setRunning(true); setError(null); onResult(null);
     try {
-      const res = await fetch("/geomoz-api/gee/targeting", {
+      const res = await fetch(apiUrl("/geomoz-api/gee/targeting"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1158,7 +1159,7 @@ function ContoursPanel({
   async function run() {
     setRunning(true); setError(null); onResult(null);
     try {
-      const res = await fetch("/geomoz-api/gee/contours", {
+      const res = await fetch(apiUrl("/geomoz-api/gee/contours"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1343,7 +1344,7 @@ function TopoClassesPanel({
     }
     setRunning(true); setError(null); onResult(null); setResult(null);
     try {
-      const res = await fetch("/geomoz-api/gee/topo-classes", {
+      const res = await fetch(apiUrl("/geomoz-api/gee/topo-classes"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1508,7 +1509,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   const checkGee = useCallback(async () => {
     setGeeLoading(true);
     try {
-      const res = await fetch("/geomoz-api/gee/status");
+      const res = await fetch(apiUrl("/geomoz-api/gee/status"));
       const data: GeeStatus = await res.json();
       setGeeStatus(data);
       if (!data.connected) setShowSetup(true);
@@ -1544,7 +1545,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
     if (profilePoints.length < 2) return;
     setProfileRunning(true); setProfileError(null); setProfileResult(null);
     try {
-      const res = await fetch("/geomoz-api/gee/profile", {
+      const res = await fetch(apiUrl("/geomoz-api/gee/profile"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ coords: profilePoints, samples: profileSamples }),

@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+// runtime error overlay removed to avoid runtime-insertBefore overlay crashes during local dev
 
 const rawPort = process.env.PORT;
 
@@ -31,7 +31,6 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    runtimeErrorOverlay(),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [
@@ -63,6 +62,12 @@ export default defineConfig({
     strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
+    proxy: {
+      "/geomoz-api": {
+        target: "http://localhost:5003",
+        changeOrigin: true,
+      },
+    },
     fs: {
       strict: true,
     },

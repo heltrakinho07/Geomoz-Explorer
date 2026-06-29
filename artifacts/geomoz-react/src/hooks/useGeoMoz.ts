@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
+import { API_BASE } from "@/lib/api";
 
-const BASE = "/geomoz-api";
+const BASE = `${API_BASE}/geomoz-api`;
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url);

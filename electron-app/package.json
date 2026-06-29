@@ -1,0 +1,74 @@
+{
+  "name": "geomoz-desktop",
+  "version": "1.0.0",
+  "description": "GeoMoz Explorer - Desktop Application",
+  "homepage": "https://github.com/geomoz/geomoz-explorer",
+  "author": {
+    "name": "GeoMoz",
+    "email": "heltrakinho@gmail.com"
+  },
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "postinstall": "electron-rebuild -f -w better-sqlite3"
+  },
+  "build": {
+    "appId": "com.geomoz.explorer",
+    "productName": "GeoMoz Explorer",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "database.js",
+      "export-utils.js",
+      "resources/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../geomoz-explorer",
+        "to": "backend/geomoz-explorer"
+      },
+      {
+        "from": "../artifacts/geomoz-react/dist/public",
+        "to": "frontend/dist"
+      }
+    ],
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "resources/icon.ico"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "icon": "resources/icon.icns",
+      "category": "public.app-category.science"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "resources/icon.png",
+      "category": "Science"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.2.2",
+    "electron-store": "^8.1.0",
+    "electron-serve": "^1.1.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.6.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  }
+}
