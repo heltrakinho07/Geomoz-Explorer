@@ -2306,19 +2306,20 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
             {/* Lineaments — density (heat) + optional edges (cyan lines) */}
             {isLineaments && lineamentsTile && (
               <>
+                {/* Density heatmap kept subtle so the extracted structures stand out */}
                 <TileLayer
                   key={`lin-density-${lineamentsTile.tileUrl}`}
                   url={lineamentsTile.tileUrl}
                   attribution="GEE · Lineamentos (densidade)"
-                  opacity={0.7}
+                  opacity={0.45}
                   maxZoom={18}
                 />
                 {showEdges && (
                   <TileLayer
                     key={`lin-edges-${lineamentsTile.edgesTileUrl}`}
                     url={lineamentsTile.edgesTileUrl}
-                    attribution="GEE · Lineamentos (edges)"
-                    opacity={0.9}
+                    attribution="GEE · Estruturas (lineamentos)"
+                    opacity={1}
                     maxZoom={18}
                   />
                 )}
@@ -2530,6 +2531,12 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                 Área favorável: {targetingTile.stats.favorableKm2 != null
                   ? `${targetingTile.stats.favorableKm2.toFixed(1)} km²`
                   : "—"}
+              </div>
+              {/* On-map legend: what the score raster means */}
+              <div className="mt-2 pt-2 border-t border-amber-100">
+                <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Favorabilidade (0–100)</div>
+                <div className="h-2 rounded-full" style={{ background: "linear-gradient(to right,#0d47a1,#7b1fa2,#e53935,#fdd835,#fffde7)" }} />
+                <div className="flex justify-between text-[9px] text-slate-400 mt-0.5"><span>0 · baixa</span><span>alta · 100</span></div>
               </div>
             </div>
           )}

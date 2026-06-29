@@ -140,8 +140,9 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
   // Layout
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // Mode
-  const [mode, setMode] = useState<Mode>("explore");
+  // Mode — "delineate" (D8/DEM) is the robust primary method; HydroBASINS may be
+  // unavailable in the active Earth Engine project, so we default to delineation.
+  const [mode, setMode] = useState<Mode>("delineate");
 
   // Explore
   const [basinsData,    setBasinsData]    = useState<BasinsResult | null>(null);
@@ -214,8 +215,8 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
       if (!bRes.ok) throw new Error((await bRes.json()).detail ?? bRes.statusText);
       const bd: BasinsResult = await bRes.json();
       setBasinsData(bd);
-      if (bd.source === "unavailable")
-        setError(`HydroBASINS não disponível. Use "Delimitar Bacia" para delinear por DEM.`);
+      // HydroBASINS unavailable is an expected condition (see inline note) — don't
+      // raise an alarming red error; the persistent amber hint already guides the user.
       if (dRes?.ok) setDrainageTile(await dRes.json());
     } catch (e) {
       const errorMsg = String(e instanceof Error ? e.message : e);
@@ -386,7 +387,7 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
         {/* Mode toggle */}
         <div className="p-3 border-b border-slate-100">
           <div className="grid grid-cols-2 gap-1 bg-slate-100 rounded-xl p-1">
-            {([["explore","Explorar",Layers],["delineate","Delimitar",Crosshair]] as const).map(([m, label, Icon]) => (
+            {([["delineate","Delimitar",Crosshair],["explore","Explorar",Layers]] as const).map(([m, label, Icon]) => (
               <button key={m} onClick={() => { setMode(m); setError(null); }}
                 className={`flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-lg transition-all ${mode === m ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
                 <Icon size={11} /> {label}
@@ -428,6 +429,10 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
         {mode === "explore" && (
           <div className="p-3 space-y-3 border-b border-slate-100">
             <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Configuração</h4>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[11px] text-amber-700 flex items-start gap-2">
+              <Info size={12} className="mt-0.5 shrink-0 text-amber-500" />
+              <span>As bacias pré-definidas (HydroBASINS) podem não estar disponíveis neste projeto. Se nada aparecer, use <strong>Delimitar</strong> para delinear por DEM.</span>
+            </div>
             <div>
               <label className="text-[10px] text-slate-500 mb-1 block">HydroBASINS — <strong className="text-slate-700">Nível {basinLevel}</strong></label>
               <input type="range" min={5} max={8} step={1} value={basinLevel} onChange={e => setBasinLevel(+e.target.value)} className="w-full accent-blue-500" />

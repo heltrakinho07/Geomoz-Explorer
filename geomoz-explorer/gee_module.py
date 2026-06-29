@@ -1585,28 +1585,32 @@ def compute_watershed_from_point(
 
     pour_pt = ee.Geometry.Point([lon, lat])
 
-    # 1. Snap pour point to nearest high-accumulation pixel within 15 km
+    # 1. Snap pour point to the strongest channel within 15 km.
+    #    Reducer.max(N) returns the maximum of the first band (flow accumulation)
+    #    together with the values of the other bands (lon/lat) at that same pixel,
+    #    i.e. the coordinates of the main drainage channel near the click.
+    min_acc  = 500
     snap_buf = pour_pt.buffer(15_000)
-    snapped_pt = (
-        acc.gte(500).selfMask()
-        .addBands(ee.Image.pixelLonLat())
-        .clip(snap_buf)
-        .reduceRegion(
-            reducer  = ee.Reducer.first().setOutputs(["b1", "longitude", "latitude"]),
-            geometry = snap_buf,
-            scale    = 500,
-            maxPixels= int(1e7),
-            bestEffort=True,
+    snap_img = (
+        acc.updateMask(acc.gte(min_acc))
+        .addBands(ee.Image.pixelLonLat())   # bands: [b1 (acc), longitude, latitude]
+    )
+    snapped = snap_img.reduceRegion(
+        reducer   = ee.Reducer.max(3).setOutputs(["acc", "lon", "lat"]),
+        geometry  = snap_buf,
+        scale     = 500,
+        maxPixels = int(1e7),
+        bestEffort= True,
+    )
+    snap_lon = snapped.get("lon")
+    snap_lat = snapped.get("lat")
+    # No drainage channel near the click → fail with a clear message (handler → 503).
+    if snap_lon.getInfo() is None:
+        raise RuntimeError(
+            "Nenhum canal de drenagem encontrado perto do ponto. "
+            "Clique mais perto de um rio/curso de água."
         )
-    )
-    # Build snapped geometry from the nearest stream pixel; fall back to pour_pt
-    snap_lon = snapped_pt.get("longitude")
-    snap_lat = snapped_pt.get("latitude")
-    seed_pt  = ee.Algorithms.If(
-        snap_lon,
-        ee.Geometry.Point([snap_lon, snap_lat]),
-        pour_pt,
-    )
+    seed_pt = ee.Geometry.Point([snap_lon, snap_lat])
 
     # 2. Seed basin: a 600-m buffer around the pour point (≈ 1 pixel at 500 m scale)
     seed_geom = ee.Geometry(seed_pt).buffer(600)
