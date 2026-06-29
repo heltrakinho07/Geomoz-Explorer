@@ -1482,6 +1482,134 @@ def compute_basin_stats(basin_geometry: dict) -> dict:
     }
 
 
+# SCS Curve Number por classe ESA WorldCover (condição média de humidade, AMC II).
+# Florestas/vegetação infiltram mais (CN baixo); urbano/água geram mais escoamento.
+_ESA_CN = {10: 55, 20: 60, 30: 68, 40: 78, 50: 90, 60: 82,
+           70: 90, 80: 100, 90: 88, 95: 80, 100: 70}
+
+
+def compute_basin_report(basin_geometry: dict) -> dict:
+    """
+    Relatório hidro-ambiental completo de uma bacia: morfometria, uso do solo
+    (ESA WorldCover), regime de chuva mensal (CHIRPS) e escoamento potencial
+    (SCS Curve Number). Reutiliza os mesmos datasets dos restantes módulos.
+
+    basin_geometry : GeoJSON geometry dict (Polygon / MultiPolygon).
+    """
+    import ee
+    _init_gee()
+
+    region = ee.Geometry(basin_geometry)
+    max_px = int(1e9)
+
+    # ── Morfometria ────────────────────────────────────────────────────────────
+    dem   = _build_dem(region).rename("elev")
+    slope = ee.Terrain.slope(dem).rename("slope")
+    relief = dem.addBands(slope)
+    reducer_ms = (ee.Reducer.min().combine(ee.Reducer.max(), sharedInputs=True)
+                  .combine(ee.Reducer.mean(), sharedInputs=True))
+    rinfo = relief.unmask(0).reduceRegion(
+        reducer=reducer_ms, geometry=region, scale=90, bestEffort=True, maxPixels=max_px,
+    ).getInfo()
+
+    area_km2 = region.area(maxError=100).getInfo() / 1e6
+    perim_km = region.perimeter(maxError=100).getInfo() / 1e3
+    area_km2 = max(area_km2, 1e-6)
+
+    # Densidade de drenagem ≈ (nº de células-canal × ~0.5 km) / área
+    acc = ee.Image("WWF/HydroSHEDS/15ACC").select("b1")
+    stream_cells = (
+        acc.gte(200).selfMask().clip(region)
+        .reduceRegion(reducer=ee.Reducer.count(), geometry=region, scale=500,
+                      bestEffort=True, maxPixels=max_px).getInfo().get("b1") or 0
+    )
+    drainage_density = round((float(stream_cells) * 0.5) / area_km2, 3)
+    # Compacidade de Gravelius (1 = circular; >1 = alongada)
+    compactness = round(0.2821 * perim_km / (area_km2 ** 0.5), 3)
+    # Fator de forma de Horton ≈ A / Lb², com Lb ≈ comprimento da bacia
+    basin_len = max(perim_km / 2.0 - (area_km2 ** 0.5), area_km2 ** 0.5)
+    form_factor = round(area_km2 / (basin_len ** 2), 3)
+
+    # ── Uso do solo (ESA WorldCover) na bacia ───────────────────────────────────
+    lc = ee.ImageCollection("ESA/WorldCover/v200").first().select("Map").clip(region)
+    codes  = [c   for c, _, _ in _ESA_WORLDCOVER]
+    colors = [col for _, _, col in _ESA_WORLDCOVER]
+    lc_vis = lc.remap(codes, list(range(1, len(codes) + 1))).visualize(
+        min=1, max=len(codes), palette=colors)
+    landcover_tile = lc_vis.getMapId()["tile_fetcher"].url_format
+
+    per_code: dict = {}
+    try:
+        groups = (
+            ee.Image.pixelArea().addBands(lc).reduceRegion(
+                reducer=ee.Reducer.sum().group(groupField=1, groupName="code"),
+                geometry=region, scale=100, bestEffort=True, maxPixels=max_px,
+            ).getInfo() or {}
+        ).get("groups", []) or []
+        for g in groups:
+            per_code[int(g["code"])] = float(g.get("sum", 0)) / 1e6
+    except Exception:
+        per_code = {}
+    lc_total = sum(per_code.values()) or 1.0
+    landcover = []
+    for code, label, color in _ESA_WORLDCOVER:
+        a = per_code.get(code, 0.0)
+        if a > 0:
+            landcover.append({"code": code, "label": label, "color": f"#{color}",
+                              "areaKm2": round(a, 2), "pct": round(a / lc_total * 100, 2)})
+    landcover.sort(key=lambda c: c["areaKm2"], reverse=True)
+
+    # ── Chuva mensal (climatologia CHIRPS 2019–2023) ────────────────────────────
+    years = 5
+    chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate("2019-01-01", "2024-01-01")
+
+    def _monthly(m):
+        m = ee.Number(m)
+        return (chirps.filter(ee.Filter.calendarRange(m, m, "month")).sum()
+                .divide(years).rename(ee.String("mon_").cat(m.int().format("%02d"))))
+
+    monthly_img = ee.ImageCollection(ee.List.sequence(1, 12).map(_monthly)).toBands()
+    mp = monthly_img.reduceRegion(reducer=ee.Reducer.mean(), geometry=region,
+                                  scale=5000, bestEffort=True, maxPixels=max_px).getInfo() or {}
+    precip_monthly = []
+    for mm in range(1, 13):
+        key = next((k for k in mp if k.endswith(f"mon_{mm:02d}")), None)
+        precip_monthly.append(round(float(mp.get(key) or 0), 1))
+    precip_annual = round(sum(precip_monthly), 1)
+
+    # ── Escoamento potencial (SCS Curve Number) ─────────────────────────────────
+    cn = lc.remap(list(_ESA_CN.keys()), list(_ESA_CN.values())).rename("cn")
+    cn_tile = cn.visualize(min=40, max=100,
+                           palette=["1a9850", "fee08b", "d73027"]).getMapId()["tile_fetcher"].url_format
+    cn_mean = cn.reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=100,
+                              bestEffort=True, maxPixels=max_px).getInfo().get("cn")
+
+    return {
+        "morphometry": {
+            "areaKm2":          round(area_km2, 2),
+            "perimeterKm":      round(perim_km, 2),
+            "elevMinM":         round(float(rinfo.get("elev_min")  or 0), 1),
+            "elevMeanM":        round(float(rinfo.get("elev_mean") or 0), 1),
+            "elevMaxM":         round(float(rinfo.get("elev_max")  or 0), 1),
+            "reliefM":          round(float(rinfo.get("elev_max") or 0) - float(rinfo.get("elev_min") or 0), 1),
+            "slopeMeanDeg":     round(float(rinfo.get("slope_mean") or 0), 2),
+            "slopeMaxDeg":      round(float(rinfo.get("slope_max")  or 0), 2),
+            "drainageDensity":  drainage_density,
+            "compactness":      compactness,
+            "formFactor":       form_factor,
+        },
+        "landcover":      landcover,
+        "landcoverTile":  landcover_tile,
+        "precipMonthly":  precip_monthly,
+        "precipAnnualMm": precip_annual,
+        "runoff": {
+            "cnMean":   round(float(cn_mean), 1) if cn_mean is not None else None,
+            "cnTile":   cn_tile,
+            "note":     "CN alto (vermelho) = maior escoamento / menor infiltração.",
+        },
+    }
+
+
 def compute_drainage_tile(region_geojson: Optional[dict], threshold: int = 500) -> dict:
     """
     HydroSHEDS 15-arc-second flow accumulation thresholded → drainage network.

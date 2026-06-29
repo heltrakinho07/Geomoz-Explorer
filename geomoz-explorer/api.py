@@ -876,6 +876,25 @@ async def gee_basin_stats(req: GEEBasinStatsRequest):
         raise HTTPException(500, f"GEE basin-stats failed: {exc}")
 
 
+@app.post("/geomoz-api/gee/basin-report")
+async def gee_basin_report(req: GEEBasinStatsRequest):
+    """Full hydro-environmental basin report: morphometry + land cover + CHIRPS
+    monthly rainfall + SCS-CN runoff potential."""
+    import asyncio
+    from .gee_module import compute_basin_report
+
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor, lambda: compute_basin_report(req.geometry)
+        )
+        return result
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE basin-report failed: {exc}")
+
+
 @app.post("/geomoz-api/gee/drainage")
 async def gee_drainage(req: GEEDrainageRequest):
     """HydroSHEDS drainage network tile for the selected region."""
