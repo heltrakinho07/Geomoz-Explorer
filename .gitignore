@@ -47,3 +47,11 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Secrets / credentials — never commit
+service-account-key.json
+*-service-account*.json
+.env.local
+.env.*.local
+.venv/
+venv/
