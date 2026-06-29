@@ -23,6 +23,7 @@ import {
   Mountain, TrendingUp, Trees, Sliders, MapPin,
   Activity, Target, Compass, Gem,
   TrendingDown, Route, Waves, X,
+  Sprout, ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 import {
@@ -36,9 +37,30 @@ import { apiUrl } from "@/lib/api";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type SpectralTab = "s2" | "lineaments" | "targeting"
-                  | "profile" | "contours" | "topo_custom" | SpectralIndex;
+                  | "profile" | "contours" | "topo_custom" | "landcover" | SpectralIndex;
 
 type IndexGroup = "spectral" | "landsat" | "terrain";
+
+interface LandCoverClass {
+  code: number;
+  label: string;
+  color: string;
+  areaKm2: number;
+  pct: number;
+}
+
+interface LandCoverResult {
+  tileUrl: string;
+  name: string;
+  source: string;
+  year: number;
+  resolution_m: number;
+  totalKm2: number;
+  classes: LandCoverClass[];
+  ranked: LandCoverClass[];
+  province?: string | null;
+  district?: string | null;
+}
 
 interface RoseBin { bin_deg: number; count: number; pct: number; }
 
@@ -1278,6 +1300,141 @@ function ContoursPanel({
   );
 }
 
+// ── Land Cover Panel (ESA WorldCover) ──────────────────────────────────────────
+
+function LandCoverPanel({
+  province, district, onResult,
+}: {
+  province: string | null;
+  district: string | null;
+  onResult: (r: LandCoverResult | null) => void;
+}) {
+  const [running, setRunning] = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+  const [result, setResult]   = useState<LandCoverResult | null>(null);
+
+  async function run() {
+    setRunning(true); setError(null); onResult(null); setResult(null);
+    try {
+      const res = await fetch(apiUrl("/geomoz-api/gee/landcover"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          province: province || null, district: district || null,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail ?? "Erro GEE");
+      }
+      const data: LandCoverResult = await res.json();
+      setResult(data); onResult(data);
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally { setRunning(false); }
+  }
+
+  const ranked = result?.ranked.filter(c => c.areaKm2 > 0) ?? [];
+  const maxPct = Math.max(0.0001, ...ranked.map(c => c.pct));
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
+          Cobertura do Solo
+        </h4>
+        <div className="bg-lime-50 border border-lime-200 rounded-xl p-3 text-xs text-lime-800 leading-relaxed">
+          Classificação <strong>ESA WorldCover 2021</strong> a 10 m — 11 classes
+          de uso e cobertura do solo (florestas, agricultura, água, mangais…).
+        </div>
+        <div className="mt-2.5">
+          <label className="text-xs text-slate-500 mb-1 block">Área (clipping)</label>
+          <div className="text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 flex items-center gap-1.5">
+            <MapPin size={12} className="text-lime-600" />
+            {district
+              ? <span>{district} <span className="text-slate-400">·</span> {province}</span>
+              : province
+                ? <span>{province} <span className="text-slate-400">(toda a província)</span></span>
+                : <span className="text-slate-500">Moçambique (toda)</span>}
+          </div>
+        </div>
+      </div>
+
+      <button onClick={run} disabled={running}
+        className="w-full flex items-center justify-center gap-2 py-2.5 bg-lime-600 hover:bg-lime-700 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-lime-200">
+        {running
+          ? <><Loader2 size={14} className="animate-spin" /> A classificar cobertura…</>
+          : <><Sprout size={14} /> Calcular Cobertura do Solo</>}
+      </button>
+
+      {running && (
+        <div className="bg-lime-50 border border-lime-200 rounded-xl p-3 text-xs text-lime-700 leading-relaxed">
+          <Loader2 size={12} className="inline animate-spin mr-1.5" />
+          A computar áreas por classe a partir do ESA WorldCover (10 m). ~5–20 s.
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+          <strong>Erro:</strong> {error}
+        </div>
+      )}
+
+      {result && !running && (
+        <div className="space-y-3">
+          <div className="bg-lime-50 border border-lime-200 rounded-xl p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <CheckCircle2 size={13} className="text-lime-600" />
+              <span className="text-xs font-semibold text-lime-700">Cobertura calculada</span>
+            </div>
+            <div className="text-xs text-lime-700">
+              Área total: <strong>{result.totalKm2.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²</strong>
+              {" · "}{ranked.length} classes presentes
+            </div>
+          </div>
+
+          {/* Complete area analysis (ranked, only classes > 0) */}
+          <div>
+            <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+              Análise de Área (km² · %)
+            </h5>
+            <div className="space-y-1.5">
+              {ranked.map(c => (
+                <div key={c.code} className="text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-3 h-3 rounded shrink-0" style={{ background: c.color }} />
+                    <span className="flex-1 truncate text-slate-700">{c.label}</span>
+                    <span className="text-slate-400 font-mono">{c.areaKm2.toLocaleString(undefined, { maximumFractionDigits: 1 })} km²</span>
+                    <span className="w-11 text-right font-semibold text-lime-700">{c.pct.toFixed(1)}%</span>
+                  </div>
+                  <div className="ml-5 mt-0.5 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${(c.pct / maxPct) * 100}%`, background: c.color }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Full legend (official order, all 11 classes) */}
+          <div className="pt-2 border-t border-slate-100">
+            <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+              Legenda (ESA WorldCover)
+            </h5>
+            <div className="grid grid-cols-1 gap-0.5">
+              {result.classes.map(c => (
+                <div key={c.code} className="flex items-center gap-2 text-[11px] text-slate-600">
+                  <span className="inline-block w-3 h-3 rounded shrink-0" style={{ background: c.color }} />
+                  <span className="truncate">{c.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 interface GeoAnalisesProps {
@@ -1488,6 +1645,8 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   const [targetingTile, setTargetingTile]   = useState<TargetingResult | null>(null);
   const [contoursTile, setContoursTile]     = useState<ContoursResult | null>(null);
   const [topoClassesTile, setTopoClassesTile] = useState<TopoClassesResult | null>(null);
+  const [landCoverTile, setLandCoverTile]   = useState<LandCoverResult | null>(null);
+  const [sidebarOpen, setSidebarOpen]       = useState(true);
   const [profilePoints, setProfilePoints]   = useState<LonLat[]>([]);
   const [profileSamples, setProfileSamples] = useState(200);
   const [profileResult, setProfileResult]   = useState<ProfileResult | null>(null);
@@ -1535,6 +1694,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
     setTargetingTile(null);
     if (activeTab !== "contours") setContoursTile(null);
     if (activeTab !== "topo_custom") setTopoClassesTile(null);
+    if (activeTab !== "landcover") setLandCoverTile(null);
     if (activeTab !== "profile") {
       setProfileError(null);
       setProfileCursorIdx(null);
@@ -1599,6 +1759,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   const isProfile     = activeTab === "profile";
   const isContours    = activeTab === "contours";
   const isTopoCustom  = activeTab === "topo_custom";
+  const isLandCover   = activeTab === "landcover";
 
   // Ref so the province GeoJSON click handler (captured in a stable closure)
   // can see the current tab and skip onProvinceChange while picking profile points.
@@ -1606,7 +1767,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   useEffect(() => { isProfileRef.current = isProfile; }, [isProfile]);
   const isTerrain     = activeDef?.group === "terrain";
   const isGeeOnly     = (activeDef && GEE_ONLY_INDICES.includes(activeDef.id))
-                        || isLineaments || isTargeting || isProfile || isContours;
+                        || isLineaments || isTargeting || isProfile || isContours || isLandCover;
   const isTopoClass   = activeTab === "topo_class";
   const spectralKey = `spectral-${activeTab}-${province}-${district}-${geologyGeoJSON?.features?.length ?? 0}`;
   const geeTileKey  = `gee-${activeTab}-${geeTile?.tileUrl ?? ""}`;
@@ -1633,11 +1794,13 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
       tabs: [{ id: "lineaments", label: "Lineamentos", icon: <Activity size={13} /> }] },
     { name: "Potencial Mineral",      badge: "GEE · Multi-critério", badgeColor: "bg-yellow-100 text-yellow-700",
       tabs: [{ id: "targeting",  label: "Targeting",   icon: <Target size={13} /> }] },
+    { name: "Uso & Cobertura",        badge: "ESA WorldCover · 10 m", badgeColor: "bg-lime-100 text-lime-700",
+      tabs: [{ id: "landcover", label: "Cobertura do Solo", icon: <Sprout size={13} /> }] },
   ];
 
   const geeReady = geeStatus?.connected && useGEE;
   // Composite, lineaments, targeting & GEE-only indices require GEE
-  const requiresGee = isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isGeeOnly;
+  const requiresGee = isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isGeeOnly;
   void requiresGee;
   const profileCursorLatLon = (isProfile && profileResult && profileCursorIdx != null
     && profileCursorIdx >= 0 && profileCursorIdx < profileResult.points.length)
@@ -1696,12 +1859,14 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
               const isTerrainTab = def?.group === "terrain";
               const isStructure = tab.id === "lineaments";
               const isTarget    = tab.id === "targeting";
+              const isLandCoverTab = tab.id === "landcover";
               return (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id as SpectralTab)}
                   className={`flex items-center gap-1.5 px-2.5 py-2.5 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${
                     activeTab === tab.id
                       ? isStructure ? "border-fuchsia-500 text-fuchsia-600"
                       : isTarget    ? "border-yellow-500 text-yellow-700"
+                      : isLandCoverTab ? "border-lime-500 text-lime-600"
                       : isTerrainTab ? "border-amber-500 text-amber-600"
                       : "border-sky-500 text-sky-600"
                       : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"
@@ -1725,9 +1890,19 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
       </div>
 
       {/* Main content */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Sidebar toggle (always visible) */}
+        <button
+          onClick={() => setSidebarOpen(o => !o)}
+          className="z-[700] absolute top-1/2 -translate-y-1/2 w-5 h-16 bg-white border border-l-0 border-slate-200 rounded-r-lg flex items-center justify-center shadow-sm hover:bg-slate-50 transition-all duration-200"
+          style={{ left: sidebarOpen ? "18rem" : 0 }}
+          title={sidebarOpen ? "Recolher painel" : "Expandir painel"}
+        >
+          {sidebarOpen ? <ChevronLeft size={12} className="text-slate-400" /> : <ChevronRight size={12} className="text-slate-400" />}
+        </button>
+
         {/* Controls sidebar */}
-        <div className="w-72 bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto">
+        <div className={`bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto transition-all duration-200 ${sidebarOpen ? "w-72" : "w-0 overflow-hidden border-r-0"}`}>
 
           {/* GEE Setup Guide (expandable) */}
           {showSetup && (
@@ -1855,6 +2030,19 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                 </div>
               ) : (
                 <TargetingPanel province={province} district={district} onResult={setTargetingTile} />
+              )}
+            </div>
+          )}
+
+          {/* Land Cover Panel */}
+          {!showSetup && isLandCover && (
+            <div className="p-4 border-b border-slate-100">
+              {!geeStatus?.connected ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                  <strong>GEE necessário.</strong> Cobertura do solo usa o ESA WorldCover via Google Earth Engine.
+                </div>
+              ) : (
+                <LandCoverPanel province={province} district={district} onResult={setLandCoverTile} />
               )}
             </div>
           )}
@@ -2182,6 +2370,17 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                 key={`tc-${topoClassesTile.tileUrl}`}
                 url={topoClassesTile.tileUrl}
                 attribution="GEE · Classes Topográficas"
+                opacity={opacity}
+                maxZoom={18}
+              />
+            )}
+
+            {/* Land cover (ESA WorldCover 2021) tile */}
+            {isLandCover && landCoverTile && (
+              <TileLayer
+                key={`lc-${landCoverTile.tileUrl}`}
+                url={landCoverTile.tileUrl}
+                attribution="GEE · ESA WorldCover 2021"
                 opacity={opacity}
                 maxZoom={18}
               />
