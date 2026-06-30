@@ -134,6 +134,7 @@ function hashStr(s: string): number {
 
 export type SpectralIndex =
   | "ndvi" | "fe_oxide" | "clay" | "hydrothermal" | "bare_soil"
+  | "al_oh" | "ferrous" | "gossan"
   | "ndvi_l8"
   | "elevation" | "hipsometry" | "slope" | "hillshade" | "topo_class";
 
@@ -213,6 +214,7 @@ export function computeSpectralValue(
 
 /** Indices that require real GEE (no meaningful proxy from geology attributes). */
 export const GEE_ONLY_INDICES: SpectralIndex[] = [
+  "al_oh", "ferrous", "gossan",
   "ndvi_l8", "elevation", "hipsometry", "slope", "hillshade", "topo_class",
 ];
 
@@ -226,6 +228,9 @@ export function applyColormap(t: number, index: SpectralIndex): string {
     clay:        [[255,255,255],[200,225,255],[130,180,240],[50,120,200],[0,50,140]],
     hydrothermal:[[255,255,200],[255,220,100],[255,140,50],[200,40,160],[100,0,100]],
     bare_soil:   [[0,120,0],[130,200,100],[255,240,150],[230,130,60],[160,40,0]],
+    al_oh:       [[43,8,63],[91,26,120],[142,47,175],[196,78,192],[240,107,168],[255,178,127],[255,227,158]],
+    ferrous:     [[5,47,26],[10,107,58],[58,168,86],[143,209,122],[215,240,176],[255,255,224]],
+    gossan:      [[255,255,255],[255,233,176],[255,192,77],[255,138,31],[232,82,15],[168,26,6],[92,0,0]],
     ndvi_l8:     [[255,255,255],[206,126,69],[252,209,99],[116,169,1],[6,98,1],[1,29,1]],
     elevation:   [[10,79,10],[247,247,200],[212,176,107],[141,85,36],[255,255,255]],
     hipsometry:  [[0,63,92],[70,88,129],[140,154,166],[181,192,200],[247,178,103],[228,87,46],[183,28,28]],

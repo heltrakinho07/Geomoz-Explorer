@@ -193,6 +193,36 @@ INDEX_REGISTRY = {
                 "palette": ["006400","7CFC00","FFFF00","FFA500","FF4500","8B0000"]},
         "norm": (-0.4, 0.6),
     },
+    "al_oh": {
+        "group": "spectral",
+        "needs": ["s2"],
+        "name": "Alteração Argílica/Fílica — Al-OH (B11/B12)",
+        "formula": "Al-OH = B11 / B12",
+        "bands": "SWIR1 (B11 ~1610 nm) e SWIR2 (B12 ~2190 nm)",
+        "vis": {"min": 0.95, "max": 1.6,
+                "palette": ["2b083f","5b1a78","8e2faf","c44ec0","f06ba8","ffb27f","ffe39e"]},
+        "norm": (0.95, 1.6),
+    },
+    "ferrous": {
+        "group": "spectral",
+        "needs": ["s2"],
+        "name": "Ferro Ferroso (Fe²⁺) — B12/B8A",
+        "formula": "Ferrous = B12 / B8A",
+        "bands": "SWIR2 (B12) e Red-Edge3 (B8A)",
+        "vis": {"min": 0.4, "max": 1.15,
+                "palette": ["052f1a","0a6b3a","3aa856","8fd17a","d7f0b0","ffffe0"]},
+        "norm": (0.4, 1.15),
+    },
+    "gossan": {
+        "group": "spectral",
+        "needs": ["s2"],
+        "name": "Gossan / Capa de Ferro — (B4/B2)·(B11/B12)",
+        "formula": "Gossan = (B4 / B2) × (B11 / B12)",
+        "bands": "Vermelho (B4), Azul (B2), SWIR1 (B11), SWIR2 (B12)",
+        "vis": {"min": 1.0, "max": 3.2,
+                "palette": ["ffffff","ffe9b0","ffc04d","ff8a1f","e8520f","a81a06","5c0000"]},
+        "norm": (1.0, 3.2),
+    },
     "ndvi_l8": {
         "group": "landsat",
         "needs": ["l8"],
@@ -377,6 +407,16 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         num = s2.select("B11").add(s2.select("B4")).subtract(s2.select("B8")).subtract(s2.select("B2"))
         den = s2.select("B11").add(s2.select("B4")).add(s2.select("B8")).add(s2.select("B2"))
         return num.divide(den).rename("index")
+    if index == "al_oh":
+        # Al-OH absorption (~2200 nm) falls in B12 → high B11/B12 = sericite/kaolinite
+        # (alteração argílica/fílica).
+        return s2.select("B11").divide(s2.select("B12")).rename("index")
+    if index == "ferrous":
+        return s2.select("B12").divide(s2.select("B8A")).rename("index")
+    if index == "gossan":
+        ferric = s2.select("B4").divide(s2.select("B2"))
+        al_oh  = s2.select("B11").divide(s2.select("B12"))
+        return ferric.multiply(al_oh).rename("index")
     if index == "ndvi_l8":
         return l8.normalizedDifference(["SR_B5", "SR_B4"]).rename("index")
     if index == "elevation":
