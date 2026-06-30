@@ -57,7 +57,7 @@ interface BasinStats {
 
 interface DrainageResult   { tileUrl: string; threshold: number }
 interface RiverNetResult   { tileUrl: string; majorTileUrl: string; orders: Record<string, number>; palette: string[] }
-interface WatershedResult  { tileUrl: string; geojson: GeoJSON.FeatureCollection; pourPoint: [number, number]; areaKm2: number; maxIter: number }
+interface WatershedResult  { tileUrl: string; geojson: GeoJSON.FeatureCollection; pourPoint: [number, number]; areaKm2: number; maxIter?: number; level?: number; source?: string }
 interface LandCoverClass   { code: number; label: string; color: string; areaKm2: number; pct: number }
 interface BasinReport {
   morphometry: {
@@ -170,7 +170,8 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
   // Delineate
   const [pourPoint,     setPourPoint]     = useState<[number, number] | null>(null);
   const [watershedData, setWatershedData] = useState<WatershedResult | null>(null);
-  const [maxIter,       setMaxIter]       = useState(60);
+  const [maxIter]                         = useState(60);   // D8 fallback only
+  const [level,         setLevel]         = useState(10);
   const [loadingWS,     setLoadingWS]     = useState(false);
   const [wsStats,       setWsStats]       = useState<BasinStats | null>(null);
   const [loadingWsSt,   setLoadingWsSt]   = useState(false);
@@ -300,13 +301,17 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
     setBasinReport(null); setReportLayer("none"); setLoadingWS(true);
     const ok = await checkGEE();
     if (!ok) { setLoadingWS(false); return; }
+    // Hard timeout so the UI never hangs forever on a slow GEE response.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 90_000);
     try {
       const r = await fetch(apiUrl("/geomoz-api/gee/watershed"), { method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lat, lon: lng, province, district, max_iter: maxIter }) });
+        headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
+        body: JSON.stringify({ lat, lon: lng, province, district, max_iter: maxIter, level }) });
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
       const wd: WatershedResult = await r.json();
       setWatershedData(wd);
+      setLoadingWS(false);   // show the basin immediately; stats load separately
       // Auto-stats for delineated watershed
       if (wd.geojson?.features?.length) {
         setLoadingWsSt(true);
@@ -318,7 +323,10 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
         } catch { /* silent */ } finally { setLoadingWsSt(false); }
       }
     } catch (e) {
-      const errorMsg = String(e instanceof Error ? e.message : e);
+      const aborted = e instanceof DOMException && e.name === "AbortError";
+      const errorMsg = aborted
+        ? "A delineação demorou demasiado. Tente outro ponto ou um nível de detalhe mais baixo."
+        : String(e instanceof Error ? e.message : e);
       setError(errorMsg);
       toast({
         variant: "destructive",
@@ -326,7 +334,7 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
         description: errorMsg,
       });
     }
-    finally { setLoadingWS(false); }
+    finally { clearTimeout(timer); setLoadingWS(false); }
   }
 
   // Generate the full hydro-environmental report for the delineated basin
@@ -499,12 +507,12 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
           <div className="p-3 space-y-3 border-b border-slate-100">
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-[11px] text-blue-800 flex items-start gap-2">
               <MapPin size={12} className="mt-0.5 shrink-0 text-blue-500" />
-              <span>Clique no mapa para definir o <strong>ponto de saída</strong>. O algoritmo D8 vai delinear a bacia automaticamente.</span>
+              <span>Clique no mapa: devolve a <strong>sub-bacia HydroBASINS</strong> que contém o ponto (limite real, instantâneo).</span>
             </div>
             <div>
-              <label className="text-[10px] text-slate-500 mb-1 block">Expansão — <strong className="text-slate-700">{maxIter} passos (~{(maxIter*0.5).toFixed(0)} km)</strong></label>
-              <input type="range" min={20} max={200} step={10} value={maxIter} onChange={e => setMaxIter(+e.target.value)} className="w-full accent-blue-500" />
-              <div className="flex justify-between text-[10px] text-slate-400"><span>Pequena</span><span>Grande</span></div>
+              <label className="text-[10px] text-slate-500 mb-1 block">Detalhe — <strong className="text-slate-700">nível {level}</strong></label>
+              <input type="range" min={6} max={12} step={1} value={level} onChange={e => setLevel(+e.target.value)} className="w-full accent-blue-500" />
+              <div className="flex justify-between text-[10px] text-slate-400"><span>Grande (6)</span><span>Pequena (12)</span></div>
             </div>
             {pourPoint && (
               <div className="bg-slate-50 rounded-xl p-2.5 text-[11px] font-mono text-slate-600 space-y-0.5">
@@ -627,8 +635,8 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
             </>
           ) : (
             <>
-              <div className="font-semibold text-blue-800 mb-2 flex items-center gap-1"><Crosshair size={11} /> Watershed D8</div>
-              <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow-sm" /><span className="text-slate-600">Ponto de saída</span></div>
+              <div className="font-semibold text-blue-800 mb-2 flex items-center gap-1"><Crosshair size={11} /> Sub-bacia</div>
+              <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow-sm" /><span className="text-slate-600">Ponto clicado</span></div>
               <div className="flex items-center gap-1.5"><span className="inline-block w-5 h-1.5 rounded border-2 border-blue-800 bg-blue-600/20" /><span className="text-slate-600">Bacia delimitada</span></div>
             </>
           )}
@@ -668,7 +676,7 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
               <Loader2 size={20} className="text-blue-500 animate-spin" />
               <span className="text-sm text-slate-700 font-medium">
                 {loadingBasins ? "A carregar bacias HydroBASINS…"
-                  : loadingWS ? `A delinear watershed (${maxIter} iterações D8)…`
+                  : loadingWS ? "A delinear sub-bacia (HydroBASINS)…"
                   : "A gerar rede de linhas de água…"}
               </span>
             </div>
@@ -697,12 +705,10 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
               </div>
 
               {/* Loading watershed */}
-              {(loadingWS || loadingWsSt) && (
+              {loadingWS && (
                 <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400 py-10">
                   <Loader2 size={24} className="animate-spin text-blue-400" />
-                  <span className="text-sm text-center px-4">
-                    {loadingWS ? `Algoritmo D8 em execução (${maxIter} iterações)…` : "A calcular estatísticas GEE…"}
-                  </span>
+                  <span className="text-sm text-center px-4">A delinear sub-bacia (HydroBASINS)…</span>
                 </div>
               )}
 
@@ -715,8 +721,15 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
                     <div className="text-xs opacity-75 mb-1">Área Total da Bacia</div>
                     <div className="text-3xl font-bold">{watershedData.areaKm2.toLocaleString("pt-PT")}</div>
                     <div className="text-xs opacity-75">km²</div>
-                    <div className="mt-2 text-xs opacity-70">{maxIter} passos D8 · snap automático ao canal</div>
+                    <div className="mt-2 text-xs opacity-70">{watershedData.source === "hydrobasins" ? `HydroBASINS · nível ${watershedData.level ?? level}` : "D8 · HydroSHEDS"}</div>
                   </div>
+
+                  {/* Stats loading (separate from basin delineation) */}
+                  {loadingWsSt && (
+                    <div className="flex items-center gap-2 text-[11px] text-slate-400 bg-slate-50 rounded-xl p-3">
+                      <Loader2 size={13} className="animate-spin text-blue-400" /> A calcular estatísticas GEE (declive, NDVI, chuva)…
+                    </div>
+                  )}
 
                   {/* Morphometry */}
                   {wsStats && !loadingWsSt && (
@@ -854,7 +867,7 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
                   {/* Note */}
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-800 flex items-start gap-2">
                     <Info size={12} className="mt-0.5 shrink-0" />
-                    Watershed D8 aproximado. Para análise definitiva, recomenda-se validação de campo.
+                    Sub-bacia HydroBASINS (limite oficial WWF/HydroSHEDS). Para análise definitiva, recomenda-se validação de campo.
                   </div>
                 </div>
               )}

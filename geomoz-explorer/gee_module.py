@@ -1682,6 +1682,74 @@ def compute_watershed_from_point(
     lon: float,
     region_geojson: Optional[dict],
     max_iter: int = 60,
+    level: int = 10,
+) -> dict:
+    """
+    Delineate the basin at a clicked location.
+
+    Primary (fast, robust): return the HydroBASINS sub-basin that contains the
+    point — a real, hydrologically-defined catchment polygon returned in ~2 s,
+    never hangs. `level` (6–12) controls detail (higher = smaller sub-basins).
+
+    Fallback (slower): iterative D8 upstream expansion on HydroSHEDS 15" data,
+    used only if HydroBASINS is unavailable.
+    """
+    import ee
+    _init_gee()
+
+    pt = ee.Geometry.Point([lon, lat])
+    try:
+        hb = _watershed_hydrobasins(pt, lat, lon, level)
+        if hb is not None:
+            return hb
+    except Exception:
+        pass  # fall through to the D8 method
+
+    return _watershed_d8(lat, lon, region_geojson, max_iter)
+
+
+def _watershed_hydrobasins(pt, lat: float, lon: float, level: int):
+    """Containing HydroBASINS sub-basin (instant, real boundary). None if absent."""
+    import ee
+    keep = ["HYBAS_ID", "SUB_AREA", "UP_AREA", "ORDER_"]
+    # Try the requested level first, then progressively coarser fallbacks.
+    seen: list = []
+    order = [level] + [l for l in (12, 10, 8, 6) if l != level]
+    for lvl in order:
+        if lvl in seen or not (1 <= lvl <= 12):
+            continue
+        seen.append(lvl)
+        cid = f"WWF/HydroATLAS/v1/Basins/level{lvl:02d}"
+        try:
+            fc = (ee.FeatureCollection(cid).filterBounds(pt)
+                  .select(keep, None, True).limit(1))
+            geojson = fc.getInfo()                      # round-trip 1
+            feats = geojson.get("features", [])
+            if not feats:
+                continue
+            props = feats[0].get("properties", {})
+            area_km2 = float(props.get("SUB_AREA") or 0)
+            tile = (fc.style(color="0d47a1", fillColor="1565c033", width=2)
+                    .getMapId()["tile_fetcher"].url_format)   # round-trip 2
+            return {
+                "tileUrl":   tile,
+                "geojson":   geojson,
+                "pourPoint": [lat, lon],
+                "areaKm2":   round(float(area_km2), 2),
+                "maxIter":   0,
+                "level":     lvl,
+                "source":    "hydrobasins",
+            }
+        except Exception:
+            continue
+    return None
+
+
+def _watershed_d8(
+    lat: float,
+    lon: float,
+    region_geojson: Optional[dict],
+    max_iter: int = 60,
 ) -> dict:
     """
     Delineate a watershed (upstream catchment) from a pour point using the

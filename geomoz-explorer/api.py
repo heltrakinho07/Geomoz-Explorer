@@ -944,14 +944,16 @@ class GEEWatershedRequest(BaseModel):
     province: Optional[str] = None
     district: Optional[str] = None
     max_iter: int            = 60
+    level:    int            = 10
 
 
 @app.post("/geomoz-api/gee/watershed")
 async def gee_watershed(req: GEEWatershedRequest):
     """
-    D8 watershed delineation from a pour point using HydroSHEDS 15DIR.
-    Returns tile URL + GeoJSON polygon + area km².
-    max_iter controls how many upstream pixels to expand (~500 m/step).
+    Basin delineation at a clicked point. Primary method returns the containing
+    HydroBASINS sub-basin (instant, real boundary); falls back to iterative D8
+    on HydroSHEDS 15DIR if HydroBASINS is unavailable. Returns tile URL +
+    GeoJSON polygon + area km². `level` (6–12) controls HydroBASINS detail.
     """
     import asyncio
     from .gee_module import compute_watershed_from_point
@@ -962,7 +964,7 @@ async def gee_watershed(req: GEEWatershedRequest):
         result = await loop.run_in_executor(
             _thread_pool_executor,
             lambda: compute_watershed_from_point(
-                req.lat, req.lon, region, req.max_iter
+                req.lat, req.lon, region, req.max_iter, req.level
             ),
         )
         return result
