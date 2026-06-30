@@ -972,3 +972,61 @@ async def gee_watershed(req: GEEWatershedRequest):
         raise HTTPException(503, str(exc))
     except Exception as exc:
         raise HTTPException(500, f"GEE watershed failed: {exc}")
+
+
+# ── Geoperigos / Geohazards ────────────────────────────────────────────────────
+
+class GEEFloodRequest(BaseModel):
+    province:       Optional[str] = None
+    district:       Optional[str] = None
+    event_start:    str
+    event_end:      str
+    baseline_start: Optional[str] = None
+    baseline_end:   Optional[str] = None
+
+
+@app.post("/geomoz-api/gee/flood")
+async def gee_flood(req: GEEFloodRequest):
+    """Sentinel-1 SAR flood extent (change detection) for an event window."""
+    import asyncio
+    from .gee_module import compute_flood_sar
+
+    region = _region_geojson(req.province, req.district)
+    loop   = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_flood_sar(
+                region, req.event_start, req.event_end,
+                req.baseline_start, req.baseline_end,
+            ),
+        )
+        return result
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE flood failed: {exc}")
+
+
+class GEEErosionRequest(BaseModel):
+    province: Optional[str] = None
+    district: Optional[str] = None
+    year:     int           = 2023
+
+
+@app.post("/geomoz-api/gee/erosion")
+async def gee_erosion(req: GEEErosionRequest):
+    """RUSLE soil-erosion risk (A = R·K·LS·C·P) classified into 5 classes."""
+    import asyncio
+    from .gee_module import compute_erosion_rusle
+
+    region = _region_geojson(req.province, req.district)
+    loop   = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_erosion_rusle(region, req.year),
+        )
+        return result
+    except Exception as exc:
+        raise HTTPException(500, f"GEE erosion failed: {exc}")

@@ -1863,3 +1863,193 @@ def _watershed_d8(
         "areaKm2":    round(float(area_km2.getInfo()), 2),
         "maxIter":    max_iter,
     }
+
+
+# ── Geoperigos / Geohazards (cheias Sentinel-1 SAR + erosão RUSLE) ──────────────
+
+# Flood-risk land-cover weighting reused from runoff intuition is not needed here;
+# the two products below are self-contained and reuse the shared DEM/S2/CHIRPS.
+
+def compute_flood_sar(
+    region_geojson: Optional[dict],
+    event_start: str,
+    event_end: str,
+    baseline_start: Optional[str] = None,
+    baseline_end: Optional[str] = None,
+) -> dict:
+    """
+    Flood extent from Sentinel-1 SAR (C-band, VV) — UN-SPIDER change-detection
+    recommended practice. Water is smooth → low backscatter; a flood is where
+    backscatter dropped sharply between a dry *baseline* and the *event* window.
+
+    Permanent water (JRC Global Surface Water) and steep slopes (>5°) are removed,
+    plus isolated speckle. Radar sees through clouds — essential during cyclones
+    (legado Idai/Kenneth). Returns flood tile + permanent-water tile + area km².
+    """
+    import ee
+    _init_gee()
+    region = _to_ee_region(region_geojson)
+
+    # Default baseline: the 60 days before the event window (dry reference).
+    if not (baseline_start and baseline_end):
+        ev_start = ee.Date(event_start)
+        baseline_end   = ev_start.advance(-1, "day")
+        baseline_start = ev_start.advance(-60, "day")
+    else:
+        baseline_start = ee.Date(baseline_start)
+        baseline_end   = ee.Date(baseline_end)
+
+    def _s1(d0, d1):
+        return (ee.ImageCollection("COPERNICUS/S1_GRD")
+                .filterBounds(region).filterDate(d0, d1)
+                .filter(ee.Filter.eq("instrumentMode", "IW"))
+                .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
+                .select("VV"))
+
+    after_col  = _s1(event_start, event_end)
+    before_col = _s1(baseline_start, baseline_end)
+
+    n_after = after_col.size().getInfo()
+    if n_after == 0:
+        raise RuntimeError(
+            "Sem imagens Sentinel-1 no período do evento. Alargue as datas "
+            "(o S1 passa a cada ~6–12 dias)."
+        )
+    n_before = before_col.size().getInfo()
+
+    smooth = lambda img: img.focal_median(50, "circle", "meters")
+    after  = smooth(after_col.median())
+    before = smooth(before_col.median()) if n_before else after
+
+    # Change: backscatter dropped (became water) AND is absolutely low after.
+    diff  = after.subtract(before)
+    flood = diff.lt(-3).And(after.lt(-15))
+
+    # Remove permanent water (JRC occurrence > 40%) and steep terrain.
+    jrc = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
+    perm_water = jrc.gt(40).unmask(0)
+    flood = flood.where(perm_water, 0)
+
+    slope = ee.Terrain.slope(_build_dem(region)).clip(region)
+    flood = flood.updateMask(slope.lt(5))
+
+    # Remove isolated pixels (speckle): keep clusters ≥ 8 connected pixels.
+    flood = flood.updateMask(flood)
+    conn  = flood.connectedPixelCount(25, True)
+    flood = flood.updateMask(conn.gte(8)).rename("flood")
+
+    flood_area_km2 = (
+        flood.multiply(ee.Image.pixelArea()).reduceRegion(
+            reducer=ee.Reducer.sum(), geometry=region, scale=60,
+            bestEffort=True, maxPixels=int(1e10),
+        ).get("flood")
+    )
+
+    flood_tile = flood.visualize(palette=["d50000"], opacity=0.85) \
+                      .getMapId()["tile_fetcher"].url_format
+    perm_tile  = perm_water.selfMask().visualize(palette=["1565c0"], opacity=0.6) \
+                      .getMapId()["tile_fetcher"].url_format
+
+    area_val = flood_area_km2.getInfo()
+    return {
+        "floodTile":     flood_tile,
+        "permWaterTile": perm_tile,
+        "areaKm2":       round((float(area_val) / 1e6) if area_val else 0.0, 2),
+        "scenesEvent":   n_after,
+        "scenesBaseline": n_before,
+        "eventStart":    event_start,
+        "eventEnd":      event_end,
+        "source":        "sentinel-1",
+    }
+
+
+# RUSLE erosion-risk classes (t/ha/yr) → label/colour for legend + per-class area.
+_RUSLE_CLASSES = [
+    (1, "Muito baixo", "1a9850", 0,   5),
+    (2, "Baixo",       "91cf60", 5,   10),
+    (3, "Moderado",    "fee08b", 10,  20),
+    (4, "Alto",        "fc8d59", 20,  40),
+    (5, "Muito alto",  "d73027", 40,  1e9),
+]
+
+
+def compute_erosion_rusle(region_geojson: Optional[dict], year: int = 2023) -> dict:
+    """
+    Soil-loss risk via RUSLE: A = R·K·LS·C·P (t/ha/yr).
+      R  — erosividade da chuva, de CHIRPS anual (R = 0.363·P + 79).
+      K  — erodibilidade do solo (constante moderada 0.25; refinável c/ SoilGrids).
+      LS — comprimento/declive, do DEM (Wischmeier & Smith a partir do declive %).
+      C  — cobertura, de NDVI MODIS (C = exp(-2·NDVI/(1-NDVI))).
+      P  — práticas de conservação (= 1, sem dados).
+    Devolve tile classificado (5 classes), área por classe e A médio.
+    """
+    import ee
+    _init_gee()
+    region = _to_ee_region(region_geojson)
+    max_px = int(1e10)
+
+    # R — rainfall erosivity from annual precipitation (CHIRPS).
+    precip = (ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY")
+              .filterDate(f"{year}-01-01", f"{year+1}-01-01").sum())
+    R = precip.multiply(0.363).add(79).rename("R")
+
+    # K — soil erodibility (moderate constant; documented limitation).
+    K = ee.Image.constant(0.25).rename("K")
+
+    # LS — from slope (%) via Wischmeier & Smith topographic factor.
+    dem   = _build_dem(region)
+    proj  = ee.ImageCollection("COPERNICUS/DEM/GLO30").select("DEM").first().projection()
+    slope_deg = ee.Terrain.slope(dem.setDefaultProjection(proj))
+    slope_pct = slope_deg.divide(180).multiply(_math.pi).tan().multiply(100)
+    LS = (slope_pct.pow(2).multiply(0.0065)
+          .add(slope_pct.multiply(0.0456)).add(0.065)).rename("LS")
+
+    # C — cover-management from NDVI. MODIS (250 m, cloud-free composite) is used
+    # instead of a Sentinel-2 median: at province scale it is adequate and ~10×
+    # faster, which keeps the whole RUSLE computation interactive.
+    try:
+        ndvi = (ee.ImageCollection("MODIS/061/MOD13Q1")
+                .filterDate(f"{year}-01-01", f"{year+1}-01-01")
+                .select("NDVI").mean().multiply(0.0001).clamp(-0.99, 0.99))
+        C = ndvi.multiply(-2).divide(ee.Image(1).subtract(ndvi)).exp().clamp(0, 1).rename("C")
+    except Exception:
+        C = ee.Image.constant(0.5).rename("C")
+
+    A = R.multiply(K).multiply(LS).multiply(C).rename("A").clip(region)
+
+    # Classify into the 5 risk classes.
+    classified = ee.Image(0)
+    for cid, _label, _color, lo, hi in _RUSLE_CLASSES:
+        classified = classified.where(A.gte(lo).And(A.lt(hi)), cid)
+    classified = classified.selfMask().rename("class")
+
+    palette = [c for _, _, c, _, _ in _RUSLE_CLASSES]
+    tile = classified.visualize(min=1, max=5, palette=palette, opacity=0.7) \
+                     .getMapId()["tile_fetcher"].url_format
+
+    # Per-class area (km²). Reduce at 250 m — province-scale stats don't need 90 m
+    # and the coarser scale keeps the request interactive.
+    groups = (ee.Image.pixelArea().addBands(classified).reduceRegion(
+        reducer=ee.Reducer.sum().group(groupField=1, groupName="class"),
+        geometry=region, scale=250, bestEffort=True, maxPixels=max_px,
+    ).getInfo().get("groups", []) or [])
+    by_class = {int(g["class"]): float(g.get("sum", 0)) / 1e6 for g in groups}
+
+    classes = []
+    for cid, label, color, lo, hi in _RUSLE_CLASSES:
+        a = round(by_class.get(cid, 0.0), 1)
+        classes.append({"id": cid, "label": label, "color": f"#{color}",
+                        "range": f"{lo}–{'∞' if hi >= 1e9 else int(hi)} t/ha/ano",
+                        "areaKm2": a})
+
+    a_mean = A.reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=250,
+                            bestEffort=True, maxPixels=max_px).get("A").getInfo()
+
+    return {
+        "tile":        tile,
+        "classes":     classes,
+        "meanTPerHa":  round(float(a_mean), 2) if a_mean is not None else None,
+        "year":        year,
+        "palette":     palette,
+        "source":      "RUSLE · CHIRPS+DEM+MODIS",
+    }
