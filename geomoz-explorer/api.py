@@ -1030,3 +1030,27 @@ async def gee_erosion(req: GEEErosionRequest):
         return result
     except Exception as exc:
         raise HTTPException(500, f"GEE erosion failed: {exc}")
+
+
+class GEEGroundwaterRequest(BaseModel):
+    province: Optional[str] = None
+    district: Optional[str] = None
+    year:     int           = 2023
+
+
+@app.post("/geomoz-api/gee/groundwater")
+async def gee_groundwater(req: GEEGroundwaterRequest):
+    """Groundwater-potential map (AHP weighted overlay) classified into 5 classes."""
+    import asyncio
+    from .gee_module import compute_groundwater_ahp
+
+    region = _region_geojson(req.province, req.district)
+    loop   = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_groundwater_ahp(region, req.year),
+        )
+        return result
+    except Exception as exc:
+        raise HTTPException(500, f"GEE groundwater failed: {exc}")

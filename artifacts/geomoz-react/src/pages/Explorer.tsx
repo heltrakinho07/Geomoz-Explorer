@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle } from "lucide-react";
+import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -11,6 +11,7 @@ import ExportPanel from "@/components/ExportPanel";
 import GeoAnalises from "@/pages/GeoAnalises";
 import HidroGeoMoz from "@/pages/HidroGeoMoz";
 import Geoperigos from "@/pages/Geoperigos";
+import AguaSubterranea from "@/pages/AguaSubterranea";
 
 interface NominatimResult {
   place_id: number;
@@ -20,13 +21,14 @@ interface NominatimResult {
   boundingbox: [string, string, string, string];
 }
 
-type Tab = "Mapa" | "Análise" | "GeoAnálises" | "Bacias Hidrográficas" | "Geoperigos" | "Exportar";
+type Tab = "Mapa" | "Análise" | "GeoAnálises" | "Bacias Hidrográficas" | "Água Subterrânea" | "Geoperigos" | "Exportar";
 
 const TABS: { id: Tab; icon: React.ReactNode; label: string }[] = [
   { id: "Mapa",                 icon: <Globe size={13} />,    label: "Mapa" },
   { id: "Análise",              icon: null,                   label: "Análise" },
   { id: "GeoAnálises",         icon: <Satellite size={13} />, label: "GeoAnálises" },
   { id: "Bacias Hidrográficas", icon: <Droplets size={13} />, label: "Bacias Hidrográficas" },
+  { id: "Água Subterrânea",     icon: <Droplet size={13} />,  label: "Água Subterrânea" },
   { id: "Geoperigos",           icon: <AlertTriangle size={13} />, label: "Geoperigos" },
   { id: "Exportar",             icon: null,                   label: "Exportar" },
 ];
@@ -118,6 +120,7 @@ export default function Explorer() {
     "GeoAnálises":          "bg-indigo-500 shadow-indigo-200",
     "Bacias Hidrográficas": "bg-blue-600 shadow-blue-200",
     "Geoperigos":           "bg-rose-600 shadow-rose-200",
+    "Água Subterrânea":     "bg-cyan-600 shadow-cyan-200",
   };
 
   return (
@@ -240,6 +243,15 @@ export default function Explorer() {
       ) : activeTab === "Bacias Hidrográficas" ? (
         <div className="flex flex-1 overflow-hidden">
           <HidroGeoMoz
+            province={province}
+            district={district}
+            onProvinceChange={p => { setProvince(p); setDistrict(null); }}
+            onDistrictChange={setDistrict}
+          />
+        </div>
+      ) : activeTab === "Água Subterrânea" ? (
+        <div className="flex flex-1 overflow-hidden">
+          <AguaSubterranea
             province={province}
             district={district}
             onProvinceChange={p => { setProvince(p); setDistrict(null); }}

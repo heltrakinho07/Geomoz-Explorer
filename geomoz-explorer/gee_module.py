@@ -2053,3 +2053,130 @@ def compute_erosion_rusle(region_geojson: Optional[dict], year: int = 2023) -> d
         "palette":     palette,
         "source":      "RUSLE · CHIRPS+DEM+MODIS",
     }
+
+
+# ── Potencial de Água Subterrânea (AHP — sobreposição ponderada multicritério) ──
+
+# Pesos AHP (somam 1.0). Derivados de estudos de hidrogeologia em climas
+# semiáridos/tropicais. Sinal +1 = mais favorável quando maior; -1 = quando menor.
+_GWP_FACTORS = [
+    ("lineament", "Densidade de lineamentos", +1, 0.25),
+    ("rainfall",  "Precipitação (CHIRPS)",    +1, 0.22),
+    ("slope",     "Declive",                  -1, 0.18),
+    ("drainage",  "Densidade de drenagem",    -1, 0.13),
+    ("twi",       "Índice de humidade (TWI)", +1, 0.12),
+    ("landcover", "Uso/cobertura do solo",    +1, 0.10),
+]
+
+# Capacidade de infiltração por classe ESA WorldCover (0–1).
+_ESA_INFILTRATION = {10: 0.75, 20: 0.65, 30: 0.60, 40: 0.55, 50: 0.10,
+                     60: 0.35, 70: 0.0, 80: 0.50, 90: 0.90, 95: 0.80, 100: 0.45}
+
+_GWP_CLASSES = [
+    (1, "Muito baixo", "d73027"),
+    (2, "Baixo",       "fc8d59"),
+    (3, "Moderado",    "fee08b"),
+    (4, "Alto",        "91cf60"),
+    (5, "Muito alto",  "1a9850"),
+]
+
+
+def compute_groundwater_ahp(region_geojson: Optional[dict], year: int = 2023) -> dict:
+    """
+    Mapa de potencial de água subterrânea por AHP (Analytic Hierarchy Process):
+    combinação ponderada de 6 fatores hidrogeológicos normalizados (0–1):
+    lineamentos, chuva, declive, densidade de drenagem, TWI e cobertura.
+
+    GWPI = Σ wᵢ·xᵢ → classificado em 5 classes. Reutiliza os mesmos datasets
+    dos restantes módulos (DEM GLO-30, HydroSHEDS, CHIRPS, ESA WorldCover).
+    """
+    import ee
+    _init_gee()
+    region = _to_ee_region(region_geojson)
+    max_px = int(1e10)
+
+    # ── Fatores brutos ──────────────────────────────────────────────────────────
+    dem   = _build_dem(region)
+    proj  = ee.ImageCollection("COPERNICUS/DEM/GLO30").select("DEM").first().projection()
+    slope = ee.Terrain.slope(dem.setDefaultProjection(proj)).rename("slope")
+
+    lin_density = _build_lineament_layers(region)["density"].rename("lineament")
+
+    precip = (ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY")
+              .filterDate(f"{year}-01-01", f"{year+1}-01-01").sum().rename("rainfall"))
+
+    acc = ee.Image("WWF/HydroSHEDS/15ACC").select("b1")
+    streams = acc.gte(200).unmask(0)
+    drainage = streams.focal_mean(3000, "circle", "meters").rename("drainage")
+
+    # TWI = ln( a / tan(beta) ); a ≈ área de contribuição a montante.
+    cell_area = ee.Image.pixelArea()
+    a = acc.add(1).multiply(cell_area)
+    tan_b = slope.divide(180).multiply(_math.pi).tan().max(0.001)
+    twi = a.divide(tan_b).log().rename("twi")
+
+    lc = ee.ImageCollection("ESA/WorldCover/v200").first().select("Map")
+    lc_score = (lc.remap(list(_ESA_INFILTRATION.keys()),
+                         [int(v * 100) for v in _ESA_INFILTRATION.values()])
+                .divide(100).rename("landcover"))
+
+    raw = {"lineament": lin_density, "rainfall": precip, "slope": slope,
+           "drainage": drainage, "twi": twi, "landcover": lc_score}
+
+    # ── Normalização min–max (uma só chamada para todas as bandas; escala grosseira
+    #    para manter o pedido interativo — os fatores pesados (lineamentos via Canny)
+    #    só são avaliados uma vez) ───────────────────────────────────────────────────
+    stack = ee.Image.cat([raw[k].toFloat() for k, *_ in _GWP_FACTORS])
+    mm = stack.reduceRegion(
+        reducer=ee.Reducer.minMax(), geometry=region, scale=1000,
+        bestEffort=True, maxPixels=max_px,
+    ).getInfo()
+
+    gwpi = ee.Image.constant(0)
+    for key, _label, sign, weight in _GWP_FACTORS:
+        vmin = mm.get(f"{key}_min")
+        vmax = mm.get(f"{key}_max")
+        if vmin is None or vmax is None or vmax == vmin:
+            continue
+        norm = raw[key].subtract(vmin).divide(vmax - vmin).clamp(0, 1)
+        if sign < 0:
+            norm = ee.Image(1).subtract(norm)
+        gwpi = gwpi.add(norm.multiply(weight))
+    gwpi = gwpi.clip(region).rename("gwpi")
+
+    # ── Classificação em 5 classes. Como cada fator está em [0,1] e os pesos somam 1,
+    #    o GWPI está em [0,1]; usamos cortes fixos calibrados (evita uma 2ª passagem
+    #    de redução sobre o stack pesado). ──────────────────────────────────────────
+    breaks = [0.33, 0.42, 0.50, 0.58]
+    classified = (ee.Image(1)
+                  .where(gwpi.gte(breaks[0]), 2)
+                  .where(gwpi.gte(breaks[1]), 3)
+                  .where(gwpi.gte(breaks[2]), 4)
+                  .where(gwpi.gte(breaks[3]), 5)
+                  .rename("class"))
+
+    palette = [c for _, _, c in _GWP_CLASSES]
+    tile = classified.visualize(min=1, max=5, palette=palette, opacity=0.7) \
+                     .getMapId()["tile_fetcher"].url_format
+
+    groups = (ee.Image.pixelArea().addBands(classified).reduceRegion(
+        reducer=ee.Reducer.sum().group(groupField=1, groupName="class"),
+        geometry=region, scale=500, bestEffort=True, maxPixels=max_px,
+    ).getInfo().get("groups", []) or [])
+    by_class = {int(g["class"]): float(g.get("sum", 0)) / 1e6 for g in groups}
+
+    classes = [{"id": cid, "label": label, "color": f"#{color}",
+                "areaKm2": round(by_class.get(cid, 0.0), 1)}
+               for cid, label, color in _GWP_CLASSES]
+
+    weights = [{"key": k, "label": lbl, "weight": w, "favours": "alto" if s > 0 else "baixo"}
+               for k, lbl, s, w in _GWP_FACTORS]
+
+    return {
+        "tile":     tile,
+        "classes":  classes,
+        "weights":  weights,
+        "year":     year,
+        "palette":  palette,
+        "source":   "AHP · lineamentos+chuva+declive+drenagem+TWI+cobertura",
+    }
