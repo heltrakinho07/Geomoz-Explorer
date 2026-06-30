@@ -25,9 +25,10 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer,
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
-import { useProvinceNames, useDistrictNames, useProvincesGeoJSON, useStats } from "@/hooks/useGeoMoz";
+import { useProvinceNames, useDistrictNames, useStats } from "@/hooks/useGeoMoz";
 import { apiUrl } from "@/lib/api";
 import MapTools from "@/components/MapTools";
+import AreaSelect from "@/components/AreaSelect";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -196,7 +197,6 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
   // GeoMoz data
   const { data: provinceNames   } = useProvinceNames();
   const { data: districtNames   } = useDistrictNames(province);
-  const { data: provincesGeoJSON} = useProvincesGeoJSON();
   const { data: statsData       } = useStats(province, district);
 
   // GEE check
@@ -568,10 +568,12 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
           <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
             attribution='&copy; <a href="https://carto.com">CARTO</a>' maxZoom={19} />
 
-          {provincesGeoJSON && (
-            <GeoJSON key="provinces" data={provincesGeoJSON as GeoJSON.GeoJsonObject}
-              style={{ color: "#64748b", weight: 1.2, fillOpacity: 0, opacity: 0.5 }} />
-          )}
+          <AreaSelect
+            province={province} district={district}
+            onProvinceChange={p => { onProvinceChange(p); onDistrictChange(null); }}
+            onDistrictChange={onDistrictChange}
+            selectable={mode === "explore"}
+          />
 
           {/* River network */}
           {showRiverNet && riverNet && (

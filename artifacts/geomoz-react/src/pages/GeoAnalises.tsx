@@ -30,10 +30,11 @@ import {
   LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine, Area, ComposedChart,
 } from "recharts";
 
-import { useGeologyGeoJSON, useProvincesGeoJSON, useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
+import { useGeologyGeoJSON, useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
 import { computeSpectralValue, applyColormap, SpectralIndex, GEE_ONLY_INDICES } from "@/lib/geoml";
 import { apiUrl } from "@/lib/api";
 import MapTools from "@/components/MapTools";
+import AreaSelect from "@/components/AreaSelect";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1660,7 +1661,6 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   const [showSetup, setShowSetup]     = useState(false);
 
   const { data: provinceNames }   = useProvinceNames();
-  const { data: provinceGeoJSON } = useProvincesGeoJSON();
   const { data: geologyGeoJSON, isFetching } = useGeologyGeoJSON(
     province, district, "code2006",
     activeTab !== "s2" && !useGEE
@@ -1763,10 +1763,6 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   const isTopoCustom  = activeTab === "topo_custom";
   const isLandCover   = activeTab === "landcover";
 
-  // Ref so the province GeoJSON click handler (captured in a stable closure)
-  // can see the current tab and skip onProvinceChange while picking profile points.
-  const isProfileRef = useRef(isProfile);
-  useEffect(() => { isProfileRef.current = isProfile; }, [isProfile]);
   const isTerrain     = activeDef?.group === "terrain";
   const isGeeOnly     = (activeDef && GEE_ONLY_INDICES.includes(activeDef.id))
                         || isLineaments || isTargeting || isProfile || isContours || isLandCover;
@@ -2288,22 +2284,15 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
 
             <ScaleControl position="bottomleft" imperial={false} />
 
-            {/* Province boundaries */}
-            {provinceGeoJSON && (
-              <GeoJSON key={`prov-${province}`} data={provinceGeoJSON}
-                style={() => ({ color: activeTab === "s2" ? "#ffffff" : "#64748b", weight: 1.2, fillOpacity: 0 })}
-                onEachFeature={(f, layer) => {
-                  const p = f.properties as Record<string, string>;
-                  const name = p?.Provincia || p?.NAME_1 || p?.name || "";
-                  if (name) layer.bindTooltip(`<b>${name}</b>`, { sticky: true });
-                  layer.on("click", () => {
-                    if (isProfileRef.current) return;     // profile mode: clicks add A/B/… points
-                    const n = p?.Provincia || p?.NAME_1 || p?.name;
-                    if (n) onProvinceChange(n);
-                  });
-                }}
-              />
-            )}
+            {/* Province / district boundaries + selection + auto-fit.
+               Disabled in profile mode (clicks add A/B/… points there). */}
+            <AreaSelect
+              province={province} district={district}
+              onProvinceChange={onProvinceChange}
+              onDistrictChange={onDistrictChange}
+              selectable={!isProfile}
+              accent={activeTab === "s2" ? "#ffffff" : "#6366f1"}
+            />
 
             {/* GEE real tile layer (single index) */}
             {geeReady && !isLineaments && !isTargeting && geeTile && activeTab !== "s2" && (

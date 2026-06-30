@@ -7,16 +7,17 @@
  */
 
 import { useState, useCallback } from "react";
-import { MapContainer, TileLayer, GeoJSON, ScaleControl, ZoomControl } from "react-leaflet";
+import { MapContainer, TileLayer, ScaleControl, ZoomControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   AlertTriangle, Waves, Mountain, Loader2, Play, ChevronDown, Info,
   CheckCircle2, Calendar, Droplets, Layers,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useProvinceNames, useDistrictNames, useProvincesGeoJSON } from "@/hooks/useGeoMoz";
+import { useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
 import { apiUrl } from "@/lib/api";
 import MapTools from "@/components/MapTools";
+import AreaSelect from "@/components/AreaSelect";
 
 type Tool = "flood" | "erosion";
 
@@ -60,7 +61,6 @@ export default function Geoperigos({ province, district, onProvinceChange, onDis
 
   const { data: provinceNames } = useProvinceNames();
   const { data: districtNames } = useDistrictNames(province);
-  const { data: provincesGeoJSON } = useProvincesGeoJSON();
 
   const runFlood = useCallback(async () => {
     setLoading(true); setError(null); setFlood(null);
@@ -223,10 +223,12 @@ export default function Geoperigos({ province, district, onProvinceChange, onDis
           <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" attribution="© OpenStreetMap, © CARTO" />
           <ScaleControl position="bottomleft" imperial={false} />
           <ZoomControl position="topright" />
-          {provincesGeoJSON && (
-            <GeoJSON key="prov" data={provincesGeoJSON as GeoJSON.GeoJsonObject}
-              style={{ color: "#64748b", weight: 1.2, fillOpacity: 0, opacity: 0.5 }} />
-          )}
+          <AreaSelect
+            province={province} district={district}
+            onProvinceChange={p => { onProvinceChange(p); onDistrictChange(null); }}
+            onDistrictChange={onDistrictChange}
+            accent="#e11d48"
+          />
           {tool === "flood" && flood && showPerm && (
             <TileLayer key={`perm-${flood.permWaterTile}`} url={flood.permWaterTile} opacity={0.6} maxZoom={18} />
           )}
