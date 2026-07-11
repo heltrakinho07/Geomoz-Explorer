@@ -1,0 +1,83 @@
+COMO INICIAR O GEOMOZ EXPLORER
+================================
+
+O GeoMoz Explorer consiste em dois componentes principais:
+1. Backend FastAPI (Python API) - Porta 5003
+2. Frontend React (Vite) - Porta 3000
+
+
+PRÉ-REQUISITOS
+--------------
+- Python 3.x com ambiente virtual (.venv)
+- Node.js e pnpm
+- Arquivo service-account-key.json no diretório raiz
+- Variáveis de ambiente configuradas em .env.local
+
+
+PASSO 1: INICIAR O BACKEND FASTAPI
+-----------------------------------
+Execute o script de inicialização:
+
+    ./start-fastapi.sh
+
+Este script:
+- Ativa o ambiente virtual Python
+- Configura as credenciais do Google Earth Engine
+- Inicia o servidor FastAPI na porta 5003
+
+Ou manualmente:
+
+    . .venv/bin/activate
+    export GEE_SERVICE_ACCOUNT_KEY="$(cat service-account-key.json)"
+    export GEE_PROJECT_ID="eengine-project"
+    uvicorn geomoz-explorer.api:app --host 0.0.0.0 --port 5003 --reload
+
+Backend estará disponível em:
+- API: http://localhost:5003
+- Documentação: http://localhost:5003/docs
+
+
+PASSO 2: INICIAR O FRONTEND REACT
+----------------------------------
+Navegue para o diretório do frontend e inicie o Vite:
+
+    cd artifacts/geomoz-react
+    PORT=3000 BASE_PATH=/ pnpm dev
+
+O frontend estará disponível em:
+- Local: http://localhost:3000
+- Network: http://192.168.1.33:3000 (ou seu IP local)
+
+
+VERIFICAÇÃO
+------------
+Após iniciar ambos os serviços:
+1. Acesse http://localhost:3000 no navegador
+2. Verifique se o mapa carrega corretamente
+3. Teste os filtros e funcionalidades
+
+
+PARAR OS SERVIÇOS
+-----------------
+Para parar o backend: Ctrl+C no terminal do FastAPI
+Para parar o frontend: Ctrl+C no terminal do Vite
+
+
+SOLUÇÃO DE PROBLEMAS
+--------------------
+- Se o backend não iniciar: verifique se o arquivo service-account-key.json existe
+- Se o frontend não iniciar: certifique-se de que as variáveis PORT e BASE_PATH estão definidas
+- Erros de permissão: verifique se o ambiente virtual Python está ativado
+- Portas em uso: altere as portas se 3000 ou 5003 já estiverem sendo usadas
+
+
+INFORMAÇÕES ADICIONAIS
+-----------------------
+- O backend usa cache LRU para respostas rápidas após o primeiro carregamento
+- O frontend proxy requisições /geomoz-api para o backend
+- Logs detalhados estão disponíveis nos terminais de cada serviço
+
+
+
+cd /home/helder-gt-traquinho/Documentos/Programacao/GeoMoz-Explorer
+cd artifacts/geomoz-react && PORT=3000 BASE_PATH=/ pnpm dev

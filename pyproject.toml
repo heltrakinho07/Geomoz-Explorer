@@ -22,3 +22,20 @@ dependencies = [
     # Security: PYSEC-2026-161 — starlette 1.0.0 is vulnerable; fixed in 1.0.1
     "starlette>=1.0.1",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "httpx>=0.25.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "geomoz-explorer/tests",
+]
+python_files = ["test_*.py"]
+pythonpath = ["geomoz-explorer"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]

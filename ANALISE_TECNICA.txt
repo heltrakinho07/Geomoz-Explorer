@@ -1,0 +1,330 @@
+ANÁLISE TÉCNICA - GEOMOZ EXPLORER
+==================================
+
+Data: 24 de Junho de 2026
+Análise de pontos fracos técnicos e oportunidades de melhoria
+
+
+## 1. PROBLEMAS CRÍTICOS IMEDIATOS
+
+### 1.1 Requirements.txt Mal Formatado
+**Localização:** geomoz-explorer/requirements.txt (linhas 7, 9)
+**Problema:** Linhas concatenadas sem quebras de linha
+```python
+numpy>=1.26.0matplotlib>=3.10.9  # ← erro: duas linhas juntas
+streamlit>=1.57.0streamlit-folium>=0.27.2earthengine-api>=1.7.0  # ← erro
+```
+**Impacto:** Falha na instalação de dependências
+**Solução:** Separar as linhas corretamente
+
+
+### 1.2 CORS Inseguro para Produção
+**Localização:** api.py (linhas 18-23)
+**Problema:** `allow_origins=["*"]` permite qualquer origem
+**Impacto:** Vulnerabilidade de segurança em produção
+**Solução:** Configurar origens específicas ou usar variável de ambiente
+
+
+### 1.3 Debug Prints em Produção
+**Localização:** gee_module.py (linhas 52, 66, 76, 82)
+**Problema:** Prints de debug expõem informações sensíveis
+```python
+print(f"[DEBUG] Private key info: len={len(pk)}, starts_with={repr(pk[:50])}")
+```
+**Impacto:** Exposição de credenciais em logs
+**Solução:** Usar logging estruturado com níveis apropriados
+
+
+### 1.4 ThreadPoolExecutor Ineficiente
+**Localização:** api.py (múltiplos endpoints)
+**Problema:** Novo executor criado em cada request
+```python
+executor = ThreadPoolExecutor(max_workers=4)  # ← criado a cada request
+```
+**Impacto:** Sobrecarga de recursos, não reutiliza threads
+**Solução:** Usar executor global ou async/await nativo
+
+
+## 2. PROBLEMAS DE MANUSEIO DE ERROS
+
+### 2.1 Exceções Genéricas
+**Problema:** Muitos `except Exception` sem especificar tipo
+**Exemplos:**
+- api.py: linhas 201, 218, 244, 254, 280, 289
+- gee_module.py: linhas 51, 81, 92, 120, 647, 655, 668, 909, 1198
+
+**Impacto:** Dificulta debugging, esconde erros específicos
+**Solução:** Capturar exceções específicas (ValueError, KeyError, etc.)
+
+
+### 2.2 Silent Failures
+**Problema:** Erros silenciosos sem logging
+```python
+except Exception:
+    pass  # ← erro ignorado silenciosamente
+```
+**Impacto:** Difícil identificar problemas em produção
+**Solução:** Logar sempre, mesmo com fallback
+
+
+### 2.3 Feedback de Erro ao Utilizador
+**Problema:** Frontend não mostra erros de forma clara
+**Localização:** Explorer.tsx, HidroGeoMoz.tsx
+**Impacto:** Má experiência de utilizador
+**Solução:** Implementar toast notifications com mensagens claras
+
+
+## 3. PROBLEMAS DE PERFORMANCE
+
+### 3.1 Cache LRU Limitado
+**Localização:** api.py (linhas 27, 35, 43)
+**Problema:** `maxsize=1` para datasets grandes
+**Impacto:** Cache insuficiente para múltiplas províncias/districtos
+**Solução:** Aumentar maxsize ou usar cache distribuído (Redis)
+
+
+### 3.2 Simplificação Hardcoded
+**Problema:** Tolerância de simplificação fixa (0.01, 0.005)
+**Impacto:** Não se adapta ao nível de zoom do utilizador
+**Solução:** Simplificação dinâmica baseada no zoom
+
+
+### 3.3 Sem Compressão de Respostas
+**Problema:** GeoJSON não comprimido
+**Impacto:** Tráfego de rede desnecessário
+**Solução:** Habilitar gzip no FastAPI
+
+
+### 3.4 Carregamento Inicial Lento
+**Problema:** 10-20s para carregar geologia completa
+**Impacto:** Má primeira impressão
+**Solução:** 
+- Pré-carregar dados em background
+- Implementar lazy loading
+- Mostrar progresso ao utilizador
+
+
+## 4. PROBLEMAS DE SEGURANÇA
+
+### 4.1 Credenciais Expostas
+**Localização:** .env.local
+**Problema:** Chaves de serviço em plain text
+**Impacto:** Risco de comprometimento se o repositório for público
+**Solução:** 
+- Usar secrets manager (AWS Secrets, HashiCorp Vault)
+- Adicionar .env.local ao .gitignore (já está)
+
+
+### 4.2 Sem Autenticação/Autorização
+**Problema:** API totalmente aberta
+**Impacto:** Qualquer pessoa pode aceder a todos os dados
+**Solução:** Implementar JWT ou OAuth2
+
+
+### 4.3 Sem Rate Limiting
+**Problema:** Sem limitação de requests
+**Impacto:** Vulnerável a DoS, abuso de API
+**Solução:** Implementar rate limiting (slowapi, redis)
+
+
+### 4.4 Input Validation Insuficiente
+**Problema:** Validação mínima nos endpoints
+**Impacto:** Vulnerável a injeção de dados maliciosos
+**Solução:** Validar rigorosamente todos os inputs com Pydantic
+
+
+### 4.5 Sem HTTPS Enforcement
+**Problema:** Não força HTTPS
+**Impacto:** Tráfego em claro
+**Solução:** Configurar middleware para forçar HTTPS
+
+
+## 5. PROBLEMAS DE ARQUITETURA
+
+### 5.1 Backend Monolítico
+**Problema:** Tudo num único serviço FastAPI
+**Impacto:** Difícil escalar componentes individualmente
+**Solução:** Separar em microserviços:
+- Serviço de dados geomoz
+- Serviço de GEE
+- Serviço de autenticação
+
+
+### 5.2 Sem Testes Automatizados
+**Problema:** Zero testes unitários/integração
+**Impacto:** Refatoração perigosa, bugs não detectados
+**Solução:** Implementar:
+- Testes unitários (pytest)
+- Testes de integração (FastAPI TestClient)
+- Testes E2E (Playwright)
+
+
+### 5.3 Sem CI/CD
+**Problema:** Sem pipeline automatizado
+**Impacto:** Deploy manual, propenso a erros
+**Solução:** Configurar GitHub Actions ou GitLab CI
+
+
+### 5.4 Sem Monitoramento
+**Problema:** Sem métricas, alertas, logging estruturado
+**Impacto:** Difícil diagnosticar problemas em produção
+**Solução:** Implementar:
+- Prometheus + Grafana
+- Structured logging (structlog)
+- Error tracking (Sentry)
+
+
+### 5.5 Sem Documentação de Código
+**Problema:** Comentários mínimos, sem docstrings
+**Impacto:** Difícil manutenção por outros developers
+**Solução:** Adicionar docstrings completas, type hints
+
+
+## 6. NOVAS FUNCIONALIDADES SUGERIDAS
+
+### 6.1 Sistema de Utilizadores
+- Autenticação (email/password, OAuth)
+- Perfis com permissões
+- Histórico de visualizações
+- Bookmarking de mapas
+
+
+### 6.2 Exportação Avançada
+- Shapefile (.shp)
+- GeoPackage (.gpkg)
+- PDF com mapas de alta resolução
+- PNG/JPG com legenda
+- CSV customizável
+
+
+### 6.3 Análise Temporal
+- Time-series de NDVI (2018-2025)
+- Comparação antes/depois
+- Animação de mudanças
+- Detecção de mudanças
+
+
+### 6.4 Machine Learning
+- Predição de potencial mineral
+- Classificação automática de terreno
+- Detecção de anomalias
+- Clusterização de áreas similares
+
+
+### 6.5 Ferramentas de Desenho
+- Desenhar polígonos no mapa
+- Medir distâncias/áreas
+- Adicionar marcadores personalizados
+- Anotações
+
+
+### 6.6 Compartilhamento
+- Links partilháveis com estado
+- Embeddable maps
+- Exportar configuração de visualização
+- Colaboração em tempo real
+
+
+### 6.7 Offline Support
+- PWA com service worker
+- Cache de tiles offline
+- Dados base armazenados localmente
+- Sincronização quando online
+
+
+### 6.8 Mobile Responsiveness
+- Interface otimizada para mobile
+- Touch gestures no mapa
+- Layout adaptativo
+- Performance otimizada para dispositivos móveis
+
+
+### 6.9 Integrações Adicionais
+- Weather APIs (previsão)
+- Satellite imagery providers (Maxar,
+Planet)
+- Social media APIs (geo-tagged posts)
+- Government open data APIs
+
+
+### 6.10 Relatórios Automáticos
+- Gerar relatórios PDF
+- Agendar relatórios periódicos
+- Email de relatórios
+- Dashboard de métricas
+
+
+## 7. MELHORIAS DE UX/UI
+
+### 7.1 Loading States
+- Skeleton screens
+- Progress bars para operações longas
+- Indicadores de carregamento por componente
+- Cancelamento de operações longas
+
+
+### 7.2 Error Handling
+- Toast notifications com mensagens claras
+- Error boundaries no React
+- Retry automático com exponential backoff
+- Modais de erro com detalhes técnicos
+
+
+### 7.3 Accessibility
+- ARIA labels
+- Keyboard navigation
+- Screen reader support
+- High contrast mode
+
+
+### 7.4 Onboarding
+- Tutorial interativo para novos utilizadores
+- Tooltips contextuais
+- Help documentation integrada
+- Vídeos de demonstração
+
+
+## 8. PRIORIDADES RECOMENDADAS
+
+### Alta Prioridade (Imediato)
+1. Corrigir requirements.txt
+2. Remover debug prints
+3. Implementar logging estruturado
+4. Configurar CORS seguro
+5. Adicionar validação de input robusta
+
+
+### Prioridade Média (Curto Prazo)
+1. Implementar rate limiting
+2. Adicionar testes unitários
+3. Configurar CI/CD
+4. Implementar autenticação básica
+5. Melhorar error handling no frontend
+
+
+### Prioridade Baixa (Médio/Longo Prazo)
+1. Separar em microserviços
+2. Implementar sistema de utilizadores
+3. Adicionar funcionalidades avançadas
+4. Otimizar performance
+5. Implementar monitoring completo
+
+
+## 9. DEPENDÊNCIAS DESATURADIZADAS
+
+Verificar e atualizar:
+- earthengine-api (versão atual pode ser antiga)
+- geopandas (verificar compatibilidade)
+- React 19 (verificar compatibilidade com libs)
+- Vite 7.3.2 (versão muito recente, pode ter bugs)
+
+
+## 10. CONCLUSÃO
+
+O GeoMoz Explorer é uma plataforma sólida com funcionalidades avançadas de análise geoespacial, mas tem vários pontos fracos técnicos que devem ser abordados:
+
+**Críticos:** Formatação de requirements, segurança (CORS, credenciais), debug em produção
+**Importantes:** Error handling, performance, testes
+**Desejáveis:** Novas funcionalidades, melhorias de UX, arquitetura
+
+Recomenda-se abordar os problemas críticos primeiro, depois os importantes, e finalmente as melhorias desejáveis de forma iterativa.

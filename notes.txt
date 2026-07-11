@@ -1,0 +1,2 @@
+🤖 Agentes por usar (criados, prontos)
+geomoz-gee, geomoz-spectral, geomoz-terrain, geomoz-minerals, geomoz-hidro 

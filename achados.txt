@@ -1,0 +1,102 @@
+// 1. Carrega a coleção vetorial (nível 3 do GADM - distritos) e filtra para a província da Zambézia
+var aoi = ee.FeatureCollection("projects/eengine-project/assets/distritos/gadm41_MOZ_3")
+  .filter(ee.Filter.eq('NAME_1', "Zambezia")); // NAME_1 corresponde ao nome da província
+
+// 2. Carrega o conjunto de dados MODIS NDVI (MOD13A2) com composição de 16 dias
+var modisNDVI = ee.ImageCollection("MODIS/061/MOD13A2")
+  .filterDate('2024-01-01', '2025-01-01') // Define o intervalo de tempo
+  .filterBounds(aoi) // Restringe a área de interesse (Zambézia)
+  .select('NDVI') // Seleciona apenas a banda NDVI
+  .mean() // Calcula a média NDVI anual
+  .multiply(0.0001); // Aplica o fator de escala para normalizar os valores do MODIS
+
+// 3. Carrega a coleção diária de precipitação CHIRPS
+var chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY")
+  .filterDate('2024-01-01', '2025-01-01') // Mesmo período que o NDVI
+  .filterBounds(aoi) // Filtra para a área de interesse
+  .select('precipitation'); // Seleciona a banda de precipitação
+
+// 4. Soma toda a precipitação do ano
+var totalPrecip = chirps.sum(); // Soma pixel a pixel toda a precipitação diária
+
+// 5. Calcula a média da precipitação anual para a região
+var meanPrecip = totalPrecip.reduceRegion({
+  reducer: ee.Reducer.mean(), // Calcula a média da imagem resultante
+  geometry: aoi, // Sobre a área de interesse
+  scale: 5000, // Escala de amostragem em metros
+  maxPixels: 1e13 // Permite um número elevado de pixels para evitar erros
+}).getNumber('precipitation'); // Extrai o número da propriedade
+
+// 6. Calcula o desvio padrão da precipitação anual
+var stdPrecip = totalPrecip.reduceRegion({
+  reducer: ee.Reducer.stdDev(), // Calcula o desvio padrão
+  geometry: aoi,
+  scale: 5000,
+  maxPixels: 1e13
+}).getNumber('precipitation');
+
+// 7. Calcula o SPI como desvio padronizado (z-score): (valor - média) / desvio padrão
+var spi = totalPrecip.subtract(meanPrecip).divide(stdPrecip);
+
+// 8. Define parâmetros visuais para exibição no mapa
+var spiViz = {
+  min: -2, max: 2,
+  palette: ['red', 'yellow', 'green', 'blue'] // Vermelho = seca, azul = húmido
+};
+
+var ndviViz = {
+  min: 0, max: 1,
+  palette: ['brown', 'yellow', 'green'] // Castanho = vegetação seca, verde = saudável
+};
+
+// 9. Centraliza o mapa na área de interesse e adiciona as camadas visuais
+Map.centerObject(aoi, 5); // Centraliza com zoom 5
+Map.addLayer(spi.clip(aoi), spiViz, 'SPI'); // Adiciona a camada SPI com estilo
+Map.addLayer(modisNDVI.clip(aoi), ndviViz, 'NDVI MODIS'); // Adiciona NDVI médio anual
+
+// 10. Junta as bandas NDVI e SPI e amostra 500 pontos aleatórios na região
+var samplePoints = modisNDVI.addBands(spi).sample({
+  region: aoi, // Região onde será feita a amostragem
+  scale: 1000, // Escala da amostragem
+  numPixels: 500, // Limita a 500 amostras
+  geometries: true // Mantém a geometria dos pontos
+});
+
+// 11. Para cada ponto amostrado, extrai SPI e NDVI como propriedades do ponto
+var spiNdviTable = samplePoints.map(function(feature) {
+  return feature.set({
+    SPI: feature.get('precipitation'), // A banda SPI ficou com o nome "precipitation"
+    NDVI: feature.get('NDVI')
+  });
+});
+
+// 12. Mostra na aba “Console” a tabela com os valores SPI e NDVI amostrados
+print('Amostras de SPI e NDVI:', spiNdviTable);
+
+// 13. Gera gráfico de dispersão (scatter plot) com SPI no eixo X e NDVI no eixo Y
+var chart = ui.Chart.feature.byFeature(spiNdviTable, 'SPI', ['NDVI'])
+  .setChartType('ScatterChart') // Define como gráfico de dispersão
+  .setOptions({
+    title: 'Correlação entre SPI e NDVI',
+    hAxis: { title: 'Índice de Precipitação Padronizado (SPI)' }, // Eixo horizontal
+    vAxis: { title: 'Índice de Vegetação por Diferença Normalizada (NDVI)' }, // Eixo vertical
+    pointSize: 3,
+    trendlines: { 0: { color: 'red', visibleInLegend: true } } // Adiciona linha de tendência
+  });
+
+// 14. Exibe o gráfico no painel lateral do Earth Engine
+print(chart);
+
+
+
+
+
+
+
+
+
+
+
+
+
+

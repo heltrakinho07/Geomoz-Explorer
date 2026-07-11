@@ -46,7 +46,7 @@ catalog:
   '@replit/vite-plugin-runtime-error-modal': ^0.0.6
   '@tailwindcss/vite': ^4.1.14
   '@tanstack/react-query': ^5.90.21
-  '@types/node': ^25.3.3
+  '@types/node': ^25.3.5
   '@types/react': ^19.2.0
   '@types/react-dom': ^19.2.0
   '@vitejs/plugin-react': ^5.0.4
@@ -188,3 +188,7 @@ overrides:
   # qs: DoS via TypeError on null/undefined comma-format entries (GHSA-q8mj-m7cp-5q26)
   #     Affected: >=6.11.1 <=6.15.1  — fixed: >=6.15.2
   qs: ">=6.15.2"
+
+allowBuilds:
+  core-js: true
+  esbuild: true

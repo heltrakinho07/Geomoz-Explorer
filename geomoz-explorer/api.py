@@ -416,7 +416,8 @@ def get_province_summary():
 @app.get("/geomoz-api/gee/status")
 def gee_status():
     """Check Google Earth Engine connection status."""
-    from .gee_module import gee_status as _gee_status, INDEX_REGISTRY
+    from gee_presets import INDEX_REGISTRY
+    from gee_module import gee_status as _gee_status
     status = _gee_status()
     status["indices"] = list(INDEX_REGISTRY.keys())
     return status
@@ -492,7 +493,8 @@ async def gee_index(req: GEEIndexRequest):
     Returns a GEE-hosted tile URL (~24h validity).
     """
     import asyncio
-    from .gee_module import compute_index_tile, INDEX_REGISTRY
+    from gee_presets import INDEX_REGISTRY
+    from .gee_module import compute_index_tile
 
     if req.index not in INDEX_REGISTRY:
         raise HTTPException(400, f"Unknown index '{req.index}'. Valid: {list(INDEX_REGISTRY)}")
@@ -629,7 +631,7 @@ async def gee_lineaments(req: GEELineamentsRequest):
 @app.get("/geomoz-api/gee/minerals")
 def gee_minerals():
     """List available mineral targeting presets."""
-    from .gee_module import MINERAL_PRESETS
+    from gee_presets import MINERAL_PRESETS
     return {
         "minerals": [
             {
@@ -805,7 +807,7 @@ async def gee_landcover(req: GEELandcoverRequest):
 @app.get("/geomoz-api/gee/indices")
 def gee_indices():
     """List available indices with metadata, grouped (spectral/landsat/terrain)."""
-    from .gee_module import INDEX_REGISTRY
+    from gee_presets import INDEX_REGISTRY
     return {
         "indices": [
             {
