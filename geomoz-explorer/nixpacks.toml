@@ -1,0 +1,14 @@
+# ============================================================================
+#  Nixpacks configuration for GeoMoz Backend (FastAPI + GDAL)
+#
+#  Nixpacks is Railway's default build system. This file is used only if you
+#  change the builder from DOCKERFILE to NIXPACKS in railway.json.
+#
+#  If GDAL/GEOS installation via Nix fails, switch back to DOCKERFILE.
+# ============================================================================
+
+[phases.setup]
+nixPkgs = ["gdal", "geos", "proj", "gfortran", "openblas"]
+
+[start]
+cmd = "uvicorn api:app --host 0.0.0.0 --port $PORT"

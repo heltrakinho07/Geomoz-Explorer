@@ -1,0 +1,56 @@
+# ============================================================================
+#  .dockerignore — skip unnecessary files during Docker build
+# ============================================================================
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Node / pnpm (not needed in backend image)
+node_modules
+pnpm-lock.yaml
+package.json
+pnpm-workspace.yaml
+artifacts/
+lib/
+scripts/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Replit
+.replit
+replit.md
+
+# Project docs
+*.md
+docs/
+notes.txt
+achados.txt
+
+# Electron
+electron-app/node_modules
+electron-app/dist
+
+# Streamlit (not deployed)
+.streamlit/

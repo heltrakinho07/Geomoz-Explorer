@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, Suspense } from "react";
 import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -8,10 +8,7 @@ import Sidebar, { LayerState } from "@/components/Sidebar";
 import MapView from "@/components/MapView";
 import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
-import GeoAnalises from "@/pages/GeoAnalises";
-import HidroGeoMoz from "@/pages/HidroGeoMoz";
-import Geoperigos from "@/pages/Geoperigos";
-import AguaSubterranea from "@/pages/AguaSubterranea";
+import { LazyGeoAnalises, LazyHidroGeoMoz, LazyGeoperigos, LazyAguaSubterranea } from "@/lib/lazy-pages";
 
 interface NominatimResult {
   place_id: number;
@@ -94,7 +91,26 @@ export default function Explorer() {
     if (e.key === "Escape") setShowResults(false);
   }
 
-  function flyToResult(result: NominatimResult) {
+  /** Suspense fallback — full-page skeleton while a lazy chunk is loading. */
+function LoadingSkeleton({ label }: { label: string }) {
+  return (
+    <div className="flex-1 flex items-center justify-center bg-slate-50">
+      <div className="flex flex-col items-center gap-4">
+        <div className="relative">
+          <div className="w-12 h-12 rounded-2xl bg-sky-100 flex items-center justify-center">
+            <Loader2 size={24} className="text-sky-500 animate-spin" />
+          </div>
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-medium text-slate-600">A carregar {label}…</p>
+          <p className="text-xs text-slate-400 mt-1">Módulo será activado em segundos</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function flyToResult(result: NominatimResult) {
     const [latMin, latMax, lonMin, lonMax] = result.boundingbox.map(Number);
     mapRef.current?.flyToBounds([[latMin, lonMin], [latMax, lonMax]], { padding: [30, 30], duration: 1.2 });
     setShowResults(false);
@@ -233,39 +249,47 @@ export default function Explorer() {
         </div>
       ) : activeTab === "GeoAnálises" ? (
         <div className="flex flex-1 overflow-hidden">
-          <GeoAnalises
-            province={province}
-            district={district}
-            onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-            onDistrictChange={setDistrict}
-          />
+          <Suspense fallback={<LoadingSkeleton label="GeoAnálises" />}>
+            <LazyGeoAnalises
+              province={province}
+              district={district}
+              onProvinceChange={p => { setProvince(p); setDistrict(null); }}
+              onDistrictChange={setDistrict}
+            />
+          </Suspense>
         </div>
       ) : activeTab === "Bacias Hidrográficas" ? (
         <div className="flex flex-1 overflow-hidden">
-          <HidroGeoMoz
-            province={province}
-            district={district}
-            onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-            onDistrictChange={setDistrict}
-          />
+          <Suspense fallback={<LoadingSkeleton label="Bacias Hidrográficas" />}>
+            <LazyHidroGeoMoz
+              province={province}
+              district={district}
+              onProvinceChange={p => { setProvince(p); setDistrict(null); }}
+              onDistrictChange={setDistrict}
+            />
+          </Suspense>
         </div>
       ) : activeTab === "Água Subterrânea" ? (
         <div className="flex flex-1 overflow-hidden">
-          <AguaSubterranea
-            province={province}
-            district={district}
-            onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-            onDistrictChange={setDistrict}
-          />
+          <Suspense fallback={<LoadingSkeleton label="Água Subterrânea" />}>
+            <LazyAguaSubterranea
+              province={province}
+              district={district}
+              onProvinceChange={p => { setProvince(p); setDistrict(null); }}
+              onDistrictChange={setDistrict}
+            />
+          </Suspense>
         </div>
       ) : activeTab === "Geoperigos" ? (
         <div className="flex flex-1 overflow-hidden">
-          <Geoperigos
-            province={province}
-            district={district}
-            onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-            onDistrictChange={setDistrict}
-          />
+          <Suspense fallback={<LoadingSkeleton label="Geoperigos" />}>
+            <LazyGeoperigos
+              province={province}
+              district={district}
+              onProvinceChange={p => { setProvince(p); setDistrict(null); }}
+              onDistrictChange={setDistrict}
+            />
+          </Suspense>
         </div>
       ) : (
         /* Default: Mapa */

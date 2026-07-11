@@ -26,7 +26,7 @@ import {
 
 import { useProvinceSummary, useProvincesGeoJSON, ProvinceSummaryItem } from "@/hooks/useGeoMoz";
 import {
-  kmeans, normalize, pca2, scoreFavorability,
+  runKMeansInWorker, normalize, pca2, scoreFavorability,
   lithologyProfile,
   FavorabilityResult, MineralType, KMeansResult,
 } from "@/lib/geoml";
@@ -87,17 +87,19 @@ function ClusteringTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[] }
   const [running, setRunning] = useState(false);
   const { data: provinceGeoJSON } = useProvincesGeoJSON();
 
-  function runClustering() {
+  async function runClustering() {
     setRunning(true);
-    setTimeout(() => {
+    try {
       const features = summaryItems.map(buildProvinceFeatures);
-      const { data: norm } = normalize(features);
-      const res = kmeans(norm, k);
+      const res = await runKMeansInWorker(features, k, 200, 42);
       const provinceLabels: Record<string, number> = {};
       summaryItems.forEach((p, i) => { provinceLabels[p.province] = res.labels[i]; });
       setResult({ ...res, provinceLabels });
+    } catch (err) {
+      console.error("Clustering failed:", err);
+    } finally {
       setRunning(false);
-    }, 50);
+    }
   }
 
   const clusterKey = `cluster-${k}-${result?.iterations ?? 0}`;
@@ -447,12 +449,13 @@ function AboutTab() {
     { done: true,  item: "Análise PCA 2D (power iteration, sem deps externas)" },
     { done: true,  item: "Mapa de favorabilidade mineral knowledge-based" },
     { done: true,  item: "Scoring para 7 tipos de minério (ouro, gemas, carvão, grafite, pesados, base, hidrocarbonetos)" },
+    { done: true, item: "WebWorker offloading para K-Means clustering" },
     { done: false, item: "Random Forest via ONNX Runtime Web (modelo pré-treinado em Python)" },
     { done: false, item: "XGBoost via servidor Python scikit-learn / xgboost API" },
     { done: false, item: "Integração com base de dados de ocorrências minerais" },
     { done: false, item: "Deep learning (CNN) sobre imagens Sentinel-2 para litologia automática" },
     { done: false, item: "Análise multivariada: composição litológica × estrutural × gravimétrica" },
-    { done: false, item: "WebWorker offloading para cálculos pesados" },
+    { done: false, item: "WebWorker offloading para PCA e Favorabilidade" },
   ];
 
   return (

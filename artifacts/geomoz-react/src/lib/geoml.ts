@@ -56,6 +56,57 @@ function lcg(seed: number) {
  * @param maxIter  Max iterations (default 200)
  * @param seed     Reproducibility seed (default 42)
  */
+/**
+ * Run K-Means++ clustering in a WebWorker to avoid blocking the main thread.
+ *
+ * @returns A promise that resolves with the KMeansResult.
+ *          The worker is terminated after completion.
+ */
+export function runKMeansInWorker(
+  data: number[][],
+  k: number,
+  maxIter = 200,
+  seed = 42
+): Promise<KMeansResult> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(
+      new URL("./geoml.worker", import.meta.url),
+      { type: "module" }
+    );
+
+    worker.onmessage = (e: MessageEvent) => {
+      const msg = e.data;
+      if (msg.type === "kmeans-result") {
+        worker.terminate();
+        resolve({
+          labels: msg.labels,
+          centroids: msg.centroids,
+          inertia: msg.inertia,
+          iterations: msg.iterations,
+          silhouette: msg.silhouette,
+        });
+      } else if (msg.type === "error") {
+        worker.terminate();
+        reject(new Error(msg.message));
+      }
+    };
+
+    worker.onerror = (err) => {
+      worker.terminate();
+      reject(new Error(`Worker error: ${err.message}`));
+    };
+
+    worker.postMessage({ type: "kmeans", data, k, maxIter, seed });
+  });
+}
+
+/**
+ * K-Means++ clustering with seeded random initialization.
+ * @param data     Normalized feature matrix (rows = samples, cols = features)
+ * @param k        Number of clusters
+ * @param maxIter  Max iterations (default 200)
+ * @param seed     Reproducibility seed (default 42)
+ */
 export function kmeans(data: number[][], k: number, maxIter = 200, seed = 42): KMeansResult {
   const n = data.length;
   if (n === 0) return { labels: [], centroids: [], inertia: 0, iterations: 0, silhouette: 0 };
