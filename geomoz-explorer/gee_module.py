@@ -285,6 +285,141 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         ).rename("index")
         return classified
 
+    # ── Agriculture indices ──────────────────────────────────────────────────
+
+    if index == "evi":
+        # EVI = 2.5 * ((B8 - B4) / (B8 + 6*B4 - 7.5*B2 + 1))
+        nir = s2.select("B8")
+        red = s2.select("B4")
+        blue = s2.select("B2")
+        return nir.subtract(red).multiply(2.5).divide(
+            nir.add(red.multiply(6)).subtract(blue.multiply(7.5)).add(1)
+        ).rename("index")
+
+    if index == "ndmi":
+        # NDMI = (B8 - B11) / (B8 + B11) — vegetation moisture
+        return s2.normalizedDifference(["B8", "B11"]).rename("index")
+
+    if index == "savi":
+        # SAVI = ((B8 - B4) / (B8 + B4 + 0.5)) * 1.5
+        nir = s2.select("B8")
+        red = s2.select("B4")
+        return nir.subtract(red).divide(nir.add(red).add(0.5)).multiply(1.5).rename("index")
+
+    if index == "gci":
+        # GCI = (B8 / B3) - 1 — Green Chlorophyll Index
+        return s2.select("B8").divide(s2.select("B3")).subtract(1).rename("index")
+
+    if index == "nddi":
+        # NDDI = (NDVI - NDWI) / (NDVI + NDWI)
+        ndvi = s2.normalizedDifference(["B8", "B4"])
+        ndwi = s2.normalizedDifference(["B3", "B8"])
+        return ndvi.subtract(ndwi).divide(ndvi.add(ndwi).max(0.001)).rename("index")
+
+    if index == "msavi":
+        # MSAVI2 = (2*B8 + 1 - sqrt((2*B8 + 1)^2 - 8*(B8 - B4))) / 2
+        nir = s2.select("B8")
+        red = s2.select("B4")
+        a = nir.multiply(2).add(1)
+        b = a.pow(2).subtract(nir.subtract(red).multiply(8)).max(0).sqrt()
+        return a.subtract(b).divide(2).rename("index")
+
+    # ── Pseudo-composites (built from sub-indices internally) ──────────────
+
+    if index == "crop_health":
+        # 0.40×EVI_norm + 0.35×NDMI_norm + 0.25×NDVI_norm
+        nir = s2.select("B8")
+        red = s2.select("B4")
+        blue = s2.select("B2")
+        evi_raw = nir.subtract(red).multiply(2.5).divide(
+            nir.add(red.multiply(6)).subtract(blue.multiply(7.5)).add(1))
+        ndmi_raw = s2.normalizedDifference(["B8", "B11"])
+        ndvi_raw = s2.normalizedDifference(["B8", "B4"])
+        # Normalize each to [0,1]
+        evi_n = evi_raw.subtract(-0.2).divide(1.2).clamp(0, 1)
+        ndmi_n = ndmi_raw.subtract(-0.5).divide(1.2).clamp(0, 1)
+        ndvi_n = ndvi_raw.subtract(-0.2).divide(1.1).clamp(0, 1)
+        return evi_n.multiply(0.40).add(ndmi_n.multiply(0.35)).add(ndvi_n.multiply(0.25)).rename("index")
+
+    if index == "drought_severity":
+        # 0.60×NDDI_norm + 0.40×(1 − NDMI_norm)
+        nir = s2.select("B8")
+        red = s2.select("B4")
+        ndvi_raw = s2.normalizedDifference(["B8", "B4"])
+        ndwi_raw = s2.normalizedDifference(["B3", "B8"])
+        nddi_raw = ndvi_raw.subtract(ndwi_raw).divide(ndvi_raw.add(ndwi_raw).max(0.001))
+        ndmi_raw = s2.normalizedDifference(["B8", "B11"])
+        nddi_n = nddi_raw.subtract(-0.3).divide(1.0).clamp(0, 1)
+        ndmi_n = ndmi_raw.subtract(-0.5).divide(1.2).clamp(0, 1)
+        inv_ndmi = ee.Image(1).subtract(ndmi_n)
+        return nddi_n.multiply(0.60).add(inv_ndmi.multiply(0.40)).rename("index")
+
+    # ── Fire & Burn indices ────────────────────────────────────────────────
+
+    if index == "nbr":
+        # NBR = (B8 - B12) / (B8 + B12) — Normalized Burn Ratio
+        return s2.normalizedDifference(["B8", "B12"]).rename("index")
+
+    if index == "dnbr":
+        # dNBR = pre_NBR - post_NBR
+        # Uses the same S2 composite for both (since single-date), but dNBR
+        # is really a multi-date operation. We compute a single-date proxy first.
+        nbr_img = s2.normalizedDifference(["B8", "B12"]).rename("index")
+        # For a single composite this just shows NBR; real dNBR requires two API calls
+        return nbr_img
+
+    if index == "burn_severity":
+        # Classify NBR into dNBR severity classes
+        nbr_raw = s2.normalizedDifference(["B8", "B12"])
+        return nbr_raw.expression(
+            "(n < -0.1) ? 1"     # unburned / regrowth
+            ": (n < 0.1) ? 1"     # unburned
+            ": (n < 0.27) ? 2"    # low
+            ": (n < 0.44) ? 3"    # moderate-low
+            ": (n < 0.66) ? 4"    # moderate-high
+            ": 5",                # high
+            {"n": nbr_raw}
+        ).rename("index")
+
+    if index == "forest_loss":
+        # Hansen Global Forest Change — loss year (2000–2023)
+        # This is a pre-made dataset, not computed from S2/DEM
+        import ee
+        hansen = ee.Image("UMD/hansen/global_forest_change_2023_v1_11")
+        # treecover2000 >= 30% is considered forest
+        treecover = hansen.select("treecover2000")
+        loss_year = hansen.select("lossyear").rename("index")
+        # Mask: only show where treecover >= 30% and loss > 0
+        masked = loss_year.updateMask(treecover.gte(30)).updateMask(loss_year.gt(0))
+        return masked
+
+    if index == "burned_area":
+        # MODIS MCD64A1 burned area
+        import ee
+        burned = (ee.ImageCollection("MODIS/061/MCD64A1")
+                  .filterBounds(region)
+                  .select("BurnDate"))
+        # Composite: take latest available month
+        composite = burned.sort("system:time_start", False).first()
+        return composite.rename("index").selfMask()
+
+    if index == "fire_risk":
+        # Composite: high risk = dry + low vegetation + high flammability
+        nir = s2.select("B8")
+        red = s2.select("B4")
+        ndvi_raw = s2.normalizedDifference(["B8", "B4"])
+        ndmi_raw = s2.normalizedDifference(["B8", "B11"])
+        ndwi_raw = s2.normalizedDifference(["B3", "B8"])
+        nddi_raw = ndvi_raw.subtract(ndwi_raw).divide(ndvi_raw.add(ndwi_raw).max(0.001))
+        # Normalize to [0,1] and invert where appropriate
+        ndvi_n = ndvi_raw.subtract(-0.2).divide(1.1).clamp(0, 1)
+        ndmi_n = ndmi_raw.subtract(-0.5).divide(1.2).clamp(0, 1)
+        nddi_n = nddi_raw.subtract(-0.3).divide(1.0).clamp(0, 1)
+        # Fire risk = low NDVI + low NDMI + high NDDI
+        inv_ndvi = ee.Image(1).subtract(ndvi_n)
+        inv_ndmi = ee.Image(1).subtract(ndmi_n)
+        return inv_ndvi.multiply(0.40).add(inv_ndmi.multiply(0.35)).add(nddi_n.multiply(0.25)).rename("index")
+
     raise ValueError(f"Índice desconhecido: {index!r}")
 
 

@@ -187,7 +187,12 @@ export type SpectralIndex =
   | "ndvi" | "fe_oxide" | "clay" | "hydrothermal" | "bare_soil"
   | "al_oh" | "ferrous" | "gossan"
   | "ndvi_l8"
-  | "elevation" | "hipsometry" | "slope" | "hillshade" | "topo_class";
+  | "elevation" | "hipsometry" | "slope" | "hillshade" | "topo_class"
+  // Agriculture & Drought indices
+  | "evi" | "ndmi" | "savi" | "gci" | "nddi" | "msavi"
+  | "crop_health" | "drought_severity"
+  // Fire & Deforestation indices
+  | "nbr" | "dnbr" | "burn_severity" | "forest_loss" | "burned_area" | "fire_risk";
 
 /**
  * Compute a proxy spectral index value [0, 1] for a geological unit.
@@ -258,6 +263,22 @@ export function computeSpectralValue(
     case "slope":     return 0.3 + noise;
     case "hillshade": return 0.5 + noise;
     case "topo_class":return 0.5 + noise;
+    // Agriculture & Drought indices — use NDVI as base proxy
+    case "evi":       return Math.min(1, computeSpectralValue(legend, era, period, "ndvi") * 1.05 + noise * 0.5);
+    case "ndmi":      return computeSpectralValue(legend, era, period, "ndvi") * 0.8 + noise;
+    case "savi":      return computeSpectralValue(legend, era, period, "ndvi") * 0.9 + noise;
+    case "gci":       return computeSpectralValue(legend, era, period, "ndvi") * 0.7 + noise;
+    case "nddi":      return 1 - computeSpectralValue(legend, era, period, "ndvi") * 0.5 + noise * 0.3;
+    case "msavi":     return computeSpectralValue(legend, era, period, "ndvi") * 0.95 + noise;
+    case "crop_health": return computeSpectralValue(legend, era, period, "ndvi") * 0.8 + noise;
+    case "drought_severity": return 1 - computeSpectralValue(legend, era, period, "ndvi") * 0.6 + noise * 0.3;
+    // Fire & Burn indices — proxy based on inverse NDVI + Fe-oxide
+    case "nbr":         return computeSpectralValue(legend, era, period, "ndvi") * 0.5 + noise;
+    case "dnbr":        return 1 - computeSpectralValue(legend, era, period, "ndvi") * 0.6 + noise;
+    case "burn_severity": return 1 - computeSpectralValue(legend, era, period, "ndvi") * 0.7 + noise * 0.5;
+    case "forest_loss":  return computeSpectralValue(legend, era, period, "fe_oxide") * 0.3 + noise * 0.5;
+    case "burned_area":  return computeSpectralValue(legend, era, period, "bare_soil") * 0.6 + noise;
+    case "fire_risk":    return 1 - computeSpectralValue(legend, era, period, "ndvi") * 0.5 + noise * 0.3;
     default:
       return 0.5 + noise;
   }
@@ -267,6 +288,11 @@ export function computeSpectralValue(
 export const GEE_ONLY_INDICES: SpectralIndex[] = [
   "al_oh", "ferrous", "gossan",
   "ndvi_l8", "elevation", "hipsometry", "slope", "hillshade", "topo_class",
+  // Agriculture & Drought — all require GEE for real satellite data
+  "evi", "ndmi", "savi", "gci", "nddi", "msavi",
+  "crop_health", "drought_severity",
+  // Fire & Deforestation — all require GEE
+  "nbr", "dnbr", "burn_severity", "forest_loss", "burned_area", "fire_risk",
 ];
 
 /** Apply a scientific color ramp to a [0,1] value */
@@ -288,6 +314,20 @@ export function applyColormap(t: number, index: SpectralIndex): string {
     slope:       [[26,152,80],[145,207,96],[217,239,139],[254,224,139],[252,141,89],[215,48,39]],
     hillshade:   [[0,0,0],[255,255,255]],
     topo_class:  [[208,240,255],[160,224,96],[255,255,102],[255,179,102],[255,102,102],[51,102,255]],
+    evi:         [[139,90,43],[189,138,90],[240,220,130],[180,230,120],[60,180,60],[0,100,0]],
+    ndmi:        [[139,69,19],[210,180,140],[255,255,204],[153,204,102],[51,153,51],[0,102,0]],
+    savi:        [[139,90,43],[189,138,90],[240,220,130],[180,230,120],[60,180,60],[0,100,0]],
+    gci:         [[255,255,204],[199,233,180],[127,205,187],[65,182,196],[29,145,192],[34,94,168],[12,44,132]],
+    nddi:        [[0,100,0],[50,205,50],[255,255,0],[255,165,0],[255,69,0],[139,0,0]],
+    msavi:       [[139,90,43],[189,138,90],[240,220,130],[180,230,120],[60,180,60],[0,100,0]],
+    crop_health: [[215,48,39],[252,141,89],[254,224,139],[217,239,139],[145,207,96],[26,152,80],[0,104,55]],
+    drought_severity: [[0,104,55],[26,152,80],[217,239,139],[254,224,139],[252,141,89],[215,48,39],[127,0,0]],
+    nbr:         [[0,100,0],[50,205,50],[255,255,0],[255,165,0],[255,69,0],[139,0,0],[0,0,0]],
+    dnbr:        [[26,152,80],[102,189,99],[254,224,139],[252,141,89],[215,48,39],[127,0,0]],
+    burn_severity: [[26,152,80],[145,207,96],[254,224,139],[252,141,89],[215,48,39]],
+    forest_loss: [[255,255,255],[254,229,217],[252,174,145],[251,106,74],[222,45,38],[165,15,21]],
+    burned_area: [[255,255,204],[255,237,160],[254,217,118],[254,178,76],[253,141,60],[252,78,42],[227,26,28],[177,0,38]],
+    fire_risk:   [[0,104,55],[26,152,80],[217,239,139],[254,224,139],[252,141,89],[215,48,39],[127,0,0]],
   };
 
   const ramp = ramps[index];

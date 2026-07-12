@@ -45,7 +45,7 @@ import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
 type SpectralTab = "s2" | "lineaments" | "targeting"
                   | "profile" | "contours" | "topo_custom" | "landcover" | SpectralIndex;
 
-type IndexGroup = "spectral" | "landsat" | "terrain";
+type IndexGroup = "spectral" | "landsat" | "terrain" | "agriculture" | "drought" | "fire";
 
 interface LandCoverClass {
   code: number;
@@ -259,6 +259,82 @@ const INDEX_DEFS: IndexDef[] = [
     bands: "Copernicus DEM + HydroSHEDS FreeFlowingRivers",
     interpretation: "Classificação topográfica em 5 classes morfológicas + máscara de água. Replica a metodologia do script GEE de Sofala.",
     lowLabel: "Planície", highLabel: "Colinas altas + água" },
+
+  // ── Agriculture & Drought (GEE-only, no proxy) ─────────────────────────
+  { id: "evi", label: "EVI", short: "EVI", icon: <CloudSun size={13} />, group: "agriculture",
+    formula: "EVI = 2.5 × (B8 − B4) / (B8 + 6×B4 − 7.5×B2 + 1)",
+    bands: "NIR (B8) · Vermelho (B4) · Azul (B2)",
+    interpretation: "Enhanced Vegetation Index — corrige influência atmosférica e do solo. Melhor que NDVI em áreas de alta biomassa (<floresta, culturas densas).",
+    lowLabel: "Baixa actividade", highLabel: "Alta biomassa" },
+  { id: "ndmi", label: "NDMI", short: "NDMI", icon: <Droplets size={13} />, group: "agriculture",
+    formula: "NDMI = (B8 − B11) / (B8 + B11)",
+    bands: "NIR (B8) · SWIR1 (B11)",
+    interpretation: "Normalized Difference Moisture Index — sensível ao conteúdo de água na vegetação. Detecta stress hídrico antes do NDVI. Crítico para monitoria de secas e irrigação.",
+    lowLabel: "Solo seco", highLabel: "Vegetação húmida" },
+  { id: "savi", label: "SAVI", short: "SAVI", icon: <Flame size={13} />, group: "agriculture",
+    formula: "SAVI = ((B8 − B4) / (B8 + B4 + 0.5)) × 1.5",
+    bands: "NIR (B8) · Vermelho (B4)",
+    interpretation: "Soil Adjusted Vegetation Index — reduz o efeito do solo exposto (útil em savanas e zonas áridas de Moçambique como o sul e o interior).",
+    lowLabel: "Solo nu", highLabel: "Vegetação densa" },
+  { id: "gci", label: "GCI", short: "GCI", icon: <Sprout size={13} />, group: "agriculture",
+    formula: "GCI = (B8 / B3) − 1",
+    bands: "NIR (B8) · Verde (B3)",
+    interpretation: "Green Chlorophyll Index — estima o teor de clorofila nas folhas. Correlaciona-se com a produtividade das culturas e necessidades de fertilização.",
+    lowLabel: "Folhas senescentes", highLabel: "Alta clorofila" },
+  { id: "msavi", label: "MSAVI2", short: "MSAVI2", icon: <BarChart2 size={13} />, group: "agriculture",
+    formula: "MSAVI2 = (2×B8 + 1 − sqrt((2×B8 + 1)² − 8×(B8 − B4))) / 2",
+    bands: "NIR (B8) · Vermelho (B4)",
+    interpretation: "Modified SAVI2 — minimiza ainda mais o ruído do solo. Recomendado para monitoria de culturas em zonas semi-áridas.",
+    lowLabel: "Solo nu", highLabel: "Vegetação" },
+
+  // ── Drought indices ─────────────────────────────────────────────────────
+  { id: "nddi", label: "NDDI", short: "NDDI", icon: <TrendingDown size={13} />, group: "drought",
+    formula: "NDDI = (NDVI − NDWI) / (NDVI + NDWI)",
+    bands: "NIR (B8) · Vermelho (B4) · Verde (B3)",
+    interpretation: "Normalized Difference Drought Index — combina NDVI e NDWI para realçar áreas secas. Alto NDDI = stress hídrico severo.",
+    lowLabel: "Sem stress", highLabel: "Seca severa" },
+  { id: "crop_health", label: "Saúde Cult.", short: "Saúde", icon: <Activity size={13} />, group: "agriculture",
+    formula: "0.40×EVI + 0.35×NDMI + 0.25×NDVI",
+    bands: "EVI, NDMI, NDVI — composto normalizado",
+    interpretation: "Índice composto de saúde das culturas. Combina vigor vegetativo (EVI), teor de humidade (NDMI) e cobertura verde (NDVI). Ideal para monitoria agrícola integrada.",
+    lowLabel: "Cultura degradada", highLabel: "Cultura saudável" },
+  { id: "drought_severity", label: "Seca", short: "Seca", icon: <Flame size={13} />, group: "drought",
+    formula: "0.60×NDDI + 0.40×(1 − NDMI_norm)",
+    bands: "NDDI + NDMI inverso — composto normalizado",
+    interpretation: "Índice composto de severidade de seca. Quanto maior o valor, pior a condição. Combina o NDDI (stress espectral) com a falta de humidade na vegetação (NDMI inverso).",
+    lowLabel: "Sem seca", highLabel: "Seca severa" },
+
+  // ── Fire & Deforestation (GEE-only, no proxy) ───────────────────────────
+  { id: "nbr", label: "NBR", short: "NBR", icon: <Flame size={13} />, group: "fire",
+    formula: "NBR = (B8 − B12) / (B8 + B12)",
+    bands: "NIR (B8) · SWIR2 (B12)",
+    interpretation: "Normalized Burn Ratio — detecta áreas queimadas e severidade. Contrasta NIR (vegetação saudável) com SWIR (solo queimado, carvão).",
+    lowLabel: "Vegetação", highLabel: "Área queimada" },
+  { id: "dnbr", label: "dNBR", short: "dNBR", icon: <Activity size={13} />, group: "fire",
+    formula: "dNBR = NBR_pós-fogo − NBR_pré-fogo",
+    bands: "Duas composições NBR no tempo",
+    interpretation: "Differenced NBR — diferença entre NBR pré e pós-fogo. Quanto maior o valor, mais severa a queimada. Método USGS padrão.",
+    lowLabel: "Não queimado", highLabel: "Severo" },
+  { id: "burn_severity", label: "Severidade", short: "Severidade", icon: <Target size={13} />, group: "fire",
+    formula: "dNBR reclassificado → 5 classes USGS",
+    bands: "dNBR com thresholds USGS",
+    interpretation: "Classificação USGS de severidade de queimadas: não queimado (<0.1), baixo (0.1–0.27), moderado-baixo (0.27–0.44), moderado-alto (0.44–0.66), alto (>0.66).",
+    lowLabel: "Não queimado", highLabel: "Alta severidade" },
+  { id: "burned_area", label: "Área Queimada", short: "MODIS BA", icon: <BarChart2 size={13} />, group: "fire",
+    formula: "MODIS MCD64A1 — BurnDate mensal",
+    bands: "MODIS Aqua/Terra — 500 m",
+    interpretation: "Áreas queimadas detectadas pelo MODIS MCD64A1. Dados mensais a 500 m desde 2001. Ideal para análise histórica de padrões de fogo.",
+    lowLabel: "Não queimado", highLabel: "Queimado" },
+  { id: "forest_loss", label: "Perda Florestal", short: "Hansen", icon: <Trees size={13} />, group: "fire",
+    formula: "Hansen Global Forest Change v1.11 (2000–2023)",
+    bands: "Landsat — 30 m — treecover e lossyear",
+    interpretation: "Perda de cobertura florestal detectada por ano (2001–2023). Dados de referência para desflorestação em Moçambique. Áreas com ≥30% de copa em 2000.",
+    lowLabel: "Sem perda", highLabel: "Perda 2023" },
+  { id: "fire_risk", label: "Risco Incêndio", short: "Fogo Risco", icon: <TrendingUp size={13} />, group: "fire",
+    formula: "0.40×(1−NDVI) + 0.35×(1−NDMI) + 0.25×NDDI",
+    bands: "NDVI, NDMI, NDDI — composto normalizado",
+    interpretation: "Índice composto de risco de incêndio. Combina baixa vegetação verde (NDVI baixo), baixa humidade (NDMI baixo) e stress hídrico (NDDI alto). Ideal para alerta precoce.",
+    lowLabel: "Risco baixo", highLabel: "Risco alto" },
 ];
 
 const TERRAIN_CLASS_NAMES = [
@@ -1822,6 +1898,14 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
       tabs: [{ id: "targeting",  label: "Targeting",   icon: <Target size={13} /> }] },
     { name: "Uso & Cobertura",        badge: "ESA WorldCover · 10 m", badgeColor: "bg-lime-100 text-lime-700",
       tabs: [{ id: "landcover", label: "Cobertura do Solo", icon: <Sprout size={13} /> }] },
+    { name: "Agricultura",              badge: "Sentinel-2 · 10–20 m",  badgeColor: "bg-green-100 text-green-700",
+      tabs: [
+        ...INDEX_DEFS.filter(d => d.group === "agriculture").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
+      ]},
+    { name: "Seca & Stress Hídrico",    badge: "Sentinel-2 · 10–20 m",  badgeColor: "bg-orange-100 text-orange-700",
+      tabs: INDEX_DEFS.filter(d => d.group === "drought").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
+    { name: "Incêndios & Desflorestação", badge: "Multi-sensor",          badgeColor: "bg-red-100 text-red-700",
+      tabs: INDEX_DEFS.filter(d => d.group === "fire").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
   ];
 
   // Keep the accordion group of the active analysis expanded.
