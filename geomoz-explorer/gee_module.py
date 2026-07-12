@@ -311,10 +311,14 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         return s2.select("B8").divide(s2.select("B3")).subtract(1).rename("index")
 
     if index == "nddi":
-        # NDDI = (NDVI - NDWI) / (NDVI + NDWI)
+        # NDDI = (NDVI - NDMI) / (NDVI + NDMI + eps)
+        # Uses NDMI (NIR-SWIR) as the moisture component, NOT NDWI (Green-NIR)
+        # NDMI = (B8 - B11) / (B8 + B11) — sensitive to vegetation water content
         ndvi = s2.normalizedDifference(["B8", "B4"])
-        ndwi = s2.normalizedDifference(["B3", "B8"])
-        return ndvi.subtract(ndwi).divide(ndvi.add(ndwi).max(0.001)).rename("index")
+        ndmi = s2.normalizedDifference(["B8", "B11"])
+        nddi_img = ndvi.subtract(ndmi).divide(ndvi.add(ndmi).add(0.01)).rename("index")
+        # Clamp to a reasonable range for drought detection
+        return nddi_img.clamp(-2, 2)
 
     if index == "msavi":
         # MSAVI2 = (2*B8 + 1 - sqrt((2*B8 + 1)^2 - 8*(B8 - B4))) / 2
@@ -346,10 +350,10 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         nir = s2.select("B8")
         red = s2.select("B4")
         ndvi_raw = s2.normalizedDifference(["B8", "B4"])
-        ndwi_raw = s2.normalizedDifference(["B3", "B8"])
-        nddi_raw = ndvi_raw.subtract(ndwi_raw).divide(ndvi_raw.add(ndwi_raw).max(0.001))
         ndmi_raw = s2.normalizedDifference(["B8", "B11"])
-        nddi_n = nddi_raw.subtract(-0.3).divide(1.0).clamp(0, 1)
+        # NDDI using NDMI (correct formula)
+        nddi_raw = ndvi_raw.subtract(ndmi_raw).divide(ndvi_raw.add(ndmi_raw).add(0.01))
+        nddi_n = nddi_raw.subtract(-0.1).divide(0.4).clamp(0, 1)
         ndmi_n = ndmi_raw.subtract(-0.5).divide(1.2).clamp(0, 1)
         inv_ndmi = ee.Image(1).subtract(ndmi_n)
         return nddi_n.multiply(0.60).add(inv_ndmi.multiply(0.40)).rename("index")

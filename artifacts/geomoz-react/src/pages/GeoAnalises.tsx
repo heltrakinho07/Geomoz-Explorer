@@ -289,9 +289,9 @@ const INDEX_DEFS: IndexDef[] = [
 
   // ── Drought indices ─────────────────────────────────────────────────────
   { id: "nddi", label: "NDDI", short: "NDDI", icon: <TrendingDown size={13} />, group: "drought",
-    formula: "NDDI = (NDVI − NDWI) / (NDVI + NDWI)",
-    bands: "NIR (B8) · Vermelho (B4) · Verde (B3)",
-    interpretation: "Normalized Difference Drought Index — combina NDVI e NDWI para realçar áreas secas. Alto NDDI = stress hídrico severo.",
+    formula: "NDDI = (NDVI − NDMI) / (NDVI + NDMI + 0.01)",
+    bands: "NIR (B8) · Vermelho (B4) · SWIR1 (B11)",
+    interpretation: "Normalized Difference Drought Index — combina NDVI e NDMI (humidade da vegetação) para realçar áreas secas. Usa NDMI (NIR-SWIR) como componente de humidade, não NDWI (Green-NIR). Alto NDDI = stress hídrico severo.",
     lowLabel: "Sem stress", highLabel: "Seca severa" },
   { id: "crop_health", label: "Saúde Cult.", short: "Saúde", icon: <Activity size={13} />, group: "agriculture",
     formula: "0.40×EVI + 0.35×NDMI + 0.25×NDVI",
