@@ -328,6 +328,56 @@ INDEX_REGISTRY: dict[str, dict[str, Any]] = {
                 "palette": ["006837","1a9850","d9ef8b","fee08b","fc8d59","d73027","7f0000"]},
         "norm": (0.0, 1.0),
     },
+
+    # ── Coastal & Marine indices ────────────────────────────────────────────
+
+    "mangrove_health": {
+        "group": "coastal",
+        "needs": ["s2"],
+        "name": "Saúde dos Mangais (NDVI+NDWI)",
+        "formula": "0.50×NDVI_norm + 0.50×NDWI_norm — composto Sentinel-2",
+        "bands": "Sentinel-2 NIR (B8), Vermelho (B4), Verde (B3)",
+        "vis": {"min": 0.0, "max": 1.0,
+                "palette": ["d73027","fc8d59","fee08b","d9ef8b","91cf60","1a9850","006837"]},
+        "norm": (0.0, 1.0),
+    },
+    "coastal_index": {
+        "group": "coastal",
+        "needs": ["dem"],
+        "name": "Índice Costeiro — Exposição",
+        "formula": "CVI: 0.35×costa_prox + 0.25×(1−elev_norm) + 0.25×(1−declive_norm) + 0.15×(1−NDVI_proxy_DEM)",
+        "bands": "DEM Copernicus + Sentinel-2 NDVI",
+        "vis": {"min": 0.0, "max": 1.0,
+                "palette": ["006837","91cf60","fee08b","fc8d59","d73027","7f0000"]},
+        "norm": (0.0, 1.0),
+    },
+    "coastal_erosion": {
+        "group": "coastal",
+        "needs": [],
+        "name": "Erosão Costeira (JRC Yearly Water)",
+        "formula": "JRC GSW v1.4 — transição água/terra 1984–2021",
+        "bands": "JRC Global Surface Water — transition band",
+        "vis": {"min": 0, "max": 3,
+                "palette": ["006400","0064c8","d73027","ffd700"]},
+        "norm": (0, 3),
+        "class_names": [
+            "Terra estável",
+            "Água permanente",
+            "Erosão / perda de terra",
+            "Progradação / ganho de terra",
+        ],
+    },
+    "tsunami_risk": {
+        "group": "coastal",
+        "needs": ["s2", "dem"],
+        "name": "Risco de Inundação Costeira (Tsunami)",
+        "formula": "CVI: 0.35×(1−elev_norm) + 0.30×costa_prox + 0.20×(1−declive_norm) + 0.15×(1−NDVI_norm)",
+        "bands": "DEM Copernicus + distância à costa + declive + cobertura",
+        "vis": {"min": 0.0, "max": 1.0,
+                "palette": ["006837","1a9850","d9ef8b","fee08b","fc8d59","d73027","7f0000"]},
+        "norm": (0.0, 1.0),
+    },
+
 }
 
 
@@ -503,56 +553,6 @@ ESA_WORLDCOVER: list[tuple[int, str, str]] = [
 ESA_CN: dict[int, int] = {
     10: 55, 20: 60, 30: 68, 40: 78, 50: 90, 60: 82,
     70: 90, 80: 100, 90: 88, 95: 80, 100: 70,
-
-    # ── Coastal & Marine indices ────────────────────────────────────────────
-
-    "mangrove_health": {
-        "group": "coastal",
-        "needs": ["s2"],
-        "name": "Saúde dos Mangais (NDVI+NDWI)",
-        "formula": "0.50×NDVI_norm + 0.50×NDWI_norm — composto Sentinel-2",
-        "bands": "Sentinel-2 NIR (B8), Vermelho (B4), Verde (B3)",
-        "vis": {"min": 0.0, "max": 1.0,
-                "palette": ["d73027","fc8d59","fee08b","d9ef8b","91cf60","1a9850","006837"]},
-        "norm": (0.0, 1.0),
-    },
-    "coastal_index": {
-        "group": "coastal",
-        "needs": ["dem"],
-        "name": "Índice Costeiro — Exposição",
-        "formula": "CVI: 0.35×costa_prox + 0.25×(1−elev_norm) + 0.25×(1−declive_norm) + 0.15×(1−NDVI_proxy_DEM)",
-        "bands": "DEM Copernicus + Sentinel-2 NDVI",
-        "vis": {"min": 0.0, "max": 1.0,
-                "palette": ["006837","91cf60","fee08b","fc8d59","d73027","7f0000"]},
-        "norm": (0.0, 1.0),
-    },
-    "coastal_erosion": {
-        "group": "coastal",
-        "needs": [],
-        "name": "Erosão Costeira (JRC Yearly Water)",
-        "formula": "JRC GSW v1.4 — transição água/terra 1984–2021",
-        "bands": "JRC Global Surface Water — transition band",
-        "vis": {"min": 0, "max": 3,
-                "palette": ["006400","0064c8","d73027","ffd700"]},
-        "norm": (0, 3),
-        "class_names": [
-            "Terra estável",
-            "Água permanente",
-            "Erosão / perda de terra",
-            "Progradação / ganho de terra",
-        ],
-    },
-    "tsunami_risk": {
-        "group": "coastal",
-        "needs": ["s2", "dem"],
-        "name": "Risco de Inundação Costeira (Tsunami)",
-        "formula": "CVI: 0.35×(1−elev_norm) + 0.30×costa_prox + 0.20×slope_norm + 0.15×(1−ndvi_norm)",
-        "bands": "DEM Copernicus + distância à costa + declive + cobertura",
-        "vis": {"min": 0.0, "max": 1.0,
-                "palette": ["006837","1a9850","d9ef8b","fee08b","fc8d59","d73027","7f0000"]},
-        "norm": (0.0, 1.0),
-    },
-
 }
 
 
