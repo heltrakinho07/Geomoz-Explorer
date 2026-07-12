@@ -424,6 +424,65 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         inv_ndmi = ee.Image(1).subtract(ndmi_n)
         return inv_ndvi.multiply(0.40).add(inv_ndmi.multiply(0.35)).add(nddi_n.multiply(0.25)).rename("index")
 
+
+    # ── Coastal & Marine indices ────────────────────────────────────────────
+
+    if index == "mangrove_health":
+        # Mangrove health: equal-weight composite of NDVI + NDWI (Gao)
+        # NDVI = (B8-B4)/(B8+B4), NDWI = (B3-B8)/(B3+B8)
+        ndvi_raw = s2.normalizedDifference(["B8", "B4"])
+        ndwi_raw = s2.normalizedDifference(["B3", "B8"])
+        # Normalize each to [0,1] then average
+        ndvi_n = ndvi_raw.subtract(-0.2).divide(1.1).clamp(0, 1)
+        ndwi_n = ndwi_raw.subtract(-0.5).divide(1.0).clamp(0, 1)
+        return ndvi_n.multiply(0.50).add(ndwi_n.multiply(0.50)).rename("index")
+
+    if index == "coastal_index":
+        # Coastal Vulnerability Index: combines proximity to coast, elevation,
+        # flat slope, and DEM-derived proxy for vegetation buffer
+        import ee
+        jrc_water = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
+        coastline = jrc_water.gt(40).selfMask().clip(region).clip(region)
+        coast_dist = coastline.fastDistanceTransform(True).sqrt().multiply(30).rename("dist")
+        max_dist = 50000
+        prox_raw = ee.Image(1).subtract(coast_dist.divide(max_dist)).clamp(0, 1)
+        inv_elev = ee.Image(1).subtract(dem.divide(50).clamp(0, 1))
+        slope_n = ee.Terrain.slope(dem).divide(30).clamp(0, 1)
+        inv_slope = ee.Image(1).subtract(slope_n)
+        # Simulated NDVI from DEM (lower in exposed coastal areas)
+        ndvi_proxy = dem.expression(
+            "1 - (e / 100)", {"e": dem}
+        ).clamp(0, 1).rename("ndvi_proxy")
+        inv_ndvi = ee.Image(1).subtract(ndvi_proxy)
+        return prox_raw.multiply(0.35).add(inv_elev.multiply(0.25)).add(inv_slope.multiply(0.25)).add(inv_ndvi.multiply(0.15)).rename("index")
+
+    if index == "coastal_erosion":
+        # JRC Global Surface Water — transition band (1984–2021)
+        # transition: 1 = permanent water, 2 = new permanent, 3 = lost permanent, 0 = land
+        import ee
+        jrc_transition = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("transition")
+        # Reclassify to 4 classes: 0=no change, 1=land gain, 2=land loss, 3=permanent water
+        return jrc_transition.rename("index")
+
+    if index == "tsunami_risk":
+        # Tsunami coastal inundation vulnerability index
+        # Combines: low elevation (strongest weight), proximity to coast,
+        # flat slope (further wave travel), low vegetation (less resistance)
+        import ee
+        jrc_water = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
+        coastline = jrc_water.gt(40).selfMask()
+        coast_dist = coastline.fastDistanceTransform(True).sqrt().multiply(30).rename("dist")
+        max_dist = 30000
+        prox_raw = ee.Image(1).subtract(coast_dist.divide(max_dist)).clamp(0, 1)
+        inv_elev = ee.Image(1).subtract(dem.divide(30).clamp(0, 1))
+        slope_n = ee.Terrain.slope(dem).divide(20).clamp(0, 1)
+        inv_slope = ee.Image(1).subtract(slope_n)
+        # NDVI vegetation buffer — now available because needs includes s2
+        ndvi_raw = s2.normalizedDifference(["B8", "B4"])
+        inv_ndvi = ee.Image(1).subtract(ndvi_raw.subtract(-0.2).divide(1.1).clamp(0, 1))
+        return inv_elev.multiply(0.35).add(prox_raw.multiply(0.30)).add(inv_slope.multiply(0.20)).add(inv_ndvi.multiply(0.15)).rename("index")
+
+
     raise ValueError(f"Índice desconhecido: {index!r}")
 
 

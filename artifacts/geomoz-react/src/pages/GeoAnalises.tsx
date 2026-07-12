@@ -45,7 +45,7 @@ import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
 type SpectralTab = "s2" | "lineaments" | "targeting"
                   | "profile" | "contours" | "topo_custom" | "landcover" | SpectralIndex;
 
-type IndexGroup = "spectral" | "landsat" | "terrain" | "agriculture" | "drought" | "fire";
+type IndexGroup = "spectral" | "landsat" | "terrain" | "agriculture" | "drought" | "fire" | "coastal";
 
 interface LandCoverClass {
   code: number;
@@ -334,6 +334,28 @@ const INDEX_DEFS: IndexDef[] = [
     formula: "0.40×(1−NDVI) + 0.35×(1−NDMI) + 0.25×NDDI",
     bands: "NDVI, NDMI, NDDI — composto normalizado",
     interpretation: "Índice composto de risco de incêndio. Combina baixa vegetação verde (NDVI baixo), baixa humidade (NDMI baixo) e stress hídrico (NDDI alto). Ideal para alerta precoce.",
+    lowLabel: "Risco baixo", highLabel: "Risco alto" },
+
+  // ── Coastal & Marine indices ─────────────────────────────────────────
+  { id: "mangrove_health", label: "Mangal", short: "Mangal", icon: <Sprout size={13} />, group: "coastal",
+    formula: "0.50×NDVI + 0.50×NDWI — composto Sentinel-2",
+    bands: "NIR (B8) · Vermelho (B4) · Verde (B3)",
+    interpretation: "Saúde dos mangais — combina NDVI (vigor vegetativo) e NDWI (conteúdo de água). Monitoria de mangais na costa moçambicana (Zambeze, Bons Sinais, Save, Maputo).",
+    lowLabel: "Mangal degradado", highLabel: "Mangal saudável" },
+  { id: "coastal_index", label: "Índice Costeiro", short: "Costeiro", icon: <Waves size={13} />, group: "coastal",
+    formula: "CVI: 0.35×costa_prox + 0.25×(1−elev) + 0.25×declive + 0.15×(1−NDVI)",
+    bands: "DEM Copernicus · proximidade costa · sentinel-2 NDVI",
+    interpretation: "Índice de Exposição Costeira — distância à costa, baixa elevação, declive suave e baixa vegetação aumentam a vulnerabilidade costeira.",
+    lowLabel: "Baixa exposição", highLabel: "Alta exposição" },
+  { id: "coastal_erosion", label: "Erosão Costeira", short: "Erosão", icon: <TrendingDown size={13} />, group: "coastal",
+    formula: "JRC GSW v1.4 — transição 1984–2021",
+    bands: "JRC Global Surface Water — transition",
+    interpretation: "Erosão costeira detectada por JRC Global Surface Water. Áreas em vermelho = perda de terra por erosão costeira. Amarelo = acreção/progradação.",
+    lowLabel: "Estável", highLabel: "Erosão" },
+  { id: "tsunami_risk", label: "Tsunami", short: "Tsunami", icon: <BarChart2 size={13} />, group: "coastal",
+    formula: "0.35×(1−elev_norm) + 0.30×costa_prox + 0.20×declive + 0.15×(1−NDVI)",
+    bands: "DEM Copernicus · dist. costa · declive · NDVI",
+    interpretation: "Risco de inundação por tsunami/inundação costeira. Combina baixa elevação, proximidade ao mar, terreno plano e falta de vegetação tampão.",
     lowLabel: "Risco baixo", highLabel: "Risco alto" },
 ];
 
@@ -1906,6 +1928,8 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
       tabs: INDEX_DEFS.filter(d => d.group === "drought").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
     { name: "Incêndios & Desflorestação", badge: "Multi-sensor",          badgeColor: "bg-red-100 text-red-700",
       tabs: INDEX_DEFS.filter(d => d.group === "fire").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
+    { name: "Zonas Costeiras & Marinhas",  badge: "Multi-sensor",          badgeColor: "bg-cyan-100 text-cyan-700",
+      tabs: INDEX_DEFS.filter(d => d.group === "coastal").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
   ];
 
   // Keep the accordion group of the active analysis expanded.
