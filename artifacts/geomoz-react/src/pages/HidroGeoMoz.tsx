@@ -25,10 +25,14 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer,
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
-import { useProvinceNames, useDistrictNames, useStats } from "@/hooks/useGeoMoz";
+import { useStats } from "@/hooks/useGeoMoz";
 import { apiUrl } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
+import ZoneSelect from "@/components/ZoneSelect";
+import MapDraw from "@/components/MapDraw";
+import type { AreaOfInterest } from "@/lib/aoi";
+import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -143,12 +147,14 @@ function MapClickHandler({ onMapClick, active }: { onMapClick: (lat: number, lng
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 interface Props {
+  aoi: AreaOfInterest;
   province: string | null; district: string | null;
   onProvinceChange: (p: string | null) => void;
   onDistrictChange: (d: string | null) => void;
+  onAOIChange: (aoi: AreaOfInterest) => void;
 }
 
-export default function HidroGeoMoz({ province, district, onProvinceChange, onDistrictChange }: Props) {
+export default function HidroGeoMoz({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
   const { toast } = useToast();
   const mapRef = useRef<LMap | null>(null);
 
@@ -193,10 +199,9 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
   const [loadingBasins, setLoadingBasins] = useState(false);
   const [loadingStats,  setLoadingStats]  = useState(false);
   const [error,         setError]         = useState<string | null>(null);
+  const [drawingEnabled, setDrawingEnabled] = useState(false);
 
   // GeoMoz data
-  const { data: provinceNames   } = useProvinceNames();
-  const { data: districtNames   } = useDistrictNames(province);
   const { data: statsData       } = useStats(province, district);
 
   // GEE check
@@ -226,10 +231,10 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
     try {
       const [bRes, dRes] = await Promise.all([
         fetch(apiUrl("/geomoz-api/gee/basins"), { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ province, district, level: basinLevel }) }),
+          body: JSON.stringify({ ...aoiToAPI(aoi), level: basinLevel }) }),
         showDrainage
           ? fetch(apiUrl("/geomoz-api/gee/drainage"), { method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ province, district, threshold: drainThresh }) })
+              body: JSON.stringify({ ...aoiToAPI(aoi), threshold: drainThresh }) })
           : Promise.resolve(null),
       ]);
       if (!bRes.ok) throw new Error((await bRes.json()).detail ?? bRes.statusText);
@@ -279,7 +284,7 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
     try {
       const r = await fetch(apiUrl("/geomoz-api/gee/river-network"), { method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ province, district }) });
+        body: JSON.stringify({ ...aoiToAPI(aoi) }) });
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
       setRiverNet(await r.json()); setShowRiverNet(true);
     } catch (e) {
@@ -307,7 +312,7 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
     try {
       const r = await fetch(apiUrl("/geomoz-api/gee/watershed"), { method: "POST",
         headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
-        body: JSON.stringify({ lat, lon: lng, province, district, max_iter: maxIter, level }) });
+        body: JSON.stringify({ lat, lon: lng, ...aoiToAPI(aoi), max_iter: maxIter, level }) });
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
       const wd: WatershedResult = await r.json();
       setWatershedData(wd);
@@ -442,33 +447,10 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
           </div>
         </div>
 
-        {/* Área de estudo */}
-        <div className="p-3 space-y-2.5 border-b border-slate-100">
-          <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Área de Estudo</h4>
-          <div>
-            <label className="text-[10px] text-slate-500 mb-1 block">Província</label>
-            <div className="relative">
-              <select className="w-full appearance-none text-sm bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={province ?? ""} onChange={e => { onProvinceChange(e.target.value || null); onDistrictChange(null); }}>
-                <option value="">Moçambique (todo)</option>
-                {provinceNames?.names.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-              <ChevronDown className="absolute right-2 top-2 h-4 w-4 text-slate-400 pointer-events-none" />
-            </div>
-          </div>
-          {province && (
-            <div>
-              <label className="text-[10px] text-slate-500 mb-1 block">Distrito</label>
-              <div className="relative">
-                <select className="w-full appearance-none text-sm bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={district ?? ""} onChange={e => onDistrictChange(e.target.value || null)}>
-                  <option value="">Toda a província</option>
-                  {districtNames?.names.map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-                <ChevronDown className="absolute right-2 top-2 h-4 w-4 text-slate-400 pointer-events-none" />
-              </div>
-            </div>
-          )}
+        {/* Área de estudo — AOI global */}
+        <div className="p-3 border-b border-slate-100">
+          <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Área de Estudo</h4>
+          <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
         </div>
 
         {/* Explore config */}
@@ -625,6 +607,13 @@ export default function HidroGeoMoz({ province, district, onProvinceChange, onDi
             <CircleMarker center={pourPoint} radius={9}
               pathOptions={{ fillColor: "#ef4444", color: "#ffffff", weight: 3, fillOpacity: 1 }} />
           )}
+          <MapDraw
+            enabled={drawingEnabled}
+            hasDrawnAOI={aoi.source === "draw"}
+            onClearAOI={() => onAOIChange(GLOBAL_AOI)}
+            onDrawComplete={(geom, label) => { setDrawingEnabled(false); onAOIChange(customAOI(geom, label, "draw")); }}
+            onCancel={() => setDrawingEnabled(false)}
+          />
         </MapContainer>
 
         {/* Legend */}

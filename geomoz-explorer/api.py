@@ -7,12 +7,21 @@ import json
 import hashlib
 import logging
 import os
+import sys
 import time
 from collections import defaultdict
 from functools import lru_cache
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 from shapely.errors import TopologicalError, GEOSException
+
+# Ensure this directory is in sys.path so sibling modules can be imported
+# with absolute imports (e.g. `from gee_module import ...`). This is needed
+# because the directory name 'geomoz-explorer' contains a hyphen, which
+# prevents it from being a valid Python package.
+_this_dir = os.path.dirname(os.path.abspath(__file__))
+if _this_dir not in sys.path:
+    sys.path.insert(0, _this_dir)
 
 from fastapi import FastAPI, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -138,17 +147,28 @@ def _gdf_to_geojson_response(gdf) -> Response:
 
 # ── region geometry helper (used by GEE endpoints) ─────────────────────────────
 
-def _region_geojson(province: Optional[str], district: Optional[str]) -> Optional[dict]:
+def _region_geojson(
+    province: Optional[str] = None,
+    district: Optional[str] = None,
+    geometry: Optional[dict] = None,
+) -> Optional[dict]:
     """
-    Return a simplified GeoJSON geometry dict for the selected area:
-      - district (if both given)
-      - province (if only province given)
-      - None      → full Mozambique (GEE fallback uses a bbox internally)
+    Return a GeoJSON geometry dict for the area of interest.
+    Priority:
+      1. `geometry` (direct GeoJSON geometry dict) — used for custom / global AOI
+      2. district (if both province and district given)
+      3. province (if only province given)
+      4. None → full Mozambique / global bbox fallback depending on source
 
     The geometry is simplified before being shipped to GEE so the request stays light.
     """
     from shapely.geometry import mapping
 
+    # Priority 1: direct geometry (uploaded / drawn AOI)
+    if geometry is not None:
+        return geometry
+
+    # Priority 2: district
     if district:
         dist_gdf = _districts()
         dcol = _find_col(dist_gdf, ["Distrito", "DISTRITO", "NAME_2", "name"])
@@ -166,6 +186,7 @@ def _region_geojson(province: Optional[str], district: Optional[str]) -> Optiona
                 geom = sub.geometry.union_all().simplify(0.01, preserve_topology=True)
                 return mapping(geom)
 
+    # Priority 3: province
     if province:
         prov_gdf = _provinces()
         pcol = _find_col(prov_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name"])
@@ -423,10 +444,119 @@ def gee_status():
     return status
 
 
+class GEEServiceAccountKeyRequest(BaseModel):
+    service_account_key: Optional[str] = None
+    project_id: Optional[str] = None
+
+
+@app.get("/geomoz-api/gee/config")
+def gee_config():
+    """
+    Return current GEE configuration (with sensitive values masked).
+    Used by the Settings page to show the user what's configured.
+    """
+    from gee_module import _init_gee, gee_status as _gee_status
+
+    sa_key_raw = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
+    project_id = os.environ.get("GEE_PROJECT_ID", "").strip()
+
+    # Build a masked version of the key for display
+    masked_key = None
+    has_key = bool(sa_key_raw)
+    if has_key:
+        try:
+            key_data = json.loads(sa_key_raw)
+            email = key_data.get("client_email", "")
+            proj = key_data.get("project_id", "")
+            masked_key = {
+                "client_email": email,
+                "project_id": proj or "(n/a)",
+                "key_prefix": sa_key_raw[:40] + "…" if len(sa_key_raw) > 40 else sa_key_raw[:20] + "…",
+                "has_private_key": bool(key_data.get("private_key", "")),
+            }
+        except (json.JSONDecodeError, Exception):
+            masked_key = {"error": "Invalid JSON in GEE_SERVICE_ACCOUNT_KEY"}
+
+    status = _gee_status()
+
+    return {
+        "status": status,
+        "config": {
+            "hasServiceAccountKey": has_key,
+            "maskedServiceAccount": masked_key,
+            "envProjectId": project_id or None,
+            "envProjectSource": "env_var" if project_id else ("key_file" if has_key else None),
+        },
+        "endpoints": {
+            "configure": {
+                "method": "POST",
+                "path": "/geomoz-api/gee/configure",
+                "body": {
+                    "service_account_key": "(optional) JSON string of the service account",
+                    "project_id": "(optional) GCP project ID",
+                },
+            }
+        },
+    }
+
+
+@app.post("/geomoz-api/gee/configure")
+def gee_configure(req: GEEServiceAccountKeyRequest):
+    """
+    Update GEE credentials and reinitialize the connection.
+    Accepts service_account_key (JSON string) and/or project_id.
+    Returns the new connection status.
+    """
+    from gee_module import reset_gee, _init_gee, gee_status as _gee_status
+
+    changed = False
+
+    if req.service_account_key is not None:
+        os.environ["GEE_SERVICE_ACCOUNT_KEY"] = req.service_account_key.strip()
+        changed = True
+        logger.info("GEE service account key updated via API")
+
+    if req.project_id is not None:
+        os.environ["GEE_PROJECT_ID"] = req.project_id.strip()
+        changed = True
+        logger.info("GEE project ID updated via API to: %s", req.project_id)
+
+    if not changed:
+        return {
+            "configured": False,
+            "message": "Nenhuma credencial fornecida. Envie service_account_key e/ou project_id.",
+        }
+
+    # Reset and reinitialize GEE
+    reset_gee()
+    try:
+        _init_gee()
+        status = _gee_status()
+        status["configured"] = True
+        status["message"] = "GEE configurado e conectado com sucesso!"
+        logger.info("GEE reinitialized successfully after configuration update")
+        return status
+    except RuntimeError as exc:
+        logger.error("GEE reinitialization failed after configuration update: %s", exc)
+        return {
+            "configured": False,
+            "connected": False,
+            "message": f"Falha ao conectar GEE: {exc}",
+        }
+    except Exception as exc:
+        logger.error("Unexpected error during GEE configuration: %s", exc)
+        return {
+            "configured": False,
+            "connected": False,
+            "message": f"Erro inesperado: {exc}",
+        }
+
+
 class GEEIndexRequest(BaseModel):
     index:      str
     province:   Optional[str] = None
     district:   Optional[str] = None
+    geometry:   Optional[dict] = None
     start_date: str = "2023-01-01"
     end_date:   str = "2023-12-31"
     cloud_pct:  int = 30
@@ -453,6 +583,7 @@ class GEECompositeRequest(BaseModel):
     weights:    dict           # {"ndvi": 0.4, "fe_oxide": 0.3, ...}
     province:   Optional[str] = None
     district:   Optional[str] = None
+    geometry:   Optional[dict] = None
     start_date: str = "2023-01-01"
     end_date:   str = "2023-12-31"
     cloud_pct:  int = 30
@@ -494,12 +625,12 @@ async def gee_index(req: GEEIndexRequest):
     """
     import asyncio
     from gee_presets import INDEX_REGISTRY
-    from .gee_module import compute_index_tile
+    from gee_module import compute_index_tile
 
     if req.index not in INDEX_REGISTRY:
         raise HTTPException(400, f"Unknown index '{req.index}'. Valid: {list(INDEX_REGISTRY)}")
 
-    region = _region_geojson(req.province, req.district)
+    region = _region_geojson(req.province, req.district, req.geometry)
 
     loop = asyncio.get_event_loop()
 
@@ -527,9 +658,9 @@ async def gee_composite(req: GEECompositeRequest):
     the user-provided weight (renormalized so weights sum to 1), and summed.
     """
     import asyncio
-    from .gee_module import compute_composite_tile
+    from gee_module import compute_composite_tile
 
-    region = _region_geojson(req.province, req.district)
+    region = _region_geojson(req.province, req.district, req.geometry)
 
     loop = asyncio.get_event_loop()
 
@@ -552,6 +683,7 @@ async def gee_composite(req: GEECompositeRequest):
 class GEELineamentsRequest(BaseModel):
     province:        Optional[str] = None
     district:        Optional[str] = None
+    geometry:        Optional[dict] = None
     smooth_m:        int   = 30
     density_radius_m: int  = 750
     rose_samples:    int   = 4000
@@ -568,6 +700,7 @@ class GEETargetingRequest(BaseModel):
     mineral:          str
     province:         Optional[str] = None
     district:         Optional[str] = None
+    geometry:         Optional[dict] = None
     start_date:       str = "2023-01-01"
     end_date:         str = "2023-12-31"
     cloud_pct:        int = 30
@@ -604,9 +737,9 @@ class GEETargetingRequest(BaseModel):
 async def gee_lineaments(req: GEELineamentsRequest):
     """Topographic lineaments (Canny on multi-azimuth hillshades) + rose diagram."""
     import asyncio
-    from .gee_module import compute_lineaments_tile
+    from gee_module import compute_lineaments_tile
 
-    region = _region_geojson(req.province, req.district)
+    region = _region_geojson(req.province, req.district, req.geometry)
 
     loop = asyncio.get_event_loop()
 
@@ -650,9 +783,9 @@ def gee_minerals():
 async def gee_targeting(req: GEETargetingRequest):
     """Mineral favorability score (0–100) via weighted preset + lineaments."""
     import asyncio
-    from .gee_module import compute_targeting_tile
+    from gee_module import compute_targeting_tile
 
-    region = _region_geojson(req.province, req.district)
+    region = _region_geojson(req.province, req.district, req.geometry)
 
     loop = asyncio.get_event_loop()
 
@@ -683,6 +816,7 @@ class GEEProfileRequest(BaseModel):
 class GEEContoursRequest(BaseModel):
     province:    Optional[str] = None
     district:    Optional[str] = None
+    geometry:    Optional[dict] = None
     interval_m:  int = 50
     index_every: int = 5
 
@@ -691,7 +825,7 @@ class GEEContoursRequest(BaseModel):
 async def gee_profile(req: GEEProfileRequest):
     """Topographic profile (DEM elevation sampled along a polyline)."""
     import asyncio
-    from .gee_module import compute_profile
+    from gee_module import compute_profile
 
     loop = asyncio.get_event_loop()
 
@@ -711,9 +845,9 @@ async def gee_profile(req: GEEProfileRequest):
 async def gee_contours(req: GEEContoursRequest):
     """Contour-line tiles at user-defined equidistance from Copernicus GLO-30."""
     import asyncio
-    from .gee_module import compute_contours_tile
+    from gee_module import compute_contours_tile
 
-    region = _region_geojson(req.province, req.district)
+    region = _region_geojson(req.province, req.district, req.geometry)
 
     loop = asyncio.get_event_loop()
 
@@ -736,6 +870,7 @@ async def gee_contours(req: GEEContoursRequest):
 class GEETopoClassesRequest(BaseModel):
     province:       Optional[str] = None
     district:       Optional[str] = None
+    geometry:       Optional[dict] = None
     breaks:         list           # e.g. [5, 10, 30, 60]
     colors:         list           # hex, len == len(breaks)+1
     labels:         list           # len == len(breaks)+1
@@ -748,9 +883,9 @@ class GEETopoClassesRequest(BaseModel):
 async def gee_topo_classes(req: GEETopoClassesRequest):
     """User-defined topographic classes from the DEM."""
     import asyncio
-    from .gee_module import compute_topo_classes_tile
+    from gee_module import compute_topo_classes_tile
 
-    region = _region_geojson(req.province, req.district)
+    region = _region_geojson(req.province, req.district, req.geometry)
 
     loop = asyncio.get_event_loop()
 
@@ -776,15 +911,16 @@ async def gee_topo_classes(req: GEETopoClassesRequest):
 class GEELandcoverRequest(BaseModel):
     province: Optional[str] = None
     district: Optional[str] = None
+    geometry: Optional[dict] = None
 
 
 @app.post("/geomoz-api/gee/landcover")
 async def gee_landcover(req: GEELandcoverRequest):
     """Land cover (ESA WorldCover 2021, 10 m) with per-class area analysis."""
     import asyncio
-    from .gee_module import compute_landcover_tile
+    from gee_module import compute_landcover_tile
 
-    region = _region_geojson(req.province, req.district)
+    region = _region_geojson(req.province, req.district, req.geometry)
 
     loop = asyncio.get_event_loop()
 
@@ -828,6 +964,7 @@ def gee_indices():
 class GEEBasinsRequest(BaseModel):
     province:  Optional[str] = None
     district:  Optional[str] = None
+    geometry:  Optional[dict] = None
     level:     int            = 6   # HydroBASINS level 5–8
 
 
@@ -838,6 +975,7 @@ class GEEBasinStatsRequest(BaseModel):
 class GEEDrainageRequest(BaseModel):
     province:  Optional[str] = None
     district:  Optional[str] = None
+    geometry:  Optional[dict] = None
     threshold: int            = 500
 
 
@@ -845,9 +983,9 @@ class GEEDrainageRequest(BaseModel):
 async def gee_basins(req: GEEBasinsRequest):
     """HydroBASINS polygons that intersect the selected region."""
     import asyncio
-    from .gee_module import compute_basins
+    from gee_module import compute_basins
 
-    region   = _region_geojson(req.province, req.district)
+    region   = _region_geojson(req.province, req.district, req.geometry)
     loop     = asyncio.get_event_loop()
     try:
         result = await loop.run_in_executor(
@@ -864,7 +1002,7 @@ async def gee_basins(req: GEEBasinsRequest):
 async def gee_basin_stats(req: GEEBasinStatsRequest):
     """Elevation, slope, NDVI, NDWI, precipitation + risk indices for one basin."""
     import asyncio
-    from .gee_module import compute_basin_stats
+    from gee_module import compute_basin_stats
 
     loop     = asyncio.get_event_loop()
     try:
@@ -883,7 +1021,7 @@ async def gee_basin_report(req: GEEBasinStatsRequest):
     """Full hydro-environmental basin report: morphometry + land cover + CHIRPS
     monthly rainfall + SCS-CN runoff potential."""
     import asyncio
-    from .gee_module import compute_basin_report
+    from gee_module import compute_basin_report
 
     loop = asyncio.get_event_loop()
     try:
@@ -901,9 +1039,9 @@ async def gee_basin_report(req: GEEBasinStatsRequest):
 async def gee_drainage(req: GEEDrainageRequest):
     """HydroSHEDS drainage network tile for the selected region."""
     import asyncio
-    from .gee_module import compute_drainage_tile
+    from gee_module import compute_drainage_tile
 
-    region   = _region_geojson(req.province, req.district)
+    region   = _region_geojson(req.province, req.district, req.geometry)
     loop     = asyncio.get_event_loop()
     try:
         result = await loop.run_in_executor(
@@ -919,15 +1057,16 @@ async def gee_drainage(req: GEEDrainageRequest):
 class GEERiverNetRequest(BaseModel):
     province: Optional[str] = None
     district: Optional[str] = None
+    geometry: Optional[dict] = None
 
 
 @app.post("/geomoz-api/gee/river-network")
 async def gee_river_network(req: GEERiverNetRequest):
     """Multi-order river network tile (Strahler-like classification via HydroSHEDS ACC)."""
     import asyncio
-    from .gee_module import compute_river_network
+    from gee_module import compute_river_network
 
-    region   = _region_geojson(req.province, req.district)
+    region   = _region_geojson(req.province, req.district, req.geometry)
     loop     = asyncio.get_event_loop()
     try:
         result = await loop.run_in_executor(
@@ -945,6 +1084,7 @@ class GEEWatershedRequest(BaseModel):
     lon:      float
     province: Optional[str] = None
     district: Optional[str] = None
+    geometry: Optional[dict] = None
     max_iter: int            = 60
     level:    int            = 10
 
@@ -958,9 +1098,9 @@ async def gee_watershed(req: GEEWatershedRequest):
     GeoJSON polygon + area km². `level` (6–12) controls HydroBASINS detail.
     """
     import asyncio
-    from .gee_module import compute_watershed_from_point
+    from gee_module import compute_watershed_from_point
 
-    region   = _region_geojson(req.province, req.district)
+    region   = _region_geojson(req.province, req.district, req.geometry)
     loop     = asyncio.get_event_loop()
     try:
         result = await loop.run_in_executor(
@@ -981,6 +1121,7 @@ async def gee_watershed(req: GEEWatershedRequest):
 class GEEFloodRequest(BaseModel):
     province:       Optional[str] = None
     district:       Optional[str] = None
+    geometry:       Optional[dict] = None
     event_start:    str
     event_end:      str
     baseline_start: Optional[str] = None
@@ -991,9 +1132,9 @@ class GEEFloodRequest(BaseModel):
 async def gee_flood(req: GEEFloodRequest):
     """Sentinel-1 SAR flood extent (change detection) for an event window."""
     import asyncio
-    from .gee_module import compute_flood_sar
+    from gee_module import compute_flood_sar
 
-    region = _region_geojson(req.province, req.district)
+    region = _region_geojson(req.province, req.district, req.geometry)
     loop   = asyncio.get_event_loop()
     try:
         result = await loop.run_in_executor(
@@ -1013,6 +1154,7 @@ async def gee_flood(req: GEEFloodRequest):
 class GEEErosionRequest(BaseModel):
     province: Optional[str] = None
     district: Optional[str] = None
+    geometry: Optional[dict] = None
     year:     int           = 2023
 
 
@@ -1020,9 +1162,9 @@ class GEEErosionRequest(BaseModel):
 async def gee_erosion(req: GEEErosionRequest):
     """RUSLE soil-erosion risk (A = R·K·LS·C·P) classified into 5 classes."""
     import asyncio
-    from .gee_module import compute_erosion_rusle
+    from gee_module import compute_erosion_rusle
 
-    region = _region_geojson(req.province, req.district)
+    region = _region_geojson(req.province, req.district, req.geometry)
     loop   = asyncio.get_event_loop()
     try:
         result = await loop.run_in_executor(
@@ -1037,6 +1179,7 @@ async def gee_erosion(req: GEEErosionRequest):
 class GEEGroundwaterRequest(BaseModel):
     province: Optional[str] = None
     district: Optional[str] = None
+    geometry: Optional[dict] = None
     year:     int           = 2023
 
 
@@ -1044,9 +1187,9 @@ class GEEGroundwaterRequest(BaseModel):
 async def gee_groundwater(req: GEEGroundwaterRequest):
     """Groundwater-potential map (AHP weighted overlay) classified into 5 classes."""
     import asyncio
-    from .gee_module import compute_groundwater_ahp
+    from gee_module import compute_groundwater_ahp
 
-    region = _region_geojson(req.province, req.district)
+    region = _region_geojson(req.province, req.district, req.geometry)
     loop   = asyncio.get_event_loop()
     try:
         result = await loop.run_in_executor(

@@ -30,11 +30,15 @@ import {
   LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine, Area, ComposedChart,
 } from "recharts";
 
-import { useGeologyGeoJSON, useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
+import { useGeologyGeoJSON } from "@/hooks/useGeoMoz";
 import { computeSpectralValue, applyColormap, SpectralIndex, GEE_ONLY_INDICES } from "@/lib/geoml";
 import { apiUrl } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
+import ZoneSelect from "@/components/ZoneSelect";
+import MapDraw from "@/components/MapDraw";
+import type { AreaOfInterest } from "@/lib/aoi";
+import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -388,11 +392,12 @@ function GeeSetupGuide({ onRetry }: { onRetry: () => void }) {
 // ── GEE Analysis Panel ─────────────────────────────────────────────────────────
 
 function GeeAnalysisPanel({
-  activeIndex, province, district, geeStatus, onTileReady,
+  activeIndex, province, district, geometry, geeStatus, onTileReady,
 }: {
   activeIndex: SpectralIndex;
   province: string | null;
   district: string | null;
+  geometry?: Record<string, unknown> | null;
   geeStatus: GeeStatus;
   onTileReady: (result: GeeResult | null) => void;
 }) {
@@ -417,6 +422,7 @@ function GeeAnalysisPanel({
           index:      activeIndex,
           province:   province || null,
           district:   district || null,
+          geometry:   geometry ?? null,
           start_date: startDate,
           end_date:   endDate,
           cloud_pct:  cloudPct,
@@ -589,10 +595,11 @@ function dominantOrientation(rose: RoseBin[]): string {
 }
 
 function LineamentsPanel({
-  province, district, onResult,
+  province, district, geometry, onResult,
 }: {
   province: string | null;
   district: string | null;
+  geometry?: Record<string, unknown> | null;
   onResult: (r: LineamentsResult | null) => void;
 }) {
   const [smoothM, setSmoothM]   = useState(30);
@@ -608,7 +615,7 @@ function LineamentsPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          province: province || null, district: district || null,
+          province: province || null, district: district || null, geometry: geometry ?? null,
           smooth_m: smoothM, density_radius_m: radiusM, rose_samples: 4000,
         }),
       });
@@ -755,10 +762,11 @@ function FavorabilityGauge({ score }: { score: number }) {
 }
 
 function TargetingPanel({
-  province, district, onResult,
+  province, district, geometry, onResult,
 }: {
   province: string | null;
   district: string | null;
+  geometry?: Record<string, unknown> | null;
   onResult: (r: TargetingResult | null) => void;
 }) {
   const [presets, setPresets]   = useState<MineralPreset[]>([]);
@@ -785,7 +793,7 @@ function TargetingPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mineral, province: province || null, district: district || null,
+          mineral, province: province || null, district: district || null, geometry: geometry ?? null,
           start_date: startDate, end_date: endDate, cloud_pct: cloudPct,
           score_threshold: threshold,
         }),
@@ -1183,10 +1191,11 @@ function ProfilePanel({
 const CONTOUR_INTERVALS = [10, 20, 25, 50, 100, 200, 500];
 
 function ContoursPanel({
-  province, district, onResult,
+  province, district, geometry, onResult,
 }: {
   province: string | null;
   district: string | null;
+  geometry?: Record<string, unknown> | null;
   onResult: (r: ContoursResult | null) => void;
 }) {
   const [intervalM, setIntervalM]   = useState(50);
@@ -1202,7 +1211,7 @@ function ContoursPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          province: province || null, district: district || null,
+          province: province || null, district: district || null, geometry: geometry ?? null,
           interval_m: intervalM, index_every: indexEvery,
         }),
       });
@@ -1320,10 +1329,11 @@ function ContoursPanel({
 // ── Land Cover Panel (ESA WorldCover) ──────────────────────────────────────────
 
 function LandCoverPanel({
-  province, district, onResult,
+  province, district, geometry, onResult,
 }: {
   province: string | null;
   district: string | null;
+  geometry?: Record<string, unknown> | null;
   onResult: (r: LandCoverResult | null) => void;
 }) {
   const [running, setRunning] = useState(false);
@@ -1337,7 +1347,7 @@ function LandCoverPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          province: province || null, district: district || null,
+          province: province || null, district: district || null, geometry: geometry ?? null,
         }),
       });
       if (!res.ok) {
@@ -1455,10 +1465,12 @@ function LandCoverPanel({
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 interface GeoAnalisesProps {
+  aoi: AreaOfInterest;
   province: string | null;
   district: string | null;
   onProvinceChange: (p: string | null) => void;
   onDistrictChange?: (d: string | null) => void;
+  onAOIChange: (aoi: AreaOfInterest) => void;
 }
 
 // Defaults for custom topographic classes (user can edit)
@@ -1472,10 +1484,11 @@ const DEFAULT_TOPO_CLASSES: TopoClassConfig[] = [
 ];
 
 function TopoClassesPanel({
-  province, district, onResult,
+  province, district, geometry, onResult,
 }: {
   province: string | null;
   district: string | null;
+  geometry?: Record<string, unknown> | null;
   onResult: (r: TopoClassesResult | null) => void;
 }) {
   const [breaks, setBreaks]     = useState<number[]>(DEFAULT_TOPO_BREAKS);
@@ -1522,7 +1535,7 @@ function TopoClassesPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          province, district,
+          province, district, geometry: geometry ?? null,
           breaks,
           colors: classes.map(c => c.color),
           labels: classes.map(c => c.label),
@@ -1650,7 +1663,7 @@ function TopoClassesPanel({
   );
 }
 
-export default function GeoAnalises({ province, district, onProvinceChange, onDistrictChange }: GeoAnalisesProps) {
+export default function GeoAnalises({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: GeoAnalisesProps) {
   const [activeTab, setActiveTab]     = useState<SpectralTab>("s2");
   const [opacity, setOpacity]         = useState(0.82);
   const [showS2, setShowS2]           = useState(false);
@@ -1674,8 +1687,11 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   const [showEdges, setShowEdges]     = useState(true);
   const [useGEE, setUseGEE]           = useState(true);
   const [showSetup, setShowSetup]     = useState(false);
+  const [drawingEnabled, setDrawingEnabled] = useState(false);
 
-  const { data: provinceNames }   = useProvinceNames();
+  // Compute API params from AOI (includes geometry for global/custom areas)
+  const apiParams = useMemo(() => aoiToAPI(aoi), [aoi]);
+
   const { data: geologyGeoJSON, isFetching } = useGeologyGeoJSON(
     province, district, "code2006",
     activeTab !== "s2" && !useGEE
@@ -1785,9 +1801,6 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
   const spectralKey = `spectral-${activeTab}-${province}-${district}-${geologyGeoJSON?.features?.length ?? 0}`;
   const geeTileKey  = `gee-${activeTab}-${geeTile?.tileUrl ?? ""}`;
 
-  // District list (cascades from province)
-  const { data: districtNames } = useDistrictNames(province);
-
   // Tabs grouped by category — rendered below with section labels
   const tabGroups: { name: string; badge: string; badgeColor: string; tabs: { id: string; label: string; icon: React.ReactNode }[] }[] = [
     { name: "Mosaico Óptico",         badge: "Sentinel-2 · EOX",    badgeColor: "bg-sky-100 text-sky-700",
@@ -1889,40 +1902,11 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
             </div>
           )}
 
-          {/* Area filter (Province + District) */}
+          {/* Area filter — AOI global */}
           {!showSetup && (
             <div className="p-4 border-b border-slate-100">
-              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Filtro de Área (Clipping)</h4>
-              <div className="space-y-2.5">
-                <div>
-                  <label className="text-xs text-slate-500 mb-1 block">Província</label>
-                  <div className="relative">
-                    <select className="w-full appearance-none text-sm bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                      value={province ?? ""}
-                      onChange={e => { onProvinceChange(e.target.value || null); onDistrictChange?.(null); }}>
-                      <option value="">Todas (Moçambique)</option>
-                      {provinceNames?.names.map(n => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs text-slate-500 mb-1 block flex items-center justify-between">
-                    <span>Distrito</span>
-                    {!province && <span className="text-[10px] text-slate-300">(seleccione província)</span>}
-                  </label>
-                  <div className="relative">
-                    <select disabled={!province || !onDistrictChange}
-                      className="w-full appearance-none text-sm bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-slate-700 disabled:bg-slate-50 disabled:text-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                      value={district ?? ""}
-                      onChange={e => onDistrictChange?.(e.target.value || null)}>
-                      <option value="">Toda a província</option>
-                      {districtNames?.names.map(n => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
-              </div>
+              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Área de Estudo</h4>
+              <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
             </div>
           )}
 
@@ -1981,7 +1965,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                 </div>
               ) : (
                 <>
-                  <LineamentsPanel province={province} district={district} onResult={setLineamentsTile} />
+                  <LineamentsPanel province={province} district={district} geometry={apiParams.geometry} onResult={setLineamentsTile} />
                   {lineamentsTile && (
                     <div className="mt-3 pt-3 border-t border-slate-100">
                       <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-600">
@@ -2027,7 +2011,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                   <strong>GEE necessário.</strong> Classificação topográfica usa o DEM Copernicus via Google Earth Engine.
                 </div>
               ) : (
-                <TopoClassesPanel province={province} district={district} onResult={setTopoClassesTile} />
+                <TopoClassesPanel province={province} district={district} geometry={apiParams.geometry} onResult={setTopoClassesTile} />
               )}
             </div>
           )}
@@ -2040,7 +2024,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                   <strong>GEE necessário.</strong> Curvas de nível requerem DEM via Google Earth Engine.
                 </div>
               ) : (
-                <ContoursPanel province={province} district={district} onResult={setContoursTile} />
+                <ContoursPanel province={province} district={district} geometry={apiParams.geometry} onResult={setContoursTile} />
               )}
             </div>
           )}
@@ -2053,7 +2037,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                   <strong>GEE necessário.</strong> Targeting requer Sentinel-2 + DEM via GEE.
                 </div>
               ) : (
-                <TargetingPanel province={province} district={district} onResult={setTargetingTile} />
+                <TargetingPanel province={province} district={district} geometry={apiParams.geometry} onResult={setTargetingTile} />
               )}
             </div>
           )}
@@ -2066,7 +2050,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                   <strong>GEE necessário.</strong> Cobertura do solo usa o ESA WorldCover via Google Earth Engine.
                 </div>
               ) : (
-                <LandCoverPanel province={province} district={district} onResult={setLandCoverTile} />
+                <LandCoverPanel province={province} district={district} geometry={apiParams.geometry} onResult={setLandCoverTile} />
               )}
             </div>
           )}
@@ -2078,6 +2062,7 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
                 activeIndex={activeTab as SpectralIndex}
                 province={province}
                 district={district}
+                geometry={apiParams.geometry}
                 geeStatus={geeStatus!}
                 onTileReady={setGeeTile}
               />
@@ -2444,6 +2429,13 @@ export default function GeoAnalises({ province, district, onProvinceChange, onDi
               />
             )}
             <MapTools />
+            <MapDraw
+              enabled={drawingEnabled}
+              hasDrawnAOI={aoi.source === "draw"}
+              onClearAOI={() => onAOIChange(GLOBAL_AOI)}
+              onDrawComplete={(geom, label) => { setDrawingEnabled(false); onAOIChange(customAOI(geom, label, "draw")); }}
+              onCancel={() => setDrawingEnabled(false)}
+            />
           </MapContainer>
 
           {/* Map overlay legend — proxy mode */}

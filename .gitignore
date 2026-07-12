@@ -53,5 +53,8 @@ service-account-key.json
 *-service-account*.json
 .env.local
 .env.*.local
+__pycache__/
+*.pyc
+*.pyo
 .venv/
 venv/

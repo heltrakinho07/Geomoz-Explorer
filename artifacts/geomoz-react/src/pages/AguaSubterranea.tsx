@@ -11,30 +11,33 @@ import { MapContainer, TileLayer, ScaleControl, ZoomControl } from "react-leafle
 import "leaflet/dist/leaflet.css";
 import { Droplets, Loader2, Play, ChevronDown, Info, Scale } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
 import { apiUrl } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
+import ZoneSelect from "@/components/ZoneSelect";
+import MapDraw from "@/components/MapDraw";
+import type { AreaOfInterest } from "@/lib/aoi";
+import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
 
 interface GwpClass { id: number; label: string; color: string; areaKm2: number }
 interface GwpWeight { key: string; label: string; weight: number; favours: string }
 interface GwpResult { tile: string; classes: GwpClass[]; weights: GwpWeight[]; year: number }
 
 interface Props {
+  aoi: AreaOfInterest;
   province: string | null; district: string | null;
   onProvinceChange: (p: string | null) => void;
   onDistrictChange: (d: string | null) => void;
+  onAOIChange: (aoi: AreaOfInterest) => void;
 }
 
-export default function AguaSubterranea({ province, district, onProvinceChange, onDistrictChange }: Props) {
+export default function AguaSubterranea({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
   const { toast } = useToast();
   const [year, setYear] = useState(2023);
   const [result, setResult] = useState<GwpResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const { data: provinceNames } = useProvinceNames();
-  const { data: districtNames } = useDistrictNames(province);
+  const [drawingEnabled, setDrawingEnabled] = useState(false);
 
   const run = useCallback(async () => {
     setLoading(true); setError(null); setResult(null);
@@ -43,7 +46,7 @@ export default function AguaSubterranea({ province, district, onProvinceChange, 
     try {
       const r = await fetch(apiUrl("/geomoz-api/gee/groundwater"), {
         method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
-        body: JSON.stringify({ province, district, year }),
+        body: JSON.stringify({ ...aoiToAPI(aoi), year }),
       });
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
       setResult(await r.json());
@@ -73,28 +76,10 @@ export default function AguaSubterranea({ province, district, onProvinceChange, 
           </div>
         </div>
 
-        {/* Área de estudo */}
-        <div className="p-3 space-y-2.5 border-b border-slate-100">
-          <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Área de Estudo</h4>
-          <div className="relative">
-            <select className="w-full appearance-none text-sm bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-              value={province ?? ""} onChange={e => { onProvinceChange(e.target.value || null); onDistrictChange(null); }}>
-              <option value="">Moçambique (todo) — lento</option>
-              {provinceNames?.names.map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
-            <ChevronDown className="absolute right-2 top-2 h-4 w-4 text-slate-400 pointer-events-none" />
-          </div>
-          {province && (
-            <div className="relative">
-              <select className="w-full appearance-none text-sm bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                value={district ?? ""} onChange={e => onDistrictChange(e.target.value || null)}>
-                <option value="">Toda a província</option>
-                {districtNames?.names.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-              <ChevronDown className="absolute right-2 top-2 h-4 w-4 text-slate-400 pointer-events-none" />
-            </div>
-          )}
-          <p className="text-[10px] text-slate-400">Ou clique numa província/distrito no mapa.</p>
+        {/* Área de estudo — AOI global */}
+        <div className="p-3 border-b border-slate-100">
+          <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Área de Estudo</h4>
+          <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
         </div>
 
         {/* Config */}
@@ -146,6 +131,13 @@ export default function AguaSubterranea({ province, district, onProvinceChange, 
           />
           {result && <TileLayer key={`gwp-${result.tile}`} url={result.tile} opacity={0.75} maxZoom={18} />}
           <MapTools />
+          <MapDraw
+            enabled={drawingEnabled}
+            hasDrawnAOI={aoi.source === "draw"}
+            onClearAOI={() => onAOIChange(GLOBAL_AOI)}
+            onDrawComplete={(geom, label) => { setDrawingEnabled(false); onAOIChange(customAOI(geom, label, "draw")); }}
+            onCancel={() => setDrawingEnabled(false)}
+          />
         </MapContainer>
 
         {loading && (

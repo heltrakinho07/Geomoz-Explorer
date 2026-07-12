@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, Suspense } from "react";
-import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet } from "lucide-react";
+import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -9,6 +9,11 @@ import MapView from "@/components/MapView";
 import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
 import { LazyGeoAnalises, LazyHidroGeoMoz, LazyGeoperigos, LazyAguaSubterranea } from "@/lib/lazy-pages";
+import { apiUrl } from "@/lib/api";
+import SettingsDialog from "@/components/SettingsDialog";
+import ZoneSelect from "@/components/ZoneSelect";
+import type { AreaOfInterest } from "@/lib/aoi";
+import { mozambiqueAOI, GLOBAL_AOI, aoiToAPI } from "@/lib/aoi";
 
 interface NominatimResult {
   place_id: number;
@@ -40,6 +45,12 @@ export default function Explorer() {
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
   const [mapCenter, setMapCenter] = useState<[number, number]>([-18, 35]);
   const [mapZoom, setMapZoom] = useState(5);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // AOI global — permite análises em qualquer parte do mundo
+  const [aoi, setAOI] = useState<AreaOfInterest>(
+    province ? mozambiqueAOI(province, district) : GLOBAL_AOI
+  );
 
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -48,6 +59,13 @@ export default function Explorer() {
   const [showResults, setShowResults] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
+
+  // Keep aoi synced with province/district when selecting mozambique regions
+  useEffect(() => {
+    if (aoi.source === "mozambique") {
+      setAOI(mozambiqueAOI(province, district));
+    }
+  }, [province, district]);
 
   function toggleLayer(key: keyof LayerState) {
     setLayers(prev => ({ ...prev, [key]: !prev[key] }));
@@ -116,6 +134,15 @@ function flyToResult(result: NominatimResult) {
     setShowResults(false);
     setSearchQuery(result.display_name.split(",")[0]);
     setActiveTab("Mapa");
+  }
+
+  /** Handle AOI change — sync province/district for mozambique mode */
+  function handleAOIChange(newAOI: AreaOfInterest) {
+    setAOI(newAOI);
+    if (newAOI.source === "mozambique") {
+      setProvince(newAOI.province);
+      setDistrict(newAOI.district);
+    }
   }
 
   const sharedSidebar = (
@@ -226,8 +253,26 @@ function flyToResult(result: NominatimResult) {
             </div>
           )}
 
+          {/* AOI global selector — visible on analysis tabs */}
+          {activeTab !== "Mapa" && activeTab !== "Exportar" && activeTab !== "Análise" && (
+            <div className="hidden md:flex items-center mr-1">
+              <ZoneSelect
+                aoi={aoi}
+                onAOIChange={handleAOIChange}
+                compact
+              />
+            </div>
+          )}
+
+          {/* GEE status indicator */}
+          <GEEStatusDot />
+
           <div className="h-5 w-px bg-slate-200" />
-          <button className="text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors">
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
+            title="Configurações"
+          >
             <Settings size={16} />
           </button>
           <Avatar className="h-8 w-8 cursor-pointer border-2 border-slate-100 shadow-sm">
@@ -251,10 +296,12 @@ function flyToResult(result: NominatimResult) {
         <div className="flex flex-1 overflow-hidden">
           <Suspense fallback={<LoadingSkeleton label="GeoAnálises" />}>
             <LazyGeoAnalises
+              aoi={aoi}
               province={province}
               district={district}
               onProvinceChange={p => { setProvince(p); setDistrict(null); }}
               onDistrictChange={setDistrict}
+              onAOIChange={handleAOIChange}
             />
           </Suspense>
         </div>
@@ -262,10 +309,12 @@ function flyToResult(result: NominatimResult) {
         <div className="flex flex-1 overflow-hidden">
           <Suspense fallback={<LoadingSkeleton label="Bacias Hidrográficas" />}>
             <LazyHidroGeoMoz
+              aoi={aoi}
               province={province}
               district={district}
               onProvinceChange={p => { setProvince(p); setDistrict(null); }}
               onDistrictChange={setDistrict}
+              onAOIChange={handleAOIChange}
             />
           </Suspense>
         </div>
@@ -273,10 +322,12 @@ function flyToResult(result: NominatimResult) {
         <div className="flex flex-1 overflow-hidden">
           <Suspense fallback={<LoadingSkeleton label="Água Subterrânea" />}>
             <LazyAguaSubterranea
+              aoi={aoi}
               province={province}
               district={district}
               onProvinceChange={p => { setProvince(p); setDistrict(null); }}
               onDistrictChange={setDistrict}
+              onAOIChange={handleAOIChange}
             />
           </Suspense>
         </div>
@@ -284,10 +335,12 @@ function flyToResult(result: NominatimResult) {
         <div className="flex flex-1 overflow-hidden">
           <Suspense fallback={<LoadingSkeleton label="Geoperigos" />}>
             <LazyGeoperigos
+              aoi={aoi}
               province={province}
               district={district}
               onProvinceChange={p => { setProvince(p); setDistrict(null); }}
               onDistrictChange={setDistrict}
+              onAOIChange={handleAOIChange}
             />
           </Suspense>
         </div>
@@ -313,6 +366,52 @@ function flyToResult(result: NominatimResult) {
           />
         </div>
       )}
+
+      {/* Settings Dialog */}
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+    </div>
+  );
+}
+
+/** Small GEE connection indicator shown in the top-right navbar. */
+function GEEStatusDot() {
+  const [status, setStatus] = useState<"loading" | "connected" | "disconnected">("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(apiUrl("/geomoz-api/gee/status"))
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setStatus(d.connected ? "connected" : "disconnected");
+      })
+      .catch(() => {
+        if (!cancelled) setStatus("disconnected");
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <div className="flex items-center gap-1.5" title={
+      status === "connected"
+        ? "GEE Conectado"
+        : status === "disconnected"
+        ? "GEE Desconectado"
+        : "A verificar GEE…"
+    }>
+      {status === "loading" ? (
+        <Loader2 size={10} className="text-slate-300 animate-spin" />
+      ) : status === "connected" ? (
+        <CheckCircle2 size={10} className="text-emerald-500" />
+      ) : (
+        <XCircle size={10} className="text-red-400" />
+      )}
+      <span className={`text-[10px] font-medium ${
+        status === "connected" ? "text-emerald-600" :
+        status === "disconnected" ? "text-red-400" :
+        "text-slate-300"
+      }`}>
+        GEE
+      </span>
     </div>
   );
 }

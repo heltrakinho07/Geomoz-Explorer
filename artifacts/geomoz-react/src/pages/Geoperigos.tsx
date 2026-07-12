@@ -14,10 +14,13 @@ import {
   CheckCircle2, Calendar, Droplets, Layers,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
 import { apiUrl } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
+import ZoneSelect from "@/components/ZoneSelect";
+import MapDraw from "@/components/MapDraw";
+import type { AreaOfInterest } from "@/lib/aoi";
+import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
 
 type Tool = "flood" | "erosion";
 
@@ -37,12 +40,14 @@ const FLOOD_PRESETS = [
 ];
 
 interface Props {
+  aoi: AreaOfInterest;
   province: string | null; district: string | null;
   onProvinceChange: (p: string | null) => void;
   onDistrictChange: (d: string | null) => void;
+  onAOIChange: (aoi: AreaOfInterest) => void;
 }
 
-export default function Geoperigos({ province, district, onProvinceChange, onDistrictChange }: Props) {
+export default function Geoperigos({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
   const { toast } = useToast();
   const [tool, setTool] = useState<Tool>("flood");
 
@@ -58,9 +63,7 @@ export default function Geoperigos({ province, district, onProvinceChange, onDis
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
-
-  const { data: provinceNames } = useProvinceNames();
-  const { data: districtNames } = useDistrictNames(province);
+  const [drawingEnabled, setDrawingEnabled] = useState(false);
 
   const runFlood = useCallback(async () => {
     setLoading(true); setError(null); setFlood(null);
@@ -69,7 +72,7 @@ export default function Geoperigos({ province, district, onProvinceChange, onDis
     try {
       const r = await fetch(apiUrl("/geomoz-api/gee/flood"), {
         method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
-        body: JSON.stringify({ province, district, event_start: eventStart, event_end: eventEnd }),
+        body: JSON.stringify({ ...aoiToAPI(aoi), event_start: eventStart, event_end: eventEnd }),
       });
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
       setFlood(await r.json());
@@ -88,7 +91,7 @@ export default function Geoperigos({ province, district, onProvinceChange, onDis
     try {
       const r = await fetch(apiUrl("/geomoz-api/gee/erosion"), {
         method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
-        body: JSON.stringify({ province, district, year }),
+        body: JSON.stringify({ ...aoiToAPI(aoi), year }),
       });
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
       setErosion(await r.json());
@@ -130,27 +133,10 @@ export default function Geoperigos({ province, district, onProvinceChange, onDis
           </div>
         </div>
 
-        {/* Área de estudo */}
-        <div className="p-3 space-y-2.5 border-b border-slate-100">
-          <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Área de Estudo</h4>
-          <div className="relative">
-            <select className="w-full appearance-none text-sm bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
-              value={province ?? ""} onChange={e => { onProvinceChange(e.target.value || null); onDistrictChange(null); }}>
-              <option value="">Moçambique (todo) — lento</option>
-              {provinceNames?.names.map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
-            <ChevronDown className="absolute right-2 top-2 h-4 w-4 text-slate-400 pointer-events-none" />
-          </div>
-          {province && (
-            <div className="relative">
-              <select className="w-full appearance-none text-sm bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
-                value={district ?? ""} onChange={e => onDistrictChange(e.target.value || null)}>
-                <option value="">Toda a província</option>
-                {districtNames?.names.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-              <ChevronDown className="absolute right-2 top-2 h-4 w-4 text-slate-400 pointer-events-none" />
-            </div>
-          )}
+        {/* Área de estudo — AOI global */}
+        <div className="p-3 border-b border-slate-100">
+          <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Área de Estudo</h4>
+          <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
         </div>
 
         {/* Flood config */}
@@ -239,6 +225,13 @@ export default function Geoperigos({ province, district, onProvinceChange, onDis
             <TileLayer key={`ero-${erosion.tile}`} url={erosion.tile} opacity={0.75} maxZoom={18} />
           )}
           <MapTools />
+          <MapDraw
+            enabled={drawingEnabled}
+            hasDrawnAOI={aoi.source === "draw"}
+            onClearAOI={() => onAOIChange(GLOBAL_AOI)}
+            onDrawComplete={(geom, label) => { setDrawingEnabled(false); onAOIChange(customAOI(geom, label, "draw")); }}
+            onCancel={() => setDrawingEnabled(false)}
+          />
         </MapContainer>
 
         {/* Loading overlay */}
