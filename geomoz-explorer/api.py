@@ -1175,6 +1175,200 @@ async def gee_groundwater(req: GEEGroundwaterRequest):
         raise HTTPException(500, f"GEE groundwater failed: {exc}")
 
 
+# ── AlphaEarth Foundations ───────────────────────────────────────────────────────
+
+class GEEEmbeddingRequest(BaseModel):
+    province: Optional[str] = None
+    district: Optional[str] = None
+    geometry: Optional[dict] = None
+    year: int = 2024
+    pca_scale: int = 1000
+
+
+@app.post("/geomoz-api/gee/embedding")
+async def gee_embedding(req: GEEEmbeddingRequest):
+    """AlphaEarth Foundations embedding tile — PCA-reduced to RGB."""
+    import asyncio
+    from gee_module import compute_embedding_tile
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_embedding_tile(region, req.year, req.pca_scale),
+        )
+        result["province"] = req.province
+        result["district"] = req.district
+        return result
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"AlphaEarth embedding failed: {exc}")
+
+
+class GEEEmbeddingClusterRequest(BaseModel):
+    province:   Optional[str] = None
+    district:   Optional[str] = None
+    geometry:   Optional[dict] = None
+    n_clusters: int = 6
+    year:       int = 2024
+    scale:      int = 1000
+
+    @field_validator('n_clusters')
+    @classmethod
+    def validate_clusters(cls, v):
+        if not 3 <= v <= 20:
+            raise ValueError('n_clusters must be between 3 and 20')
+        return v
+
+
+@app.post("/geomoz-api/gee/embedding/cluster")
+async def gee_embedding_cluster(req: GEEEmbeddingClusterRequest):
+    """Unsupervised K-Means clustering on 64-d embedding vectors."""
+    import asyncio
+    from gee_module import compute_embedding_cluster
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_embedding_cluster(region, req.n_clusters, req.year, req.scale),
+        )
+        result["province"] = req.province
+        result["district"] = req.district
+        return result
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"AlphaEarth cluster failed: {exc}")
+
+
+class GEEEmbeddingSimilarityRequest(BaseModel):
+    province:     Optional[str] = None
+    district:     Optional[str] = None
+    geometry:     Optional[dict] = None
+    reference_lon: float
+    reference_lat: float
+    year:         int = 2024
+    buffer_m:     int = 500
+    scale:        int = 1000
+
+
+@app.post("/geomoz-api/gee/embedding/similarity")
+async def gee_embedding_similarity(req: GEEEmbeddingSimilarityRequest):
+    """Cosine similarity of all pixels to a reference point's embedding."""
+    import asyncio
+    from gee_module import compute_embedding_similarity
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_embedding_similarity(
+                region, req.reference_lon, req.reference_lat,
+                req.year, req.buffer_m, req.scale,
+            ),
+        )
+        result["province"] = req.province
+        result["district"] = req.district
+        return result
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"AlphaEarth similarity failed: {exc}")
+
+
+class GEEEmbeddingClassifyRequest(BaseModel):
+    province:        Optional[str] = None
+    district:        Optional[str] = None
+    geometry:        Optional[dict] = None
+    training:        dict  # GeoJSON FeatureCollection with "class" property
+    class_property:  str = "class"
+    year:            int = 2024
+    scale:           int = 1000
+
+
+@app.post("/geomoz-api/gee/embedding/classify")
+async def gee_embedding_classify(req: GEEEmbeddingClassifyRequest):
+    """Supervised Random Forest classification on 64-d embeddings.
+
+    training: GeoJSON FeatureCollection where each feature has
+              a numeric 'class' property (int). Users draw a few
+              polygons/labels -> classifies the rest.
+    """
+    import asyncio
+    from gee_module import compute_embedding_classify
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_embedding_classify(
+                region, req.training, req.class_property,
+                req.year, req.scale,
+            ),
+        )
+        result["province"] = req.province
+        result["district"] = req.district
+        return result
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"AlphaEarth classify failed: {exc}")
+
+
+class GEEEmbeddingChangeRequest(BaseModel):
+    province:    Optional[str] = None
+    district:    Optional[str] = None
+    geometry:    Optional[dict] = None
+    year_before: int = 2020
+    year_after:  int = 2024
+    scale:       int = 1000
+
+    @field_validator('year_before', 'year_after')
+    @classmethod
+    def validate_year(cls, v):
+        if not 2017 <= v <= 2030:
+            raise ValueError('year must be between 2017 and 2030')
+        return v
+
+
+@app.post("/geomoz-api/gee/embedding/change")
+async def gee_embedding_change(req: GEEEmbeddingChangeRequest):
+    """Change detection between two years using embedding cosine distance."""
+    import asyncio
+    from gee_module import compute_embedding_change
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_embedding_change(region, req.year_before, req.year_after, req.scale),
+        )
+        result["province"] = req.province
+        result["district"] = req.district
+        return result
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"AlphaEarth change failed: {exc}")
+
+
 # ── SPI × NDVI drought correlation ─────────────────────────────────────────────
 
 class GEESpiNdviRequest(BaseModel):

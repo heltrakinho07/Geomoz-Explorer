@@ -680,6 +680,455 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
     raise ValueError(f"Índice desconhecido: {index!r}")
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# AlphaEarth Foundations — Google DeepMind Satellite Embedding
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Dataset: GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL
+# Bands:   A00–A63 (64-d unit-vector per 10m pixel)
+# Years:   2017–present
+# Docs:    https://developers.google.com/earth-engine/datasets/catalog/GOOGLE_SATELLITE_EMBEDDING_V1_ANNUAL
+#
+# The embedding encodes surface conditions into a fixed-length latent vector.
+# Because the vectors are unit-length, cosine-similarity == dot-product.
+
+_EMBEDDING_PALETTE = [
+    "0d0887", "5302a3", "8b0aa5", "b83289", "db5c68",
+    "f48849", "febc2a", "ffeb24", "ffff96",
+]
+
+
+def _build_embedding(region, year: int = 2024):
+    """Fetch the annual AlphaEarth Foundations embedding image.
+
+    Returns an ee.Image with 64 bands (A00–A63) clipped to *region*.
+    """
+    import ee
+    emb = (
+        ee.ImageCollection("GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL")
+        .filterDate(f"{year}-01-01", f"{year + 1}-01-01")
+        .first()
+    )
+    if emb is None:
+        raise ValueError(
+            f"Embedding anual {year} não disponível. "
+            "Período suportado: 2017–presente."
+        )
+    return emb.clip(region)
+
+
+def _embedding_pca(embedding, region, num_components: int = 3, scale: int = 1000):
+    """Reduce a multi-band embedding to `num_components` PCA channels (RGB-ready).
+
+    Returns an ee.Image with bands [PC1, PC2, PC3] (or fewer if num_components < 3),
+    each normalized to ~[-3, 3] standard-deviation units.
+    """
+    import ee
+    band_names = embedding.bandNames()
+
+    # Mean-center
+    mean_dict = embedding.reduceRegion(
+        reducer=ee.Reducer.mean(),
+        geometry=region, scale=scale, bestEffort=True, maxPixels=int(1e9),
+    )
+    means = ee.Image.constant(ee.List(mean_dict.values(band_names)))
+    centered = embedding.subtract(means)
+
+    # Covariance via array
+    covar = centered.toArray().reduceRegion(
+        reducer=ee.Reducer.centeredCovariance(),
+        geometry=region, scale=scale, bestEffort=True, maxPixels=int(1e9),
+    )
+    covar_array = ee.Array(covar.get("array"))
+
+    # Eigendecomposition
+    eigens = covar_array.eigen()
+    eigen_vectors = eigens.slice(1, 1)  # drop eigenvalues column
+    pca_vectors = eigen_vectors.slice(0, 0, num_components)
+
+    pca_image = (
+        ee.Image(pca_vectors)
+        .matrixMultiply(centered.toArray().toArray(1))
+        .arrayProject([0])
+        .arrayFlatten([[f"PC{i + 1}" for i in range(num_components)]])
+    )
+    return pca_image
+
+
+def compute_embedding_tile(
+    region_geojson: Optional[dict],
+    year: int = 2024,
+    pca_scale: int = 1000,
+) -> dict:
+    """Compute an AlphaEarth embedding tile — visualized via PCA as RGB.
+
+    Returns a tile URL (24 h validity) + metadata about the embedding.
+    """
+    import ee
+    _init_gee()
+
+    region = _to_ee_region(region_geojson)
+    emb = _build_embedding(region, year)
+    pca_img = _embedding_pca(emb, region, num_components=3, scale=pca_scale)
+
+    pca_vis = pca_img.visualize(min=-3, max=3)
+    map_data = pca_vis.getMapId()
+    tile_url = map_data["tile_fetcher"].url_format
+
+    return {
+        "tileUrl":    tile_url,
+        "name":       f"AlphaEarth Foundations — PCA ({year})",
+        "description": "Redução PCA das 64 bandas de embedding para 3 canais RGB",
+        "year":       year,
+        "bands":      "64 bandas (A00–A63) → PCA para RGB",
+        "group":      "alphaearth",
+        "source":     "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
+    }
+
+
+def compute_embedding_cluster(
+    region_geojson: Optional[dict],
+    n_clusters: int = 6,
+    year: int = 2024,
+    scale: int = 1000,
+) -> dict:
+    """Unsupervised K-Means clustering on the 64-d embedding vectors.
+
+    The resulting clusters often correspond to distinct land-cover / lithology
+    units because the embedding captures spectral + temporal surface properties.
+
+    Returns a tile URL (colored by cluster) + per-cluster pixel counts.
+    """
+    import ee
+    _init_gee()
+
+    n_clusters = max(3, min(int(n_clusters), 20))
+    region = _to_ee_region(region_geojson)
+    emb = _build_embedding(region, year)
+
+    # Sample to train the clusterer (at coarser scale for speed)
+    samples = emb.sample(
+        region=region, scale=scale * 5,
+        numPixels=5000, seed=42, geometries=False,
+    )
+
+    clusterer = ee.Clusterer.wekaKMeans(n_clusters, 100).train(samples)
+    clustered = emb.cluster(clusterer).rename("cluster")
+
+    # Build a palette of distinct colors
+    import hashlib
+    palette = []
+    for i in range(n_clusters):
+        h = hashlib.md5(f"embed-cluster-{i}".encode()).hexdigest()
+        palette.append(h[:6])
+
+    vis_img = clustered.visualize(min=0, max=n_clusters - 1, palette=palette)
+    map_data = vis_img.getMapId()
+    tile_url = map_data["tile_fetcher"].url_format
+
+    # Per-cluster pixel-area stats
+    groups = {}
+    try:
+        groups_data = (
+            ee.Image.pixelArea().addBands(clustered)
+            .reduceRegion(
+                reducer=ee.Reducer.sum().group(groupField=1, groupName="cluster"),
+                geometry=region, scale=scale * 2, bestEffort=True, maxPixels=int(1e9),
+            ).getInfo() or {}
+        )
+        for g in groups_data.get("groups", []) or []:
+            groups[int(g["cluster"])] = round(float(g.get("sum", 0)) / 1e6, 2)
+    except Exception as exc:
+        logger.warning("Embedding cluster: stats failed: %s", exc)
+
+    per_cluster = sorted(
+        [{"cluster": i, "areaKm2": groups.get(i, 0), "color": f"#{palette[i]}"}
+         for i in range(n_clusters)],
+        key=lambda x: x["areaKm2"], reverse=True,
+    )
+    total_km2 = sum(c["areaKm2"] for c in per_cluster)
+
+    return {
+        "tileUrl":     tile_url,
+        "name":        f"AlphaEarth — K-Means ({n_clusters} clusters, {year})",
+        "description": "Clusters não-supervisionados sobre as 64 bandas de embedding",
+        "year":        year,
+        "nClusters":   n_clusters,
+        "clusters":    per_cluster,
+        "totalKm2":    round(total_km2, 2),
+        "source":      "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
+        "trainPixels": 5000,
+        "palette":     [f"#{p}" for p in palette],
+    }
+
+
+def compute_embedding_similarity(
+    region_geojson: Optional[dict],
+    reference_lon: float,
+    reference_lat: float,
+    year: int = 2024,
+    buffer_m: int = 500,
+    scale: int = 1000,
+) -> dict:
+    """Compute cosine-similarity of all pixels to a reference point's embedding.
+
+    Since the embeddings are unit-length, cosine-similarity = dot product.
+    Values range 0–1 (1 = identical embedding pattern).
+    Useful for "find more areas like this one" — e.g., a known mineral occurrence.
+    """
+    import ee
+    _init_gee()
+
+    region = _to_ee_region(region_geojson)
+    emb = _build_embedding(region, year)
+    bands = emb.bandNames()
+
+    # Extract the reference embedding at the given point
+    pt = ee.Geometry.Point([reference_lon, reference_lat])
+    ref_vec = emb.sample(pt, buffer_m).first().getInfo()
+
+    if ref_vec is None or ref_vec.get("properties") is None:
+        raise ValueError(
+            f"Não foi possível extrair embedding no ponto ({reference_lat}, {reference_lon}). "
+            "Tente um ponto diferente ou aumente o buffer."
+        )
+
+    ref_props = ref_vec["properties"]
+    ref_array = [ref_props.get(b, 0) or 0 for b in bands]
+
+    # Check for zero-magnitude vector (cloud/aqua/no-data pixel)
+    magnitude = sum(v * v for v in ref_array) ** 0.5
+    if magnitude < 0.01:
+        raise ValueError(
+            f"O ponto de referência ({reference_lat}, {reference_lon}) parece estar sobre "
+            "água, nuvem ou sem dados (vector embedding nulo). "
+            "Tente um ponto diferente."
+        )
+
+    # Compute dot product per pixel (cosine similarity since unit-length)
+    ref_img = ee.Image.constant(ref_array).rename(bands)
+    similarity = emb.multiply(ref_img).reduce(ee.Reducer.sum()).rename("similarity")
+    similarity = similarity.clamp(0, 1)
+
+    vis_img = similarity.visualize(
+        min=0, max=1,
+        palette=["440154", "3b528b", "21918c", "5ec962", "fde725"],
+    )
+    map_data = vis_img.getMapId()
+    tile_url = map_data["tile_fetcher"].url_format
+
+    # High-similarity area (≥ 0.85)
+    high_area_km2 = None
+    try:
+        high_mask = similarity.gte(0.85).rename("high")
+        area = (
+            high_mask.multiply(ee.Image.pixelArea())
+            .reduceRegion(
+                reducer=ee.Reducer.sum(), geometry=region,
+                scale=scale, bestEffort=True, maxPixels=int(1e9),
+            ).get("high").getInfo()
+        )
+        high_area_km2 = round(float(area) / 1e6, 2) if area else 0.0
+    except Exception:
+        pass
+
+    return {
+        "tileUrl":       tile_url,
+        "name":          f"Similaridade ao ponto ({reference_lat}, {reference_lon}) — {year}",
+        "description":   "Similaridade coseno (0–1) ao embedding de referência",
+        "year":          year,
+        "referenceLon":  reference_lon,
+        "referenceLat":  reference_lat,
+        "referenceBufM": buffer_m,
+        "highAreaKm2":   high_area_km2,
+        "highThreshold": 0.85,
+        "source":        "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
+        "palette":       ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"],
+    }
+
+
+def compute_embedding_classify(
+    region_geojson: Optional[dict],
+    training_geojson: dict,
+    class_property: str = "class",
+    year: int = 2024,
+    scale: int = 1000,
+) -> dict:
+    """Supervised classification on 64-d embeddings using Random Forest.
+
+    training_geojson: GeoJSON FeatureCollection with a property named
+                      `class_property` (int) designating the class ID.
+    Users draw a few polygons/labels on the map -> classifies the rest.
+
+    Returns a classified tile + per-class areas.
+    """
+    import ee
+    _init_gee()
+
+    region = _to_ee_region(region_geojson)
+    emb = _build_embedding(region, year)
+    bands = emb.bandNames()
+
+    # Convert user-drawn GeoJSON to ee.FeatureCollection
+    fc = ee.FeatureCollection(training_geojson)
+    train_fc = fc.select([class_property], None, True).filter(
+        ee.Filter.notNull([class_property])
+    )
+
+    n_train = train_fc.size().getInfo()
+    if n_train < 2:
+        raise ValueError(
+            f"São necessárias pelo menos 2 amostras de treino (recebidas: {n_train})."
+        )
+
+    # Sample embedding values at training locations
+    train_samples = emb.sampleRegions(
+        collection=train_fc,
+        properties=[class_property],
+        scale=scale,
+        geometries=False,
+    )
+
+    classifier = ee.Classifier.smileRandomForest(50, 5).train(
+        features=train_samples, classProperty=class_property,
+    )
+
+    classified = emb.classify(classifier).rename("class")
+
+    # Get unique classes from training
+    classes_raw = train_fc.aggregate_array(class_property).distinct().getInfo()
+    classes = sorted(int(c) for c in classes_raw if c is not None)
+    n_classes = len(classes)
+
+    # Build palette from the classes
+    import hashlib
+    palette = []
+    for c in classes:
+        h = hashlib.md5(f"embed-class-{c}".encode()).hexdigest()
+        palette.append(h[:6])
+
+    vis_img = classified.visualize(
+        min=min(classes) if classes else 0,
+        max=max(classes) if classes else 1,
+        palette=palette,
+    )
+    map_data = vis_img.getMapId()
+    tile_url = map_data["tile_fetcher"].url_format
+
+    # Per-class area
+    groups = {}
+    try:
+        groups_data = (
+            ee.Image.pixelArea().addBands(classified)
+            .reduceRegion(
+                reducer=ee.Reducer.sum().group(groupField=1, groupName="class"),
+                geometry=region, scale=scale * 2, bestEffort=True, maxPixels=int(1e9),
+            ).getInfo() or {}
+        )
+        for g in groups_data.get("groups", []) or []:
+            gclass = int(g["class"])
+            groups[gclass] = round(float(g.get("sum", 0)) / 1e6, 2)
+    except Exception as exc:
+        logger.warning("Embedding classify: stats failed: %s", exc)
+
+    per_class = [
+        {"class": c, "areaKm2": groups.get(c, 0), "color": f"#{palette[i]}"}
+        for i, c in enumerate(classes)
+    ]
+    total_km2 = sum(c["areaKm2"] for c in per_class)
+
+    return {
+        "tileUrl":     tile_url,
+        "name":        f"AlphaEarth — Random Forest ({n_classes} classes, {year})",
+        "description": f"Classificação supervisionada (Random Forest, {n_train} amostras) sobre embeddings",
+        "year":        year,
+        "nClasses":    n_classes,
+        "nTrain":      n_train,
+        "classes":     per_class,
+        "totalKm2":    round(total_km2, 2),
+        "source":      "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
+        "palette":     [f"#{p}" for p in palette],
+    }
+
+
+def compute_embedding_change(
+    region_geojson: Optional[dict],
+    year_before: int = 2020,
+    year_after: int = 2024,
+    scale: int = 1000,
+) -> dict:
+    """Change detection between two years using embedding cosine distance.
+
+    Computes (1 − cosine_similarity) between the embedding vectors of two
+    years. High values = areas that changed significantly (land-use change,
+    deforestation, urban expansion, flooding, etc.).
+
+    Returns a tile showing change intensity 0–1.
+    """
+    import ee
+    _init_gee()
+
+    region = _to_ee_region(region_geojson)
+    emb_before = _build_embedding(region, year_before)
+    emb_after = _build_embedding(region, year_after)
+
+    # Cosine distance = 1 - dot_product (since unit-length)
+    change = (
+        emb_after.multiply(emb_before)
+        .reduce(ee.Reducer.sum())
+        .subtract(1).abs()
+        .clamp(0, 1)
+        .rename("change")
+    )
+
+    vis_img = change.visualize(
+        min=0, max=0.3,
+        palette=["f7fcfd", "e5f5f9", "ccece6", "99d8c9", "66c2a4", "41ae76", "238b45", "005824"],
+    )
+    map_data = vis_img.getMapId()
+    tile_url = map_data["tile_fetcher"].url_format
+
+    # Mean change
+    mean_change = None
+    try:
+        mean_change = round(float(
+            change.unmask(0).reduceRegion(
+                reducer=ee.Reducer.mean(), geometry=region,
+                scale=scale, bestEffort=True, maxPixels=int(1e9),
+            ).get("change").getInfo() or 0
+        ), 4)
+    except Exception:
+        pass
+
+    # Area with significant change (> 0.15)
+    high_change_km2 = None
+    try:
+        high = change.gte(0.15).rename("high")
+        area = (
+            high.multiply(ee.Image.pixelArea())
+            .reduceRegion(
+                reducer=ee.Reducer.sum(), geometry=region,
+                scale=scale, bestEffort=True, maxPixels=int(1e9),
+            ).get("high").getInfo()
+        )
+        high_change_km2 = round(float(area) / 1e6, 2) if area else 0.0
+    except Exception:
+        pass
+
+    return {
+        "tileUrl":        tile_url,
+        "name":           f"AlphaEarth — Change Detection {year_before}→{year_after}",
+        "description":    "Distância coseno entre embeddings anuais — 0 = igual, 1 = totalmente diferente",
+        "yearBefore":     year_before,
+        "yearAfter":      year_after,
+        "meanChange":     mean_change,
+        "highChangeKm2":  high_change_km2,
+        "changeThreshold": 0.15,
+        "source":         "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
+        "palette":         ["#f7fcfd", "#e5f5f9", "#ccece6", "#99d8c9", "#66c2a4", "#41ae76", "#238b45", "#005824"],
+    }
+
+
 # ── Public: single-index tile ──────────────────────────────────────────────────
 
 def compute_index_tile(

@@ -21,3 +21,5 @@ export const LazyHidroGeoMoz = lazy(() => import("@/pages/HidroGeoMoz"));
 export const LazyGeoperigos = lazy(() => import("@/pages/Geoperigos"));
 
 export const LazyAguaSubterranea = lazy(() => import("@/pages/AguaSubterranea"));
+
+export const LazyGeoMozAI = lazy(() => import("@/pages/GeoMozAI"));

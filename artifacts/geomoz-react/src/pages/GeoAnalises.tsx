@@ -24,6 +24,7 @@ import {
   Activity, Target, Compass, Gem,
   TrendingDown, Route, Waves, X, FileDown,
   Sprout, ChevronLeft, ChevronRight, Navigation, Building2,
+  AlertTriangle, Sparkles,
 } from "lucide-react";
 
 import {
@@ -2162,7 +2163,7 @@ function TopoClassesPanel({
 
       {!breaksSorted && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[11px] text-amber-700">
-          ⚠ Os limites têm de ser estritamente crescentes (cada um maior que o anterior).
+          <AlertTriangle size={11} className="inline mr-1" /> Os limites têm de ser estritamente crescentes (cada um maior que o anterior).
         </div>
       )}
 
@@ -2521,7 +2522,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
               <div className="flex items-center justify-between px-4 pt-4 pb-2">
                 <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Análises</h4>
                 {geeReady
-                  ? <span className="text-[10px] bg-sky-50 text-sky-600 border border-sky-200 px-1.5 py-0.5 rounded-full">✦ GEE Real</span>
+                  ? <span className="text-[10px] bg-sky-50 text-sky-600 border border-sky-200 px-1.5 py-0.5 rounded-full"><Sparkles size={10} className="inline mr-0.5" /> GEE Real</span>
                   : !requiresGee && <span className="text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded-full">Proxy</span>}
               </div>
               <div className="pb-2">

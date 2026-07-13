@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, Suspense } from "react";
-import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard } from "lucide-react";
+import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard, BrainCircuit } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -9,7 +9,7 @@ import MapView from "@/components/MapView";
 import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
 import DashboardPanel from "@/components/DashboardPanel";
-import { LazyGeoAnalises, LazyHidroGeoMoz, LazyGeoperigos, LazyAguaSubterranea } from "@/lib/lazy-pages";
+import { LazyGeoAnalises, LazyHidroGeoMoz, LazyGeoperigos, LazyAguaSubterranea, LazyGeoMozAI } from "@/lib/lazy-pages";
 import { apiUrl } from "@/lib/api";
 import SettingsDialog from "@/components/SettingsDialog";
 import ZoneSelect from "@/components/ZoneSelect";
@@ -24,7 +24,7 @@ interface NominatimResult {
   boundingbox: [string, string, string, string];
 }
 
-type Tab = "Mapa" | "Análise" | "GeoAnálises" | "Bacias Hidrográficas" | "Água Subterrânea" | "Geoperigos" | "Dashboard" | "Exportar";
+type Tab = "Mapa" | "Análise" | "GeoAnálises" | "Bacias Hidrográficas" | "Água Subterrânea" | "Geoperigos" | "GeoMoz AI" | "Dashboard" | "Exportar";
 
 const TABS: { id: Tab; icon: React.ReactNode; label: string }[] = [
   { id: "Mapa",                 icon: <Globe size={13} />,    label: "Mapa" },
@@ -33,6 +33,7 @@ const TABS: { id: Tab; icon: React.ReactNode; label: string }[] = [
   { id: "Bacias Hidrográficas", icon: <Droplets size={13} />, label: "Bacias Hidrográficas" },
   { id: "Água Subterrânea",     icon: <Droplet size={13} />,  label: "Água Subterrânea" },
   { id: "Geoperigos",           icon: <AlertTriangle size={13} />, label: "Geoperigos" },
+  { id: "GeoMoz AI",           icon: <BrainCircuit size={13} />, label: "GeoMoz AI" },
   { id: "Dashboard",            icon: <LayoutDashboard size={13} />, label: "Dashboard" },
   { id: "Exportar",             icon: null,                   label: "Exportar" },
 ];
@@ -372,6 +373,12 @@ function flyToResult(result: NominatimResult) {
               onDistrictChange={setDistrict}
               onAOIChange={handleAOIChange}
             />
+          </Suspense>
+        </div>
+      ) : activeTab === "GeoMoz AI" ? (
+        <div className="flex flex-1 overflow-hidden">
+          <Suspense fallback={<LoadingSkeleton label="GeoMoz AI" />}>
+            <LazyGeoMozAI />
           </Suspense>
         </div>
       ) : (

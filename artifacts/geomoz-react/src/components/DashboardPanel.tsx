@@ -8,8 +8,8 @@
  *  - One-click report generation
  */
 
-import { useState, useEffect, useCallback } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Globe, Satellite, Mountain, Droplets, Flame,
   Waves, Navigation, Building2, Activity,
@@ -54,26 +54,40 @@ const MODULES: ModuleCard[] = [
   { id: "geology", name: "Geologia & Mapa", description: "Visualização geológica, litologias, províncias e distritos",
     icon: <Globe size={18} />, color: "text-sky-600", bgColor: "bg-sky-50", status: "active", indexCount: 0 },
   { id: "spectral", name: "Sensoriamento Remoto", description: "NDVI, Fe-Óxidos, Argilas, Hidrotermal, BSI, Al-OH, Ferroso, Gossan",
-    icon: <Satellite size={18} />, color: "text-emerald-600", bgColor: "bg-emerald-50", status: "requires_gee", indexCount: 8 },
+    icon: <Satellite size={18} />, color: "text-emerald-600", bgColor: "bg-emerald-50", status: "requires_gee", indexCount: 0 },
   { id: "terrain", name: "Relevo & Morfologia", description: "Elevação, Hipsometria, Declive, Hillshade, Classes Topo, Perfil, Curvas",
-    icon: <Mountain size={18} />, color: "text-amber-600", bgColor: "bg-amber-50", status: "requires_gee", indexCount: 7 },
+    icon: <Mountain size={18} />, color: "text-amber-600", bgColor: "bg-amber-50", status: "requires_gee", indexCount: 0 },
   { id: "agriculture", name: "Agricultura", description: "EVI, NDMI, SAVI, GCI, MSAVI2, Saúde Culturas",
-    icon: <BarChart2 size={18} />, color: "text-green-600", bgColor: "bg-green-50", status: "requires_gee", indexCount: 6 },
+    icon: <BarChart2 size={18} />, color: "text-green-600", bgColor: "bg-green-50", status: "requires_gee", indexCount: 0 },
   { id: "drought", name: "Seca & Stress Hídrico", description: "NDDI, Severidade de Seca",
-    icon: <Flame size={18} />, color: "text-orange-600", bgColor: "bg-orange-50", status: "requires_gee", indexCount: 2 },
+    icon: <Flame size={18} />, color: "text-orange-600", bgColor: "bg-orange-50", status: "requires_gee", indexCount: 0 },
   { id: "fire", name: "Incêndios & Desflorestação", description: "NBR, dNBR, Severidade, Hansen, MODIS BA, Risco",
-    icon: <Flame size={18} />, color: "text-red-600", bgColor: "bg-red-50", status: "requires_gee", indexCount: 6 },
+    icon: <Flame size={18} />, color: "text-red-600", bgColor: "bg-red-50", status: "requires_gee", indexCount: 0 },
   { id: "coastal", name: "Zonas Costeiras & Marinhas", description: "Mangal, Índice Costeiro, Erosão, Tsunami",
-    icon: <Waves size={18} />, color: "text-cyan-600", bgColor: "bg-cyan-50", status: "requires_gee", indexCount: 4 },
+    icon: <Waves size={18} />, color: "text-cyan-600", bgColor: "bg-cyan-50", status: "requires_gee", indexCount: 0 },
   { id: "climate", name: "Clima & Desastres", description: "Precipitação, Temperatura, Rotas Ciclones, Risco Ciclone",
-    icon: <Navigation size={18} />, color: "text-violet-600", bgColor: "bg-violet-50", status: "requires_gee", indexCount: 4 },
+    icon: <Navigation size={18} />, color: "text-violet-600", bgColor: "bg-violet-50", status: "requires_gee", indexCount: 0 },
   { id: "urban", name: "Urbano & Infraestruturas", description: "Expansão Urbana, Impermeável, Ilha Calor",
-    icon: <Building2 size={18} />, color: "text-stone-600", bgColor: "bg-stone-50", status: "requires_gee", indexCount: 3 },
+    icon: <Building2 size={18} />, color: "text-stone-600", bgColor: "bg-stone-50", status: "requires_gee", indexCount: 0 },
   { id: "health", name: "Saúde Pública", description: "Risco Malária, Acesso Saúde, Saneamento, Risco Epidémico",
-    icon: <Activity size={18} />, color: "text-rose-600", bgColor: "bg-rose-50", status: "requires_gee", indexCount: 4 },
+    icon: <Activity size={18} />, color: "text-rose-600", bgColor: "bg-rose-50", status: "requires_gee", indexCount: 0 },
 ];
 
-const TOTAL_INDICES = MODULES.reduce((acc, m) => acc + m.indexCount, 0);
+/**
+ * Maps each module id to one or more GEE index groups.
+ * The backend defines groups in INDEX_REGISTRY inside gee_presets.py.
+ */
+const MODULE_GROUP_MAP: Record<string, string[]> = {
+  spectral:    ["spectral"],
+  terrain:     ["terrain", "landsat"],
+  agriculture: ["agriculture"],
+  drought:     ["drought"],
+  fire:        ["fire"],
+  coastal:     ["coastal"],
+  climate:     ["climate"],
+  urban:       ["urban"],
+  health:      ["health"],
+};
 
 function fmt(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
@@ -88,6 +102,35 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
   const [geeStatus, setGeeStatus] = useState<GeeStatus | null>(null);
   const [geeLoading, setGeeLoading] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
+
+  // ── Dynamic index counts from the API ──────────────────────────────────
+
+  const { data: indicesData, isLoading: indicesLoading } = useQuery<{ indices: GeeIndexInfo[] }>({
+    queryKey: ["gee-indices"],
+    queryFn: () => fetch(apiUrl("/geomoz-api/gee/indices")).then(r => r.json()),
+    staleTime: 5 * 60_000,
+  });
+
+  const groupCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    (indicesData?.indices ?? []).forEach(idx => {
+      counts[idx.group] = (counts[idx.group] || 0) + 1;
+    });
+    return counts;
+  }, [indicesData]);
+
+  function getIndexCount(moduleId: string): number {
+    const groups = MODULE_GROUP_MAP[moduleId];
+    if (!groups) return 0;
+    return groups.reduce((sum, g) => sum + (groupCounts[g] || 0), 0);
+  }
+
+  const totalIndices = useMemo(
+    () => MODULES.reduce((acc, m) => acc + getIndexCount(m.id), 0),
+    [groupCounts]
+  );
+
+  // ── GEE status check ───────────────────────────────────────────────────
 
   const title = district ? `${district}, ${province}` : province ?? "Moçambique";
 
@@ -121,7 +164,7 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
           district,
           generatedAt: new Date().toISOString(),
           geeConnected: geeStatus?.connected ?? false,
-          totalIndices: TOTAL_INDICES,
+          totalIndices,
         },
         geology: stats ? {
           totalFeatures: stats.totalFeatures,
@@ -138,7 +181,7 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
         } : null,
         modules: MODULES.map(m => ({
           name: m.name,
-          indices: m.indexCount,
+          indices: getIndexCount(m.id),
           status: m.status,
         })),
       };
@@ -188,6 +231,7 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
 
   // ── Geology stats ──
   const stats = getStats();
+  const countLabel = indicesLoading ? "…" : String(totalIndices);
 
   return (
     <div className="flex-1 overflow-y-auto bg-gradient-to-br from-slate-50 to-white">
@@ -278,38 +322,41 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
         {/* Modules overview */}
         <div className="mb-6">
           <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-            Módulos de Análise ({TOTAL_INDICES} índices no total)
+            Módulos de Análise ({countLabel}{indicesLoading ? "" : " índices no total"})
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {MODULES.map(m => (
-              <div
-                key={m.id}
-                className="bg-white border border-slate-200 rounded-xl p-3.5 flex items-center gap-3 hover:shadow-sm transition-shadow"
-              >
-                <div className={`w-9 h-9 rounded-lg ${m.bgColor} flex items-center justify-center shrink-0`}>
-                  <span className={m.color}>{m.icon}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-slate-900">{m.name}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                      m.status === "active"
-                        ? "bg-sky-100 text-sky-700"
-                        : m.status === "requires_gee"
-                        ? "bg-amber-100 text-amber-700"
-                        : "bg-slate-100 text-slate-600"
-                    }`}>
-                      {m.status === "active" ? "Activo" : m.status === "requires_gee" ? "GEE" : "Dados"}
-                    </span>
+            {MODULES.map(m => {
+              const cnt = m.id === "geology" ? 0 : getIndexCount(m.id);
+              return (
+                <div
+                  key={m.id}
+                  className="bg-white border border-slate-200 rounded-xl p-3.5 flex items-center gap-3 hover:shadow-sm transition-shadow"
+                >
+                  <div className={`w-9 h-9 rounded-lg ${m.bgColor} flex items-center justify-center shrink-0`}>
+                    <span className={m.color}>{m.icon}</span>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5 truncate">{m.description}</p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-slate-900">{m.name}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                        m.status === "active"
+                          ? "bg-sky-100 text-sky-700"
+                          : m.status === "requires_gee"
+                          ? "bg-amber-100 text-amber-700"
+                          : "bg-slate-100 text-slate-600"
+                      }`}>
+                        {m.status === "active" ? "Activo" : m.status === "requires_gee" ? "GEE" : "Dados"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5 truncate">{m.description}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-lg font-bold text-slate-700">{indicesLoading ? "…" : cnt}</div>
+                    <div className="text-[10px] text-slate-400">{cnt === 1 ? "índice" : "índices"}</div>
+                  </div>
                 </div>
-                <div className="text-right shrink-0">
-                  <div className="text-lg font-bold text-slate-700">{m.indexCount}</div>
-                  <div className="text-[10px] text-slate-400">{m.indexCount === 1 ? "índice" : "índices"}</div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -358,7 +405,7 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-slate-900">Índices GEE (CSV)</div>
                   <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-                    Lista completa de todos os {TOTAL_INDICES} índices disponíveis, com grupo, nome e fórmula.
+                    Lista completa de todos os {totalIndices} índices disponíveis, com grupo, nome e fórmula.
                   </p>
                 </div>
                 <div className="shrink-0">
@@ -410,7 +457,7 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
               <div className="text-[10px] text-slate-400 uppercase mt-0.5">Módulos</div>
             </div>
             <div className="bg-slate-50 rounded-lg p-3 text-center">
-              <div className="text-sm font-bold text-slate-800">{TOTAL_INDICES}</div>
+              <div className="text-sm font-bold text-slate-800">{countLabel}</div>
               <div className="text-[10px] text-slate-400 uppercase mt-0.5">Índices</div>
             </div>
             <div className="bg-sky-50 rounded-lg p-3 text-center">
