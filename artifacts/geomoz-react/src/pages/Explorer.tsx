@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, Suspense } from "react";
-import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle } from "lucide-react";
+import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -8,6 +8,7 @@ import Sidebar, { LayerState } from "@/components/Sidebar";
 import MapView from "@/components/MapView";
 import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
+import DashboardPanel from "@/components/DashboardPanel";
 import { LazyGeoAnalises, LazyHidroGeoMoz, LazyGeoperigos, LazyAguaSubterranea } from "@/lib/lazy-pages";
 import { apiUrl } from "@/lib/api";
 import SettingsDialog from "@/components/SettingsDialog";
@@ -23,7 +24,7 @@ interface NominatimResult {
   boundingbox: [string, string, string, string];
 }
 
-type Tab = "Mapa" | "Análise" | "GeoAnálises" | "Bacias Hidrográficas" | "Água Subterrânea" | "Geoperigos" | "Exportar";
+type Tab = "Mapa" | "Análise" | "GeoAnálises" | "Bacias Hidrográficas" | "Água Subterrânea" | "Geoperigos" | "Dashboard" | "Exportar";
 
 const TABS: { id: Tab; icon: React.ReactNode; label: string }[] = [
   { id: "Mapa",                 icon: <Globe size={13} />,    label: "Mapa" },
@@ -32,6 +33,7 @@ const TABS: { id: Tab; icon: React.ReactNode; label: string }[] = [
   { id: "Bacias Hidrográficas", icon: <Droplets size={13} />, label: "Bacias Hidrográficas" },
   { id: "Água Subterrânea",     icon: <Droplet size={13} />,  label: "Água Subterrânea" },
   { id: "Geoperigos",           icon: <AlertTriangle size={13} />, label: "Geoperigos" },
+  { id: "Dashboard",            icon: <LayoutDashboard size={13} />, label: "Dashboard" },
   { id: "Exportar",             icon: null,                   label: "Exportar" },
 ];
 
@@ -199,6 +201,7 @@ function flyToResult(result: NominatimResult) {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
+                data-tab={tab.id}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium rounded-lg transition-all ${
                   activeTab === tab.id
                     ? `${tabAccent[tab.id] ?? "bg-sky-500 shadow-sky-200"} text-white shadow-sm`
@@ -304,7 +307,12 @@ function flyToResult(result: NominatimResult) {
       </header>
 
       {/* Body */}
-      {activeTab === "Exportar" ? (
+      {activeTab === "Dashboard" ? (
+        <div className="flex flex-1 overflow-hidden">
+          {sharedSidebar}
+          <DashboardPanel province={province} district={district} />
+        </div>
+      ) : activeTab === "Exportar" ? (
         <div className="flex flex-1 overflow-hidden">
           {sharedSidebar}
           <ExportPanel province={province} district={district} colorBy={colorBy} layers={layers} mapCenter={mapCenter} mapZoom={mapZoom} />
