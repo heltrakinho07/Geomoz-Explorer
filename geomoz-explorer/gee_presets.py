@@ -454,6 +454,49 @@ INDEX_REGISTRY: dict[str, dict[str, Any]] = {
         "norm": (-0.3, 0.5),
     },
 
+    # ── Public Health indices ───────────────────────────────────────────────
+
+    "malaria_risk": {
+        "group": "health",
+        "needs": ["s2", "dem"],
+        "name": "Risco de Malária (habitat vectorial)",
+        "formula": "0.30×precip_n + 0.25×temp_n + 0.20×ndwi_n + 0.15×(1−elev_n) + 0.10×(1−ndvi_n)",
+        "bands": "CHIRPS + MODIS LST + Sentinel-2 NDWI/NDVI + DEM",
+        "vis": {"min": 0.0, "max": 1.0,
+                "palette": ["ffffcc","ffeda0","fed976","feb24c","fd8d3c","fc4e2a","e31a1c","b10026"]},
+        "norm": (0.0, 1.0),
+    },
+    "healthcare_access": {
+        "group": "health",
+        "needs": ["s2"],
+        "name": "Acesso a Cuidados de Saúde (prox. urbana)",
+        "formula": "Proximidade a áreas urbanas via NDBI + ESA WorldCover",
+        "bands": "Sentinel-2 NDBI + ESA WorldCover",
+        "vis": {"min": 0.0, "max": 1.0,
+                "palette": ["d73027","fc8d59","fee08b","d9ef8b","91cf60","1a9850","006837"]},
+        "norm": (0.0, 1.0),
+    },
+    "sanitation_index": {
+        "group": "health",
+        "needs": ["s2", "dem"],
+        "name": "Índice de Saneamento (água + infraestrutura)",
+        "formula": "0.40×NDWI_n + 0.30×built_n + 0.20×(1−NDVI_n) + 0.10×(1−elev_n)",
+        "bands": "Sentinel-2 NDWI + NDBI + NDVI + DEM",
+        "vis": {"min": 0.0, "max": 1.0,
+                "palette": ["006837","1a9850","91cf60","d9ef8b","fee08b","fc8d59","d73027"]},
+        "norm": (0.0, 1.0),
+    },
+    "epidemic_risk": {
+        "group": "health",
+        "needs": ["s2", "dem"],
+        "name": "Risco Epidémico Composto",
+        "formula": "0.35×malaria_cond + 0.25×inund_prox + 0.20×(1−acesso_saude) + 0.20×pop_dens_proxy",
+        "bands": "CHIRPS + MODIS LST + Sentinel-2 + DEM + JRC GSW",
+        "vis": {"min": 0.0, "max": 1.0,
+                "palette": ["006837","1a9850","d9ef8b","fee08b","fc8d59","d73027","7f0000"]},
+        "norm": (0.0, 1.0),
+    },
+
 }
 
 

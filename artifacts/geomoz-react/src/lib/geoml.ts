@@ -198,7 +198,9 @@ export type SpectralIndex =
   // Climate & Disasters indices
   | "precipitation" | "temperature_lst" | "cyclone_tracks" | "cyclone_risk"
   // Urban & Infrastructure indices
-  | "urban_expansion" | "impervious_surface" | "urban_heat_island";
+  | "urban_expansion" | "impervious_surface" | "urban_heat_island"
+  // Public Health indices
+  | "malaria_risk" | "healthcare_access" | "sanitation_index" | "epidemic_risk";
 
 /**
  * Compute a proxy spectral index value [0, 1] for a geological unit.
@@ -299,6 +301,11 @@ export function computeSpectralValue(
     case "urban_expansion":    return computeSpectralValue(legend, era, period, "bare_soil") * 0.6 + noise * 0.2;
     case "impervious_surface": return computeSpectralValue(legend, era, period, "bare_soil") * 0.5 + noise * 0.2;
     case "urban_heat_island":  return 0.6 + computeSpectralValue(legend, era, period, "bare_soil") * 0.2 + noise * 0.15;
+    // Public Health indices
+    case "malaria_risk":      return computeSpectralValue(legend, era, period, "ndvi") * 0.4 + noise * 0.3;
+    case "healthcare_access": return computeSpectralValue(legend, era, period, "bare_soil") * 0.5 + noise * 0.2;
+    case "sanitation_index": return computeSpectralValue(legend, era, period, "bare_soil") * 0.3 + computeSpectralValue(legend, era, period, "ndvi") * 0.3 + noise * 0.2;
+    case "epidemic_risk":    return computeSpectralValue(legend, era, period, "ndvi") * 0.5 + noise * 0.3;
     default:
       return 0.5 + noise;
   }
@@ -319,6 +326,8 @@ export const GEE_ONLY_INDICES: SpectralIndex[] = [
   "precipitation", "temperature_lst", "cyclone_tracks", "cyclone_risk",
   // Urban & Infrastructure — all require GEE
   "urban_expansion", "impervious_surface", "urban_heat_island",
+  // Public Health — all require GEE
+  "malaria_risk", "healthcare_access", "sanitation_index", "epidemic_risk",
 ];
 
 /** Apply a scientific color ramp to a [0,1] value */
@@ -365,6 +374,10 @@ export function applyColormap(t: number, index: SpectralIndex): string {
     urban_expansion: [[255,255,204],[199,233,180],[127,205,187],[65,182,196],[29,145,192],[34,94,168],[12,44,132],[8,29,88]],
     impervious_surface: [[0,104,55],[26,152,80],[217,239,139],[254,224,139],[252,141,89],[215,48,39],[127,0,0],[0,0,0]],
     urban_heat_island: [[44,123,182],[171,217,233],[255,255,191],[253,174,97],[215,48,39],[127,0,0]],
+    malaria_risk: [[255,255,204],[255,237,160],[254,217,118],[254,178,76],[253,141,60],[252,78,42],[227,26,28],[177,0,38]],
+    healthcare_access: [[215,48,39],[252,141,89],[254,224,139],[217,239,139],[145,207,96],[26,152,80],[0,104,55]],
+    sanitation_index: [[0,104,55],[26,152,80],[145,207,96],[217,239,139],[254,224,139],[252,141,89],[215,48,39]],
+    epidemic_risk: [[0,104,55],[26,152,80],[217,239,139],[254,224,139],[252,141,89],[215,48,39],[127,0,0]],
   };
 
   const ramp = ramps[index];

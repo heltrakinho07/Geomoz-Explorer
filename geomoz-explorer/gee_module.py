@@ -580,6 +580,103 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         return uhi
 
 
+    # ── Public Health indices ───────────────────────────────────────────────
+
+    if index == "malaria_risk":
+        # Malaria vector habitat risk: warm + wet + low elevation + water + sparse vegetation
+        import ee
+        # CHIRPS precipitation
+        chirps = (ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY")
+                  .filterDate("2022-01-01", "2023-01-01")
+                  .sum().rename("precip"))
+        precip_n = chirps.subtract(200).divide(2300).clamp(0, 1)
+        # MODIS LST
+        lst_coll = (ee.ImageCollection("MODIS/061/MOD11A2")
+                     .filterDate("2022-01-01", "2023-01-01")
+                     .select("LST_Day_1km"))
+        lst_mean = lst_coll.mean().multiply(0.02)
+        temp_n = lst_mean.subtract(15).divide(45).clamp(0, 1)
+        # NDWI — surface water/moisture
+        ndwi_raw = s2.normalizedDifference(["B3", "B8"])
+        ndwi_n = ndwi_raw.subtract(-0.5).divide(1.0).clamp(0, 1)
+        # Low elevation = stagnant water breeding sites
+        inv_elev = ee.Image(1).subtract(dem.divide(50).clamp(0, 1))
+        # Low vegetation = less tree cover, more open water pools
+        ndvi_raw = s2.normalizedDifference(["B8", "B4"])
+        inv_ndvi = ee.Image(1).subtract(ndvi_raw.subtract(-0.2).divide(1.1).clamp(0, 1))
+        # Weighted composite
+        return precip_n.multiply(0.30).add(temp_n.multiply(0.25)).add(ndwi_n.multiply(0.20)).add(inv_elev.multiply(0.15)).add(inv_ndvi.multiply(0.10)).rename("index")
+
+    if index == "healthcare_access":
+        # Healthcare access proxy: proximity to built-up areas
+        # Higher NDBI + ESA built-up areas = better access
+        import ee
+        # NDBI for built-up areas
+        ndbi = s2.normalizedDifference(["B11", "B8"]).rename("ndbi")
+        # ESA WorldCover built-up class (50)
+        lc = ee.ImageCollection("ESA/WorldCover/v200").first().select("Map")
+        built_up = lc.eq(50).rename("built")
+        # Distance transform from built-up areas
+        # Closer to built-up = higher access
+        built_dist = built_up.selfMask().fastDistanceTransform(True).sqrt().multiply(30)
+        max_dist = 50000
+        proximity = ee.Image(1).subtract(built_dist.divide(max_dist)).clamp(0, 1).rename("index")
+        # Fallback: use NDBI where no built-up detected
+        ndbi_n = ndbi.subtract(-0.3).divide(0.8).clamp(0, 1)
+        # Combine: use built-up proximity where available, otherwise NDBI proxy
+        combined = proximity.unmask(ndbi_n.multiply(0.5))
+        return combined.rename("index")
+
+    if index == "sanitation_index":
+        # Sanitation index: water availability + built infrastructure + sparse vegetation + low elevation
+        import ee
+        # NDWI — surface water availability
+        ndwi_raw = s2.normalizedDifference(["B3", "B8"])
+        ndwi_n = ndwi_raw.subtract(-0.5).divide(1.0).clamp(0, 1)
+        # NDBI — built infrastructure proxy
+        ndbi = s2.normalizedDifference(["B11", "B8"])
+        built_n = ndbi.subtract(-0.3).divide(0.8).clamp(0, 1)
+        # Inverse NDVI — areas with less vegetation (more built-up)
+        ndvi_raw = s2.normalizedDifference(["B8", "B4"])
+        inv_ndvi = ee.Image(1).subtract(ndvi_raw.subtract(-0.2).divide(1.1).clamp(0, 1))
+        # Low elevation — easier water access
+        inv_elev = ee.Image(1).subtract(dem.divide(100).clamp(0, 1))
+        # Weighted composite
+        return ndwi_n.multiply(0.40).add(built_n.multiply(0.30)).add(inv_ndvi.multiply(0.20)).add(inv_elev.multiply(0.10)).rename("index")
+
+    if index == "epidemic_risk":
+        # Epidemic risk composite: malaria conditions + flood proximity + low healthcare + high pop density
+        import ee
+        # Reuse malaria conditions
+        chirps = (ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY")
+                  .filterDate("2022-01-01", "2023-01-01")
+                  .sum().rename("precip"))
+        precip_n = chirps.subtract(200).divide(2300).clamp(0, 1)
+        lst_coll = (ee.ImageCollection("MODIS/061/MOD11A2")
+                     .filterDate("2022-01-01", "2023-01-01")
+                     .select("LST_Day_1km"))
+        lst_mean = lst_coll.mean().multiply(0.02)
+        temp_n = lst_mean.subtract(15).divide(45).clamp(0, 1)
+        ndwi_raw = s2.normalizedDifference(["B3", "B8"])
+        ndwi_n = ndwi_raw.subtract(-0.5).divide(1.0).clamp(0, 1)
+        inv_elev = ee.Image(1).subtract(dem.divide(50).clamp(0, 1))
+        ndvi_raw = s2.normalizedDifference(["B8", "B4"])
+        inv_ndvi = ee.Image(1).subtract(ndvi_raw.subtract(-0.2).divide(1.1).clamp(0, 1))
+        malaria_cond = precip_n.multiply(0.30).add(temp_n.multiply(0.25)).add(ndwi_n.multiply(0.20)).add(inv_elev.multiply(0.15)).add(inv_ndvi.multiply(0.10))
+        # Flood proximity (JRC water occurrence)
+        jrc_water = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
+        flood_prox = jrc_water.gt(10).selfMask().fastDistanceTransform(True).sqrt().multiply(30)
+        inund_prox = ee.Image(1).subtract(flood_prox.divide(30000)).clamp(0, 1).unmask(0).rename("inund")
+        # Healthcare access inverse (from NDBI)
+        ndbi = s2.normalizedDifference(["B11", "B8"])
+        built_n = ndbi.subtract(-0.3).divide(0.8).clamp(0, 1)
+        inv_access = ee.Image(1).subtract(built_n).rename("inv_access")
+        # Population density proxy (NDBI + inverse NDVI)
+        pop_dens = built_n.add(inv_ndvi.multiply(0.5)).rename("pop_dens")
+        # Weighted composite
+        return malaria_cond.multiply(0.35).add(inund_prox.multiply(0.25)).add(inv_access.multiply(0.20)).add(pop_dens.multiply(0.20)).rename("index")
+
+
     raise ValueError(f"Índice desconhecido: {index!r}")
 
 
