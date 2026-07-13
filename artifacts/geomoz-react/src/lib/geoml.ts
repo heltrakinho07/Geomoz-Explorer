@@ -196,7 +196,9 @@ export type SpectralIndex =
   // Coastal & Marine indices
   | "mangrove_health" | "coastal_index" | "coastal_erosion" | "tsunami_risk"
   // Climate & Disasters indices
-  | "precipitation" | "temperature_lst" | "cyclone_tracks" | "cyclone_risk";
+  | "precipitation" | "temperature_lst" | "cyclone_tracks" | "cyclone_risk"
+  // Urban & Infrastructure indices
+  | "urban_expansion" | "impervious_surface" | "urban_heat_island";
 
 /**
  * Compute a proxy spectral index value [0, 1] for a geological unit.
@@ -293,6 +295,10 @@ export function computeSpectralValue(
     case "temperature_lst": return 0.6 + noise * 0.2;
     case "cyclone_tracks": return computeSpectralValue(legend, era, period, "bare_soil") * 0.3 + noise * 0.3;
     case "cyclone_risk":   return computeSpectralValue(legend, era, period, "bare_soil") * 0.4 + noise * 0.3;
+    // Urban & Infrastructure indices
+    case "urban_expansion":    return computeSpectralValue(legend, era, period, "bare_soil") * 0.6 + noise * 0.2;
+    case "impervious_surface": return computeSpectralValue(legend, era, period, "bare_soil") * 0.5 + noise * 0.2;
+    case "urban_heat_island":  return 0.6 + computeSpectralValue(legend, era, period, "bare_soil") * 0.2 + noise * 0.15;
     default:
       return 0.5 + noise;
   }
@@ -311,6 +317,8 @@ export const GEE_ONLY_INDICES: SpectralIndex[] = [
   "mangrove_health", "coastal_index", "coastal_erosion", "tsunami_risk",
   // Climate & Disasters — all require GEE
   "precipitation", "temperature_lst", "cyclone_tracks", "cyclone_risk",
+  // Urban & Infrastructure — all require GEE
+  "urban_expansion", "impervious_surface", "urban_heat_island",
 ];
 
 /** Apply a scientific color ramp to a [0,1] value */
@@ -354,6 +362,9 @@ export function applyColormap(t: number, index: SpectralIndex): string {
     temperature_lst: [[49,54,149],[69,117,180],[116,173,209],[171,217,233],[254,224,144],[253,174,97],[244,109,67],[215,48,39],[165,0,38]],
     cyclone_tracks: [[255,255,255],[255,255,178],[254,204,92],[253,141,60],[240,59,32],[189,0,38]],
     cyclone_risk: [[0,104,55],[26,152,80],[217,239,139],[254,224,139],[252,141,89],[215,48,39],[127,0,0]],
+    urban_expansion: [[255,255,204],[199,233,180],[127,205,187],[65,182,196],[29,145,192],[34,94,168],[12,44,132],[8,29,88]],
+    impervious_surface: [[0,104,55],[26,152,80],[217,239,139],[254,224,139],[252,141,89],[215,48,39],[127,0,0],[0,0,0]],
+    urban_heat_island: [[44,123,182],[171,217,233],[255,255,191],[253,174,97],[215,48,39],[127,0,0]],
   };
 
   const ramp = ramps[index];

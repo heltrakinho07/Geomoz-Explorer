@@ -23,7 +23,7 @@ import {
   Mountain, TrendingUp, Trees, Sliders, MapPin,
   Activity, Target, Compass, Gem,
   TrendingDown, Route, Waves, X,
-  Sprout, ChevronLeft, ChevronRight, Navigation,
+  Sprout, ChevronLeft, ChevronRight, Navigation, Building2,
 } from "lucide-react";
 
 import {
@@ -47,7 +47,7 @@ type SpectralTab = "s2" | "lineaments" | "targeting"
                   | "profile" | "contours" | "topo_custom" | "landcover"
                   | "spi_ndvi" | SpectralIndex;
 
-type IndexGroup = "spectral" | "landsat" | "terrain" | "agriculture" | "drought" | "fire" | "coastal" | "climate";
+type IndexGroup = "spectral" | "landsat" | "terrain" | "agriculture" | "drought" | "fire" | "coastal" | "climate" | "urban";
 
 interface LandCoverClass {
   code: number;
@@ -425,6 +425,23 @@ const INDEX_DEFS: IndexDef[] = [
     bands: "CHIRPS · IBTrACS · DEM · proxy NDVI",
     interpretation: "Risco composto de ciclone: combina precipitação extrema (CHIRPS), densidade histórica de ciclones (IBTrACS), baixa elevação e falta de vegetação tampão.",
     lowLabel: "Risco baixo", highLabel: "Risco alto" },
+
+  // ── Urban & Infrastructure indices ────────────────────────────────────
+  { id: "urban_expansion", label: "Expansão Urbana", short: "NBI", icon: <Building2 size={13} />, group: "urban",
+    formula: "NBI = B11 / (B8 + B11 + B4) — New Built-up Index",
+    bands: "SWIR1 (B11) · NIR (B8) · Vermelho (B4)",
+    interpretation: "Detecta áreas construídas (edifícios, asfalto, infraestruturas). Utiliza o New Built-up Index (NBI) com base na alta reflectância SWIR de materiais construídos.",
+    lowLabel: "Vegetação / solo", highLabel: "Área construída" },
+  { id: "impervious_surface", label: "Impermeável", short: "NDBI", icon: <Building2 size={13} />, group: "urban",
+    formula: "NDBI = (B11 − B8) / (B11 + B8) — Normalized Difference Built-up Index",
+    bands: "SWIR1 (B11) · NIR (B8)",
+    interpretation: "Superfícies impermeáveis (asfalto, telhados, betão) identificadas pelo NDBI. Valores positivos indicam áreas urbanizadas. Essencial para planeamento urbano e drenagem.",
+    lowLabel: "Permeável / vegetação", highLabel: "Impermeável / construído" },
+  { id: "urban_heat_island", label: "Ilha Calor", short: "UHI", icon: <Flame size={13} />, group: "urban",
+    formula: "UHI = LST_norm − NDVI_norm — contraste térmico",
+    bands: "MODIS MOD11A2 (LST) · Sentinel-2 (NDVI)",
+    interpretation: "Ilha de Calor Urbana — diferença entre temperatura superficial (MODIS LST) e vigor vegetativo (NDVI). Áreas urbanas densas aparecem mais quentes que zonas rurais/russas.",
+    lowLabel: "Rural / fresco", highLabel: "Urbano / quente" },
 ];
 
 const TERRAIN_CLASS_NAMES = [
@@ -2357,6 +2374,8 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
       tabs: INDEX_DEFS.filter(d => d.group === "coastal").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
     { name: "Clima & Desastres",          badge: "Multi-sensor",          badgeColor: "bg-violet-100 text-violet-700",
       tabs: INDEX_DEFS.filter(d => d.group === "climate").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
+    { name: "Urbano & Infraestruturas",    badge: "Multi-sensor",          badgeColor: "bg-stone-100 text-stone-700",
+      tabs: INDEX_DEFS.filter(d => d.group === "urban").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
   ];
 
   // Keep the accordion group of the active analysis expanded.

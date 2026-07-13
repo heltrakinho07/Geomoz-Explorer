@@ -421,6 +421,39 @@ INDEX_REGISTRY: dict[str, dict[str, Any]] = {
         "norm": (0.0, 1.0),
     },
 
+    # ── Urban & Infrastructure indices ──────────────────────────────────────
+
+    "urban_expansion": {
+        "group": "urban",
+        "needs": ["s2"],
+        "name": "Expansão Urbana (NBI — New Built-up Index)",
+        "formula": "NBI = B11 / (B8 + B11 + B4) — proxy de área construída",
+        "bands": "Sentinel-2 SWIR1 (B11), NIR (B8), Vermelho (B4)",
+        "vis": {"min": 0.0, "max": 0.6,
+                "palette": ["ffffcc","c7e9b4","7fcdbb","41b6c4","1d91c0","225ea8","0c2c84","081d58"]},
+        "norm": (0.0, 0.6),
+    },
+    "impervious_surface": {
+        "group": "urban",
+        "needs": ["s2"],
+        "name": "Superfície Impermeável (NDBI)",
+        "formula": "NDBI = (B11 − B8) / (B11 + B8) — áreas impermeáveis/construídas",
+        "bands": "Sentinel-2 SWIR1 (B11), NIR (B8)",
+        "vis": {"min": -0.3, "max": 0.5,
+                "palette": ["006837","1a9850","d9ef8b","fee08b","fc8d59","d73027","7f0000","000000"]},
+        "norm": (-0.3, 0.5),
+    },
+    "urban_heat_island": {
+        "group": "urban",
+        "needs": ["s2"],
+        "name": "Ilha de Calor Urbano (LST − NDVI)",
+        "formula": "UHI = MODIS_LST_norm − NDVI_norm — contraste térmico urbano-rural",
+        "bands": "MODIS MOD11A2 + Sentinel-2 NDVI",
+        "vis": {"min": -0.3, "max": 0.5,
+                "palette": ["2c7bb6","abd9e9","ffffbf","fdae61","d7191c","7f0000"]},
+        "norm": (-0.3, 0.5),
+    },
+
 }
 
 

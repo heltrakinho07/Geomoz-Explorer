@@ -545,6 +545,41 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         return precip_n.multiply(0.35).add(cycl_n.multiply(0.30)).add(inv_elev.multiply(0.20)).add(inv_ndvi.multiply(0.15)).rename("index")
 
 
+    # ── Urban & Infrastructure indices ─────────────────────────────────────
+
+    if index == "urban_expansion":
+        # NBI (New Built-up Index) = B11 / (B8 + B11 + B4)
+        # High values = built-up / urban areas
+        nir = s2.select("B8")
+        swir1 = s2.select("B11")
+        red = s2.select("B4")
+        nbi = swir1.divide(nir.add(swir1).add(red)).rename("index")
+        return nbi
+
+    if index == "impervious_surface":
+        # NDBI (Normalized Difference Built-up Index) = (B11 - B8) / (B11 + B8)
+        # High positive values = built-up / impervious surfaces
+        return s2.normalizedDifference(["B11", "B8"]).rename("index")
+
+    if index == "urban_heat_island":
+        # UHI = MODIS_LST_norm - NDVI_norm
+        # Urban areas have higher LST and lower NDVI than surrounding rural areas
+        import ee
+        # MODIS LST composite
+        lst_coll = (ee.ImageCollection("MODIS/061/MOD11A2")
+                     .filterDate("2022-01-01", "2023-01-01")
+                     .select("LST_Day_1km"))
+        lst_mean = lst_coll.mean().multiply(0.02)
+        # Normalize LST to [0,1] using typical range for Mozambique
+        lst_norm = lst_mean.subtract(15).divide(45).clamp(0, 1)
+        # Sentinel-2 NDVI
+        ndvi_raw = s2.normalizedDifference(["B8", "B4"])
+        ndvi_norm = ndvi_raw.subtract(-0.2).divide(1.1).clamp(0, 1)
+        # UHI = LST_norm - NDVI_norm (positive = urban heat island)
+        uhi = lst_norm.subtract(ndvi_norm).rename("index")
+        return uhi
+
+
     raise ValueError(f"Índice desconhecido: {index!r}")
 
 
