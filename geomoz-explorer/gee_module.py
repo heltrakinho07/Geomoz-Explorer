@@ -483,6 +483,68 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         return inv_elev.multiply(0.35).add(prox_raw.multiply(0.30)).add(inv_slope.multiply(0.20)).add(inv_ndvi.multiply(0.15)).rename("index")
 
 
+
+    # ── Climate & Disasters indices ─────────────────────────────────────────
+
+    if index == "precipitation":
+        # CHIRPS — mean annual precipitation
+        import ee
+        chirps = (ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY")
+                  .filterDate("2022-01-01", "2023-01-01")
+                  .sum())
+        return chirps.rename("index")
+
+    if index == "temperature_lst":
+        # MODIS MOD11A2 — land surface temperature
+        import ee
+        lst_coll = (ee.ImageCollection("MODIS/061/MOD11A2")
+                     .filterDate("2022-01-01", "2023-01-01")
+                     .select("LST_Day_1km"))
+        lst_mean = lst_coll.mean().multiply(0.02)
+        return lst_mean.rename("index")
+
+    if index == "cyclone_tracks":
+        # IBTrACS — cyclone track density (1980–2024)
+        import ee
+        ibtracs = ee.FeatureCollection("NOAA/IBTrACS/v4")
+        # Filter for Southern Hemisphere tropical cyclones near Mozambique
+        ibtracs_mz = ibtracs.filterBounds(
+            ee.Geometry.Rectangle(20, -30, 60, -5)
+        )
+        # Create density raster
+        density = ibtracs_mz.reduceToImage(
+            properties=["wind_max"],
+            reducer=ee.Reducer.count()
+        ).rename("index").clip(region)
+        return density
+
+    if index == "cyclone_risk":
+        # Composite cyclone risk index
+        import ee
+        # CHIRPS extreme precipitation
+        chirps = (ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY")
+                  .filterDate("2022-01-01", "2023-01-01")
+                  .sum().rename("precip"))
+        precip_n = chirps.subtract(200).divide(2300).clamp(0, 1)
+        # Coastal proximity (IBTrACS-based cyclone frequency near coast)
+        ibtracs = ee.FeatureCollection("NOAA/IBTrACS/v4")
+        ibtracs_mz = ibtracs.filterBounds(
+            ee.Geometry.Rectangle(20, -30, 60, -5)
+        )
+        cycl_density = ibtracs_mz.reduceToImage(
+            properties=["wind_max"],
+            reducer=ee.Reducer.count()
+        ).rename("cycl_dens").clip(region)
+        cycl_n = cycl_density.subtract(0).divide(20).clamp(0, 1)
+        # Low elevation = higher flood risk from storm surge
+        inv_elev = ee.Image(1).subtract(dem.divide(50).clamp(0, 1))
+        # Vegetation proxy from DEM (lower = more exposed)
+        ndvi_proxy = dem.expression("1 - (e / 100)", {"e": dem}).clamp(0, 1).rename("ndvi_proxy")
+        inv_ndvi = ee.Image(1).subtract(ndvi_proxy)
+        # Weighted composite
+        return precip_n.multiply(0.35).add(cycl_n.multiply(0.30)).add(inv_elev.multiply(0.20)).add(inv_ndvi.multiply(0.15)).rename("index")
+
+
     raise ValueError(f"Índice desconhecido: {index!r}")
 
 

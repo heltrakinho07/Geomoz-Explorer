@@ -194,7 +194,9 @@ export type SpectralIndex =
   // Fire & Deforestation indices
   | "nbr" | "dnbr" | "burn_severity" | "forest_loss" | "burned_area" | "fire_risk"
   // Coastal & Marine indices
-  | "mangrove_health" | "coastal_index" | "coastal_erosion" | "tsunami_risk";
+  | "mangrove_health" | "coastal_index" | "coastal_erosion" | "tsunami_risk"
+  // Climate & Disasters indices
+  | "precipitation" | "temperature_lst" | "cyclone_tracks" | "cyclone_risk";
 
 /**
  * Compute a proxy spectral index value [0, 1] for a geological unit.
@@ -286,6 +288,11 @@ export function computeSpectralValue(
     case "coastal_index":  return computeSpectralValue(legend, era, period, "bare_soil") * 0.4 + noise;
     case "coastal_erosion": return 0.3 + noise * 0.2;
     case "tsunami_risk":   return computeSpectralValue(legend, era, period, "bare_soil") * 0.3 + noise * 0.3;
+    // Climate & Disasters indices
+    case "precipitation": return computeSpectralValue(legend, era, period, "ndvi") * 0.4 + noise * 0.2;
+    case "temperature_lst": return 0.6 + noise * 0.2;
+    case "cyclone_tracks": return computeSpectralValue(legend, era, period, "bare_soil") * 0.3 + noise * 0.3;
+    case "cyclone_risk":   return computeSpectralValue(legend, era, period, "bare_soil") * 0.4 + noise * 0.3;
     default:
       return 0.5 + noise;
   }
@@ -302,6 +309,8 @@ export const GEE_ONLY_INDICES: SpectralIndex[] = [
   "nbr", "dnbr", "burn_severity", "forest_loss", "burned_area", "fire_risk",
   // Coastal & Marine — all require GEE
   "mangrove_health", "coastal_index", "coastal_erosion", "tsunami_risk",
+  // Climate & Disasters — all require GEE
+  "precipitation", "temperature_lst", "cyclone_tracks", "cyclone_risk",
 ];
 
 /** Apply a scientific color ramp to a [0,1] value */
@@ -341,6 +350,10 @@ export function applyColormap(t: number, index: SpectralIndex): string {
     coastal_index: [[0,104,55],[145,207,96],[254,224,139],[252,141,89],[215,48,39],[127,0,0]],
     coastal_erosion: [[0,100,0],[255,255,204],[255,102,0],[0,0,255]],
     tsunami_risk: [[0,104,55],[26,152,80],[217,239,139],[254,224,139],[252,141,89],[215,48,39],[127,0,0]],
+    precipitation: [[255,255,204],[199,233,180],[127,205,187],[65,182,196],[29,145,192],[34,94,168],[12,44,132]],
+    temperature_lst: [[49,54,149],[69,117,180],[116,173,209],[171,217,233],[254,224,144],[253,174,97],[244,109,67],[215,48,39],[165,0,38]],
+    cyclone_tracks: [[255,255,255],[255,255,178],[254,204,92],[253,141,60],[240,59,32],[189,0,38]],
+    cyclone_risk: [[0,104,55],[26,152,80],[217,239,139],[254,224,139],[252,141,89],[215,48,39],[127,0,0]],
   };
 
   const ramp = ramps[index];

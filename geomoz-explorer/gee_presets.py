@@ -378,6 +378,49 @@ INDEX_REGISTRY: dict[str, dict[str, Any]] = {
         "norm": (0.0, 1.0),
     },
 
+    # ── Climate & Disasters indices ─────────────────────────────────────────
+
+    "precipitation": {
+        "group": "climate",
+        "needs": [],
+        "name": "Precipitação Anual (CHIRPS)",
+        "formula": "CHIRPS Daily — soma anual (mm)",
+        "bands": "UCSB-CHG/CHIRPS/DAILY — precipitação acumulada",
+        "vis": {"min": 200, "max": 2500,
+                "palette": ["ffffcc","c7e9b4","7fcdbb","41b6c4","1d91c0","225ea8","0c2c84"]},
+        "norm": (200, 2500),
+    },
+    "temperature_lst": {
+        "group": "climate",
+        "needs": [],
+        "name": "Temperatura Superficial (MODIS LST)",
+        "formula": "MODIS MOD11A2 — média anual de LST diurno (°C × 0.02)",
+        "bands": "MODIS/061/MOD11A2 — bandas: LST_Day_1km",
+        "vis": {"min": 1500, "max": 6000,
+                "palette": ["313695","4575b4","74add1","abd9e9","fee090","fdae61","f46d43","d73027","a50026"]},
+        "norm": (1500, 6000),
+    },
+    "cyclone_tracks": {
+        "group": "climate",
+        "needs": [],
+        "name": "Rotas de Ciclones (IBTrACS)",
+        "formula": "IBTrACS v4 — densidade de passagens históricas (1980–2024)",
+        "bands": "NOAA/IBTrACS/v4 — tracks de ciclones tropicais",
+        "vis": {"min": 0, "max": 20,
+                "palette": ["ffffff","ffffb2","fecc5c","fd8d3c","f03b20","bd0026"]},
+        "norm": (0, 20),
+    },
+    "cyclone_risk": {
+        "group": "climate",
+        "needs": ["dem"],
+        "name": "Risco Composto de Ciclone",
+        "formula": "0.35×precip_extrema + 0.30×ciclones_dens + 0.20×(1−elev_norm) + 0.15×(1−NDVI_proxy)",
+        "bands": "CHIRPS + IBTrACS + DEM Copernicus + proxy vegetação",
+        "vis": {"min": 0.0, "max": 1.0,
+                "palette": ["006837","1a9850","d9ef8b","fee08b","fc8d59","d73027","7f0000"]},
+        "norm": (0.0, 1.0),
+    },
+
 }
 
 

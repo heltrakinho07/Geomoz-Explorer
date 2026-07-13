@@ -23,7 +23,7 @@ import {
   Mountain, TrendingUp, Trees, Sliders, MapPin,
   Activity, Target, Compass, Gem,
   TrendingDown, Route, Waves, X,
-  Sprout, ChevronLeft, ChevronRight,
+  Sprout, ChevronLeft, ChevronRight, Navigation,
 } from "lucide-react";
 
 import {
@@ -45,7 +45,7 @@ import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
 type SpectralTab = "s2" | "lineaments" | "targeting"
                   | "profile" | "contours" | "topo_custom" | "landcover" | SpectralIndex;
 
-type IndexGroup = "spectral" | "landsat" | "terrain" | "agriculture" | "drought" | "fire" | "coastal";
+type IndexGroup = "spectral" | "landsat" | "terrain" | "agriculture" | "drought" | "fire" | "coastal" | "climate";
 
 interface LandCoverClass {
   code: number;
@@ -356,6 +356,28 @@ const INDEX_DEFS: IndexDef[] = [
     formula: "0.35×(1−elev_norm) + 0.30×costa_prox + 0.20×declive + 0.15×(1−NDVI)",
     bands: "DEM Copernicus · dist. costa · declive · NDVI",
     interpretation: "Risco de inundação por tsunami/inundação costeira. Combina baixa elevação, proximidade ao mar, terreno plano e falta de vegetação tampão.",
+    lowLabel: "Risco baixo", highLabel: "Risco alto" },
+
+  // ── Climate & Disasters indices ──────────────────────────────────────
+  { id: "precipitation", label: "Precipitação", short: "CHIRPS", icon: <Droplets size={13} />, group: "climate",
+    formula: "CHIRPS — soma anual (mm)",
+    bands: "UCSB-CHG/CHIRPS/DAILY",
+    interpretation: "Precipitação anual acumulada do CHIRPS. Dados diários a ~5 km. Essencial para monitoria de cheias, secas e agricultura.",
+    lowLabel: "Seca", highLabel: "Chuva intensa" },
+  { id: "temperature_lst", label: "Temperatura", short: "Temp.", icon: <Flame size={13} />, group: "climate",
+    formula: "MODIS MOD11A2 — LST diurno médio (°C)",
+    bands: "MODIS/061/MOD11A2 — LST_Day_1km",
+    interpretation: "Temperatura superficial diurna média do MODIS. Identifica ondas de calor, stress térmico em culturas e áreas urbanas quentes.",
+    lowLabel: "Frio", highLabel: "Calor extremo" },
+  { id: "cyclone_tracks", label: "Rotas Ciclones", short: "IBTrACS", icon: <Navigation size={13} />, group: "climate",
+    formula: "IBTrACS v4 — passagens históricas (1980–2024)",
+    bands: "NOAA/IBTrACS/v4 — tracks de ciclones",
+    interpretation: "Densidade histórica de passagens de ciclones tropicais do IBTrACS. Fundamental para avaliar zonas de maior recorrência em Moçambique.",
+    lowLabel: "Raro", highLabel: "Frequente" },
+  { id: "cyclone_risk", label: "Risco Ciclone", short: "Risco Ciclone", icon: <Target size={13} />, group: "climate",
+    formula: "0.35×precip + 0.30×ciclones + 0.20×(1−elev) + 0.15×(1−NDVI)",
+    bands: "CHIRPS · IBTrACS · DEM · proxy NDVI",
+    interpretation: "Risco composto de ciclone: combina precipitação extrema (CHIRPS), densidade histórica de ciclones (IBTrACS), baixa elevação e falta de vegetação tampão.",
     lowLabel: "Risco baixo", highLabel: "Risco alto" },
 ];
 
@@ -1930,6 +1952,8 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
       tabs: INDEX_DEFS.filter(d => d.group === "fire").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
     { name: "Zonas Costeiras & Marinhas",  badge: "Multi-sensor",          badgeColor: "bg-cyan-100 text-cyan-700",
       tabs: INDEX_DEFS.filter(d => d.group === "coastal").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
+    { name: "Clima & Desastres",          badge: "Multi-sensor",          badgeColor: "bg-violet-100 text-violet-700",
+      tabs: INDEX_DEFS.filter(d => d.group === "climate").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
   ];
 
   // Keep the accordion group of the active analysis expanded.
