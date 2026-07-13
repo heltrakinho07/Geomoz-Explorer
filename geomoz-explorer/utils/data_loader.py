@@ -7,6 +7,8 @@ import streamlit as st
 import geopandas as gpd
 import pandas as pd
 
+from utils.common import find_col
+
 
 @st.cache_data(show_spinner=False)
 def load_provinces():
@@ -96,9 +98,9 @@ def get_province_names(provinces_gdf) -> list:
     """Extract sorted list of province names."""
     if provinces_gdf is None:
         return []
-    for col in ["Provincia", "PROVINCIA", "NAME_1", "name", "NAME"]:
-        if col in provinces_gdf.columns:
-            return sorted(provinces_gdf[col].dropna().unique().tolist())
+    col = find_col(provinces_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name", "NAME"])
+    if col:
+        return sorted(provinces_gdf[col].dropna().unique().tolist())
     return []
 
 
@@ -108,7 +110,7 @@ def get_districts_for_province(districts_gdf, provinces_gdf, province_name: str)
         return None
     # Try to clip districts to province boundary
     try:
-        prov_col = _find_col(provinces_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name", "NAME"])
+        prov_col = find_col(provinces_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name", "NAME"])
         if prov_col:
             prov_geom = provinces_gdf[provinces_gdf[prov_col] == province_name]
             if len(prov_geom) == 0:
@@ -119,7 +121,7 @@ def get_districts_for_province(districts_gdf, provinces_gdf, province_name: str)
     except Exception:
         pass
     # Fallback: filter by province name column in districts
-    dist_prov_col = _find_col(districts_gdf, ["Provincia", "PROVINCIA", "NAME_1"])
+    dist_prov_col = find_col(districts_gdf, ["Provincia", "PROVINCIA", "NAME_1"])
     if dist_prov_col:
         filtered = districts_gdf[districts_gdf[dist_prov_col] == province_name]
         return filtered if len(filtered) > 0 else districts_gdf
@@ -130,9 +132,9 @@ def get_district_names(districts_gdf) -> list:
     """Extract sorted list of district names."""
     if districts_gdf is None:
         return []
-    for col in ["Distrito", "DISTRITO", "NAME_2", "name", "NAME"]:
-        if col in districts_gdf.columns:
-            return sorted(districts_gdf[col].dropna().unique().tolist())
+    col = find_col(districts_gdf, ["Distrito", "DISTRITO", "NAME_2", "name", "NAME"])
+    if col:
+        return sorted(districts_gdf[col].dropna().unique().tolist())
     return []
 
 
@@ -149,11 +151,4 @@ def filter_geology_by_area(geology_gdf, area_gdf):
         return None
 
 
-def _find_col(gdf, candidates: list):
-    """Return the first matching column name from candidates."""
-    if gdf is None:
-        return None
-    for col in candidates:
-        if col in gdf.columns:
-            return col
-    return None
+

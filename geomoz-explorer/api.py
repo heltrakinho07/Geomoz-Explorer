@@ -4,7 +4,6 @@ Run: uvicorn api:app --host 0.0.0.0 --port 5001
 """
 
 import json
-import hashlib
 import logging
 import os
 import sys
@@ -13,21 +12,34 @@ from collections import defaultdict
 from functools import lru_cache
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
+import geopandas as gpd
 from shapely.errors import TopologicalError, GEOSException
-
-# Ensure this directory is in sys.path so sibling modules can be imported
-# with absolute imports (e.g. `from gee_module import ...`). This is needed
-# because the directory name 'geomoz-explorer' contains a hyphen, which
-# prevents it from being a valid Python package.
-_this_dir = os.path.dirname(os.path.abspath(__file__))
-if _this_dir not in sys.path:
-    sys.path.insert(0, _this_dir)
 
 from fastapi import FastAPI, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel, field_validator, constr
+
+# ── Package imports ────────────────────────────────────────────────────────
+# These modules are siblings of api.py in the geomoz-explorer directory.
+# Because the directory name contains a hyphen, it cannot be a valid Python
+# package. The recommended setup is:
+#   pip install -e geomoz-explorer/
+# which installs it as a proper package via pyproject.toml.
+#
+# For development without installation, we fall back to adding the directory
+# to sys.path manually.
+
+try:
+    # Standard imports — work when the package is installed (pip install -e .)
+    from utils.common import find_col, color_for
+except ImportError:
+    # Fallback: add this directory to sys.path for dev mode
+    _this_dir = os.path.dirname(os.path.abspath(__file__))
+    if _this_dir not in sys.path:
+        sys.path.insert(0, _this_dir)
+    from utils.common import find_col, color_for
 
 # Configure logging
 logging.basicConfig(
@@ -122,30 +134,46 @@ def _geology():
     return gdf
 
 
-def _find_col(gdf, candidates):
-    for c in candidates:
-        if c in gdf.columns:
-            return c
-    return None
-
-
-def _color_for(value: str) -> str:
-    palette = [
-        "#E63946","#457B9D","#2A9D8F","#E9C46A","#F4A261",
-        "#264653","#8ECAE6","#219EBC","#FFB703","#FB8500",
-        "#606C38","#DDA15E","#BC6C25","#52B788","#F2CC8F",
-        "#023047","#A8DADC","#6D6875","#B5838D","#E76F51",
-    ]
-    h = int(hashlib.md5(str(value).encode()).hexdigest(), 16)
-    return palette[h % len(palette)]
-
-
 def _gdf_to_geojson_response(gdf) -> Response:
     geojson_str = gdf.to_json(na="null", show_bbox=False)
     return Response(content=geojson_str, media_type="application/json")
 
 
 # ── region geometry helper (used by GEE endpoints) ─────────────────────────────
+
+def _clip_geo(gdf, province=None, district=None):
+    """
+    Clip *gdf* to province/district boundaries using cached data loaders.
+    Eliminates the repeated 10-line clipping block in every endpoint.
+    """
+    if district:
+        dist_gdf = _districts()
+        dist_col = find_col(dist_gdf, ["Distrito", "DISTRITO", "NAME_2", "name"])
+        if dist_col:
+            mask = dist_gdf[dist_gdf[dist_col] == district]
+            if len(mask) > 0:
+                if province:
+                    pcol = find_col(dist_gdf, ["Provincia", "PROVINCIA", "NAME_1"])
+                    if pcol:
+                        mask_p = mask[mask[pcol] == province]
+                        if len(mask_p) > 0:
+                            mask = mask_p
+                try:
+                    return gpd.clip(gdf, mask.geometry.union_all())
+                except (ValueError, TopologicalError, GEOSException) as e:
+                    logger.warning("Failed to clip to district '%s': %s", district, e)
+    elif province:
+        prov_gdf = _provinces()
+        prov_col = find_col(prov_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name"])
+        if prov_col:
+            mask = prov_gdf[prov_gdf[prov_col] == province]
+            if len(mask) > 0:
+                try:
+                    return gpd.clip(gdf, mask.geometry.union_all())
+                except (ValueError, TopologicalError, GEOSException) as e:
+                    logger.warning("Failed to clip to province '%s': %s", province, e)
+    return gdf
+
 
 def _region_geojson(
     province: Optional[str] = None,
@@ -171,13 +199,13 @@ def _region_geojson(
     # Priority 2: district
     if district:
         dist_gdf = _districts()
-        dcol = _find_col(dist_gdf, ["Distrito", "DISTRITO", "NAME_2", "name"])
+        dcol = find_col(dist_gdf, ["Distrito", "DISTRITO", "NAME_2", "name"])
         if dcol:
             sub = dist_gdf[dist_gdf[dcol] == district]
             # Disambiguate by province when both are given — district names
             # are repeated across provinces (e.g. "Chibuto", "Mocuba").
             if province and len(sub) > 0:
-                pcol = _find_col(dist_gdf, ["Provincia", "PROVINCIA", "NAME_1"])
+                pcol = find_col(dist_gdf, ["Provincia", "PROVINCIA", "NAME_1"])
                 if pcol:
                     sub_p = sub[sub[pcol] == province]
                     if len(sub_p) > 0:
@@ -189,7 +217,7 @@ def _region_geojson(
     # Priority 3: province
     if province:
         prov_gdf = _provinces()
-        pcol = _find_col(prov_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name"])
+        pcol = find_col(prov_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name"])
         if pcol:
             sub = prov_gdf[prov_gdf[pcol] == province]
             if len(sub) > 0:
@@ -209,10 +237,10 @@ def _province_summary_cached():
     geo  = _geology().copy()
     prov = _provinces().copy()
 
-    prov_col   = _find_col(prov, ["Provincia", "PROVINCIA", "NAME_1", "name"])
-    leg_col    = _find_col(geo,  ["Legend", "LEGEND", "code2006"])
-    era_col    = _find_col(geo,  ["ERA"])
-    period_col = _find_col(geo,  ["PERIOD"])
+    prov_col   = find_col(prov, ["Provincia", "PROVINCIA", "NAME_1", "name"])
+    leg_col    = find_col(geo,  ["Legend", "LEGEND", "code2006"])
+    era_col    = find_col(geo,  ["ERA"])
+    period_col = find_col(geo,  ["PERIOD"])
 
     if not prov_col or not leg_col:
         return []
@@ -264,7 +292,7 @@ def get_provinces():
 @app.get("/geomoz-api/province-names")
 def get_province_names():
     gdf = _provinces()
-    col = _find_col(gdf, ["Provincia", "PROVINCIA", "NAME_1", "name"])
+    col = find_col(gdf, ["Provincia", "PROVINCIA", "NAME_1", "name"])
     if not col:
         return {"names": [], "column": None}
     names = sorted(gdf[col].dropna().unique().tolist())
@@ -273,36 +301,14 @@ def get_province_names():
 
 @app.get("/geomoz-api/districts")
 def get_districts(province: Optional[str] = Query(None)):
-    import geopandas as gpd
-    gdf = _districts()
-    if province:
-        prov_gdf = _provinces()
-        prov_col = _find_col(prov_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name"])
-        if prov_col:
-            prov_shape = prov_gdf[prov_gdf[prov_col] == province]
-            if len(prov_shape) > 0:
-                try:
-                    gdf = gpd.clip(gdf, prov_shape.geometry.union_all())
-                except (ValueError, TopologicalError, GEOSException) as e:
-                    logger.warning("Failed to clip districts to province '%s': %s", province, e)
+    gdf = _clip_geo(_districts(), province)
     return _gdf_to_geojson_response(gdf)
 
 
 @app.get("/geomoz-api/district-names")
 def get_district_names(province: Optional[str] = Query(None)):
-    import geopandas as gpd
-    gdf = _districts()
-    if province:
-        prov_gdf = _provinces()
-        prov_col = _find_col(prov_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name"])
-        if prov_col:
-            prov_shape = prov_gdf[prov_gdf[prov_col] == province]
-            if len(prov_shape) > 0:
-                try:
-                    gdf = gpd.clip(gdf, prov_shape.geometry.union_all())
-                except (ValueError, TopologicalError, GEOSException) as e:
-                    logger.warning("Failed to clip district names to province '%s': %s", province, e)
-    col = _find_col(gdf, ["Distrito", "DISTRITO", "NAME_2", "name"])
+    gdf = _clip_geo(_districts(), province)
+    col = find_col(gdf, ["Distrito", "DISTRITO", "NAME_2", "name"])
     if not col:
         return {"names": [], "column": None}
     names = sorted(gdf[col].dropna().unique().tolist())
@@ -315,33 +321,11 @@ def get_geology(
     district: Optional[str] = Query(None),
     color_by: str = Query("code2006"),
 ):
-    import geopandas as gpd
-    gdf = _geology().copy()
+    gdf = _clip_geo(_geology().copy(), province, district)
 
-    if district:
-        dist_gdf = _districts()
-        dist_col = _find_col(dist_gdf, ["Distrito", "DISTRITO", "NAME_2", "name"])
-        if dist_col:
-            area = dist_gdf[dist_gdf[dist_col] == district]
-            if len(area) > 0:
-                try:
-                    gdf = gpd.clip(gdf, area.geometry.union_all())
-                except (ValueError, TopologicalError, GEOSException) as e:
-                    logger.warning("Failed to clip geology to district '%s': %s", district, e)
-    elif province:
-        prov_gdf = _provinces()
-        prov_col = _find_col(prov_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name"])
-        if prov_col:
-            area = prov_gdf[prov_gdf[prov_col] == province]
-            if len(area) > 0:
-                try:
-                    gdf = gpd.clip(gdf, area.geometry.union_all())
-                except (ValueError, TopologicalError, GEOSException) as e:
-                    logger.warning("Failed to clip geology to province '%s': %s", province, e)
-
-    color_col = color_by if color_by in gdf.columns else _find_col(gdf, ["code2006", "Legend", "ERA", "PERIOD"])
+    color_col = color_by if color_by in gdf.columns else find_col(gdf, ["code2006", "Legend", "ERA", "PERIOD"])
     if color_col:
-        gdf["_color"] = gdf[color_col].fillna("Unknown").astype(str).apply(_color_for)
+        gdf["_color"] = gdf[color_col].fillna("Unknown").astype(str).apply(color_for)
 
     return _gdf_to_geojson_response(gdf)
 
@@ -351,29 +335,7 @@ def get_stats(
     province: Optional[str] = Query(None),
     district: Optional[str] = Query(None),
 ):
-    import geopandas as gpd
-    gdf = _geology().copy()
-
-    if district:
-        dist_gdf = _districts()
-        dist_col = _find_col(dist_gdf, ["Distrito", "DISTRITO", "NAME_2", "name"])
-        if dist_col:
-            area = dist_gdf[dist_gdf[dist_col] == district]
-            if len(area) > 0:
-                try:
-                    gdf = gpd.clip(gdf, area.geometry.union_all())
-                except (ValueError, TopologicalError, GEOSException) as e:
-                    logger.warning("Failed to clip stats to district '%s': %s", district, e)
-    elif province:
-        prov_gdf = _provinces()
-        prov_col = _find_col(prov_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name"])
-        if prov_col:
-            area = prov_gdf[prov_gdf[prov_col] == province]
-            if len(area) > 0:
-                try:
-                    gdf = gpd.clip(gdf, area.geometry.union_all())
-                except (ValueError, TopologicalError, GEOSException) as e:
-                    logger.warning("Failed to clip stats to province '%s': %s", province, e)
+    gdf = _clip_geo(_geology().copy(), province, district)
 
     if len(gdf) == 0:
         return {"totalFeatures": 0, "totalUnits": 0, "totalAreaKm2": 0, "dominant": "N/A", "lithologies": []}
@@ -387,7 +349,7 @@ def get_stats(
         gdf_proj = gdf.copy()
         gdf_proj["_area_m2"] = 0.0
 
-    legend_col = _find_col(gdf_proj, ["Legend", "LEGEND", "code2006", "ERA"])
+    legend_col = find_col(gdf_proj, ["Legend", "LEGEND", "code2006", "ERA"])
     total_area_km2 = round(gdf_proj["_area_m2"].sum() / 1e6, 2)
 
     lithologies = []
@@ -400,7 +362,7 @@ def get_stats(
             name = str(row[legend_col]) if row[legend_col] else "Unknown"
             area_km2 = round(row["_area_m2"] / 1e6, 2)
             pct = round(area_km2 / total_area_km2 * 100, 1) if total_area_km2 > 0 else 0
-            lithologies.append({"name": name, "areaKm2": area_km2, "percent": pct, "color": _color_for(name)})
+            lithologies.append({"name": name, "areaKm2": area_km2, "percent": pct, "color": color_for(name)})
 
     dominant   = lithologies[0]["name"] if lithologies else "N/A"
     unique_units = len(gdf_proj[legend_col].dropna().unique()) if legend_col else 0
@@ -417,13 +379,13 @@ def get_stats(
 @app.get("/geomoz-api/geology-colors")
 def get_geology_colors(color_by: str = Query("code2006")):
     gdf = _geology()
-    col = color_by if color_by in gdf.columns else _find_col(gdf, ["code2006", "Legend", "ERA", "PERIOD"])
+    col = color_by if color_by in gdf.columns else find_col(gdf, ["code2006", "Legend", "ERA", "PERIOD"])
     if not col:
         return {"items": []}
     vals = sorted(gdf[col].dropna().unique().tolist())
     return {
         "column": col,
-        "items": [{"value": str(v), "color": _color_for(str(v))} for v in vals[:60]],
+        "items": [{"value": str(v), "color": color_for(str(v))} for v in vals[:60]],
     }
 
 
@@ -1298,8 +1260,8 @@ def _overlap_report(zones_fc: dict) -> dict:
     districts_out = []
     try:
         dist = _districts()
-        dcol = _find_col(dist, ["Distrito", "DISTRITO", "NAME_2", "name"])
-        pcol = _find_col(dist, ["Provincia", "PROVINCIA", "NAME_1"])
+        dcol = find_col(dist, ["Distrito", "DISTRITO", "NAME_2", "name"])
+        pcol = find_col(dist, ["Provincia", "PROVINCIA", "NAME_1"])
         cols = [c for c in [dcol, pcol] if c] + ["geometry"]
         inter = gpd.overlay(zones[["geometry"]], dist[cols], how="intersection", keep_geom_type=True)
         if len(inter) > 0 and dcol:
@@ -1325,7 +1287,7 @@ def _overlap_report(zones_fc: dict) -> dict:
     village_count = 0
     try:
         vil = _villages()
-        vcol = _find_col(vil, ["Village", "VILLAGE", "Aldeia", "ALDEIA", "NAME", "Name", "name"])
+        vcol = find_col(vil, ["Village", "VILLAGE", "Aldeia", "ALDEIA", "NAME", "Name", "name"])
         hits = gpd.sjoin(vil, zones[["geometry"]], how="inner", predicate="within")
         village_count = int(len(hits))
         if vcol:
@@ -1440,36 +1402,16 @@ def export_shapefile(
     import geopandas as gpd
 
     if layer == "geology":
-        gdf = _geology().copy()
-        area = None
-        if district:
-            dist_gdf = _districts()
-            dist_col = _find_col(dist_gdf, ["Distrito", "DISTRITO", "NAME_2", "name"])
-            if dist_col:
-                sel = dist_gdf[dist_gdf[dist_col] == district]
-                if len(sel) > 0:
-                    area = sel.geometry.union_all()
-        elif province:
-            prov_gdf = _provinces()
-            prov_col = _find_col(prov_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name"])
-            if prov_col:
-                sel = prov_gdf[prov_gdf[prov_col] == province]
-                if len(sel) > 0:
-                    area = sel.geometry.union_all()
-        if area is not None:
-            try:
-                gdf = gpd.clip(gdf, area)
-            except (ValueError, TopologicalError, GEOSException) as e:
-                logger.warning("SHP export: clip failed: %s", e)
-        color_col = _find_col(gdf, ["code2006", "Legend"])
+        gdf = _clip_geo(_geology().copy(), province, district)
+        color_col = find_col(gdf, ["code2006", "Legend"])
         if color_col:
-            gdf["_color"] = gdf[color_col].fillna("Unknown").astype(str).apply(_color_for)
+            gdf["_color"] = gdf[color_col].fillna("Unknown").astype(str).apply(color_for)
     elif layer == "provinces":
         gdf = _provinces().copy()
     elif layer == "districts":
         gdf = _districts().copy()
         if province:
-            pcol = _find_col(gdf, ["Provincia", "PROVINCIA", "NAME_1"])
+            pcol = find_col(gdf, ["Provincia", "PROVINCIA", "NAME_1"])
             if pcol:
                 gdf = gdf[gdf[pcol] == province]
     else:

@@ -6,11 +6,10 @@ Builds Folium maps with layers, tooltips, and symbology.
 import folium
 import geopandas as gpd
 import json
-import random
-import hashlib
 
+from utils.common import color_for as _color_for_value
 
-# ── colour palettes ────────────────────────────────────────────────────────────
+# ── colour palette ────────────────────────────────────────────────────────────
 
 GEOLOGY_PALETTE = [
     "#E63946", "#457B9D", "#2A9D8F", "#E9C46A", "#F4A261",
@@ -19,14 +18,6 @@ GEOLOGY_PALETTE = [
     "#023047", "#8ECAE6", "#219EBC", "#FFB703", "#FB8500",
     "#606C38", "#DDA15E", "#BC6C25", "#283618", "#FEFAE0",
 ]
-
-
-def _color_for_value(value, palette=GEOLOGY_PALETTE) -> str:
-    """Deterministically assign a colour from the palette based on the value string."""
-    if not value or str(value).strip() in ("", "nan", "None"):
-        return "#AAAAAA"
-    h = int(hashlib.md5(str(value).encode()).hexdigest(), 16)
-    return palette[h % len(palette)]
 
 
 # ── base map ───────────────────────────────────────────────────────────────────
@@ -217,7 +208,7 @@ def add_geology_layer(m: folium.Map, gdf: gpd.GeoDataFrame, color_by: str = "cod
     def style_fn(feature):
         val = feature["properties"].get(color_col, "") if color_col else ""
         return {
-            "fillColor": _color_for_value(val),
+            "fillColor": _color_for_value(val, GEOLOGY_PALETTE),
             "color": "#333333",
             "weight": 0.5,
             "fillOpacity": 0.65,
@@ -271,7 +262,7 @@ def build_geology_legend(gdf: gpd.GeoDataFrame, color_by: str = "code2006") -> s
     unique_vals = gdf[color_by].dropna().unique()
     rows = ""
     for val in sorted(unique_vals)[:30]:  # cap at 30 items
-        color = _color_for_value(str(val))
+        color = _color_for_value(str(val), GEOLOGY_PALETTE)
         rows += (
             f'<div style="display:flex;align-items:center;margin-bottom:3px;">'
             f'<div style="width:14px;height:14px;background:{color};'

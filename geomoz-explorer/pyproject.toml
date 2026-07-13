@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "geomoz-explorer"
+version = "2.1.0"
+description = "GeoMoz Explorer — WebGIS platform for Mozambique geological & environmental data"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "geopandas>=0.14.0",
+    "shapely>=2.0.0",
+    "geomoz",
+    "pandas>=2.0.0",
+    "numpy>=1.26.0",
+    "python-multipart>=0.0.28",
+    "earthengine-api>=1.7.0",
+    "idna>=3.16",
+    "starlette>=1.0.1",
+]
+
+[tool.setuptools]
+py-modules = ["api", "gee_module", "gee_presets"]
+
+[tool.setuptools.packages.find]
+include = ["utils*"]
+
+[project.scripts]
+geomoz-api = "api:app"

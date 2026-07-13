@@ -36,6 +36,10 @@ testpaths = [
 ]
 python_files = ["test_*.py"]
 pythonpath = ["geomoz-explorer"]
+# Note: for best results, also run:
+#   pip install -e geomoz-explorer/
+# This installs the package and its sibling module imports natively,
+# eliminating the sys.path fallback hack in api.py.
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::UserWarning",
