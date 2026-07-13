@@ -22,7 +22,7 @@ import {
   ExternalLink, ShieldCheck,
   Mountain, TrendingUp, Trees, Sliders, MapPin,
   Activity, Target, Compass, Gem,
-  TrendingDown, Route, Waves, X,
+  TrendingDown, Route, Waves, X, FileDown,
   Sprout, ChevronLeft, ChevronRight, Navigation, Building2,
 } from "lucide-react";
 
@@ -40,6 +40,10 @@ import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
+import {
+  fetchMapImage, createPDFContext, drawCover, addPDFFooter,
+  MARGIN, CONTENT_W, addMapImage,
+} from "@/lib/pdf-export";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -2221,6 +2225,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
   const [useGEE, setUseGEE]           = useState(true);
   const [showSetup, setShowSetup]     = useState(false);
   const [drawingEnabled, setDrawingEnabled] = useState(false);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
 
   // Compute API params from AOI (includes geometry for global/custom areas)
   const apiParams = useMemo(() => aoiToAPI(aoi), [aoi]);
@@ -2231,6 +2236,49 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
   );
 
   // Fetch GEE status on mount
+  // ── PDF Export (universal for all analysis types) ────────────────
+  async function exportGeoAnalisesPdf() {
+    if (!mapContainerRef.current) return;
+    const ctx = createPDFContext(`${activeTab} — ${province ?? "Moçambique"}`);
+    drawCover(ctx, `Relatório de Análise — ${activeTab}`, [
+      `Análise: ${activeTab}`,
+      `${province ? `Província: ${province}` : "Área: Moçambique"}`,
+      ctx.date,
+    ]);
+    try {
+      // Determine tile URL from the active analysis result
+      const analysisTile =
+        geeTile?.tileUrl ??
+        lineamentsTile?.tileUrl ??
+        targetingTile?.tileUrl ??
+        contoursTile?.tileUrl ??
+        topoClassesTile?.tileUrl ??
+        landCoverTile?.tileUrl ??
+        spiNdviResult?.spiTileUrl ??
+        undefined;
+      const analysisLegendItems =
+        activeTab === "landcover"
+          ? landCoverTile?.classes?.map(c => ({ label: c.label, color: c.color }))
+          : (activeTab === "topo_class" || activeTab === "topo_custom") && topoClassesTile
+            ? topoClassesTile.labels?.map((label, i) => ({
+                label,
+                color: topoClassesTile.colors?.[i] ?? "#888",
+              }))
+            : undefined;
+      const imgData = await fetchMapImage(
+        { south: -26.9, north: -10.4, west: 30.2, east: 41 },
+        { tileUrl: analysisTile,
+          legendItems: analysisLegendItems,
+          title: `Análise ${activeTab} — ${province ?? "Moçambique"}`, dpi: 200 },
+      );
+      addMapImage(ctx, imgData, 100);
+    } catch (e) {
+      console.warn("Map fetch failed:", e);
+    }
+    addPDFFooter(ctx);
+    ctx.doc.save(`GeoMoz_Analises_${activeTab}_${province ?? "MZ"}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
+
   const checkGee = useCallback(async () => {
     setGeeLoading(true);
     try {
@@ -2877,7 +2925,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
         </div>
 
         {/* Map */}
-        <div className="flex-1 relative overflow-hidden">
+        <div className="flex-1 relative overflow-hidden" ref={mapContainerRef}>
           {/* Loading indicators */}
           {isFetching && activeTab !== "s2" && !geeReady && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[600] bg-white border border-slate-200 shadow-md rounded-full px-4 py-1.5 text-xs font-medium text-slate-600 flex items-center gap-2 pointer-events-none">

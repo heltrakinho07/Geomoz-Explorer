@@ -1089,6 +1089,18 @@ class GEEFloodRequest(BaseModel):
     baseline_start: Optional[str] = None
     baseline_end:   Optional[str] = None
 
+    @field_validator('event_start', 'event_end', 'baseline_start', 'baseline_end')
+    @classmethod
+    def validate_date_format(cls, v):
+        if v is None:
+            return v
+        try:
+            from datetime import datetime
+            datetime.strptime(v, '%Y-%m-%d')
+        except ValueError:
+            raise ValueError('Date must be in YYYY-MM-DD format')
+        return v
+
 
 @app.post("/geomoz-api/gee/flood")
 async def gee_flood(req: GEEFloodRequest):
@@ -1445,3 +1457,87 @@ def export_shapefile(
     except Exception as exc:
         logger.error("SHP export failed: %s", exc)
         raise HTTPException(500, f"Exportação Shapefile falhou: {exc}")
+
+
+# ── Static Map Image (Cartopy) ──────────────────────────────────────────────────
+
+class GEEMapImageRequest(BaseModel):
+    """Request a static map image for PDF-export embedding."""
+    bounds: dict  # {"south": float, "north": float, "west": float, "east": float}
+    tile_url: Optional[str] = None
+    overlay_geojson: Optional[dict] = None
+    overlay_label: Optional[str] = None
+    legend_items: Optional[list[dict]] = None
+    width_mm: float = 182.0
+    height_mm: float = 100.0
+    dpi: int = 200
+    title: Optional[str] = None
+
+    @field_validator('bounds')
+    @classmethod
+    def validate_bounds(cls, v):
+        required = {"south", "north", "west", "east"}
+        if not isinstance(v, dict) or not required.issubset(v.keys()):
+            raise ValueError(f'bounds must contain {required}')
+        if v["south"] >= v["north"]:
+            raise ValueError('south must be < north')
+        if v["west"] >= v["east"]:
+            raise ValueError('west must be < east')
+        return v
+
+    @field_validator('dpi')
+    @classmethod
+    def validate_dpi(cls, v):
+        if not 72 <= v <= 600:
+            raise ValueError('dpi must be between 72 and 600')
+        return v
+
+
+@app.post("/geomoz-api/gee/map-image")
+async def gee_map_image(req: GEEMapImageRequest):
+    """
+    Generate a static map image using Cartopy, suitable for PDF embedding.
+
+    Uses the CartoDB basemap + optional GEE raster tile overlay + optional
+    GeoJSON vector overlay. Returns a PNG image with:
+      - Coordinate grid (lat/lon graticule with labels)
+      - Scale bar
+      - North arrow
+      - Coastline / borders / lakes
+
+    This endpoint replaces the browser-side html2canvas capture for
+    professional, print-quality map exports.
+    """
+    import asyncio
+    from utils.map_export import render_map_from_gee_result
+
+    loop = asyncio.get_event_loop()
+
+    try:
+        png_bytes = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: render_map_from_gee_result(
+                bounds=req.bounds,
+                tile_url=req.tile_url,
+                overlay_geojson=req.overlay_geojson,
+                overlay_label=req.overlay_label,
+                legend_items=req.legend_items,
+                width_mm=req.width_mm,
+                height_mm=req.height_mm,
+                dpi=req.dpi,
+                title=req.title,
+            ),
+        )
+        return Response(
+            content=png_bytes,
+            media_type="image/png",
+            headers={
+                "Content-Disposition": "inline; filename=geomoz_map.png",
+                "X-Map-Bounds": json.dumps(req.bounds),
+            },
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        logger.error("Map-image generation failed: %s", exc, exc_info=True)
+        raise HTTPException(500, f"Geração de mapa falhou: {exc}")

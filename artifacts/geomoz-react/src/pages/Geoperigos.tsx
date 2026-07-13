@@ -6,12 +6,12 @@
  * Erosão: risco de perda de solo por RUSLE (A = R·K·LS·C·P), 5 classes.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { MapContainer, TileLayer, ScaleControl, ZoomControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   AlertTriangle, Waves, Mountain, Loader2, Play, ChevronDown, Info,
-  CheckCircle2, Calendar, Droplets, Layers,
+  CheckCircle2, Calendar, Droplets, Layers, FileDown,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiUrl } from "@/lib/api";
@@ -21,6 +21,10 @@ import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
+import {
+  createPDFContext, drawCover, sectionTitle, addPDFFooter, MARGIN, CONTENT_W,
+  drawStatCards, drawTable, addMapImage, fetchMapImage,
+} from "@/lib/pdf-export";
 
 type Tool = "flood" | "erosion";
 
@@ -49,6 +53,7 @@ interface Props {
 
 export default function Geoperigos({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
   const { toast } = useToast();
+  const mapContainerRef = useRef<HTMLDivElement>(null);
   const [tool, setTool] = useState<Tool>("flood");
 
   // Flood params
@@ -104,6 +109,83 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
   }, [province, district, year]);
 
   const erosionTotal = erosion ? erosion.classes.reduce((s, c) => s + c.areaKm2, 0) || 1 : 1;
+
+  // ── PDF Export ──────────────────────────────────────────────────────────────
+  async function exportGeoperigosPdf() {
+    if (!mapContainerRef.current) return;
+    const ctx = createPDFContext(
+      `${tool === "flood" ? "Cheias SAR" : "Erosão RUSLE"} — ${province ?? "Moçambique"}`,
+    );
+    drawCover(ctx, `Relatório de Geoperigos — ${tool === "flood" ? "Cheias (Sentinel-1)" : "Erosão (RUSLE)"}`, [
+      `Ferramenta: ${tool === "flood" ? "Cheias" : "Erosão"}`,
+      `${province ? `Província: ${province}` : "Área: Moçambique"}`,
+      ctx.date,
+    ]);
+
+    // Map — fetch from backend Cartopy API with analysis tile overlay
+    const analysisTile = tool === "flood" ? flood?.floodTile : erosion?.tile;
+    const legendItems = tool === "erosion" ? erosion?.classes?.map(c => ({ label: c.label, color: c.color })) : undefined;
+    try {
+      const imgData = await fetchMapImage(
+        { south: -26.9, north: -10.4, west: 30.2, east: 41 },
+        { tileUrl: analysisTile,
+          legendItems,
+          title: `${tool === "flood" ? "Cheias SAR" : "Erosão RUSLE"} — ${province ?? "Moçambique"}`,
+          dpi: 200 },
+      );
+      addMapImage(ctx, imgData, 100);
+    } catch (e) {
+      console.warn("Map fetch failed:", e);
+    }
+
+    if (tool === "flood" && flood) {
+      sectionTitle(ctx, "Extensão da Cheia");
+      drawStatCards(ctx, [
+        { label: "Área Inundada", value: `${flood.areaKm2.toLocaleString("pt-PT")} km²`, color: [225, 29, 72] },
+        { label: "Cenas do Evento", value: `${flood.scenesEvent}`, color: [239, 68, 68] },
+        { label: "Cenas da Base", value: `${flood.scenesBaseline}`, color: [100, 116, 139] },
+        { label: "Período", value: `${flood.eventStart}→${flood.eventEnd}`, color: [14, 165, 233] },
+      ]);
+      sectionTitle(ctx, "Metodologia");
+      ctx.doc.setFontSize(7.5);
+      ctx.doc.setTextColor(100, 116, 139);
+      ctx.doc.text("Deteção de cheias por radar Sentinel-1 (banda C, VV) usando o método UN-SPIDER de", MARGIN, ctx.y);
+      ctx.y += 4;
+      ctx.doc.text("detecção de mudança: compara a mediana do período do evento com os 60 dias anteriores.", MARGIN, ctx.y);
+      ctx.y += 4;
+      ctx.doc.text("Filtros: inclinação < 5° (exclui encostas), conectividade ≥ 8 pixels, água permanente JRC removida.", MARGIN, ctx.y);
+      ctx.y += 8;
+    }
+
+    if (tool === "erosion" && erosion) {
+      sectionTitle(ctx, "Risco de Erosão (RUSLE)");
+      drawStatCards(ctx, [
+        { label: "Perda Média", value: `${erosion.meanTPerHa?.toFixed(1) ?? "—"} t/ha/ano`, color: [245, 158, 11] },
+        { label: "Ano", value: `${erosion.year}`, color: [249, 115, 22] },
+        { label: "Classes", value: `${erosion.classes.length}`, color: [14, 165, 233] },
+        { label: "Fonte", value: "CHIRPS+DEM+MODIS", color: [100, 116, 139] },
+      ]);
+
+      sectionTitle(ctx, "Distribuição por Classe");
+      drawTable(
+        ctx,
+        ["Classe", "Área (km²)", "%", "Perda"],
+        erosion.classes.map(c => ({
+          cells: [
+            c.label,
+            c.areaKm2.toLocaleString("pt-PT", { maximumFractionDigits: 1 }),
+            ((c.areaKm2 / erosionTotal) * 100).toFixed(1),
+            c.range,
+          ],
+          color: c.color,
+        })),
+        [CONTENT_W * 0.28, CONTENT_W * 0.24, CONTENT_W * 0.14, CONTENT_W * 0.34],
+      );
+    }
+
+    addPDFFooter(ctx);
+    ctx.doc.save(`GeoMoz_Geoperigos_${tool}_${province ?? "MZ"}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
 
   return (
     <div className="flex-1 flex overflow-hidden bg-slate-50">
@@ -204,7 +286,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
       </div>
 
       {/* ── Map ─────────────────────────────────────────────────── */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative" ref={mapContainerRef}>
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl={false}>
           <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" attribution="© OpenStreetMap, © CARTO" />
           <ScaleControl position="bottomleft" imperial={false} />
@@ -286,6 +368,10 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-[11px] text-blue-800 flex items-start gap-2">
                 <CheckCircle2 size={12} className="mt-0.5 shrink-0" /> Deteção por radar (UN-SPIDER). Validar com dados de campo / ótico quando disponível.
               </div>
+              <button onClick={exportGeoperigosPdf}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-700 hover:to-orange-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm">
+                <FileDown size={13} /> Exportar Relatório PDF
+              </button>
             </div>
           )}
           {tool === "erosion" && erosion && (
@@ -317,6 +403,10 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-800 flex items-start gap-2">
                 <Info size={12} className="mt-0.5 shrink-0" /> K (solo) usa constante moderada; refinável com SoilGrids. Modelo de suscetibilidade, não medição.
               </div>
+              <button onClick={exportGeoperigosPdf}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm">
+                <FileDown size={13} /> Exportar Relatório PDF
+              </button>
             </div>
           )}
         </div>

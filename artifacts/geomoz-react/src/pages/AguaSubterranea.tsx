@@ -6,10 +6,10 @@
  * TWI e cobertura do solo. Resultado classificado em 5 classes de potencial.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { MapContainer, TileLayer, ScaleControl, ZoomControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import { Droplets, Loader2, Play, ChevronDown, Info, Scale } from "lucide-react";
+import { Droplets, Loader2, Play, ChevronDown, Info, Scale, FileDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiUrl } from "@/lib/api";
 import MapTools from "@/components/MapTools";
@@ -18,6 +18,10 @@ import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
+import {
+  createPDFContext, drawCover, sectionTitle, addPDFFooter, MARGIN, CONTENT_W,
+  drawStatCards, drawTable, addMapImage, fetchMapImage,
+} from "@/lib/pdf-export";
 
 interface GwpClass { id: number; label: string; color: string; areaKm2: number }
 interface GwpWeight { key: string; label: string; weight: number; favours: string }
@@ -33,6 +37,7 @@ interface Props {
 
 export default function AguaSubterranea({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
   const { toast } = useToast();
+  const mapContainerRef = useRef<HTMLDivElement>(null);
   const [year, setYear] = useState(2023);
   const [result, setResult] = useState<GwpResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -59,6 +64,70 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
   }, [province, district, year]);
 
   const total = result ? result.classes.reduce((s, c) => s + c.areaKm2, 0) || 1 : 1;
+
+  // ── PDF Export ──────────────────────────────────────────────────────────────
+  async function exportGroundwaterPdf() {
+    if (!mapContainerRef.current) return;
+    const ctx = createPDFContext(
+      `Água Subterrânea — ${province ?? "Moçambique"}`,
+    );
+    drawCover(ctx, "Relatório de Potencial Hídrico Subterrâneo (AHP)", [
+      `Ano: ${year}`,
+      `${province ? `Província: ${province}` : "Área: Moçambique"}`,
+      ctx.date,
+    ]);
+
+    // Map — fetch from backend Cartopy API
+    try {
+      const legendItems = result?.classes?.map(c => ({ label: c.label, color: c.color }));
+      const imgData = await fetchMapImage(
+        { south: -26.9, north: -10.4, west: 30.2, east: 41 },
+        { tileUrl: result?.tile,
+          legendItems,
+          title: `Potencial Hídrico — ${province ?? "Moçambique"}`, dpi: 200 },
+      );
+      addMapImage(ctx, imgData, 100);
+    } catch (e) {
+      console.warn("Map fetch failed:", e);
+    }
+
+    if (result) {
+      sectionTitle(ctx, "Classes de Potencial Hídrico");
+      drawTable(
+        ctx,
+        ["Classe", "Área (km²)", "%"],
+        result.classes.map(c => ({
+          cells: [
+            c.label,
+            c.areaKm2.toLocaleString("pt-PT", { maximumFractionDigits: 1 }),
+            ((c.areaKm2 / total) * 100).toFixed(1),
+          ],
+          color: c.color,
+        })),
+        [CONTENT_W * 0.4, CONTENT_W * 0.3, CONTENT_W * 0.3],
+      );
+
+      sectionTitle(ctx, "Pesos AHP");
+      drawTable(
+        ctx,
+        ["Fator", "Peso", "Favorece"],
+        result.weights.map(w => ({
+          cells: [w.label, `${(w.weight * 100).toFixed(0)}%`, w.favours === "alto" ? "Alto potencial" : "Baixo potencial"],
+        })),
+        [CONTENT_W * 0.45, CONTENT_W * 0.2, CONTENT_W * 0.35],
+      );
+
+      drawStatCards(ctx, [
+        { label: "Análise", value: `AHP · ${year}`, color: [8, 145, 178] },
+        { label: "Fatores", value: `${result.weights.length}`, color: [14, 165, 233] },
+        { label: "Resolução", value: "~500 m", color: [100, 116, 139] },
+        { label: "Área total", value: `${total.toLocaleString("pt-PT", { maximumFractionDigits: 0 })} km²`, color: [16, 185, 129] },
+      ]);
+    }
+
+    addPDFFooter(ctx);
+    ctx.doc.save(`GeoMoz_AguaSubterranea_${province ?? "MZ"}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
 
   return (
     <div className="flex-1 flex overflow-hidden bg-slate-50">
@@ -118,7 +187,7 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
       </div>
 
       {/* ── Map ─────────────────────────────────────────────────── */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative" ref={mapContainerRef}>
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl={false}>
           <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" attribution="© OpenStreetMap, © CARTO" />
           <ScaleControl position="bottomleft" imperial={false} />
@@ -186,6 +255,10 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
             <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-3 text-[11px] text-cyan-800 flex items-start gap-2">
               <Info size={12} className="mt-0.5 shrink-0" /> Modelo AHP de favorabilidade (indicativo). A litologia pode ser adicionada como 7º fator. Confirmar com furos de teste.
             </div>
+            <button onClick={exportGroundwaterPdf}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm">
+              <FileDown size={13} /> Exportar Relatório PDF
+            </button>
           </div>
         </div>
       )}
