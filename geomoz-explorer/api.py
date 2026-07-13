@@ -1199,3 +1199,307 @@ async def gee_groundwater(req: GEEGroundwaterRequest):
         return result
     except Exception as exc:
         raise HTTPException(500, f"GEE groundwater failed: {exc}")
+
+
+# ── SPI × NDVI drought correlation ─────────────────────────────────────────────
+
+class GEESpiNdviRequest(BaseModel):
+    province:   Optional[str] = None
+    district:   Optional[str] = None
+    geometry:   Optional[dict] = None
+    year:       int = 2024
+    clim_start: int = 2001
+    samples:    int = 400
+
+    @field_validator('year')
+    @classmethod
+    def validate_year(cls, v):
+        if not 2001 <= v <= 2030:
+            raise ValueError('year must be between 2001 and 2030 (MODIS era)')
+        return v
+
+    @field_validator('samples')
+    @classmethod
+    def validate_samples(cls, v):
+        if not 50 <= v <= 2000:
+            raise ValueError('samples must be between 50 and 2000')
+        return v
+
+
+@app.post("/geomoz-api/gee/spi-ndvi")
+async def gee_spi_ndvi(req: GEESpiNdviRequest):
+    """SPI (CHIRPS z-score vs climatology) × NDVI (MODIS) tiles + Pearson correlation."""
+    import asyncio
+    from gee_module import compute_spi_ndvi
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    loop   = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_spi_ndvi(region, req.year, req.clim_start, req.samples),
+        )
+        result["province"] = req.province
+        result["district"] = req.district
+        return result
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE SPI×NDVI failed: {exc}")
+
+
+# ── Targeting × admin spatial overlap report ──────────────────────────────────
+
+@lru_cache(maxsize=1)
+def _villages():
+    import geomoz
+    return geomoz.read_village().to_crs("EPSG:4326")
+
+
+@lru_cache(maxsize=1)
+def _admin_posts():
+    import geomoz
+    return geomoz.read_admin_post().to_crs("EPSG:4326")
+
+
+def _overlap_report(zones_fc: dict) -> dict:
+    """Cross favorable-zone polygons with geomoz admin layers.
+
+    Returns per-district areas, villages and admin posts inside the zones.
+    Each section degrades gracefully (a note is added instead of failing).
+    """
+    import geopandas as gpd
+
+    notes: list[str] = []
+    feats = (zones_fc or {}).get("features", [])
+    if not feats:
+        return {
+            "totalFavorableKm2": 0.0, "zoneCount": 0,
+            "districts": [], "villages": [], "villageCount": 0,
+            "adminPostCount": 0, "notes": ["Nenhuma zona favorável acima do limiar."],
+        }
+
+    zones = gpd.GeoDataFrame.from_features(feats, crs="EPSG:4326")
+    zones = zones[zones.geometry.notna()].copy()
+    zones.geometry = zones.geometry.make_valid()
+    zones = zones[zones.geometry.geom_type.isin(["Polygon", "MultiPolygon"])]
+    if len(zones) == 0:
+        return {
+            "totalFavorableKm2": 0.0, "zoneCount": 0,
+            "districts": [], "villages": [], "villageCount": 0,
+            "adminPostCount": 0, "notes": ["Zonas favoráveis sem geometria poligonal válida."],
+        }
+
+    total_km2 = float(zones.to_crs("EPSG:32736").geometry.area.sum() / 1e6)
+
+    # Per-district favorable area
+    districts_out = []
+    try:
+        dist = _districts()
+        dcol = _find_col(dist, ["Distrito", "DISTRITO", "NAME_2", "name"])
+        pcol = _find_col(dist, ["Provincia", "PROVINCIA", "NAME_1"])
+        cols = [c for c in [dcol, pcol] if c] + ["geometry"]
+        inter = gpd.overlay(zones[["geometry"]], dist[cols], how="intersection", keep_geom_type=True)
+        if len(inter) > 0 and dcol:
+            inter["_km2"] = inter.to_crs("EPSG:32736").geometry.area / 1e6
+            group_cols = [c for c in [pcol, dcol] if c]
+            grouped = inter.groupby(group_cols)["_km2"].sum().reset_index() \
+                           .sort_values("_km2", ascending=False)
+            for _, row in grouped.iterrows():
+                if row["_km2"] < 0.01:
+                    continue
+                districts_out.append({
+                    "province": str(row[pcol]) if pcol else None,
+                    "district": str(row[dcol]),
+                    "areaKm2":  round(float(row["_km2"]), 2),
+                    "pct":      round(float(row["_km2"]) / total_km2 * 100, 1) if total_km2 > 0 else 0,
+                })
+    except Exception as exc:
+        logger.warning("Overlap: district crossing failed: %s", exc)
+        notes.append(f"Cruzamento com distritos indisponível: {exc}")
+
+    # Villages inside the zones
+    villages_out: list[dict] = []
+    village_count = 0
+    try:
+        vil = _villages()
+        vcol = _find_col(vil, ["Village", "VILLAGE", "Aldeia", "ALDEIA", "NAME", "Name", "name"])
+        hits = gpd.sjoin(vil, zones[["geometry"]], how="inner", predicate="within")
+        village_count = int(len(hits))
+        if vcol:
+            for _, row in hits.head(30).iterrows():
+                villages_out.append({
+                    "name": str(row[vcol]),
+                    "lon":  round(float(row.geometry.centroid.x), 5),
+                    "lat":  round(float(row.geometry.centroid.y), 5),
+                })
+    except Exception as exc:
+        logger.warning("Overlap: village crossing failed: %s", exc)
+        notes.append(f"Cruzamento com aldeias indisponível: {exc}")
+
+    # Admin posts inside the zones
+    admin_post_count = 0
+    try:
+        posts = _admin_posts()
+        if posts.geometry.geom_type.isin(["Polygon", "MultiPolygon"]).any():
+            # polygon layer → count posts whose area intersects the zones
+            hits = gpd.sjoin(posts, zones[["geometry"]], how="inner", predicate="intersects")
+        else:
+            hits = gpd.sjoin(posts, zones[["geometry"]], how="inner", predicate="within")
+        admin_post_count = int(hits.index.nunique())
+    except Exception as exc:
+        logger.warning("Overlap: admin-post crossing failed: %s", exc)
+        notes.append(f"Cruzamento com postos administrativos indisponível: {exc}")
+
+    return {
+        "totalFavorableKm2": round(total_km2, 2),
+        "zoneCount":         int(len(zones)),
+        "districts":         districts_out,
+        "villages":          villages_out,
+        "villageCount":      village_count,
+        "adminPostCount":    admin_post_count,
+        "notes":             notes,
+    }
+
+
+class GEETargetingOverlapRequest(GEETargetingRequest):
+    max_zones: int = 300
+
+    @field_validator('max_zones')
+    @classmethod
+    def validate_max_zones(cls, v):
+        if not 10 <= v <= 1000:
+            raise ValueError('max_zones must be between 10 and 1000')
+        return v
+
+
+@app.post("/geomoz-api/gee/targeting-overlap")
+async def gee_targeting_overlap(req: GEETargetingOverlapRequest):
+    """Spatial-overlap report: favorable targeting zones × districts / villages / admin posts.
+
+    Vectorizes score ≥ threshold at 300 m in GEE, then crosses the polygons
+    with the geomoz administrative layers locally. Returns the report plus the
+    zone GeoJSON so the client can draw it.
+    """
+    import asyncio
+    from gee_module import compute_targeting_zones
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    loop   = asyncio.get_event_loop()
+
+    try:
+        zones_result = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_targeting_zones(
+                req.mineral, region, req.start_date, req.end_date, req.cloud_pct,
+                req.weights_override, req.invert_override, req.score_threshold,
+                req.max_zones,
+            ),
+        )
+        report = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: _overlap_report(zones_result["zones"]),
+        )
+        return {
+            "mineral":        zones_result["mineral"],
+            "mineralName":    zones_result["mineralName"],
+            "scoreThreshold": zones_result["scoreThreshold"],
+            "formula":        zones_result["formula"],
+            "dateRange":      zones_result["dateRange"],
+            "zones":          zones_result["zones"],
+            "report":         report,
+            "province":       req.province,
+            "district":       req.district,
+        }
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE targeting overlap failed: {exc}")
+
+
+# ── Shapefile export ───────────────────────────────────────────────────────────
+
+@app.get("/geomoz-api/export/shapefile")
+def export_shapefile(
+    province: Optional[str] = Query(None),
+    district: Optional[str] = Query(None),
+    layer: str = Query("geology"),
+):
+    """Export a layer as a zipped ESRI Shapefile (QGIS/ArcGIS-ready).
+
+    layer = geology (clipped to province/district like /geology),
+            provinces, or districts (filtered by province).
+    """
+    import io
+    import tempfile
+    import zipfile
+    import geopandas as gpd
+
+    if layer == "geology":
+        gdf = _geology().copy()
+        area = None
+        if district:
+            dist_gdf = _districts()
+            dist_col = _find_col(dist_gdf, ["Distrito", "DISTRITO", "NAME_2", "name"])
+            if dist_col:
+                sel = dist_gdf[dist_gdf[dist_col] == district]
+                if len(sel) > 0:
+                    area = sel.geometry.union_all()
+        elif province:
+            prov_gdf = _provinces()
+            prov_col = _find_col(prov_gdf, ["Provincia", "PROVINCIA", "NAME_1", "name"])
+            if prov_col:
+                sel = prov_gdf[prov_gdf[prov_col] == province]
+                if len(sel) > 0:
+                    area = sel.geometry.union_all()
+        if area is not None:
+            try:
+                gdf = gpd.clip(gdf, area)
+            except (ValueError, TopologicalError, GEOSException) as e:
+                logger.warning("SHP export: clip failed: %s", e)
+        color_col = _find_col(gdf, ["code2006", "Legend"])
+        if color_col:
+            gdf["_color"] = gdf[color_col].fillna("Unknown").astype(str).apply(_color_for)
+    elif layer == "provinces":
+        gdf = _provinces().copy()
+    elif layer == "districts":
+        gdf = _districts().copy()
+        if province:
+            pcol = _find_col(gdf, ["Provincia", "PROVINCIA", "NAME_1"])
+            if pcol:
+                gdf = gdf[gdf[pcol] == province]
+    else:
+        raise HTTPException(400, f"Camada desconhecida '{layer}'. Válidas: geology, provinces, districts")
+
+    if len(gdf) == 0:
+        raise HTTPException(404, "Nenhuma feição encontrada para a área seleccionada.")
+
+    # Shapefiles cannot mix geometry types — keep only the polygonal parts
+    gdf = gdf.explode(index_parts=False)
+    gdf = gdf[gdf.geometry.geom_type.isin(["Polygon", "MultiPolygon"])]
+    if len(gdf) == 0:
+        raise HTTPException(404, "A área seleccionada não contém polígonos exportáveis.")
+
+    base = f"geomoz_{layer}" + (f"_{district or province}" if (province or district) else "")
+    base = "".join(c if c.isalnum() or c in "_-" else "_" for c in base)[:60]
+
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            shp_path = os.path.join(td, f"{base}.shp")
+            gdf.to_file(shp_path, driver="ESRI Shapefile", encoding="utf-8")
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for fname in sorted(os.listdir(td)):
+                    zf.write(os.path.join(td, fname), arcname=fname)
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{base}.zip"'},
+        )
+    except Exception as exc:
+        logger.error("SHP export failed: %s", exc)
+        raise HTTPException(500, f"Exportação Shapefile falhou: {exc}")

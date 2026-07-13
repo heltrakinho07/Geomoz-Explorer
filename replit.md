@@ -128,11 +128,47 @@ _Populate as you build._
 - **Nota**: HydroBASINS `WWF/HydroSHEDS/v1/Basins/hybas_af_lev0X_v1c` pode não estar disponível neste service account — usa-se D8/DEM como alternativa principal.
 - Índices de risco: erosão (slope 50% + NDVI inv 30% + precip 20%), cheia (flatness 40% + precip 40% + NDWI 20%), hidrogeológico (slope Gaussian pico 10° + precip + NDVI).
 
+## SPI × NDVI — Seca Meteorológica (completo, 2026-07)
+
+- **Nova análise "SPI × NDVI"** no grupo "Seca & Stress Hídrico" do GeoAnálises.
+- **Backend** (`compute_spi_ndvi` em gee_module.py + `POST /gee/spi-ndvi`): SPI = z-score
+  por pixel do total anual CHIRPS face à climatologia 2001→ano−1 (aprox. SPI-12);
+  NDVI = média anual MODIS MOD13A2 ×0.0001. Devolve 2 tile URLs, pares amostrados
+  (50–2000, default 400), Pearson r + p-value (server-side, `ee.Reducer.pearsonsCorrelation`),
+  % área em seca (SPI < −1), trendline OLS (numpy polyfit).
+- **Frontend**: painel com ano/amostras, toggle camada SPI/NDVI, scatter Recharts
+  (ComposedChart + Scatter + trendline + ReferenceLine em SPI=−1) em overlay 380×230.
+
+## Cruzamento Espacial — Targeting × Admin (completo, 2026-07)
+
+- **Botão "Cruzamento Espacial (relatório)"** no painel Targeting após um run.
+- **Backend**: `compute_targeting_zones` (gee_module) vetoriza score ≥ limiar via
+  `reduceToVectors` a 300 m (máx 300 zonas); `_build_targeting_score` extraído de
+  `compute_targeting_tile` (partilhado). `POST /gee/targeting-overlap` (api.py) cruza
+  as zonas com geopandas: overlay com distritos (área km² por distrito), sjoin com
+  aldeias (`geomoz.read_village`) e postos admin (`geomoz.read_admin_post`).
+  Cada secção degrada graciosamente com nota em `report.notes`.
+- **Frontend**: zonas desenhadas no mapa (GeoJSON indigo tracejado), tabela por
+  distrito com barras + export CSV, chips de aldeias.
+
+## Exportador (completo, 2026-07)
+
+- Tab "Exportar": PDF (jsPDF), HTML interactivo, CSV, GeoJSON, **PNG** e **Shapefile**.
+- **PNG**: renderização em canvas offscreen 1600×1100 sem dependências novas — tiles
+  CARTO (crossOrigin anonymous), polígonos de geologia com `_color`, fronteiras,
+  legenda top-8 litologias, barra de escala, seta de norte, header/footer.
+- **Shapefile**: `GET /export/shapefile?province&district&layer=geology|provinces|districts`
+  — clip como /geology, `gdf.to_file(driver="ESRI Shapefile")` em tempdir, ZIP em memória.
+  Explode geometrias e filtra só polígonos (SHP não mistura tipos).
+
+## Search bar (melhorada, 2026-07)
+
+- Pesquisa Nominatim com **debounce 450 ms** (≥3 chars, Enter continua a forçar) e
+  **toggle MZ/🌍** (countrycodes=mz vs mundial). `skipAutoSearchRef` evita re-pesquisa
+  ao seleccionar um resultado.
+
 ## Future Evolution (Sprints 3+)
 
-1. **Cruzamento espacial automático**: targeting × admin/villages/rios para relatório de overlap.
-2. **AI interpretador**: LLM resume área seleccionada com base em geologia + targeting (aguarda manuais do user; LLM escolhido = Claude Anthropic via `.local/skills/ai-integrations-anthropic`).
-3. **Exportador PDF/PNG/Shapefile**: `leaflet-image` + jsPDF + geopandas para SHP.
-4. **Time-series NDVI 2018→2025**: comparador temporal Sentinel-2.
-5. **Search bar**: geocoding Nominatim.
-6. **Admin Posts / Villages layers**: já disponíveis em geomoz.
+1. **AI interpretador**: LLM resume área seleccionada com base em geologia + targeting (aguarda manuais do user; LLM escolhido = Claude Anthropic via `.local/skills/ai-integrations-anthropic`).
+2. **Time-series NDVI 2018→2025**: comparador temporal Sentinel-2.
+3. **Admin Posts / Villages layers no mapa**: já disponíveis em geomoz (usados no cruzamento espacial).

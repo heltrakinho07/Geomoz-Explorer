@@ -807,21 +807,22 @@ _TARGETING_PALETTE = [
 ]
 
 
-def compute_targeting_tile(
+def _build_targeting_score(
     mineral: str,
-    region_geojson: Optional[dict],
-    start_date: str = "2023-01-01",
-    end_date: str = "2023-12-31",
-    cloud_pct: int = 30,
+    region,
+    start_date: str,
+    end_date: str,
+    cloud_pct: int,
     weights_override: Optional[dict] = None,
     invert_override: Optional[list] = None,
-    score_threshold: float = 0.7,
-) -> dict:
-    """Build a mineral favorability score (0–100) by combining normalized indices
-    according to a per-mineral preset. Returns tile URL + favorability stats.
+):
+    """Build the normalized [0,1] mineral favorability score image for a preset.
+
+    Shared by compute_targeting_tile (tile + stats) and
+    compute_targeting_zones (spatial overlap report).
+    Returns (score, scene_count, preset, pos_weights, invert_set).
     """
     import ee
-    _init_gee()
 
     if mineral not in MINERAL_PRESETS:
         raise ValueError(
@@ -848,8 +849,6 @@ def compute_targeting_tile(
         raise ValueError("Preset sem pesos positivos válidos.")
     total = sum(pos.values())
     pos = {k: v / total for k, v in pos.items()}
-
-    region = _to_ee_region(region_geojson)
 
     needs_set = set()
     for k in pos:
@@ -890,6 +889,30 @@ def compute_targeting_tile(
         composite = weighted if composite is None else composite.add(weighted)
 
     score = composite.clamp(0, 1).clip(region).rename("score")
+    return score, scene_count, preset, pos, invert_set
+
+
+def compute_targeting_tile(
+    mineral: str,
+    region_geojson: Optional[dict],
+    start_date: str = "2023-01-01",
+    end_date: str = "2023-12-31",
+    cloud_pct: int = 30,
+    weights_override: Optional[dict] = None,
+    invert_override: Optional[list] = None,
+    score_threshold: float = 0.7,
+) -> dict:
+    """Build a mineral favorability score (0–100) by combining normalized indices
+    according to a per-mineral preset. Returns tile URL + favorability stats.
+    """
+    import ee
+    _init_gee()
+
+    region = _to_ee_region(region_geojson)
+    score, scene_count, preset, pos, invert_set = _build_targeting_score(
+        mineral, region, start_date, end_date, cloud_pct,
+        weights_override, invert_override,
+    )
     score_pct = score.multiply(100).rename("score")
 
     vis_img = score_pct.visualize(min=0, max=100, palette=_TARGETING_PALETTE)
@@ -1964,4 +1987,208 @@ def compute_groundwater_ahp(region_geojson: Optional[dict], year: int = 2023) ->
         "year":     year,
         "palette":  palette,
         "source":   "AHP · lineamentos+chuva+declive+drenagem+TWI+cobertura",
+    }
+
+
+# ── SPI × NDVI drought correlation ─────────────────────────────────────────────
+
+_SPI_PALETTE  = ["7f0000", "d73027", "fdae61", "fee08b", "d9ef8b", "66bd63", "1a9850", "2166ac"]
+_NDVI_PALETTE = ["8c510a", "d8b365", "f6e8c3", "c7e9c0", "74c476", "238b45", "00441b"]
+
+
+def compute_spi_ndvi(
+    region_geojson: Optional[dict],
+    year: int = 2024,
+    clim_start: int = 2001,
+    samples: int = 400,
+) -> dict:
+    """SPI (anomalia temporal de precipitação CHIRPS) × NDVI MODIS + correlação.
+
+    SPI  : z-score por pixel do total anual de precipitação do ano de análise
+           face à climatologia clim_start..(year−1) — aproximação do SPI-12.
+    NDVI : média anual MODIS MOD13A2 (×0.0001).
+    Amostra N pontos de ambas as bandas para scatter + Pearson r (server-side).
+    """
+    import ee
+    _init_gee()
+
+    if not (1990 <= clim_start <= year - 5):
+        raise ValueError("clim_start deve estar entre 1990 e (ano − 5) para uma climatologia mínima.")
+
+    region = _to_ee_region(region_geojson)
+
+    chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").select("precipitation")
+
+    def _annual_total(y):
+        start = ee.Date.fromYMD(y, 1, 1)
+        return chirps.filterDate(start, start.advance(1, "year")).sum()
+
+    clim_years = ee.List.sequence(clim_start, year - 1)
+    clim = ee.ImageCollection(clim_years.map(lambda y: _annual_total(ee.Number(y))))
+    clim_mean = clim.mean()
+    clim_std  = clim.reduce(ee.Reducer.stdDev()).max(1e-3)
+
+    year_total = _annual_total(ee.Number(year))
+    spi = (year_total.subtract(clim_mean).divide(clim_std)
+           .clamp(-3, 3).rename("SPI"))
+
+    ndvi = (ee.ImageCollection("MODIS/061/MOD13A2")
+            .filterDate(f"{year}-01-01", f"{year + 1}-01-01")
+            .select("NDVI").mean().multiply(0.0001).rename("NDVI"))
+
+    spi_clip, ndvi_clip = spi.clip(region), ndvi.clip(region)
+    spi_tile = spi_clip.visualize(min=-2, max=2, palette=_SPI_PALETTE) \
+                       .getMapId()["tile_fetcher"].url_format
+    ndvi_tile = ndvi_clip.visualize(min=0, max=0.9, palette=_NDVI_PALETTE) \
+                         .getMapId()["tile_fetcher"].url_format
+
+    both = ndvi.addBands(spi)
+    max_px = int(1e9)
+
+    # Pearson r (server-side, all pixels at 5 km)
+    pearson_r = p_value = None
+    try:
+        corr = both.select(["SPI", "NDVI"]).reduceRegion(
+            reducer=ee.Reducer.pearsonsCorrelation(),
+            geometry=region, scale=5000, bestEffort=True, maxPixels=max_px,
+        ).getInfo() or {}
+        pearson_r = corr.get("correlation")
+        p_value   = corr.get("p-value")
+    except Exception as exc:
+        logger.warning("SPI×NDVI: Pearson correlation failed: %s", exc)
+
+    # Region means
+    mean_spi = mean_ndvi = None
+    try:
+        means = both.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region, scale=5000, bestEffort=True, maxPixels=max_px,
+        ).getInfo() or {}
+        mean_spi, mean_ndvi = means.get("SPI"), means.get("NDVI")
+    except Exception as exc:
+        logger.warning("SPI×NDVI: region means failed: %s", exc)
+
+    # Drought area (SPI < −1) as share of analysed area
+    drought_km2 = total_km2 = None
+    try:
+        px = ee.Image.pixelArea()
+        area_img = (px.updateMask(spi.lt(-1)).rename("droughtArea")
+                    .addBands(px.updateMask(spi.mask()).rename("totalArea")))
+        areas = area_img.reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=region, scale=5000, bestEffort=True, maxPixels=max_px,
+        ).getInfo() or {}
+        drought_km2 = (areas.get("droughtArea") or 0) / 1e6
+        total_km2   = (areas.get("totalArea") or 0) / 1e6
+    except Exception as exc:
+        logger.warning("SPI×NDVI: drought area failed: %s", exc)
+
+    # Scatter samples (client-side pairs for the chart)
+    pairs = []
+    try:
+        fc = both.sample(
+            region=region, scale=5000,
+            numPixels=max(50, min(samples, 2000)),
+            seed=42, geometries=False,
+        ).getInfo() or {}
+        for f in fc.get("features", []):
+            p = f.get("properties", {})
+            s, n = p.get("SPI"), p.get("NDVI")
+            if s is not None and n is not None:
+                pairs.append({"spi": round(float(s), 3), "ndvi": round(float(n), 3)})
+    except Exception as exc:
+        logger.warning("SPI×NDVI: sampling failed: %s", exc)
+
+    # OLS trendline over the sampled pairs (NDVI = a·SPI + b)
+    slope = intercept = None
+    if len(pairs) >= 10:
+        try:
+            import numpy as np
+            xs = np.array([p["spi"] for p in pairs])
+            ys = np.array([p["ndvi"] for p in pairs])
+            slope_f, intercept_f = np.polyfit(xs, ys, 1)
+            slope, intercept = round(float(slope_f), 4), round(float(intercept_f), 4)
+        except Exception as exc:
+            logger.warning("SPI×NDVI: trendline fit failed: %s", exc)
+
+    drought_pct = (round(drought_km2 / total_km2 * 100, 1)
+                   if drought_km2 is not None and total_km2 else None)
+
+    return {
+        "spiTileUrl":   spi_tile,
+        "ndviTileUrl":  ndvi_tile,
+        "name":         f"SPI × NDVI — {year}",
+        "formula":      f"SPI = (P{year} − μ{clim_start}–{year - 1}) / σ · NDVI = MOD13A2 média anual",
+        "bands":        "UCSB-CHG/CHIRPS/DAILY · MODIS/061/MOD13A2",
+        "year":         year,
+        "climStart":    clim_start,
+        "pairs":        pairs,
+        "stats": {
+            "pearsonR":   pearson_r,
+            "pValue":     p_value,
+            "meanSpi":    mean_spi,
+            "meanNdvi":   mean_ndvi,
+            "droughtKm2": round(drought_km2, 1) if drought_km2 is not None else None,
+            "droughtPct": drought_pct,
+            "slope":      slope,
+            "intercept":  intercept,
+            "sampleCount": len(pairs),
+        },
+        "spiPalette":   [f"#{c}" for c in _SPI_PALETTE],
+        "ndviPalette":  [f"#{c}" for c in _NDVI_PALETTE],
+    }
+
+
+# ── Targeting overlap — favorable zones as vectors ─────────────────────────────
+
+def compute_targeting_zones(
+    mineral: str,
+    region_geojson: Optional[dict],
+    start_date: str = "2023-01-01",
+    end_date: str = "2023-12-31",
+    cloud_pct: int = 30,
+    weights_override: Optional[dict] = None,
+    invert_override: Optional[list] = None,
+    score_threshold: float = 0.7,
+    max_zones: int = 300,
+) -> dict:
+    """Vectorize favorable targeting zones (score ≥ threshold) as GeoJSON.
+
+    The polygons are extracted at 300 m so the spatial-overlap report
+    (districts / villages / admin posts) stays light. The caller (API layer)
+    crosses them with the geomoz admin layers.
+    """
+    import ee
+    _init_gee()
+
+    region = _to_ee_region(region_geojson)
+    score, scene_count, preset, pos, invert_set = _build_targeting_score(
+        mineral, region, start_date, end_date, cloud_pct,
+        weights_override, invert_override,
+    )
+
+    mask = score.gte(score_threshold).selfMask()
+    vectors = mask.reduceToVectors(
+        geometry=region,
+        scale=300,
+        geometryType="polygon",
+        eightConnected=True,
+        labelProperty="zone",
+        bestEffort=True,
+        maxPixels=int(1e9),
+    ).limit(max_zones)
+
+    zones_geojson = vectors.getInfo()
+
+    return {
+        "zones":          zones_geojson,
+        "mineral":        mineral,
+        "mineralName":    preset["name"],
+        "scoreThreshold": score_threshold,
+        "sceneCount":     scene_count,
+        "formula":        " + ".join(
+                              f"{w:.2f}×{'¬' if k in invert_set else ''}{k}"
+                              for k, w in pos.items()
+                          ),
+        "dateRange":      f"{start_date} → {end_date}",
     }

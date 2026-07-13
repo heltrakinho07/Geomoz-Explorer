@@ -57,6 +57,8 @@ export default function Explorer() {
   const [searchResults, setSearchResults] = useState<NominatimResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [searchWorldwide, setSearchWorldwide] = useState(false);
+  const skipAutoSearchRef = useRef(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
 
@@ -82,11 +84,12 @@ export default function Explorer() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  async function runSearch(q: string) {
+  async function runSearch(q: string, worldwide = searchWorldwide) {
     if (!q.trim()) { setSearchResults([]); setShowResults(false); return; }
     setSearchLoading(true);
     try {
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&countrycodes=mz&limit=6`;
+      const cc = worldwide ? "" : "&countrycodes=mz";
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json${cc}&limit=6`;
       const res = await fetch(url, { headers: { "Accept-Language": "pt" } });
       const data: NominatimResult[] = await res.json();
       setSearchResults(data);
@@ -103,6 +106,15 @@ export default function Explorer() {
       setSearchLoading(false);
     }
   }
+
+  // Auto-search while typing (debounced, ≥3 chars) — Enter still forces a search
+  useEffect(() => {
+    if (skipAutoSearchRef.current) { skipAutoSearchRef.current = false; return; }
+    if (searchQuery.trim().length < 3) return;
+    const t = setTimeout(() => runSearch(searchQuery), 450);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, searchWorldwide]);
 
   function handleSearchKey(e: React.KeyboardEvent) {
     if (e.key === "Enter") runSearch(searchQuery);
@@ -132,6 +144,7 @@ function flyToResult(result: NominatimResult) {
     const [latMin, latMax, lonMin, lonMax] = result.boundingbox.map(Number);
     mapRef.current?.flyToBounds([[latMin, lonMin], [latMax, lonMax]], { padding: [30, 30], duration: 1.2 });
     setShowResults(false);
+    skipAutoSearchRef.current = true;
     setSearchQuery(result.display_name.split(",")[0]);
     setActiveTab("Mapa");
   }
@@ -211,9 +224,18 @@ function flyToResult(result: NominatimResult) {
                   onChange={e => setSearchQuery(e.target.value)}
                   onKeyDown={handleSearchKey}
                   onFocus={() => { if (searchResults.length) setShowResults(true); }}
-                  placeholder="Pesquisar localização em MZ…"
-                  className="pl-8 pr-8 py-1.5 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white focus:border-sky-300 w-60 transition-all"
+                  placeholder={searchWorldwide ? "Pesquisar localização (mundo)…" : "Pesquisar localização em MZ…"}
+                  className="pl-8 pr-20 py-1.5 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white focus:border-sky-300 w-64 transition-all"
                 />
+                <button
+                  onClick={() => setSearchWorldwide(w => !w)}
+                  title={searchWorldwide ? "A pesquisar no mundo inteiro — clique para limitar a Moçambique" : "A pesquisar só em Moçambique — clique para pesquisar no mundo"}
+                  className={`absolute right-8 top-1/2 -translate-y-1/2 text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors ${
+                    searchWorldwide ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  }`}
+                >
+                  {searchWorldwide ? "🌍" : "MZ"}
+                </button>
                 {searchLoading ? (
                   <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 animate-spin" />
                 ) : searchQuery ? (
@@ -247,7 +269,7 @@ function flyToResult(result: NominatimResult) {
 
               {showResults && !searchLoading && searchResults.length === 0 && searchQuery && (
                 <div className="absolute top-full mt-1.5 left-0 right-0 z-[1000] bg-white border border-slate-200 rounded-xl shadow-lg p-3 text-sm text-slate-400 text-center">
-                  Nenhum resultado encontrado em Moçambique
+                  Nenhum resultado encontrado{searchWorldwide ? "" : " em Moçambique"}
                 </div>
               )}
             </div>

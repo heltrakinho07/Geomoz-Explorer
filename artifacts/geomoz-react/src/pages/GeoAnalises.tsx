@@ -28,6 +28,7 @@ import {
 
 import {
   LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine, Area, ComposedChart,
+  Scatter, CartesianGrid,
 } from "recharts";
 
 import { useGeologyGeoJSON } from "@/hooks/useGeoMoz";
@@ -43,7 +44,8 @@ import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type SpectralTab = "s2" | "lineaments" | "targeting"
-                  | "profile" | "contours" | "topo_custom" | "landcover" | SpectralIndex;
+                  | "profile" | "contours" | "topo_custom" | "landcover"
+                  | "spi_ndvi" | SpectralIndex;
 
 type IndexGroup = "spectral" | "landsat" | "terrain" | "agriculture" | "drought" | "fire" | "coastal" | "climate";
 
@@ -159,6 +161,50 @@ interface TargetingResult {
   };
   province?: string | null;
   district?: string | null;
+}
+
+interface SpiNdviResult {
+  spiTileUrl:  string;
+  ndviTileUrl: string;
+  name:        string;
+  formula:     string;
+  bands:       string;
+  year:        number;
+  climStart:   number;
+  pairs:       { spi: number; ndvi: number }[];
+  stats: {
+    pearsonR?:    number | null;
+    pValue?:      number | null;
+    meanSpi?:     number | null;
+    meanNdvi?:    number | null;
+    droughtKm2?:  number | null;
+    droughtPct?:  number | null;
+    slope?:       number | null;
+    intercept?:   number | null;
+    sampleCount:  number;
+  };
+  spiPalette:  string[];
+  ndviPalette: string[];
+}
+
+interface OverlapDistrict { province: string | null; district: string; areaKm2: number; pct: number; }
+interface OverlapVillage  { name: string; lon: number; lat: number; }
+
+interface OverlapResult {
+  mineralName:    string;
+  scoreThreshold: number;
+  formula:        string;
+  dateRange:      string;
+  zones:          GeoJSON.FeatureCollection;
+  report: {
+    totalFavorableKm2: number;
+    zoneCount:         number;
+    districts:         OverlapDistrict[];
+    villages:          OverlapVillage[];
+    villageCount:      number;
+    adminPostCount:    number;
+    notes:             string[];
+  };
 }
 
 interface GeeStatus {
@@ -882,12 +928,13 @@ function FavorabilityGauge({ score }: { score: number }) {
 }
 
 function TargetingPanel({
-  province, district, geometry, onResult,
+  province, district, geometry, onResult, onOverlap,
 }: {
   province: string | null;
   district: string | null;
   geometry?: Record<string, unknown> | null;
   onResult: (r: TargetingResult | null) => void;
+  onOverlap: (r: OverlapResult | null) => void;
 }) {
   const [presets, setPresets]   = useState<MineralPreset[]>([]);
   const [mineral, setMineral]   = useState("gold");
@@ -898,6 +945,9 @@ function TargetingPanel({
   const [running, setRunning]   = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [result, setResult]     = useState<TargetingResult | null>(null);
+  const [overlapRes, setOverlapRes]         = useState<OverlapResult | null>(null);
+  const [overlapRunning, setOverlapRunning] = useState(false);
+  const [overlapError, setOverlapError]     = useState<string | null>(null);
 
   useEffect(() => {
     fetch(apiUrl("/geomoz-api/gee/minerals")).then(r => r.json())
@@ -908,6 +958,7 @@ function TargetingPanel({
 
   async function run() {
     setRunning(true); setError(null); onResult(null);
+    setOverlapRes(null); setOverlapError(null); onOverlap(null);
     try {
       const res = await fetch(apiUrl("/geomoz-api/gee/targeting"), {
         method: "POST",
@@ -927,6 +978,45 @@ function TargetingPanel({
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
     } finally { setRunning(false); }
+  }
+
+  async function runOverlap() {
+    setOverlapRunning(true); setOverlapError(null); setOverlapRes(null); onOverlap(null);
+    try {
+      const res = await fetch(apiUrl("/geomoz-api/gee/targeting-overlap"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mineral, province: province || null, district: district || null, geometry: geometry ?? null,
+          start_date: startDate, end_date: endDate, cloud_pct: cloudPct,
+          score_threshold: threshold,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail ?? "Erro GEE");
+      }
+      const data: OverlapResult = await res.json();
+      setOverlapRes(data); onOverlap(data);
+    } catch (e) {
+      setOverlapError(String(e instanceof Error ? e.message : e));
+    } finally { setOverlapRunning(false); }
+  }
+
+  function downloadOverlapCsv() {
+    if (!overlapRes) return;
+    const rows = [
+      ["Provincia", "Distrito", "Area_km2", "Percentagem"],
+      ...overlapRes.report.districts.map(d => [`"${d.province ?? ""}"`, `"${d.district}"`, d.areaKm2, d.pct]),
+    ];
+    const csv = rows.map(r => r.join(",")).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `GeoMoz_Cruzamento_${overlapRes.mineralName}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -1091,9 +1181,311 @@ function TargetingPanel({
             sensoriamento remoto + DEM. Resultado é indicativo e não substitui
             campanhas geofísicas / amostragem geoquímica.
           </div>
+
+          {/* Spatial overlap report */}
+          <div className="border-t border-slate-100 pt-3">
+            <button onClick={runOverlap} disabled={overlapRunning}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-indigo-200">
+              {overlapRunning
+                ? <><Loader2 size={14} className="animate-spin" /> A cruzar com camadas admin…</>
+                : <><Layers size={14} /> Cruzamento Espacial (relatório)</>}
+            </button>
+            <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+              Vetoriza as zonas com score ≥ {Math.round(threshold * 100)} e cruza com
+              distritos, aldeias e postos administrativos.
+            </p>
+          </div>
+
+          {overlapRunning && (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-xs text-indigo-700 leading-relaxed">
+              <Loader2 size={12} className="inline animate-spin mr-1.5" />
+              A vetorizar zonas favoráveis (300 m) e a intersectar com as camadas administrativas. 30–90 s.
+            </div>
+          )}
+
+          {overlapError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+              <strong>Erro:</strong> {overlapError}
+            </div>
+          )}
+
+          {overlapRes && !overlapRunning && (
+            <div className="space-y-2.5">
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="bg-indigo-50 rounded-lg p-2 text-center">
+                  <div className="text-[10px] text-indigo-500 uppercase">Zonas</div>
+                  <div className="text-sm font-bold text-indigo-800">{overlapRes.report.zoneCount}</div>
+                </div>
+                <div className="bg-indigo-50 rounded-lg p-2 text-center">
+                  <div className="text-[10px] text-indigo-500 uppercase">Área favorável</div>
+                  <div className="text-sm font-bold text-indigo-800">
+                    {overlapRes.report.totalFavorableKm2.toLocaleString("pt-PT", { maximumFractionDigits: 1 })} km²
+                  </div>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-2 text-center">
+                  <div className="text-[10px] text-slate-400 uppercase">Aldeias dentro</div>
+                  <div className="text-sm font-bold text-slate-800">{overlapRes.report.villageCount}</div>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-2 text-center">
+                  <div className="text-[10px] text-slate-400 uppercase">Postos admin</div>
+                  <div className="text-sm font-bold text-slate-800">{overlapRes.report.adminPostCount}</div>
+                </div>
+              </div>
+
+              {overlapRes.report.districts.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <h5 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                      Área favorável por distrito
+                    </h5>
+                    <button onClick={downloadOverlapCsv}
+                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium">
+                      ⇩ CSV
+                    </button>
+                  </div>
+                  <div className="max-h-44 overflow-y-auto space-y-1 pr-0.5">
+                    {overlapRes.report.districts.map((d, i) => (
+                      <div key={i} className="flex items-center gap-2 text-[11px]">
+                        <span className="flex-1 text-slate-700 truncate" title={`${d.district} · ${d.province ?? ""}`}>
+                          {d.district}
+                          {d.province && <span className="text-slate-400"> · {d.province}</span>}
+                        </span>
+                        <div className="w-14 bg-slate-100 h-1.5 rounded-full overflow-hidden shrink-0">
+                          <div className="h-full bg-indigo-500" style={{ width: `${Math.min(100, d.pct)}%` }} />
+                        </div>
+                        <span className="font-mono text-slate-500 w-16 text-right shrink-0">
+                          {d.areaKm2.toLocaleString("pt-PT", { maximumFractionDigits: 1 })} km²
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {overlapRes.report.villages.length > 0 && (
+                <div>
+                  <h5 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                    Aldeias nas zonas favoráveis {overlapRes.report.villageCount > overlapRes.report.villages.length
+                      ? `(primeiras ${overlapRes.report.villages.length} de ${overlapRes.report.villageCount})` : ""}
+                  </h5>
+                  <div className="max-h-28 overflow-y-auto flex flex-wrap gap-1">
+                    {overlapRes.report.villages.map((v, i) => (
+                      <span key={i} className="text-[10px] bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">
+                        {v.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {overlapRes.report.notes.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-[10px] text-amber-700 space-y-0.5">
+                  {overlapRes.report.notes.map((n, i) => <div key={i}>{n}</div>)}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+// ── SPI × NDVI (drought correlation) ───────────────────────────────────────────
+
+function SpiNdviPanel({
+  province, district, geometry, onResult,
+}: {
+  province: string | null;
+  district: string | null;
+  geometry?: Record<string, unknown> | null;
+  onResult: (r: SpiNdviResult | null) => void;
+}) {
+  const [year, setYear]       = useState(2025);
+  const [samples, setSamples] = useState(400);
+  const [running, setRunning] = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+  const [result, setResult]   = useState<SpiNdviResult | null>(null);
+
+  const years = Array.from({ length: 2026 - 2006 + 1 }, (_, i) => 2026 - i);
+
+  async function run() {
+    setRunning(true); setError(null); onResult(null);
+    try {
+      const res = await fetch(apiUrl("/geomoz-api/gee/spi-ndvi"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          province: province || null, district: district || null, geometry: geometry ?? null,
+          year, samples,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail ?? "Erro GEE");
+      }
+      const data: SpiNdviResult = await res.json();
+      setResult(data); onResult(data);
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally { setRunning(false); }
+  }
+
+  const r = result?.stats.pearsonR;
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
+          SPI × NDVI — Seca
+        </h4>
+        <div className="space-y-2.5">
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Ano de análise</label>
+            <div className="relative">
+              <select value={year} onChange={e => setYear(Number(e.target.value))}
+                className="w-full appearance-none text-sm bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                {years.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
+            </div>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              Climatologia de referência: 2001 → {year - 1} (CHIRPS)
+            </p>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">
+              Amostras para o scatter — <strong className="text-slate-700">{samples}</strong>
+            </label>
+            <input type="range" min={100} max={1000} step={50} value={samples}
+              onChange={e => setSamples(Number(e.target.value))}
+              className="w-full accent-orange-500" />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Área (clipping)</label>
+            <div className="text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 flex items-center gap-1.5">
+              <MapPin size={12} className="text-orange-500" />
+              {district
+                ? <span>{district} <span className="text-slate-400">·</span> {province}</span>
+                : province
+                  ? <span>{province} <span className="text-slate-400">(toda a província)</span></span>
+                  : <span className="text-slate-500">Moçambique (toda)</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button onClick={run} disabled={running}
+        className="w-full flex items-center justify-center gap-2 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-orange-200">
+        {running
+          ? <><Loader2 size={14} className="animate-spin" /> A calcular SPI × NDVI…</>
+          : <><Droplets size={14} /> Calcular SPI × NDVI</>}
+      </button>
+
+      {running && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-xs text-orange-700 leading-relaxed">
+          <Loader2 size={12} className="inline animate-spin mr-1.5" />
+          A somar precipitação CHIRPS de {year - 2001 + 1} anos, calcular anomalia e amostrar NDVI MODIS. Tipicamente 15–40 s.
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+          <strong>Erro:</strong> {error}
+        </div>
+      )}
+
+      {result && !running && (
+        <div className="space-y-3">
+          <div className="bg-white border border-orange-200 rounded-xl p-3">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Droplets size={13} className="text-orange-600" />
+              <span className="text-xs font-semibold text-orange-700">{result.name}</span>
+            </div>
+            <div className="text-center py-1">
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider">Correlação Pearson (SPI vs NDVI)</div>
+              <div className={`text-3xl font-bold ${r != null && Math.abs(r) >= 0.5 ? "text-orange-700" : "text-slate-700"}`}>
+                {r != null ? r.toFixed(2) : "—"}
+              </div>
+              <div className="text-[10px] text-slate-400">
+                {r == null ? "" :
+                  Math.abs(r) >= 0.7 ? "correlação forte" :
+                  Math.abs(r) >= 0.4 ? "correlação moderada" :
+                  Math.abs(r) >= 0.2 ? "correlação fraca" : "sem correlação relevante"}
+                {result.stats.pValue != null ? ` · p ${result.stats.pValue < 0.001 ? "< 0.001" : `= ${result.stats.pValue.toFixed(3)}`}` : ""}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-1.5">
+            <div className="bg-slate-50 rounded-lg p-2 text-center">
+              <div className="text-[10px] text-slate-400 uppercase">SPI médio</div>
+              <div className="text-sm font-bold text-slate-800">
+                {result.stats.meanSpi != null ? result.stats.meanSpi.toFixed(2) : "—"}
+              </div>
+            </div>
+            <div className="bg-slate-50 rounded-lg p-2 text-center">
+              <div className="text-[10px] text-slate-400 uppercase">NDVI médio</div>
+              <div className="text-sm font-bold text-slate-800">
+                {result.stats.meanNdvi != null ? result.stats.meanNdvi.toFixed(2) : "—"}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
+            <div className="text-[10px] text-orange-700 uppercase tracking-wider">
+              Área em seca (SPI &lt; −1)
+            </div>
+            <div className="text-xl font-bold text-orange-800 mt-0.5">
+              {result.stats.droughtPct != null ? `${result.stats.droughtPct}%` : "—"}
+              {result.stats.droughtKm2 != null && (
+                <span className="text-xs font-normal text-orange-600 ml-1.5">
+                  ({result.stats.droughtKm2.toLocaleString("pt-PT", { maximumFractionDigits: 0 })} km²)
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-[10px] text-slate-500 leading-relaxed">
+            <strong className="text-slate-700">Interpretação:</strong> SPI &lt; −1 indica seca
+            meteorológica; correlação positiva SPI–NDVI sugere vegetação dependente da chuva
+            (stress hídrico em anos secos). Correlação nula sugere vegetação com acesso a
+            água subterrânea / irrigação.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SpiNdviChart({ result }: { result: SpiNdviResult }) {
+  const { slope, intercept } = result.stats;
+  const trend = (slope != null && intercept != null)
+    ? [-2.5, 2.5].map(x => ({ spi: x, trend: Math.max(0, Math.min(1, slope * x + intercept)) }))
+    : [];
+  const data = result.pairs.map(p => ({ ...p }));
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <ComposedChart margin={{ top: 5, right: 12, bottom: 8, left: -14 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+        <XAxis type="number" dataKey="spi" name="SPI" domain={[-3, 3]}
+          tick={{ fontSize: 10, fill: "#94a3b8" }} tickCount={7}
+          label={{ value: "SPI (anomalia de precipitação)", position: "insideBottom", offset: -4, fontSize: 10, fill: "#64748b" }} />
+        <YAxis type="number" dataKey="ndvi" name="NDVI" domain={[0, 1]}
+          tick={{ fontSize: 10, fill: "#94a3b8" }} tickCount={6} />
+        <Tooltip
+          formatter={(v: number, n: string) => [Number(v).toFixed(3), n === "ndvi" ? "NDVI" : n === "spi" ? "SPI" : n]}
+          labelFormatter={() => ""}
+          contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #e2e8f0" }} />
+        <ReferenceLine x={-1} stroke="#dc2626" strokeDasharray="4 3"
+          label={{ value: "seca", fontSize: 9, fill: "#dc2626", position: "insideTopLeft" }} />
+        <Scatter data={data} dataKey="ndvi" fill="#ea580c" fillOpacity={0.55} shape="circle" isAnimationActive={false} />
+        {trend.length > 0 && (
+          <Line data={trend} dataKey="trend" type="linear" stroke="#0f172a" strokeWidth={1.8}
+            strokeDasharray="6 3" dot={false} isAnimationActive={false} legendType="none" />
+        )}
+      </ComposedChart>
+    </ResponsiveContainer>
   );
 }
 
@@ -1796,6 +2188,10 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
   const [contoursTile, setContoursTile]     = useState<ContoursResult | null>(null);
   const [topoClassesTile, setTopoClassesTile] = useState<TopoClassesResult | null>(null);
   const [landCoverTile, setLandCoverTile]   = useState<LandCoverResult | null>(null);
+  const [spiNdviResult, setSpiNdviResult]   = useState<SpiNdviResult | null>(null);
+  const [spiLayerMode, setSpiLayerMode]     = useState<"spi" | "ndvi">("spi");
+  const [showSpiChart, setShowSpiChart]     = useState(true);
+  const [overlapResult, setOverlapResult]   = useState<OverlapResult | null>(null);
   const [sidebarOpen, setSidebarOpen]       = useState(true);
   const [openGroup, setOpenGroup]           = useState<string | null>(null);
   const [profilePoints, setProfilePoints]   = useState<LonLat[]>([]);
@@ -1848,6 +2244,8 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
     if (activeTab !== "contours") setContoursTile(null);
     if (activeTab !== "topo_custom") setTopoClassesTile(null);
     if (activeTab !== "landcover") setLandCoverTile(null);
+    if (activeTab !== "spi_ndvi") setSpiNdviResult(null);
+    if (activeTab !== "targeting") setOverlapResult(null);
     if (activeTab !== "profile") {
       setProfileError(null);
       setProfileCursorIdx(null);
@@ -1875,7 +2273,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
 
   // Synthetic spectral overlay (proxy mode) — disabled for s2/composite/terrain
   const spectralGeoJSON = useMemo(() => {
-    if (!geologyGeoJSON || activeTab === "s2" || useGEE) return null;
+    if (!geologyGeoJSON || activeTab === "s2" || activeTab === "spi_ndvi" || useGEE) return null;
     if (GEE_ONLY_INDICES.includes(activeTab as SpectralIndex)) return null;
     const index = activeTab as SpectralIndex;
     return {
@@ -1913,10 +2311,12 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
   const isContours    = activeTab === "contours";
   const isTopoCustom  = activeTab === "topo_custom";
   const isLandCover   = activeTab === "landcover";
+  const isSpiNdvi     = activeTab === "spi_ndvi";
 
   const isTerrain     = activeDef?.group === "terrain";
   const isGeeOnly     = (activeDef && GEE_ONLY_INDICES.includes(activeDef.id))
-                        || isLineaments || isTargeting || isProfile || isContours || isLandCover;
+                        || isLineaments || isTargeting || isProfile || isContours || isLandCover
+                        || isSpiNdvi;
   const isTopoClass   = activeTab === "topo_class";
   const spectralKey = `spectral-${activeTab}-${province}-${district}-${geologyGeoJSON?.features?.length ?? 0}`;
   const geeTileKey  = `gee-${activeTab}-${geeTile?.tileUrl ?? ""}`;
@@ -1947,7 +2347,10 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
         ...INDEX_DEFS.filter(d => d.group === "agriculture").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
       ]},
     { name: "Seca & Stress Hídrico",    badge: "Sentinel-2 · 10–20 m",  badgeColor: "bg-orange-100 text-orange-700",
-      tabs: INDEX_DEFS.filter(d => d.group === "drought").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
+      tabs: [
+        ...INDEX_DEFS.filter(d => d.group === "drought").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
+        { id: "spi_ndvi", label: "SPI × NDVI", icon: <Droplets size={13} /> },
+      ]},
     { name: "Incêndios & Desflorestação", badge: "Multi-sensor",          badgeColor: "bg-red-100 text-red-700",
       tabs: INDEX_DEFS.filter(d => d.group === "fire").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
     { name: "Zonas Costeiras & Marinhas",  badge: "Multi-sensor",          badgeColor: "bg-cyan-100 text-cyan-700",
@@ -1965,7 +2368,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
 
   const geeReady = geeStatus?.connected && useGEE;
   // Composite, lineaments, targeting & GEE-only indices require GEE
-  const requiresGee = isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isGeeOnly;
+  const requiresGee = isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || isGeeOnly;
   void requiresGee;
   const profileCursorLatLon = (isProfile && profileResult && profileCursorIdx != null
     && profileCursorIdx >= 0 && profileCursorIdx < profileResult.points.length)
@@ -2169,7 +2572,45 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
                   <strong>GEE necessário.</strong> Targeting requer Sentinel-2 + DEM via GEE.
                 </div>
               ) : (
-                <TargetingPanel province={province} district={district} geometry={apiParams.geometry} onResult={setTargetingTile} />
+                <TargetingPanel province={province} district={district} geometry={apiParams.geometry} onResult={setTargetingTile} onOverlap={setOverlapResult} />
+              )}
+            </div>
+          )}
+
+          {/* SPI × NDVI Panel */}
+          {!showSetup && isSpiNdvi && (
+            <div className="p-4 border-b border-slate-100">
+              {!geeStatus?.connected ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                  <strong>GEE necessário.</strong> SPI×NDVI usa CHIRPS + MODIS via Google Earth Engine.
+                </div>
+              ) : (
+                <>
+                  <SpiNdviPanel province={province} district={district} geometry={apiParams.geometry} onResult={r => { setSpiNdviResult(r); setShowSpiChart(true); }} />
+                  {spiNdviResult && (
+                    <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
+                      <h5 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Camada no mapa</h5>
+                      <div className="flex gap-1.5">
+                        {(["spi", "ndvi"] as const).map(m => (
+                          <button key={m} onClick={() => setSpiLayerMode(m)}
+                            className={`flex-1 text-xs py-1.5 rounded-lg border transition-colors ${
+                              spiLayerMode === m
+                                ? "bg-orange-50 border-orange-300 text-orange-700 font-semibold"
+                                : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
+                            }`}>
+                            {m === "spi" ? "SPI (seca)" : "NDVI (vegetação)"}
+                          </button>
+                        ))}
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-600 pt-1">
+                        <input type="checkbox" checked={showSpiChart}
+                          onChange={e => setShowSpiChart(e.target.checked)}
+                          className="accent-orange-500" />
+                        Mostrar gráfico de correlação
+                      </label>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -2360,6 +2801,42 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
             </div>
           )}
 
+          {/* SPI × NDVI info */}
+          {!showSetup && isSpiNdvi && (
+            <div className="p-4 flex-1 space-y-3">
+              <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Droplets size={12} className="text-orange-600" />
+                  <span className="text-xs font-semibold text-orange-700">Seca Meteorológica × Vegetação</span>
+                </div>
+                <p className="text-xs text-orange-700 leading-relaxed">
+                  SPI = anomalia da precipitação anual (CHIRPS) face à climatologia
+                  2001→ano−1. Cruzado com NDVI MODIS para medir a resposta da
+                  vegetação à disponibilidade de chuva.
+                </p>
+              </div>
+              <div>
+                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Escala — SPI</h4>
+                <div className="h-3 w-full rounded" style={{
+                  background: "linear-gradient(to right, #7f0000, #d73027, #fdae61, #fee08b, #d9ef8b, #66bd63, #1a9850, #2166ac)",
+                }} />
+                <div className="flex justify-between text-xs text-slate-400 mt-0.5">
+                  <span>−2 · seca extrema</span><span>+2 · muito húmido</span>
+                </div>
+              </div>
+              <div>
+                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Fórmula</h4>
+                <code className="block bg-slate-900 text-emerald-300 text-xs rounded-lg p-2.5 font-mono leading-relaxed">
+                  SPI = (P_ano − μ_clim) / σ_clim
+                </code>
+                <p className="text-xs text-slate-400 mt-1.5">
+                  <span className="font-medium text-slate-500">Bandas: </span>
+                  CHIRPS Daily ~5 km · MOD13A2 NDVI 1 km
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* S2 cloudless info */}
           {!showSetup && activeTab === "s2" && (
             <div className="p-4 flex-1 space-y-3">
@@ -2541,6 +3018,26 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
               />
             )}
 
+            {/* Targeting overlap — favorable zones vectorized */}
+            {isTargeting && overlapResult && overlapResult.zones?.features?.length > 0 && (
+              <GeoJSON
+                key={`overlap-${overlapResult.mineralName}-${overlapResult.zones.features.length}`}
+                data={overlapResult.zones}
+                style={{ color: "#4f46e5", weight: 1.5, fillColor: "#6366f1", fillOpacity: 0.12, dashArray: "4 3" }}
+              />
+            )}
+
+            {/* SPI × NDVI tiles */}
+            {isSpiNdvi && spiNdviResult && (
+              <TileLayer
+                key={`spindvi-${spiLayerMode}-${spiNdviResult.year}`}
+                url={spiLayerMode === "spi" ? spiNdviResult.spiTileUrl : spiNdviResult.ndviTileUrl}
+                attribution={`GEE · ${spiNdviResult.name}`}
+                opacity={opacity}
+                maxZoom={18}
+              />
+            )}
+
             {/* Proxy spectral overlay */}
             {!geeReady && activeTab !== "s2" && spectralGeoJSON && (
               <GeoJSON key={spectralKey} data={spectralGeoJSON as GeoJSON.FeatureCollection}
@@ -2638,6 +3135,51 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
             </div>
           )}
 
+          {/* SPI × NDVI scatter overlay */}
+          {isSpiNdvi && spiNdviResult && showSpiChart && spiNdviResult.pairs.length > 0 && (
+            <div className="absolute bottom-8 left-4 z-[500] bg-white/97 backdrop-blur rounded-xl shadow-lg border border-orange-200 px-4 pt-3 pb-1"
+                 style={{ height: 230, width: 380 }}>
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-1.5">
+                  <Droplets size={12} className="text-orange-600" />
+                  <div className="text-xs font-semibold text-orange-800">
+                    SPI × NDVI {spiNdviResult.year} — r = {spiNdviResult.stats.pearsonR != null ? spiNdviResult.stats.pearsonR.toFixed(2) : "—"}
+                    {" · "}{spiNdviResult.stats.sampleCount} amostras
+                  </div>
+                </div>
+                <button onClick={() => setShowSpiChart(false)}
+                  className="text-xs text-slate-400 hover:text-rose-600 flex items-center gap-1">
+                  <X size={11} /> fechar
+                </button>
+              </div>
+              <div style={{ height: 190 }}>
+                <SpiNdviChart result={spiNdviResult} />
+              </div>
+            </div>
+          )}
+
+          {/* SPI × NDVI legend badge (when chart hidden) */}
+          {isSpiNdvi && spiNdviResult && !showSpiChart && (
+            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-orange-200 p-3 w-60">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Droplets size={12} className="text-orange-600" />
+                <div className="text-xs font-semibold text-orange-700">
+                  {spiLayerMode === "spi" ? `SPI ${spiNdviResult.year}` : `NDVI ${spiNdviResult.year}`}
+                </div>
+              </div>
+              <div className="h-2.5 rounded" style={{
+                background: `linear-gradient(to right, ${(spiLayerMode === "spi" ? spiNdviResult.spiPalette : spiNdviResult.ndviPalette).join(", ")})`,
+              }} />
+              <div className="flex justify-between text-[9px] text-slate-400 mt-0.5">
+                {spiLayerMode === "spi" ? <><span>−2 seca</span><span>+2 húmido</span></> : <><span>0</span><span>0.9</span></>}
+              </div>
+              <button onClick={() => setShowSpiChart(true)}
+                className="mt-1.5 text-[10px] text-orange-600 hover:text-orange-800 font-medium">
+                ↺ reabrir gráfico
+              </button>
+            </div>
+          )}
+
           {/* Custom Topo Classes legend */}
           {isTopoCustom && topoClassesTile && (
             <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-emerald-200 p-3 w-64 pointer-events-none">
@@ -2720,9 +3262,13 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
                 : "Lineamentos · pronto para executar"
               : isTargeting
                 ? targetingTile
-                  ? `Targeting · ${targetingTile.formula}`
+                  ? `Targeting · ${targetingTile.formula}${overlapResult ? ` · ${overlapResult.report.zoneCount} zonas cruzadas` : ""}`
                   : "Targeting · escolha um mineral e execute"
-                : geeReady && geeTile
+                : isSpiNdvi
+                  ? spiNdviResult
+                    ? `SPI×NDVI · ${spiNdviResult.formula}`
+                    : "SPI × NDVI · escolha o ano e execute"
+                  : geeReady && geeTile
                     ? `GEE Real · ${geeTile.formula}${geeTile.sceneCount ? ` · ${geeTile.sceneCount} cenas` : ""}`
                     : `${isGeeOnly ? "GEE necessário" : "Proxy"} · ${activeDef?.formula ?? ""}`}
         </span>

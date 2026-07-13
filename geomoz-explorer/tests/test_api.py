@@ -697,3 +697,134 @@ class TestGEEStatus:
             assert resp.status_code == 200
             data = resp.json()
             assert "connected" in data
+
+
+# ── SPI × NDVI request model ──────────────────────────────────────────────────
+
+
+class TestGEESpiNdviRequest:
+    """Tests for the GEESpiNdviRequest model validation."""
+
+    def test_valid_request(self) -> None:
+        """Should accept a valid year and default parameters."""
+        from api import GEESpiNdviRequest
+        req = GEESpiNdviRequest(year=2024)
+        assert req.year == 2024
+        assert req.clim_start == 2001
+        assert req.samples == 400
+
+    def test_year_too_early_raises(self) -> None:
+        """Should reject years before the MODIS era (2001)."""
+        from pydantic import ValidationError
+        from api import GEESpiNdviRequest
+        with pytest.raises(ValidationError):
+            GEESpiNdviRequest(year=1998)
+
+    def test_samples_out_of_range_raises(self) -> None:
+        """Should reject sample counts outside [50, 2000]."""
+        from pydantic import ValidationError
+        from api import GEESpiNdviRequest
+        with pytest.raises(ValidationError):
+            GEESpiNdviRequest(year=2024, samples=10)
+        with pytest.raises(ValidationError):
+            GEESpiNdviRequest(year=2024, samples=5000)
+
+
+# ── Targeting overlap request model ───────────────────────────────────────────
+
+
+class TestGEETargetingOverlapRequest:
+    """Tests for the GEETargetingOverlapRequest model validation."""
+
+    def test_inherits_targeting_fields(self) -> None:
+        """Should accept the same fields as GEETargetingRequest plus max_zones."""
+        from api import GEETargetingOverlapRequest
+        req = GEETargetingOverlapRequest(mineral="gold", score_threshold=0.8)
+        assert req.mineral == "gold"
+        assert req.max_zones == 300
+
+    def test_max_zones_out_of_range_raises(self) -> None:
+        """Should reject max_zones outside [10, 1000]."""
+        from pydantic import ValidationError
+        from api import GEETargetingOverlapRequest
+        with pytest.raises(ValidationError):
+            GEETargetingOverlapRequest(mineral="gold", max_zones=5)
+
+
+# ── Overlap report (no GEE — pure geopandas crossing) ─────────────────────────
+
+
+class TestOverlapReport:
+    """Tests for the _overlap_report helper (admin crossing of favorable zones)."""
+
+    def _zones_fc(self) -> dict:
+        """A single favorable zone overlapping the mock admin square (33.5, -16)."""
+        return {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "properties": {"zone": 1},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [33.3, -16.2], [33.7, -16.2], [33.7, -15.8],
+                        [33.3, -15.8], [33.3, -16.2],
+                    ]],
+                },
+            }],
+        }
+
+    def test_empty_zones_returns_empty_report(self) -> None:
+        """No favorable zones should produce a zeroed report with a note."""
+        from api import _overlap_report
+        report = _overlap_report({"type": "FeatureCollection", "features": []})
+        assert report["zoneCount"] == 0
+        assert report["totalFavorableKm2"] == 0.0
+        assert report["districts"] == []
+        assert report["notes"]
+
+    def test_zone_crosses_mock_district(self) -> None:
+        """A zone over the mock district should report its area."""
+        from api import _overlap_report
+        report = _overlap_report(self._zones_fc())
+        assert report["zoneCount"] == 1
+        assert report["totalFavorableKm2"] > 0
+        # The mock district gdf places 'Moatize' at (33.5, -16.0)
+        districts = [d["district"] for d in report["districts"]]
+        assert "Moatize" in districts
+
+
+# ── Shapefile export ──────────────────────────────────────────────────────────
+
+
+class TestExportShapefile:
+    """Tests for the /geomoz-api/export/shapefile endpoint."""
+
+    def test_geology_returns_zip(self, client: TestClient) -> None:
+        """Default geology export should return a ZIP archive."""
+        resp = client.get("/geomoz-api/export/shapefile")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "application/zip"
+        assert resp.content[:2] == b"PK"  # ZIP magic bytes
+        assert "attachment" in resp.headers.get("content-disposition", "")
+
+    def test_zip_contains_shapefile_parts(self, client: TestClient) -> None:
+        """The ZIP should contain the .shp/.shx/.dbf components."""
+        import io
+        import zipfile
+        resp = client.get("/geomoz-api/export/shapefile")
+        assert resp.status_code == 200
+        with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+            exts = {name.rsplit(".", 1)[-1] for name in zf.namelist()}
+        assert {"shp", "shx", "dbf"}.issubset(exts)
+
+    def test_provinces_layer(self, client: TestClient) -> None:
+        """The provinces layer should also export."""
+        resp = client.get("/geomoz-api/export/shapefile?layer=provinces")
+        assert resp.status_code == 200
+        assert resp.content[:2] == b"PK"
+
+    def test_unknown_layer_returns_400(self, client: TestClient) -> None:
+        """An unknown layer name should be rejected."""
+        resp = client.get("/geomoz-api/export/shapefile?layer=bogus")
+        assert resp.status_code == 400

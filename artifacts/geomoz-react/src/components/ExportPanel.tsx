@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { FileText, Globe, Download, Loader2, CheckCircle2, Info, Map } from "lucide-react";
+import { FileText, Globe, Download, Loader2, CheckCircle2, Info, Map, Image as ImageIcon, FolderArchive } from "lucide-react";
 import jsPDF from "jspdf";
 import type { Stats } from "@/hooks/useGeoMoz";
 import type { LayerState } from "./Sidebar";
+import { apiUrl } from "@/lib/api";
 
 interface ExportPanelProps {
   province: string | null;
@@ -155,6 +156,205 @@ ${distScript}
 </script>
 </body>
 </html>`;
+}
+
+// ─── PNG MAP EXPORT (offscreen canvas, no extra deps) ─────────────────────────
+
+/** Web-Mercator: lon/lat → world pixel coordinates at a given zoom. */
+function lonLatToWorldPx(lon: number, lat: number, zoom: number): [number, number] {
+  const scale = 256 * Math.pow(2, zoom);
+  const x = ((lon + 180) / 360) * scale;
+  const sin = Math.sin((lat * Math.PI) / 180);
+  const y = (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale;
+  return [x, y];
+}
+
+function loadTile(z: number, x: number, y: number, sub: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = `https://${sub}.basemaps.cartocdn.com/light_all/${z}/${x}/${y}.png`;
+  });
+}
+
+/**
+ * Render the current map view (base tiles + geology + boundaries) plus title,
+ * legend and scale bar onto an offscreen canvas and return it as a PNG blob.
+ */
+async function renderMapPng(
+  center: [number, number], zoom: number,
+  title: string, colorBy: string,
+  geologyGJ: GeoJSON.FeatureCollection | undefined,
+  provinceGJ: GeoJSON.FeatureCollection | undefined,
+  stats: Stats | undefined,
+): Promise<Blob> {
+  const W = 1600, H = 1100, HEADER = 64, FOOTER = 30;
+  const MAP_H = H - HEADER - FOOTER;
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas 2D não suportado neste browser");
+
+  // ── base tiles ──
+  const [cx, cy] = lonLatToWorldPx(center[1], center[0], zoom);
+  const tlx = cx - W / 2, tly = cy - MAP_H / 2;
+  const maxTile = Math.pow(2, zoom);
+  const t0x = Math.floor(tlx / 256), t0y = Math.max(0, Math.floor(tly / 256));
+  const t1x = Math.floor((tlx + W) / 256), t1y = Math.min(maxTile - 1, Math.floor((tly + MAP_H) / 256));
+  const subs = ["a", "b", "c", "d"];
+
+  ctx.fillStyle = "#e8ecf0";
+  ctx.fillRect(0, HEADER, W, MAP_H);
+
+  const jobs: Promise<void>[] = [];
+  for (let tx = t0x; tx <= t1x; tx++) {
+    for (let ty = t0y; ty <= t1y; ty++) {
+      const wrappedX = ((tx % maxTile) + maxTile) % maxTile;
+      const sub = subs[(tx + ty) % subs.length];
+      jobs.push(loadTile(zoom, wrappedX, ty, sub).then(img => {
+        if (img) ctx.drawImage(img, Math.round(tx * 256 - tlx), Math.round(HEADER + ty * 256 - tly));
+      }));
+    }
+  }
+  await Promise.all(jobs);
+
+  const project = (lon: number, lat: number): [number, number] => {
+    const [px, py] = lonLatToWorldPx(lon, lat, zoom);
+    return [px - tlx, HEADER + (py - tly)];
+  };
+
+  const drawRings = (rings: number[][][], fill: string | null, stroke: string, width: number, fillAlpha: number) => {
+    ctx.beginPath();
+    for (const ring of rings) {
+      ring.forEach(([lon, lat], i) => {
+        const [x, y] = project(lon, lat);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.closePath();
+    }
+    if (fill) {
+      ctx.globalAlpha = fillAlpha;
+      ctx.fillStyle = fill;
+      ctx.fill("evenodd");
+      ctx.globalAlpha = 1;
+    }
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = width;
+    ctx.stroke();
+  };
+
+  const eachPolygon = (fc: GeoJSON.FeatureCollection, cb: (rings: number[][][], props: Record<string, unknown>) => void) => {
+    for (const f of fc.features) {
+      const g = f.geometry;
+      const props = (f.properties ?? {}) as Record<string, unknown>;
+      if (!g) continue;
+      if (g.type === "Polygon") cb(g.coordinates as number[][][], props);
+      else if (g.type === "MultiPolygon") {
+        for (const poly of g.coordinates as number[][][][]) cb(poly, props);
+      }
+    }
+  };
+
+  // ── geology + province boundaries ──
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, HEADER, W, MAP_H);
+  ctx.clip();
+  if (geologyGJ) {
+    eachPolygon(geologyGJ, (rings, props) =>
+      drawRings(rings, String(props._color ?? "#64748b"), "rgba(255,255,255,0.7)", 0.5, 0.72));
+  }
+  if (provinceGJ) {
+    eachPolygon(provinceGJ, (rings) => drawRings(rings, null, "#475569", 1.4, 0));
+  }
+  ctx.restore();
+
+  // ── header ──
+  ctx.fillStyle = "#0ea5e9";
+  ctx.fillRect(0, 0, W, HEADER);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 26px system-ui, sans-serif";
+  ctx.fillText("GeoMoz Explorer", 24, 40);
+  ctx.font = "16px system-ui, sans-serif";
+  ctx.fillText(`Mapa Geológico — ${title}`, 260, 40);
+  const date = new Date().toLocaleDateString("pt-PT", { day: "2-digit", month: "long", year: "numeric" });
+  ctx.textAlign = "right";
+  ctx.fillText(`${date} · campo: ${colorBy}`, W - 24, 40);
+  ctx.textAlign = "left";
+
+  // ── legend (top lithologies) ──
+  const lith = stats?.lithologies.slice(0, 8) ?? [];
+  if (lith.length > 0) {
+    const LG_W = 340, ROW = 24, LG_H = 40 + lith.length * ROW;
+    const lx = W - LG_W - 16, ly = HEADER + 16;
+    ctx.globalAlpha = 0.93;
+    ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "#cbd5e1";
+    ctx.beginPath();
+    ctx.roundRect(lx, ly, LG_W, LG_H, 10);
+    ctx.fill(); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#475569";
+    ctx.font = "bold 13px system-ui, sans-serif";
+    ctx.fillText("TOP LITOLOGIAS", lx + 14, ly + 24);
+    ctx.font = "12px system-ui, sans-serif";
+    lith.forEach((l, i) => {
+      const ry = ly + 40 + i * ROW;
+      ctx.fillStyle = l.color;
+      ctx.fillRect(lx + 14, ry, 14, 14);
+      ctx.fillStyle = "#334155";
+      const name = l.name.length > 34 ? l.name.slice(0, 32) + "…" : l.name;
+      ctx.fillText(name, lx + 36, ry + 11);
+      ctx.fillStyle = "#94a3b8";
+      ctx.textAlign = "right";
+      ctx.fillText(`${l.percent}%`, lx + LG_W - 14, ry + 11);
+      ctx.textAlign = "left";
+    });
+  }
+
+  // ── scale bar ──
+  const mPerPx = (156543.03392 * Math.cos((center[0] * Math.PI) / 180)) / Math.pow(2, zoom);
+  const niceSteps = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000];
+  const targetM = mPerPx * 140;
+  const stepM = niceSteps.reduce((a, b) => (Math.abs(b - targetM) < Math.abs(a - targetM) ? b : a));
+  const barPx = stepM / mPerPx;
+  const sx = 24, sy = H - FOOTER - 26;
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.fillRect(sx - 8, sy - 20, barPx + 60, 36);
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(sx, sy, barPx, 5);
+  ctx.fillRect(sx, sy - 4, 2, 13);
+  ctx.fillRect(sx + barPx - 2, sy - 4, 2, 13);
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillText(stepM >= 1000 ? `${stepM / 1000} km` : `${stepM} m`, sx + barPx + 8, sy + 6);
+
+  // ── north arrow ──
+  const nx = W - 46, ny = H - FOOTER - 52;
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath(); ctx.arc(nx, ny, 24, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = "#cbd5e1"; ctx.stroke();
+  ctx.fillStyle = "#0ea5e9";
+  ctx.beginPath(); ctx.moveTo(nx, ny - 16); ctx.lineTo(nx + 6, ny + 4); ctx.lineTo(nx, ny); ctx.lineTo(nx - 6, ny + 4); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#334155";
+  ctx.font = "bold 11px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("N", nx, ny + 16);
+  ctx.textAlign = "left";
+
+  // ── footer ──
+  ctx.fillStyle = "#f1f5f9";
+  ctx.fillRect(0, H - FOOTER, W, FOOTER);
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillText("GeoMoz Explorer · Dados: geomoz library · Base: © OSM © CARTO", 24, H - 11);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(b => (b ? resolve(b) : reject(new Error("Falha ao gerar PNG"))), "image/png");
+  });
 }
 
 // ─── PDF EXPORT ───────────────────────────────────────────────────────────────
@@ -437,15 +637,18 @@ function generatePdf(
 }
 
 // ─── COMPONENT ────────────────────────────────────────────────────────────────
+type ExportKind = "pdf" | "html" | "csv" | "geojson" | "png" | "shp";
+
 export default function ExportPanel({ province, district, colorBy, layers, mapCenter, mapZoom }: ExportPanelProps) {
   const qc = useQueryClient();
-  const [busy, setBusy] = useState<"pdf" | "html" | "csv" | "geojson" | null>(null);
-  const [done, setDone] = useState<"pdf" | "html" | "csv" | "geojson" | null>(null);
+  const [busy, setBusy] = useState<ExportKind | null>(null);
+  const [done, setDone] = useState<ExportKind | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const title = district ? `${district}, ${province}` : province ?? "Moçambique";
   const hasData = !!province;
 
-  function flash(k: "pdf" | "html" | "csv" | "geojson") { setDone(k); setTimeout(() => setDone(null), 2500); }
+  function flash(k: ExportKind) { setDone(k); setTimeout(() => setDone(null), 2500); }
 
   function getStats() { return qc.getQueryData<Stats>(["stats", province, district]); }
   function getProvinces() { return qc.getQueryData<GeoJSON.FeatureCollection>(["provinces"]); }
@@ -510,6 +713,57 @@ export default function ExportPanel({ province, district, colorBy, layers, mapCe
     }
   }
 
+  async function handlePng() {
+    setBusy("png"); setExportError(null);
+    try {
+      const blob = await renderMapPng(
+        mapCenter, mapZoom, title, colorBy,
+        layers.geology ? getGeology() : undefined,
+        layers.provinces ? getProvinces() : undefined,
+        getStats(),
+      );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `GeoMoz_Mapa_${province ?? "Mocambique"}_${district ?? "completo"}_${new Date().toISOString().slice(0, 10)}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+      flash("png");
+    } catch (e) {
+      console.error("PNG error", e);
+      setExportError(`PNG: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleShp() {
+    setBusy("shp"); setExportError(null);
+    try {
+      const params = new URLSearchParams({ layer: "geology" });
+      if (province) params.set("province", province);
+      if (district) params.set("district", district);
+      const res = await fetch(apiUrl(`/geomoz-api/export/shapefile?${params}`));
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail ?? "Erro no servidor");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `GeoMoz_SHP_${province ?? "Mocambique"}_${district ?? "completo"}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      flash("shp");
+    } catch (e) {
+      console.error("SHP error", e);
+      setExportError(`Shapefile: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function handleGeoJson() {
     setBusy("geojson");
     try {
@@ -531,15 +785,19 @@ export default function ExportPanel({ province, district, colorBy, layers, mapCe
     }
   }
 
+  const CARD_BG: Record<ExportKind, string> = {
+    pdf: "#fff1f2", html: "#f0f9ff", csv: "#f0fdf4", geojson: "#f5f3ff", png: "#fff7ed", shp: "#ecfeff",
+  };
+
   const ExportCard = ({
     id, icon, title: cardTitle, desc, btnLabel, btnClass, onClick, disabled, disabledMsg,
   }: {
-    id: "pdf" | "html" | "csv" | "geojson"; icon: React.ReactNode; title: string; desc: string;
+    id: ExportKind; icon: React.ReactNode; title: string; desc: string;
     btnLabel: string; btnClass: string; onClick: () => void; disabled?: boolean; disabledMsg?: string;
   }) => (
     <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col gap-4 shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5">
       <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-        style={{ background: id === "pdf" ? "#fff1f2" : id === "html" ? "#f0f9ff" : "#f0fdf4" }}>
+        style={{ background: CARD_BG[id] }}>
         {icon}
       </div>
       <div className="flex-1">
@@ -640,7 +898,35 @@ export default function ExportPanel({ province, district, colorBy, layers, mapCe
             disabled={!hasData}
             disabledMsg="Selecione uma província para activar"
           />
+          <ExportCard
+            id="png"
+            icon={<ImageIcon className="text-orange-500" size={22} />}
+            title="Mapa PNG (imagem)"
+            desc="Imagem PNG 1600×1100 da vista actual do mapa: base cartográfica, geologia colorida, fronteiras, legenda das top litologias, barra de escala e seta de norte. Pronta para relatórios e apresentações."
+            btnLabel="Descarregar PNG"
+            btnClass="bg-orange-500 hover:bg-orange-600 shadow-orange-200"
+            onClick={handlePng}
+            disabled={!hasData || !getGeology()}
+            disabledMsg="Carregue a geologia no mapa primeiro"
+          />
+          <ExportCard
+            id="shp"
+            icon={<FolderArchive className="text-cyan-600" size={22} />}
+            title="Shapefile (ZIP)"
+            desc="ESRI Shapefile da geologia filtrada, gerado no servidor com GeoPandas e comprimido em ZIP (.shp/.shx/.dbf/.prj). Formato padrão para QGIS, ArcGIS e software SIG clássico."
+            btnLabel="Descarregar SHP"
+            btnClass="bg-cyan-600 hover:bg-cyan-700 shadow-cyan-200"
+            onClick={handleShp}
+            disabled={!hasData}
+            disabledMsg="Selecione uma província para activar"
+          />
         </div>
+
+        {exportError && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-3.5 text-xs text-red-700">
+            <strong>Erro na exportação:</strong> {exportError}
+          </div>
+        )}
 
         {/* Notice */}
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 leading-relaxed">
