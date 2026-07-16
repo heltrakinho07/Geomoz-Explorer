@@ -207,7 +207,7 @@ function flyToResult(result: NominatimResult) {
   return (
     <div className="flex flex-col h-screen w-full bg-white text-slate-900 font-sans overflow-hidden">
       {/* Navbar */}
-      <header className="flex-none h-14 border-b border-slate-200 bg-white px-4 flex items-center justify-between shrink-0 z-30 shadow-sm">
+      <header className="flex-none h-14 border-b border-slate-200/50 glass-panel px-4 flex items-center justify-between shrink-0 z-30 transition-all">
         <div className="flex items-center gap-5">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-sky-500 flex items-center justify-center text-white shadow-sm">

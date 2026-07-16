@@ -65,7 +65,7 @@ export default function Sidebar({
   const hasSelection = !!province || !!district;
 
   return (
-    <aside style={{ width: `${width}px` }} className="relative bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto">
+    <aside style={{ width: `${width}px` }} className="relative glass-panel border-r border-slate-200/50 flex flex-col shrink-0 overflow-y-auto">
       {/* Active selection banner */}
       {hasSelection && (
         <div className="flex items-center justify-between px-3 py-2 bg-sky-50 border-b border-sky-100">

@@ -100,7 +100,7 @@ export default function MapTools() {
         onMouseDown={stop} onDoubleClick={stop} onClick={stop}>
 
         {/* Coordinate / zoom readout */}
-        <div className="pointer-events-auto bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-2.5 py-1.5 text-[11px] font-mono text-slate-700 flex items-center gap-2 leading-none">
+        <div className="pointer-events-auto glass-card rounded-lg px-2.5 py-1.5 text-[11px] font-mono text-slate-700 flex items-center gap-2 leading-none">
           <span className="tabular-nums">
             {display ? `${display.lat.toFixed(5)}, ${display.lng.toFixed(5)}` : "— , —"}
           </span>
@@ -116,14 +116,14 @@ export default function MapTools() {
         <div className="pointer-events-auto flex flex-col gap-1.5">
           <button onClick={toggleLocate}
             title={tracking ? "Parar localização em tempo real" : "A minha localização (GPS, tempo real)"}
-            className={`w-9 h-9 rounded-lg shadow-md border flex items-center justify-center transition-colors ${
-              tracking ? "bg-blue-600 border-blue-600 text-white" : "bg-white/95 backdrop-blur border-slate-200 text-slate-600 hover:text-blue-600"
+            className={`w-9 h-9 rounded-lg shadow-md flex items-center justify-center transition-all ${
+              tracking ? "bg-blue-600 border border-blue-600 text-white" : "glass-card text-slate-600 hover:text-blue-600"
             }`}>
             {locating ? <Loader2 size={16} className="animate-spin" /> : <LocateFixed size={16} />}
           </button>
           <button onClick={toggleFullscreen}
             title={fs ? "Sair de ecrã inteiro" : "Ecrã inteiro"}
-            className="w-9 h-9 rounded-lg shadow-md border bg-white/95 backdrop-blur border-slate-200 text-slate-600 hover:text-blue-600 flex items-center justify-center transition-colors">
+            className="w-9 h-9 rounded-lg shadow-md glass-card text-slate-600 hover:text-blue-600 flex items-center justify-center transition-colors">
             {fs ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </button>
         </div>

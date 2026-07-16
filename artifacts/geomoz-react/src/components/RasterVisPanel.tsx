@@ -48,6 +48,8 @@ interface RasterVisPanelProps {
   currentParams: RasterVisParams;
   /** Called when the user clicks "Apply" — parent should re-render the GEE tile */
   onApply: (params: RasterVisParams) => void;
+  /** Called in realtime for CSS-only changes like Opacity and Gamma */
+  onLiveCssChange?: (partial: Partial<RasterVisParams>) => void;
   /** Called when the user clicks "Import" — parent can import current tile settings */
   onImport?: (params: RasterVisParams) => void;
   /** Whether a re-render is in progress */
@@ -174,6 +176,7 @@ export default function RasterVisPanel({
   availableBands,
   currentParams,
   onApply,
+  onLiveCssChange,
   onImport,
   applying = false,
 }: RasterVisPanelProps) {
@@ -227,7 +230,7 @@ export default function RasterVisPanel({
     <div className="absolute z-[700] top-4 right-4 bottom-4 pointer-events-none">
       <div
         ref={panelRef}
-        className="pointer-events-auto w-72 max-h-full overflow-y-auto bg-white/95 backdrop-blur-md border border-slate-200 rounded-2xl shadow-2xl shadow-slate-900/20 flex flex-col"
+        className="pointer-events-auto w-72 max-h-full overflow-y-auto glass-panel rounded-2xl flex flex-col"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0">
@@ -329,7 +332,7 @@ export default function RasterVisPanel({
           <StyledSlider
             label="Opacidade"
             value={opacity}
-            onChange={setOpacity}
+            onChange={(v) => { setOpacity(v); onLiveCssChange?.({ opacity: v }); }}
             min={0}
             max={1}
             step={0.01}
@@ -340,7 +343,7 @@ export default function RasterVisPanel({
           <StyledSlider
             label="Gamma"
             value={gamma}
-            onChange={setGamma}
+            onChange={(v) => { setGamma(v); onLiveCssChange?.({ gamma: v }); }}
             min={0.1}
             max={10}
             step={0.1}
