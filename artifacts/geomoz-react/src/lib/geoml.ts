@@ -200,7 +200,10 @@ export type SpectralIndex =
   // Urban & Infrastructure indices
   | "urban_expansion" | "impervious_surface" | "urban_heat_island"
   // Public Health indices
-  | "malaria_risk" | "healthcare_access" | "sanitation_index" | "epidemic_risk";
+  | "malaria_risk" | "healthcare_access" | "sanitation_index" | "epidemic_risk"
+  // New GEE scripts indices
+  | "vci" | "tci" | "vhi" | "cwsi" | "lai" | "ndti"
+  | "wind_speed" | "night_light" | "spei" | "canopy_height";
 
 /**
  * Compute a proxy spectral index value [0, 1] for a geological unit.
@@ -305,7 +308,17 @@ export function computeSpectralValue(
     case "malaria_risk":      return computeSpectralValue(legend, era, period, "ndvi") * 0.4 + noise * 0.3;
     case "healthcare_access": return computeSpectralValue(legend, era, period, "bare_soil") * 0.5 + noise * 0.2;
     case "sanitation_index": return computeSpectralValue(legend, era, period, "bare_soil") * 0.3 + computeSpectralValue(legend, era, period, "ndvi") * 0.3 + noise * 0.2;
-    case "epidemic_risk":    return computeSpectralValue(legend, era, period, "ndvi") * 0.5 + noise * 0.3;
+    // New GEE script indices — no meaningful proxy, use neutral values
+    case "vci":           return 0.5 + noise * 0.3;
+    case "tci":           return 0.5 + noise * 0.3;
+    case "vhi":           return 0.5 + noise * 0.3;
+    case "cwsi":          return 0.3 + noise * 0.2;
+    case "lai":           return computeSpectralValue(legend, era, period, "ndvi") * 0.8 + noise * 0.2;
+    case "ndti":          return 0.4 + noise * 0.3;
+    case "wind_speed":    return 0.5 + noise * 0.2;
+    case "night_light":   return 0.3 + noise * 0.2;
+    case "spei":          return 0.5 + noise * 0.3;
+    case "canopy_height": return computeSpectralValue(legend, era, period, "ndvi") * 0.6 + noise * 0.2;
     default:
       return 0.5 + noise;
   }
@@ -328,6 +341,9 @@ export const GEE_ONLY_INDICES: SpectralIndex[] = [
   "urban_expansion", "impervious_surface", "urban_heat_island",
   // Public Health — all require GEE
   "malaria_risk", "healthcare_access", "sanitation_index", "epidemic_risk",
+  // New GEE scripts indices — all require GEE (no proxy)
+  "vci", "tci", "vhi", "cwsi", "lai", "ndti",
+  "wind_speed", "night_light", "spei", "canopy_height",
 ];
 
 /** Apply a scientific color ramp to a [0,1] value */
@@ -378,6 +394,17 @@ export function applyColormap(t: number, index: SpectralIndex): string {
     healthcare_access: [[215,48,39],[252,141,89],[254,224,139],[217,239,139],[145,207,96],[26,152,80],[0,104,55]],
     sanitation_index: [[0,104,55],[26,152,80],[145,207,96],[217,239,139],[254,224,139],[252,141,89],[215,48,39]],
     epidemic_risk: [[0,104,55],[26,152,80],[217,239,139],[254,224,139],[252,141,89],[215,48,39],[127,0,0]],
+    // New indices colormaps
+    vci:          [[0,104,55],[26,152,80],[217,239,139],[254,224,139],[252,141,89],[215,48,39],[127,0,0]],
+    tci:          [[0,104,55],[26,152,80],[217,239,139],[254,224,139],[252,141,89],[215,48,39],[127,0,0]],
+    vhi:          [[0,104,55],[26,152,80],[217,239,139],[254,224,139],[252,141,89],[215,48,39],[127,0,0]],
+    cwsi:         [[49,54,149],[69,117,180],[116,173,209],[171,217,233],[254,224,144],[253,174,97],[244,109,67],[215,48,39],[165,0,38]],
+    lai:          [[255,255,204],[199,233,180],[127,205,187],[65,182,196],[29,145,192],[34,94,168],[12,44,132]],
+    ndti:         [[255,255,255],[200,225,255],[130,180,240],[50,120,200],[0,50,140]],
+    wind_speed:   [[255,255,255],[224,236,244],[158,202,225],[107,174,214],[66,146,198],[33,113,181],[8,81,156],[8,48,107]],
+    night_light:  [[0,0,0],[31,31,31],[63,63,63],[127,127,127],[191,191,191],[255,255,255]],
+    spei:         [[165,0,38],[215,48,39],[244,109,67],[254,224,144],[171,217,233],[116,173,209],[69,117,180],[49,54,149]],
+    canopy_height:[[0,0,0],[0,63,0],[0,127,0],[63,191,63],[127,255,127],[191,255,191],[255,255,255]],
   };
 
   const ramp = ramps[index];

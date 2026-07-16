@@ -497,6 +497,121 @@ INDEX_REGISTRY: dict[str, dict[str, Any]] = {
         "norm": (0.0, 1.0),
     },
 
+    # ── Drought monitoring (MODIS VCI/TCI/VHI) ─────────────────────────
+
+    "vci": {
+        "group": "drought",
+        "needs": [],
+        "name": "VCI — Vegetation Condition Index (MODIS)",
+        "formula": "VCI = ((NDVI − NDVI_min) / (NDVI_max − NDVI_min)) × 100",
+        "bands": "MODIS MOD13A2 — NDVI multi-year",
+        "vis": {"min": 0, "max": 100,
+                "palette": ["7f0000","d73027","fdae61","fee08b","d9ef8b","66bd63","1a9850"]},
+        "norm": (0, 100),
+    },
+    "tci": {
+        "group": "drought",
+        "needs": [],
+        "name": "TCI — Thermal Condition Index (MODIS)",
+        "formula": "TCI = ((LST_max − LST) / (LST_max − LST_min)) × 100",
+        "bands": "MODIS MOD11A2 — LST multi-year",
+        "vis": {"min": 0, "max": 100,
+                "palette": ["7f0000","d73027","fdae61","fee08b","d9ef8b","66bd63","1a9850"]},
+        "norm": (0, 100),
+    },
+    "vhi": {
+        "group": "drought",
+        "needs": [],
+        "name": "VHI — Vegetation Health Index (MODIS)",
+        "formula": "VHI = 0.5 × VCI + 0.5 × TCI",
+        "bands": "MODIS MOD13A2 (NDVI) + MOD11A2 (LST)",
+        "vis": {"min": 0, "max": 100,
+                "palette": ["7f0000","d73027","fdae61","fee08b","d9ef8b","66bd63","1a9850"]},
+        "norm": (0, 100),
+    },
+    "cwsi": {
+        "group": "agriculture",
+        "needs": [],
+        "name": "CWSI — Crop Water Stress Index (MODIS)",
+        "formula": "CWSI = 1 − (ET / PET)",
+        "bands": "MODIS MOD16A2GF — ET e PET",
+        "vis": {"min": 0.0, "max": 1.0,
+                "palette": ["006837","1a9850","d9ef8b","fee08b","fc8d59","d73027","7f0000"]},
+        "norm": (0.0, 1.0),
+    },
+
+    # ── Biophysical indices (LAI, Canopy Height) ────────────────────────
+
+    "lai": {
+        "group": "biophysical",
+        "needs": ["l8"],
+        "name": "LAI — Leaf Area Index (Landsat)",
+        "formula": "LAI = 3.618 × EVI − 0.118",
+        "bands": "Landsat 8/9 — SR_B2 (Blue), SR_B4 (Red), SR_B5 (NIR)",
+        "vis": {"min": 0.0, "max": 6.0,
+                "palette": ["ffffcc","c7e9b4","7fcdbb","41b6c4","1d91c0","225ea8","0c2c84"]},
+        "norm": (0.0, 6.0),
+    },
+    "canopy_height": {
+        "group": "biophysical",
+        "needs": [],
+        "name": "Canopy Height — Altura do Dossel (Meta)",
+        "formula": "Meta Forest Monitoring v1 — altura do dossel 1m",
+        "bands": "projects/meta-forest-monitoring-1m",
+        "vis": {"min": 0, "max": 40,
+                "palette": ["ffffcc","c7e9b4","7fcdbb","41b6c4","1d91c0","225ea8","0c2c84"]},
+        "norm": (0, 40),
+    },
+
+    # ── Water quality indices ───────────────────────────────────────────
+
+    "ndti": {
+        "group": "water",
+        "needs": ["s2"],
+        "name": "NDTI — Normalized Difference Turbidity Index",
+        "formula": "NDTI = (B4 − B3) / (B4 + B3)  [aplicado em máscara de água]",
+        "bands": "Sentinel-2 — Vermelho (B4) e Verde (B3) + NDWI",
+        "vis": {"min": -0.3, "max": 0.3,
+                "palette": ["006837","1a9850","d9ef8b","fee08b","fc8d59","d73027","7f0000"]},
+        "norm": (-0.3, 0.3),
+    },
+
+    # ── Climate & Atmospheric indices ───────────────────────────────────
+
+    "wind_speed": {
+        "group": "climate",
+        "needs": [],
+        "name": "Velocidade do Vento (ERA5)",
+        "formula": "Wind = sqrt(u² + v²)",
+        "bands": "ECMWF/ERA5/DAILY — u_10 e v_10 (componentes de 10m)",
+        "vis": {"min": 0, "max": 15,
+                "palette": ["ffffcc","c7e9b4","7fcdbb","41b6c4","1d91c0","225ea8","0c2c84"]},
+        "norm": (0, 15),
+    },
+    "night_light": {
+        "group": "urban",
+        "needs": [],
+        "name": "Luz Noturna — Urbanização (VIIRS)",
+        "formula": "VIIRS VNL V2 — média anual de radiação nocturna",
+        "bands": "NOAA/VIIRS/DNB/MONTHLY_V1/VCMCFG — avg_rad",
+        "vis": {"min": 0, "max": 60,
+                "palette": ["000000","0d0887","5302a3","8b0aa5","b83289","db5c68","f48849","febc2a","ffeb24"]},
+        "norm": (0, 60),
+    },
+
+    # ── Drought classification indices (SPEI) ────────────────────────────
+
+    "spei": {
+        "group": "drought",
+        "needs": [],
+        "name": "SPEI — Standardized Precipitation-Evapotranspiration Index",
+        "formula": "CSIC/SPEI — classificação de seca multi-escala",
+        "bands": "CSIC/SPEI — SPEI_12_month",
+        "vis": {"min": -3, "max": 3,
+                "palette": ["7f0000","d73027","fdae61","fee08b","d9ef8b","66bd63","1a9850","006837"]},
+        "norm": (-3, 3),
+    },
+
 }
 
 

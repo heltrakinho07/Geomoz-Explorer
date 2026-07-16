@@ -189,7 +189,7 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
       {/* ── Map ─────────────────────────────────────────────────── */}
       <div className="flex-1 relative" ref={mapContainerRef}>
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl={false}>
-          <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" attribution="© OpenStreetMap, © CARTO" />
+          <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" attribution="© OpenStreetMap, © CARTO" />
           <ScaleControl position="bottomleft" imperial={false} />
           <ZoomControl position="topright" />
           <AreaSelect
@@ -198,7 +198,7 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
             onDistrictChange={onDistrictChange}
             accent="#0891b2"
           />
-          {result && <TileLayer key={`gwp-${result.tile}`} url={result.tile} opacity={0.75} maxZoom={18} />}
+          {result && <TileLayer crossOrigin="anonymous" key={`gwp-${result.tile}`} url={result.tile} opacity={0.75} maxZoom={18} />}
           <MapTools />
           <MapDraw
             enabled={drawingEnabled}

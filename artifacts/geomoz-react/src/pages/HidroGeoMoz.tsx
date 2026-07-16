@@ -661,9 +661,10 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
         { label: "Pot. Hidrogeológico", val: wsStats.hydroPotential, color: [16, 185, 129] as const },
       ];
       riskItems.forEach((ri) => {
-        doc.setFillColor(...ri.color, 0.08);
+        const [r, g, b] = ri.color;
+        doc.setFillColor(r, g, b, 0.08);
         doc.roundedRect(MARGIN, y, CONTENT_W, 9, 2, 2, "F");
-        doc.setDrawColor(...ri.color, 0.3);
+        doc.setDrawColor(r, g, b, 0.3);
         doc.roundedRect(MARGIN, y, CONTENT_W, 9, 2, 2, "S");
         doc.setTextColor(71, 85, 105);
         doc.setFontSize(8);
@@ -674,10 +675,10 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
         doc.roundedRect(MARGIN + 60, y + 2.5, 60, 4, 1.5, 1.5, "F");
         // Bar fill
         const bw = Math.max((Math.min(ri.val, 100) / 100) * 60, 2);
-        doc.setFillColor(...ri.color);
+        doc.setFillColor(r, g, b);
         doc.roundedRect(MARGIN + 60, y + 2.5, bw, 4, 1.5, 1.5, "F");
         // Value
-        doc.setTextColor(...ri.color);
+        doc.setTextColor(r, g, b);
         doc.setFont("helvetica", "bold");
         doc.text(`${ri.val.toFixed(0)}/100`, W - MARGIN - 4, y + 6.5, { align: "right" });
         doc.setFont("helvetica", "normal");
@@ -870,7 +871,7 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
           <ScaleControl position="bottomright" imperial={false} />
           <MapClickHandler onMapClick={onMapClick} active={mode === "delineate"} />
 
-          <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
             attribution='&copy; <a href="https://carto.com">CARTO</a>' maxZoom={19} />
 
           <AreaSelect
@@ -882,14 +883,14 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
 
           {/* River network */}
           {showRiverNet && riverNet && (
-            <TileLayer key={`rn-${showAllOrders}-${riverNet.tileUrl}`}
+            <TileLayer crossOrigin="anonymous" key={`rn-${showAllOrders}-${riverNet.tileUrl}`}
               url={showAllOrders ? riverNet.tileUrl : riverNet.majorTileUrl}
               attribution="HydroSHEDS · WWF" opacity={showAllOrders ? 0.75 : 0.9} maxZoom={18} />
           )}
 
           {/* Drainage (explore, no river net) */}
           {mode === "explore" && showDrainage && drainageTile && !showRiverNet && (
-            <TileLayer key={`drain-${drainageTile.tileUrl}`} url={drainageTile.tileUrl}
+            <TileLayer crossOrigin="anonymous" key={`drain-${drainageTile.tileUrl}`} url={drainageTile.tileUrl}
               attribution="HydroSHEDS · WWF" opacity={0.85} maxZoom={18} />
           )}
 
@@ -911,17 +912,17 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
               <GeoJSON key={`ws-${pourPoint?.[0]}-${pourPoint?.[1]}`}
                 data={watershedData.geojson as GeoJSON.GeoJsonObject}
                 style={{ color: "#0d47a1", weight: 2.5, fillColor: "#1565c0", fillOpacity: 0.2, opacity: 1 }} />
-              <TileLayer key={`wst-${watershedData.tileUrl}`} url={watershedData.tileUrl} opacity={0.3} maxZoom={18} />
+              <TileLayer crossOrigin="anonymous" key={`wst-${watershedData.tileUrl}`} url={watershedData.tileUrl} opacity={0.3} maxZoom={18} />
             </>
           )}
 
           {/* Basin report overlays (toggleable): land cover / SCS-CN runoff */}
           {basinReport && reportLayer === "lulc" && (
-            <TileLayer key={`rep-lulc-${basinReport.landcoverTile}`} url={basinReport.landcoverTile}
+            <TileLayer crossOrigin="anonymous" key={`rep-lulc-${basinReport.landcoverTile}`} url={basinReport.landcoverTile}
               attribution="GEE · ESA WorldCover 2021" opacity={0.75} maxZoom={18} />
           )}
           {basinReport && reportLayer === "cn" && (
-            <TileLayer key={`rep-cn-${basinReport.runoff.cnTile}`} url={basinReport.runoff.cnTile}
+            <TileLayer crossOrigin="anonymous" key={`rep-cn-${basinReport.runoff.cnTile}`} url={basinReport.runoff.cnTile}
               attribution="GEE · SCS Curve Number" opacity={0.7} maxZoom={18} />
           )}
 

@@ -1,0 +1,11 @@
+fastapi>=0.100.0
+uvicorn>=0.23.0
+geopandas>=0.14.0
+shapely>=2.0.0
+geomoz
+pandas>=2.0.0
+numpy>=1.26.0
+python-multipart>=0.0.28
+earthengine-api>=1.7.0
+idna>=3.16
+starlette>=1.0.1

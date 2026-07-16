@@ -13,7 +13,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Globe, Satellite, Mountain, Droplets, Flame,
   Waves, Navigation, Building2, Activity,
-  Download, Loader2, CheckCircle2,
+  Download, Loader2, CheckCircle2, Sprout,
   FileText, BarChart2, Layers,
   ExternalLink, RefreshCw,
 } from "lucide-react";
@@ -71,6 +71,10 @@ const MODULES: ModuleCard[] = [
     icon: <Building2 size={18} />, color: "text-stone-600", bgColor: "bg-stone-50", status: "requires_gee", indexCount: 0 },
   { id: "health", name: "Saúde Pública", description: "Risco Malária, Acesso Saúde, Saneamento, Risco Epidémico",
     icon: <Activity size={18} />, color: "text-rose-600", bgColor: "bg-rose-50", status: "requires_gee", indexCount: 0 },
+  { id: "water", name: "Água & Turbidez", description: "NDTI, Qualidade Água",
+    icon: <Droplets size={18} />, color: "text-blue-600", bgColor: "bg-blue-50", status: "requires_gee", indexCount: 0 },
+  { id: "biophysical", name: "Biofísicos", description: "LAI, Altura dossel",
+    icon: <Sprout size={18} />, color: "text-teal-600", bgColor: "bg-teal-50", status: "requires_gee", indexCount: 0 },
 ];
 
 /**
@@ -87,6 +91,8 @@ const MODULE_GROUP_MAP: Record<string, string[]> = {
   climate:     ["climate"],
   urban:       ["urban"],
   health:      ["health"],
+  water:       ["water"],
+  biophysical: ["biophysical"],
 };
 
 function fmt(n: number): string {

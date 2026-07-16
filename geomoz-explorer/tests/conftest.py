@@ -69,6 +69,16 @@ def _mock_geomoz() -> Generator[None, None, None]:
 
 
 @pytest.fixture(autouse=True)
+def _mock_streamlit() -> Generator[None, None, None]:
+    """Mock streamlit so data_loader.py can be imported without it installed."""
+    mock_st = MagicMock()
+    mock_st.cache_data = lambda **kw: (lambda f: f)
+    mock_st.warning = lambda msg: None
+    with patch.dict("sys.modules", {"streamlit": mock_st}):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _mock_shapely_ops() -> Generator[None, None, None]:
     """Mock shapely geometry operations to return predictable values."""
     mock_point = MagicMock()

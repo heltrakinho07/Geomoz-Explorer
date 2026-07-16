@@ -1,4 +1,5 @@
-import { Filter, Layers, ChevronDown, X, MapPin } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Filter, Layers, ChevronDown, X, MapPin, CheckCircle2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
 
@@ -17,6 +18,8 @@ interface SidebarProps {
   onLayerToggle: (key: keyof LayerState) => void;
   colorBy: string;
   onColorByChange: (v: string) => void;
+  drawingEnabled?: boolean;
+  onFinishDrawing?: () => void;
 }
 
 const COLOR_OPTIONS = [
@@ -35,14 +38,34 @@ const LAYER_DEFS: { key: keyof LayerState; label: string; colorClass: string }[]
 export default function Sidebar({
   province, district, onProvinceChange, onDistrictChange,
   layers, onLayerToggle, colorBy, onColorByChange,
+  drawingEnabled, onFinishDrawing,
 }: SidebarProps) {
+  const [width, setWidth] = useState<number>(260);
+  const [resizing, setResizing] = useState(false);
+  // attach global mouse handlers when resizing
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!resizing) return;
+      const newWidth = Math.max(200, Math.min(800, e.clientX));
+      setWidth(newWidth);
+    }
+    function onUp() { setResizing(false); }
+    if (resizing) {
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    }
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [resizing]);
   const { data: provinceData, isLoading: loadingProvinces } = useProvinceNames();
   const { data: districtData, isLoading: loadingDistricts } = useDistrictNames(province);
 
   const hasSelection = !!province || !!district;
 
   return (
-    <aside className="w-[260px] bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto">
+    <aside style={{ width: `${width}px` }} className="relative bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto">
       {/* Active selection banner */}
       {hasSelection && (
         <div className="flex items-center justify-between px-3 py-2 bg-sky-50 border-b border-sky-100">
@@ -65,6 +88,21 @@ export default function Sidebar({
 
       {/* Filter area */}
       <div className="p-4 border-b border-slate-100">
+        {drawingEnabled && (
+          <div className="flex justify-end mb-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onFinishDrawing?.();
+              }}
+              title="Concluir desenho"
+              className="text-xs bg-emerald-600 text-white px-2 py-1 rounded mr-1 hover:bg-emerald-700"
+            >
+              <CheckCircle2 size={14} />
+            </button>
+          </div>
+        )}
         <div className="flex items-center gap-2 mb-3">
           <Filter className="w-4 h-4 text-slate-400" />
           <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Filtrar Área</h3>
@@ -181,6 +219,12 @@ export default function Sidebar({
           Escala: EPSG:32736 (UTM 36S)
         </p>
       </div>
+      {/* Resize handle */}
+      <div
+        className="absolute right-0 top-0 bottom-0 w-2 -mr-2 cursor-col-resize z-50"
+        onMouseDown={() => setResizing(true)}
+        onTouchStart={() => setResizing(true)}
+      />
     </aside>
   );
 }

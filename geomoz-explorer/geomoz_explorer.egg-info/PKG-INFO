@@ -1,0 +1,16 @@
+Metadata-Version: 2.4
+Name: geomoz-explorer
+Version: 2.1.0
+Summary: GeoMoz Explorer — WebGIS platform for Mozambique geological & environmental data
+Requires-Python: >=3.11
+Requires-Dist: fastapi>=0.100.0
+Requires-Dist: uvicorn>=0.23.0
+Requires-Dist: geopandas>=0.14.0
+Requires-Dist: shapely>=2.0.0
+Requires-Dist: geomoz
+Requires-Dist: pandas>=2.0.0
+Requires-Dist: numpy>=1.26.0
+Requires-Dist: python-multipart>=0.0.28
+Requires-Dist: earthengine-api>=1.7.0
+Requires-Dist: idna>=3.16
+Requires-Dist: starlette>=1.0.1

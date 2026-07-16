@@ -41,6 +41,8 @@ import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
+import RasterVisPanel, { DEFAULT_VIS_PARAMS } from "@/components/RasterVisPanel";
+import type { RasterVisParams } from "@/components/RasterVisPanel";
 import {
   fetchMapImage, createPDFContext, drawCover, addPDFFooter,
   MARGIN, CONTENT_W, addMapImage,
@@ -52,7 +54,7 @@ type SpectralTab = "s2" | "lineaments" | "targeting"
                   | "profile" | "contours" | "topo_custom" | "landcover"
                   | "spi_ndvi" | SpectralIndex;
 
-type IndexGroup = "spectral" | "landsat" | "terrain" | "agriculture" | "drought" | "fire" | "coastal" | "climate" | "urban" | "health";
+type IndexGroup = "spectral" | "landsat" | "terrain" | "agriculture" | "drought" | "fire" | "coastal" | "climate" | "urban" | "health" | "water" | "biophysical";
 
 interface LandCoverClass {
   code: number;
@@ -447,6 +449,68 @@ const INDEX_DEFS: IndexDef[] = [
     bands: "MODIS MOD11A2 (LST) · Sentinel-2 (NDVI)",
     interpretation: "Ilha de Calor Urbana — diferença entre temperatura superficial (MODIS LST) e vigor vegetativo (NDVI). Áreas urbanas densas aparecem mais quentes que zonas rurais/russas.",
     lowLabel: "Rural / fresco", highLabel: "Urbano / quente" },
+
+  // ── New GEE Scripts: índices de seca (drought) ───────────────────────────
+  { id: "vci", label: "VCI", short: "VCI", icon: <CloudSun size={13} />, group: "drought",
+    formula: "VCI = (NDVI − NDVI_min) / (NDVI_max − NDVI_min) × 100",
+    bands: "MODIS MOD13A2 — NDVI multi-anual",
+    interpretation: "Vegetation Condition Index — compara NDVI actual com série histórica. Quanto menor o VCI, pior a condição da vegetação. < 35 = seca severa, 35–70 = stress moderado, > 70 = normal.",
+    lowLabel: "Seca severa", highLabel: "Vegetação normal" },
+  { id: "tci", label: "TCI", short: "TCI", icon: <Flame size={13} />, group: "drought",
+    formula: "TCI = (LST_max − LST) / (LST_max − LST_min) × 100",
+    bands: "MODIS MOD11A2 — LST multi-anual",
+    interpretation: "Temperature Condition Index — avalia stress térmico da vegetação. TCI baixo = temperatura acima da normal (stress térmico). Combina com VCI para formar VHI.",
+    lowLabel: "Stress térmico", highLabel: "Temperatura normal" },
+  { id: "vhi", label: "VHI", short: "VHI", icon: <Activity size={13} />, group: "drought",
+    formula: "VHI = 0.5 × VCI + 0.5 × TCI",
+    bands: "MODIS NDVI + MODIS LST",
+    interpretation: "Vegetation Health Index — média ponderada de VCI e TCI. Indicador composto de seca agrícola. < 35 = seca, 35–70 = stress, > 70 = saudável.",
+    lowLabel: "Seca", highLabel: "Saudável" },
+  { id: "spei", label: "SPEI", short: "SPEI", icon: <Droplets size={13} />, group: "drought",
+    formula: "SPEI = anomalia padronizada precipitação-evapotranspiração",
+    bands: "CSIC/SPEI — 12 meses",
+    interpretation: "Standardised Precipitation-Evapotranspiration Index — balanço hídrico climático multi-escala. SPEI < −1 = seca moderada, < −1.5 = seca severa, < −2 = seca extrema.",
+    lowLabel: "Seca extrema", highLabel: "Húmido" },
+
+  // ── New GEE Scripts: agricultura (CWLS) ──────────────────────────────────
+  { id: "cwsi", label: "CWSI", short: "CWSI", icon: <Droplets size={13} />, group: "agriculture",
+    formula: "CWSI = 1 − (ET / PET)",
+    bands: "MODIS MOD16A2GF — ET · PET",
+    interpretation: "Crop Water Stress Index — quão próximo a cultura está da evapotranspiração potencial. 0 = sem stress (ET = PET), 1 = stress máximo (ET ≈ 0). Crítico para irrigação e monitoria de secas.",
+    lowLabel: "Sem stress", highLabel: "Stress hídrico" },
+
+  // ── New GEE Scripts: água (NDTI) ─────────────────────────────────────────
+  { id: "ndti", label: "NDTI", short: "NDTI", icon: <Droplets size={13} />, group: "water",
+    formula: "NDTI = (B4 − B3) / (B4 + B3)",
+    bands: "Sentinel-2 — Vermelho (B4) · Verde (B3) — máscara NDWI",
+    interpretation: "Normalized Difference Turbidity Index — turbidez em corpos de água após mascaramento por NDWI (> 0.1). Valores altos = água turva (sedimentos suspensos, eutrofização).",
+    lowLabel: "Água clara", highLabel: "Água turva" },
+
+  // ── New GEE Scripts: clima (wind_speed) ──────────────────────────────────
+  { id: "wind_speed", label: "Vento", short: "Vento", icon: <Navigation size={13} />, group: "climate",
+    formula: "|V| = sqrt(u² + v²) — ERA5",
+    bands: "ERA5 Daily — u10 · v10",
+    interpretation: "Velocidade média do vento (m/s) derivada do ERA5. Combina as componentes zonal (u) e meridional (v). Essencial para energia eólica, dispersão de poluentes e risco de incêndio.",
+    lowLabel: "Calmo", highLabel: "Vento forte" },
+
+  // ── New GEE Scripts: urbano (night_light) ────────────────────────────────
+  { id: "night_light", label: "Luz Noturna", short: "VIIRS", icon: <Building2 size={13} />, group: "urban",
+    formula: "avg_rad — VIIRS DNB mensal",
+    bands: "VIIRS Stray Light Corrected Nighttime Day/Night Band",
+    interpretation: "Intensidade luminosa nocturna (VIIRS DNB). Correlaciona-se com densidade populacional, actividade económica e electrificação. Valores altos = áreas urbanas densas / industriais.",
+    lowLabel: "Escuro / rural", highLabel: "Luz intensa" },
+
+  // ── New GEE Scripts: biofísicos (LAI · Canopy Height) ────────────────────
+  { id: "lai", label: "LAI", short: "LAI", icon: <Sprout size={13} />, group: "biophysical",
+    formula: "LAI = 3.618 × EVI − 0.118",
+    bands: "Landsat 8/9 — EVI derivado",
+    interpretation: "Leaf Area Index — área foliar por unidade de área. Derivado empiricamente do EVI. LAI < 1 = vegetação esparsa, 1–3 = vegetação moderada, > 3 = floresta densa / culturas.",
+    lowLabel: "Vegetação esparsa", highLabel: "Floresta densa" },
+  { id: "canopy_height", label: "Altura Dossel", short: "Dossel", icon: <Trees size={13} />, group: "biophysical",
+    formula: "Meta Forest Monitoring — altura em metros",
+    bands: "Meta/forest-monitoring — inferência multi-sensor",
+    interpretation: "Altura do dossel florestal (m) — modelo global Meta. Mapeia estrutura vertical da vegetação: < 5 m = arbustos/capoeira, 5–15 m = floresta secundária, > 15 m = floresta primária.",
+    lowLabel: "Arbustos / baixo", highLabel: "Floresta alta" },
 ];
 
 const TERRAIN_CLASS_NAMES = [
@@ -2199,7 +2263,6 @@ function TopoClassesPanel({
 
 export default function GeoAnalises({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: GeoAnalisesProps) {
   const [activeTab, setActiveTab]     = useState<SpectralTab>("s2");
-  const [opacity, setOpacity]         = useState(0.82);
   const [showS2, setShowS2]           = useState(false);
   const [selectedYear, setSelectedYear] = useState("2022");
   const [geeStatus, setGeeStatus]     = useState<GeeStatus | null>(null);
@@ -2226,6 +2289,9 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
   const [useGEE, setUseGEE]           = useState(true);
   const [showSetup, setShowSetup]     = useState(false);
   const [drawingEnabled, setDrawingEnabled] = useState(false);
+  const [visParams, setVisParams] = useState<RasterVisParams>(DEFAULT_VIS_PARAMS);
+  const [visPanelOpen, setVisPanelOpen] = useState(false);
+  const [visApplying, setVisApplying] = useState(false);
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
   // Compute API params from AOI (includes geometry for global/custom areas)
@@ -2369,6 +2435,8 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
   }, [geologyGeoJSON, activeTab, useGEE]);
 
   const activeDef = INDEX_DEFS.find(d => d.id === activeTab);
+  // Parse available bands from the active index definition
+  const activeDefBands = activeDef?.bands ? activeDef.bands.split(/[·,]/).map(b => b.trim()).filter(Boolean) : [];
   const isComposite   = false;
   void isComposite;
   const isLineaments  = activeTab === "lineaments";
@@ -2427,6 +2495,8 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
       tabs: INDEX_DEFS.filter(d => d.group === "urban").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
     { name: "Saúde Pública",                badge: "Multi-sensor",          badgeColor: "bg-rose-100 text-rose-700",
       tabs: INDEX_DEFS.filter(d => d.group === "health").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
+    { name: "Biofísicos",                  badge: "Multi-sensor · L8/S2", badgeColor: "bg-emerald-100 text-emerald-700",
+      tabs: INDEX_DEFS.filter(d => d.group === "biophysical").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
 
   ];
 
@@ -2441,6 +2511,44 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
   // Composite, lineaments, targeting & GEE-only indices require GEE
   const requiresGee = isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || isGeeOnly;
   void requiresGee;
+  /** Re-render the GEE tile with custom visParams. */
+  const handleApplyVis = useCallback(async (newParams: RasterVisParams) => {
+    if (!geeTile) return;
+    setVisApplying(true);
+    setVisParams(newParams);
+    const def = INDEX_DEFS.find(d => d.id === activeTab);
+    try {
+      const res = await fetch(apiUrl("/geomoz-api/gee/render"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          index: activeTab,
+          province, district,
+          geometry: apiParams?.geometry ?? null,
+          vis_params: {
+            bands: newParams.bands.filter(Boolean),
+            min: newParams.min,
+            max: newParams.max,
+            gamma: newParams.gamma,
+            opacity: newParams.opacity,
+          },
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.tileUrl) {
+          setGeeTile(prev => prev ? { ...prev, tileUrl: data.tileUrl } : null);
+        }
+      }
+    } catch (_e) { /* silent */ }
+    finally { setVisApplying(false); }
+  }, [geeTile, activeTab, province, district, apiParams]);
+
+  /** Import current visParams into the panel. */
+  const handleImportVis = useCallback((newParams: RasterVisParams) => {
+    setVisParams(newParams);
+  }, []);
+
   const profileCursorLatLon = (isProfile && profileResult && profileCursorIdx != null
     && profileCursorIdx >= 0 && profileCursorIdx < profileResult.points.length)
     ? profileResult.points[profileCursorIdx]
@@ -2726,9 +2834,9 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !isTopoCustom && !geeReady && activeTab !== "s2" && !isGeeOnly && (
             <div className="p-4 border-b border-slate-100">
               <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Opacidade</h4>
-              <input type="range" min={0.1} max={1} step={0.05} value={opacity}
-                onChange={e => setOpacity(Number(e.target.value))} className="w-full accent-sky-500" />
-              <div className="text-xs text-slate-400 text-right mt-0.5">{Math.round(opacity * 100)}%</div>
+              <input type="range" min={0.1} max={1} step={0.05} value={visParams.opacity}
+                onChange={e => setVisParams(prev => ({...prev, opacity: Number(e.target.value)}))} className="w-full accent-sky-500" />
+              <div className="text-xs text-slate-400 text-right mt-0.5">{Math.round(visParams.opacity * 100)}%</div>
             </div>
           )}
 
@@ -2946,7 +3054,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
             {/* Base tiles */}
             {showS2 || activeTab === "s2" ? (
               <>
-                <TileLayer url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png" attribution="&copy; OSM &copy; CARTO" maxZoom={19} />
+                <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png" attribution="&copy; OSM &copy; CARTO" maxZoom={19} />
                 <WMSTileLayer
                   url="https://tiles.maps.eox.at/wms"
                   layers={`s2cloudless-${selectedYear}`}
@@ -2956,10 +3064,10 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
                   maxZoom={18}
                   opacity={activeTab === "s2" ? 1 : 0.5}
                 />
-                <TileLayer url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png" attribution="" maxZoom={19} pane="shadowPane" />
+                <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png" attribution="" maxZoom={19} pane="shadowPane" />
               </>
             ) : (
-              <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" attribution="&copy; OSM &copy; CARTO" maxZoom={19} />
+              <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" attribution="&copy; OSM &copy; CARTO" maxZoom={19} />
             )}
 
             <ScaleControl position="bottomleft" imperial={false} />
@@ -2976,11 +3084,11 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
 
             {/* GEE real tile layer (single index) */}
             {geeReady && !isLineaments && !isTargeting && geeTile && activeTab !== "s2" && (
-              <TileLayer
+              <TileLayer crossOrigin="anonymous"
                 key={geeTileKey}
                 url={geeTile.tileUrl}
                 attribution={`GEE · ${geeTile.name}`}
-                opacity={opacity}
+                opacity={visParams.opacity}
                 maxZoom={18}
               />
             )}
@@ -2989,7 +3097,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
             {isLineaments && lineamentsTile && (
               <>
                 {/* Density heatmap kept subtle so the extracted structures stand out */}
-                <TileLayer
+                <TileLayer crossOrigin="anonymous"
                   key={`lin-density-${lineamentsTile.tileUrl}`}
                   url={lineamentsTile.tileUrl}
                   attribution="GEE · Lineamentos (densidade)"
@@ -2997,7 +3105,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
                   maxZoom={18}
                 />
                 {showEdges && (
-                  <TileLayer
+                  <TileLayer crossOrigin="anonymous"
                     key={`lin-edges-${lineamentsTile.edgesTileUrl}`}
                     url={lineamentsTile.edgesTileUrl}
                     attribution="GEE · Estruturas (lineamentos)"
@@ -3011,14 +3119,14 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
             {/* Contour tiles (minor + major lines) */}
             {isContours && contoursTile && (
               <>
-                <TileLayer
+                <TileLayer crossOrigin="anonymous"
                   key={`ctr-${contoursTile.tileUrl}`}
                   url={contoursTile.tileUrl}
                   attribution={`GEE · Curvas ${contoursTile.intervalM} m`}
                   opacity={0.85}
                   maxZoom={18}
                 />
-                <TileLayer
+                <TileLayer crossOrigin="anonymous"
                   key={`ctr-idx-${contoursTile.indexTileUrl}`}
                   url={contoursTile.indexTileUrl}
                   attribution={`GEE · Linhas-mestras ${contoursTile.indexIntervalM} m`}
@@ -3049,22 +3157,22 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
 
             {/* Custom Topo Classes tile */}
             {isTopoCustom && topoClassesTile && (
-              <TileLayer
+              <TileLayer crossOrigin="anonymous"
                 key={`tc-${topoClassesTile.tileUrl}`}
                 url={topoClassesTile.tileUrl}
                 attribution="GEE · Classes Topográficas"
-                opacity={opacity}
+                opacity={visParams.opacity}
                 maxZoom={18}
               />
             )}
 
             {/* Land cover (ESA WorldCover 2021) tile */}
             {isLandCover && landCoverTile && (
-              <TileLayer
+              <TileLayer crossOrigin="anonymous"
                 key={`lc-${landCoverTile.tileUrl}`}
                 url={landCoverTile.tileUrl}
                 attribution="GEE · ESA WorldCover 2021"
-                opacity={opacity}
+                opacity={visParams.opacity}
                 maxZoom={18}
               />
             )}
@@ -3080,11 +3188,11 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
 
             {/* Targeting score tile */}
             {isTargeting && targetingTile && (
-              <TileLayer
+              <TileLayer crossOrigin="anonymous"
                 key={`tgt-${targetingTile.tileUrl}`}
                 url={targetingTile.tileUrl}
                 attribution={`GEE · ${targetingTile.mineralName}`}
-                opacity={opacity}
+                opacity={visParams.opacity}
                 maxZoom={18}
               />
             )}
@@ -3100,11 +3208,11 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
 
             {/* SPI × NDVI tiles */}
             {isSpiNdvi && spiNdviResult && (
-              <TileLayer
+              <TileLayer crossOrigin="anonymous"
                 key={`spindvi-${spiLayerMode}-${spiNdviResult.year}`}
                 url={spiLayerMode === "spi" ? spiNdviResult.spiTileUrl : spiNdviResult.ndviTileUrl}
                 attribution={`GEE · ${spiNdviResult.name}`}
-                opacity={opacity}
+                opacity={visParams.opacity}
                 maxZoom={18}
               />
             )}
@@ -3115,7 +3223,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
                 style={(f) => ({
                   color: "rgba(255,255,255,0.2)", weight: 0.3,
                   fillColor: (f?.properties as Record<string, string>)?._spectralColor ?? "#64748b",
-                  fillOpacity: opacity,
+                  fillOpacity: visParams.opacity,
                 })}
                 onEachFeature={(f, layer) => {
                   const p = f.properties as Record<string, string & number>;
@@ -3137,6 +3245,30 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
               onCancel={() => setDrawingEnabled(false)}
             />
           </MapContainer>
+n          {/* RasterVisPanel — floating visualization controls */}
+          {geeReady && geeTile && activeTab !== "s2" && (
+            <>
+              {/* Toggle button */}
+              <button
+                onClick={() => setVisPanelOpen(v => !v)}
+                className="absolute top-4 left-4 z-[700] bg-white/95 backdrop-blur border border-slate-200 rounded-xl shadow-lg px-3 py-2 text-xs font-medium text-slate-700 hover:text-sky-600 hover:border-sky-400 transition-colors flex items-center gap-1.5 pointer-events-auto"
+                title="Ajustar visualização"
+              >
+                <Sliders size={14} />
+                {visPanelOpen ? "Fechar" : "Visualização"}
+              </button>
+              <RasterVisPanel
+                open={visPanelOpen}
+                onClose={() => setVisPanelOpen(false)}
+                availableBands={activeDefBands}
+                currentParams={visParams}
+                onApply={handleApplyVis}
+                onImport={handleImportVis}
+                applying={visApplying}
+              />
+            </>
+          )}
+
 
           {/* Map overlay legend — proxy mode */}
           {activeTab !== "s2" && !geeReady && !isGeeOnly && activeDef && (

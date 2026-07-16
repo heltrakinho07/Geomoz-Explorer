@@ -634,12 +634,12 @@ function AlphaEarthTab() {
         )}
 
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }}>
-          <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
             attribution="&copy; OSM &copy; CARTO" maxZoom={19} />
 
           {/* Result tile overlay */}
           {activeTileUrl && (
-            <TileLayer key={tileKey} url={activeTileUrl} opacity={0.75} />
+            <TileLayer crossOrigin="anonymous" key={tileKey} url={activeTileUrl} opacity={0.75} />
           )}
 
           {/* Training polygons overlay (classify mode) */}
@@ -821,7 +821,7 @@ function ClusteringTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[] }
           </div>
         )}
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }}>
-          <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" attribution="&copy; OSM &copy; CARTO" maxZoom={19} />
+          <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" attribution="&copy; OSM &copy; CARTO" maxZoom={19} />
           <ScaleControl position="bottomleft" imperial={false} />
           {provinceGeoJSON && (
             <GeoJSON key={clusterKey} data={provinceGeoJSON}
@@ -909,7 +909,7 @@ function FavorabilityTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[]
           <div className="flex justify-between text-xs text-slate-400 mt-1"><span>Muito Baixa</span><span>Alta</span></div>
         </div>
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }}>
-          <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" attribution="&copy; OSM &copy; CARTO" maxZoom={19} />
+          <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" attribution="&copy; OSM &copy; CARTO" maxZoom={19} />
           <ScaleControl position="bottomleft" imperial={false} />
           {provinceGeoJSON && (
             <GeoJSON key={favKey} data={provinceGeoJSON}

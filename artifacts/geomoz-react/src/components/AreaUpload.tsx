@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { Upload, FileText, X, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { apiUrl } from "@/lib/api";
 
 interface AreaUploadProps {
   onGeometryLoaded: (geojson: GeoJSON.GeoJSON, label: string) => void;
@@ -39,10 +40,18 @@ export default function AreaUpload({ onGeometryLoaded }: AreaUploadProps) {
         }
         onGeometryLoaded(data, file.name.replace(/\.[^.]+$/, ""));
       } else {
-        // For KML/GPX, send to backend for conversion (TODO: implement)
-        setError("Conversão de KML/GPX será implementada em breve. Use GeoJSON por enquanto.");
-        setLoading(false);
-        return;
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch(`${apiUrl}/geomoz-api/convert-geom`, {
+          method: "POST",
+          body: formData,
+        });
+        if (!res.ok) {
+            const errData = await res.json().catch(() => null);
+            throw new Error(errData?.detail || `Erro na conversão: ${res.status}`);
+        }
+        const data = await res.json() as GeoJSON.GeoJSON;
+        onGeometryLoaded(data, file.name.replace(/\.[^.]+$/, ""));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao ler ficheiro.");

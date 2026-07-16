@@ -148,7 +148,7 @@ footer{background:#fff;border-top:1px solid #e2e8f0;padding:5px 16px;font-size:1
 </footer>
 <script>
 var map=L.map('map').setView([${center[0]},${center[1]}],${zoom});
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OSM &copy; CARTO',maxZoom:19,subdomains:'abcd'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{crossOrigin: 'anonymous', attribution:'&copy; OSM &copy; CARTO',maxZoom:19,subdomains:'abcd'}).addTo(map);
 L.control.scale({imperial:false,position:'bottomleft'}).addTo(map);
 ${geoScript}
 ${provScript}

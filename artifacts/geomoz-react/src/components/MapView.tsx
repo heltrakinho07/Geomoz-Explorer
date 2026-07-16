@@ -14,6 +14,8 @@ import "leaflet/dist/leaflet.css";
 import { useGeologyGeoJSON, useProvincesGeoJSON, useDistrictsGeoJSON } from "@/hooks/useGeoMoz";
 import type { LayerState } from "./Sidebar";
 import MapTools from "./MapTools";
+import MapDraw from "./MapDraw";
+import type { AreaOfInterest } from "@/lib/aoi";
 
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -27,6 +29,11 @@ interface MapViewProps {
   district: string | null;
   layers: LayerState;
   colorBy: string;
+  aoi: AreaOfInterest;
+  drawingEnabled: boolean;
+  finishRequest?: number;
+  onDrawComplete: (geometry: GeoJSON.GeoJSON, label: string) => void;
+  onDrawCancel: () => void;
   onProvinceClick?: (name: string) => void;
   onMapState?: (center: [number, number], zoom: number) => void;
   mapRef?: React.RefObject<L.Map | null>;
@@ -99,7 +106,7 @@ function NorthArrow() {
   );
 }
 
-export default function MapView({ province, district, layers, colorBy, onProvinceClick, onMapState, mapRef }: MapViewProps) {
+export default function MapView({ province, district, layers, colorBy, aoi, drawingEnabled, finishRequest, onDrawComplete, onDrawCancel, onProvinceClick, onMapState, mapRef }: MapViewProps) {
   const { data: provinceGeoJSON } = useProvincesGeoJSON();
   const { data: districtGeoJSON } = useDistrictsGeoJSON(province);
   const { data: geologyGeoJSON, isFetching: loadingGeology } = useGeologyGeoJSON(province, district, colorBy, layers.geology);
@@ -182,7 +189,7 @@ export default function MapView({ province, district, layers, colorBy, onProvinc
       <NorthArrow />
 
       <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl>
-        <TileLayer
+        <TileLayer crossOrigin="anonymous"
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
           maxZoom={19}
@@ -208,6 +215,19 @@ export default function MapView({ province, district, layers, colorBy, onProvinc
 
         {layers.districts && province && districtGeoJSON && (
           <GeoJSONLayer data={districtGeoJSON} layerKey={distKey} style={districtStyle} onEachFeature={onEachDistrict} />
+        )}
+        {drawingEnabled && (
+          <MapDraw
+            enabled={drawingEnabled}
+            onDrawComplete={onDrawComplete}
+            onCancel={onDrawCancel}
+            hasDrawnAOI={aoi?.source === "draw"}
+            onClearAOI={onDrawCancel}
+            finishRequest={finishRequest}
+          />
+        )}
+        {aoi?.source !== "global" && aoi?.geometry && (
+          <GeoJSON data={aoi.geometry as GeoJSON.FeatureCollection | GeoJSON.Feature} style={{ color: "#f43f5e", weight: 2, dashArray: "6 4", fillOpacity: 0.05 }} />
         )}
         <MapTools />
       </MapContainer>

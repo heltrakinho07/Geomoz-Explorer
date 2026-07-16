@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 import geopandas as gpd
 from shapely.errors import TopologicalError, GEOSException
 
-from fastapi import FastAPI, Query, HTTPException, Request
+from fastapi import FastAPI, Query, HTTPException, Request, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import Response
@@ -47,6 +47,17 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Enable KML/GPX reading in fiona/geopandas
+try:
+    import fiona
+    fiona.drvsupport.supported_drivers['KML'] = 'rw'
+    fiona.drvsupport.supported_drivers['GPX'] = 'rw'
+    fiona.drvsupport.supported_drivers['kml'] = 'rw'
+    fiona.drvsupport.supported_drivers['gpx'] = 'rw'
+except ImportError:
+    logger.warning("Fiona not installed, KML/GPX upload may fail.")
+
 
 # Simple in-memory rate limiter
 # In production, use Redis or similar for distributed rate limiting
@@ -159,7 +170,7 @@ def _clip_geo(gdf, province=None, district=None):
                         if len(mask_p) > 0:
                             mask = mask_p
                 try:
-                    return gpd.clip(gdf, mask.geometry.union_all())
+                    return gpd.clip(gdf, mask.geometry.union_all().buffer(0))
                 except (ValueError, TopologicalError, GEOSException) as e:
                     logger.warning("Failed to clip to district '%s': %s", district, e)
     elif province:
@@ -169,7 +180,7 @@ def _clip_geo(gdf, province=None, district=None):
             mask = prov_gdf[prov_gdf[prov_col] == province]
             if len(mask) > 0:
                 try:
-                    return gpd.clip(gdf, mask.geometry.union_all())
+                    return gpd.clip(gdf, mask.geometry.union_all().buffer(0))
                 except (ValueError, TopologicalError, GEOSException) as e:
                     logger.warning("Failed to clip to province '%s': %s", province, e)
     return gdf
@@ -211,7 +222,7 @@ def _region_geojson(
                     if len(sub_p) > 0:
                         sub = sub_p
             if len(sub) > 0:
-                geom = sub.geometry.union_all().simplify(0.01, preserve_topology=True)
+                geom = sub.geometry.union_all().buffer(0).simplify(0.01, preserve_topology=True)
                 return mapping(geom)
 
     # Priority 3: province
@@ -221,7 +232,7 @@ def _region_geojson(
         if pcol:
             sub = prov_gdf[prov_gdf[pcol] == province]
             if len(sub) > 0:
-                geom = sub.geometry.union_all().simplify(0.02, preserve_topology=True)
+                geom = sub.geometry.union_all().buffer(0).simplify(0.02, preserve_topology=True)
                 return mapping(geom)
 
     return None
@@ -316,64 +327,74 @@ def get_district_names(province: Optional[str] = Query(None)):
 
 
 @app.get("/geomoz-api/geology")
-def get_geology(
+async def get_geology(
     province: Optional[str] = Query(None),
     district: Optional[str] = Query(None),
     color_by: str = Query("code2006"),
 ):
-    gdf = _clip_geo(_geology().copy(), province, district)
+    from starlette.concurrency import run_in_threadpool
 
-    color_col = color_by if color_by in gdf.columns else find_col(gdf, ["code2006", "Legend", "ERA", "PERIOD"])
-    if color_col:
-        gdf["_color"] = gdf[color_col].fillna("Unknown").astype(str).apply(color_for)
+    def process_geology():
+        gdf = _clip_geo(_geology().copy(), province, district)
 
-    return _gdf_to_geojson_response(gdf)
+        color_col = color_by if color_by in gdf.columns else find_col(gdf, ["code2006", "Legend", "ERA", "PERIOD"])
+        if color_col:
+            gdf["_color"] = gdf[color_col].fillna("Unknown").astype(str).apply(color_for)
+
+        return _gdf_to_geojson_response(gdf)
+        
+    return await run_in_threadpool(process_geology)
 
 
 @app.get("/geomoz-api/stats")
-def get_stats(
+async def get_stats(
     province: Optional[str] = Query(None),
     district: Optional[str] = Query(None),
 ):
-    gdf = _clip_geo(_geology().copy(), province, district)
+    from starlette.concurrency import run_in_threadpool
 
-    if len(gdf) == 0:
-        return {"totalFeatures": 0, "totalUnits": 0, "totalAreaKm2": 0, "dominant": "N/A", "lithologies": []}
+    def process_stats():
+        gdf = _clip_geo(_geology().copy(), province, district)
 
-    try:
-        gdf_proj = gdf.to_crs("EPSG:32736")
-        gdf_proj = gdf_proj.copy()
-        gdf_proj["_area_m2"] = gdf_proj.geometry.area
-    except (ValueError, TopologicalError, GEOSException) as e:
-        logger.warning("Failed to project geometry for area calculation: %s", e)
-        gdf_proj = gdf.copy()
-        gdf_proj["_area_m2"] = 0.0
+        if len(gdf) == 0:
+            return {"totalFeatures": 0, "totalUnits": 0, "totalAreaKm2": 0, "dominant": "N/A", "lithologies": []}
 
-    legend_col = find_col(gdf_proj, ["Legend", "LEGEND", "code2006", "ERA"])
-    total_area_km2 = round(gdf_proj["_area_m2"].sum() / 1e6, 2)
+        try:
+            gdf_proj = gdf.to_crs("EPSG:32736")
+            gdf_proj = gdf_proj.copy()
+            gdf_proj["_area_m2"] = gdf_proj.geometry.area
+        except (ValueError, TopologicalError, GEOSException) as e:
+            logger.warning("Failed to project geometry for area calculation: %s", e)
+            gdf_proj = gdf.copy()
+            gdf_proj["_area_m2"] = 0.0
 
-    lithologies = []
-    if legend_col:
-        grouped = (
-            gdf_proj.groupby(legend_col, dropna=False)["_area_m2"]
-            .sum().reset_index().sort_values("_area_m2", ascending=False)
-        )
-        for _, row in grouped.iterrows():
-            name = str(row[legend_col]) if row[legend_col] else "Unknown"
-            area_km2 = round(row["_area_m2"] / 1e6, 2)
-            pct = round(area_km2 / total_area_km2 * 100, 1) if total_area_km2 > 0 else 0
-            lithologies.append({"name": name, "areaKm2": area_km2, "percent": pct, "color": color_for(name)})
+        legend_col = find_col(gdf_proj, ["Legend", "LEGEND", "code2006", "ERA"])
+        total_area_km2 = round(gdf_proj["_area_m2"].sum() / 1e6, 2)
 
-    dominant   = lithologies[0]["name"] if lithologies else "N/A"
-    unique_units = len(gdf_proj[legend_col].dropna().unique()) if legend_col else 0
+        lithologies = []
+        if legend_col:
+            grouped = (
+                gdf_proj.groupby(legend_col, dropna=False)["_area_m2"]
+                .sum().reset_index().sort_values("_area_m2", ascending=False)
+            )
+            for _, row in grouped.iterrows():
+                name = str(row[legend_col]) if row[legend_col] else "Unknown"
+                area_km2 = round(row["_area_m2"] / 1e6, 2)
+                pct = round(area_km2 / total_area_km2 * 100, 1) if total_area_km2 > 0 else 0
+                lithologies.append({"name": name, "areaKm2": area_km2, "percent": pct, "color": color_for(name)})
 
-    return {
-        "totalFeatures": len(gdf),
-        "totalUnits":    unique_units,
-        "totalAreaKm2":  total_area_km2,
-        "dominant":      dominant,
-        "lithologies":   lithologies,
-    }
+        dominant   = lithologies[0]["name"] if lithologies else "N/A"
+        unique_units = len(gdf_proj[legend_col].dropna().unique()) if legend_col else 0
+
+        return {
+            "totalFeatures": len(gdf),
+            "totalUnits":    unique_units,
+            "totalAreaKm2":  total_area_km2,
+            "dominant":      dominant,
+            "lithologies":   lithologies,
+        }
+        
+    return await run_in_threadpool(process_stats)
 
 
 @app.get("/geomoz-api/geology-colors")
@@ -395,6 +416,49 @@ def get_province_summary():
 
 
 # ── GEE endpoints ──────────────────────────────────────────────────────────────
+
+@app.get("/geomoz-api/status")
+def api_status():
+    """Basic health check and initialization status."""
+    msg = "GeoMoz API is running."
+    return {"status": "ok", "message": msg}
+
+@app.post("/geomoz-api/convert-geom")
+async def convert_geom(file: UploadFile = File(...)):
+    """Converts a KML, GPX or zipped Shapefile into a GeoJSON dict."""
+    import tempfile
+    import os
+    import json
+    
+    ext = file.filename.split('.')[-1].lower()
+    if ext not in ['kml', 'gpx', 'zip', 'json', 'geojson']:
+        raise HTTPException(status_code=400, detail="Formato não suportado. Use KML, GPX, ZIP ou GeoJSON.")
+        
+    try:
+        # Save uploaded file to temp
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+            content = await file.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+            
+        # Parse using geopandas
+        import geopandas as gpd
+        gdf = gpd.read_file(tmp_path)
+        
+        # Reproject to WGS84 if needed
+        if gdf.crs is not None and gdf.crs.to_epsg() != 4326:
+            gdf = gdf.to_crs(epsg=4326)
+            
+        # Clean geometries to avoid intersection errors
+        gdf.geometry = gdf.geometry.buffer(0)
+            
+        geojson_str = gdf.to_json()
+        os.remove(tmp_path)
+        
+        return json.loads(geojson_str)
+    except Exception as e:
+        logger.exception("Erro ao converter ficheiro de geometria.")
+        raise HTTPException(status_code=500, detail=f"Erro na conversão: {str(e)}")
 
 @app.get("/geomoz-api/gee/status")
 def gee_status():
@@ -530,6 +594,63 @@ class GEEIndexRequest(BaseModel):
             raise ValueError('cloud_pct must be between 0 and 100')
         return v
 
+    @field_validator('geometry')
+    @classmethod
+    def validate_geometry(cls, v):
+        if v is not None:
+            import json
+            if len(json.dumps(v)) > 500_000:
+                raise ValueError("A geometria é muito grande ou complexa. Simplifique o polígono.")
+        return v
+
+    @field_validator('start_date', 'end_date')
+    @classmethod
+    def validate_date_format(cls, v):
+        try:
+            from datetime import datetime
+            datetime.strptime(v, '%Y-%m-%d')
+        except ValueError:
+            raise ValueError('Date must be in YYYY-MM-DD format')
+        return v
+
+
+class GEERenderRequest(BaseModel):
+    """Re-render a GEE index tile with custom visualization parameters.
+
+    Same fields as GEEIndexRequest, plus:
+      vis_params: dict with optional keys:
+        bands   : str | list[str]
+        min     : float
+        max     : float
+        gamma   : float
+        opacity : float
+        palette : list[str]
+    """
+    index:      str
+    province:   Optional[str] = None
+    district:   Optional[str] = None
+    geometry:   Optional[dict] = None
+    start_date: str = "2023-01-01"
+    end_date:   str = "2023-12-31"
+    cloud_pct:  int = 30
+    vis_params: dict = {}
+
+    @field_validator('cloud_pct')
+    @classmethod
+    def validate_cloud_pct(cls, v):
+        if not 0 <= v <= 100:
+            raise ValueError('cloud_pct must be between 0 and 100')
+        return v
+
+    @field_validator('geometry')
+    @classmethod
+    def validate_geometry(cls, v):
+        if v is not None:
+            import json
+            if len(json.dumps(v)) > 500_000:
+                raise ValueError("A geometria é muito grande ou complexa. Simplifique o polígono.")
+        return v
+
     @field_validator('start_date', 'end_date')
     @classmethod
     def validate_date_format(cls, v):
@@ -555,6 +676,15 @@ class GEECompositeRequest(BaseModel):
     def validate_cloud_pct(cls, v):
         if not 0 <= v <= 100:
             raise ValueError('cloud_pct must be between 0 and 100')
+        return v
+
+    @field_validator('geometry')
+    @classmethod
+    def validate_geometry(cls, v):
+        if v is not None:
+            import json
+            if len(json.dumps(v)) > 500_000:
+                raise ValueError("A geometria é muito grande ou complexa. Simplifique o polígono.")
         return v
 
     @field_validator('start_date', 'end_date')
@@ -610,6 +740,50 @@ async def gee_index(req: GEEIndexRequest):
         raise HTTPException(503, str(exc))
     except Exception as exc:
         raise HTTPException(500, f"GEE computation failed: {exc}")
+
+
+@app.post("/geomoz-api/gee/render")
+async def gee_render(req: GEERenderRequest):
+    """
+    Re-render an existing GEE index tile with custom visualization parameters.
+
+    Accepts the same fields as `/gee/index` plus `vis_params`:
+      vis_params:
+        bands   : str | list[str]   — single band name or [R, G, B] list
+        min     : float             — lower display bound
+        max     : float             — upper display bound
+        gamma   : float             — gamma correction
+        opacity : float             — tile opacity 0–1
+        palette : list[str]         — hex colour palette (single-band mode)
+    """
+    import asyncio
+    from gee_presets import INDEX_REGISTRY
+    from gee_module import compute_index_tile_vis
+
+    if req.index not in INDEX_REGISTRY:
+        raise HTTPException(400, f"Unknown index '{req.index}'. Valid: {list(INDEX_REGISTRY)}")
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+
+    loop = asyncio.get_event_loop()
+
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_index_tile_vis(
+                req.index, region, req.vis_params,
+                req.start_date, req.end_date, req.cloud_pct,
+            ),
+        )
+        result["province"] = req.province
+        result["district"] = req.district
+        return result
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE re-render failed: {exc}")
 
 
 @app.post("/geomoz-api/gee/composite")

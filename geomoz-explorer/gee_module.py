@@ -32,6 +32,86 @@ _lock = threading.Lock()
 _gee_initialized = False
 _gee_error: Optional[str] = None
 
+# ── In-memory cache for computed ee.Image objects ─────────────────────────────
+#
+# compute_index_tile_vis() re-renders an existing index with new vis params.
+# Without caching, it rebuilds the entire Sentinel-2 / DEM composite from
+# scratch every time — taking 15–30 seconds.  By caching the final clipped
+# ee.Image (which is just a GEE computation graph), calling
+#   cached_img.visualize(newParams).getMapId()
+# is nearly instant because GEE caches intermediate results server-side.
+#
+# The cache is keyed by (index, region_geojson_str, start_date, end_date, cloud_pct).
+
+_INDEX_IMAGE_CACHE: dict[str, 'ee.Image'] = {}       # type: ignore[name-defined]
+_INDEX_CACHE_MAX = 16                                  # LRU — evict oldest when full
+_INDEX_CACHE_ORDER: list[str] = []                     # insertion order for eviction
+
+_cache_lock = threading.Lock()
+
+
+def _cache_key(index: str, region_geojson: Optional[dict],
+               start_date: str, end_date: str, cloud_pct: int) -> str:
+    """Build a deterministic cache key from the index-computation parameters."""
+    import hashlib
+    # Serialise region GeoJSON deterministically
+    if region_geojson is not None:
+        region_str = json.dumps(region_geojson, sort_keys=True, default=str)
+    else:
+        region_str = "None"
+    raw = f"{index}:{region_str}:{start_date}:{end_date}:{cloud_pct}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _cache_put(key: str, img: 'ee.Image'):
+    """Store an ee.Image in the LRU cache."""
+    import ee  # noqa: F811
+    with _cache_lock:
+        if key in _INDEX_IMAGE_CACHE:
+            # Move to end (most recently used)
+            _INDEX_CACHE_ORDER.remove(key)
+            _INDEX_CACHE_ORDER.append(key)
+            _INDEX_IMAGE_CACHE[key] = img
+            return
+        if len(_INDEX_IMAGE_CACHE) >= _INDEX_CACHE_MAX:
+            # Evict the oldest entry
+            oldest = _INDEX_CACHE_ORDER.pop(0)
+            _INDEX_IMAGE_CACHE.pop(oldest, None)
+        _INDEX_IMAGE_CACHE[key] = img
+        _INDEX_CACHE_ORDER.append(key)
+
+
+def _cache_get(key: str) -> Optional['ee.Image']:
+    """Retrieve a cached ee.Image, or None if not found.
+
+    On a hit, moves the key to the end of the LRU order.
+    """
+    with _cache_lock:
+        img = _INDEX_IMAGE_CACHE.get(key)
+        if img is not None:
+            _INDEX_CACHE_ORDER.remove(key)
+            _INDEX_CACHE_ORDER.append(key)
+        return img
+
+
+def _cache_clear():
+    """Clear the index-image cache (e.g. after GEE reset)."""
+    with _cache_lock:
+        _INDEX_IMAGE_CACHE.clear()
+        _INDEX_CACHE_ORDER.clear()
+
+
+def _build_cache_key_for_request(
+    index: str,
+    region_geojson: Optional[dict],
+    start_date: str,
+    end_date: str,
+    cloud_pct: int,
+) -> str:
+    """Convenience wrapper to build a cache key from the same params passed
+    to compute_index_tile / compute_index_tile_vis."""
+    return _cache_key(index, region_geojson, start_date, end_date, cloud_pct)
+
 
 # ── Initialization ─────────────────────────────────────────────────────────────
 
@@ -108,6 +188,8 @@ def reset_gee():
     with _lock:
         _gee_initialized = False
         _gee_error = None
+        _cache_clear()
+        logger.info("GEE reset: auth cleared + index-image cache cleared (%d entries)", len(_INDEX_IMAGE_CACHE))
 
 
 def gee_status() -> dict:
@@ -148,6 +230,26 @@ def _to_ee_region(region_geojson: Optional[dict]):
         w, s, e, n = MZ_BBOX
         return ee.Geometry.BBox(w, s, e, n)
     return ee.Geometry(region_geojson, opt_proj="EPSG:4326", opt_geodesic=False)
+
+def _compute_dynamic_scale(region: 'ee.Geometry') -> int:
+    """Return an appropriate scale (meters) based on the geometry area."""
+    try:
+        area_km2 = region.area(maxError=100).getInfo() / 1e6
+        if area_km2 > 200_000:
+            return 1000
+        elif area_km2 > 50_000:
+            return 500
+        elif area_km2 > 10_000:
+            return 250
+        elif area_km2 > 1_000:
+            return 90
+        else:
+            return 30
+    except Exception as e:
+        logger.warning("Error computing dynamic scale: %s", e)
+        return 250
+
+
 
 
 # ── Source data builders ──────────────────────────────────────────────────────
@@ -677,6 +779,187 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         return malaria_cond.multiply(0.35).add(inund_prox.multiply(0.25)).add(inv_access.multiply(0.20)).add(pop_dens.multiply(0.20)).rename("index")
 
 
+    # ══════════════════════════════════════════════════════════════════════
+    # New indices from GEE scripts repository
+    # ══════════════════════════════════════════════════════════════════════
+
+    # ── VCI — Vegetation Condition Index (MODIS multi-year NDVI) ────────
+    # Formula: VCI = ((NDVI − NDVI_min) / (NDVI_max − NDVI_min)) × 100
+    # Source: script 00017_vci_drought_mapping
+    if index == "vci":
+        import ee
+        collection = (ee.ImageCollection("MODIS/061/MOD13A2")
+                      .filterBounds(region)
+                      .select("NDVI"))
+        count = collection.size().getInfo()
+        if count < 3:
+            raise ValueError(
+                "VCI requer pelo menos 3 imagens MODIS NDVI na região. "
+                "Tente uma área maior ou um período multi-anual."
+            )
+        ndvi = collection.mean().multiply(0.0001).clamp(-0.2, 1.0)
+        ndvi_min = collection.min().multiply(0.0001)
+        ndvi_max = collection.max().multiply(0.0001)
+        vci = ndvi.subtract(ndvi_min).divide(ndvi_max.subtract(ndvi_min).max(0.01))
+        return vci.multiply(100).clamp(0, 100).rename("index")
+
+    # ── TCI — Thermal Condition Index (MODIS multi-year LST) ───────────
+    # Formula: TCI = ((LST_max − LST) / (LST_max − LST_min)) × 100
+    # Source: script 00039_modis_vhi
+    if index == "tci":
+        import ee
+        collection = (ee.ImageCollection("MODIS/061/MOD11A2")
+                      .filterBounds(region)
+                      .select("LST_Day_1km"))
+        count = collection.size().getInfo()
+        if count < 3:
+            raise ValueError(
+                "TCI requer pelo menos 3 imagens MODIS LST na região. "
+                "Tente uma área maior ou um período multi-anual."
+            )
+        lst = collection.mean().multiply(0.02)  # Kelvin * 0.02 scale
+        lst_min = collection.min().multiply(0.02)
+        lst_max = collection.max().multiply(0.02)
+        tci = lst_max.subtract(lst).divide(lst_max.subtract(lst_min).max(0.01))
+        return tci.multiply(100).clamp(0, 100).rename("index")
+
+    # ── VHI — Vegetation Health Index (0.5 × VCI + 0.5 × TCI) ─────────
+    # Formula: VHI = 0.5 × VCI + 0.5 × TCI
+    # Source: script 00039_modis_vhi
+    if index == "vhi":
+        import ee
+        # Validate MODIS NDVI collection
+        ndvi_coll = (ee.ImageCollection("MODIS/061/MOD13A2")
+                     .filterBounds(region).select("NDVI"))
+        ndvi_count = ndvi_coll.size().getInfo()
+        if ndvi_count < 3:
+            raise ValueError(
+                "VHI (NDVI): pelo menos 3 imagens MODIS necessárias. "
+                f"Encontradas: {ndvi_count}. Tente uma área maior ou período multi-anual."
+            )
+        # Validate MODIS LST collection
+        lst_coll = (ee.ImageCollection("MODIS/061/MOD11A2")
+                    .filterBounds(region).select("LST_Day_1km"))
+        lst_count = lst_coll.size().getInfo()
+        if lst_count < 3:
+            raise ValueError(
+                "VHI (LST): pelo menos 3 imagens MODIS necessárias. "
+                f"Encontradas: {lst_count}. Tente uma área maior ou período multi-anual."
+            )
+        # VCI component
+        ndvi = ndvi_coll.mean().multiply(0.0001).clamp(-0.2, 1.0)
+        ndvi_min = ndvi_coll.min().multiply(0.0001)
+        ndvi_max = ndvi_coll.max().multiply(0.0001)
+        vci = ndvi.subtract(ndvi_min).divide(ndvi_max.subtract(ndvi_min).max(0.01))
+        # TCI component
+        lst = lst_coll.mean().multiply(0.02)
+        lst_min = lst_coll.min().multiply(0.02)
+        lst_max = lst_coll.max().multiply(0.02)
+        tci = lst_max.subtract(lst).divide(lst_max.subtract(lst_min).max(0.01))
+        # VHI = 0.5 × VCI + 0.5 × TCI
+        return vci.multiply(0.5).add(tci.multiply(0.5)).multiply(100).clamp(0, 100).rename("index")
+
+    # ── CWSI — Crop Water Stress Index (1 − ET/PET) ───────────────────
+    # Formula: CWSI = 1 − (ET / PET)  with 0.1 scale factor
+    # Source: script 00018_et_cwsi_mapping
+    if index == "cwsi":
+        import ee
+        et_coll = (ee.ImageCollection("MODIS/061/MOD16A2GF")
+                   .filterBounds(region)
+                   .select(["ET", "PET"]))
+        count = et_coll.size().getInfo()
+        if count == 0:
+            raise ValueError(
+                "Sem dados MODIS ET/PET disponíveis para a região. "
+                "Tente uma área maior ou período diferente."
+            )
+        et = et_coll.select("ET").mean().multiply(0.1).max(0.01)
+        pet = et_coll.select("PET").mean().multiply(0.1).max(0.01)
+        cwsi = ee.Image(1).subtract(et.divide(pet))
+        return cwsi.clamp(0, 1).rename("index")
+
+    # ── LAI — Leaf Area Index via EVI da Landsat ──────────────────────
+    # Formula: LAI = 3.618 × EVI − 0.118
+    #          EVI = 2.5 × (NIR − Red) / (NIR + 6×Red − 7.5×Blue + 1)
+    # Source: script 00068_landsat_lai
+    if index == "lai":
+        import ee
+        nir = l8.select("SR_B5").multiply(0.0000275).add(-0.2)
+        red = l8.select("SR_B4").multiply(0.0000275).add(-0.2)
+        blue = l8.select("SR_B2").multiply(0.0000275).add(-0.2)
+        evi = nir.subtract(red).multiply(2.5).divide(
+            nir.add(red.multiply(6)).subtract(blue.multiply(7.5)).add(1)
+        )
+        lai = evi.multiply(3.618).subtract(0.118)
+        return lai.clamp(0, 10).rename("index")
+
+    # ── NDTI — Normalized Difference Turbidity Index (Sentinel-2) ─────
+    # Formula: NDTI = (B4 − B3) / (B4 + B3)  on water-masked pixels
+    # Source: script 00020_water_turbidity
+    if index == "ndti":
+        import ee
+        # Mask water first using NDWI > 0.1
+        ndwi = s2.normalizedDifference(["B3", "B8"])
+        water_mask = ndwi.gt(0.1)
+        # Compute NDTI only on water pixels
+        ndti_raw = s2.normalizedDifference(["B4", "B3"]).rename("index")
+        # Mask out non-water (land) pixels
+        return ndti_raw.updateMask(water_mask)
+
+    # ── Wind Speed — ERA5 daily wind speed magnitude ──────────────────
+    # Formula: Wind = sqrt(u² + v²)  where u=u_10, v=v_10
+    # Source: script 00014_daily_wind_speed
+    if index == "wind_speed":
+        import ee
+        era5 = (ee.ImageCollection("ECMWF/ERA5/DAILY")
+                .filterBounds(region)
+                .filterDate("2022-01-01", "2023-01-01")
+                .select(["u_10", "v_10"])
+                .mean())
+        wind = era5.expression(
+            "sqrt(u_10 * u_10 + v_10 * v_10)",
+            {"u_10": era5.select("u_10"), "v_10": era5.select("v_10")}
+        )
+        return wind.clamp(0, 30).rename("index")
+
+    # ── Night Light — VIIRS annual composite ──────────────────────────
+    # Formula: avg_rad from VIIRS DNB monthly composite, annualised
+    # Source: script 00034_night_light
+    if index == "night_light":
+        import ee
+        viirs = (ee.ImageCollection("NOAA/VIIRS/DNB/MONTHLY_V1/VCMCFG")
+                 .filterBounds(region)
+                 .filterDate("2022-01-01", "2023-01-01")
+                 .select("avg_rad"))
+        count = viirs.size().getInfo()
+        if count == 0:
+            raise ValueError(
+                "Sem dados VIIRS DNB disponíveis para a região. "
+                "Tente uma área maior."
+            )
+        return viirs.mean().clamp(0, 100).rename("index")
+
+    # ── SPEI — Standardized Precipitation-Evapotranspiration Index ────
+    # Source: script 00059_spei_classification
+    if index == "spei":
+        import ee
+        spei_img = ee.Image("CSIC/SPEI/SPEI_12_month")
+        return spei_img.clamp(-5, 5).rename("index")
+
+    # ── Canopy Height — Meta Forest Monitoring 1m ────────────────────
+    # Source: script 00031_canopy_height_1m
+    if index == "canopy_height":
+        import ee
+        height = ee.ImageCollection("projects/meta-forest-monitoring-1m")
+        count = height.size().getInfo()
+        if count == 0:
+            raise ValueError(
+                "Dados de altura de dossel (Meta) não disponíveis para a região. "
+                "Disponível globalmente para anos recentes."
+            )
+        return height.select("height").mean().clamp(0, 60).rename("index")
+
+
     raise ValueError(f"Índice desconhecido: {index!r}")
 
 
@@ -701,19 +984,26 @@ _EMBEDDING_PALETTE = [
 def _build_embedding(region, year: int = 2024):
     """Fetch the annual AlphaEarth Foundations embedding image.
 
+    The dataset is organised per UTM zone (global tiles), so we must
+    filter by geometry and mosaic all intersecting tiles.  Using
+    .first() without filterBounds can return a tile outside the ROI.
+
     Returns an ee.Image with 64 bands (A00–A63) clipped to *region*.
     """
     import ee
-    emb = (
+    col = (
         ee.ImageCollection("GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL")
         .filterDate(f"{year}-01-01", f"{year + 1}-01-01")
-        .first()
+        .filterBounds(region)
     )
-    if emb is None:
+    count = col.size().getInfo()
+    if count == 0:
         raise ValueError(
-            f"Embedding anual {year} não disponível. "
+            f"Embedding anual {year} não disponível para a região selecionada. "
             "Período suportado: 2017–presente."
         )
+    # Mosaic all tiles that intersect the region (they use different UTM zones)
+    emb = col.mosaic()
     return emb.clip(region)
 
 
@@ -726,12 +1016,18 @@ def _embedding_pca(embedding, region, num_components: int = 3, scale: int = 1000
     import ee
     band_names = embedding.bandNames()
 
-    # Mean-center
+    # Mean-center (handle potential None values for bands with no valid pixels)
     mean_dict = embedding.reduceRegion(
         reducer=ee.Reducer.mean(),
         geometry=region, scale=scale, bestEffort=True, maxPixels=int(1e9),
     )
-    means = ee.Image.constant(ee.List(mean_dict.values(band_names)))
+    mean_values = mean_dict.values(band_names)
+    # Replace null with 0 to avoid "Image.constant: Invalid type" error.
+    # ee.Algorithms.IsEqual works server-side on any ComputedObject.
+    safe_values = mean_values.map(
+        lambda v: ee.Algorithms.If(ee.Algorithms.IsEqual(v, None), 0, v)
+    )
+    means = ee.Image.constant(safe_values)
     centered = embedding.subtract(means)
 
     # Covariance via array
@@ -739,7 +1035,16 @@ def _embedding_pca(embedding, region, num_components: int = 3, scale: int = 1000
         reducer=ee.Reducer.centeredCovariance(),
         geometry=region, scale=scale, bestEffort=True, maxPixels=int(1e9),
     )
-    covar_array = ee.Array(covar.get("array"))
+    # Fetch covariance result to check for null — ee.Array(None) would raise
+    # "Array: Parameter 'values' is required and may not be null."
+    covar_info = covar.getInfo()
+    covar_array_val = covar_info.get("array") if covar_info else None
+    if covar_array_val is None:
+        raise ValueError(
+            "Não foi possível calcular a PCA: sem dados de covariância válidos na região selecionada. "
+            "A região pode estar maioritariamente sobre água, nuvens persistentes ou sem dados de embedding."
+        )
+    covar_array = ee.Array(covar_array_val)
 
     # Eigendecomposition
     eigens = covar_array.eigen()
@@ -929,8 +1234,8 @@ def compute_embedding_similarity(
             ).get("high").getInfo()
         )
         high_area_km2 = round(float(area) / 1e6, 2) if area else 0.0
-    except Exception:
-        pass
+    except Exception as e:
+        logger.exception("Erro silencioso capturado: %s", e)
 
     return {
         "tileUrl":       tile_url,
@@ -1097,8 +1402,8 @@ def compute_embedding_change(
                 scale=scale, bestEffort=True, maxPixels=int(1e9),
             ).get("change").getInfo() or 0
         ), 4)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.exception("Erro silencioso capturado: %s", e)
 
     # Area with significant change (> 0.15)
     high_change_km2 = None
@@ -1112,8 +1417,8 @@ def compute_embedding_change(
             ).get("high").getInfo()
         )
         high_change_km2 = round(float(area) / 1e6, 2) if area else 0.0
-    except Exception:
-        pass
+    except Exception as e:
+        logger.exception("Erro silencioso capturado: %s", e)
 
     return {
         "tileUrl":        tile_url,
@@ -1167,6 +1472,12 @@ def compute_index_tile(
         rivers = _build_rivers_raster(region)
 
     idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers).clip(region)
+
+    # Store in cache so that compute_index_tile_vis can re-render without
+    # rebuilding the heavy satellite composite.
+    ck = _build_cache_key_for_request(index, region_geojson, start_date, end_date, cloud_pct)
+    _cache_put(ck, idx_img)
+
     vis_img = idx_img.visualize(**cfg["vis"])
     map_data = vis_img.getMapId()
     tile_url = map_data["tile_fetcher"].url_format
@@ -1179,6 +1490,123 @@ def compute_index_tile(
         "group":      cfg["group"],
         "sceneCount": scene_count,
         "dateRange":  f"{start_date} → {end_date}" if cfg["group"] != "terrain" else "Estático (DEM)",
+        "stats":      {},
+        "classNames": cfg.get("class_names"),
+    }
+
+
+# ── Public: single-index tile with custom visParams ────────────────────────
+
+def compute_index_tile_vis(
+    index: str,
+    region_geojson: Optional[dict],
+    vis_params: dict,
+    start_date: str = "2023-01-01",
+    end_date: str = "2023-12-31",
+    cloud_pct: int = 30,
+) -> dict:
+    """Same as compute_index_tile but uses an explicit vis_params dict
+    instead of the registry default.  Useful for the RasterVisPanel:
+    the user can change bands, min/max, gamma, opacity, palette, etc.
+
+    vis_params recognises GEE ee.Image.visualize() keys:
+      bands   : str | list[str] — single band or [R, G, B] list
+      min     : float
+      max     : float
+      gamma   : float
+      opacity : float
+      palette : list[str] — hex colours for single-band
+    """
+    import ee
+    _init_gee()
+
+    if index not in INDEX_REGISTRY:
+        raise ValueError(f"Índice desconhecido '{index}'. Disponíveis: {list(INDEX_REGISTRY)}")
+
+    cfg = INDEX_REGISTRY[index]
+    region = _to_ee_region(region_geojson)
+
+    # ── Check cache FIRST — skip building composites if we already have
+    # the index image.  This is the key performance fix vs. GEE Code Editor.
+    ck = _build_cache_key_for_request(index, region_geojson, start_date, end_date, cloud_pct)
+    cached = _cache_get(ck)
+
+    if cached is not None:
+        idx_img = cached
+        scene_count = 0
+        logger.info("GEE render cache HIT for %s — re-rendering only (%.1f s saved)", index, 15.0)
+    else:
+        logger.info("GEE render cache MISS for %s — building composite", index)
+
+        s2 = l8 = dem = rivers = None
+        scene_count = 0
+
+        needs = cfg["needs"]
+        if "s2" in needs:
+            s2, scene_count = _build_s2_composite(region, start_date, end_date, cloud_pct)
+        if "l8" in needs:
+            l8, scene_count = _build_l8_composite(region, start_date, end_date, cloud_pct)
+        if "dem" in needs:
+            dem = _build_dem(region)
+        if "rivers" in needs:
+            rivers = _build_rivers_raster(region)
+
+        idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers).clip(region)
+        _cache_put(ck, idx_img)
+
+    # Build the .visualize() kwargs from vis_params, falling back to
+    # registry defaults for any key not provided.
+    vis_kwargs = {}
+
+    bands = vis_params.get("bands")
+    if bands is not None:
+        vis_kwargs["bands"] = bands
+
+    mn = vis_params.get("min")
+    mx = vis_params.get("max")
+    if mn is not None:
+        vis_kwargs["min"] = mn
+    if mx is not None:
+        vis_kwargs["max"] = mx
+
+    gamma = vis_params.get("gamma")
+    if gamma is not None:
+        vis_kwargs["gamma"] = gamma
+
+    opacity = vis_params.get("opacity")
+    if opacity is not None:
+        vis_kwargs["opacity"] = opacity
+
+    palette = vis_params.get("palette")
+    if palette is not None:
+        vis_kwargs["palette"] = palette
+
+    # Merge with registry defaults: user-supplied keys win.
+    final_vis = dict(cfg["vis"])
+    final_vis.update(vis_kwargs)
+
+    # For RGB mode (multi-band), remove palette if bands is a list.
+    b = final_vis.get("bands")
+    if isinstance(b, list) and len(b) > 1:
+        final_vis.pop("palette", None)
+
+    try:
+        vis_img = idx_img.visualize(**final_vis)
+    except Exception as exc:
+        raise ValueError(f"Falha ao visualizar com parâmetros {final_vis}: {exc}")
+
+    map_data = vis_img.getMapId()
+    tile_url = map_data["tile_fetcher"].url_format
+
+    return {
+        "tileUrl":    tile_url,
+        "name":       cfg["name"],
+        "formula":    cfg["formula"],
+        "bands":      cfg["bands"],
+        "group":      cfg["group"],
+        "sceneCount": scene_count,
+        "dateRange":  f"{start_date} → {end_date}" if cfg["group"] != "terrain" else "Estático (DEM)",
+        "visParams":  final_vis,
         "stats":      {},
         "classNames": cfg.get("class_names"),
     }
@@ -1786,7 +2214,7 @@ def compute_topo_classes_tile(
             ee.Image.pixelArea().addBands(classified)
             .reduceRegion(
                 reducer=ee.Reducer.sum().group(groupField=1, groupName="class"),
-                geometry=region, scale=90, bestEffort=True, maxPixels=int(1e9),
+                geometry=region, scale=_compute_dynamic_scale(region), bestEffort=True, maxPixels=int(1e9),
             ).getInfo() or {}
         )
         groups = groups_data.get("groups", []) or []
@@ -1816,7 +2244,7 @@ def compute_topo_classes_tile(
 # ── Cobertura do Solo (ESA WorldCover 10 m) ─────────────────────────────────
 
 
-def compute_landcover_tile(region_geojson: Optional[dict], stats_scale: int = 100) -> dict:
+def compute_landcover_tile(region_geojson: Optional[dict]) -> dict:
     """Cobertura do solo a partir do ESA WorldCover v200 (2021, 10 m), com análise
     de área (km²/%) por classe na região selecionada.
     """
@@ -1839,7 +2267,7 @@ def compute_landcover_tile(region_geojson: Optional[dict], stats_scale: int = 10
             ee.Image.pixelArea().addBands(img)
             .reduceRegion(
                 reducer=ee.Reducer.sum().group(groupField=1, groupName="code"),
-                geometry=region, scale=stats_scale, bestEffort=True, maxPixels=int(1e9),
+                geometry=region, scale=_compute_dynamic_scale(region), bestEffort=True, maxPixels=int(1e9),
             ).getInfo() or {}
         )
         for g in groups_data.get("groups", []) or []:
@@ -1950,8 +2378,8 @@ def compute_basin_stats(basin_geometry: dict) -> dict:
         ndvi = s2.normalizedDifference(["B8", "B4"]).rename("ndvi")
         ndwi = s2.normalizedDifference(["B3", "B8"]).rename("ndwi")
         has_s2 = True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.exception("Erro silencioso capturado: %s", e)
 
     has_precip = False
     chirps = None
@@ -1963,8 +2391,8 @@ def compute_basin_stats(basin_geometry: dict) -> dict:
             .rename("precip")
         )
         has_precip = True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.exception("Erro silencioso capturado: %s", e)
 
     max_px = int(1e9)
     reducer_mm = ee.Reducer.min().combine(ee.Reducer.max(), sharedInputs=True).combine(ee.Reducer.mean(), sharedInputs=True)
@@ -1979,16 +2407,16 @@ def compute_basin_stats(basin_geometry: dict) -> dict:
             nw = ndwi.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=30, bestEffort=True, maxPixels=max_px).getInfo()
             ndvi_mean = nv.get("ndvi")
             ndwi_mean = nw.get("ndwi")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception("Erro silencioso capturado: %s", e)
 
     precip_mm_yr = 800.0
     if has_precip:
         try:
             pr = chirps.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=5000, bestEffort=True, maxPixels=max_px).getInfo()
             precip_mm_yr = float(pr.get("precip") or 800)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception("Erro silencioso capturado: %s", e)
 
     area_km2 = region.area(maxError=100).getInfo() / 1e6
     perim_km = region.perimeter(maxError=100).getInfo() / 1e3
@@ -2071,7 +2499,7 @@ def compute_basin_report(basin_geometry: dict) -> dict:
     try:
         groups = (ee.Image.pixelArea().addBands(lc).reduceRegion(
             reducer=ee.Reducer.sum().group(groupField=1, groupName="code"),
-            geometry=region, scale=100, bestEffort=True, maxPixels=max_px,
+            geometry=region, scale=_compute_dynamic_scale(region), bestEffort=True, maxPixels=max_px,
         ).getInfo() or {}).get("groups", []) or []
         for g in groups:
             per_code[int(g["code"])] = float(g.get("sum", 0)) / 1e6
@@ -2203,8 +2631,8 @@ def compute_watershed_from_point(
         hb = _watershed_hydrobasins(pt, lat, lon, level)
         if hb is not None:
             return hb
-    except Exception:
-        pass
+    except Exception as e:
+        logger.exception("Erro silencioso capturado: %s", e)
 
     return _watershed_d8(lat, lon, region_geojson, max_iter)
 
@@ -2459,7 +2887,7 @@ def compute_erosion_rusle(region_geojson: Optional[dict], year: int = 2023) -> d
 
     groups = (ee.Image.pixelArea().addBands(classified).reduceRegion(
         reducer=ee.Reducer.sum().group(groupField=1, groupName="class"),
-        geometry=region, scale=250, bestEffort=True, maxPixels=max_px,
+        geometry=region, scale=_compute_dynamic_scale(region), bestEffort=True, maxPixels=max_px,
     ).getInfo().get("groups", []) or [])
     by_class = {int(g["class"]): float(g.get("sum", 0)) / 1e6 for g in groups}
 
@@ -2520,7 +2948,7 @@ def compute_groundwater_ahp(region_geojson: Optional[dict], year: int = 2023) ->
 
     stack = ee.Image.cat([raw[k].toFloat() for k, *_ in GWP_FACTORS])
     mm = stack.reduceRegion(
-        reducer=ee.Reducer.minMax(), geometry=region, scale=1000,
+        reducer=ee.Reducer.minMax(), geometry=region, scale=max(1000, _compute_dynamic_scale(region)),
         bestEffort=True, maxPixels=max_px,
     ).getInfo()
 

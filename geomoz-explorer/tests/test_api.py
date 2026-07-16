@@ -47,7 +47,7 @@ class TestFindCol:
 
     def test_finds_exact_column(self) -> None:
         """Should return the first matching column name."""
-        from api import _find_col
+        from utils.common import find_col as _find_col
 
         class MockGDF:
             columns = ["Provincia", "Distrito", "geometry"]
@@ -57,7 +57,7 @@ class TestFindCol:
 
     def test_returns_first_candidate_match(self) -> None:
         """Should return the first candidate that matches."""
-        from api import _find_col
+        from utils.common import find_col as _find_col
 
         class MockGDF:
             columns = ["NAME_1", "Provincia"]
@@ -67,7 +67,7 @@ class TestFindCol:
 
     def test_returns_none_when_no_match(self) -> None:
         """Should return None when no column matches."""
-        from api import _find_col
+        from utils.common import find_col as _find_col
 
         class MockGDF:
             columns = ["geometry", "area"]
@@ -76,16 +76,14 @@ class TestFindCol:
         assert result is None
 
     def test_handles_none_gdf(self) -> None:
-        """Should raise AttributeError when gdf is None.
-        This is expected because _find_col is an internal function
-        that always receives a valid GeoDataFrame."""
-        from api import _find_col
-        with pytest.raises(AttributeError):
-            _find_col(None, ["Provincia"])
+        """Should return None when gdf is None."""
+        from utils.common import find_col as _find_col
+        result = _find_col(None, ["Provincia"])
+        assert result is None
 
     def test_handles_empty_candidates(self) -> None:
         """Should return None when candidates list is empty."""
-        from api import _find_col
+        from utils.common import find_col as _find_col
 
         class MockGDF:
             columns = ["Provincia"]
@@ -102,34 +100,33 @@ class TestColorFor:
 
     def test_returns_hex_color(self) -> None:
         """Should return a hex color string starting with #."""
-        from api import _color_for
+        from utils.common import color_for as _color_for
         color = _color_for("Granito")
         assert color.startswith("#")
         assert len(color) == 7  # #RRGGBB
 
     def test_deterministic(self) -> None:
         """Same input should always produce the same color."""
-        from api import _color_for
+        from utils.common import color_for as _color_for
         color1 = _color_for("Xisto")
         color2 = _color_for("Xisto")
         assert color1 == color2
 
     def test_different_inputs_produce_different_colors(self) -> None:
         """Different inputs should (likely) produce different colors."""
-        from api import _color_for
+        from utils.common import color_for as _color_for
         colors = {_color_for(str(i)) for i in range(25)}
         assert len(colors) >= 15
 
     def test_handles_empty_string(self) -> None:
         """Should handle empty string input."""
-        from api import _color_for
+        from utils.common import color_for as _color_for
         color = _color_for("")
         assert color.startswith("#")
 
     def test_color_in_palette(self) -> None:
         """Returned color should be one of the palette values."""
-        from api import _color_for
-        from api import _color_for as cf
+        from utils.common import color_for as _color_for
 
         PALETTE = [
             "#E63946", "#457B9D", "#2A9D8F", "#E9C46A", "#F4A261",
@@ -137,7 +134,7 @@ class TestColorFor:
             "#606C38", "#DDA15E", "#BC6C25", "#52B788", "#F2CC8F",
             "#023047", "#A8DADC", "#6D6875", "#B5838D", "#E76F51",
         ]
-        color = cf("Teste")
+        color = _color_for("Teste")
         assert color in PALETTE
 
 

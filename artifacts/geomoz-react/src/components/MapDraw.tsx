@@ -6,7 +6,7 @@
  *
  * IMPORTANT: This component MUST be rendered as a child of <MapContainer>.
  */
-import { useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useMapEvents, Polygon, Polyline, Marker } from "react-leaflet";
 import { Pen, X, Check, Trash2, EyeOff, MapPin } from "lucide-react";
 import L from "leaflet";
@@ -24,6 +24,8 @@ interface MapDrawProps {
   hasDrawnAOI?: boolean;
   /** Called to clear the drawn AOI */
   onClearAOI?: () => void;
+  /** External trigger: increment to request finishing the current drawing */
+  finishRequest?: number;
 }
 
 type DrawMode = "polygon" | "rectangle" | "line";
@@ -31,19 +33,31 @@ type DrawMode = "polygon" | "rectangle" | "line";
 /**
  * DrawingHandler — A proper React component that uses useMapEvents at the
  * top level, as required by React hooks rules.
+ *
+ * Verifies that the click originated from the MAP, not from inside the
+ * toolbar. This prevents the "Concluir" button click from adding a
+ * spurious vertex. Uses originalEvent.target (the actual DOM element that
+ * was clicked) rather than relying on event propagation timing.
  */
 function DrawingHandler({
   enabled,
   drawing,
   onMapClick,
+  toolbarRef,
 }: {
   enabled: boolean;
   drawing: boolean;
   onMapClick: (lat: number, lng: number) => void;
+  toolbarRef: React.RefObject<HTMLDivElement | null>;
 }) {
   useMapEvents({
     click(e) {
       if (!enabled || !drawing) return;
+      // Ignore clicks that originated from inside the toolbar
+      // (e.g. "Concluir", "Cancelar", mode buttons, undo)
+      if (e.originalEvent && toolbarRef.current?.contains(e.originalEvent.target as Node)) {
+        return;
+      }
       onMapClick(e.latlng.lat, e.latlng.lng);
     },
   });
@@ -61,10 +75,19 @@ function DrawingHandler({
  * Usage inside <MapContainer>:
  *   <MapDraw enabled={true} onDrawComplete={...} onCancel={...} />
  */
-export default function MapDraw({ enabled, onDrawComplete, onCancel, hasDrawnAOI, onClearAOI }: MapDrawProps) {
+export default function MapDraw({ enabled, onDrawComplete, onCancel, hasDrawnAOI, onClearAOI, finishRequest }: MapDrawProps) {
   const [mode, setMode] = useState<DrawMode>("polygon");
   const [points, setPoints] = useState<LatLng[]>([]);
   const [drawing, setDrawing] = useState(false);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (enabled) {
+      setDrawing(true);
+    } else {
+      setDrawing(false);
+    }
+  }, [enabled]);
 
   function handleMapClick(lat: number, lng: number) {
     setPoints(prev => [...prev, { lat, lng }]);
@@ -88,7 +111,12 @@ export default function MapDraw({ enabled, onDrawComplete, onCancel, hasDrawnAOI
     let geometry: GeoJSON.GeoJSON;
 
     if (mode === "polygon" || mode === "rectangle") {
-      const coords = [...points.map(p => [p.lng, p.lat] as [number, number]), [points[0].lng, points[0].lat] as [number, number]];
+      const coords = points.map(p => [p.lng, p.lat] as [number, number]);
+      const first = coords[0];
+      const last = coords[coords.length - 1];
+      if (first[0] !== last[0] || first[1] !== last[1]) {
+        coords.push(first);
+      }
       geometry = {
         type: "Polygon",
         coordinates: [coords],
@@ -101,22 +129,54 @@ export default function MapDraw({ enabled, onDrawComplete, onCancel, hasDrawnAOI
       } as GeoJSON.LineString;
     }
 
-    const label = `Área desenhada (${points.length} ${mode === "line" ? "pontos" : "vértices"})`;
+    const label = mode === "line"
+      ? `Área desenhada (${points.length} pontos)`
+      : `Área desenhada (${points.length} vértices, ${points.length + (points.length > 0 ? 1 : 0)} coordenadas no anel)`;
     onDrawComplete(geometry, label);
     setPoints([]);
     setDrawing(false);
   }
 
+  // If parent requests finish, call finishDraw
+  useEffect(() => {
+    if (typeof finishRequest === "number") {
+      // only finish if currently drawing
+      if (drawing) finishDraw();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finishRequest]);
+
   function undoLast() {
     setPoints(prev => prev.slice(0, -1));
   }
 
+  // Attach native event listeners on the toolbar wrapper to stop ALL pointer events
+  // from reaching the Leaflet map container. React's synthetic stopPropagation
+  // fires too late (after the native event has already propagated past the
+  // map container and triggered useMapEvents' click handler).
+  useEffect(() => {
+    const el = toolbarRef.current;
+    if (!el) return;
+    const stop = (e: Event) => { e.stopPropagation(); };
+    // NOTE: 'click' and 'dblclick' are intentionally excluded here because
+    // React 17+ delegates events at the root. Calling stopPropagation on
+    // native 'click' would prevent React from processing the button's
+    // onClick handlers (e.g. finishDraw, cancelDraw), breaking save.
+    // The originalEvent.target check in DrawingHandler is the primary
+    // defense against spurious vertices from toolbar clicks.
+    const events = ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend'];
+    events.forEach(evt => el.addEventListener(evt, stop));
+    return () => {
+      events.forEach(evt => el.removeEventListener(evt, stop));
+    };
+  }, [enabled]);
+
   if (!enabled) return null;
 
   return (
-    <>
+    <div ref={toolbarRef}>
       {/* Proper hook-based click handler (must be inside MapContainer) */}
-      <DrawingHandler enabled={enabled} drawing={drawing} onMapClick={handleMapClick} />
+      <DrawingHandler enabled={enabled} drawing={drawing} onMapClick={handleMapClick} toolbarRef={toolbarRef} />
 
       {/* Pulsing drawing-mode indicator */}
       {enabled && drawing && (
@@ -128,16 +188,16 @@ export default function MapDraw({ enabled, onDrawComplete, onCancel, hasDrawnAOI
 
       {/* Drawing toolbar — idle state */}
       {!drawing && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1 bg-white rounded-xl shadow-lg border border-slate-200 p-1">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1 bg-white rounded-xl shadow-lg border border-slate-200 p-1"
+        >
           {!hasDrawnAOI ? (
             <>
-              <button
-                onClick={startDraw}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-50 rounded-lg transition-colors"
-              >
+              <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-500 rounded-lg">
                 <Pen size={13} />
-                Desenhar área
-              </button>
+                Clique no mapa para adicionar vértices
+              </div>
               <div className="h-4 w-px bg-slate-200" />
               <button
                 onClick={onCancel}
@@ -239,7 +299,10 @@ export default function MapDraw({ enabled, onDrawComplete, onCancel, hasDrawnAOI
               position={[p.lat, p.lng]}
               icon={L.divIcon({
                 className: "",
-                html: `<div style="width:18px;height:18px;border-radius:50%;background:#0ea5e9;color:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:bold;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.3)">${i + 1}</div>`,
+                html:
+                  '<div style="width:18px;height:18px;border-radius:50%;background:#0ea5e9;color:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:bold;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.3)">' +
+                  String(i + 1) +
+                  '</div>',
                 iconSize: [18, 18],
                 iconAnchor: [9, 9],
               })}
@@ -266,6 +329,6 @@ export default function MapDraw({ enabled, onDrawComplete, onCancel, hasDrawnAOI
           )}
         </>
       )}
-    </>
+    </div>
   );
 }

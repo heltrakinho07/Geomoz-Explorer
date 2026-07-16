@@ -14,9 +14,10 @@ class TestGeeIndicesAPI:
     """Tests for the /geomoz-api/gee/indices endpoint including new modules."""
 
     NEW_GROUPS = {
-        "urban":   ["urban_expansion", "impervious_surface", "urban_heat_island"],
+        "urban":   ["urban_expansion", "impervious_surface", "urban_heat_island", "night_light"],
         "health":  ["malaria_risk", "healthcare_access", "sanitation_index", "epidemic_risk"],
-        "climate": ["precipitation", "temperature_lst", "cyclone_tracks", "cyclone_risk"],
+        "climate": ["precipitation", "temperature_lst", "cyclone_tracks", "cyclone_risk", "wind_speed"],
+        "drought": ["nddi", "drought_severity", "vci", "tci", "vhi", "spei"],
     }
 
     def test_indices_endpoint_returns_success(self, client: TestClient) -> None:
@@ -73,7 +74,7 @@ class TestGeeIndicesAPI:
         resp = client.get("/geomoz-api/gee/indices")
         data = resp.json()
         urban = [i for i in data["indices"] if i["group"] == "urban"]
-        assert len(urban) == 3
+        assert len(urban) == 4
         for idx in urban:
             assert "name" in idx, f"{idx['id']}: missing name"
             assert "formula" in idx, f"{idx['id']}: missing formula"
@@ -99,7 +100,7 @@ class TestGeeIndicesAPI:
         resp = client.get("/geomoz-api/gee/indices")
         data = resp.json()
         climate = [i for i in data["indices"] if i["group"] == "climate"]
-        assert len(climate) == 4
+        assert len(climate) == 5
         for idx in climate:
             assert "name" in idx
             assert "formula" in idx
@@ -108,8 +109,8 @@ class TestGeeIndicesAPI:
         """The API should report the expected total number of indices."""
         resp = client.get("/geomoz-api/gee/indices")
         data = resp.json()
-        assert len(data["indices"]) == 43, (
-            f"Expected 43 indices, got {len(data['indices'])}"
+        assert len(data["indices"]) == 53, (
+            f"Expected 53 indices, got {len(data['indices'])}"
         )
 
 

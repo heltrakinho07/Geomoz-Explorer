@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, Suspense } from "react";
-import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard, BrainCircuit } from "lucide-react";
+import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard, BrainCircuit, Pen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -14,7 +14,7 @@ import { apiUrl } from "@/lib/api";
 import SettingsDialog from "@/components/SettingsDialog";
 import ZoneSelect from "@/components/ZoneSelect";
 import type { AreaOfInterest } from "@/lib/aoi";
-import { mozambiqueAOI, GLOBAL_AOI, aoiToAPI } from "@/lib/aoi";
+import { mozambiqueAOI, GLOBAL_AOI, customAOI } from "@/lib/aoi";
 
 interface NominatimResult {
   place_id: number;
@@ -49,6 +49,8 @@ export default function Explorer() {
   const [mapCenter, setMapCenter] = useState<[number, number]>([-18, 35]);
   const [mapZoom, setMapZoom] = useState(5);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [drawingEnabled, setDrawingEnabled] = useState(false);
+  const [finishRequest, setFinishRequest] = useState(0);
 
   // AOI global — permite análises em qualquer parte do mundo
   const [aoi, setAOI] = useState<AreaOfInterest>(
@@ -65,11 +67,9 @@ export default function Explorer() {
   const searchRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
 
-  // Keep aoi synced with province/district when selecting mozambique regions
+  // Keep aoi synced with province/district when selecting or clearing Mozambique regions.
   useEffect(() => {
-    if (aoi.source === "mozambique") {
-      setAOI(mozambiqueAOI(province, district));
-    }
+    setAOI(mozambiqueAOI(province, district));
   }, [province, district]);
 
   function toggleLayer(key: keyof LayerState) {
@@ -154,11 +154,31 @@ function flyToResult(result: NominatimResult) {
 
   /** Handle AOI change — sync province/district for mozambique mode */
   function handleAOIChange(newAOI: AreaOfInterest) {
+    setDrawingEnabled(false);
     setAOI(newAOI);
     if (newAOI.source === "mozambique") {
       setProvince(newAOI.province);
       setDistrict(newAOI.district);
     }
+  }
+
+  function handleDrawComplete(geometry: GeoJSON.GeoJSON, label: string) {
+    setDrawingEnabled(false);
+    setAOI(customAOI(geometry, label, "draw"));
+    setProvince(null);
+    setDistrict(null);
+    setActiveTab("Mapa");
+  }
+
+  function handleDrawCancel() {
+    setDrawingEnabled(false);
+  }
+
+  function handleClearAOI() {
+    setDrawingEnabled(false);
+    setAOI(GLOBAL_AOI);
+    setProvince(null);
+    setDistrict(null);
   }
 
   const sharedSidebar = (
@@ -171,6 +191,8 @@ function flyToResult(result: NominatimResult) {
       onLayerToggle={toggleLayer}
       colorBy={colorBy}
       onColorByChange={setColorBy}
+      drawingEnabled={drawingEnabled}
+      onFinishDrawing={() => setFinishRequest(v => v + 1)}
     />
   );
 
@@ -279,15 +301,32 @@ function flyToResult(result: NominatimResult) {
             </div>
           )}
 
-          {/* AOI global selector — visible on analysis tabs */}
-          {activeTab !== "Mapa" && activeTab !== "Exportar" && activeTab !== "Análise" && (
-            <div className="hidden md:flex items-center mr-1">
+          {/* AOI selector on Mapa tab for custom drawing/upload or Mozambique selection */}
+          {activeTab === "Mapa" && (
+            <div className="hidden md:flex items-center gap-2 mr-1">
               <ZoneSelect
                 aoi={aoi}
                 onAOIChange={handleAOIChange}
-                compact
+                onDrawingRequest={() => setDrawingEnabled(true)}
               />
+              <button
+                onClick={() => setDrawingEnabled(true)}
+                title="Desenhar uma área"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-fuchsia-200 text-fuchsia-700 hover:bg-fuchsia-50 transition-colors text-sm font-medium"
+              >
+                <Pen size={14} />
+                Desenhar
+              </button>
             </div>
+          )}
+          {activeTab === "Mapa" && aoi.source !== "global" && (
+            <button
+              type="button"
+              onClick={handleClearAOI}
+              className="hidden md:inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+            >
+              <X size={12} /> Limpar AOI
+            </button>
           )}
 
           {/* GEE status indicator */}
@@ -390,6 +429,11 @@ function flyToResult(result: NominatimResult) {
             district={district}
             layers={layers}
             colorBy={colorBy}
+            aoi={aoi}
+            drawingEnabled={drawingEnabled}
+            finishRequest={finishRequest}
+            onDrawComplete={handleDrawComplete}
+            onDrawCancel={handleDrawCancel}
             mapRef={mapRef}
             onProvinceClick={name => { setProvince(name); setDistrict(null); }}
             onMapState={(c, z) => { setMapCenter(c); setMapZoom(z); }}

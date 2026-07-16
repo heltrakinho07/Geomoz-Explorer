@@ -48,25 +48,25 @@ class TestFindCol:
 
     def test_finds_exact_column(self, sample_provinces_gdf) -> None:
         """Should return the first matching column name."""
-        from utils.data_loader import _find_col
+        from utils.common import find_col as _find_col
         result = _find_col(sample_provinces_gdf, ["Provincia", "NAME_1"])
         assert result == "Provincia"
 
     def test_returns_first_match(self, sample_provinces_gdf) -> None:
         """Should return first candidate that matches."""
-        from utils.data_loader import _find_col
+        from utils.common import find_col as _find_col
         result = _find_col(sample_provinces_gdf, ["NAME_1", "Provincia"])
         assert result == "NAME_1" if "NAME_1" in sample_provinces_gdf.columns else "Provincia"
 
     def test_returns_none_when_no_match(self, sample_provinces_gdf) -> None:
         """Should return None when no column matches."""
-        from utils.data_loader import _find_col
+        from utils.common import find_col as _find_col
         result = _find_col(sample_provinces_gdf, ["nonexistent"])
         assert result is None
 
     def test_returns_none_for_none_gdf(self) -> None:
         """Should return None when gdf is None."""
-        from utils.data_loader import _find_col
+        from utils.common import find_col as _find_col
         result = _find_col(None, ["Provincia"])
         assert result is None
 

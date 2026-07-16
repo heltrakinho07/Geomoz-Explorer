@@ -1,0 +1,2 @@
+[console_scripts]
+geomoz-api = api:app

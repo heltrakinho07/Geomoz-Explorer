@@ -49,4 +49,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD python3 -c "import os,urllib.request; p=os.environ.get('PORT','5003'); urllib.request.urlopen(f'http://127.0.0.1:{p}/geomoz-api/health')" || exit 1
 
 # ── Start ────────────────────────────────────────────────────────────────────
+RUN useradd -m appuser && chown -R appuser /app
+USER appuser
 CMD uvicorn api:app --host 0.0.0.0 --port $PORT

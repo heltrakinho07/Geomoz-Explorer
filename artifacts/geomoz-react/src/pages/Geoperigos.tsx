@@ -288,7 +288,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
       {/* ── Map ─────────────────────────────────────────────────── */}
       <div className="flex-1 relative" ref={mapContainerRef}>
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl={false}>
-          <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" attribution="© OpenStreetMap, © CARTO" />
+          <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" attribution="© OpenStreetMap, © CARTO" />
           <ScaleControl position="bottomleft" imperial={false} />
           <ZoomControl position="topright" />
           <AreaSelect
@@ -298,13 +298,13 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
             accent="#e11d48"
           />
           {tool === "flood" && flood && showPerm && (
-            <TileLayer key={`perm-${flood.permWaterTile}`} url={flood.permWaterTile} opacity={0.6} maxZoom={18} />
+            <TileLayer crossOrigin="anonymous" key={`perm-${flood.permWaterTile}`} url={flood.permWaterTile} opacity={0.6} maxZoom={18} />
           )}
           {tool === "flood" && flood && (
-            <TileLayer key={`flood-${flood.floodTile}`} url={flood.floodTile} opacity={0.85} maxZoom={18} />
+            <TileLayer crossOrigin="anonymous" key={`flood-${flood.floodTile}`} url={flood.floodTile} opacity={0.85} maxZoom={18} />
           )}
           {tool === "erosion" && erosion && (
-            <TileLayer key={`ero-${erosion.tile}`} url={erosion.tile} opacity={0.75} maxZoom={18} />
+            <TileLayer crossOrigin="anonymous" key={`ero-${erosion.tile}`} url={erosion.tile} opacity={0.75} maxZoom={18} />
           )}
           <MapTools />
           <MapDraw

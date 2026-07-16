@@ -34,6 +34,7 @@ class TestIndexRegistry:
         valid_groups = {
             "spectral", "landsat", "terrain", "agriculture", "drought",
             "fire", "coastal", "climate", "urban", "health",
+            "water", "biophysical",
         }
         for idx_id, cfg in INDEX_REGISTRY.items():
             assert cfg["group"] in valid_groups, (
@@ -69,10 +70,10 @@ class TestIndexRegistry:
 class TestUrbanIndices:
     """Tests specific to the Urban & Infrastructure group."""
 
-    URBAN_IDS = {"urban_expansion", "impervious_surface", "urban_heat_island"}
+    URBAN_IDS = {"urban_expansion", "impervious_surface", "urban_heat_island", "night_light"}
 
     def test_all_urban_indices_present(self) -> None:
-        """All 3 urban indices must be in the registry."""
+        """All 4 urban indices must be in the registry."""
         from gee_presets import INDEX_REGISTRY
         urban = {k for k, v in INDEX_REGISTRY.items() if v["group"] == "urban"}
         assert urban == self.URBAN_IDS, f"Missing: {self.URBAN_IDS - urban}"
@@ -187,10 +188,11 @@ class TestClimateIndices:
 
     CLIMATE_IDS = {
         "precipitation", "temperature_lst", "cyclone_tracks", "cyclone_risk",
+        "wind_speed",
     }
 
     def test_all_climate_indices_present(self) -> None:
-        """All 4 climate indices must be in the registry."""
+        """All 5 climate indices must be in the registry."""
         from gee_presets import INDEX_REGISTRY
         climate = {k for k, v in INDEX_REGISTRY.items() if v["group"] == "climate"}
         assert climate == self.CLIMATE_IDS, f"Missing: {self.CLIMATE_IDS - climate}"
@@ -272,6 +274,7 @@ class TestCrossModuleConsistency:
         known_groups = {
             "spectral", "landsat", "terrain", "agriculture", "drought",
             "fire", "coastal", "climate", "urban", "health",
+            "water", "biophysical",
         }
         for idx_id, cfg in INDEX_REGISTRY.items():
             assert cfg["group"] in known_groups, (
@@ -290,9 +293,10 @@ class TestCrossModuleConsistency:
     def test_total_index_count(self) -> None:
         """Sanity check on total number of registered indices."""
         from gee_presets import INDEX_REGISTRY
-        # 8 spectral + 1 landsat + 5 terrain + 6 agriculture + 2 drought
-        # + 6 fire + 4 coastal + 4 climate + 3 urban + 4 health
-        # = 43 total
-        assert len(INDEX_REGISTRY) == 43, (
-            f"Expected 43 indices, got {len(INDEX_REGISTRY)}"
+        # 8 spectral + 1 landsat + 5 terrain + 6 agriculture + 6 drought
+        # + 6 fire + 4 coastal + 5 climate + 4 urban + 4 health
+        # + 1 water + 2 biophysical
+        # = 53 total
+        assert len(INDEX_REGISTRY) == 53, (
+            f"Expected 53 indices, got {len(INDEX_REGISTRY)}"
         )
