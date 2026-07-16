@@ -1577,10 +1577,6 @@ def compute_index_tile_vis(
     if opacity is not None:
         vis_kwargs["opacity"] = opacity
 
-    palette = vis_params.get("palette")
-    if palette is not None:
-        vis_kwargs["palette"] = palette
-
     # Merge with registry defaults: user-supplied keys win.
     final_vis = dict(cfg["vis"])
     final_vis.update(vis_kwargs)
@@ -1589,6 +1585,16 @@ def compute_index_tile_vis(
     b = final_vis.get("bands")
     if isinstance(b, list) and len(b) > 1:
         final_vis.pop("palette", None)
+        
+    palette = vis_params.get("palette")
+    if palette == []: # frontend explicitly requested NO palette (grayscale)
+        final_vis.pop("palette", None)
+    elif palette is not None:
+        final_vis["palette"] = palette
+
+    # GEE Image.visualize() cannot take BOTH 'gamma' and 'palette'.
+    if "palette" in final_vis and "gamma" in final_vis:
+        final_vis.pop("gamma") # Drop gamma if palette is used
 
     try:
         vis_img = idx_img.visualize(**final_vis)

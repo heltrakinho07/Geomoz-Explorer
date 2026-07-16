@@ -2533,6 +2533,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
             max: newParams.max,
             gamma: newParams.gamma,
             opacity: newParams.opacity,
+            palette: newParams.mode === "grayscale" ? [] : undefined,
           },
         }),
       });
@@ -3281,6 +3282,7 @@ n          {/* RasterVisPanel — floating visualization controls */}
                 availableBands={activeDefBands}
                 currentParams={visParams}
                 onApply={handleApplyVis}
+                onLiveCssChange={useCallback((partial) => setVisParams(prev => ({...prev, ...partial})), [])}
                 onImport={handleImportVis}
                 applying={visApplying}
               />
