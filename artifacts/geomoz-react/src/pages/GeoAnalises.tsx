@@ -33,6 +33,7 @@ import {
 } from "recharts";
 
 import { useGeologyGeoJSON } from "@/hooks/useGeoMoz";
+import { useGeeAuth } from "@/hooks/useGeeAuth";
 import { computeSpectralValue, applyColormap, SpectralIndex, GEE_ONLY_INDICES } from "@/lib/geoml";
 import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
@@ -3287,7 +3288,7 @@ n          {/* RasterVisPanel — floating visualization controls */}
                 availableBands={activeDefBands}
                 currentParams={visParams}
                 onApply={handleApplyVis}
-                onLiveCssChange={useCallback((partial) => setVisParams(prev => ({...prev, ...partial})), [])}
+                onLiveCssChange={useCallback((partial: Partial<RasterVisParams>) => setVisParams(prev => ({...prev, ...partial})), [])}
                 onImport={handleImportVis}
                 applying={visApplying}
               />
