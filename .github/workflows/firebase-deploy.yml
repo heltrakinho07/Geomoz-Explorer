@@ -3,16 +3,8 @@ name: Deploy Frontend to Firebase Hosting
 on:
   push:
     branches: [main]
-    paths:
-      - "artifacts/geomoz-react/**"
-      - "lib/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "firebase.json"
-      - ".firebaserc"
-      - ".github/workflows/firebase-deploy.yml"
   workflow_dispatch:
+
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
