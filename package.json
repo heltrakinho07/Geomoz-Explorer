@@ -13,11 +13,5 @@
     "@types/node": "catalog:",
     "prettier": "^3.8.1",
     "typescript": "~5.9.2"
-  },
-  "pnpm": {
-    "approvedBuilds": [
-      "@firebase/util@1.12.1",
-      "protobufjs@7.6.6"
-    ]
   }
 }
