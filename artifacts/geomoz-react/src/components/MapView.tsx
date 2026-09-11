@@ -37,6 +37,8 @@ interface MapViewProps {
   drawingEnabled: boolean;
   finishRequest?: number;
   initialViewMode?: "2d" | "3d";
+  viewMode?: "2d" | "3d";
+  onViewModeChange?: (mode: "2d" | "3d") => void;
   onDrawComplete: (geometry: GeoJSON.GeoJSON, label: string) => void;
   onDrawCancel: () => void;
   onProvinceClick?: (name: string) => void;
@@ -120,6 +122,8 @@ export default function MapView({
   drawingEnabled,
   finishRequest,
   initialViewMode,
+  viewMode: propViewMode,
+  onViewModeChange,
   onDrawComplete,
   onDrawCancel,
   onProvinceClick,
@@ -137,7 +141,8 @@ export default function MapView({
     document.createElement("canvas").getContext("webgl")
   );
 
-  const [viewMode, setViewMode] = useState<"2d" | "3d">(() => {
+  const [internalViewMode, setInternalViewMode] = useState<"2d" | "3d">(() => {
+    if (propViewMode) return propViewMode;
     if (initialViewMode) return initialViewMode;
     if (!isWebGL) return "2d";
     try {
@@ -147,8 +152,14 @@ export default function MapView({
     }
   });
 
+  const activeViewMode = propViewMode ?? internalViewMode;
+
   const handleViewModeChange = (mode: "2d" | "3d") => {
-    setViewMode(mode);
+    if (onViewModeChange) {
+      onViewModeChange(mode);
+    } else {
+      setInternalViewMode(mode);
+    }
     try {
       localStorage.setItem("geomoz_view_mode", mode);
     } catch {}
@@ -201,13 +212,13 @@ export default function MapView({
 
   return (
     <main className="flex-1 relative overflow-hidden" id="geomoz-map-area">
-      {/* 2D / 3D Mode Switcher Pill */}
-      <div className="absolute top-4 left-4 z-[650] flex items-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl p-1 shadow-md border border-slate-200 dark:border-slate-800">
+      {/* 2D / 3D Mode Switcher Pill (Desktop & Tablet) */}
+      <div className="hidden sm:flex absolute top-4 left-4 z-[650] items-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl p-1 shadow-md border border-slate-200 dark:border-slate-800">
         <button
           type="button"
           onClick={() => handleViewModeChange("2d")}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-            viewMode === "2d"
+            activeViewMode === "2d"
               ? "bg-sky-600 text-white shadow-sm"
               : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
           }`}
@@ -219,7 +230,7 @@ export default function MapView({
           type="button"
           onClick={() => handleViewModeChange("3d")}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-            viewMode === "3d"
+            activeViewMode === "3d"
               ? "bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow-sm"
               : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
           }`}
@@ -232,7 +243,7 @@ export default function MapView({
         </button>
       </div>
 
-      {viewMode === "3d" ? (
+      {activeViewMode === "3d" ? (
         <MapLibre3DView
           province={province}
           district={district}
@@ -240,7 +251,9 @@ export default function MapView({
           layers={layers}
           aoi={aoi}
           basemap={basemap}
+          viewMode={activeViewMode}
           onBasemapChange={setBasemap}
+          onViewModeChange={handleViewModeChange}
           onProvinceClick={onProvinceClick}
         />
       ) : (
@@ -272,7 +285,15 @@ export default function MapView({
             </div>
           )}
 
-          <BasemapSwitcher current={basemap} onChange={setBasemap} className="absolute top-4 right-4 z-[600]" />
+          {/* Google Maps Bottom-Left Layer Controller */}
+          <BasemapSwitcher
+            current={basemap}
+            onChange={setBasemap}
+            viewMode={activeViewMode}
+            onViewModeChange={handleViewModeChange}
+            className="absolute bottom-6 left-4 z-[600]"
+            position="bottom-left"
+          />
           <NorthArrow />
 
           <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl>

@@ -58,21 +58,21 @@ export default function Profile3DViewer({
   const relief = stats ? stats.maxElevation - stats.minElevation : 0;
 
   return (
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[650] w-[95%] max-w-4xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200/90 dark:border-slate-800 p-4 animate-in fade-in slide-in-from-bottom-4 duration-200 pointer-events-auto">
+    <div className="absolute bottom-16 sm:bottom-6 left-1/2 -translate-x-1/2 z-[650] w-[95%] max-w-4xl max-h-[80vh] overflow-y-auto bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200/90 dark:border-slate-800 p-3 sm:p-4 animate-in fade-in slide-in-from-bottom-4 duration-200 pointer-events-auto">
       {/* Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+      <div className="flex items-center justify-between pb-2.5 sm:pb-3 border-b border-slate-100 dark:border-slate-800">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-rose-50 dark:bg-rose-950/40 text-rose-600 rounded-lg">
+          <div className="p-1.5 bg-rose-50 dark:bg-rose-950/40 text-rose-600 rounded-lg shrink-0">
             <Activity size={18} />
           </div>
-          <div>
-            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-              Perfil Topográfico 3D (Corte A → B)
-              <span className="text-[10px] font-normal text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
-                Copernicus GLO-30 / SRTM
+          <div className="min-w-0">
+            <h3 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 flex flex-wrap items-center gap-1.5">
+              <span>Perfil Topográfico 3D (A → B)</span>
+              <span className="text-[9px] sm:text-[10px] font-normal text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded-full">
+                Copernicus GLO-30
               </span>
             </h3>
-            <p className="text-xs text-slate-500">
+            <p className="text-[10px] sm:text-xs text-slate-500 truncate">
               Modelo Digital de Elevação global em tempo real
             </p>
           </div>
@@ -119,7 +119,7 @@ export default function Profile3DViewer({
       ) : stats ? (
         <>
           {/* Key Metrics Badges */}
-          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 my-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-1.5 sm:gap-2 my-2 sm:my-3">
             <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-1 text-[11px] text-slate-500">
                 <Ruler size={12} className="text-sky-500" />
@@ -182,7 +182,7 @@ export default function Profile3DViewer({
           </div>
 
           {/* Interactive Profile Area Chart */}
-          <div className="w-full h-44 sm:h-52 pt-2">
+          <div className="w-full h-36 sm:h-44 md:h-52 pt-1 sm:pt-2">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
                 data={stats.points}
@@ -250,3 +250,4 @@ export default function Profile3DViewer({
     </div>
   );
 }
+

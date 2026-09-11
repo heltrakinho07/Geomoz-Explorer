@@ -27,7 +27,9 @@ interface MapLibre3DViewProps {
   layers?: LayerState;
   aoi?: AreaOfInterest;
   basemap?: BasemapType;
+  viewMode?: "2d" | "3d";
   onBasemapChange?: (b: BasemapType) => void;
+  onViewModeChange?: (mode: "2d" | "3d") => void;
   onProvinceClick?: (name: string) => void;
   className?: string;
 }
@@ -39,7 +41,9 @@ export default function MapLibre3DView({
   layers,
   aoi,
   basemap = "hybrid",
+  viewMode = "3d",
   onBasemapChange,
+  onViewModeChange,
   onProvinceClick,
   className = "",
 }: MapLibre3DViewProps) {
@@ -526,12 +530,15 @@ export default function MapLibre3DView({
       {/* MapLibre 3D Canvas Container */}
       <div ref={mapContainerRef} className="w-full h-full" />
 
-      {/* Floating Basemap Switcher */}
+      {/* Google Maps Bottom-Left Layer Controller */}
       {onBasemapChange && (
         <BasemapSwitcher
           current={basemap}
           onChange={onBasemapChange}
-          className="absolute top-4 right-4 z-[600]"
+          viewMode={viewMode}
+          onViewModeChange={onViewModeChange}
+          className="absolute bottom-6 left-4 z-[600]"
+          position="bottom-left"
         />
       )}
 

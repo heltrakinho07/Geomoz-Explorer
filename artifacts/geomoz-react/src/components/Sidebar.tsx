@@ -61,11 +61,12 @@ export default function Sidebar({
   }, [resizing]);
   const { data: provinceData, isLoading: loadingProvinces } = useProvinceNames();
   const { data: districtData, isLoading: loadingDistricts } = useDistrictNames(province);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const hasSelection = !!province || !!district;
 
-  return (
-    <aside style={{ width: `${width}px` }} className="relative glass-panel border-r border-slate-200/50 flex flex-col shrink-0 overflow-y-auto">
+  const content = (
+    <>
       {/* Active selection banner */}
       {hasSelection && (
         <div className="flex items-center justify-between px-3 py-2 bg-sky-50 border-b border-sky-100">
@@ -219,12 +220,61 @@ export default function Sidebar({
           Escala: EPSG:32736 (UTM 36S)
         </p>
       </div>
-      {/* Resize handle */}
-      <div
-        className="absolute right-0 top-0 bottom-0 w-2 -mr-2 cursor-col-resize z-50"
-        onMouseDown={() => setResizing(true)}
-        onTouchStart={() => setResizing(true)}
-      />
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop Sidebar */}
+      <aside
+        style={{ width: `${width}px` }}
+        className="hidden lg:flex relative glass-panel border-r border-slate-200/50 flex-col shrink-0 overflow-y-auto"
+      >
+        {content}
+        {/* Resize handle */}
+        <div
+          className="absolute right-0 top-0 bottom-0 w-2 -mr-2 cursor-col-resize z-50"
+          onMouseDown={() => setResizing(true)}
+          onTouchStart={() => setResizing(true)}
+        />
+      </aside>
+
+      {/* Mobile Trigger Button */}
+      <button
+        type="button"
+        onClick={() => setMobileOpen(true)}
+        className="lg:hidden absolute top-4 left-32 sm:left-40 z-[600] flex items-center gap-1.5 px-3 py-1.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 shadow-md rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 transition-all pointer-events-auto"
+        title="Abrir Filtros e Camadas"
+      >
+        <Filter size={13} className="text-sky-600" />
+        <span>Filtros</span>
+        {hasSelection && (
+          <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+        )}
+      </button>
+
+      {/* Mobile Off-canvas Drawer */}
+      {mobileOpen && (
+        <div className="lg:hidden fixed inset-0 z-[850] bg-black/40 backdrop-blur-xs flex animate-in fade-in duration-150 pointer-events-auto">
+          <div className="w-[85vw] max-w-xs h-full bg-white dark:bg-slate-900 flex flex-col shadow-2xl animate-in slide-in-from-left duration-200 overflow-y-auto">
+            <div className="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <span className="font-bold text-xs text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                <Filter size={14} className="text-sky-600" />
+                <span>Filtros & Geologia</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setMobileOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            {content}
+          </div>
+          <div className="flex-1" onClick={() => setMobileOpen(false)} />
+        </div>
+      )}
+    </>
   );
 }

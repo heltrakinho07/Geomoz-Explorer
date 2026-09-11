@@ -3078,7 +3078,12 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           )}
 
           {/* Basemap Switcher (Google Maps) */}
-          <BasemapSwitcher current={basemap} onChange={setBasemap} className="absolute top-3 right-3 z-[600]" />
+          <BasemapSwitcher
+            current={basemap}
+            onChange={setBasemap}
+            className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
+            position="bottom-left"
+          />
 
           <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }}>
             {/* Base tiles */}

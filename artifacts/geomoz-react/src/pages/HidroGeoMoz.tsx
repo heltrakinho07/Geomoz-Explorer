@@ -868,7 +868,12 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
 
       {/* ── Map ──────────────────────────────────────────────────────────── */}
       <div className={`flex-1 relative overflow-hidden ${mode === "delineate" ? "cursor-crosshair" : ""}`} ref={mapContainerRef}>
-        <BasemapSwitcher current={basemap} onChange={setBasemap} className="absolute top-3 right-14 z-[600]" />
+        <BasemapSwitcher
+          current={basemap}
+          onChange={setBasemap}
+          className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
+          position="bottom-left"
+        />
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} ref={mapRef} zoomControl={false}>
           <ZoomControl position="topright" />
           <MapTools />

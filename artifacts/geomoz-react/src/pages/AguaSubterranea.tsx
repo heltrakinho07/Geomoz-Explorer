@@ -9,7 +9,7 @@
 import { useState, useCallback, useRef } from "react";
 import { MapContainer, TileLayer, ScaleControl, ZoomControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import { Droplets, Loader2, Play, ChevronDown, Info, Scale, FileDown } from "lucide-react";
+import { Droplets, Loader2, Play, ChevronDown, Info, Scale, FileDown, SlidersHorizontal, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
@@ -31,10 +31,11 @@ interface GwpResult { tile: string; classes: GwpClass[]; weights: GwpWeight[]; y
 
 interface Props {
   aoi: AreaOfInterest;
-  province: string | null; district: string | null;
+  province: string | null;
+  district: string | null;
   onProvinceChange: (p: string | null) => void;
   onDistrictChange: (d: string | null) => void;
-  onAOIChange: (aoi: AreaOfInterest) => void;
+  onAOIChange: (a: AreaOfInterest) => void;
 }
 
 export default function AguaSubterranea({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
@@ -46,6 +47,7 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
   const [error, setError] = useState<string | null>(null);
   const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [basemap, setBasemap] = useState<BasemapType>("terrain");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const run = useCallback(async () => {
     setLoading(true); setError(null); setResult(null);
@@ -133,10 +135,22 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
   }
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-slate-50">
+    <div className="flex-1 flex overflow-hidden bg-slate-50 relative">
+      {/* Mobile backdrop */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-xs z-[650] md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* ── Sidebar ─────────────────────────────────────────────── */}
-      <div className="w-72 flex flex-col bg-white border-r border-slate-200 overflow-y-auto shrink-0">
-        <div className="px-4 pt-4 pb-3 border-b border-slate-100">
+      <div
+        className={`fixed md:relative inset-y-0 left-0 z-[700] w-72 flex flex-col bg-white border-r border-slate-200 overflow-y-auto shrink-0 transition-transform duration-300 shadow-xl md:shadow-none ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        }`}
+      >
+        <div className="px-4 pt-4 pb-3 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center shadow-sm shrink-0">
               <Droplets size={15} className="text-white" />
@@ -146,6 +160,13 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
               <p className="text-[10px] text-slate-400">Potencial hídrico · AHP · GEE</p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            className="md:hidden p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+          >
+            <X size={18} />
+          </button>
         </div>
 
         {/* Área de estudo — AOI global */}
@@ -191,7 +212,22 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
 
       {/* ── Map ─────────────────────────────────────────────────── */}
       <div className="flex-1 relative" ref={mapContainerRef}>
-        <BasemapSwitcher current={basemap} onChange={setBasemap} className="absolute top-3 right-14 z-[600]" />
+        {/* Mobile floating sidebar toggle */}
+        <button
+          type="button"
+          onClick={() => setSidebarOpen(v => !v)}
+          className="md:hidden absolute top-3 left-3 z-[600] flex items-center gap-1.5 px-3 py-1.5 bg-white/95 backdrop-blur-md rounded-xl shadow-md border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          <SlidersHorizontal size={13} className="text-cyan-600" />
+          Filtros
+        </button>
+
+        <BasemapSwitcher
+          current={basemap}
+          onChange={setBasemap}
+          className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
+          position="bottom-left"
+        />
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl={false}>
           <TileLayer
             key={basemap}
@@ -201,7 +237,7 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
             attribution={GOOGLE_BASEMAPS[basemap].attribution}
             maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
           />
-          <ScaleControl position="bottomleft" imperial={false} />
+          <ScaleControl position="bottomright" imperial={false} />
           <ZoomControl position="topright" />
           <AreaSelect
             province={province} district={district}

@@ -66,3 +66,4 @@ describe("dem-terrain module", () => {
     expect(Math.round(calculateBearing(p1, pEast))).toBe(90);
   });
 });
+
