@@ -61,7 +61,8 @@ jobs:
             --max-instances 10 \
             --min-instances 0 \
             --timeout 300s \
-            --set-env-vars=PYTHONUNBUFFERED=1
+            --set-env-vars=PYTHONUNBUFFERED=1,GEE_PROJECT=eengine-project \
+            --set-secrets=GEE_SERVICE_ACCOUNT_KEY=geomoz-gee-key:latest
 
       - name: Get Service URL
         id: service-url
@@ -72,6 +73,22 @@ jobs:
             --format 'value(status.url)')
           echo "service_url=$SERVICE_URL" >> $GITHUB_OUTPUT
           echo "Service deployed at: $SERVICE_URL"
+
+      - name: Health check
+        run: |
+          SERVICE_URL="${{ steps.service-url.outputs.service_url }}"
+          echo "Checking health at $SERVICE_URL/geomoz-api/health ..."
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/geomoz-api/health")
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Health check passed (HTTP $STATUS)"
+              exit 0
+            fi
+            echo "Attempt $i: HTTP $STATUS — waiting 10s..."
+            sleep 10
+          done
+          echo "❌ Health check failed after 5 attempts"
+          exit 1
 
       - name: Comment PR with deployment URL
         if: github.event_name == 'pull_request'
@@ -84,3 +101,4 @@ jobs:
               repo: context.repo.repo,
               body: '✅ Deployed to Cloud Run: ${{ steps.service-url.outputs.service_url }}'
             })
+
