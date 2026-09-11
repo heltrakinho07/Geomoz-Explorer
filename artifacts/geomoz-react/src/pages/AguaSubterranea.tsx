@@ -11,7 +11,7 @@ import { MapContainer, TileLayer, ScaleControl, ZoomControl } from "react-leafle
 import "leaflet/dist/leaflet.css";
 import { Droplets, Loader2, Play, ChevronDown, Info, Scale, FileDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
 import ZoneSelect from "@/components/ZoneSelect";
@@ -49,7 +49,7 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 240_000);
     try {
-      const r = await fetch(apiUrl("/geomoz-api/gee/groundwater"), {
+      const r = await apiFetch("/geomoz-api/gee/groundwater"), {
         method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
         body: JSON.stringify({ ...aoiToAPI(aoi), year }),
       });

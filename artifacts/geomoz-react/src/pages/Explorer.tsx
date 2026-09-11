@@ -10,7 +10,7 @@ import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
 import DashboardPanel from "@/components/DashboardPanel";
 import { LazyGeoAnalises, LazyHidroGeoMoz, LazyGeoperigos, LazyAguaSubterranea, LazyGeoMozAI } from "@/lib/lazy-pages";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, apiFetch } from "@/lib/api";
 import SettingsDialog from "@/components/SettingsDialog";
 import ZoneSelect from "@/components/ZoneSelect";
 import type { AreaOfInterest } from "@/lib/aoi";
@@ -460,7 +460,7 @@ function GEEStatusDot() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(apiUrl("/geomoz-api/gee/status"))
+    apiFetch("/geomoz-api/gee/status"))
       .then((r) => r.json())
       .then((d) => {
         if (!cancelled) setStatus(d.connected ? "connected" : "disconnected");

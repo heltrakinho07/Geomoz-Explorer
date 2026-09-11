@@ -34,7 +34,7 @@ import {
 
 import { useGeologyGeoJSON } from "@/hooks/useGeoMoz";
 import { computeSpectralValue, applyColormap, SpectralIndex, GEE_ONLY_INDICES } from "@/lib/geoml";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
 import ZoneSelect from "@/components/ZoneSelect";
@@ -668,7 +668,7 @@ function GeeAnalysisPanel({
     setError(null);
     onTileReady(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/index"), {
+      const res = await apiFetch("/geomoz-api/gee/index"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -782,10 +782,13 @@ function GeeAnalysisPanel({
                 {Object.entries(result.stats).map(([k, v]) => (
                   <div key={k} className="bg-slate-50 rounded-lg p-2 text-center">
                     <div className="text-xs text-slate-400">{statLabels[k] ?? k}</div>
-                    <div className="text-sm font-bold text-slate-800 font-mono">{v.toFixed(3)}</div>
+                    <div className="text-sm font-bold text-slate-800 font-mono">
+                      {typeof v === "number" ? v.toFixed(3) : String(v ?? "—")}
+                    </div>
                   </div>
                 ))}
               </div>
+
             </div>
           )}
 
@@ -864,7 +867,7 @@ function LineamentsPanel({
   async function run() {
     setRunning(true); setError(null); onResult(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/lineaments"), {
+      const res = await apiFetch("/geomoz-api/gee/lineaments"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1037,7 +1040,7 @@ function TargetingPanel({
   const [overlapError, setOverlapError]     = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(apiUrl("/geomoz-api/gee/minerals")).then(r => r.json())
+    apiFetch("/geomoz-api/gee/minerals")).then(r => r.json())
       .then(d => setPresets(d.minerals ?? [])).catch(() => {});
   }, []);
 
@@ -1047,7 +1050,7 @@ function TargetingPanel({
     setRunning(true); setError(null); onResult(null);
     setOverlapRes(null); setOverlapError(null); onOverlap(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/targeting"), {
+      const res = await apiFetch("/geomoz-api/gee/targeting"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1070,7 +1073,7 @@ function TargetingPanel({
   async function runOverlap() {
     setOverlapRunning(true); setOverlapError(null); setOverlapRes(null); onOverlap(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/targeting-overlap"), {
+      const res = await apiFetch("/geomoz-api/gee/targeting-overlap"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1399,7 +1402,7 @@ function SpiNdviPanel({
   async function run() {
     setRunning(true); setError(null); onResult(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/spi-ndvi"), {
+      const res = await apiFetch("/geomoz-api/gee/spi-ndvi"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1806,7 +1809,7 @@ function ContoursPanel({
   async function run() {
     setRunning(true); setError(null); onResult(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/contours"), {
+      const res = await apiFetch("/geomoz-api/gee/contours"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1942,7 +1945,7 @@ function LandCoverPanel({
   async function run() {
     setRunning(true); setError(null); onResult(null); setResult(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/landcover"), {
+      const res = await apiFetch("/geomoz-api/gee/landcover"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2130,7 +2133,7 @@ function TopoClassesPanel({
     }
     setRunning(true); setError(null); onResult(null); setResult(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/topo-classes"), {
+      const res = await apiFetch("/geomoz-api/gee/topo-classes"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2263,6 +2266,8 @@ function TopoClassesPanel({
 }
 
 export default function GeoAnalises({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: GeoAnalisesProps) {
+  const [geeCredsOpen, setGeeCredsOpen] = useState(false);
+  const { geeConnected } = useGeeAuth();
   const [activeTab, setActiveTab]     = useState<SpectralTab>("s2");
   const [showS2, setShowS2]           = useState(false);
   const [selectedYear, setSelectedYear] = useState("2022");
@@ -2351,7 +2356,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
   const checkGee = useCallback(async () => {
     setGeeLoading(true);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/status"));
+      const res = await apiFetch("/geomoz-api/gee/status"));
       const data: GeeStatus = await res.json();
       setGeeStatus(data);
       if (!data.connected) setShowSetup(true);
@@ -2390,7 +2395,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
     if (profilePoints.length < 2) return;
     setProfileRunning(true); setProfileError(null); setProfileResult(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/profile"), {
+      const res = await apiFetch("/geomoz-api/gee/profile"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ coords: profilePoints, samples: profileSamples }),
@@ -2520,7 +2525,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
     setVisParams(newParams);
     const def = INDEX_DEFS.find(d => d.id === activeTab);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/render"), {
+      const res = await apiFetch("/geomoz-api/gee/render"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

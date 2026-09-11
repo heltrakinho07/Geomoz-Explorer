@@ -4,7 +4,7 @@ import { FileText, Globe, Download, Loader2, CheckCircle2, Info, Map, Image as I
 import jsPDF from "jspdf";
 import type { Stats } from "@/hooks/useGeoMoz";
 import type { LayerState } from "./Sidebar";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, apiFetch } from "@/lib/api";
 
 interface ExportPanelProps {
   province: string | null;
@@ -743,7 +743,7 @@ export default function ExportPanel({ province, district, colorBy, layers, mapCe
       const params = new URLSearchParams({ layer: "geology" });
       if (province) params.set("province", province);
       if (district) params.set("district", district);
-      const res = await fetch(apiUrl(`/geomoz-api/export/shapefile?${params}`));
+      const res = await apiFetch(`/geomoz-api/export/shapefile?${params}`));
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(err.detail ?? "Erro no servidor");
