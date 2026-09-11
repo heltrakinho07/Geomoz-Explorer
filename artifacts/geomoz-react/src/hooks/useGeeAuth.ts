@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback } from "react";
 import { signInWithPopup, GoogleAuthProvider, signOut as firebaseSignOut } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { useAuth } from "./useAuth";
+import { apiFetch } from "@/lib/api";
 
 const geeProvider = new GoogleAuthProvider();
 geeProvider.addScope("https://www.googleapis.com/auth/earthengine");
-// Prompt consent to guarantee refresh token / new access token
 geeProvider.setCustomParameters({
   prompt: "consent",
   access_type: "offline"
@@ -18,21 +18,11 @@ export function useGeeAuth() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const apiBase = import.meta.env.VITE_API_BASE || "";
-
   const fetchStatus = useCallback(async () => {
-    if (!user || !auth?.currentUser) {
-      setGeeConnected(false);
-      setGeeProject(null);
-      return;
-    }
     try {
       setLoading(true);
       setError(null);
-      const idToken = await auth.currentUser.getIdToken();
-      const res = await fetch(`${apiBase}/geomoz-api/gee/status`, {
-        headers: { Authorization: `Bearer ${idToken}` }
-      });
+      const res = await apiFetch("/geomoz-api/gee/status");
       if (res.ok) {
         const data = await res.json();
         setGeeConnected(!!data.connected);
@@ -45,15 +35,10 @@ export function useGeeAuth() {
     } finally {
       setLoading(false);
     }
-  }, [user, apiBase]);
+  }, []);
 
   useEffect(() => {
-    if (user) {
-      fetchStatus();
-    } else {
-      setGeeConnected(false);
-      setGeeProject(null);
-    }
+    fetchStatus();
   }, [user, fetchStatus]);
 
   const connectGee = async (project?: string) => {
@@ -72,12 +57,10 @@ export function useGeeAuth() {
         throw new Error("Não foi possível obter o token de acesso Google do popup.");
       }
 
-      const idToken = await result.user.getIdToken(true);
-      const res = await fetch(`${apiBase}/geomoz-api/gee/oauth-token`, {
+      const res = await apiFetch("/geomoz-api/gee/oauth-token", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`
         },
         body: JSON.stringify({ access_token: accessToken, project: project || null })
       });

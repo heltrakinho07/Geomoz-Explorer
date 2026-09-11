@@ -124,12 +124,19 @@ def _init_gee(uid: str = None) -> None:
     global _gee_initialized, _gee_error
 
     with _lock:
+        default_project = (
+            os.environ.get("GEE_PROJECT_ID")
+            or os.environ.get("GCP_PROJECT_ID")
+            or "geoprocessamento-426809"
+        ).strip()
+
         token_data = gee_session_store.get_token(uid) if uid else None
         if token_data and token_data.get("access_token"):
             try:
                 import ee
                 creds = Credentials(token=token_data["access_token"])
-                ee.Initialize(credentials=creds, project=token_data.get("project"))
+                user_project = token_data.get("project") or default_project
+                ee.Initialize(credentials=creds, project=user_project)
                 _gee_initialized = True
                 _gee_error = None
                 return
@@ -139,24 +146,26 @@ def _init_gee(uid: str = None) -> None:
 
         # Fallback to server-side GEE_SERVICE_ACCOUNT_KEY if configured
         sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
-        project_id = os.environ.get("GEE_PROJECT_ID", "").strip() or None
         if sa_key:
             try:
                 import ee
                 import json
-                key_data = json.loads(sa_key)
-                creds = ee.ServiceAccountCredentials(
-                    key_data["client_email"],
-                    key_data=key_data
+                from google.oauth2 import service_account
+                key_dict = json.loads(sa_key) if isinstance(sa_key, str) else sa_key
+                scopes = getattr(ee.oauth, 'SCOPES', ['https://www.googleapis.com/auth/earthengine'])
+                creds = service_account.Credentials.from_service_account_info(
+                    key_dict,
+                    scopes=scopes
                 )
-                ee.Initialize(credentials=creds, project=project_id or key_data.get("project_id"))
+                sa_project = key_dict.get("project_id") or default_project
+                ee.Initialize(credentials=creds, project=sa_project)
                 _gee_initialized = True
                 _gee_error = None
                 return
             except Exception as e:
                 logger.error("Failed to initialize GEE with service account: %s", e)
                 _gee_error = str(e)
-                raise RuntimeError(f"Erro ao inicializar GEE: {e}")
+                raise RuntimeError(f"Erro ao inicializar GEE com Service Account: {e}")
 
         _gee_error = "Utilizador não tem ligação ao GEE e não há credenciais de servidor configuradas."
         raise RuntimeError(_gee_error)
