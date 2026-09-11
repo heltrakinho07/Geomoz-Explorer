@@ -17,6 +17,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!auth) {
+      console.warn("Firebase Auth is not initialized. Check your environment variables.");
+      setLoading(false);
+      return;
+    }
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
@@ -25,6 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async () => {
+    if (!auth) return;
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
@@ -33,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    if (!auth) return;
     try {
       await firebaseSignOut(auth);
     } catch (error) {
@@ -41,7 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const getIdToken = async () => {
-    if (auth.currentUser) {
+    if (auth && auth.currentUser) {
       return await auth.currentUser.getIdToken(true);
     }
     return null;
@@ -55,4 +62,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export const useAuth = () => useContext(AuthContext);
-
