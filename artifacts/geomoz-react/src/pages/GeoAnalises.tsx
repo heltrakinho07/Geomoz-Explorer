@@ -35,6 +35,8 @@ import {
 import { useGeologyGeoJSON } from "@/hooks/useGeoMoz";
 import { useGeeAuth } from "@/hooks/useGeeAuth";
 import GeeCredentialsDialog from "@/components/GeeCredentialsDialog";
+import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
+import BasemapSwitcher from "@/components/BasemapSwitcher";
 import { computeSpectralValue, applyColormap, SpectralIndex, GEE_ONLY_INDICES } from "@/lib/geoml";
 import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
@@ -2269,6 +2271,7 @@ function TopoClassesPanel({
 
 export default function GeoAnalises({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: GeoAnalisesProps) {
   const [geeCredsOpen, setGeeCredsOpen] = useState(false);
+  const [basemap, setBasemap] = useState<BasemapType>("hybrid");
   const { geeConnected } = useGeeAuth();
   const [activeTab, setActiveTab]     = useState<SpectralTab>("s2");
   const [showS2, setShowS2]           = useState(false);
@@ -3074,11 +3077,21 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
             </div>
           )}
 
+          {/* Basemap Switcher (Google Maps) */}
+          <BasemapSwitcher current={basemap} onChange={setBasemap} className="absolute top-3 right-3 z-[600]" />
+
           <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }}>
             {/* Base tiles */}
             {showS2 || activeTab === "s2" ? (
               <>
-                <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png" attribution="&copy; OSM &copy; CARTO" maxZoom={19} />
+                <TileLayer
+                  key={basemap}
+                  crossOrigin="anonymous"
+                  url={GOOGLE_BASEMAPS[basemap].url}
+                  subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
+                  attribution={GOOGLE_BASEMAPS[basemap].attribution}
+                  maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
+                />
                 <WMSTileLayer
                   url="https://tiles.maps.eox.at/wms"
                   layers={`s2cloudless-${selectedYear}`}
@@ -3088,10 +3101,24 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
                   maxZoom={18}
                   opacity={activeTab === "s2" ? 1 : 0.5}
                 />
-                <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png" attribution="" maxZoom={19} pane="shadowPane" />
+                <TileLayer
+                  crossOrigin="anonymous"
+                  url="https://mt{s}.google.com/vt/lyrs=h&x={x}&y={y}&z={z}"
+                  subdomains="0123"
+                  attribution=""
+                  maxZoom={20}
+                  pane="shadowPane"
+                />
               </>
             ) : (
-              <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" attribution="&copy; OSM &copy; CARTO" maxZoom={19} />
+              <TileLayer
+                key={basemap}
+                crossOrigin="anonymous"
+                url={GOOGLE_BASEMAPS[basemap].url}
+                subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
+                attribution={GOOGLE_BASEMAPS[basemap].attribution}
+                maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
+              />
             )}
 
             <ScaleControl position="bottomleft" imperial={false} />

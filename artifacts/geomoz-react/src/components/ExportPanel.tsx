@@ -148,7 +148,7 @@ footer{background:#fff;border-top:1px solid #e2e8f0;padding:5px 16px;font-size:1
 </footer>
 <script>
 var map=L.map('map').setView([${center[0]},${center[1]}],${zoom});
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{crossOrigin: 'anonymous', attribution:'&copy; OSM &copy; CARTO',maxZoom:19,subdomains:'abcd'}).addTo(map);
+L.tileLayer('https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',{crossOrigin: 'anonymous', attribution:'&copy; <a href="https://maps.google.com">Google Maps</a>',maxZoom:20,subdomains:'0123'}).addTo(map);
 L.control.scale({imperial:false,position:'bottomleft'}).addTo(map);
 ${geoScript}
 ${provScript}
@@ -175,7 +175,8 @@ function loadTile(z: number, x: number, y: number, sub: string): Promise<HTMLIma
     img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
     img.onerror = () => resolve(null);
-    img.src = `https://${sub}.basemaps.cartocdn.com/light_all/${z}/${x}/${y}.png`;
+    const subIdx = sub ? (sub.charCodeAt(0) % 4) : 1;
+    img.src = `https://mt${subIdx}.google.com/vt/lyrs=p&x=${x}&y=${y}&z=${z}`;
   });
 }
 

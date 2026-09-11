@@ -29,6 +29,8 @@ import { useStats } from "@/hooks/useGeoMoz";
 import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
+import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
+import BasemapSwitcher from "@/components/BasemapSwitcher";
 import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
@@ -165,6 +167,7 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
 
   // Layout
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [basemap, setBasemap] = useState<BasemapType>("terrain");
 
   // Mode — "delineate" (D8/DEM) is the robust primary method; HydroBASINS may be
   // unavailable in the active Earth Engine project, so we default to delineation.
@@ -865,14 +868,21 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
 
       {/* ── Map ──────────────────────────────────────────────────────────── */}
       <div className={`flex-1 relative overflow-hidden ${mode === "delineate" ? "cursor-crosshair" : ""}`} ref={mapContainerRef}>
+        <BasemapSwitcher current={basemap} onChange={setBasemap} className="absolute top-3 right-14 z-[600]" />
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} ref={mapRef} zoomControl={false}>
           <ZoomControl position="topright" />
           <MapTools />
           <ScaleControl position="bottomright" imperial={false} />
           <MapClickHandler onMapClick={onMapClick} active={mode === "delineate"} />
 
-          <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-            attribution='&copy; <a href="https://carto.com">CARTO</a>' maxZoom={19} />
+          <TileLayer
+            key={basemap}
+            crossOrigin="anonymous"
+            url={GOOGLE_BASEMAPS[basemap].url}
+            subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
+            attribution={GOOGLE_BASEMAPS[basemap].attribution}
+            maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
+          />
 
           <AreaSelect
             province={province} district={district}

@@ -17,6 +17,8 @@ import { useToast } from "@/hooks/use-toast";
 import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
+import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
+import BasemapSwitcher from "@/components/BasemapSwitcher";
 import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
@@ -55,6 +57,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
   const { toast } = useToast();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const [tool, setTool] = useState<Tool>("flood");
+  const [basemap, setBasemap] = useState<BasemapType>("terrain");
 
   // Flood params
   const [eventStart, setEventStart] = useState("2019-03-15");
@@ -287,8 +290,16 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
 
       {/* ── Map ─────────────────────────────────────────────────── */}
       <div className="flex-1 relative" ref={mapContainerRef}>
+        <BasemapSwitcher current={basemap} onChange={setBasemap} className="absolute top-3 right-14 z-[600]" />
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl={false}>
-          <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" attribution="© OpenStreetMap, © CARTO" />
+          <TileLayer
+            key={basemap}
+            crossOrigin="anonymous"
+            url={GOOGLE_BASEMAPS[basemap].url}
+            subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
+            attribution={GOOGLE_BASEMAPS[basemap].attribution}
+            maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
+          />
           <ScaleControl position="bottomleft" imperial={false} />
           <ZoomControl position="topright" />
           <AreaSelect

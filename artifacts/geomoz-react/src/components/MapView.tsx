@@ -13,6 +13,8 @@ import "leaflet/dist/leaflet.css";
 
 import { useGeologyGeoJSON, useProvincesGeoJSON, useDistrictsGeoJSON } from "@/hooks/useGeoMoz";
 import type { LayerState } from "./Sidebar";
+import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
+import BasemapSwitcher from "./BasemapSwitcher";
 import MapTools from "./MapTools";
 import MapDraw from "./MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
@@ -186,13 +188,17 @@ export default function MapView({ province, district, layers, colorBy, aoi, draw
         </div>
       )}
 
+      <BasemapSwitcher current={basemap} onChange={setBasemap} className="absolute top-4 right-4 z-[600]" />
       <NorthArrow />
 
       <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl>
-        <TileLayer crossOrigin="anonymous"
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          maxZoom={19}
+        <TileLayer
+          key={basemap}
+          crossOrigin="anonymous"
+          url={GOOGLE_BASEMAPS[basemap].url}
+          subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
+          attribution={GOOGLE_BASEMAPS[basemap].attribution}
+          maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
         />
 
         <ScaleControl position="bottomleft" imperial={false} />

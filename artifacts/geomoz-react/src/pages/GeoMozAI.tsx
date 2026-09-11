@@ -40,6 +40,7 @@ import {
 import { API_BASE } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import MapDraw from "@/components/MapDraw";
+import { GOOGLE_BASEMAPS } from "@/lib/basemaps";
 
 function buildProvinceFeatures(p: ProvinceSummaryItem): number[] {
   const prof = lithologyProfile(p.lithologies, p.eras, p.periods);
@@ -634,8 +635,13 @@ function AlphaEarthTab() {
         )}
 
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }}>
-          <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-            attribution="&copy; OSM &copy; CARTO" maxZoom={19} />
+          <TileLayer
+            crossOrigin="anonymous"
+            url={GOOGLE_BASEMAPS.hybrid.url}
+            subdomains={GOOGLE_BASEMAPS.hybrid.subdomains}
+            attribution={GOOGLE_BASEMAPS.hybrid.attribution}
+            maxZoom={GOOGLE_BASEMAPS.hybrid.maxZoom}
+          />
 
           {/* Result tile overlay */}
           {activeTileUrl && (
@@ -821,7 +827,13 @@ function ClusteringTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[] }
           </div>
         )}
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }}>
-          <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" attribution="&copy; OSM &copy; CARTO" maxZoom={19} />
+          <TileLayer
+            crossOrigin="anonymous"
+            url={GOOGLE_BASEMAPS.terrain.url}
+            subdomains={GOOGLE_BASEMAPS.terrain.subdomains}
+            attribution={GOOGLE_BASEMAPS.terrain.attribution}
+            maxZoom={GOOGLE_BASEMAPS.terrain.maxZoom}
+          />
           <ScaleControl position="bottomleft" imperial={false} />
           {provinceGeoJSON && (
             <GeoJSON key={clusterKey} data={provinceGeoJSON}
@@ -909,7 +921,13 @@ function FavorabilityTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[]
           <div className="flex justify-between text-xs text-slate-400 mt-1"><span>Muito Baixa</span><span>Alta</span></div>
         </div>
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }}>
-          <TileLayer crossOrigin="anonymous" url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" attribution="&copy; OSM &copy; CARTO" maxZoom={19} />
+          <TileLayer
+            crossOrigin="anonymous"
+            url={GOOGLE_BASEMAPS.terrain.url}
+            subdomains={GOOGLE_BASEMAPS.terrain.subdomains}
+            attribution={GOOGLE_BASEMAPS.terrain.attribution}
+            maxZoom={GOOGLE_BASEMAPS.terrain.maxZoom}
+          />
           <ScaleControl position="bottomleft" imperial={false} />
           {provinceGeoJSON && (
             <GeoJSON key={favKey} data={provinceGeoJSON}
