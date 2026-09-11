@@ -113,6 +113,7 @@ export default function MapView({ province, district, layers, colorBy, aoi, draw
   const { data: districtGeoJSON } = useDistrictsGeoJSON(province);
   const { data: geologyGeoJSON, isFetching: loadingGeology } = useGeologyGeoJSON(province, district, colorBy, layers.geology);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [basemap, setBasemap] = useState<BasemapType>("terrain");
 
   const provinceStyle = (): L.PathOptions => ({
     color: "#64748b", weight: 1.5, fillColor: "#e2e8f0", fillOpacity: province ? 0.05 : 0.2,
