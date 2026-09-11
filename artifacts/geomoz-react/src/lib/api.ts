@@ -36,7 +36,7 @@ import { auth } from "./firebase";
 
 export async function apiFetch(path: string, options?: RequestInit): Promise<Response> {
   const url = apiUrl(path);
-  const token = auth.currentUser ? await auth.currentUser.getIdToken(false) : null;
+  const token = auth?.currentUser ? await auth.currentUser.getIdToken(false) : null;
   const headers = { ...options?.headers } as Record<string, string>;
   if (token) {
     headers.Authorization = `Bearer ${token}`;
