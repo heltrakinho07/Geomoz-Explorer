@@ -743,7 +743,7 @@ export default function ExportPanel({ province, district, colorBy, layers, mapCe
       const params = new URLSearchParams({ layer: "geology" });
       if (province) params.set("province", province);
       if (district) params.set("district", district);
-      const res = await apiFetch(`/geomoz-api/export/shapefile?${params}`));
+      const res = await apiFetch(`/geomoz-api/export/shapefile?${params}`);
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(err.detail ?? "Erro no servidor");

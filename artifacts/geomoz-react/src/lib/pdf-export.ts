@@ -309,7 +309,7 @@ export async function fetchMapImage(
     dpi?: number;
   },
 ): Promise<string> {
-  const resp = await apiFetch("/geomoz-api/gee/map-image"), {
+  const resp = await apiFetch("/geomoz-api/gee/map-image", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

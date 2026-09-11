@@ -460,7 +460,7 @@ function GEEStatusDot() {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch("/geomoz-api/gee/status"))
+    apiFetch("/geomoz-api/gee/status")
       .then((r) => r.json())
       .then((d) => {
         if (!cancelled) setStatus(d.connected ? "connected" : "disconnected");

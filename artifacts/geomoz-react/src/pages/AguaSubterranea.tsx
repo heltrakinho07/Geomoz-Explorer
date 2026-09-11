@@ -49,7 +49,7 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 240_000);
     try {
-      const r = await apiFetch("/geomoz-api/gee/groundwater"), {
+      const r = await apiFetch("/geomoz-api/gee/groundwater", {
         method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
         body: JSON.stringify({ ...aoiToAPI(aoi), year }),
       });
