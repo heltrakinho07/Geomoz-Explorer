@@ -38,6 +38,7 @@ import { apiUrl } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
 import ZoneSelect from "@/components/ZoneSelect";
+import DraggablePanel from "@/components/DraggablePanel";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
@@ -2277,6 +2278,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
   const [spiLayerMode, setSpiLayerMode]     = useState<"spi" | "ndvi">("spi");
   const [showSpiChart, setShowSpiChart]     = useState(true);
   const [overlapResult, setOverlapResult]   = useState<OverlapResult | null>(null);
+  const [rightPanelDocked, setRightPanelDocked] = useState(false);
   const [sidebarOpen, setSidebarOpen]       = useState(true);
   const [openGroup, setOpenGroup]           = useState<string | null>(null);
   const [profilePoints, setProfilePoints]   = useState<LonLat[]>([]);
@@ -2531,6 +2533,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
             max: newParams.max,
             gamma: newParams.gamma,
             opacity: newParams.opacity,
+            palette: newParams.mode === "grayscale" ? [] : undefined,
           },
         }),
       });
@@ -2670,6 +2673,19 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
             </div>
           )}
 
+        </div>
+
+        {/* Draggable Results Panel */}
+        {(!showSetup && (activeDef || isComposite || isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || activeTab === "s2")) && (
+          <DraggablePanel
+            title={`Análise: ${activeDef?.label || (isLineaments ? "Lineamentos" : isProfile ? "Perfil Topográfico" : isTargeting ? "Alvo Mineral" : isSpiNdvi ? "SPI×NDVI" : isContours ? "Curvas de Nível" : isTopoCustom ? "Classes Topo" : isLandCover ? "Cobertura do Solo" : "Resultados")}`}
+            icon={<Activity size={16} className="text-sky-500" />}
+            isDocked={rightPanelDocked}
+            onDockToggle={() => setRightPanelDocked(d => !d)}
+            defaultWidth={360}
+            className="right-4"
+          >
+            <div className="flex flex-col w-full bg-white/50 space-y-4 pb-4">
           {/* Lineaments Panel */}
           {!showSetup && isLineaments && (
             <div className="p-4 border-b border-slate-100">
@@ -3031,7 +3047,10 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
               )}
             </div>
           )}
-        </div>
+
+            </div>
+          </DraggablePanel>
+        )}
 
         {/* Map */}
         <div className="flex-1 relative overflow-hidden" ref={mapContainerRef}>
@@ -3263,6 +3282,7 @@ n          {/* RasterVisPanel — floating visualization controls */}
                 availableBands={activeDefBands}
                 currentParams={visParams}
                 onApply={handleApplyVis}
+                onLiveCssChange={useCallback((partial) => setVisParams(prev => ({...prev, ...partial})), [])}
                 onImport={handleImportVis}
                 applying={visApplying}
               />

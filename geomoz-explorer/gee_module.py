@@ -1577,10 +1577,6 @@ def compute_index_tile_vis(
     if opacity is not None:
         vis_kwargs["opacity"] = opacity
 
-    palette = vis_params.get("palette")
-    if palette is not None:
-        vis_kwargs["palette"] = palette
-
     # Merge with registry defaults: user-supplied keys win.
     final_vis = dict(cfg["vis"])
     final_vis.update(vis_kwargs)
@@ -1589,6 +1585,16 @@ def compute_index_tile_vis(
     b = final_vis.get("bands")
     if isinstance(b, list) and len(b) > 1:
         final_vis.pop("palette", None)
+        
+    palette = vis_params.get("palette")
+    if palette == []: # frontend explicitly requested NO palette (grayscale)
+        final_vis.pop("palette", None)
+    elif palette is not None:
+        final_vis["palette"] = palette
+
+    # GEE Image.visualize() cannot take BOTH 'gamma' and 'palette'.
+    if "palette" in final_vis and "gamma" in final_vis:
+        final_vis.pop("gamma") # Drop gamma if palette is used
 
     try:
         vis_img = idx_img.visualize(**final_vis)
@@ -2956,9 +2962,15 @@ def compute_groundwater_ahp(region_geojson: Optional[dict], year: int = 2023) ->
     for key, _label, sign, weight in GWP_FACTORS:
         vmin = mm.get(f"{key}_min")
         vmax = mm.get(f"{key}_max")
-        if vmin is None or vmax is None or vmax == vmin:
+        if vmin is None or vmax is None:
             continue
-        norm = raw[key].subtract(vmin).divide(vmax - vmin).clamp(0, 1)
+            
+        if vmax == vmin:
+            # Flat region for this factor, assign neutral normalized value
+            norm = ee.Image(0.5)
+        else:
+            norm = raw[key].subtract(vmin).divide(vmax - vmin).clamp(0, 1)
+            
         if sign < 0:
             norm = ee.Image(1).subtract(norm)
         gwpi = gwpi.add(norm.multiply(weight))
@@ -3041,9 +3053,14 @@ def compute_spi_ndvi(
     spi = (year_total.subtract(clim_mean).divide(clim_std)
            .clamp(-3, 3).rename("SPI"))
 
-    ndvi = (ee.ImageCollection("MODIS/061/MOD13A2")
+    ndvi_raw = (ee.ImageCollection("MODIS/061/MOD13A2")
             .filterDate(f"{year}-01-01", f"{year + 1}-01-01")
-            .select("NDVI").mean().multiply(0.0001).rename("NDVI"))
+            .select("NDVI").mean().multiply(0.0001))
+            
+    # Mask water to avoid skewing agricultural drought stats
+    jrc = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
+    water_mask = jrc.lt(10).unmask(1)
+    ndvi = ndvi_raw.updateMask(water_mask).rename("NDVI")
 
     spi_clip, ndvi_clip = spi.clip(region), ndvi.clip(region)
     spi_tile = spi_clip.visualize(min=-2, max=2, palette=_SPI_PALETTE) \
