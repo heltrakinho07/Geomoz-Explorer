@@ -2558,6 +2558,10 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
     setVisParams(newParams);
   }, []);
 
+  const handleLiveCssChange = useCallback((partial: Partial<RasterVisParams>) => {
+    setVisParams(prev => ({ ...prev, ...partial }));
+  }, []);
+
   const profileCursorLatLon = (isProfile && profileResult && profileCursorIdx != null
     && profileCursorIdx >= 0 && profileCursorIdx < profileResult.points.length)
     ? profileResult.points[profileCursorIdx]
@@ -3283,7 +3287,7 @@ n          {/* RasterVisPanel — floating visualization controls */}
                 availableBands={activeDefBands}
                 currentParams={visParams}
                 onApply={handleApplyVis}
-                onLiveCssChange={useCallback((partial: Partial<RasterVisParams>) => setVisParams(prev => ({...prev, ...partial})), [])}
+                onLiveCssChange={handleLiveCssChange}
                 onImport={handleImportVis}
                 applying={visApplying}
               />
