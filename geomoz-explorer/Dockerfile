@@ -23,7 +23,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdal-dev \
     gdal-bin \
     gfortran \
-    libatlas-base-dev \
     libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
