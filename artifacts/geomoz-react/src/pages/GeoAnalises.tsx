@@ -2369,7 +2369,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
     }
   }, []);
 
-  useEffect(() => { checkGee(); }, [checkGee]);
+  useEffect(() => { checkGee(); if(geeConnected) setGeeCredsOpen(false); }, [checkGee, geeConnected]);
 
   // Switch to proxy mode automatically if GEE not connected
   useEffect(() => {
