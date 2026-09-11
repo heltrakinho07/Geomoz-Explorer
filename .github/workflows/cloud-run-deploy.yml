@@ -61,7 +61,7 @@ jobs:
             --max-instances 10 \
             --min-instances 0 \
             --timeout 300s \
-            --set-env-vars PORT=5003,PYTHONUNBUFFERED=1
+            --set-env-vars=PYTHONUNBUFFERED=1
 
       - name: Get Service URL
         id: service-url

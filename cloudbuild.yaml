@@ -1,11 +1,11 @@
 steps:
   # Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'europe-west1-docker.pkg.dev/$PROJECT_ID/geomoz-explorer-api/geomoz-explorer-api:$COMMIT_SHA', '-t', 'europe-west1-docker.pkg.dev/$PROJECT_ID/geomoz-explorer-api/geomoz-explorer-api:latest', '-f', 'geomoz-explorer/Dockerfile', 'geomoz-explorer/']
+    args: ['build', '-t', 'europe-west1-docker.pkg.dev/$PROJECT_ID/geomoz-explorer-api/geomoz-explorer-api:$BUILD_ID', '-t', 'europe-west1-docker.pkg.dev/$PROJECT_ID/geomoz-explorer-api/geomoz-explorer-api:latest', '-f', 'geomoz-explorer/Dockerfile', 'geomoz-explorer/']
 
   # Push the image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'europe-west1-docker.pkg.dev/$PROJECT_ID/geomoz-explorer-api/geomoz-explorer-api:$COMMIT_SHA']
+    args: ['push', 'europe-west1-docker.pkg.dev/$PROJECT_ID/geomoz-explorer-api/geomoz-explorer-api:$BUILD_ID']
 
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'europe-west1-docker.pkg.dev/$PROJECT_ID/geomoz-explorer-api/geomoz-explorer-api:latest']
@@ -16,7 +16,7 @@ steps:
       - 'run'
       - 'deploy'
       - 'geomoz-explorer-api'
-      - '--image=europe-west1-docker.pkg.dev/$PROJECT_ID/geomoz-explorer-api/geomoz-explorer-api:$COMMIT_SHA'
+      - '--image=europe-west1-docker.pkg.dev/$PROJECT_ID/geomoz-explorer-api/geomoz-explorer-api:$BUILD_ID'
       - '--platform=managed'
       - '--region=europe-west1'
       - '--allow-unauthenticated'
@@ -26,8 +26,8 @@ steps:
       - '--max-instances=10'
       - '--min-instances=0'
       - '--timeout=300s'
-      - '--set-env-vars=PORT=5003,PYTHONUNBUFFERED=1'
+      - '--set-env-vars=PYTHONUNBUFFERED=1'
 
 images:
-  - 'europe-west1-docker.pkg.dev/$PROJECT_ID/geomoz-explorer-api/geomoz-explorer-api:$COMMIT_SHA'
+  - 'europe-west1-docker.pkg.dev/$PROJECT_ID/geomoz-explorer-api/geomoz-explorer-api:$BUILD_ID'
   - 'europe-west1-docker.pkg.dev/$PROJECT_ID/geomoz-explorer-api/geomoz-explorer-api:latest'
