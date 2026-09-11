@@ -120,41 +120,46 @@ from google.oauth2.credentials import Credentials
 import gee_session_store
 
 def _init_gee(uid: str = None) -> None:
-    """Initialize GEE with the user's token."""
+    """Initialize GEE with the user's token or fallback to server credentials."""
     global _gee_initialized, _gee_error
 
-    if not uid:
-        raise RuntimeError("uid é obrigatório para ligar ao GEE.")
-        
-    token_data = gee_session_store.get_token(uid)
-    if not token_data:
-        raise RuntimeError("Utilizador não tem ligação ao GEE (token em falta).")
-        
-    try:
-        import ee
-    except ImportError:
-        raise RuntimeError("earthengine-api package not installed.")
-
-    # We initialize EE with the user's token.
-    # Warning: In a multi-threaded async app, this overrides global state!
-    # For MVP, this works if traffic is low or we rely on thread separation (not perfect).
     with _lock:
-        creds = Credentials(token=token_data["access_token"])
-        ee.Initialize(credentials=creds, project=token_data.get("project"))
-        _gee_initialized = True
+        token_data = gee_session_store.get_token(uid) if uid else None
+        if token_data and token_data.get("access_token"):
+            try:
+                import ee
+                creds = Credentials(token=token_data["access_token"])
+                ee.Initialize(credentials=creds, project=token_data.get("project"))
+                _gee_initialized = True
+                _gee_error = None
+                return
+            except Exception as e:
+                logger.error("Failed to initialize GEE with user OAuth token: %s", e)
+                # Fall through to service account fallback
 
+        # Fallback to server-side GEE_SERVICE_ACCOUNT_KEY if configured
+        sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
+        project_id = os.environ.get("GEE_PROJECT_ID", "").strip() or None
+        if sa_key:
+            try:
+                import ee
+                import json
+                key_data = json.loads(sa_key)
+                creds = ee.ServiceAccountCredentials(
+                    key_data["client_email"],
+                    key_data=key_data
+                )
+                ee.Initialize(credentials=creds, project=project_id or key_data.get("project_id"))
+                _gee_initialized = True
+                _gee_error = None
+                return
+            except Exception as e:
+                logger.error("Failed to initialize GEE with service account: %s", e)
+                _gee_error = str(e)
+                raise RuntimeError(f"Erro ao inicializar GEE: {e}")
 
-        try:
-            ee.Initialize(project=project_id)
-            _gee_initialized = True
-            return
-        except Exception as exc:
-            _gee_error = (
-                "GEE not configured. "
-                "Set GEE_SERVICE_ACCOUNT_KEY (service account JSON as string) or run "
-                "`earthencine authenticate` and set GEE_PROJECT_ID."
-            )
-            raise RuntimeError(_gee_error)
+        _gee_error = "Utilizador não tem ligação ao GEE e não há credenciais de servidor configuradas."
+        raise RuntimeError(_gee_error)
 
 
 def reset_gee():

@@ -40,10 +40,22 @@ async def require_firebase_auth(request: Request) -> str:
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Token Firebase inválido: {str(e)}")
 
-async def require_gee_auth(uid: str = Depends(require_firebase_auth)) -> str:
+async def require_gee_auth(request: Request) -> str:
+    auth_header = request.headers.get("Authorization", "")
+    uid = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header.removeprefix("Bearer ").strip()
+        try:
+            decoded = firebase_auth.verify_id_token(token)
+            uid = decoded.get("uid")
+        except Exception:
+            pass
     from gee_module import _init_gee
-    _init_gee(uid)
-    return uid
+    try:
+        _init_gee(uid)
+    except RuntimeError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    return uid or "anonymous"
 from pydantic import BaseModel, field_validator, constr
 
 # ── Package imports ────────────────────────────────────────────────────────
@@ -740,13 +752,27 @@ async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_fir
     return {"message": "Token guardado com sucesso."}
 
 @app.get("/geomoz-api/gee/status")
-async def gee_status_endpoint(uid: str = Depends(require_firebase_auth)):
+async def gee_status_endpoint(request: Request):
     import gee_session_store
-    token = gee_session_store.get_token(uid)
+    auth_header = request.headers.get("Authorization", "")
+    uid = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header.removeprefix("Bearer ").strip()
+        try:
+            decoded = firebase_auth.verify_id_token(token)
+            uid = decoded.get("uid")
+        except Exception:
+            pass
+    token = gee_session_store.get_token(uid) if uid else None
+    has_sa = bool(os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip())
+    connected = bool(token) or has_sa
+    auth_type = "oauth2" if token else ("service_account" if has_sa else None)
     return {
-        "connected": bool(token),
-        "project": token.get("project") if token else None,
-        "auth_type": "oauth2" if token else None
+        "connected": connected,
+        "project": (token.get("project") if token else None) or os.environ.get("GEE_PROJECT_ID", None),
+        "auth_type": auth_type,
+        "user_connected": bool(token),
+        "server_connected": has_sa
     }
 
 @app.post("/geomoz-api/gee/index")
