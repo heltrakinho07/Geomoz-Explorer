@@ -17,6 +17,8 @@ import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
 import BasemapSwitcher from "./BasemapSwitcher";
 import MapTools from "./MapTools";
 import MapDraw from "./MapDraw";
+import MapLibre3DView from "./MapLibre3DView";
+import { Globe, Layers } from "lucide-react";
 import type { AreaOfInterest } from "@/lib/aoi";
 
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
@@ -34,6 +36,7 @@ interface MapViewProps {
   aoi: AreaOfInterest;
   drawingEnabled: boolean;
   finishRequest?: number;
+  initialViewMode?: "2d" | "3d";
   onDrawComplete: (geometry: GeoJSON.GeoJSON, label: string) => void;
   onDrawCancel: () => void;
   onProvinceClick?: (name: string) => void;
@@ -108,12 +111,48 @@ function NorthArrow() {
   );
 }
 
-export default function MapView({ province, district, layers, colorBy, aoi, drawingEnabled, finishRequest, onDrawComplete, onDrawCancel, onProvinceClick, onMapState, mapRef }: MapViewProps) {
+export default function MapView({
+  province,
+  district,
+  layers,
+  colorBy,
+  aoi,
+  drawingEnabled,
+  finishRequest,
+  initialViewMode,
+  onDrawComplete,
+  onDrawCancel,
+  onProvinceClick,
+  onMapState,
+  mapRef,
+}: MapViewProps) {
   const { data: provinceGeoJSON } = useProvincesGeoJSON();
   const { data: districtGeoJSON } = useDistrictsGeoJSON(province);
   const { data: geologyGeoJSON, isFetching: loadingGeology } = useGeologyGeoJSON(province, district, colorBy, layers.geology);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [basemap, setBasemap] = useState<BasemapType>("terrain");
+  const [basemap, setBasemap] = useState<BasemapType>("hybrid");
+
+  const isWebGL = typeof window !== "undefined" && Boolean(
+    window.WebGLRenderingContext &&
+    document.createElement("canvas").getContext("webgl")
+  );
+
+  const [viewMode, setViewMode] = useState<"2d" | "3d">(() => {
+    if (initialViewMode) return initialViewMode;
+    if (!isWebGL) return "2d";
+    try {
+      return (localStorage.getItem("geomoz_view_mode") as "2d" | "3d") || "3d";
+    } catch {
+      return "3d";
+    }
+  });
+
+  const handleViewModeChange = (mode: "2d" | "3d") => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem("geomoz_view_mode", mode);
+    } catch {}
+  };
 
   const provinceStyle = (): L.PathOptions => ({
     color: "#64748b", weight: 1.5, fillColor: "#e2e8f0", fillOpacity: province ? 0.05 : 0.2,
@@ -162,82 +201,128 @@ export default function MapView({ province, district, layers, colorBy, aoi, draw
 
   return (
     <main className="flex-1 relative overflow-hidden" id="geomoz-map-area">
-      {loadingGeology && province && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[600] bg-white border border-slate-200 shadow-md rounded-full px-4 py-1.5 text-xs font-medium text-slate-600 flex items-center gap-2 pointer-events-none">
-          <svg className="animate-spin w-3.5 h-3.5 text-sky-500" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-          </svg>
-          A carregar geologia…
-        </div>
-      )}
+      {/* 2D / 3D Mode Switcher Pill */}
+      <div className="absolute top-4 left-4 z-[650] flex items-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl p-1 shadow-md border border-slate-200 dark:border-slate-800">
+        <button
+          type="button"
+          onClick={() => handleViewModeChange("2d")}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            viewMode === "2d"
+              ? "bg-sky-600 text-white shadow-sm"
+              : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+          }`}
+        >
+          <Layers size={14} />
+          <span>2D Plano</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => handleViewModeChange("3d")}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            viewMode === "3d"
+              ? "bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow-sm"
+              : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+          }`}
+        >
+          <Globe size={14} />
+          <span>3D Globo</span>
+          <span className="text-[9px] bg-amber-400 text-amber-950 font-bold px-1.5 py-0.2 rounded-full uppercase tracking-wider">
+            WebGL
+          </span>
+        </button>
+      </div>
 
-      {!province && (
-        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[600] bg-white/95 backdrop-blur-sm border border-sky-200 shadow-lg rounded-xl px-5 py-3 text-sm text-slate-700 flex items-center gap-2.5 pointer-events-none max-w-xs text-center">
-          <svg className="w-4 h-4 text-sky-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          Clique numa <strong>&nbsp;Província&nbsp;</strong> no mapa ou no filtro para ver a geologia
-        </div>
-      )}
-
-      {/* Coordinate display */}
-      {coords && (
-        <div className="absolute bottom-8 right-3 z-[600] bg-white/90 backdrop-blur-sm border border-slate-200 shadow-sm rounded-md px-2.5 py-1 text-xs font-mono text-slate-600 pointer-events-none select-none">
-          {coords.lat >= 0 ? "+" : ""}{coords.lat.toFixed(5)}°,&nbsp;
-          {coords.lng >= 0 ? "+" : ""}{coords.lng.toFixed(5)}°
-        </div>
-      )}
-
-      <BasemapSwitcher current={basemap} onChange={setBasemap} className="absolute top-4 right-4 z-[600]" />
-      <NorthArrow />
-
-      <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl>
-        <TileLayer
-          key={basemap}
-          crossOrigin="anonymous"
-          url={GOOGLE_BASEMAPS[basemap].url}
-          subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
-          attribution={GOOGLE_BASEMAPS[basemap].attribution}
-          maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
+      {viewMode === "3d" ? (
+        <MapLibre3DView
+          province={province}
+          district={district}
+          colorBy={colorBy}
+          layers={layers}
+          aoi={aoi}
+          basemap={basemap}
+          onBasemapChange={setBasemap}
+          onProvinceClick={onProvinceClick}
         />
+      ) : (
+        <>
+          {loadingGeology && province && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[600] bg-white border border-slate-200 shadow-md rounded-full px-4 py-1.5 text-xs font-medium text-slate-600 flex items-center gap-2 pointer-events-none">
+              <svg className="animate-spin w-3.5 h-3.5 text-sky-500" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              A carregar geologia…
+            </div>
+          )}
 
-        <ScaleControl position="bottomleft" imperial={false} />
-        <MapStateTracker onMapState={onMapState} mapRef={mapRef} />
-        <CoordTracker onMove={(lat, lng) => setCoords(lat !== null && lng !== null ? { lat, lng } : null)} />
+          {!province && (
+            <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[600] bg-white/95 backdrop-blur-sm border border-sky-200 shadow-lg rounded-xl px-5 py-3 text-sm text-slate-700 flex items-center gap-2.5 pointer-events-none max-w-xs text-center">
+              <svg className="w-4 h-4 text-sky-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Clique numa <strong>&nbsp;Província&nbsp;</strong> no mapa ou no filtro para ver a geologia
+            </div>
+          )}
 
-        {layers.geology && province && geologyGeoJSON && (
-          <>
-            <FitBounds data={geologyGeoJSON} deps={[province, district]} />
-            <GeoJSONLayer data={geologyGeoJSON} layerKey={geologyKey} style={geologyStyle} onEachFeature={onEachGeology} />
-          </>
-        )}
+          {/* Coordinate display */}
+          {coords && (
+            <div className="absolute bottom-8 right-3 z-[600] bg-white/90 backdrop-blur-sm border border-slate-200 shadow-sm rounded-md px-2.5 py-1 text-xs font-mono text-slate-600 pointer-events-none select-none">
+              {coords.lat >= 0 ? "+" : ""}{coords.lat.toFixed(5)}°,&nbsp;
+              {coords.lng >= 0 ? "+" : ""}{coords.lng.toFixed(5)}°
+            </div>
+          )}
 
-        {layers.provinces && provinceGeoJSON && (
-          <>
-            {!province && <FitBounds data={provinceGeoJSON} deps={[]} />}
-            <GeoJSONLayer data={provinceGeoJSON} layerKey={provKey} style={provinceStyle} onEachFeature={onEachProvince} />
-          </>
-        )}
+          <BasemapSwitcher current={basemap} onChange={setBasemap} className="absolute top-4 right-4 z-[600]" />
+          <NorthArrow />
 
-        {layers.districts && province && districtGeoJSON && (
-          <GeoJSONLayer data={districtGeoJSON} layerKey={distKey} style={districtStyle} onEachFeature={onEachDistrict} />
-        )}
-        {drawingEnabled && (
-          <MapDraw
-            enabled={drawingEnabled}
-            onDrawComplete={onDrawComplete}
-            onCancel={onDrawCancel}
-            hasDrawnAOI={aoi?.source === "draw"}
-            onClearAOI={onDrawCancel}
-            finishRequest={finishRequest}
-          />
-        )}
-        {aoi?.source !== "global" && aoi?.geometry && (
-          <GeoJSON data={aoi.geometry as GeoJSON.FeatureCollection | GeoJSON.Feature} style={{ color: "#f43f5e", weight: 2, dashArray: "6 4", fillOpacity: 0.05 }} />
-        )}
-        <MapTools />
-      </MapContainer>
+          <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl>
+            <TileLayer
+              key={basemap}
+              crossOrigin="anonymous"
+              url={GOOGLE_BASEMAPS[basemap].url}
+              subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
+              attribution={GOOGLE_BASEMAPS[basemap].attribution}
+              maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
+            />
+
+            <ScaleControl position="bottomleft" imperial={false} />
+            <MapStateTracker onMapState={onMapState} mapRef={mapRef} />
+            <CoordTracker onMove={(lat, lng) => setCoords(lat !== null && lng !== null ? { lat, lng } : null)} />
+
+            {layers.geology && province && geologyGeoJSON && (
+              <>
+                <FitBounds data={geologyGeoJSON} deps={[province, district]} />
+                <GeoJSONLayer data={geologyGeoJSON} layerKey={geologyKey} style={geologyStyle} onEachFeature={onEachGeology} />
+              </>
+            )}
+
+            {layers.provinces && provinceGeoJSON && (
+              <>
+                {!province && <FitBounds data={provinceGeoJSON} deps={[]} />}
+                <GeoJSONLayer data={provinceGeoJSON} layerKey={provKey} style={provinceStyle} onEachFeature={onEachProvince} />
+              </>
+            )}
+
+            {layers.districts && province && districtGeoJSON && (
+              <GeoJSONLayer data={districtGeoJSON} layerKey={distKey} style={districtStyle} onEachFeature={onEachDistrict} />
+            )}
+            {drawingEnabled && (
+              <MapDraw
+                enabled={drawingEnabled}
+                onDrawComplete={onDrawComplete}
+                onCancel={onDrawCancel}
+                hasDrawnAOI={aoi?.source === "draw"}
+                onClearAOI={onDrawCancel}
+                finishRequest={finishRequest}
+              />
+            )}
+            {aoi?.source !== "global" && aoi?.geometry && (
+              <GeoJSON data={aoi.geometry as GeoJSON.FeatureCollection | GeoJSON.Feature} style={{ color: "#f43f5e", weight: 2, dashArray: "6 4", fillOpacity: 0.05 }} />
+            )}
+            <MapTools />
+          </MapContainer>
+        </>
+      )}
     </main>
   );
 }

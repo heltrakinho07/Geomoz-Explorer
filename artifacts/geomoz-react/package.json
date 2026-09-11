@@ -89,6 +89,7 @@
     "firebase": "^11.0.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
+    "maplibre-gl": "^6.9.0",
     "react-error-boundary": "^4.1.2"
   }
 }

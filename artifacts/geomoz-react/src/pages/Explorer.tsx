@@ -29,7 +29,7 @@ interface NominatimResult {
 type Tab = "Mapa" | "Análise" | "GeoAnálises" | "Bacias Hidrográficas" | "Água Subterrânea" | "Geoperigos" | "GeoMoz AI" | "Dashboard" | "Exportar";
 
 const TABS: { id: Tab; icon: React.ReactNode; label: string }[] = [
-  { id: "Mapa",                 icon: <Globe size={13} />,    label: "Mapa" },
+  { id: "Mapa",                 icon: <Globe size={13} />,    label: "Mapa 3D" },
   { id: "Análise",              icon: null,                   label: "Análise" },
   { id: "GeoAnálises",         icon: <Satellite size={13} />, label: "GeoAnálises" },
   { id: "Bacias Hidrográficas", icon: <Droplets size={13} />, label: "Bacias Hidrográficas" },
@@ -66,7 +66,7 @@ export default function Explorer() {
   const [searchResults, setSearchResults] = useState<NominatimResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
-  const [searchWorldwide, setSearchWorldwide] = useState(false);
+  const [searchWorldwide, setSearchWorldwide] = useState(true);
   const skipAutoSearchRef = useRef(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -218,8 +218,8 @@ function flyToResult(result: NominatimResult) {
               <Globe size={17} />
             </div>
             <span className="font-bold text-slate-900 tracking-tight text-base">GeoMoz Explorer</span>
-            <Badge variant="outline" className="ml-1 text-xs font-normal border-slate-200 text-slate-400 bg-slate-50">
-              Moçambique
+            <Badge variant="outline" className="ml-1 text-[11px] font-medium border-sky-200 text-sky-700 bg-sky-50">
+              Global 3D
             </Badge>
           </div>
 
