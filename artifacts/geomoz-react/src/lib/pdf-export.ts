@@ -12,7 +12,7 @@
 
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, apiFetch } from "@/lib/api";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -309,7 +309,7 @@ export async function fetchMapImage(
     dpi?: number;
   },
 ): Promise<string> {
-  const resp = await fetch(apiUrl("/geomoz-api/gee/map-image"), {
+  const resp = await apiFetch("/geomoz-api/gee/map-image", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

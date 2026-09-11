@@ -17,7 +17,7 @@ import {
   FileText, BarChart2, Layers,
   ExternalLink, RefreshCw,
 } from "lucide-react";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, apiFetch } from "@/lib/api";
 import type { Stats } from "@/hooks/useGeoMoz";
 
 interface DashboardPanelProps {
@@ -113,7 +113,7 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
 
   const { data: indicesData, isLoading: indicesLoading } = useQuery<{ indices: GeeIndexInfo[] }>({
     queryKey: ["gee-indices"],
-    queryFn: () => fetch(apiUrl("/geomoz-api/gee/indices")).then(r => r.json()),
+    queryFn: () => apiFetch("/geomoz-api/gee/indices").then(r => r.json()),
     staleTime: 5 * 60_000,
   });
 
@@ -145,7 +145,7 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
   const checkGee = useCallback(async () => {
     setGeeLoading(true);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/status"));
+      const res = await apiFetch("/geomoz-api/gee/status");
       const data = await res.json() as GeeStatus & { indices?: string[] };
       setGeeStatus(data);
     } catch {
@@ -209,7 +209,7 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
   async function handleExportIndices() {
     setExporting("indices");
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/indices"));
+      const res = await apiFetch("/geomoz-api/gee/indices");
       const data = await res.json() as { indices: GeeIndexInfo[] };
       const indices = data.indices ?? [];
       const rows = [

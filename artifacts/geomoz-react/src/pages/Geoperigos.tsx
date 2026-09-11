@@ -14,7 +14,7 @@ import {
   CheckCircle2, Calendar, Droplets, Layers, FileDown,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
 import ZoneSelect from "@/components/ZoneSelect";
@@ -75,7 +75,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 180_000);
     try {
-      const r = await fetch(apiUrl("/geomoz-api/gee/flood"), {
+      const r = await apiFetch("/geomoz-api/gee/flood", {
         method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
         body: JSON.stringify({ ...aoiToAPI(aoi), event_start: eventStart, event_end: eventEnd }),
       });
@@ -94,7 +94,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 240_000);
     try {
-      const r = await fetch(apiUrl("/geomoz-api/gee/erosion"), {
+      const r = await apiFetch("/geomoz-api/gee/erosion", {
         method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
         body: JSON.stringify({ ...aoiToAPI(aoi), year }),
       });

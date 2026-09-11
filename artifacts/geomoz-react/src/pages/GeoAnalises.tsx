@@ -33,8 +33,10 @@ import {
 } from "recharts";
 
 import { useGeologyGeoJSON } from "@/hooks/useGeoMoz";
+import { useGeeAuth } from "@/hooks/useGeeAuth";
+import GeeCredentialsDialog from "@/components/GeeCredentialsDialog";
 import { computeSpectralValue, applyColormap, SpectralIndex, GEE_ONLY_INDICES } from "@/lib/geoml";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
 import ZoneSelect from "@/components/ZoneSelect";
@@ -668,7 +670,7 @@ function GeeAnalysisPanel({
     setError(null);
     onTileReady(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/index"), {
+      const res = await apiFetch("/geomoz-api/gee/index", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -782,10 +784,13 @@ function GeeAnalysisPanel({
                 {Object.entries(result.stats).map(([k, v]) => (
                   <div key={k} className="bg-slate-50 rounded-lg p-2 text-center">
                     <div className="text-xs text-slate-400">{statLabels[k] ?? k}</div>
-                    <div className="text-sm font-bold text-slate-800 font-mono">{v.toFixed(3)}</div>
+                    <div className="text-sm font-bold text-slate-800 font-mono">
+                      {typeof v === "number" ? v.toFixed(3) : String(v ?? "—")}
+                    </div>
                   </div>
                 ))}
               </div>
+
             </div>
           )}
 
@@ -864,7 +869,7 @@ function LineamentsPanel({
   async function run() {
     setRunning(true); setError(null); onResult(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/lineaments"), {
+      const res = await apiFetch("/geomoz-api/gee/lineaments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1037,7 +1042,7 @@ function TargetingPanel({
   const [overlapError, setOverlapError]     = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(apiUrl("/geomoz-api/gee/minerals")).then(r => r.json())
+    apiFetch("/geomoz-api/gee/minerals").then(r => r.json())
       .then(d => setPresets(d.minerals ?? [])).catch(() => {});
   }, []);
 
@@ -1047,7 +1052,7 @@ function TargetingPanel({
     setRunning(true); setError(null); onResult(null);
     setOverlapRes(null); setOverlapError(null); onOverlap(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/targeting"), {
+      const res = await apiFetch("/geomoz-api/gee/targeting", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1070,7 +1075,7 @@ function TargetingPanel({
   async function runOverlap() {
     setOverlapRunning(true); setOverlapError(null); setOverlapRes(null); onOverlap(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/targeting-overlap"), {
+      const res = await apiFetch("/geomoz-api/gee/targeting-overlap", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1399,7 +1404,7 @@ function SpiNdviPanel({
   async function run() {
     setRunning(true); setError(null); onResult(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/spi-ndvi"), {
+      const res = await apiFetch("/geomoz-api/gee/spi-ndvi", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1806,7 +1811,7 @@ function ContoursPanel({
   async function run() {
     setRunning(true); setError(null); onResult(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/contours"), {
+      const res = await apiFetch("/geomoz-api/gee/contours", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1942,7 +1947,7 @@ function LandCoverPanel({
   async function run() {
     setRunning(true); setError(null); onResult(null); setResult(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/landcover"), {
+      const res = await apiFetch("/geomoz-api/gee/landcover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2130,7 +2135,7 @@ function TopoClassesPanel({
     }
     setRunning(true); setError(null); onResult(null); setResult(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/topo-classes"), {
+      const res = await apiFetch("/geomoz-api/gee/topo-classes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2263,6 +2268,8 @@ function TopoClassesPanel({
 }
 
 export default function GeoAnalises({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: GeoAnalisesProps) {
+  const [geeCredsOpen, setGeeCredsOpen] = useState(false);
+  const { geeConnected } = useGeeAuth();
   const [activeTab, setActiveTab]     = useState<SpectralTab>("s2");
   const [showS2, setShowS2]           = useState(false);
   const [selectedYear, setSelectedYear] = useState("2022");
@@ -2289,7 +2296,6 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
   const [profileError, setProfileError]     = useState<string | null>(null);
   const [showEdges, setShowEdges]     = useState(true);
   const [useGEE, setUseGEE]           = useState(true);
-  const [showSetup, setShowSetup]     = useState(false);
   const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [visParams, setVisParams] = useState<RasterVisParams>(DEFAULT_VIS_PARAMS);
   const [visPanelOpen, setVisPanelOpen] = useState(false);
@@ -2351,19 +2357,19 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
   const checkGee = useCallback(async () => {
     setGeeLoading(true);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/status"));
+      const res = await apiFetch("/geomoz-api/gee/status");
       const data: GeeStatus = await res.json();
       setGeeStatus(data);
-      if (!data.connected) setShowSetup(true);
+
     } catch {
       setGeeStatus({ connected: false, auth_type: null, project: null, message: "API indisponível", indices: [] });
-      setShowSetup(true);
+
     } finally {
       setGeeLoading(false);
     }
   }, []);
 
-  useEffect(() => { checkGee(); }, [checkGee]);
+  useEffect(() => { checkGee(); if(geeConnected) setGeeCredsOpen(false); }, [checkGee, geeConnected]);
 
   // Switch to proxy mode automatically if GEE not connected
   useEffect(() => {
@@ -2390,7 +2396,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
     if (profilePoints.length < 2) return;
     setProfileRunning(true); setProfileError(null); setProfileResult(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/profile"), {
+      const res = await apiFetch("/geomoz-api/gee/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ coords: profilePoints, samples: profileSamples }),
@@ -2520,7 +2526,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
     setVisParams(newParams);
     const def = INDEX_DEFS.find(d => d.id === activeTab);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/render"), {
+      const res = await apiFetch("/geomoz-api/gee/render", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2559,6 +2565,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
+      <GeeCredentialsDialog open={geeCredsOpen} onOpenChange={setGeeCredsOpen} />
       {/* Module header */}
       <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
@@ -2587,9 +2594,9 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
             </div>
           )}
           {!geeStatus?.connected && (
-            <button onClick={() => setShowSetup(v => !v)}
+            <button onClick={() => setGeeCredsOpen(true)}
               className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full hover:bg-amber-100 transition-colors font-medium">
-              Configurar GEE
+              Ligar GEE
             </button>
           )}
         </div>
@@ -2612,15 +2619,9 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
         {/* Controls sidebar */}
         <div className={`bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto transition-all duration-200 ${sidebarOpen ? "w-72" : "w-0 overflow-hidden border-r-0"}`}>
 
-          {/* GEE Setup Guide (expandable) */}
-          {showSetup && (
-            <div className="border-b border-slate-200">
-              <GeeSetupGuide onRetry={() => { setShowSetup(false); checkGee(); }} />
-            </div>
-          )}
 
           {/* Area filter — AOI global */}
-          {!showSetup && (
+          {(
             <div className="p-4 border-b border-slate-100">
               <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Área de Estudo</h4>
               <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
@@ -2628,7 +2629,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           )}
 
           {/* Analysis selector (accordion) */}
-          {!showSetup && (
+          {(
             <div className="border-b border-slate-100">
               <div className="flex items-center justify-between px-4 pt-4 pb-2">
                 <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Análises</h4>
@@ -2676,7 +2677,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
         </div>
 
         {/* Draggable Results Panel */}
-        {(!showSetup && (activeDef || isComposite || isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || activeTab === "s2")) && (
+        {((activeDef || isComposite || isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || activeTab === "s2")) && (
           <DraggablePanel
             title={`Análise: ${activeDef?.label || (isLineaments ? "Lineamentos" : isProfile ? "Perfil Topográfico" : isTargeting ? "Alvo Mineral" : isSpiNdvi ? "SPI×NDVI" : isContours ? "Curvas de Nível" : isTopoCustom ? "Classes Topo" : isLandCover ? "Cobertura do Solo" : "Resultados")}`}
             icon={<Activity size={16} className="text-sky-500" />}
@@ -2687,7 +2688,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           >
             <div className="flex flex-col w-full bg-white/50 space-y-4 pb-4">
           {/* Lineaments Panel */}
-          {!showSetup && isLineaments && (
+          {isLineaments && (
             <div className="p-4 border-b border-slate-100">
               {!geeStatus?.connected ? (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
@@ -2712,7 +2713,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           )}
 
           {/* Profile Panel */}
-          {!showSetup && isProfile && (
+          {isProfile && (
             <div className="p-4 border-b border-slate-100">
               {!geeStatus?.connected ? (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
@@ -2734,7 +2735,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           )}
 
           {/* Custom Topo Classes Panel */}
-          {!showSetup && isTopoCustom && (
+          {isTopoCustom && (
             <div className="p-4 border-b border-slate-100">
               {!geeStatus?.connected ? (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
@@ -2747,7 +2748,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           )}
 
           {/* Contours Panel */}
-          {!showSetup && isContours && (
+          {isContours && (
             <div className="p-4 border-b border-slate-100">
               {!geeStatus?.connected ? (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
@@ -2760,7 +2761,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           )}
 
           {/* Targeting Panel */}
-          {!showSetup && isTargeting && (
+          {isTargeting && (
             <div className="p-4 border-b border-slate-100">
               {!geeStatus?.connected ? (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
@@ -2773,7 +2774,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           )}
 
           {/* SPI × NDVI Panel */}
-          {!showSetup && isSpiNdvi && (
+          {isSpiNdvi && (
             <div className="p-4 border-b border-slate-100">
               {!geeStatus?.connected ? (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
@@ -2811,7 +2812,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           )}
 
           {/* Land Cover Panel */}
-          {!showSetup && isLandCover && (
+          {isLandCover && (
             <div className="p-4 border-b border-slate-100">
               {!geeStatus?.connected ? (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
@@ -2824,7 +2825,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           )}
 
           {/* GEE Analysis Panel (real mode, single index) */}
-          {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !isTopoCustom && geeReady && activeTab !== "s2" && activeDef && (
+          {!isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !isTopoCustom && geeReady && activeTab !== "s2" && activeDef && (
             <div className="p-4 border-b border-slate-100">
               <GeeAnalysisPanel
                 activeIndex={activeTab as SpectralIndex}
@@ -2838,7 +2839,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           )}
 
           {/* GEE-only warning when proxy is forced */}
-          {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !isTopoCustom && !geeReady && isGeeOnly && activeDef && (
+          {!isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !isTopoCustom && !geeReady && isGeeOnly && activeDef && (
             <div className="p-4 border-b border-slate-100">
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
                 <strong>Índice apenas GEE.</strong> {activeDef.short} requer dados raster reais (DEM / Landsat). Active GEE no topo para calcular.
@@ -2847,7 +2848,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           )}
 
           {/* Proxy mode controls (only spectral indices have meaningful proxy) */}
-          {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !isTopoCustom && !geeReady && activeTab !== "s2" && !isGeeOnly && (
+          {!isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !isTopoCustom && !geeReady && activeTab !== "s2" && !isGeeOnly && (
             <div className="p-4 border-b border-slate-100">
               <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Opacidade</h4>
               <input type="range" min={0.1} max={1} step={0.05} value={visParams.opacity}
@@ -2857,7 +2858,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           )}
 
           {/* Sentinel-2 cloudless controls */}
-          {!showSetup && activeTab === "s2" && (
+          {activeTab === "s2" && (
             <div className="p-4 border-b border-slate-100 space-y-3">
               <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Sentinel-2 Cloudless (EOX)</h4>
               <div>
@@ -2878,7 +2879,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           )}
 
           {/* Index info — geocientific legend card */}
-          {!showSetup && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && activeDef && activeTab !== "s2" && (() => {
+          {!isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && activeDef && activeTab !== "s2" && (() => {
             const activeGroup = tabGroups.find(g => g.tabs.some(t => t.id === activeTab));
             return (
               <div className="p-4 flex-1 space-y-4">
@@ -2947,7 +2948,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           })()}
 
           {/* Lineaments info */}
-          {!showSetup && isLineaments && (
+          {isLineaments && (
             <div className="p-4 flex-1 space-y-3">
               <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-xl p-3">
                 <div className="flex items-center gap-1.5 mb-1">
@@ -2972,7 +2973,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           )}
 
           {/* Targeting info */}
-          {!showSetup && isTargeting && (
+          {isTargeting && (
             <div className="p-4 flex-1 space-y-3">
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                 <div className="flex items-center gap-1.5 mb-1">
@@ -2997,7 +2998,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           )}
 
           {/* SPI × NDVI info */}
-          {!showSetup && isSpiNdvi && (
+          {isSpiNdvi && (
             <div className="p-4 flex-1 space-y-3">
               <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
                 <div className="flex items-center gap-1.5 mb-1">
@@ -3033,7 +3034,7 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
           )}
 
           {/* S2 cloudless info */}
-          {!showSetup && activeTab === "s2" && (
+          {activeTab === "s2" && (
             <div className="p-4 flex-1 space-y-3">
               <div className="bg-sky-50 border border-sky-200 rounded-xl p-3">
                 <div className="flex items-center gap-1.5 mb-1.5"><Satellite size={12} className="text-sky-600" /><span className="text-xs font-semibold text-sky-700">Sentinel-2 Cloudless EOX</span></div>
@@ -3282,7 +3283,7 @@ n          {/* RasterVisPanel — floating visualization controls */}
                 availableBands={activeDefBands}
                 currentParams={visParams}
                 onApply={handleApplyVis}
-                onLiveCssChange={useCallback((partial) => setVisParams(prev => ({...prev, ...partial})), [])}
+                onLiveCssChange={useCallback((partial: Partial<RasterVisParams>) => setVisParams(prev => ({...prev, ...partial})), [])}
                 onImport={handleImportVis}
                 applying={visApplying}
               />

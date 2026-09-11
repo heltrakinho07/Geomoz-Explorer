@@ -23,7 +23,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdal-dev \
     gdal-bin \
     gfortran \
-    libatlas-base-dev \
     libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -40,6 +39,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # ── Application code ────────────────────────────────────────────────────────
 COPY api.py .
 COPY gee_module.py .
+COPY gee_session_store.py .
 COPY gee_presets.py .
 COPY utils/ utils/
 

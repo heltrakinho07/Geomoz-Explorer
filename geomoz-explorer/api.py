@@ -19,6 +19,31 @@ from fastapi import FastAPI, Query, HTTPException, Request, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import Response
+
+import firebase_admin
+from firebase_admin import credentials, auth as firebase_auth
+from fastapi import Depends
+
+try:
+    firebase_admin.initialize_app()
+except ValueError:
+    pass
+
+async def require_firebase_auth(request: Request) -> str:
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token Firebase ausente ou inválido.")
+    token = auth_header.removeprefix("Bearer ").strip()
+    try:
+        decoded = firebase_auth.verify_id_token(token)
+        return decoded["uid"]
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token Firebase inválido: {str(e)}")
+
+async def require_gee_auth(uid: str = Depends(require_firebase_auth)) -> str:
+    from gee_module import _init_gee
+    _init_gee(uid)
+    return uid
 from pydantic import BaseModel, field_validator, constr
 
 # ── Package imports ────────────────────────────────────────────────────────
@@ -460,14 +485,6 @@ async def convert_geom(file: UploadFile = File(...)):
         logger.exception("Erro ao converter ficheiro de geometria.")
         raise HTTPException(status_code=500, detail=f"Erro na conversão: {str(e)}")
 
-@app.get("/geomoz-api/gee/status")
-def gee_status():
-    """Check Google Earth Engine connection status."""
-    from gee_presets import INDEX_REGISTRY
-    from gee_module import gee_status as _gee_status
-    status = _gee_status()
-    status["indices"] = list(INDEX_REGISTRY.keys())
-    return status
 
 
 class GEEServiceAccountKeyRequest(BaseModel):
@@ -708,8 +725,32 @@ class GEECompositeRequest(BaseModel):
         return v
 
 
+
+class OAuthTokenRequest(BaseModel):
+    access_token: str
+    project: Optional[str] = None
+
+@app.post("/geomoz-api/gee/oauth-token")
+async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_firebase_auth)):
+    import gee_session_store
+    gee_session_store.set_token(uid, {
+        "access_token": req.access_token,
+        "project": req.project
+    })
+    return {"message": "Token guardado com sucesso."}
+
+@app.get("/geomoz-api/gee/status")
+async def gee_status_endpoint(uid: str = Depends(require_firebase_auth)):
+    import gee_session_store
+    token = gee_session_store.get_token(uid)
+    return {
+        "connected": bool(token),
+        "project": token.get("project") if token else None,
+        "auth_type": "oauth2" if token else None
+    }
+
 @app.post("/geomoz-api/gee/index")
-async def gee_index(req: GEEIndexRequest):
+async def gee_index(req: GEEIndexRequest, uid: str = Depends(require_gee_auth)):
     """
     Compute a spectral / terrain index via Google Earth Engine, precisely
     clipped to the selected province / district (or full Mozambique).
@@ -743,7 +784,7 @@ async def gee_index(req: GEEIndexRequest):
 
 
 @app.post("/geomoz-api/gee/render")
-async def gee_render(req: GEERenderRequest):
+async def gee_render(req: GEERenderRequest, uid: str = Depends(require_gee_auth)):
     """
     Re-render an existing GEE index tile with custom visualization parameters.
 
@@ -787,7 +828,7 @@ async def gee_render(req: GEERenderRequest):
 
 
 @app.post("/geomoz-api/gee/composite")
-async def gee_composite(req: GEECompositeRequest):
+async def gee_composite(req: GEECompositeRequest, uid: str = Depends(require_gee_auth)):
     """
     Compute a weighted, normalized sum of multiple indices.
     Each index is normalized to [0,1] using its registry range, multiplied by
@@ -870,7 +911,7 @@ class GEETargetingRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/lineaments")
-async def gee_lineaments(req: GEELineamentsRequest):
+async def gee_lineaments(req: GEELineamentsRequest, uid: str = Depends(require_gee_auth)):
     """Topographic lineaments (Canny on multi-azimuth hillshades) + rose diagram."""
     import asyncio
     from gee_module import compute_lineaments_tile
@@ -916,7 +957,7 @@ def gee_minerals():
 
 
 @app.post("/geomoz-api/gee/targeting")
-async def gee_targeting(req: GEETargetingRequest):
+async def gee_targeting(req: GEETargetingRequest, uid: str = Depends(require_gee_auth)):
     """Mineral favorability score (0–100) via weighted preset + lineaments."""
     import asyncio
     from gee_module import compute_targeting_tile
@@ -958,7 +999,7 @@ class GEEContoursRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/profile")
-async def gee_profile(req: GEEProfileRequest):
+async def gee_profile(req: GEEProfileRequest, uid: str = Depends(require_gee_auth)):
     """Topographic profile (DEM elevation sampled along a polyline)."""
     import asyncio
     from gee_module import compute_profile
@@ -978,7 +1019,7 @@ async def gee_profile(req: GEEProfileRequest):
 
 
 @app.post("/geomoz-api/gee/contours")
-async def gee_contours(req: GEEContoursRequest):
+async def gee_contours(req: GEEContoursRequest, uid: str = Depends(require_gee_auth)):
     """Contour-line tiles at user-defined equidistance from Copernicus GLO-30."""
     import asyncio
     from gee_module import compute_contours_tile
@@ -1016,7 +1057,7 @@ class GEETopoClassesRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/topo-classes")
-async def gee_topo_classes(req: GEETopoClassesRequest):
+async def gee_topo_classes(req: GEETopoClassesRequest, uid: str = Depends(require_gee_auth)):
     """User-defined topographic classes from the DEM."""
     import asyncio
     from gee_module import compute_topo_classes_tile
@@ -1051,7 +1092,7 @@ class GEELandcoverRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/landcover")
-async def gee_landcover(req: GEELandcoverRequest):
+async def gee_landcover(req: GEELandcoverRequest, uid: str = Depends(require_gee_auth)):
     """Land cover (ESA WorldCover 2021, 10 m) with per-class area analysis."""
     import asyncio
     from gee_module import compute_landcover_tile
@@ -1116,7 +1157,7 @@ class GEEDrainageRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/basins")
-async def gee_basins(req: GEEBasinsRequest):
+async def gee_basins(req: GEEBasinsRequest, uid: str = Depends(require_gee_auth)):
     """HydroBASINS polygons that intersect the selected region."""
     import asyncio
     from gee_module import compute_basins
@@ -1135,7 +1176,7 @@ async def gee_basins(req: GEEBasinsRequest):
 
 
 @app.post("/geomoz-api/gee/basin-stats")
-async def gee_basin_stats(req: GEEBasinStatsRequest):
+async def gee_basin_stats(req: GEEBasinStatsRequest, uid: str = Depends(require_gee_auth)):
     """Elevation, slope, NDVI, NDWI, precipitation + risk indices for one basin."""
     import asyncio
     from gee_module import compute_basin_stats
@@ -1153,7 +1194,7 @@ async def gee_basin_stats(req: GEEBasinStatsRequest):
 
 
 @app.post("/geomoz-api/gee/basin-report")
-async def gee_basin_report(req: GEEBasinStatsRequest):
+async def gee_basin_report(req: GEEBasinStatsRequest, uid: str = Depends(require_gee_auth)):
     """Full hydro-environmental basin report: morphometry + land cover + CHIRPS
     monthly rainfall + SCS-CN runoff potential."""
     import asyncio
@@ -1172,7 +1213,7 @@ async def gee_basin_report(req: GEEBasinStatsRequest):
 
 
 @app.post("/geomoz-api/gee/drainage")
-async def gee_drainage(req: GEEDrainageRequest):
+async def gee_drainage(req: GEEDrainageRequest, uid: str = Depends(require_gee_auth)):
     """HydroSHEDS drainage network tile for the selected region."""
     import asyncio
     from gee_module import compute_drainage_tile
@@ -1197,7 +1238,7 @@ class GEERiverNetRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/river-network")
-async def gee_river_network(req: GEERiverNetRequest):
+async def gee_river_network(req: GEERiverNetRequest, uid: str = Depends(require_gee_auth)):
     """Multi-order river network tile (Strahler-like classification via HydroSHEDS ACC)."""
     import asyncio
     from gee_module import compute_river_network
@@ -1226,7 +1267,7 @@ class GEEWatershedRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/watershed")
-async def gee_watershed(req: GEEWatershedRequest):
+async def gee_watershed(req: GEEWatershedRequest, uid: str = Depends(require_gee_auth)):
     """
     Basin delineation at a clicked point. Primary method returns the containing
     HydroBASINS sub-basin (instant, real boundary); falls back to iterative D8
@@ -1277,7 +1318,7 @@ class GEEFloodRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/flood")
-async def gee_flood(req: GEEFloodRequest):
+async def gee_flood(req: GEEFloodRequest, uid: str = Depends(require_gee_auth)):
     """Sentinel-1 SAR flood extent (change detection) for an event window."""
     import asyncio
     from gee_module import compute_flood_sar
@@ -1307,7 +1348,7 @@ class GEEErosionRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/erosion")
-async def gee_erosion(req: GEEErosionRequest):
+async def gee_erosion(req: GEEErosionRequest, uid: str = Depends(require_gee_auth)):
     """RUSLE soil-erosion risk (A = R·K·LS·C·P) classified into 5 classes."""
     import asyncio
     from gee_module import compute_erosion_rusle
@@ -1332,7 +1373,7 @@ class GEEGroundwaterRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/groundwater")
-async def gee_groundwater(req: GEEGroundwaterRequest):
+async def gee_groundwater(req: GEEGroundwaterRequest, uid: str = Depends(require_gee_auth)):
     """Groundwater-potential map (AHP weighted overlay) classified into 5 classes."""
     import asyncio
     from gee_module import compute_groundwater_ahp
@@ -1360,7 +1401,7 @@ class GEEEmbeddingRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/embedding")
-async def gee_embedding(req: GEEEmbeddingRequest):
+async def gee_embedding(req: GEEEmbeddingRequest, uid: str = Depends(require_gee_auth)):
     """AlphaEarth Foundations embedding tile — PCA-reduced to RGB."""
     import asyncio
     from gee_module import compute_embedding_tile
@@ -1400,7 +1441,7 @@ class GEEEmbeddingClusterRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/embedding/cluster")
-async def gee_embedding_cluster(req: GEEEmbeddingClusterRequest):
+async def gee_embedding_cluster(req: GEEEmbeddingClusterRequest, uid: str = Depends(require_gee_auth)):
     """Unsupervised K-Means clustering on 64-d embedding vectors."""
     import asyncio
     from gee_module import compute_embedding_cluster
@@ -1435,7 +1476,7 @@ class GEEEmbeddingSimilarityRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/embedding/similarity")
-async def gee_embedding_similarity(req: GEEEmbeddingSimilarityRequest):
+async def gee_embedding_similarity(req: GEEEmbeddingSimilarityRequest, uid: str = Depends(require_gee_auth)):
     """Cosine similarity of all pixels to a reference point's embedding."""
     import asyncio
     from gee_module import compute_embedding_similarity
@@ -1472,7 +1513,7 @@ class GEEEmbeddingClassifyRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/embedding/classify")
-async def gee_embedding_classify(req: GEEEmbeddingClassifyRequest):
+async def gee_embedding_classify(req: GEEEmbeddingClassifyRequest, uid: str = Depends(require_gee_auth)):
     """Supervised Random Forest classification on 64-d embeddings.
 
     training: GeoJSON FeatureCollection where each feature has
@@ -1520,7 +1561,7 @@ class GEEEmbeddingChangeRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/embedding/change")
-async def gee_embedding_change(req: GEEEmbeddingChangeRequest):
+async def gee_embedding_change(req: GEEEmbeddingChangeRequest, uid: str = Depends(require_gee_auth)):
     """Change detection between two years using embedding cosine distance."""
     import asyncio
     from gee_module import compute_embedding_change
@@ -1569,7 +1610,7 @@ class GEESpiNdviRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/spi-ndvi")
-async def gee_spi_ndvi(req: GEESpiNdviRequest):
+async def gee_spi_ndvi(req: GEESpiNdviRequest, uid: str = Depends(require_gee_auth)):
     """SPI (CHIRPS z-score vs climatology) × NDVI (MODIS) tiles + Pearson correlation."""
     import asyncio
     from gee_module import compute_spi_ndvi
@@ -1718,7 +1759,7 @@ class GEETargetingOverlapRequest(GEETargetingRequest):
 
 
 @app.post("/geomoz-api/gee/targeting-overlap")
-async def gee_targeting_overlap(req: GEETargetingOverlapRequest):
+async def gee_targeting_overlap(req: GEETargetingOverlapRequest, uid: str = Depends(require_gee_auth)):
     """Spatial-overlap report: favorable targeting zones × districts / villages / admin posts.
 
     Vectorizes score ≥ threshold at 300 m in GEE, then crosses the polygons
@@ -1862,7 +1903,7 @@ class GEEMapImageRequest(BaseModel):
 
 
 @app.post("/geomoz-api/gee/map-image")
-async def gee_map_image(req: GEEMapImageRequest):
+async def gee_map_image(req: GEEMapImageRequest, uid: str = Depends(require_gee_auth)):
     """
     Generate a static map image using Cartopy, suitable for PDF embedding.
 

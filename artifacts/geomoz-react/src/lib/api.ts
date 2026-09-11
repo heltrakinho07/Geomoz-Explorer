@@ -31,3 +31,15 @@ export const API_BASE: string = (() => {
 
 /** Prefix an API path with the environment-appropriate base URL. */
 export const apiUrl = (path: string): string => `${API_BASE}${path}`;
+
+import { auth } from "./firebase";
+
+export async function apiFetch(path: string, options?: RequestInit): Promise<Response> {
+  const url = apiUrl(path);
+  const token = auth?.currentUser ? await auth.currentUser.getIdToken(false) : null;
+  const headers = { ...options?.headers } as Record<string, string>;
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return fetch(url, { ...options, headers });
+}

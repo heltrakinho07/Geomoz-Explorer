@@ -115,60 +115,34 @@ def _build_cache_key_for_request(
 
 # ── Initialization ─────────────────────────────────────────────────────────────
 
-def _init_gee() -> None:
+
+from google.oauth2.credentials import Credentials
+import gee_session_store
+
+def _init_gee(uid: str = None) -> None:
+    """Initialize GEE with the user's token."""
     global _gee_initialized, _gee_error
 
+    if not uid:
+        raise RuntimeError("uid é obrigatório para ligar ao GEE.")
+        
+    token_data = gee_session_store.get_token(uid)
+    if not token_data:
+        raise RuntimeError("Utilizador não tem ligação ao GEE (token em falta).")
+        
+    try:
+        import ee
+    except ImportError:
+        raise RuntimeError("earthengine-api package not installed.")
+
+    # We initialize EE with the user's token.
+    # Warning: In a multi-threaded async app, this overrides global state!
+    # For MVP, this works if traffic is low or we rely on thread separation (not perfect).
     with _lock:
-        if _gee_initialized:
-            return
-        if _gee_error:
-            raise RuntimeError(_gee_error)
+        creds = Credentials(token=token_data["access_token"])
+        ee.Initialize(credentials=creds, project=token_data.get("project"))
+        _gee_initialized = True
 
-        try:
-            import ee  # noqa: F401
-        except ImportError:
-            _gee_error = "earthengine-api package not installed."
-            raise RuntimeError(_gee_error)
-
-        sa_key_raw = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
-        project_id = os.environ.get("GEE_PROJECT_ID", "").strip() or None
-
-        # Try service account from environment variable
-        key_data = None
-        if sa_key_raw:
-            try:
-                key_data = json.loads(sa_key_raw)
-            except json.JSONDecodeError as e:
-                logger.warning("Failed to parse GEE_SERVICE_ACCOUNT_KEY JSON: %s", e)
-
-        if key_data:
-            try:
-                from google.oauth2 import service_account
-
-                sa_email = key_data.get("client_email", "")
-                project_id = project_id or key_data.get("project_id") or None
-                if not sa_email:
-                    raise ValueError("client_email missing in service account JSON")
-
-                pk = key_data.get("private_key", "")
-                logger.info("Creating credentials for service account: %s", sa_email)
-                # Create credentials from service account info
-                creds = service_account.Credentials.from_service_account_info(
-                    key_data,
-                    scopes=[
-                        "https://www.googleapis.com/auth/earthengine",
-                        "https://www.googleapis.com/auth/cloud-platform",
-                    ]
-                )
-                logger.info("Initializing EE with project: %s", project_id)
-                ee.Initialize(creds, project=project_id)
-                logger.info("EE initialized successfully")
-                _gee_initialized = True
-                return
-            except Exception as exc:
-                logger.error("Service account auth failed: %s", exc, exc_info=True)
-                _gee_error = f"Service account auth failed: {exc}"
-                raise RuntimeError(_gee_error)
 
         try:
             ee.Initialize(project=project_id)
@@ -192,14 +166,13 @@ def reset_gee():
         logger.info("GEE reset: auth cleared + index-image cache cleared (%d entries)", len(_INDEX_IMAGE_CACHE))
 
 
-def gee_status() -> dict:
+def gee_status(uid: str = None) -> dict:
     global _gee_error
     try:
-        _init_gee()
         import ee
         ee.String("ok").getInfo()
         sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "")
-        auth_type = "service_account" if sa_key else "application_default"
+        auth_type = "oauth2"
         project = os.environ.get("GEE_PROJECT_ID", "")
         if not project and sa_key:
             try:
@@ -1070,7 +1043,6 @@ def compute_embedding_tile(
     Returns a tile URL (24 h validity) + metadata about the embedding.
     """
     import ee
-    _init_gee()
 
     region = _to_ee_region(region_geojson)
     emb = _build_embedding(region, year)
@@ -1105,7 +1077,6 @@ def compute_embedding_cluster(
     Returns a tile URL (colored by cluster) + per-cluster pixel counts.
     """
     import ee
-    _init_gee()
 
     n_clusters = max(3, min(int(n_clusters), 20))
     region = _to_ee_region(region_geojson)
@@ -1182,7 +1153,6 @@ def compute_embedding_similarity(
     Useful for "find more areas like this one" — e.g., a known mineral occurrence.
     """
     import ee
-    _init_gee()
 
     region = _to_ee_region(region_geojson)
     emb = _build_embedding(region, year)
@@ -1268,7 +1238,6 @@ def compute_embedding_classify(
     Returns a classified tile + per-class areas.
     """
     import ee
-    _init_gee()
 
     region = _to_ee_region(region_geojson)
     emb = _build_embedding(region, year)
@@ -1371,7 +1340,6 @@ def compute_embedding_change(
     Returns a tile showing change intensity 0–1.
     """
     import ee
-    _init_gee()
 
     region = _to_ee_region(region_geojson)
     emb_before = _build_embedding(region, year_before)
@@ -1450,7 +1418,6 @@ def compute_index_tile(
                      If None, falls back to the full Mozambique bbox.
     """
     import ee
-    _init_gee()
 
     if index not in INDEX_REGISTRY:
         raise ValueError(f"Índice desconhecido '{index}'. Disponíveis: {list(INDEX_REGISTRY)}")
@@ -1518,7 +1485,6 @@ def compute_index_tile_vis(
       palette : list[str] — hex colours for single-band
     """
     import ee
-    _init_gee()
 
     if index not in INDEX_REGISTRY:
         raise ValueError(f"Índice desconhecido '{index}'. Disponíveis: {list(INDEX_REGISTRY)}")
@@ -1633,7 +1599,6 @@ def compute_composite_tile(
               and they are renormalized so they sum to 1.
     """
     import ee
-    _init_gee()
 
     # Filter & normalize weights
     pos = {k: float(v) for k, v in weights.items() if v and float(v) > 0 and k in INDEX_REGISTRY}
@@ -1753,7 +1718,6 @@ def compute_lineaments_tile(
       - approximate mean density inside the region
     """
     import ee
-    _init_gee()
     region = _to_ee_region(region_geojson)
 
     layers = _build_lineament_layers(region, smooth_m=smooth_m,
@@ -1921,7 +1885,6 @@ def compute_targeting_tile(
     according to a per-mineral preset. Returns tile URL + favorability stats.
     """
     import ee
-    _init_gee()
 
     region = _to_ee_region(region_geojson)
     score, scene_count, preset, pos, invert_set = _build_targeting_score(
@@ -2031,7 +1994,6 @@ def compute_profile(coords: list, n_samples: int = 200) -> dict:
     Returns distance_m + elevation_m arrays + summary stats.
     """
     import ee
-    _init_gee()
 
     if not coords or len(coords) < 2:
         raise ValueError("Perfil requer pelo menos 2 pontos.")
@@ -2100,7 +2062,6 @@ def compute_contours_tile(
 ) -> dict:
     """Generate contour-line tiles from the DEM at a given equidistance."""
     import ee
-    _init_gee()
 
     interval_m = max(5, min(int(interval_m), 1000))
     index_every = max(2, min(int(index_every), 10))
@@ -2176,7 +2137,6 @@ def compute_topo_classes_tile(
 ) -> dict:
     """Build an elevation-classified raster from user-defined break points."""
     import ee
-    _init_gee()
 
     if not breaks or len(breaks) < 1:
         raise ValueError("Precisa de pelo menos um limite de elevação.")
@@ -2255,7 +2215,6 @@ def compute_landcover_tile(region_geojson: Optional[dict]) -> dict:
     de área (km²/%) por classe na região selecionada.
     """
     import ee
-    _init_gee()
 
     region = _to_ee_region(region_geojson)
     img = ee.ImageCollection("ESA/WorldCover/v200").first().select("Map").clip(region)
@@ -2324,7 +2283,6 @@ _HYDROBASINS_CANDIDATES: dict = {
 def compute_basins(region_geojson: Optional[dict], level: int = 6) -> dict:
     """Return HydroBASINS polygons (level 5–8) that intersect the region."""
     import ee
-    _init_gee()
     region = _to_ee_region(region_geojson)
 
     candidates = _HYDROBASINS_CANDIDATES.get(level, _HYDROBASINS_CANDIDATES[6])
@@ -2369,7 +2327,6 @@ def compute_basin_stats(basin_geometry: dict) -> dict:
     basin_geometry : GeoJSON geometry dict (Polygon / MultiPolygon).
     """
     import ee
-    _init_gee()
 
     region = ee.Geometry(basin_geometry)
 
@@ -2463,7 +2420,6 @@ def compute_basin_report(basin_geometry: dict) -> dict:
     basin_geometry : GeoJSON geometry dict (Polygon / MultiPolygon).
     """
     import ee
-    _init_gee()
 
     region = ee.Geometry(basin_geometry)
     max_px = int(1e9)
@@ -2575,7 +2531,6 @@ def compute_basin_report(basin_geometry: dict) -> dict:
 def compute_drainage_tile(region_geojson: Optional[dict], threshold: int = 500) -> dict:
     """HydroSHEDS 15-arc-second flow accumulation thresholded → drainage network."""
     import ee
-    _init_gee()
     region  = _to_ee_region(region_geojson)
     acc     = ee.Image("WWF/HydroSHEDS/15ACC").select("b1")
     rivers  = acc.gte(threshold).selfMask().clip(region)
@@ -2587,7 +2542,6 @@ def compute_drainage_tile(region_geojson: Optional[dict], threshold: int = 500) 
 def compute_river_network(region_geojson: Optional[dict]) -> dict:
     """Multi-order river network derived from HydroSHEDS flow accumulation."""
     import ee
-    _init_gee()
     region = _to_ee_region(region_geojson)
     acc    = ee.Image("WWF/HydroSHEDS/15ACC").select("b1").clip(region)
 
@@ -2630,7 +2584,6 @@ def compute_watershed_from_point(
 ) -> dict:
     """Delineate the basin at a clicked location."""
     import ee
-    _init_gee()
 
     pt = ee.Geometry.Point([lon, lat])
     try:
@@ -2687,7 +2640,6 @@ def _watershed_d8(
 ) -> dict:
     """Delineate a watershed from a pour point using D8 flow direction."""
     import ee
-    _init_gee()
 
     fdir = ee.Image("WWF/HydroSHEDS/15DIR").select("b1")
     acc  = ee.Image("WWF/HydroSHEDS/15ACC").select("b1")
@@ -2779,7 +2731,6 @@ def compute_flood_sar(
 ) -> dict:
     """Flood extent from Sentinel-1 SAR (C-band, VV) — UN-SPIDER change-detection."""
     import ee
-    _init_gee()
     region = _to_ee_region(region_geojson)
 
     if not (baseline_start and baseline_end):
@@ -2854,7 +2805,6 @@ def compute_flood_sar(
 def compute_erosion_rusle(region_geojson: Optional[dict], year: int = 2023) -> dict:
     """Soil-loss risk via RUSLE: A = R·K·LS·C·P (t/ha/yr)."""
     import ee
-    _init_gee()
     region = _to_ee_region(region_geojson)
     max_px = int(1e10)
 
@@ -2922,7 +2872,6 @@ def compute_erosion_rusle(region_geojson: Optional[dict], year: int = 2023) -> d
 def compute_groundwater_ahp(region_geojson: Optional[dict], year: int = 2023) -> dict:
     """Groundwater-potential map (AHP weighted overlay) classified into 5 classes."""
     import ee
-    _init_gee()
     region = _to_ee_region(region_geojson)
     max_px = int(1e10)
 
@@ -3031,7 +2980,6 @@ def compute_spi_ndvi(
     Amostra N pontos de ambas as bandas para scatter + Pearson r (server-side).
     """
     import ee
-    _init_gee()
 
     if not (1990 <= clim_start <= year - 5):
         raise ValueError("clim_start deve estar entre 1990 e (ano − 5) para uma climatologia mínima.")
@@ -3185,7 +3133,6 @@ def compute_targeting_zones(
     crosses them with the geomoz admin layers.
     """
     import ee
-    _init_gee()
 
     region = _to_ee_region(region_geojson)
     score, scene_count, preset, pos, invert_set = _build_targeting_score(

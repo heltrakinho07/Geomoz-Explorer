@@ -10,8 +10,10 @@ import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
 import DashboardPanel from "@/components/DashboardPanel";
 import { LazyGeoAnalises, LazyHidroGeoMoz, LazyGeoperigos, LazyAguaSubterranea, LazyGeoMozAI } from "@/lib/lazy-pages";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, apiFetch } from "@/lib/api";
 import SettingsDialog from "@/components/SettingsDialog";
+import GeeCredentialsDialog from "@/components/GeeCredentialsDialog";
+import { useAuth } from "@/hooks/useAuth";
 import ZoneSelect from "@/components/ZoneSelect";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { mozambiqueAOI, GLOBAL_AOI, customAOI } from "@/lib/aoi";
@@ -49,6 +51,8 @@ export default function Explorer() {
   const [mapCenter, setMapCenter] = useState<[number, number]>([-18, 35]);
   const [mapZoom, setMapZoom] = useState(5);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [geeDialogOpen, setGeeDialogOpen] = useState(false);
+  const { user } = useAuth();
   const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [finishRequest, setFinishRequest] = useState(0);
 
@@ -330,7 +334,13 @@ function flyToResult(result: NominatimResult) {
           )}
 
           {/* GEE status indicator */}
-          <GEEStatusDot />
+          <button
+            onClick={() => setGeeDialogOpen(true)}
+            className="hover:opacity-80 transition-opacity"
+            title="Estado do Google Earth Engine (clique para configurar)"
+          >
+            <GEEStatusDot />
+          </button>
 
           <div className="h-5 w-px bg-slate-200" />
           <button
@@ -340,9 +350,26 @@ function flyToResult(result: NominatimResult) {
           >
             <Settings size={16} />
           </button>
-          <Avatar className="h-8 w-8 cursor-pointer border-2 border-slate-100 shadow-sm">
-            <AvatarFallback className="bg-sky-100 text-sky-700 text-xs font-bold">GM</AvatarFallback>
-          </Avatar>
+
+          {/* User Account / GEE login button */}
+          <button
+            onClick={() => setGeeDialogOpen(true)}
+            className="flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-full border border-slate-200 hover:border-sky-300 hover:bg-sky-50/50 transition-all text-xs"
+            title={user ? `Sessão iniciada como ${user.email}` : "Ligar ao Google Earth Engine"}
+          >
+            <Avatar className="h-7 w-7 border border-slate-200 shadow-xs">
+              {user?.photoURL ? (
+                <img src={user.photoURL} alt={user.displayName || "Utilizador"} className="h-full w-full object-cover rounded-full" />
+              ) : (
+                <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-sky-600 text-white text-[10px] font-bold">
+                  {user?.email ? user.email.slice(0, 2).toUpperCase() : "GEE"}
+                </AvatarFallback>
+              )}
+            </Avatar>
+            <span className="hidden sm:inline font-medium text-slate-700 max-w-[120px] truncate">
+              {user ? (user.displayName || user.email?.split("@")[0]) : "Ligar GEE"}
+            </span>
+          </button>
         </div>
       </header>
 
@@ -450,6 +477,7 @@ function flyToResult(result: NominatimResult) {
 
       {/* Settings Dialog */}
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <GeeCredentialsDialog open={geeDialogOpen} onOpenChange={setGeeDialogOpen} />
     </div>
   );
 }
@@ -460,7 +488,7 @@ function GEEStatusDot() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(apiUrl("/geomoz-api/gee/status"))
+    apiFetch("/geomoz-api/gee/status")
       .then((r) => r.json())
       .then((d) => {
         if (!cancelled) setStatus(d.connected ? "connected" : "disconnected");

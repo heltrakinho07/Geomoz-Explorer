@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, apiFetch } from "@/lib/api";
 import {
   Settings,
   Globe,
@@ -68,7 +68,7 @@ function useGEEConfig() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/config"));
+      const res = await apiFetch("/geomoz-api/gee/config");
       if (!res.ok) throw new Error(`Erro ${res.status}: ${res.statusText}`);
       const data: GEEConfig = await res.json();
       setConfig(data);
@@ -136,7 +136,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
       if (saKey.trim()) body.service_account_key = saKey.trim();
       if (projectId.trim()) body.project_id = projectId.trim();
 
-      const res = await fetch(apiUrl("/geomoz-api/gee/configure"), {
+      const res = await apiFetch("/geomoz-api/gee/configure", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -163,7 +163,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await fetch(apiUrl("/geomoz-api/gee/status"));
+      const res = await apiFetch("/geomoz-api/gee/status");
       const data = await res.json();
       setTestResult({
         connected: data.connected,

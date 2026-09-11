@@ -26,7 +26,7 @@ import {
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
 import { useStats } from "@/hooks/useGeoMoz";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
 import ZoneSelect from "@/components/ZoneSelect";
@@ -213,7 +213,7 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
   // GEE check
   const checkGEE = useCallback(async () => {
     try {
-      const r = await fetch(apiUrl("/geomoz-api/gee/status"));
+      const r = await apiFetch("/geomoz-api/gee/status");
       const d = await r.json();
       setGeeStatus(d);
       return d.connected as boolean;
@@ -236,10 +236,10 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
     if (!ok) { setLoadingBasins(false); return; }
     try {
       const [bRes, dRes] = await Promise.all([
-        fetch(apiUrl("/geomoz-api/gee/basins"), { method: "POST", headers: { "Content-Type": "application/json" },
+        apiFetch("/geomoz-api/gee/basins", { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...aoiToAPI(aoi), level: basinLevel }) }),
         showDrainage
-          ? fetch(apiUrl("/geomoz-api/gee/drainage"), { method: "POST", headers: { "Content-Type": "application/json" },
+          ? apiFetch("/geomoz-api/gee/drainage", { method: "POST", headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ ...aoiToAPI(aoi), threshold: drainThresh }) })
           : Promise.resolve(null),
       ]);
@@ -265,7 +265,7 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
   async function onBasinClick(feat: GeoJSON.Feature) {
     setSelectedFeat(feat); setBasinStats(null); setLoadingStats(true);
     try {
-      const r = await fetch(apiUrl("/geomoz-api/gee/basin-stats"), { method: "POST",
+      const r = await apiFetch("/geomoz-api/gee/basin-stats", { method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ geometry: feat.geometry }) });
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
@@ -288,7 +288,7 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
     const ok = await checkGEE();
     if (!ok) { setLoadingRN(false); return; }
     try {
-      const r = await fetch(apiUrl("/geomoz-api/gee/river-network"), { method: "POST",
+      const r = await apiFetch("/geomoz-api/gee/river-network", { method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...aoiToAPI(aoi) }) });
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
@@ -316,7 +316,7 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 90_000);
     try {
-      const r = await fetch(apiUrl("/geomoz-api/gee/watershed"), { method: "POST",
+      const r = await apiFetch("/geomoz-api/gee/watershed", { method: "POST",
         headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
         body: JSON.stringify({ lat, lon: lng, ...aoiToAPI(aoi), max_iter: maxIter, level }) });
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
@@ -327,7 +327,7 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
       if (wd.geojson?.features?.length) {
         setLoadingWsSt(true);
         try {
-          const sr = await fetch(apiUrl("/geomoz-api/gee/basin-stats"), { method: "POST",
+          const sr = await apiFetch("/geomoz-api/gee/basin-stats", { method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ geometry: wd.geojson.features[0]?.geometry ?? wd.geojson }) });
           if (sr.ok) setWsStats(await sr.json());
@@ -354,7 +354,7 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
     if (!geom) return;
     setLoadingReport(true); setError(null);
     try {
-      const r = await fetch(apiUrl("/geomoz-api/gee/basin-report"), { method: "POST",
+      const r = await apiFetch("/geomoz-api/gee/basin-report", { method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ geometry: geom }) });
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
