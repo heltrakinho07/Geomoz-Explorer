@@ -537,6 +537,8 @@ function LoadingSkeleton({ label }: { label: string }) {
               onProvinceChange={p => { setProvince(p); setDistrict(null); }}
               onDistrictChange={setDistrict}
               onAOIChange={handleAOIChange}
+              viewMode={globalViewMode}
+              onViewModeChange={handleGlobalViewModeChange}
             />
           </Suspense>
         </div>
@@ -550,6 +552,8 @@ function LoadingSkeleton({ label }: { label: string }) {
               onProvinceChange={p => { setProvince(p); setDistrict(null); }}
               onDistrictChange={setDistrict}
               onAOIChange={handleAOIChange}
+              viewMode={globalViewMode}
+              onViewModeChange={handleGlobalViewModeChange}
             />
           </Suspense>
         </div>
@@ -563,6 +567,8 @@ function LoadingSkeleton({ label }: { label: string }) {
               onProvinceChange={p => { setProvince(p); setDistrict(null); }}
               onDistrictChange={setDistrict}
               onAOIChange={handleAOIChange}
+              viewMode={globalViewMode}
+              onViewModeChange={handleGlobalViewModeChange}
             />
           </Suspense>
         </div>
@@ -576,6 +582,8 @@ function LoadingSkeleton({ label }: { label: string }) {
               onProvinceChange={p => { setProvince(p); setDistrict(null); }}
               onDistrictChange={setDistrict}
               onAOIChange={handleAOIChange}
+              viewMode={globalViewMode}
+              onViewModeChange={handleGlobalViewModeChange}
             />
           </Suspense>
         </div>

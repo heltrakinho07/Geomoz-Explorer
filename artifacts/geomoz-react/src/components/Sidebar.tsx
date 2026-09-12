@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Filter, Layers, ChevronDown, X, MapPin, CheckCircle2 } from "lucide-react";
+import { Filter, Layers, ChevronDown, X, MapPin, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
 
@@ -42,6 +42,8 @@ export default function Sidebar({
 }: SidebarProps) {
   const [width, setWidth] = useState<number>(260);
   const [resizing, setResizing] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   // attach global mouse handlers when resizing
   useEffect(() => {
     function onMove(e: MouseEvent) {
@@ -61,7 +63,6 @@ export default function Sidebar({
   }, [resizing]);
   const { data: provinceData, isLoading: loadingProvinces } = useProvinceNames();
   const { data: districtData, isLoading: loadingDistricts } = useDistrictNames(province);
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   const hasSelection = !!province || !!district;
 
@@ -227,17 +228,32 @@ export default function Sidebar({
     <>
       {/* Desktop Sidebar */}
       <aside
-        style={{ width: `${width}px` }}
-        className="hidden lg:flex relative glass-panel border-r border-slate-200/50 flex-col shrink-0 overflow-y-auto"
+        style={{ width: collapsed ? "0px" : `${width}px` }}
+        className={`hidden lg:flex relative glass-panel border-r border-slate-200/50 flex-col shrink-0 transition-all duration-200 ${
+          collapsed ? "overflow-hidden border-r-0" : "overflow-y-auto"
+        }`}
       >
-        {content}
+        {!collapsed && content}
         {/* Resize handle */}
-        <div
-          className="absolute right-0 top-0 bottom-0 w-2 -mr-2 cursor-col-resize z-50"
-          onMouseDown={() => setResizing(true)}
-          onTouchStart={() => setResizing(true)}
-        />
+        {!collapsed && (
+          <div
+            className="absolute right-0 top-0 bottom-0 w-2 -mr-2 cursor-col-resize z-50"
+            onMouseDown={() => setResizing(true)}
+            onTouchStart={() => setResizing(true)}
+          />
+        )}
       </aside>
+
+      {/* Desktop Toggle Button */}
+      <button
+        type="button"
+        onClick={() => setCollapsed(v => !v)}
+        style={{ left: collapsed ? "0px" : `${width}px` }}
+        title={collapsed ? "Expandir barra lateral" : "Recolher barra lateral"}
+        className="hidden lg:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-l-0 border-slate-200 dark:border-slate-800 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 transition-all duration-200 text-slate-500 hover:text-slate-800"
+      >
+        {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
+      </button>
 
       {/* Mobile Trigger Button */}
       <button

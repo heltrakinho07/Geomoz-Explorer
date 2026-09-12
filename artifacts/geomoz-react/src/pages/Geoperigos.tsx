@@ -12,6 +12,7 @@ import "leaflet/dist/leaflet.css";
 import {
   AlertTriangle, Waves, Mountain, Loader2, Play, ChevronDown, Info,
   CheckCircle2, Calendar, Droplets, Layers, FileDown, SlidersHorizontal, X,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiUrl, apiFetch } from "@/lib/api";
@@ -19,6 +20,7 @@ import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
 import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
 import BasemapSwitcher from "@/components/BasemapSwitcher";
+import MapLibre3DView from "@/components/MapLibre3DView";
 import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
@@ -47,18 +49,22 @@ const FLOOD_PRESETS = [
 
 interface Props {
   aoi: AreaOfInterest;
-  province: string | null; district: string | null;
+  province: string | null;
+  district: string | null;
+  viewMode?: "2d" | "3d";
+  onViewModeChange?: (m: "2d" | "3d") => void;
   onProvinceChange: (p: string | null) => void;
   onDistrictChange: (d: string | null) => void;
   onAOIChange: (aoi: AreaOfInterest) => void;
 }
 
-export default function Geoperigos({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
+export default function Geoperigos({ aoi, province, district, viewMode = "2d", onViewModeChange, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
   const { toast } = useToast();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const [tool, setTool] = useState<Tool>("flood");
   const [basemap, setBasemap] = useState<BasemapType>("terrain");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
 
   // Flood params
   const [eventStart, setEventStart] = useState("2019-03-15");
@@ -203,8 +209,10 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
 
       {/* ── Sidebar ─────────────────────────────────────────────── */}
       <div
-        className={`fixed md:relative inset-y-0 left-0 z-[700] w-72 flex flex-col bg-white border-r border-slate-200 overflow-y-auto shrink-0 transition-transform duration-300 shadow-xl md:shadow-none ${
+        className={`fixed md:relative inset-y-0 left-0 z-[700] flex flex-col bg-white border-r border-slate-200 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        } ${
+          desktopSidebarOpen ? "md:w-72 overflow-y-auto" : "md:w-0 overflow-hidden md:border-r-0"
         }`}
       >
         <div className="px-4 pt-4 pb-3 border-b border-slate-100 flex items-center justify-between">
@@ -308,6 +316,17 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
         )}
       </div>
 
+      {/* Desktop collapse toggle button */}
+      <button
+        type="button"
+        onClick={() => setDesktopSidebarOpen(v => !v)}
+        style={{ left: desktopSidebarOpen ? "18rem" : "0px" }}
+        title={desktopSidebarOpen ? "Recolher painel" : "Expandir painel"}
+        className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 backdrop-blur-md border border-l-0 border-slate-200 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 transition-all duration-200 text-slate-500 hover:text-slate-800"
+      >
+        {desktopSidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
+      </button>
+
       {/* ── Map ─────────────────────────────────────────────────── */}
       <div className="flex-1 relative" ref={mapContainerRef}>
         {/* Mobile floating sidebar toggle */}
@@ -320,47 +339,67 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
           Filtros
         </button>
 
-        <BasemapSwitcher
-          current={basemap}
-          onChange={setBasemap}
-          className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
-          position="bottom-left"
-        />
-        <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl={false}>
-          <TileLayer
-            key={basemap}
-            crossOrigin="anonymous"
-            url={GOOGLE_BASEMAPS[basemap].url}
-            subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
-            attribution={GOOGLE_BASEMAPS[basemap].attribution}
-            maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
+        {viewMode === "3d" ? (
+          <MapLibre3DView
+            province={province}
+            district={district}
+            aoi={aoi}
+            basemap={basemap}
+            viewMode={viewMode}
+            onBasemapChange={setBasemap}
+            onViewModeChange={onViewModeChange}
+            overlayRasterUrl={tool === "flood" ? flood?.floodTile : erosion?.tile}
+            overlayOpacity={0.8}
+            className="w-full h-full"
           />
-          <ScaleControl position="bottomright" imperial={false} />
-          <ZoomControl position="topright" />
-          <AreaSelect
-            province={province} district={district}
-            onProvinceChange={p => { onProvinceChange(p); onDistrictChange(null); }}
-            onDistrictChange={onDistrictChange}
-            accent="#e11d48"
+        ) : (
+          <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl={false}>
+            <TileLayer
+              key={basemap}
+              crossOrigin="anonymous"
+              url={GOOGLE_BASEMAPS[basemap].url}
+              subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
+              attribution={GOOGLE_BASEMAPS[basemap].attribution}
+              maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
+            />
+            <ScaleControl position="bottomright" imperial={false} />
+            <ZoomControl position="topright" />
+            <AreaSelect
+              province={province} district={district}
+              onProvinceChange={p => { onProvinceChange(p); onDistrictChange(null); }}
+              onDistrictChange={onDistrictChange}
+              accent="#e11d48"
+            />
+            {tool === "flood" && flood && showPerm && (
+              <TileLayer crossOrigin="anonymous" key={`perm-${flood.permWaterTile}`} url={flood.permWaterTile} opacity={0.6} maxZoom={18} />
+            )}
+            {tool === "flood" && flood && (
+              <TileLayer crossOrigin="anonymous" key={`flood-${flood.floodTile}`} url={flood.floodTile} opacity={0.85} maxZoom={18} />
+            )}
+            {tool === "erosion" && erosion && (
+              <TileLayer crossOrigin="anonymous" key={`ero-${erosion.tile}`} url={erosion.tile} opacity={0.75} maxZoom={18} />
+            )}
+            <MapTools />
+            <MapDraw
+              enabled={drawingEnabled}
+              hasDrawnAOI={aoi.source === "draw"}
+              onClearAOI={() => onAOIChange(GLOBAL_AOI)}
+              onDrawComplete={(geom, label) => { setDrawingEnabled(false); onAOIChange(customAOI(geom, label, "draw")); }}
+              onCancel={() => setDrawingEnabled(false)}
+            />
+          </MapContainer>
+        )}
+
+        {viewMode !== "3d" && (
+          <BasemapSwitcher
+            current={basemap}
+            onChange={setBasemap}
+            viewMode={viewMode}
+            onViewModeChange={onViewModeChange}
+            className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
+            position="bottom-left"
           />
-          {tool === "flood" && flood && showPerm && (
-            <TileLayer crossOrigin="anonymous" key={`perm-${flood.permWaterTile}`} url={flood.permWaterTile} opacity={0.6} maxZoom={18} />
-          )}
-          {tool === "flood" && flood && (
-            <TileLayer crossOrigin="anonymous" key={`flood-${flood.floodTile}`} url={flood.floodTile} opacity={0.85} maxZoom={18} />
-          )}
-          {tool === "erosion" && erosion && (
-            <TileLayer crossOrigin="anonymous" key={`ero-${erosion.tile}`} url={erosion.tile} opacity={0.75} maxZoom={18} />
-          )}
-          <MapTools />
-          <MapDraw
-            enabled={drawingEnabled}
-            hasDrawnAOI={aoi.source === "draw"}
-            onClearAOI={() => onAOIChange(GLOBAL_AOI)}
-            onDrawComplete={(geom, label) => { setDrawingEnabled(false); onAOIChange(customAOI(geom, label, "draw")); }}
-            onCancel={() => setDrawingEnabled(false)}
-          />
-        </MapContainer>
+        )}
 
         {/* Loading overlay */}
         {loading && (

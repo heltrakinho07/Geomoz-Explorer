@@ -84,6 +84,7 @@ interface TerrainControlsProps {
   exaggeration: number;
   projection: "globe" | "mercator";
   profileModeActive: boolean;
+  showProfileTool?: boolean;
   onPitchChange: (pitch: number) => void;
   onExaggerationChange: (exag: number) => void;
   onResetNorth: () => void;
@@ -99,6 +100,7 @@ export default function TerrainControls({
   exaggeration,
   projection,
   profileModeActive,
+  showProfileTool = false,
   onPitchChange,
   onExaggerationChange,
   onResetNorth,
@@ -178,23 +180,25 @@ export default function TerrainControls({
           </div>
         </button>
 
-        {/* Topographic Profile 3D Button */}
-        <button
-          type="button"
-          onClick={onToggleProfileMode}
-          title={
-            profileModeActive
-              ? "Cancelar corte de perfil 3D"
-              : "Traçar Perfil Topográfico 3D (clique 2 pontos no terreno)"
-          }
-          className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
-            profileModeActive
-              ? "bg-rose-500 text-white shadow-md shadow-rose-500/20 ring-2 ring-rose-400"
-              : "text-slate-600 hover:bg-slate-100"
-          }`}
-        >
-          <Activity size={18} />
-        </button>
+        {/* Topographic Profile 3D Button (active in relief & morphology analysis) */}
+        {showProfileTool && (
+          <button
+            type="button"
+            onClick={onToggleProfileMode}
+            title={
+              profileModeActive
+                ? "Cancelar corte de perfil 3D"
+                : "Traçar Perfil Topográfico 3D (clique 2 pontos no terreno)"
+            }
+            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
+              profileModeActive
+                ? "bg-rose-500 text-white shadow-md shadow-rose-500/20 ring-2 ring-rose-400"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <Activity size={18} />
+          </button>
+        )}
 
         {/* Terrain Settings Drawer Toggle */}
         <button

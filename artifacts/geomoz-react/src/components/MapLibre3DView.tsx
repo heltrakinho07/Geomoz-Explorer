@@ -28,6 +28,9 @@ interface MapLibre3DViewProps {
   aoi?: AreaOfInterest;
   basemap?: BasemapType;
   viewMode?: "2d" | "3d";
+  overlayRasterUrl?: string | null;
+  overlayOpacity?: number;
+  showProfileTool?: boolean;
   onBasemapChange?: (b: BasemapType) => void;
   onViewModeChange?: (mode: "2d" | "3d") => void;
   onProvinceClick?: (name: string) => void;
@@ -42,6 +45,9 @@ export default function MapLibre3DView({
   aoi,
   basemap = "hybrid",
   viewMode = "3d",
+  overlayRasterUrl,
+  overlayOpacity = 0.85,
+  showProfileTool = false,
   onBasemapChange,
   onViewModeChange,
   onProvinceClick,
@@ -207,6 +213,67 @@ export default function MapLibre3DView({
       (source as any).setTiles(getGoogleTileUrls(basemap));
     }
   }, [basemap]);
+
+  // Sync analytical overlay raster (GEE, Sentinel-2, indexes, groundwater, flood, erosion)
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    const OVERLAY_SOURCE_ID = "analytical-overlay-source";
+    const OVERLAY_LAYER_ID = "analytical-overlay-layer";
+
+    const updateOverlay = () => {
+      if (!map.isStyleLoaded()) return;
+
+      const layerExists = Boolean(map.getLayer(OVERLAY_LAYER_ID));
+      const sourceExists = Boolean(map.getSource(OVERLAY_SOURCE_ID));
+
+      if (!overlayRasterUrl) {
+        if (layerExists) map.removeLayer(OVERLAY_LAYER_ID);
+        if (sourceExists) map.removeSource(OVERLAY_SOURCE_ID);
+        return;
+      }
+
+      const tile = overlayRasterUrl;
+
+      if (sourceExists) {
+        const src = map.getSource(OVERLAY_SOURCE_ID) as maplibregl.RasterTileSource;
+        if (src && typeof (src as any).setTiles === "function") {
+          (src as any).setTiles([tile]);
+        }
+      } else {
+        map.addSource(OVERLAY_SOURCE_ID, {
+          type: "raster",
+          tiles: [tile],
+          tileSize: 256,
+        });
+      }
+
+      if (!layerExists) {
+        // Place below profile lines and markers, but above basemap
+        const beforeLayerId = map.getLayer("profile-line-glow") ? "profile-line-glow" : undefined;
+        map.addLayer(
+          {
+            id: OVERLAY_LAYER_ID,
+            type: "raster",
+            source: OVERLAY_SOURCE_ID,
+            paint: {
+              "raster-opacity": overlayOpacity,
+            },
+          },
+          beforeLayerId
+        );
+      } else {
+        map.setPaintProperty(OVERLAY_LAYER_ID, "raster-opacity", overlayOpacity);
+      }
+    };
+
+    if (map.isStyleLoaded()) {
+      updateOverlay();
+    } else {
+      map.once("styledata", updateOverlay);
+    }
+  }, [overlayRasterUrl, overlayOpacity]);
 
   // Sync Vertical Exaggeration
   const handleExaggerationChange = useCallback((newExag: number) => {
@@ -549,6 +616,7 @@ export default function MapLibre3DView({
         exaggeration={exaggeration}
         projection={projection}
         profileModeActive={profileModeActive}
+        showProfileTool={showProfileTool}
         onPitchChange={handlePitchChange}
         onExaggerationChange={handleExaggerationChange}
         onResetNorth={handleResetNorth}
@@ -565,7 +633,7 @@ export default function MapLibre3DView({
       />
 
       {/* Prompt banner when profile tool is active */}
-      {profileModeActive && profilePoints.length < 2 && (
+      {showProfileTool && profileModeActive && profilePoints.length < 2 && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[600] bg-rose-500 text-white shadow-xl rounded-full px-5 py-2 text-xs font-semibold flex items-center gap-2 animate-bounce pointer-events-none">
           <span>
             {profilePoints.length === 0
@@ -592,13 +660,15 @@ export default function MapLibre3DView({
       )}
 
       {/* Topographic Profile 3D Viewer Panel */}
-      <Profile3DViewer
-        stats={profileStats}
-        isLoading={isCalculatingProfile}
-        onAlignCamera={handleAlignCamera}
-        onClose={handleCloseProfile}
-        onHoverPoint={handleHoverProfilePoint}
-      />
+      {showProfileTool && (
+        <Profile3DViewer
+          stats={profileStats}
+          isLoading={isCalculatingProfile}
+          onAlignCamera={handleAlignCamera}
+          onClose={handleCloseProfile}
+          onHoverPoint={handleHoverProfilePoint}
+        />
+      )}
     </div>
   );
 }

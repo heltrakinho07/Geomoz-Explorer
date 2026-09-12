@@ -24,8 +24,9 @@ import {
   Activity, Target, Compass, Gem,
   TrendingDown, Route, Waves, X, FileDown,
   Sprout, ChevronLeft, ChevronRight, Navigation, Building2,
-  AlertTriangle, Sparkles,
+  AlertTriangle, Sparkles, ArrowLeft, LayoutGrid, Search, Globe, SlidersHorizontal,
 } from "lucide-react";
+import MapLibre3DView from "@/components/MapLibre3DView";
 
 import {
   LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine, Area, ComposedChart,
@@ -2077,6 +2078,8 @@ interface GeoAnalisesProps {
   onProvinceChange: (p: string | null) => void;
   onDistrictChange?: (d: string | null) => void;
   onAOIChange: (aoi: AreaOfInterest) => void;
+  viewMode?: "2d" | "3d";
+  onViewModeChange?: (mode: "2d" | "3d") => void;
 }
 
 // Defaults for custom topographic classes (user can edit)
@@ -2269,7 +2272,139 @@ function TopoClassesPanel({
   );
 }
 
-export default function GeoAnalises({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: GeoAnalisesProps) {
+export interface GeoAnaliseCategory {
+  id: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  badgeColor: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  gradient: string;
+  description: string;
+  highlights: string[];
+  defaultTab: SpectralTab;
+  tabIds: SpectralTab[];
+}
+
+export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
+  {
+    id: "terrain",
+    title: "Relevo, Topografia & Morfologia 3D",
+    subtitle: "DEM Copernicus GLO-30 · 30 m",
+    badge: "DEM Copernicus 30m",
+    badgeColor: "bg-amber-100 text-amber-800 border-amber-200",
+    icon: Mountain,
+    gradient: "from-amber-500 to-orange-600",
+    description: "Altimetria digital de alta resolução, cortes topográficos tridimensionais (A→B), curvas de nível automáticas e divisão em classes morfológicas.",
+    highlights: ["Perfil Topográfico 3D (A→B)", "Curvas de Nível GEE", "Classes Morfológicas", "Hipsometria Relativa"],
+    defaultTab: "elevation",
+    tabIds: ["elevation", "hipsometry", "topo_class", "topo_custom", "profile", "contours"],
+  },
+  {
+    id: "vegetation",
+    title: "Vegetação, Biomassa & Agricultura",
+    subtitle: "Sentinel-2 & Landsat 8 · 10–20 m",
+    badge: "Sentinel-2 · 10m",
+    badgeColor: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    icon: Sprout,
+    gradient: "from-emerald-500 to-green-600",
+    description: "Monitoramento contínuo de vigor vegetal, densidade foliar, estimativa de biomassa e clorofila com índices multiespectrais calibrados.",
+    highlights: ["NDVI (Vigor 10m)", "EVI (Alta Biomassa)", "SAVI (Ajuste Solo)", "GCI (Clorofila)", "Saúde Culturas"],
+    defaultTab: "ndvi",
+    tabIds: ["ndvi", "evi", "savi", "msavi", "gci", "crop_health", "ndvi_l8"],
+  },
+  {
+    id: "water",
+    title: "Recursos Hídricos & Zonas Costeiras",
+    subtitle: "SWIR / NIR · Detecção Espectral de Humidade",
+    badge: "SWIR · Humidade",
+    badgeColor: "bg-cyan-100 text-cyan-800 border-cyan-200",
+    icon: Droplets,
+    gradient: "from-cyan-500 to-blue-600",
+    description: "Mapeamento da lâmina de água superficial, teor de humidade em folhas e copas (NDMI), ecossistemas de mangais e vulnerabilidade costeira.",
+    highlights: ["NDMI (Humidade Foliar)", "NDDI (Stress Hídrico)", "Saúde dos Mangais", "Índice de Exposição Costeira"],
+    defaultTab: "ndmi",
+    tabIds: ["ndmi", "nddi", "mangrove_health", "coastal_index", "coastal_erosion", "tsunami_risk"],
+  },
+  {
+    id: "geology",
+    title: "Geologia Espectral & Potencial Mineral",
+    subtitle: "Sentinel-2 SWIR · Alteração Hidrotermal & DEM Sobel",
+    badge: "Prospecção Geocientífica",
+    badgeColor: "bg-purple-100 text-purple-800 border-purple-200",
+    icon: Gem,
+    gradient: "from-purple-600 to-indigo-600",
+    description: "Mapeamento de halos de alteração hidrotermal (argilas, sericite, óxidos de ferro, gossan), extração de lineamentos estruturais e IA de targeting mineral.",
+    highlights: ["Alteração Hidrotermal", "Argilas & Saprolite", "Fe-Óxidos & Gossan", "Lineamentos DEM Sobel", "Targeting Mineral Multi-critério"],
+    defaultTab: "hydrothermal",
+    tabIds: ["hydrothermal", "fe_oxide", "clay", "al_oh", "ferrous", "gossan", "lineaments", "targeting"],
+  },
+  {
+    id: "fire",
+    title: "Incêndios, Queimadas & Uso do Solo",
+    subtitle: "Sentinel-2, MODIS & ESA WorldCover",
+    badge: "Multi-Sensor · Fogo & Solo",
+    badgeColor: "bg-rose-100 text-rose-800 border-rose-200",
+    icon: Flame,
+    gradient: "from-rose-500 to-red-600",
+    description: "Detecção e estimativa de severidade de queimadas por dNBR (USGS), histórico de áreas queimadas MODIS, perda florestal Hansen e uso do solo ESA 10m.",
+    highlights: ["dNBR Severidade Fogo", "Cicatrizes NBR", "Área Queimada MODIS", "Perda Florestal Hansen", "Uso do Solo ESA 10m"],
+    defaultTab: "nbr",
+    tabIds: ["nbr", "dnbr", "burn_severity", "burned_area", "forest_loss", "fire_risk", "landcover"],
+  },
+  {
+    id: "climate",
+    title: "Clima, Secas & Séries Temporais",
+    subtitle: "CHIRPS (~5 km) · MODIS LST · Séries Históricas",
+    badge: "Climatologia & Riscos",
+    badgeColor: "bg-amber-600 text-amber-900 border-amber-300",
+    icon: CloudSun,
+    gradient: "from-amber-600 to-amber-700",
+    description: "Análise quantitativa de secas meteorológicas e agronômicas através da correlação cruzada SPI × NDVI, precipitação CHIRPS, temperatura LST e rotas de ciclones.",
+    highlights: ["Dispersão SPI × NDVI", "Precipitação Anual CHIRPS", "Temperatura Solo LST", "Rotas de Ciclones", "VHI Saúde Vegetal"],
+    defaultTab: "spi_ndvi",
+    tabIds: ["spi_ndvi", "precipitation", "temperature_lst", "cyclone_tracks", "cyclone_risk", "vci", "tci", "vhi", "spei"],
+  },
+  {
+    id: "satellite",
+    title: "Mosaicos Satélite de Alta Resolução",
+    subtitle: "Sentinel-2 Cloudless EOX · Global 10 m",
+    badge: "Óptico Cor Real 10 m",
+    badgeColor: "bg-sky-100 text-sky-800 border-sky-200",
+    icon: Satellite,
+    gradient: "from-sky-500 to-blue-600",
+    description: "Mosaicos ópticos anuais livres de nuvens produzidos pela EOX a partir de aquisições do Sentinel-2. Excelente para reconhecimento visual, contexto de terreno e inspeção temporal.",
+    highlights: ["Mosaico Sem Nuvens", "RGB Cor Real 10 m", "Comparações Anuais (2020-2022)", "Cobertura Global"],
+    defaultTab: "s2",
+    tabIds: ["s2"],
+  },
+  {
+    id: "urban",
+    title: "Urbano, Infraestruturas & Ilhas de Calor",
+    subtitle: "SWIR, NDBI & MODIS LST",
+    badge: "Planeamento Urbano",
+    badgeColor: "bg-stone-100 text-stone-800 border-stone-200",
+    icon: Building2,
+    gradient: "from-stone-600 to-slate-700",
+    description: "Mapeamento da mancha urbana, superfícies impermeáveis, pressão construtiva e ilha de calor urbana (UHI) contrastando temperatura superficial e cobertura verde.",
+    highlights: ["NDBI Impermeável", "NBI Expansão Urbana", "Ilha de Calor (UHI)"],
+    defaultTab: "urban_expansion",
+    tabIds: ["urban_expansion", "impervious_surface", "urban_heat_island"],
+  },
+];
+
+export default function GeoAnalises({
+  aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange,
+  viewMode: propViewMode, onViewModeChange,
+}: GeoAnalisesProps) {
+  const [internalViewMode, setInternalViewMode] = useState<"2d" | "3d">("3d");
+  const viewMode = propViewMode ?? internalViewMode;
+  const handleViewModeChange = onViewModeChange ?? setInternalViewMode;
+
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
+  const [categoryFilter, setCategoryFilter] = useState("");
+
   const [geeCredsOpen, setGeeCredsOpen] = useState(false);
   const [basemap, setBasemap] = useState<BasemapType>("hybrid");
   const { geeConnected } = useGeeAuth();
@@ -2518,6 +2653,45 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
+  const activeCategory = useMemo(() => {
+    if (selectedCategory) {
+      const found = GEO_CATEGORIES.find(c => c.id === selectedCategory);
+      if (found) return found;
+    }
+    return GEO_CATEGORIES.find(c => c.tabIds.includes(activeTab)) || GEO_CATEGORIES[0];
+  }, [selectedCategory, activeTab]);
+
+  const filteredCategories = useMemo(() => {
+    if (!categoryFilter.trim()) return GEO_CATEGORIES;
+    const q = categoryFilter.toLowerCase();
+    return GEO_CATEGORIES.filter(cat =>
+      cat.title.toLowerCase().includes(q) ||
+      cat.subtitle.toLowerCase().includes(q) ||
+      cat.description.toLowerCase().includes(q) ||
+      cat.highlights.some(h => h.toLowerCase().includes(q)) ||
+      cat.tabIds.some(t => {
+        const def = INDEX_DEFS.find(d => d.id === t);
+        return t.toLowerCase().includes(q) || (def && (def.label.toLowerCase().includes(q) || def.short.toLowerCase().includes(q)));
+      })
+    );
+  }, [categoryFilter]);
+
+  const activeOverlayUrl = useMemo(() => {
+    if (activeTab === "s2" && showS2) {
+      return `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${selectedYear}_3857/default/g/{z}/{y}/{x}.jpg`;
+    }
+    if (geeTile?.tileUrl) return geeTile.tileUrl;
+    if (contoursTile?.tileUrl) return contoursTile.tileUrl;
+    if (topoClassesTile?.tileUrl) return topoClassesTile.tileUrl;
+    if (landCoverTile?.tileUrl) return landCoverTile.tileUrl;
+    if (lineamentsTile?.tileUrl) return lineamentsTile.tileUrl;
+    if (targetingTile?.tileUrl) return targetingTile.tileUrl;
+    if (spiNdviResult) {
+      return spiLayerMode === "spi" ? spiNdviResult.spiTileUrl : spiNdviResult.ndviTileUrl;
+    }
+    return null;
+  }, [activeTab, showS2, selectedYear, geeTile, contoursTile, topoClassesTile, landCoverTile, lineamentsTile, targetingTile, spiNdviResult, spiLayerMode]);
+
   const geeReady = geeStatus?.connected && useGEE;
   // Composite, lineaments, targeting & GEE-only indices require GEE
   const requiresGee = isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || isGeeOnly;
@@ -2573,115 +2747,280 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
       <GeeCredentialsDialog open={geeCredsOpen} onOpenChange={setGeeCredsOpen} />
-      {/* Module header */}
-      <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-sm">
-            <Satellite size={17} className="text-white" />
-          </div>
-          <div>
-            <h2 className="font-semibold text-slate-900 text-sm leading-tight">GeoAnálises — Sensoriamento Remoto via Google Earth Engine</h2>
-            <p className="text-xs text-slate-400">Sentinel-2 · Landsat 8 · DEM Copernicus GLO-30 · HydroSHEDS · Composto Ponderado</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {geeLoading
-            ? <span className="text-xs text-slate-400 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> A verificar GEE…</span>
-            : <GeeStatusBadge status={geeStatus} loading={geeLoading} />}
-          {geeStatus?.connected && (
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full px-3 py-1">
-              <span className="text-xs text-slate-500">GEE</span>
-              <button
-                onClick={() => { setUseGEE(v => !v); setGeeTile(null); }}
-                className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors ${useGEE ? "bg-sky-500" : "bg-slate-300"}`}
-              >
-                <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${useGEE ? "translate-x-4" : "translate-x-0.5"}`} />
-              </button>
-              <span className="text-xs text-slate-500">{useGEE ? "Real" : "Proxy"}</span>
-            </div>
-          )}
-          {!geeStatus?.connected && (
-            <button onClick={() => setGeeCredsOpen(true)}
-              className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full hover:bg-amber-100 transition-colors font-medium">
-              Ligar GEE
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Analyses now live in the collapsible accordion inside the sidebar (below). */}
-
-      {/* Main content */}
-      <div className="flex flex-1 overflow-hidden relative">
-        {/* Sidebar toggle (always visible) */}
-        <button
-          onClick={() => setSidebarOpen(o => !o)}
-          className="z-[700] absolute top-1/2 -translate-y-1/2 w-5 h-16 bg-white border border-l-0 border-slate-200 rounded-r-lg flex items-center justify-center shadow-sm hover:bg-slate-50 transition-all duration-200"
-          style={{ left: sidebarOpen ? "18rem" : 0 }}
-          title={sidebarOpen ? "Recolher painel" : "Expandir painel"}
-        >
-          {sidebarOpen ? <ChevronLeft size={12} className="text-slate-400" /> : <ChevronRight size={12} className="text-slate-400" />}
-        </button>
-
-        {/* Controls sidebar */}
-        <div className={`bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto transition-all duration-200 ${sidebarOpen ? "w-72" : "w-0 overflow-hidden border-r-0"}`}>
-
-
-          {/* Area filter — AOI global */}
-          {(
-            <div className="p-4 border-b border-slate-100">
-              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Área de Estudo</h4>
-              <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
-            </div>
-          )}
-
-          {/* Analysis selector (accordion) */}
-          {(
-            <div className="border-b border-slate-100">
-              <div className="flex items-center justify-between px-4 pt-4 pb-2">
-                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Análises</h4>
-                {geeReady
-                  ? <span className="text-[10px] bg-sky-50 text-sky-600 border border-sky-200 px-1.5 py-0.5 rounded-full"><Sparkles size={10} className="inline mr-0.5" /> GEE Real</span>
-                  : !requiresGee && <span className="text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded-full">Proxy</span>}
+      {selectedCategory === null ? (
+        /* ════════════════════════════════════════════════════════════════════
+           CATALOG VIEW (Cards Persuasivos e Modernos)
+           ════════════════════════════════════════════════════════════════════ */
+        <div className="flex-1 flex flex-col overflow-y-auto bg-slate-50">
+          {/* Catalog Top Bar */}
+          <div className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0 shadow-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-sm text-white">
+                <Satellite size={20} />
               </div>
-              <div className="pb-2">
-                {tabGroups.map(grp => {
-                  const open = openGroup === grp.name;
-                  const hasActive = grp.tabs.some(t => t.id === activeTab);
-                  return (
-                    <div key={grp.name}>
-                      <button
-                        onClick={() => setOpenGroup(open ? null : grp.name)}
-                        className={`w-full flex items-center justify-between px-4 py-2 text-left hover:bg-slate-50 transition-colors ${hasActive ? "bg-slate-50/70" : ""}`}>
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 leading-tight">{grp.name}</span>
-                          <span className={`text-[8px] rounded px-1 leading-tight font-medium w-fit ${grp.badgeColor}`}>{grp.badge}</span>
+              <div>
+                <h1 className="text-base font-bold text-slate-900 leading-tight">
+                  Catálogo de GeoAnálises Especializadas
+                </h1>
+                <p className="text-xs text-slate-500">
+                  Sensoriamento remoto com Google Earth Engine, DEM Copernicus 30m e renderização 3D
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center flex-wrap gap-2.5">
+              <div className="w-52 sm:w-64">
+                <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
+              </div>
+              {geeLoading
+                ? <span className="text-xs text-slate-400 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Verificando GEE…</span>
+                : <GeeStatusBadge status={geeStatus} loading={geeLoading} />}
+              {!geeStatus?.connected && (
+                <button onClick={() => setGeeCredsOpen(true)}
+                  className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-xl hover:bg-amber-100 transition-colors font-medium">
+                  Ligar GEE
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Catalog Content */}
+          <div className="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-gradient-to-r from-sky-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-md relative overflow-hidden">
+              <div className="relative z-10 max-w-xl">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 text-[11px] font-semibold mb-2 border border-sky-400/30">
+                  <Sparkles size={11} /> Módulos Analíticos Dedicados
+                </div>
+                <h2 className="text-lg font-bold text-white mb-1">
+                  Selecione uma especialidade analítica
+                </h2>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Cada ambiente de trabalho é isolado e focado: camadas espectrais dedicadas, controles sob medida e projeção tridimensional DEM 30m em tempo real.
+                </p>
+              </div>
+
+              <div className="relative z-10 w-full sm:w-72">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={categoryFilter}
+                    onChange={e => setCategoryFilter(e.target.value)}
+                    placeholder="Filtrar especialidade ou índice…"
+                    className="w-full pl-9 pr-3 py-2 bg-white/10 hover:bg-white/15 focus:bg-white/20 border border-white/20 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 transition-all"
+                  />
+                  {categoryFilter && (
+                    <button onClick={() => setCategoryFilter("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white">
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="absolute right-0 bottom-0 translate-x-12 translate-y-12 w-64 h-64 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              {filteredCategories.map(cat => {
+                const IconComponent = cat.icon;
+                return (
+                  <div
+                    key={cat.id}
+                    onClick={() => {
+                      setSelectedCategory(cat.id);
+                      setActiveTab(cat.defaultTab);
+                    }}
+                    className="group bg-white rounded-2xl border border-slate-200 hover:border-sky-400 hover:shadow-xl transition-all duration-200 p-5 flex flex-col justify-between cursor-pointer hover:-translate-y-0.5"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-3.5">
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${cat.gradient} flex items-center justify-center text-white shadow-xs group-hover:scale-105 transition-transform`}>
+                          <IconComponent size={20} />
                         </div>
-                        <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
-                      </button>
-                      {open && (
-                        <div className="pb-1">
-                          {grp.tabs.map(tab => (
-                            <button key={tab.id}
-                              onClick={() => setActiveTab(tab.id as SpectralTab)}
-                              className={`w-full flex items-center gap-2 pl-6 pr-4 py-1.5 text-xs transition-colors border-l-2 ${
-                                activeTab === tab.id
-                                  ? "bg-sky-50 text-sky-700 font-semibold border-sky-500"
-                                  : "text-slate-600 hover:bg-slate-50 border-transparent"
-                              }`}>
-                              {tab.icon} {tab.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cat.badgeColor}`}>
+                          {cat.badge}
+                        </span>
+                      </div>
+
+                      <h3 className="text-sm font-bold text-slate-900 group-hover:text-sky-600 transition-colors">
+                        {cat.title}
+                      </h3>
+                      <p className="text-[11px] text-slate-400 font-medium mb-2.5">
+                        {cat.subtitle}
+                      </p>
+
+                      <p className="text-xs text-slate-600 leading-relaxed mb-4 line-clamp-3">
+                        {cat.description}
+                      </p>
+
+                      <div className="flex flex-wrap gap-1.5 mb-4">
+                        {cat.highlights.map((h, i) => (
+                          <span key={i} className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium">
+                            {h}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                  );
-                })}
+
+                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-sky-600 group-hover:text-sky-700">
+                      <span>Abrir Análise Especializada</span>
+                      <span className="group-hover:translate-x-1 transition-transform">→</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ════════════════════════════════════════════════════════════════════
+           DEDICATED CATEGORY WORKSPACE (Ambiente Especializado)
+           ════════════════════════════════════════════════════════════════════ */
+        <div className="flex-1 flex flex-col overflow-hidden relative">
+          {/* Workspace Top Header Bar */}
+          <div className="bg-white border-b border-slate-200 px-4 py-2 flex items-center justify-between gap-2 shrink-0 z-[550]">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                onClick={() => setSelectedCategory(null)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-sky-700 bg-slate-100 hover:bg-sky-50 border border-slate-200 hover:border-sky-200 px-3 py-1.5 rounded-xl transition-all shrink-0 shadow-2xs"
+                title="Voltar ao catálogo de especialidades"
+              >
+                <ArrowLeft size={13} />
+                <span>Voltar ao Catálogo</span>
+              </button>
+
+              <div className="h-5 w-px bg-slate-200 shrink-0" />
+
+              <div className="flex items-center gap-2 min-w-0">
+                <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${activeCategory.gradient} flex items-center justify-center text-white shrink-0 shadow-2xs`}>
+                  <activeCategory.icon size={14} />
+                </div>
+                <div className="min-w-0 hidden lg:block">
+                  <h2 className="text-xs font-bold text-slate-800 truncate leading-tight">{activeCategory.title}</h2>
+                  <span className="text-[10px] text-slate-400 truncate block">{activeCategory.badge}</span>
+                </div>
               </div>
             </div>
-          )}
 
-        </div>
+            {/* Subtabs for only this category */}
+            <div className="flex-1 flex items-center gap-1.5 overflow-x-auto px-2 py-0.5 no-scrollbar">
+              {activeCategory.tabIds.map(tabId => {
+                const def = INDEX_DEFS.find(d => d.id === tabId);
+                const label = def?.short || (tabId === "s2" ? "S-2 Cloudless" : tabId === "lineaments" ? "Lineamentos" : tabId === "targeting" ? "Targeting" : tabId === "profile" ? "Perfil A→B" : tabId === "contours" ? "Curvas Nível" : tabId === "topo_custom" ? "Classes Custom" : tabId === "landcover" ? "Cobertura Solo" : tabId === "spi_ndvi" ? "SPI × NDVI" : tabId);
+                const icon = def?.icon || (tabId === "s2" ? <Satellite size={12} /> : tabId === "lineaments" ? <Activity size={12} /> : tabId === "targeting" ? <Target size={12} /> : tabId === "profile" ? <Route size={12} /> : tabId === "contours" ? <Waves size={12} /> : tabId === "topo_custom" ? <Sliders size={12} /> : tabId === "landcover" ? <Sprout size={12} /> : <Droplets size={12} />);
+                const isActive = activeTab === tabId;
+
+                return (
+                  <button
+                    key={tabId}
+                    onClick={() => setActiveTab(tabId)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all shrink-0 ${
+                      isActive
+                        ? "bg-sky-500 text-white shadow-xs font-semibold"
+                        : "bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium"
+                    }`}
+                  >
+                    {icon}
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Right Header Actions */}
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => handleViewModeChange(viewMode === "2d" ? "3d" : "2d")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-2xs transition-all ${
+                  viewMode === "3d"
+                    ? "bg-gradient-to-r from-sky-500 to-indigo-600 text-white border-transparent shadow-sky-200"
+                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                }`}
+                title={viewMode === "3d" ? "Mudar para 2D" : "Mudar para 3D Real"}
+              >
+                <Globe size={13} />
+                <span className="hidden sm:inline">{viewMode === "3d" ? "Modo 3D Real" : "Modo 2D"}</span>
+              </button>
+
+              <button
+                onClick={exportGeoAnalisesPdf}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium shadow-2xs"
+                title="Exportar Relatório PDF"
+              >
+                <FileDown size={13} />
+                <span className="hidden sm:inline">PDF</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Main workspace content */}
+          <div className="flex flex-1 overflow-hidden relative">
+            {/* Desktop Sidebar Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setDesktopSidebarOpen(v => !v)}
+              style={{ left: desktopSidebarOpen ? "18rem" : "0px" }}
+              title={desktopSidebarOpen ? "Recolher painel lateral" : "Expandir painel lateral"}
+              className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 backdrop-blur-md border border-l-0 border-slate-200 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 transition-all duration-200 text-slate-500 hover:text-slate-800"
+            >
+              {desktopSidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
+            </button>
+
+            {/* Controls sidebar */}
+            <div className={`bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto transition-all duration-200 ${desktopSidebarOpen ? "w-72" : "w-0 overflow-hidden border-r-0"}`}>
+              {/* Area filter — AOI global */}
+              <div className="p-4 border-b border-slate-100">
+                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Área de Estudo</h4>
+                <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
+              </div>
+
+              {/* Category subtabs list */}
+              <div className="p-3 border-b border-slate-100">
+                <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                  Índices da Categoria
+                </h4>
+                <div className="space-y-1">
+                  {activeCategory.tabIds.map(tabId => {
+                    const def = INDEX_DEFS.find(d => d.id === tabId);
+                    const label = def?.short || (tabId === "s2" ? "S-2 Cloudless" : tabId === "lineaments" ? "Lineamentos" : tabId === "targeting" ? "Targeting" : tabId === "profile" ? "Perfil A→B" : tabId === "contours" ? "Curvas Nível" : tabId === "topo_custom" ? "Classes Custom" : tabId === "landcover" ? "Cobertura Solo" : tabId === "spi_ndvi" ? "SPI × NDVI" : tabId);
+                    const icon = def?.icon || (tabId === "s2" ? <Satellite size={13} /> : tabId === "lineaments" ? <Activity size={13} /> : tabId === "targeting" ? <Target size={13} /> : tabId === "profile" ? <Route size={13} /> : tabId === "contours" ? <Waves size={13} /> : tabId === "topo_custom" ? <Sliders size={13} /> : tabId === "landcover" ? <Sprout size={13} /> : <Droplets size={13} />);
+                    const isActive = activeTab === tabId;
+                    return (
+                      <button
+                        key={tabId}
+                        onClick={() => setActiveTab(tabId)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs text-left transition-colors ${
+                          isActive
+                            ? "bg-sky-50 text-sky-700 font-semibold border border-sky-200"
+                            : "text-slate-600 hover:bg-slate-50"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          {icon}
+                          <span className="truncate">{label}</span>
+                        </div>
+                        {isActive && <span className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* GEE status / real vs proxy switch */}
+              {geeStatus?.connected && (
+                <div className="p-3 border-b border-slate-100 flex items-center justify-between text-xs">
+                  <span className="text-slate-600 font-medium">Modo GEE</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400 text-[11px]">{useGEE ? "Real" : "Proxy"}</span>
+                    <button
+                      onClick={() => { setUseGEE(v => !v); setGeeTile(null); }}
+                      className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors ${useGEE ? "bg-sky-500" : "bg-slate-300"}`}
+                    >
+                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${useGEE ? "translate-x-4" : "translate-x-0.5"}`} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
         {/* Draggable Results Panel */}
         {((activeDef || isComposite || isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || activeTab === "s2")) && (
@@ -3077,15 +3416,33 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
             </div>
           )}
 
-          {/* Basemap Switcher (Google Maps) */}
-          <BasemapSwitcher
-            current={basemap}
-            onChange={setBasemap}
-            className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
-            position="bottom-left"
-          />
+          {viewMode === "3d" ? (
+            <MapLibre3DView
+              province={province}
+              district={district}
+              aoi={aoi}
+              basemap={basemap}
+              viewMode={viewMode}
+              onBasemapChange={setBasemap}
+              onViewModeChange={handleViewModeChange}
+              showProfileTool={selectedCategory === "terrain"}
+              overlayRasterUrl={activeOverlayUrl}
+              overlayOpacity={visParams.opacity}
+              className="w-full h-full"
+            />
+          ) : (
+            <>
+              {/* Basemap Switcher (Google Maps) */}
+              <BasemapSwitcher
+                current={basemap}
+                onChange={setBasemap}
+                viewMode={viewMode}
+                onViewModeChange={handleViewModeChange}
+                className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
+                position="bottom-left"
+              />
 
-          <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }}>
+              <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }}>
             {/* Base tiles */}
             {showS2 || activeTab === "s2" ? (
               <>
@@ -3301,7 +3658,9 @@ export default function GeoAnalises({ aoi, province, district, onProvinceChange,
               onCancel={() => setDrawingEnabled(false)}
             />
           </MapContainer>
-n          {/* RasterVisPanel — floating visualization controls */}
+        </>
+      )}
+          {/* RasterVisPanel — floating visualization controls */}
           {geeReady && geeTile && activeTab !== "s2" && (
             <>
               {/* Toggle button */}
@@ -3539,5 +3898,8 @@ n          {/* RasterVisPanel — floating visualization controls */}
         )}
       </div>
     </div>
+  )}
+</div>
   );
 }
+

@@ -31,6 +31,7 @@ import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
 import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
 import BasemapSwitcher from "@/components/BasemapSwitcher";
+import MapLibre3DView from "@/components/MapLibre3DView";
 import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
@@ -159,11 +160,20 @@ interface Props {
   onProvinceChange: (p: string | null) => void;
   onDistrictChange: (d: string | null) => void;
   onAOIChange: (aoi: AreaOfInterest) => void;
+  viewMode?: "2d" | "3d";
+  onViewModeChange?: (mode: "2d" | "3d") => void;
 }
 
-export default function HidroGeoMoz({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
+export default function HidroGeoMoz({
+  aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange,
+  viewMode: propViewMode, onViewModeChange,
+}: Props) {
   const { toast } = useToast();
   const mapRef = useRef<LMap | null>(null);
+
+  const [internalViewMode, setInternalViewMode] = useState<"2d" | "3d">("3d");
+  const viewMode = propViewMode ?? internalViewMode;
+  const handleViewModeChange = onViewModeChange ?? setInternalViewMode;
 
   // Layout
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -868,92 +878,117 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
 
       {/* ── Map ──────────────────────────────────────────────────────────── */}
       <div className={`flex-1 relative overflow-hidden ${mode === "delineate" ? "cursor-crosshair" : ""}`} ref={mapContainerRef}>
-        <BasemapSwitcher
-          current={basemap}
-          onChange={setBasemap}
-          className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
-          position="bottom-left"
-        />
-        <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} ref={mapRef} zoomControl={false}>
-          <ZoomControl position="topright" />
-          <MapTools />
-          <ScaleControl position="bottomright" imperial={false} />
-          <MapClickHandler onMapClick={onMapClick} active={mode === "delineate"} />
-
-          <TileLayer
-            key={basemap}
-            crossOrigin="anonymous"
-            url={GOOGLE_BASEMAPS[basemap].url}
-            subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
-            attribution={GOOGLE_BASEMAPS[basemap].attribution}
-            maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
+        {viewMode === "3d" ? (
+          <MapLibre3DView
+            province={province}
+            district={district}
+            aoi={aoi}
+            basemap={basemap}
+            viewMode={viewMode}
+            onBasemapChange={setBasemap}
+            onViewModeChange={handleViewModeChange}
+            showProfileTool={false}
+            overlayRasterUrl={
+              watershedData?.tileUrl ||
+              drainageTile?.tileUrl ||
+              (basinReport && reportLayer === "lulc" ? basinReport.landcoverTile :
+               basinReport && reportLayer === "cn" ? basinReport.runoff.cnTile : null)
+            }
+            overlayOpacity={0.8}
+            className="w-full h-full"
           />
+        ) : (
+          <>
+            <BasemapSwitcher
+              current={basemap}
+              onChange={setBasemap}
+              viewMode={viewMode}
+              onViewModeChange={handleViewModeChange}
+              className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
+              position="bottom-left"
+            />
+            <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} ref={mapRef} zoomControl={false}>
+              <ZoomControl position="topright" />
+              <MapTools />
+              <ScaleControl position="bottomright" imperial={false} />
+              <MapClickHandler onMapClick={onMapClick} active={mode === "delineate"} />
 
-          <AreaSelect
-            province={province} district={district}
-            onProvinceChange={p => { onProvinceChange(p); onDistrictChange(null); }}
-            onDistrictChange={onDistrictChange}
-            selectable={mode === "explore"}
-          />
+              <TileLayer
+                key={basemap}
+                crossOrigin="anonymous"
+                url={GOOGLE_BASEMAPS[basemap].url}
+                subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
+                attribution={GOOGLE_BASEMAPS[basemap].attribution}
+                maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
+              />
 
-          {/* River network */}
-          {showRiverNet && riverNet && (
-            <TileLayer crossOrigin="anonymous" key={`rn-${showAllOrders}-${riverNet.tileUrl}`}
-              url={showAllOrders ? riverNet.tileUrl : riverNet.majorTileUrl}
-              attribution="HydroSHEDS · WWF" opacity={showAllOrders ? 0.75 : 0.9} maxZoom={18} />
-          )}
+              <AreaSelect
+                province={province} district={district}
+                onProvinceChange={p => { onProvinceChange(p); onDistrictChange(null); }}
+                onDistrictChange={onDistrictChange}
+                selectable={mode === "explore"}
+              />
 
-          {/* Drainage (explore, no river net) */}
-          {mode === "explore" && showDrainage && drainageTile && !showRiverNet && (
-            <TileLayer crossOrigin="anonymous" key={`drain-${drainageTile.tileUrl}`} url={drainageTile.tileUrl}
-              attribution="HydroSHEDS · WWF" opacity={0.85} maxZoom={18} />
-          )}
+              {/* River network */}
+              {showRiverNet && riverNet && (
+                <TileLayer crossOrigin="anonymous" key={`rn-${showAllOrders}-${riverNet.tileUrl}`}
+                  url={showAllOrders ? riverNet.tileUrl : riverNet.majorTileUrl}
+                  attribution="HydroSHEDS · WWF" opacity={showAllOrders ? 0.75 : 0.9} maxZoom={18} />
+              )}
 
-          {/* Basins GeoJSON */}
-          {mode === "explore" && basinsData?.geojson && (
-            <GeoJSON key={`basins-${basinLevel}-${province}-${district}`}
-              data={basinsData.geojson as GeoJSON.GeoJsonObject}
-              style={f => basinStyle(f)}
-              onEachFeature={(feat, layer: Layer) => {
-                const p = feat.properties ?? {};
-                layer.bindTooltip(`<div class="text-xs"><b>Bacia ${p.HYBAS_ID ?? "—"}</b><br/>Área: ${(p.SUB_AREA ?? 0).toFixed(0)} km²</div>`, { sticky: true });
-                layer.on("click", () => onBasinClick(feat));
-              }} />
-          )}
+              {/* Drainage (explore, no river net) */}
+              {mode === "explore" && showDrainage && drainageTile && !showRiverNet && (
+                <TileLayer crossOrigin="anonymous" key={`drain-${drainageTile.tileUrl}`} url={drainageTile.tileUrl}
+                  attribution="HydroSHEDS · WWF" opacity={0.85} maxZoom={18} />
+              )}
 
-          {/* Watershed polygon */}
-          {watershedData?.geojson && (
-            <>
-              <GeoJSON key={`ws-${pourPoint?.[0]}-${pourPoint?.[1]}`}
-                data={watershedData.geojson as GeoJSON.GeoJsonObject}
-                style={{ color: "#0d47a1", weight: 2.5, fillColor: "#1565c0", fillOpacity: 0.2, opacity: 1 }} />
-              <TileLayer crossOrigin="anonymous" key={`wst-${watershedData.tileUrl}`} url={watershedData.tileUrl} opacity={0.3} maxZoom={18} />
-            </>
-          )}
+              {/* Basins GeoJSON */}
+              {mode === "explore" && basinsData?.geojson && (
+                <GeoJSON key={`basins-${basinLevel}-${province}-${district}`}
+                  data={basinsData.geojson as GeoJSON.GeoJsonObject}
+                  style={f => basinStyle(f)}
+                  onEachFeature={(feat, layer: Layer) => {
+                    const p = feat.properties ?? {};
+                    layer.bindTooltip(`<div class="text-xs"><b>Bacia ${p.HYBAS_ID ?? "—"}</b><br/>Área: ${(p.SUB_AREA ?? 0).toFixed(0)} km²</div>`, { sticky: true });
+                    layer.on("click", () => onBasinClick(feat));
+                  }} />
+              )}
 
-          {/* Basin report overlays (toggleable): land cover / SCS-CN runoff */}
-          {basinReport && reportLayer === "lulc" && (
-            <TileLayer crossOrigin="anonymous" key={`rep-lulc-${basinReport.landcoverTile}`} url={basinReport.landcoverTile}
-              attribution="GEE · ESA WorldCover 2021" opacity={0.75} maxZoom={18} />
-          )}
-          {basinReport && reportLayer === "cn" && (
-            <TileLayer crossOrigin="anonymous" key={`rep-cn-${basinReport.runoff.cnTile}`} url={basinReport.runoff.cnTile}
-              attribution="GEE · SCS Curve Number" opacity={0.7} maxZoom={18} />
-          )}
+              {/* Watershed polygon */}
+              {watershedData?.geojson && (
+                <>
+                  <GeoJSON key={`ws-${pourPoint?.[0]}-${pourPoint?.[1]}`}
+                    data={watershedData.geojson as GeoJSON.GeoJsonObject}
+                    style={{ color: "#0d47a1", weight: 2.5, fillColor: "#1565c0", fillOpacity: 0.2, opacity: 1 }} />
+                  <TileLayer crossOrigin="anonymous" key={`wst-${watershedData.tileUrl}`} url={watershedData.tileUrl} opacity={0.3} maxZoom={18} />
+                </>
+              )}
 
-          {/* Pour point marker */}
-          {pourPoint && (
-            <CircleMarker center={pourPoint} radius={9}
-              pathOptions={{ fillColor: "#ef4444", color: "#ffffff", weight: 3, fillOpacity: 1 }} />
-          )}
-          <MapDraw
-            enabled={drawingEnabled}
-            hasDrawnAOI={aoi.source === "draw"}
-            onClearAOI={() => onAOIChange(GLOBAL_AOI)}
-            onDrawComplete={(geom, label) => { setDrawingEnabled(false); onAOIChange(customAOI(geom, label, "draw")); }}
-            onCancel={() => setDrawingEnabled(false)}
-          />
-        </MapContainer>
+              {/* Basin report overlays (toggleable): land cover / SCS-CN runoff */}
+              {basinReport && reportLayer === "lulc" && (
+                <TileLayer crossOrigin="anonymous" key={`rep-lulc-${basinReport.landcoverTile}`} url={basinReport.landcoverTile}
+                  attribution="GEE · ESA WorldCover 2021" opacity={0.75} maxZoom={18} />
+              )}
+              {basinReport && reportLayer === "cn" && (
+                <TileLayer crossOrigin="anonymous" key={`rep-cn-${basinReport.runoff.cnTile}`} url={basinReport.runoff.cnTile}
+                  attribution="GEE · SCS Curve Number" opacity={0.7} maxZoom={18} />
+              )}
+
+              {/* Pour point marker */}
+              {pourPoint && (
+                <CircleMarker center={pourPoint} radius={9}
+                  pathOptions={{ fillColor: "#ef4444", color: "#ffffff", weight: 3, fillOpacity: 1 }} />
+              )}
+              <MapDraw
+                enabled={drawingEnabled}
+                hasDrawnAOI={aoi.source === "draw"}
+                onClearAOI={() => onAOIChange(GLOBAL_AOI)}
+                onDrawComplete={(geom, label) => { setDrawingEnabled(false); onAOIChange(customAOI(geom, label, "draw")); }}
+                onCancel={() => setDrawingEnabled(false)}
+              />
+            </MapContainer>
+          </>
+        )}
 
         {/* Legend */}
         <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-blue-100 p-3 pointer-events-none text-[11px] min-w-[130px]">
