@@ -116,7 +116,8 @@ def get_districts_for_province(districts_gdf, provinces_gdf, province_name: str)
             if len(prov_geom) == 0:
                 return districts_gdf
             # Filter districts spatially
-            clipped = gpd.clip(districts_gdf, prov_geom.geometry.union_all())
+            u = prov_geom.geometry.union_all() if hasattr(prov_geom.geometry, "union_all") else prov_geom.geometry.unary_union
+            clipped = gpd.clip(districts_gdf, u)
             return clipped if len(clipped) > 0 else districts_gdf
     except Exception:
         pass
@@ -143,7 +144,7 @@ def filter_geology_by_area(geology_gdf, area_gdf):
     if geology_gdf is None or area_gdf is None:
         return None
     try:
-        area_union = area_gdf.geometry.union_all()
+        area_union = area_gdf.geometry.union_all() if hasattr(area_gdf.geometry, "union_all") else area_gdf.geometry.unary_union
         clipped = gpd.clip(geology_gdf, area_union)
         return clipped if len(clipped) > 0 else None
     except Exception as e:

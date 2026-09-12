@@ -1,8 +1,45 @@
+import React, { Component, type ReactNode, type ErrorInfo } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import Explorer from "@/pages/Explorer";
-import { ErrorBoundary } from "react-error-boundary";
 import { AuthProvider } from "@/hooks/useAuth";
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+  FallbackComponent: React.ComponentType<{ error: Error; resetErrorBoundary: () => void }>;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+  }
+
+  resetErrorBoundary = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
+    if (this.state.hasError && this.state.error) {
+      const Fallback = this.props.FallbackComponent;
+      return <Fallback error={this.state.error} resetErrorBoundary={this.resetErrorBoundary} />;
+    }
+    return this.props.children;
+  }
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {

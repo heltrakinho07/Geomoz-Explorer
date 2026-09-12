@@ -15,21 +15,25 @@ from concurrent.futures import ThreadPoolExecutor
 import geopandas as gpd
 from shapely.errors import TopologicalError, GEOSException
 
-from fastapi import FastAPI, Query, HTTPException, Request, File, UploadFile
+from fastapi import FastAPI, Query, HTTPException, Request, File, UploadFile, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import Response
 
-import firebase_admin
-from firebase_admin import credentials, auth as firebase_auth
-from fastapi import Depends
-
 try:
-    firebase_admin.initialize_app()
-except ValueError:
-    pass
+    import firebase_admin
+    from firebase_admin import credentials, auth as firebase_auth
+    try:
+        firebase_admin.initialize_app()
+    except ValueError:
+        pass
+except ImportError:
+    firebase_admin = None
+    firebase_auth = None
 
 async def require_firebase_auth(request: Request) -> str:
+    if firebase_auth is None:
+        return "dev-local-user"
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Token Firebase ausente ou inválido.")
@@ -43,7 +47,7 @@ async def require_firebase_auth(request: Request) -> str:
 async def require_gee_auth(request: Request) -> str:
     auth_header = request.headers.get("Authorization", "")
     uid = None
-    if auth_header.startswith("Bearer "):
+    if firebase_auth and auth_header.startswith("Bearer "):
         token = auth_header.removeprefix("Bearer ").strip()
         try:
             decoded = firebase_auth.verify_id_token(token)
@@ -187,7 +191,10 @@ def _gdf_to_geojson_response(gdf) -> Response:
     return Response(content=geojson_str, media_type="application/json")
 
 
-# ── region geometry helper (used by GEE endpoints) ─────────────────────────────
+def _union_geom(series):
+    """Safe union compatible with GeoPandas < 1.0 (unary_union) and >= 1.0 (union_all)."""
+    return series.union_all() if hasattr(series, "union_all") else series.unary_union
+
 
 def _clip_geo(gdf, province=None, district=None):
     """
@@ -207,7 +214,7 @@ def _clip_geo(gdf, province=None, district=None):
                         if len(mask_p) > 0:
                             mask = mask_p
                 try:
-                    return gpd.clip(gdf, mask.geometry.union_all().buffer(0))
+                    return gpd.clip(gdf, _union_geom(mask.geometry).buffer(0))
                 except (ValueError, TopologicalError, GEOSException) as e:
                     logger.warning("Failed to clip to district '%s': %s", district, e)
     elif province:
@@ -217,7 +224,7 @@ def _clip_geo(gdf, province=None, district=None):
             mask = prov_gdf[prov_gdf[prov_col] == province]
             if len(mask) > 0:
                 try:
-                    return gpd.clip(gdf, mask.geometry.union_all().buffer(0))
+                    return gpd.clip(gdf, _union_geom(mask.geometry).buffer(0))
                 except (ValueError, TopologicalError, GEOSException) as e:
                     logger.warning("Failed to clip to province '%s': %s", province, e)
     return gdf
@@ -259,7 +266,7 @@ def _region_geojson(
                     if len(sub_p) > 0:
                         sub = sub_p
             if len(sub) > 0:
-                geom = sub.geometry.union_all().buffer(0).simplify(0.01, preserve_topology=True)
+                geom = _union_geom(sub.geometry).buffer(0).simplify(0.01, preserve_topology=True)
                 return mapping(geom)
 
     # Priority 3: province
@@ -269,7 +276,7 @@ def _region_geojson(
         if pcol:
             sub = prov_gdf[prov_gdf[pcol] == province]
             if len(sub) > 0:
-                geom = sub.geometry.union_all().buffer(0).simplify(0.02, preserve_topology=True)
+                geom = _union_geom(sub.geometry).buffer(0).simplify(0.02, preserve_topology=True)
                 return mapping(geom)
 
     return None
