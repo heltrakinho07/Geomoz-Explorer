@@ -2370,14 +2370,14 @@ export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
   },
   {
     id: "satellite",
-    title: "Mosaicos Satélite de Alta Resolução",
-    subtitle: "Sentinel-2 Cloudless EOX · Global 10 m",
-    badge: "Óptico Cor Real 10 m",
-    badgeColor: "bg-sky-100 text-sky-800 border-sky-200",
+    title: "Satélite Óptico & Time-Lapse Multitemporal",
+    subtitle: "Sentinel-2 Cloudless EOX · 2016–2024 (10 m)",
+    badge: "Time-Lapse & Split-Screen",
+    badgeColor: "bg-sky-100 text-sky-800 border-sky-300 font-bold",
     icon: Satellite,
-    gradient: "from-sky-500 to-blue-600",
-    description: "Mosaicos ópticos anuais livres de nuvens produzidos pela EOX a partir de aquisições do Sentinel-2. Excelente para reconhecimento visual, contexto de terreno e inspeção temporal.",
-    highlights: ["Mosaico Sem Nuvens", "RGB Cor Real 10 m", "Comparações Anuais (2020-2022)", "Cobertura Global"],
+    gradient: "from-sky-500 to-indigo-600",
+    description: "Mosaicos anuais de alta resolução (10 m) sem nuvens do Sentinel-2 cobrindo a série 2016 a 2024. Inclui animação contínua Time-Lapse com velocidade ajustável e comparador de tela dividida (Antes vs Depois) para análise de grandes transformações.",
+    highlights: ["Time-Lapse Dinâmico (2016–2024)", "Split-Screen (Antes / Depois)", "Ciclones Idai & Freddy", "RGB Cor Real 10 m"],
     defaultTab: "s2",
     tabIds: ["s2"],
   },
@@ -2806,6 +2806,41 @@ export default function GeoAnalises({
                 <p className="text-xs text-slate-300 leading-relaxed">
                   Cada ambiente de trabalho é isolado e focado: camadas espectrais dedicadas, controles sob medida e projeção tridimensional DEM 30m em tempo real.
                 </p>
+
+                {/* Multitemporal Quick Access Banner Buttons */}
+                <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-white/15">
+                  <span className="text-[11px] text-sky-200 font-semibold flex items-center gap-1 mr-1">
+                    <Clock size={12} className="text-sky-300" /> Acesso Rápido:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory("satellite");
+                      setActiveTab("s2");
+                      setShowTimeLapse(true);
+                      setShowS2(true);
+                      setCompareActive(false);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold shadow-md transition-all active:scale-95"
+                  >
+                    <Clock size={12} className="animate-spin" />
+                    <span>Time-Lapse Dinâmico (2016–2024)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory("satellite");
+                      setActiveTab("s2");
+                      setCompareActive(true);
+                      setShowTimeLapse(false);
+                      setShowS2(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md transition-all active:scale-95"
+                  >
+                    <Columns2 size={12} />
+                    <span>Comparador Split-Screen (Antes / Depois)</span>
+                  </button>
+                </div>
               </div>
 
               <div className="relative z-10 w-full sm:w-72">
@@ -2837,7 +2872,7 @@ export default function GeoAnalises({
                     onClick={() => {
                       setSelectedCategory(cat.id);
                       setActiveTab(cat.defaultTab);
-                      if (cat.id === "optical") {
+                      if (cat.id === "optical" || cat.id === "satellite") {
                         setShowTimeLapse(true);
                         setShowS2(true);
                       }
@@ -2948,15 +2983,16 @@ export default function GeoAnalises({
                   setShowTimeLapse(v => !v);
                   if (compareActive) setCompareActive(false);
                 }}
-                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-2xs transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold shadow-xs transition-all ${
                   showTimeLapse
-                    ? "bg-sky-50 dark:bg-sky-950/60 border-sky-400 text-sky-700 dark:text-sky-300 ring-2 ring-sky-300/40"
-                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                    ? "bg-sky-500 text-white border-sky-400 shadow-md shadow-sky-500/20 ring-2 ring-sky-300/40 scale-105"
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200"
                 }`}
-                title="Linha do Tempo e Animação Time-Lapse"
+                title="Linha do Tempo e Animação Time-Lapse (2016–2024)"
               >
-                <Clock size={13} className={showTimeLapse ? "text-sky-500 animate-spin" : "text-slate-500"} />
-                <span className="hidden md:inline">Time-Lapse</span>
+                <Clock size={13} className={showTimeLapse ? "text-white animate-spin" : "text-sky-500"} />
+                <span>Time-Lapse</span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 font-extrabold hidden sm:inline">2016–2024</span>
               </button>
 
               {/* Split-Screen Compare button */}
@@ -2966,15 +3002,16 @@ export default function GeoAnalises({
                   setCompareActive(v => !v);
                   if (showTimeLapse) setShowTimeLapse(false);
                 }}
-                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-2xs transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold shadow-xs transition-all ${
                   compareActive
-                    ? "bg-indigo-50 dark:bg-indigo-950/60 border-indigo-400 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-300/40"
-                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                    ? "bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20 ring-2 ring-indigo-300/40 scale-105"
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200"
                 }`}
                 title="Comparar Antes e Depois (Ecrã Dividido)"
               >
-                <Columns2 size={13} className={compareActive ? "text-indigo-500" : "text-slate-500"} />
-                <span className="hidden md:inline">Comparar</span>
+                <Columns2 size={13} className={compareActive ? "text-white" : "text-indigo-600"} />
+                <span>Comparar</span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 font-extrabold hidden sm:inline">Antes / Depois</span>
               </button>
 
               <div className="h-4 w-px bg-slate-200 hidden sm:block" />

@@ -46,7 +46,69 @@ export default function Explorer() {
   const [district, setDistrict] = useState<string | null>(null);
   const [colorBy, setColorBy] = useState("code2006");
   const [layers, setLayers] = useState<LayerState>({ provinces: true, districts: false, geology: true });
-  const [activeTab, setActiveTab] = useState<Tab>("Mapa");
+  const getInitialTab = (): Tab => {
+    if (typeof window === "undefined") return "Mapa";
+    const path = window.location.pathname.toLowerCase();
+    const hash = window.location.hash.toLowerCase();
+    const search = new URLSearchParams(window.location.search);
+    const tabParam = search.get("tab")?.toLowerCase();
+
+    if (path.includes("analis") || hash.includes("analis") || tabParam?.includes("analis")) {
+      return "GeoAnálises";
+    }
+    if (path.includes("hidro") || path.includes("bacia") || hash.includes("hidro") || tabParam?.includes("hidro")) {
+      return "Bacias Hidrográficas";
+    }
+    if (path.includes("agua") || hash.includes("agua") || tabParam?.includes("agua")) {
+      return "Água Subterrânea";
+    }
+    if (path.includes("perigo") || hash.includes("perigo") || tabParam?.includes("perigo")) {
+      return "Geoperigos";
+    }
+    if (path.includes("ai") || hash.includes("ai") || tabParam?.includes("ai")) {
+      return "GeoMoz AI";
+    }
+    if (path.includes("dash") || hash.includes("dash") || tabParam?.includes("dash")) {
+      return "Dashboard";
+    }
+    if (path.includes("export") || hash.includes("export") || tabParam?.includes("export")) {
+      return "Exportar";
+    }
+    return "Mapa";
+  };
+
+  const [activeTab, setActiveTabState] = useState<Tab>(getInitialTab);
+
+  const setActiveTab = (tab: Tab) => {
+    setActiveTabState(tab);
+    try {
+      const slugMap: Record<Tab, string> = {
+        "Mapa": "",
+        "Análise": "estatisticas",
+        "GeoAnálises": "analises",
+        "Bacias Hidrográficas": "hidrografia",
+        "Água Subterrânea": "agua-subterranea",
+        "Geoperigos": "geoperigos",
+        "GeoMoz AI": "geomoz-ai",
+        "Dashboard": "dashboard",
+        "Exportar": "exportar",
+      };
+      const slug = slugMap[tab];
+      const newUrl = slug ? `/${slug}` : "/";
+      if (window.location.pathname !== newUrl) {
+        window.history.replaceState({ tab }, "", newUrl);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    const onPopState = () => {
+      setActiveTabState(getInitialTab());
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
   const [mapCenter, setMapCenter] = useState<[number, number]>([-18, 35]);
   const [mapZoom, setMapZoom] = useState(5);

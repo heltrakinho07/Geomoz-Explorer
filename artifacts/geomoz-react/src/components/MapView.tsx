@@ -225,7 +225,7 @@ export default function MapView({
   return (
     <main className="flex-1 relative overflow-hidden" id="geomoz-map-area" ref={mapContainerRef}>
       {/* Top Temporal Toolbar: Time-Lapse & Split-Screen */}
-      <div className="absolute top-4 right-14 z-[600] flex items-center gap-1.5 bg-white/95 backdrop-blur-md p-1 rounded-xl shadow-md border border-slate-200/80">
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[600] flex items-center gap-1.5 bg-slate-900/95 backdrop-blur-md px-2.5 py-1.5 rounded-2xl shadow-2xl border border-slate-700/80 text-white">
         <button
           type="button"
           onClick={() => {
@@ -233,16 +233,19 @@ export default function MapView({
             setShowTimeLapse(next);
             if (next && compareActive) setCompareActive(false);
           }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
             showTimeLapse
-              ? "bg-sky-500 text-white shadow-sm"
-              : "text-slate-700 hover:bg-slate-100"
+              ? "bg-sky-500 text-white shadow-md shadow-sky-500/30"
+              : "text-slate-200 hover:text-white hover:bg-slate-800"
           }`}
           title="Time-Lapse Multitemporal (2016–2024)"
         >
-          <Clock size={13} className={showTimeLapse ? "animate-spin" : ""} />
+          <Clock size={14} className={showTimeLapse ? "animate-spin text-white" : "text-sky-400"} />
           <span>Time-Lapse</span>
+          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-sky-400/20 text-sky-300 font-extrabold hidden sm:inline">2016–2024</span>
         </button>
+
+        <div className="w-px h-4 bg-slate-700" />
 
         <button
           type="button"
@@ -254,15 +257,16 @@ export default function MapView({
               handleViewModeChange("2d");
             }
           }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
             compareActive
-              ? "bg-indigo-600 text-white shadow-sm"
-              : "text-slate-700 hover:bg-slate-100"
+              ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+              : "text-slate-200 hover:text-white hover:bg-slate-800"
           }`}
           title="Comparação Split-Screen Antes / Depois"
         >
-          <Columns2 size={13} />
+          <Columns2 size={14} className={compareActive ? "text-white" : "text-indigo-400"} />
           <span>Comparar</span>
+          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-400/20 text-indigo-300 font-extrabold hidden sm:inline">Antes / Depois</span>
         </button>
       </div>
 
