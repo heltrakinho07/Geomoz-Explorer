@@ -212,37 +212,6 @@ export default function MapView({
 
   return (
     <main className="flex-1 relative overflow-hidden" id="geomoz-map-area">
-      {/* 2D / 3D Mode Switcher Pill (Desktop & Tablet) */}
-      <div className="hidden sm:flex absolute top-4 left-4 z-[650] items-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl p-1 shadow-md border border-slate-200 dark:border-slate-800">
-        <button
-          type="button"
-          onClick={() => handleViewModeChange("2d")}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-            activeViewMode === "2d"
-              ? "bg-sky-600 text-white shadow-sm"
-              : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-          }`}
-        >
-          <Layers size={14} />
-          <span>2D Plano</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => handleViewModeChange("3d")}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-            activeViewMode === "3d"
-              ? "bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow-sm"
-              : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-          }`}
-        >
-          <Globe size={14} />
-          <span>3D Globo</span>
-          <span className="text-[9px] bg-amber-400 text-amber-950 font-bold px-1.5 py-0.2 rounded-full uppercase tracking-wider">
-            WebGL
-          </span>
-        </button>
-      </div>
-
       {activeViewMode === "3d" ? (
         <MapLibre3DView
           province={province}

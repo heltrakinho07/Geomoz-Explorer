@@ -30,6 +30,8 @@ interface MapLibre3DViewProps {
   viewMode?: "2d" | "3d";
   overlayRasterUrl?: string | null;
   overlayOpacity?: number;
+  overlayGeoJSON?: GeoJSON.FeatureCollection | null;
+  overlayGeoJSONKey?: string;
   showProfileTool?: boolean;
   onBasemapChange?: (b: BasemapType) => void;
   onViewModeChange?: (mode: "2d" | "3d") => void;
@@ -47,6 +49,8 @@ export default function MapLibre3DView({
   viewMode = "3d",
   overlayRasterUrl,
   overlayOpacity = 0.85,
+  overlayGeoJSON,
+  overlayGeoJSONKey,
   showProfileTool = false,
   onBasemapChange,
   onViewModeChange,
@@ -225,47 +229,44 @@ export default function MapLibre3DView({
     const updateOverlay = () => {
       if (!map.isStyleLoaded()) return;
 
-      const layerExists = Boolean(map.getLayer(OVERLAY_LAYER_ID));
-      const sourceExists = Boolean(map.getSource(OVERLAY_SOURCE_ID));
-
-      if (!overlayRasterUrl) {
-        if (layerExists) map.removeLayer(OVERLAY_LAYER_ID);
-        if (sourceExists) map.removeSource(OVERLAY_SOURCE_ID);
-        return;
+      if (map.getLayer(OVERLAY_LAYER_ID)) {
+        try { map.removeLayer(OVERLAY_LAYER_ID); } catch {}
+      }
+      if (map.getSource(OVERLAY_SOURCE_ID)) {
+        try { map.removeSource(OVERLAY_SOURCE_ID); } catch {}
       }
 
-      const tile = overlayRasterUrl;
+      if (!overlayRasterUrl) return;
 
-      if (sourceExists) {
-        const src = map.getSource(OVERLAY_SOURCE_ID) as maplibregl.RasterTileSource;
-        if (src && typeof (src as any).setTiles === "function") {
-          (src as any).setTiles([tile]);
-        }
-      } else {
-        map.addSource(OVERLAY_SOURCE_ID, {
+      const tile = overlayRasterUrl.startsWith("http")
+        ? overlayRasterUrl
+        : `${window.location.origin}${overlayRasterUrl}`;
+
+      map.addSource(OVERLAY_SOURCE_ID, {
+        type: "raster",
+        tiles: [tile],
+        tileSize: 256,
+      });
+
+      // Place above google-basemap-layer and analytical-vector-fill, but below profile line
+      const beforeLayerId = map.getLayer("profile-line-glow")
+        ? "profile-line-glow"
+        : map.getLayer("aoi-3d-line")
+        ? "aoi-3d-line"
+        : undefined;
+
+      map.addLayer(
+        {
+          id: OVERLAY_LAYER_ID,
           type: "raster",
-          tiles: [tile],
-          tileSize: 256,
-        });
-      }
-
-      if (!layerExists) {
-        // Place below profile lines and markers, but above basemap
-        const beforeLayerId = map.getLayer("profile-line-glow") ? "profile-line-glow" : undefined;
-        map.addLayer(
-          {
-            id: OVERLAY_LAYER_ID,
-            type: "raster",
-            source: OVERLAY_SOURCE_ID,
-            paint: {
-              "raster-opacity": overlayOpacity,
-            },
+          source: OVERLAY_SOURCE_ID,
+          paint: {
+            "raster-opacity": overlayOpacity ?? 0.85,
+            "raster-resampling": "linear",
           },
-          beforeLayerId
-        );
-      } else {
-        map.setPaintProperty(OVERLAY_LAYER_ID, "raster-opacity", overlayOpacity);
-      }
+        },
+        beforeLayerId
+      );
     };
 
     if (map.isStyleLoaded()) {
@@ -274,6 +275,82 @@ export default function MapLibre3DView({
       map.once("styledata", updateOverlay);
     }
   }, [overlayRasterUrl, overlayOpacity]);
+
+  // Sync analytical vector overlay (proxy spectral GeoJSON, mineral targeting zones, etc.)
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    const GEOJSON_SOURCE_ID = "analytical-vector-source";
+    const GEOJSON_FILL_ID = "analytical-vector-fill";
+    const GEOJSON_LINE_ID = "analytical-vector-line";
+
+    const updateVectorOverlay = () => {
+      if (!map.isStyleLoaded()) return;
+
+      if (map.getLayer(GEOJSON_LINE_ID)) {
+        try { map.removeLayer(GEOJSON_LINE_ID); } catch {}
+      }
+      if (map.getLayer(GEOJSON_FILL_ID)) {
+        try { map.removeLayer(GEOJSON_FILL_ID); } catch {}
+      }
+      if (map.getSource(GEOJSON_SOURCE_ID)) {
+        try { map.removeSource(GEOJSON_SOURCE_ID); } catch {}
+      }
+
+      if (!overlayGeoJSON || !overlayGeoJSON.features || overlayGeoJSON.features.length === 0) {
+        return;
+      }
+
+      map.addSource(GEOJSON_SOURCE_ID, {
+        type: "geojson",
+        data: overlayGeoJSON,
+      });
+
+      const beforeLayerId = map.getLayer("profile-line-glow")
+        ? "profile-line-glow"
+        : undefined;
+
+      map.addLayer(
+        {
+          id: GEOJSON_FILL_ID,
+          type: "fill",
+          source: GEOJSON_SOURCE_ID,
+          paint: {
+            "fill-color": [
+              "coalesce",
+              ["get", "_spectralColor"],
+              ["get", "_color"],
+              ["get", "color"],
+              "#4f46e5",
+            ],
+            "fill-opacity": overlayOpacity ?? 0.8,
+          },
+        },
+        beforeLayerId
+      );
+
+      map.addLayer(
+        {
+          id: GEOJSON_LINE_ID,
+          type: "line",
+          source: GEOJSON_SOURCE_ID,
+          paint: {
+            "line-color": "#ffffff",
+            "line-width": 0.5,
+            "line-opacity": 0.4,
+          },
+        },
+        beforeLayerId
+      );
+    };
+
+    if (map.isStyleLoaded()) {
+      updateVectorOverlay();
+    } else {
+      map.once("styledata", updateVectorOverlay);
+    }
+  }, [overlayGeoJSON, overlayGeoJSONKey, overlayOpacity]);
 
   // Sync Vertical Exaggeration
   const handleExaggerationChange = useCallback((newExag: number) => {
@@ -447,6 +524,124 @@ export default function MapLibre3DView({
       });
     }
   }, [layers?.provinces, provinceGeoJSON]);
+
+  // Sync Active Study Area (AOI or selected Province) and auto-focus 3D camera
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    const AOI_SRC = "active-study-area-source";
+    const AOI_FILL = "active-study-area-fill";
+    const AOI_LINE = "active-study-area-line";
+
+    const updateStudyArea = () => {
+      if (!map.isStyleLoaded()) return;
+
+      // Extract geometry for active study area
+      let feature: GeoJSON.Feature | null = null;
+      let bbox: [number, number, number, number] | null = null; // [minX, minY, maxX, maxY]
+
+      if (aoi && aoi.source !== "global" && aoi.geometry) {
+        feature = {
+          type: "Feature",
+          geometry: aoi.geometry as any,
+          properties: {},
+        };
+        if (aoi.bounds) {
+          const [[s, w], [n, e]] = aoi.bounds;
+          bbox = [w, s, e, n];
+        }
+      } else if (province && provinceGeoJSON?.features) {
+        const found = provinceGeoJSON.features.find((f: any) => {
+          const name = f.properties?.name || f.properties?.NAME_1 || f.properties?.NAME || "";
+          return name.toLowerCase() === province.toLowerCase();
+        });
+        if (found) {
+          feature = found as GeoJSON.Feature;
+          // Calculate bbox from coordinates
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          const scanCoords = (coords: any) => {
+            if (typeof coords[0] === "number") {
+              const [x, y] = coords;
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            } else if (Array.isArray(coords)) {
+              coords.forEach(scanCoords);
+            }
+          };
+          scanCoords((found.geometry as any).coordinates);
+          if (isFinite(minX)) {
+            bbox = [minX, minY, maxX, maxY];
+          }
+        }
+      }
+
+      // Update map source & layer
+      if (feature) {
+        const geojson: GeoJSON.FeatureCollection = {
+          type: "FeatureCollection",
+          features: [feature],
+        };
+        if (map.getSource(AOI_SRC)) {
+          (map.getSource(AOI_SRC) as maplibregl.GeoJSONSource).setData(geojson);
+        } else {
+          map.addSource(AOI_SRC, { type: "geojson", data: geojson });
+          const beforeId = map.getLayer("profile-line-glow") ? "profile-line-glow" : undefined;
+          map.addLayer(
+            {
+              id: AOI_FILL,
+              type: "fill",
+              source: AOI_SRC,
+              paint: {
+                "fill-color": "#38bdf8",
+                "fill-opacity": 0.06,
+              },
+            },
+            beforeId
+          );
+          map.addLayer(
+            {
+              id: AOI_LINE,
+              type: "line",
+              source: AOI_SRC,
+              paint: {
+                "line-color": "#0ea5e9",
+                "line-width": 2,
+                "line-opacity": 0.9,
+              },
+            },
+            beforeId
+          );
+        }
+
+        // Fly camera to study area
+        if (bbox) {
+          map.fitBounds(
+            [
+              [bbox[0], bbox[1]],
+              [bbox[2], bbox[3]],
+            ],
+            { padding: 60, pitch: 45, duration: 1200, maxZoom: 13 }
+          );
+        }
+      } else {
+        if (map.getSource(AOI_SRC)) {
+          (map.getSource(AOI_SRC) as maplibregl.GeoJSONSource).setData({
+            type: "FeatureCollection",
+            features: [],
+          });
+        }
+      }
+    };
+
+    if (map.isStyleLoaded()) {
+      updateStudyArea();
+    } else {
+      map.once("styledata", updateStudyArea);
+    }
+  }, [province, aoi, provinceGeoJSON]);
 
   // Handle Profile click interaction
   useEffect(() => {

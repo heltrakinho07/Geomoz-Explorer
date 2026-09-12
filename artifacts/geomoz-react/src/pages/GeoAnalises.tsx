@@ -3428,6 +3428,14 @@ export default function GeoAnalises({
               showProfileTool={selectedCategory === "terrain"}
               overlayRasterUrl={activeOverlayUrl}
               overlayOpacity={visParams.opacity}
+              overlayGeoJSON={
+                !geeReady && activeTab !== "s2" && spectralGeoJSON
+                  ? (spectralGeoJSON as GeoJSON.FeatureCollection)
+                  : isTargeting && overlapResult?.zones?.features?.length
+                  ? (overlapResult.zones as GeoJSON.FeatureCollection)
+                  : null
+              }
+              overlayGeoJSONKey={spectralKey}
               className="w-full h-full"
             />
           ) : (

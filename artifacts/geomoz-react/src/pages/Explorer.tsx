@@ -280,39 +280,6 @@ function LoadingSkeleton({ label }: { label: string }) {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2.5">
-          {/* Global 2D / 3D Switcher - Accessible on ALL pages */}
-          <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 shrink-0 shadow-xs">
-            <button
-              type="button"
-              onClick={() => handleGlobalViewModeChange("2d")}
-              className={`px-2 sm:px-2.5 py-1 text-[11px] sm:text-xs font-semibold rounded-md transition-all ${
-                globalViewMode === "2d"
-                  ? "bg-white text-slate-800 shadow-xs font-bold"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-              title="Modo 2D Cartográfico"
-            >
-              2D
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                handleGlobalViewModeChange("3d");
-                if (activeTab !== "Mapa") {
-                  setActiveTab("Mapa");
-                }
-              }}
-              className={`px-2 sm:px-2.5 py-1 text-[11px] sm:text-xs font-semibold rounded-md transition-all ${
-                globalViewMode === "3d"
-                  ? "bg-sky-600 text-white shadow-xs font-bold"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-              title="Modo Globo 3D & Relevo (Copernicus DEM)"
-            >
-              3D
-            </button>
-          </div>
-
           {/* Mobile Search button */}
           {activeTab === "Mapa" && (
             <button

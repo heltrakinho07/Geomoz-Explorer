@@ -110,13 +110,13 @@ export default function BasemapSwitcher({
   return (
     <div
       ref={containerRef}
-      className={`pointer-events-auto select-none ${className}`}
+      className={`pointer-events-auto select-none flex items-end gap-2 ${className}`}
     >
       {/* Google Maps Layer Thumbnail Button */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title="Camadas do Google Maps (Basemaps e 3D)"
+        title="Camadas do Google Maps"
         className="group relative flex flex-col items-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-xl border-2 border-white/80 dark:border-slate-800 hover:border-sky-400 p-1 transition-all active:scale-95 focus:outline-none"
       >
         <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden relative shadow-inner flex items-center justify-center bg-slate-900 text-white border border-slate-300 dark:border-slate-700 group-hover:shadow-md transition-shadow">
@@ -125,14 +125,52 @@ export default function BasemapSwitcher({
           <div className="relative z-10 flex flex-col items-center justify-center">
             <Layers size={18} className="text-white drop-shadow-md" />
           </div>
-          {viewMode === "3d" && (
-            <span className="absolute top-0.5 right-0.5 z-10 text-[8px] bg-amber-400 text-amber-950 font-extrabold px-1 rounded-full shadow-xs">
-              3D
-            </span>
-          )}
         </div>
         <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 mt-1 px-1">
           Camadas
+        </span>
+      </button>
+
+      {/* Direct 1-Click 2D / 3D Mode Toggle (Google Maps style) */}
+      <button
+        type="button"
+        onClick={() => handleToggleViewMode(activeViewMode !== "3d")}
+        title={
+          activeViewMode === "3d"
+            ? "Alternar para 2D Plano"
+            : "Alternar para 3D & Relevo (Copernicus DEM 30m)"
+        }
+        className={`group relative flex flex-col items-center justify-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-xl border-2 p-1 transition-all active:scale-95 focus:outline-none ${
+          activeViewMode === "3d"
+            ? "border-sky-500 bg-sky-50/80 dark:bg-sky-950/50 ring-2 ring-sky-400/40"
+            : "border-white/80 dark:border-slate-800 hover:border-sky-400"
+        }`}
+      >
+        <div
+          className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden relative shadow-inner flex flex-col items-center justify-center border transition-all ${
+            activeViewMode === "3d"
+              ? "bg-gradient-to-br from-sky-600 to-indigo-600 text-white border-sky-400 shadow-md"
+              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700"
+          }`}
+        >
+          {activeViewMode === "3d" ? (
+            <>
+              <Globe size={18} className="drop-shadow-xs" />
+              <span className="text-[8px] font-black uppercase tracking-wider mt-0.5">3D</span>
+            </>
+          ) : (
+            <>
+              <Mountain size={18} className="text-slate-600 dark:text-slate-300" />
+              <span className="text-[8px] font-bold uppercase tracking-wider mt-0.5">2D</span>
+            </>
+          )}
+        </div>
+        <span
+          className={`text-[10px] font-bold mt-1 px-1 ${
+            activeViewMode === "3d" ? "text-sky-600 dark:text-sky-400" : "text-slate-700 dark:text-slate-200"
+          }`}
+        >
+          {activeViewMode === "3d" ? "3D Ativo" : "2D Plano"}
         </span>
       </button>
 

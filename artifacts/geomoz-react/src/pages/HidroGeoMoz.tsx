@@ -895,6 +895,7 @@ export default function HidroGeoMoz({
                basinReport && reportLayer === "cn" ? basinReport.runoff.cnTile : null)
             }
             overlayOpacity={0.8}
+            overlayGeoJSON={watershedData?.geojson ?? null}
             className="w-full h-full"
           />
         ) : (
