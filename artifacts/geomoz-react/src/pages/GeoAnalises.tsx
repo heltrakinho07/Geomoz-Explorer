@@ -2481,6 +2481,22 @@ export default function GeoAnalises({
   // Compute API params from AOI (includes geometry for global/custom areas)
   const apiParams = useMemo(() => aoiToAPI(aoi), [aoi]);
 
+  const activeOverlayUrl = useMemo(() => {
+    if (activeTab === "s2" && showS2) {
+      return `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${selectedYear}_3857/default/g/{z}/{y}/{x}.jpg`;
+    }
+    if (geeTile?.tileUrl) return geeTile.tileUrl;
+    if (contoursTile?.tileUrl) return contoursTile.tileUrl;
+    if (topoClassesTile?.tileUrl) return topoClassesTile.tileUrl;
+    if (landCoverTile?.tileUrl) return landCoverTile.tileUrl;
+    if (lineamentsTile?.tileUrl) return lineamentsTile.tileUrl;
+    if (targetingTile?.tileUrl) return targetingTile.tileUrl;
+    if (spiNdviResult) {
+      return spiLayerMode === "spi" ? spiNdviResult.spiTileUrl : spiNdviResult.ndviTileUrl;
+    }
+    return null;
+  }, [activeTab, showS2, selectedYear, geeTile, contoursTile, topoClassesTile, landCoverTile, lineamentsTile, targetingTile, spiNdviResult, spiLayerMode]);
+
   const { data: geologyGeoJSON, isFetching } = useGeologyGeoJSON(
     province, district, "code2006",
     activeTab !== "s2" && !useGEE
@@ -2854,22 +2870,6 @@ export default function GeoAnalises({
       })
     );
   }, [categoryFilter]);
-
-  const activeOverlayUrl = useMemo(() => {
-    if (activeTab === "s2" && showS2) {
-      return `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${selectedYear}_3857/default/g/{z}/{y}/{x}.jpg`;
-    }
-    if (geeTile?.tileUrl) return geeTile.tileUrl;
-    if (contoursTile?.tileUrl) return contoursTile.tileUrl;
-    if (topoClassesTile?.tileUrl) return topoClassesTile.tileUrl;
-    if (landCoverTile?.tileUrl) return landCoverTile.tileUrl;
-    if (lineamentsTile?.tileUrl) return lineamentsTile.tileUrl;
-    if (targetingTile?.tileUrl) return targetingTile.tileUrl;
-    if (spiNdviResult) {
-      return spiLayerMode === "spi" ? spiNdviResult.spiTileUrl : spiNdviResult.ndviTileUrl;
-    }
-    return null;
-  }, [activeTab, showS2, selectedYear, geeTile, contoursTile, topoClassesTile, landCoverTile, lineamentsTile, targetingTile, spiNdviResult, spiLayerMode]);
 
   // Composite, lineaments, targeting & GEE-only indices require GEE
   const requiresGee = isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || isGeeOnly;
