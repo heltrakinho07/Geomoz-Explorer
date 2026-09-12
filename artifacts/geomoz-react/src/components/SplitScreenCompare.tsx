@@ -13,6 +13,8 @@ import {
   Loader2,
   Check,
   ArrowLeftRight,
+  AlertTriangle,
+  KeyRound,
 } from "lucide-react";
 
 export type CompareMode = "temporal_gee" | "analysis_vs_satellite" | "s2_temporal";
@@ -114,6 +116,9 @@ export interface SplitScreenCompareProps {
   onDatesRightChange?: (start: string, end: string) => void;
   isProcessingGee?: boolean;
   onProcessGee?: () => void;
+  geeConnected?: boolean;
+  compareError?: string | null;
+  onOpenGeeAuth?: () => void;
   leftLabel?: string;
   rightLabel?: string;
   options?: CompareOption[];
@@ -142,6 +147,9 @@ export default function SplitScreenCompare({
   onDatesRightChange,
   isProcessingGee = false,
   onProcessGee,
+  geeConnected,
+  compareError,
+  onOpenGeeAuth,
   leftLabel,
   rightLabel,
   options = [
@@ -331,10 +339,10 @@ export default function SplitScreenCompare({
               type="button"
               onClick={() => setShowConfigMenu(!showConfigMenu)}
               className="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors"
-              title="Configurar datas de comparação e cenários"
+              title="Cenários de Comparação Pré-definidos"
             >
               <Calendar size={13} className="text-sky-500" />
-              <span className="hidden sm:inline">Datas & Cenários</span>
+              <span className="hidden sm:inline">Cenários & Datas</span>
             </button>
 
             {/* Config Popover */}
@@ -536,6 +544,66 @@ export default function SplitScreenCompare({
             </button>
           )}
         </div>
+
+        {/* Error Alert Banner */}
+        {compareError && (
+          <div className="mt-2 flex items-center justify-between gap-2 px-3 py-1.5 bg-rose-50/95 dark:bg-rose-950/95 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 rounded-xl text-xs shadow-lg backdrop-blur-md animate-in fade-in slide-in-from-top-1">
+            <div className="flex items-center gap-1.5 min-w-0 truncate">
+              <AlertTriangle size={14} className="text-rose-600 shrink-0" />
+              <span className="truncate font-medium">{compareError}</span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {onProcessGee && (
+                <button
+                  type="button"
+                  onClick={onProcessGee}
+                  className="px-2 py-0.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold transition-colors"
+                >
+                  Tentar de novo
+                </button>
+              )}
+              {onCompareModeChange && (
+                <button
+                  type="button"
+                  onClick={() => onCompareModeChange("s2_temporal")}
+                  className="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[10px] font-bold hover:bg-slate-50 transition-colors"
+                >
+                  Ver Sentinel-2
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Offline / GEE Not Connected Banner */}
+        {compareMode === "temporal_gee" && geeConnected === false && !compareError && (
+          <div className="mt-2 flex items-center justify-between gap-2 px-3 py-1.5 bg-amber-50/95 dark:bg-amber-950/95 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 rounded-xl text-xs shadow-lg backdrop-blur-md animate-in fade-in slide-in-from-top-1">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <KeyRound size={13} className="text-amber-600 shrink-0" />
+              <span className="truncate text-[11px] font-medium">GEE não autenticado (requer login Google no topo)</span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {onOpenGeeAuth && (
+                <button
+                  type="button"
+                  onClick={onOpenGeeAuth}
+                  className="px-2 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold transition-colors"
+                >
+                  Ligar GEE
+                </button>
+              )}
+              {onCompareModeChange && (
+                <button
+                  type="button"
+                  onClick={() => onCompareModeChange("s2_temporal")}
+                  className="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[10px] font-bold hover:bg-slate-50 transition-colors"
+                >
+                  Usar Sentinel-2
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Draggable Vertical Divider Line */}

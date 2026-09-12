@@ -807,6 +807,7 @@ async def gee_index(req: GEEIndexRequest, uid: str = Depends(require_gee_auth)):
         )
         result["province"] = req.province
         result["district"] = req.district
+        result["tile_url"] = result.get("tileUrl")
         return result
     except ValueError as exc:
         raise HTTPException(400, str(exc))

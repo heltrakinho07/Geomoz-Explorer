@@ -35,6 +35,7 @@ import {
   LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine, Area, ComposedChart,
   Scatter, CartesianGrid,
 } from "recharts";
+import { useToast } from "@/hooks/use-toast";
 
 import { useGeologyGeoJSON } from "@/hooks/useGeoMoz";
 import { useGeeAuth } from "@/hooks/useGeeAuth";
@@ -2424,6 +2425,7 @@ export default function GeoAnalises({
   const [geeCredsOpen, setGeeCredsOpen] = useState(false);
   const [basemap, setBasemap] = useState<BasemapType>("hybrid");
   const { geeConnected } = useGeeAuth();
+  const { toast } = useToast();
   const [activeTab, setActiveTab]     = useState<SpectralTab>("s2");
   const [showS2, setShowS2]           = useState(false);
   const [selectedYear, setSelectedYear] = useState("2024");
@@ -2438,10 +2440,13 @@ export default function GeoAnalises({
   const [compareEndDateLeft, setCompareEndDateLeft] = useState("2023-12-31");
   const [compareStartDateRight, setCompareStartDateRight] = useState("2024-01-01");
   const [compareEndDateRight, setCompareEndDateRight] = useState("2024-12-31");
+  const safeCompareLeftYear = String(Math.min(Math.max(parseInt(compareStartDateLeft.slice(0, 4) || compareLeftYear) || 2023, 2016), 2024));
+  const safeCompareRightYear = String(Math.min(Math.max(parseInt(compareStartDateRight.slice(0, 4) || compareRightYear) || 2024, 2016), 2024));
   const [geeTileLeft, setGeeTileLeft] = useState<string | null>(null);
   const [geeTileRight, setGeeTileRight] = useState<string | null>(null);
   const [isProcessingCompareGee, setIsProcessingCompareGee] = useState(false);
   const [compareGeeError, setCompareGeeError] = useState<string | null>(null);
+  const lastCompareKeyRef = useRef<string>("");
   const [timeLapsePeriodMode, setTimeLapsePeriodMode] = useState<TimeLapsePeriodMode>("recent");
   const [geeStatus, setGeeStatus]     = useState<GeeStatus | null>(null);
   const [geeLoading, setGeeLoading]   = useState(false);
@@ -2466,6 +2471,7 @@ export default function GeoAnalises({
   const [profileError, setProfileError]     = useState<string | null>(null);
   const [showEdges, setShowEdges]     = useState(true);
   const [useGEE, setUseGEE]           = useState(true);
+  const geeReady = Boolean(geeStatus?.connected && useGEE);
   const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [visParams, setVisParams] = useState<RasterVisParams>(DEFAULT_VIS_PARAMS);
   const [visPanelOpen, setVisPanelOpen] = useState(false);
@@ -2563,8 +2569,22 @@ export default function GeoAnalises({
   }, [activeTab]);
 
   const runCompareGee = useCallback(async () => {
+    if (!geeReady) {
+      setCompareGeeError("Google Earth Engine não conectado. Ligue a sua conta Google no topo.");
+      toast({
+        title: "Google Earth Engine não conectado",
+        description: "Ligue a sua conta Google no topo para processar análises bi-temporais GEE. Pode também usar a comparação ótica Sentinel-2.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsProcessingCompareGee(true);
     setCompareGeeError(null);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 35000);
+
     try {
       const aoiPayload = aoiToAPI(aoi);
       const targetIndex =
@@ -2574,6 +2594,7 @@ export default function GeoAnalises({
 
       const [resLeft, resRight] = await Promise.all([
         apiFetch("/geomoz-api/gee/index", {
+          signal: controller.signal,
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -2587,6 +2608,7 @@ export default function GeoAnalises({
           }),
         }),
         apiFetch("/geomoz-api/gee/index", {
+          signal: controller.signal,
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -2603,30 +2625,89 @@ export default function GeoAnalises({
 
       if (!resLeft.ok) {
         const err = await resLeft.json().catch(() => ({ detail: resLeft.statusText }));
-        throw new Error(`Erro no período 1 (Antes): ${err.detail || "Erro GEE"}`);
+        throw new Error(`Erro no período 1 (${compareStartDateLeft.slice(0, 4)}): ${err.detail || "Falha GEE"}`);
       }
       if (!resRight.ok) {
         const err = await resRight.json().catch(() => ({ detail: resRight.statusText }));
-        throw new Error(`Erro no período 2 (Depois): ${err.detail || "Erro GEE"}`);
+        throw new Error(`Erro no período 2 (${compareStartDateRight.slice(0, 4)}): ${err.detail || "Falha GEE"}`);
       }
 
       const [dataLeft, dataRight] = await Promise.all([resLeft.json(), resRight.json()]);
-      setGeeTileLeft(dataLeft.tile_url || null);
-      setGeeTileRight(dataRight.tile_url || null);
+      const leftUrl = dataLeft.tileUrl || dataLeft.tile_url || null;
+      const rightUrl = dataRight.tileUrl || dataRight.tile_url || null;
+
+      if (!leftUrl || !rightUrl) {
+        throw new Error("O Google Earth Engine não retornou as URLs de mosaico esperadas.");
+      }
+
+      setGeeTileLeft(leftUrl);
+      setGeeTileRight(rightUrl);
+      setCompareGeeError(null);
+      toast({
+        title: "Comparação GEE Calculada",
+        description: `Mosaicos de ${targetIndex.toUpperCase()} gerados para ${compareStartDateLeft.slice(0, 4)} vs ${compareStartDateRight.slice(0, 4)}.`,
+      });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = err instanceof Error ? (err.name === "AbortError" ? "Tempo limite excedido ao contactar o GEE (timeout 35s)." : err.message) : String(err);
       setCompareGeeError(msg);
       console.error("Erro ao comparar períodos GEE:", err);
+      toast({
+        title: "Erro na Comparação GEE",
+        description: msg,
+        variant: "destructive",
+      });
     } finally {
+      clearTimeout(timeoutId);
       setIsProcessingCompareGee(false);
     }
-  }, [activeTab, province, district, aoi, compareStartDateLeft, compareEndDateLeft, compareStartDateRight, compareEndDateRight]);
+  }, [geeReady, activeTab, province, district, aoi, compareStartDateLeft, compareEndDateLeft, compareStartDateRight, compareEndDateRight, toast]);
 
+  // Trigger comparison without infinite loop
   useEffect(() => {
-    if (compareActive && compareMode === "temporal_gee" && !geeTileLeft && !isProcessingCompareGee) {
+    if (!compareActive) {
+      lastCompareKeyRef.current = "";
+      return;
+    }
+    if (compareMode !== "temporal_gee") return;
+
+    if (!geeReady) {
+      if (lastCompareKeyRef.current !== "unconnected_fallback") {
+        lastCompareKeyRef.current = "unconnected_fallback";
+        if (geeTile?.tileUrl || activeOverlayUrl) {
+          setCompareMode("analysis_vs_satellite");
+        } else {
+          setCompareMode("s2_temporal");
+        }
+        toast({
+          title: "Modo Comparação Ativo",
+          description: "GEE não autenticado. A comparar via Sentinel-2 (2023 ⟷ Recente). Para bi-temporal GEE, ligue a conta Google no topo.",
+        });
+      }
+      return;
+    }
+
+    const currentKey = `${activeTab}_${province || ""}_${district || ""}_${compareStartDateLeft}_${compareEndDateLeft}_${compareStartDateRight}_${compareEndDateRight}`;
+    if (lastCompareKeyRef.current !== currentKey && !isProcessingCompareGee) {
+      lastCompareKeyRef.current = currentKey;
       runCompareGee();
     }
-  }, [compareActive, compareMode, runCompareGee, geeTileLeft, isProcessingCompareGee]);
+  }, [
+    compareActive,
+    compareMode,
+    geeReady,
+    activeTab,
+    province,
+    district,
+    compareStartDateLeft,
+    compareEndDateLeft,
+    compareStartDateRight,
+    compareEndDateRight,
+    isProcessingCompareGee,
+    runCompareGee,
+    geeTile,
+    activeOverlayUrl,
+    toast,
+  ]);
 
   const runProfile = useCallback(async () => {
     if (profilePoints.length < 2) return;
@@ -2790,7 +2871,6 @@ export default function GeoAnalises({
     return null;
   }, [activeTab, showS2, selectedYear, geeTile, contoursTile, topoClassesTile, landCoverTile, lineamentsTile, targetingTile, spiNdviResult, spiLayerMode]);
 
-  const geeReady = geeStatus?.connected && useGEE;
   // Composite, lineaments, targeting & GEE-only indices require GEE
   const requiresGee = isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || isGeeOnly;
   void requiresGee;
@@ -3644,6 +3724,19 @@ export default function GeoAnalises({
             </div>
           )}
 
+          {/* Floating HUD status indicator during GEE computation */}
+          {compareActive && isProcessingCompareGee && (
+            <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[660] bg-slate-900/90 text-white px-4 py-2.5 rounded-2xl shadow-2xl border border-sky-500/40 backdrop-blur-md flex items-center gap-3 animate-in fade-in zoom-in-95 pointer-events-none">
+              <Loader2 size={16} className="text-sky-400 animate-spin shrink-0" />
+              <div className="text-xs">
+                <div className="font-bold text-sky-200">A processar análise no Google Earth Engine...</div>
+                <div className="text-[10px] text-slate-300">
+                  {INDEX_DEFS.find((d) => d.id === activeTab)?.short || activeTab.toUpperCase()} ({compareStartDateLeft.slice(0, 4)} ⟷ {compareStartDateRight.slice(0, 4)})
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Split-Screen Compare Curtain Overlay */}
           {compareActive && (
             <SplitScreenCompare
@@ -3661,19 +3754,34 @@ export default function GeoAnalises({
               onDatesLeftChange={(s, e) => {
                 setCompareStartDateLeft(s);
                 setCompareEndDateLeft(e);
+                const y = s.slice(0, 4);
+                if (y && y.length === 4) setCompareLeftYear(y);
               }}
               startDateRight={compareStartDateRight}
               endDateRight={compareEndDateRight}
               onDatesRightChange={(s, e) => {
                 setCompareStartDateRight(s);
                 setCompareEndDateRight(e);
+                const y = s.slice(0, 4);
+                if (y && y.length === 4) setCompareRightYear(y);
               }}
               isProcessingGee={isProcessingCompareGee}
               onProcessGee={runCompareGee}
+              geeConnected={geeReady}
+              compareError={compareGeeError}
+              onOpenGeeAuth={() => setGeeCredsOpen(true)}
               leftValue={compareLeftYear}
               rightValue={compareRightYear}
-              onLeftChange={setCompareLeftYear}
-              onRightChange={setCompareRightYear}
+              onLeftChange={(y) => {
+                setCompareLeftYear(y);
+                setCompareStartDateLeft(`${y}-01-01`);
+                setCompareEndDateLeft(`${y}-12-31`);
+              }}
+              onRightChange={(y) => {
+                setCompareRightYear(y);
+                setCompareStartDateRight(`${y}-01-01`);
+                setCompareEndDateRight(`${y}-12-31`);
+              }}
               containerRef={mapContainerRef}
               onClose={() => setCompareActive(false)}
             />
@@ -3747,10 +3855,10 @@ export default function GeoAnalises({
                     />
                   ) : (
                     <TileLayer
-                      key={`s2-left-${compareLeftYear}`}
+                      key={`s2-left-${safeCompareLeftYear}`}
                       crossOrigin="anonymous"
-                      url={`https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${compareLeftYear}_3857/default/g/{z}/{y}/{x}.jpg`}
-                      attribution={`Sentinel-2 cloudless ${compareLeftYear} (Antes) — EOX`}
+                      url={`https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${safeCompareLeftYear}_3857/default/g/{z}/{y}/{x}.jpg`}
+                      attribution={`Sentinel-2 cloudless ${safeCompareLeftYear} (Antes) — EOX`}
                       maxZoom={18}
                     />
                   )}
@@ -3786,10 +3894,10 @@ export default function GeoAnalises({
                     />
                   ) : (
                     <TileLayer
-                      key={`s2-right-${compareRightYear}`}
+                      key={`s2-right-${safeCompareRightYear}`}
                       crossOrigin="anonymous"
-                      url={`https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${compareRightYear}_3857/default/g/{z}/{y}/{x}.jpg`}
-                      attribution={`Sentinel-2 cloudless ${compareRightYear} (Depois) — EOX`}
+                      url={`https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${safeCompareRightYear}_3857/default/g/{z}/{y}/{x}.jpg`}
+                      attribution={`Sentinel-2 cloudless ${safeCompareRightYear} (Depois) — EOX`}
                       maxZoom={18}
                     />
                   )}
