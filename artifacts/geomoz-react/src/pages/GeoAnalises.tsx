@@ -12,7 +12,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   MapContainer, TileLayer, GeoJSON, WMSTileLayer, ScaleControl,
-  Polyline, CircleMarker, useMapEvents,
+  Polyline, CircleMarker, useMapEvents, Pane,
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
@@ -25,8 +25,11 @@ import {
   TrendingDown, Route, Waves, X, FileDown,
   Sprout, ChevronLeft, ChevronRight, Navigation, Building2,
   AlertTriangle, Sparkles, ArrowLeft, LayoutGrid, Search, Globe, SlidersHorizontal,
+  Clock, Columns2,
 } from "lucide-react";
 import MapLibre3DView from "@/components/MapLibre3DView";
+import TimeLapsePlayer from "@/components/TimeLapsePlayer";
+import SplitScreenCompare from "@/components/SplitScreenCompare";
 
 import {
   LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine, Area, ComposedChart,
@@ -2410,7 +2413,13 @@ export default function GeoAnalises({
   const { geeConnected } = useGeeAuth();
   const [activeTab, setActiveTab]     = useState<SpectralTab>("s2");
   const [showS2, setShowS2]           = useState(false);
-  const [selectedYear, setSelectedYear] = useState("2022");
+  const [selectedYear, setSelectedYear] = useState("2024");
+  const [showTimeLapse, setShowTimeLapse] = useState(false);
+  const [timeLapsePlaying, setTimeLapsePlaying] = useState(false);
+  const [compareActive, setCompareActive] = useState(false);
+  const [splitPercent, setSplitPercent] = useState(50);
+  const [compareLeftYear, setCompareLeftYear] = useState("2018");
+  const [compareRightYear, setCompareRightYear] = useState("2024");
   const [geeStatus, setGeeStatus]     = useState<GeeStatus | null>(null);
   const [geeLoading, setGeeLoading]   = useState(false);
   const [geeTile, setGeeTile]         = useState<GeeResult | null>(null);
@@ -2828,6 +2837,10 @@ export default function GeoAnalises({
                     onClick={() => {
                       setSelectedCategory(cat.id);
                       setActiveTab(cat.defaultTab);
+                      if (cat.id === "optical") {
+                        setShowTimeLapse(true);
+                        setShowS2(true);
+                      }
                     }}
                     className="group bg-white rounded-2xl border border-slate-200 hover:border-sky-400 hover:shadow-xl transition-all duration-200 p-5 flex flex-col justify-between cursor-pointer hover:-translate-y-0.5"
                   >
@@ -2927,7 +2940,45 @@ export default function GeoAnalises({
             </div>
 
             {/* Right Header Actions */}
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              {/* TimeLapse toggle button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTimeLapse(v => !v);
+                  if (compareActive) setCompareActive(false);
+                }}
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-2xs transition-all ${
+                  showTimeLapse
+                    ? "bg-sky-50 dark:bg-sky-950/60 border-sky-400 text-sky-700 dark:text-sky-300 ring-2 ring-sky-300/40"
+                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                }`}
+                title="Linha do Tempo e Animação Time-Lapse"
+              >
+                <Clock size={13} className={showTimeLapse ? "text-sky-500 animate-spin" : "text-slate-500"} />
+                <span className="hidden md:inline">Time-Lapse</span>
+              </button>
+
+              {/* Split-Screen Compare button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setCompareActive(v => !v);
+                  if (showTimeLapse) setShowTimeLapse(false);
+                }}
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-2xs transition-all ${
+                  compareActive
+                    ? "bg-indigo-50 dark:bg-indigo-950/60 border-indigo-400 text-indigo-700 dark:text-indigo-300 ring-2 ring-indigo-300/40"
+                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                }`}
+                title="Comparar Antes e Depois (Ecrã Dividido)"
+              >
+                <Columns2 size={13} className={compareActive ? "text-indigo-500" : "text-slate-500"} />
+                <span className="hidden md:inline">Comparar</span>
+              </button>
+
+              <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+
               <button
                 onClick={() => handleViewModeChange(viewMode === "2d" ? "3d" : "2d")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-2xs transition-all ${
@@ -3212,10 +3263,38 @@ export default function GeoAnalises({
                 <div className="relative">
                   <select className="w-full appearance-none text-sm bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
                     value={selectedYear} onChange={e => setSelectedYear(e.target.value)}>
-                    {["2022","2021","2020"].map(y => <option key={y}>{y}</option>)}
+                    {["2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016"].map(y => <option key={y}>{y}</option>)}
                   </select>
                   <ChevronDown className="absolute right-2.5 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
                 </div>
+              </div>
+
+              <div className="pt-2 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTimeLapse(true);
+                    setShowS2(true);
+                    if (compareActive) setCompareActive(false);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-700 rounded-xl text-xs font-bold transition-all shadow-2xs"
+                >
+                  <Clock size={14} className="text-sky-600" />
+                  <span>Abrir Animação Time-Lapse</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCompareActive(true);
+                    setShowS2(true);
+                    if (showTimeLapse) setShowTimeLapse(false);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-bold transition-all shadow-2xs"
+                >
+                  <Columns2 size={14} className="text-indigo-600" />
+                  <span>Comparar Antes e Depois</span>
+                </button>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={showS2} onChange={e => setShowS2(e.target.checked)} className="accent-sky-500" />
@@ -3416,6 +3495,34 @@ export default function GeoAnalises({
             </div>
           )}
 
+          {/* TimeLapse Player Floating Overlay */}
+          {showTimeLapse && !compareActive && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[650] w-[95%] sm:w-[90%] max-w-xl">
+              <TimeLapsePlayer
+                currentYear={selectedYear}
+                onYearChange={setSelectedYear}
+                isPlaying={timeLapsePlaying}
+                onPlayChange={setTimeLapsePlaying}
+                title={activeTab === "s2" ? "Sentinel-2 Mosaicos Globais" : "Evolução Temporal"}
+                onClose={() => setShowTimeLapse(false)}
+              />
+            </div>
+          )}
+
+          {/* Split-Screen Compare Curtain Overlay */}
+          {compareActive && (
+            <SplitScreenCompare
+              splitPercent={splitPercent}
+              onSplitChange={setSplitPercent}
+              leftValue={compareLeftYear}
+              rightValue={compareRightYear}
+              onLeftChange={setCompareLeftYear}
+              onRightChange={setCompareRightYear}
+              containerRef={mapContainerRef}
+              onClose={() => setCompareActive(false)}
+            />
+          )}
+
           {viewMode === "3d" ? (
             <MapLibre3DView
               province={province}
@@ -3452,7 +3559,7 @@ export default function GeoAnalises({
 
               <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }}>
             {/* Base tiles */}
-            {showS2 || activeTab === "s2" ? (
+            {compareActive ? (
               <>
                 <TileLayer
                   key={basemap}
@@ -3462,14 +3569,61 @@ export default function GeoAnalises({
                   attribution={GOOGLE_BASEMAPS[basemap].attribution}
                   maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
                 />
-                <WMSTileLayer
-                  url="https://tiles.maps.eox.at/wms"
-                  layers={`s2cloudless-${selectedYear}`}
-                  format="image/jpeg"
-                  version="1.1.1"
+                {/* Left Side (Antes) */}
+                <Pane name="compareLeftPane" style={{ clipPath: `inset(0 calc(100% - ${splitPercent}%) 0 0)`, zIndex: 440 }}>
+                  <TileLayer
+                    key={`s2-left-${compareLeftYear}`}
+                    crossOrigin="anonymous"
+                    url={`https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${compareLeftYear}_3857/default/g/{z}/{y}/{x}.jpg`}
+                    attribution={`Sentinel-2 cloudless ${compareLeftYear} (Antes) — EOX`}
+                    maxZoom={18}
+                  />
+                  <TileLayer
+                    crossOrigin="anonymous"
+                    url="https://mt{s}.google.com/vt/lyrs=h&x={x}&y={y}&z={z}"
+                    subdomains="0123"
+                    attribution=""
+                    maxZoom={20}
+                    pane="shadowPane"
+                  />
+                </Pane>
+
+                {/* Right Side (Depois) */}
+                <Pane name="compareRightPane" style={{ clipPath: `inset(0 0 0 ${splitPercent}%)`, zIndex: 450 }}>
+                  <TileLayer
+                    key={`s2-right-${compareRightYear}`}
+                    crossOrigin="anonymous"
+                    url={`https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${compareRightYear}_3857/default/g/{z}/{y}/{x}.jpg`}
+                    attribution={`Sentinel-2 cloudless ${compareRightYear} (Depois) — EOX`}
+                    maxZoom={18}
+                  />
+                  <TileLayer
+                    crossOrigin="anonymous"
+                    url="https://mt{s}.google.com/vt/lyrs=h&x={x}&y={y}&z={z}"
+                    subdomains="0123"
+                    attribution=""
+                    maxZoom={20}
+                    pane="shadowPane"
+                  />
+                </Pane>
+              </>
+            ) : showS2 || activeTab === "s2" ? (
+              <>
+                <TileLayer
+                  key={basemap}
+                  crossOrigin="anonymous"
+                  url={GOOGLE_BASEMAPS[basemap].url}
+                  subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
+                  attribution={GOOGLE_BASEMAPS[basemap].attribution}
+                  maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
+                />
+                <TileLayer
+                  key={`s2-${selectedYear}`}
+                  crossOrigin="anonymous"
+                  url={`https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${selectedYear}_3857/default/g/{z}/{y}/{x}.jpg`}
                   attribution={`Sentinel-2 cloudless ${selectedYear} — EOX IT Services GmbH`}
                   maxZoom={18}
-                  opacity={activeTab === "s2" ? 1 : 0.5}
+                  opacity={activeTab === "s2" ? 1 : 0.65}
                 />
                 <TileLayer
                   crossOrigin="anonymous"

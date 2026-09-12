@@ -6,6 +6,7 @@ import {
   useMap,
   useMapEvents,
   ScaleControl,
+  Pane,
 } from "react-leaflet";
 import type { Layer } from "leaflet";
 import L from "leaflet";
@@ -18,7 +19,9 @@ import BasemapSwitcher from "./BasemapSwitcher";
 import MapTools from "./MapTools";
 import MapDraw from "./MapDraw";
 import MapLibre3DView from "./MapLibre3DView";
-import { Globe, Layers } from "lucide-react";
+import TimeLapsePlayer from "./TimeLapsePlayer";
+import SplitScreenCompare from "./SplitScreenCompare";
+import { Globe, Layers, Clock, Columns2 } from "lucide-react";
 import type { AreaOfInterest } from "@/lib/aoi";
 
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
@@ -206,12 +209,91 @@ export default function MapView({
     layer.bindTooltip(name, { sticky: true });
   }
 
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const [showTimeLapse, setShowTimeLapse] = useState(false);
+  const [timeLapsePlaying, setTimeLapsePlaying] = useState(false);
+  const [selectedYear, setSelectedYear] = useState("2024");
+  const [compareActive, setCompareActive] = useState(false);
+  const [splitPercent, setSplitPercent] = useState(50);
+  const [compareLeftYear, setCompareLeftYear] = useState("2018");
+  const [compareRightYear, setCompareRightYear] = useState("2024");
+
   const geologyKey = `geo-${province}-${district}-${colorBy}-${geologyGeoJSON?.features?.length ?? 0}`;
   const provKey = `prov-${provinceGeoJSON?.features?.length ?? 0}-${province}`;
   const distKey = `dist-${districtGeoJSON?.features?.length ?? 0}-${district}`;
 
   return (
-    <main className="flex-1 relative overflow-hidden" id="geomoz-map-area">
+    <main className="flex-1 relative overflow-hidden" id="geomoz-map-area" ref={mapContainerRef}>
+      {/* Top Temporal Toolbar: Time-Lapse & Split-Screen */}
+      <div className="absolute top-4 right-14 z-[600] flex items-center gap-1.5 bg-white/95 backdrop-blur-md p-1 rounded-xl shadow-md border border-slate-200/80">
+        <button
+          type="button"
+          onClick={() => {
+            const next = !showTimeLapse;
+            setShowTimeLapse(next);
+            if (next && compareActive) setCompareActive(false);
+          }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            showTimeLapse
+              ? "bg-sky-500 text-white shadow-sm"
+              : "text-slate-700 hover:bg-slate-100"
+          }`}
+          title="Time-Lapse Multitemporal (2016–2024)"
+        >
+          <Clock size={13} className={showTimeLapse ? "animate-spin" : ""} />
+          <span>Time-Lapse</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const next = !compareActive;
+            setCompareActive(next);
+            if (next && showTimeLapse) setShowTimeLapse(false);
+            if (next && activeViewMode === "3d") {
+              handleViewModeChange("2d");
+            }
+          }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            compareActive
+              ? "bg-indigo-600 text-white shadow-sm"
+              : "text-slate-700 hover:bg-slate-100"
+          }`}
+          title="Comparação Split-Screen Antes / Depois"
+        >
+          <Columns2 size={13} />
+          <span>Comparar</span>
+        </button>
+      </div>
+
+      {/* TimeLapse Player Floating Overlay */}
+      {showTimeLapse && !compareActive && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[650] w-[95%] sm:w-[90%] max-w-xl">
+          <TimeLapsePlayer
+            currentYear={selectedYear}
+            onYearChange={setSelectedYear}
+            isPlaying={timeLapsePlaying}
+            onPlayChange={setTimeLapsePlaying}
+            title="Sentinel-2 Mosaicos Globais (2016–2024)"
+            onClose={() => setShowTimeLapse(false)}
+          />
+        </div>
+      )}
+
+      {/* Split-Screen Compare Curtain Overlay */}
+      {compareActive && (
+        <SplitScreenCompare
+          splitPercent={splitPercent}
+          onSplitChange={setSplitPercent}
+          leftValue={compareLeftYear}
+          rightValue={compareRightYear}
+          onLeftChange={setCompareLeftYear}
+          onRightChange={setCompareRightYear}
+          containerRef={mapContainerRef}
+          onClose={() => setCompareActive(false)}
+        />
+      )}
+
       {activeViewMode === "3d" ? (
         <MapLibre3DView
           province={province}
@@ -221,6 +303,12 @@ export default function MapView({
           aoi={aoi}
           basemap={basemap}
           viewMode={activeViewMode}
+          overlayRasterUrl={
+            showTimeLapse
+              ? `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${selectedYear}_3857/default/g/{z}/{y}/{x}.jpg`
+              : undefined
+          }
+          overlayOpacity={0.92}
           onBasemapChange={setBasemap}
           onViewModeChange={handleViewModeChange}
           onProvinceClick={onProvinceClick}
@@ -266,14 +354,91 @@ export default function MapView({
           <NorthArrow />
 
           <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl>
-            <TileLayer
-              key={basemap}
-              crossOrigin="anonymous"
-              url={GOOGLE_BASEMAPS[basemap].url}
-              subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
-              attribution={GOOGLE_BASEMAPS[basemap].attribution}
-              maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
-            />
+            {compareActive ? (
+              <>
+                <TileLayer
+                  key={basemap}
+                  crossOrigin="anonymous"
+                  url={GOOGLE_BASEMAPS[basemap].url}
+                  subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
+                  attribution={GOOGLE_BASEMAPS[basemap].attribution}
+                  maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
+                />
+                {/* Left Side (Antes) */}
+                <Pane name="mapviewCompareLeftPane" style={{ clipPath: `inset(0 calc(100% - ${splitPercent}%) 0 0)`, zIndex: 440 }}>
+                  <TileLayer
+                    key={`s2-mv-left-${compareLeftYear}`}
+                    crossOrigin="anonymous"
+                    url={`https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${compareLeftYear}_3857/default/g/{z}/{y}/{x}.jpg`}
+                    attribution={`Sentinel-2 cloudless ${compareLeftYear} (Antes) — EOX`}
+                    maxZoom={18}
+                  />
+                  <TileLayer
+                    crossOrigin="anonymous"
+                    url="https://mt{s}.google.com/vt/lyrs=h&x={x}&y={y}&z={z}"
+                    subdomains="0123"
+                    attribution=""
+                    maxZoom={20}
+                    pane="shadowPane"
+                  />
+                </Pane>
+
+                {/* Right Side (Depois) */}
+                <Pane name="mapviewCompareRightPane" style={{ clipPath: `inset(0 0 0 ${splitPercent}%)`, zIndex: 450 }}>
+                  <TileLayer
+                    key={`s2-mv-right-${compareRightYear}`}
+                    crossOrigin="anonymous"
+                    url={`https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${compareRightYear}_3857/default/g/{z}/{y}/{x}.jpg`}
+                    attribution={`Sentinel-2 cloudless ${compareRightYear} (Depois) — EOX`}
+                    maxZoom={18}
+                  />
+                  <TileLayer
+                    crossOrigin="anonymous"
+                    url="https://mt{s}.google.com/vt/lyrs=h&x={x}&y={y}&z={z}"
+                    subdomains="0123"
+                    attribution=""
+                    maxZoom={20}
+                    pane="shadowPane"
+                  />
+                </Pane>
+              </>
+            ) : showTimeLapse ? (
+              <>
+                <TileLayer
+                  key={basemap}
+                  crossOrigin="anonymous"
+                  url={GOOGLE_BASEMAPS[basemap].url}
+                  subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
+                  attribution={GOOGLE_BASEMAPS[basemap].attribution}
+                  maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
+                />
+                <TileLayer
+                  key={`s2-mv-timelapse-${selectedYear}`}
+                  crossOrigin="anonymous"
+                  url={`https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${selectedYear}_3857/default/g/{z}/{y}/{x}.jpg`}
+                  attribution={`Sentinel-2 cloudless ${selectedYear} — EOX`}
+                  maxZoom={18}
+                  opacity={0.92}
+                />
+                <TileLayer
+                  crossOrigin="anonymous"
+                  url="https://mt{s}.google.com/vt/lyrs=h&x={x}&y={y}&z={z}"
+                  subdomains="0123"
+                  attribution=""
+                  maxZoom={20}
+                  pane="shadowPane"
+                />
+              </>
+            ) : (
+              <TileLayer
+                key={basemap}
+                crossOrigin="anonymous"
+                url={GOOGLE_BASEMAPS[basemap].url}
+                subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
+                attribution={GOOGLE_BASEMAPS[basemap].attribution}
+                maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
+              />
+            )}
 
             <ScaleControl position="bottomleft" imperial={false} />
             <MapStateTracker onMapState={onMapState} mapRef={mapRef} />
