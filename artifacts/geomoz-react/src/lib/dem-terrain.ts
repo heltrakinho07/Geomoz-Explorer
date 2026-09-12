@@ -249,3 +249,141 @@ export function alignCameraToSection(
   });
 }
 
+/**
+ * Calculates terrain slope in degrees at [lng, lat] using MapLibre's DEM elevation mesh.
+ */
+export function calculateSlopeDegrees(
+  map: maplibregl.Map,
+  lng: number,
+  lat: number
+): number | null {
+  try {
+    const e0 = map.queryTerrainElevation([lng, lat]);
+    if (e0 === null || e0 === undefined) return null;
+
+    // Delta ~30m in degrees (~0.00027 deg)
+    const delta = 0.00027;
+    const eEast = map.queryTerrainElevation([lng + delta, lat]) ?? e0;
+    const eNorth = map.queryTerrainElevation([lng, lat + delta]) ?? e0;
+
+    const distM = 30;
+    const dzEast = eEast - e0;
+    const dzNorth = eNorth - e0;
+
+    const rise = Math.sqrt(dzEast * dzEast + dzNorth * dzNorth);
+    const slopeRad = Math.atan(rise / distM);
+    return Math.round((slopeRad * 180) / Math.PI);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Qualitative classification of slope steepness.
+ */
+export function classifySlope(slopeDeg: number): string {
+  if (slopeDeg < 3) return "Plano";
+  if (slopeDeg < 8) return "Suave";
+  if (slopeDeg < 15) return "Ondulado";
+  if (slopeDeg < 30) return "Forte";
+  return "Escarpado";
+}
+
+/**
+ * Qualitative classification for common spectral indices.
+ */
+export function classifySpectralIndex(indexId: string, value: number): string {
+  const id = indexId.toLowerCase();
+  if (id.includes("ndvi") || id.includes("savi") || id.includes("evi") || id.includes("gndvi")) {
+    if (value < 0.1) return "Solo / Água";
+    if (value < 0.25) return "Vegetação Rala";
+    if (value < 0.45) return "Vigor Moderado";
+    if (value < 0.65) return "Vigor Alto";
+    return "Vigor Muito Alto";
+  }
+  if (id.includes("ndwi") || id.includes("mndwi") || id.includes("awei")) {
+    if (value > 0.2) return "Água Profunda / Aberta";
+    if (value > 0) return "Margem / Húmida";
+    return "Solo Não Saturado";
+  }
+  if (id.includes("clay") || id.includes("aloh")) {
+    if (value > 0.6) return "Forte Alteração Hidrotermal";
+    if (value > 0.4) return "Moderada Alteração";
+    return "Baixa Alteração";
+  }
+  if (id.includes("fe_ox") || id.includes("iron")) {
+    if (value > 0.6) return "Alto Teor de Ferro";
+    if (value > 0.4) return "Moderado";
+    return "Baixo";
+  }
+  return "";
+}
+
+const terrariumTileCache = new Map<string, ImageData>();
+
+/**
+ * Samples elevation in meters from Terrarium DEM tiles in 2D (Leaflet or non-WebGL)
+ * using an in-memory cache of decoded tile image data.
+ */
+export async function sampleTerrariumElevation(
+  lat: number,
+  lng: number,
+  zoom = 10
+): Promise<number | null> {
+  if (lat > 85.05 || lat < -85.05) return null;
+  const n = Math.pow(2, zoom);
+  const x = Math.floor(((lng + 180) / 360) * n);
+  const latRad = (lat * Math.PI) / 180;
+  const y = Math.floor(
+    ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n
+  );
+
+  const key = `${zoom}/${x}/${y}`;
+  let imgData = terrariumTileCache.get(key);
+
+  if (!imgData) {
+    const url = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${x}/${y}.png`;
+    try {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = url;
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject();
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+      ctx.drawImage(img, 0, 0);
+      imgData = ctx.getImageData(0, 0, 256, 256);
+
+      // LRU cache eviction if more than 25 tiles cached
+      if (terrariumTileCache.size > 25) {
+        const firstKey = terrariumTileCache.keys().next().value;
+        if (firstKey) terrariumTileCache.delete(firstKey);
+      }
+      terrariumTileCache.set(key, imgData);
+    } catch {
+      return null;
+    }
+  }
+
+  const fx = (((lng + 180) / 360) * n - x) * 256;
+  const fy =
+    (((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n - y) * 256;
+  const px = Math.min(255, Math.max(0, Math.floor(fx)));
+  const py = Math.min(255, Math.max(0, Math.floor(fy)));
+
+  const idx = (py * 256 + px) * 4;
+  const r = imgData.data[idx];
+  const g = imgData.data[idx + 1];
+  const b = imgData.data[idx + 2];
+
+  // Terrarium DEM formula: (R * 256 + G + B / 256) - 32768
+  const elevation = r * 256 + g + b / 256 - 32768;
+  return Math.round(elevation);
+}
+

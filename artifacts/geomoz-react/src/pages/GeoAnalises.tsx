@@ -30,6 +30,8 @@ import {
 import MapLibre3DView from "@/components/MapLibre3DView";
 import TimeLapsePlayer, { type TimeLapsePeriodMode } from "@/components/TimeLapsePlayer";
 import SplitScreenCompare, { type CompareMode } from "@/components/SplitScreenCompare";
+import PixelInspectorHUD, { type AnalysisContext } from "@/components/PixelInspectorHUD";
+import { sampleTerrariumElevation } from "@/lib/dem-terrain";
 
 import {
   LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine, Area, ComposedChart,
@@ -1620,6 +1622,33 @@ function ProfileClickHandler({
   return null;
 }
 
+function GeoAnalisesCoordTracker({
+  onMove,
+}: {
+  onMove: (lat: number | null, lng: number | null, ele?: number | null) => void;
+}) {
+  const timerRef = useRef<any>(null);
+  useMapEvents({
+    mousemove(e) {
+      const { lat, lng } = e.latlng;
+      onMove(lat, lng, null);
+
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(async () => {
+        try {
+          const ele = await sampleTerrariumElevation(lat, lng, 10);
+          onMove(lat, lng, ele);
+        } catch {}
+      }, 60);
+    },
+    mouseout() {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      onMove(null, null, null);
+    },
+  });
+  return null;
+}
+
 function ProfileChart({ result, onCursorChange }: {
   result: ProfileResult;
   onCursorChange?: (idx: number | null) => void;
@@ -2448,6 +2477,9 @@ export default function GeoAnalises({
   const [compareGeeError, setCompareGeeError] = useState<string | null>(null);
   const lastCompareKeyRef = useRef<string>("");
   const [timeLapsePeriodMode, setTimeLapsePeriodMode] = useState<TimeLapsePeriodMode>("recent");
+  const [coords2D, setCoords2D] = useState<{ lat: number; lng: number } | null>(null);
+  const [elevation2D, setElevation2D] = useState<number | null>(null);
+  const [hoveredProxyValue, setHoveredProxyValue] = useState<number | null>(null);
   const [geeStatus, setGeeStatus]     = useState<GeeStatus | null>(null);
   const [geeLoading, setGeeLoading]   = useState(false);
   const [geeTile, setGeeTile]         = useState<GeeResult | null>(null);
@@ -2795,6 +2827,75 @@ export default function GeoAnalises({
   const isTopoClass   = activeTab === "topo_class";
   const spectralKey = `spectral-${activeTab}-${province}-${district}-${geologyGeoJSON?.features?.length ?? 0}`;
   const geeTileKey  = `gee-${activeTab}-${geeTile?.tileUrl ?? ""}`;
+
+  const activeAnalysisContext: AnalysisContext | null = useMemo(() => {
+    if (activeTab === "s2" || showS2) {
+      return {
+        label: `Sentinel-2 Óptico (${selectedYear})`,
+        category: "Satélite Óptico",
+        classLabel: "RGB Natural",
+      };
+    }
+    if (isLineaments) {
+      return {
+        label: "Lineamentos Estruturais (SRTM/GLO-30)",
+        category: "Geologia Estrutural",
+        classLabel: lineamentsTile ? `${lineamentsTile.sampleCount || 0} amostras` : undefined,
+      };
+    }
+    if (isContours) {
+      return {
+        label: `Curvas de Nível (${contoursTile?.intervalM ?? 20} m)`,
+        category: "Topografia",
+        classLabel: "Isolinhas DEM",
+      };
+    }
+    if (isProfile) {
+      return {
+        label: "Perfil Topográfico 3D (A→B)",
+        category: "Morfologia",
+        classLabel: "Corte Altimétrico",
+      };
+    }
+    if (isTargeting) {
+      return {
+        label: `Targeting Mineral: ${targetingTile?.mineralName ?? "Multi-critério"}`,
+        category: "Prospeção Mineral",
+        classLabel: "Favorabilidade",
+      };
+    }
+    if (isLandCover) {
+      return {
+        label: "Cobertura do Solo (ESA WorldCover)",
+        category: "Uso do Solo",
+        classLabel: "10 m Global",
+      };
+    }
+    if (activeDef) {
+      return {
+        label: activeDef.label,
+        category: selectedCategory ?? "GeoAnálise",
+        classLabel: activeDef.short,
+        value: hoveredProxyValue !== null ? Number(hoveredProxyValue.toFixed(2)) : undefined,
+      };
+    }
+    return null;
+  }, [
+    activeDef,
+    activeTab,
+    showS2,
+    selectedYear,
+    isLineaments,
+    lineamentsTile,
+    isContours,
+    contoursTile,
+    isProfile,
+    isTargeting,
+    targetingTile,
+    isLandCover,
+    selectedCategory,
+    hoveredProxyValue,
+  ]);
 
   // Tabs grouped by category — rendered below with section labels
   const tabGroups: { name: string; badge: string; badgeColor: string; tabs: { id: string; label: string; icon: React.ReactNode }[] }[] = [
@@ -3164,24 +3265,26 @@ export default function GeoAnalises({
                 <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 font-extrabold hidden sm:inline">2016–2024</span>
               </button>
 
-              {/* Split-Screen Compare button */}
-              <button
-                type="button"
-                onClick={() => {
-                  setCompareActive(v => !v);
-                  if (showTimeLapse) setShowTimeLapse(false);
-                }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold shadow-xs transition-all ${
-                  compareActive
-                    ? "bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20 ring-2 ring-indigo-300/40 scale-105"
-                    : "bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200"
-                }`}
-                title="Comparar a análise selecionada entre o período padrão 2023 e o período recente (Ecrã Dividido)"
-              >
-                <Columns2 size={13} className={compareActive ? "text-white" : "text-indigo-600"} />
-                <span>Comparar</span>
-                <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 font-extrabold hidden sm:inline">2023 ⟷ Recente</span>
-              </button>
+              {/* Split-Screen Compare button (ocultado temporariamente a pedido do utilizador, lógica preservada) */}
+              {false && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCompareActive(v => !v);
+                    if (showTimeLapse) setShowTimeLapse(false);
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold shadow-xs transition-all ${
+                    compareActive
+                      ? "bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20 ring-2 ring-indigo-300/40 scale-105"
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200"
+                  }`}
+                  title="Comparar a análise selecionada entre o período padrão 2023 e o período recente (Ecrã Dividido)"
+                >
+                  <Columns2 size={13} className={compareActive ? "text-white" : "text-indigo-600"} />
+                  <span>Comparar</span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 font-extrabold hidden sm:inline">2023 ⟷ Recente</span>
+                </button>
+              )}
 
               <div className="h-4 w-px bg-slate-200 hidden sm:block" />
 
@@ -3724,8 +3827,8 @@ export default function GeoAnalises({
             </div>
           )}
 
-          {/* Floating HUD status indicator during GEE computation */}
-          {compareActive && isProcessingCompareGee && (
+          {/* Floating HUD status indicator during GEE computation (ocultado temporariamente a pedido do utilizador) */}
+          {false && compareActive && isProcessingCompareGee && (
             <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[660] bg-slate-900/90 text-white px-4 py-2.5 rounded-2xl shadow-2xl border border-sky-500/40 backdrop-blur-md flex items-center gap-3 animate-in fade-in zoom-in-95 pointer-events-none">
               <Loader2 size={16} className="text-sky-400 animate-spin shrink-0" />
               <div className="text-xs">
@@ -3737,8 +3840,8 @@ export default function GeoAnalises({
             </div>
           )}
 
-          {/* Split-Screen Compare Curtain Overlay */}
-          {compareActive && (
+          {/* Split-Screen Compare Curtain Overlay (ocultado temporariamente a pedido do utilizador, lógica preservada) */}
+          {false && compareActive && (
             <SplitScreenCompare
               splitPercent={splitPercent}
               onSplitChange={setSplitPercent}
@@ -3807,6 +3910,7 @@ export default function GeoAnalises({
                   : null
               }
               overlayGeoJSONKey={spectralKey}
+              activeAnalysis={activeAnalysisContext}
               className="w-full h-full"
             />
           ) : (
@@ -4112,10 +4216,26 @@ export default function GeoAnalises({
                     `<b>${legend}</b><br/>${activeDef?.short}: <b>${(val * 100).toFixed(0)}%</b><br/>ERA: ${p?.ERA ?? "—"} · PERIOD: ${p?.PERIOD ?? "—"}`,
                     { sticky: true }
                   );
+                  (layer as L.Path).on("mouseover", () => setHoveredProxyValue(val));
+                  (layer as L.Path).on("mouseout", () => setHoveredProxyValue(null));
                 }}
               />
             )}
             <MapTools />
+            <GeoAnalisesCoordTracker
+              onMove={(lat, lng, ele) => {
+                if (lat !== null && lng !== null) {
+                  setCoords2D({ lat, lng });
+                  if (ele !== undefined && ele !== null) {
+                    setElevation2D(ele);
+                  }
+                } else {
+                  setCoords2D(null);
+                  setElevation2D(null);
+                  setHoveredProxyValue(null);
+                }
+              }}
+            />
             <MapDraw
               enabled={drawingEnabled}
               hasDrawnAOI={aoi.source === "draw"}
@@ -4124,6 +4244,16 @@ export default function GeoAnalises({
               onCancel={() => setDrawingEnabled(false)}
             />
           </MapContainer>
+
+          {/* Real-time Hover Pixel Inspector HUD in 2D mode */}
+          <PixelInspectorHUD
+            coords={coords2D}
+            elevation={elevation2D}
+            admin={province ? { province, district: district ?? undefined } : null}
+            analysis={activeAnalysisContext}
+            viewMode="2d"
+            className="absolute bottom-6 right-3 sm:right-4 z-[600]"
+          />
         </>
       )}
           {/* RasterVisPanel — floating visualization controls */}

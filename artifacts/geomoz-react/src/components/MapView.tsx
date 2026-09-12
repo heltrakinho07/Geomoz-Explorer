@@ -21,6 +21,11 @@ import MapDraw from "./MapDraw";
 import MapLibre3DView from "./MapLibre3DView";
 import TimeLapsePlayer from "./TimeLapsePlayer";
 import SplitScreenCompare from "./SplitScreenCompare";
+import PixelInspectorHUD, {
+  type GeologyContext,
+  type AdminContext,
+} from "./PixelInspectorHUD";
+import { sampleTerrariumElevation } from "@/lib/dem-terrain";
 import { Globe, Layers, Clock, Columns2 } from "lucide-react";
 import type { AreaOfInterest } from "@/lib/aoi";
 
@@ -93,10 +98,29 @@ function MapStateTracker({ onMapState, mapRef }: {
   return null;
 }
 
-function CoordTracker({ onMove }: { onMove: (lat: number | null, lng: number | null) => void }) {
+function CoordTracker({
+  onMove,
+}: {
+  onMove: (lat: number | null, lng: number | null, ele?: number | null) => void;
+}) {
+  const timerRef = useRef<any>(null);
   useMapEvents({
-    mousemove(e) { onMove(e.latlng.lat, e.latlng.lng); },
-    mouseout() { onMove(null, null); },
+    mousemove(e) {
+      const { lat, lng } = e.latlng;
+      onMove(lat, lng, null);
+
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(async () => {
+        try {
+          const ele = await sampleTerrariumElevation(lat, lng, 10);
+          onMove(lat, lng, ele);
+        } catch {}
+      }, 60);
+    },
+    mouseout() {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      onMove(null, null, null);
+    },
   });
   return null;
 }
@@ -180,6 +204,10 @@ export default function MapView({
     fillOpacity: 0.82,
   });
 
+  const [coordsElevation, setCoordsElevation] = useState<number | null>(null);
+  const [hoveredGeology, setHoveredGeology] = useState<GeologyContext | null>(null);
+  const [hoveredAdmin, setHoveredAdmin] = useState<AdminContext | null>(null);
+
   function onEachProvince(feature: GeoJSON.Feature, layer: Layer) {
     const p = feature.properties as Record<string, string>;
     const name = p?.Provincia || p?.PROVINCIA || p?.NAME_1 || p?.name || "Province";
@@ -187,9 +215,11 @@ export default function MapView({
     layer.on("click", () => onProvinceClick?.(name));
     (layer as L.Path).on("mouseover", (e) => {
       (e.target as L.Path).setStyle({ fillOpacity: 0.35, weight: 2, fillColor: "#0ea5e9" });
+      setHoveredAdmin({ province: name });
     });
     (layer as L.Path).on("mouseout", (e) => {
       (e.target as L.Path).setStyle({ fillOpacity: province ? 0.05 : 0.2, weight: 1.5, fillColor: "#e2e8f0" });
+      setHoveredAdmin(province ? { province, district: district ?? undefined } : null);
     });
   }
 
@@ -201,12 +231,34 @@ export default function MapView({
     if (p?.ERA) lines.push(`Era: ${p.ERA}`);
     if (p?.PERIOD) lines.push(`Período: ${p.PERIOD}`);
     if (lines.length) layer.bindTooltip(lines.join("<br/>"), { sticky: true });
+
+    (layer as L.Path).on("mouseover", () => {
+      setHoveredGeology({
+        name: p?.Legend || p?.LEGEND || p?.code2006,
+        code: p?.code2006,
+        era: p?.ERA,
+        period: p?.PERIOD,
+      });
+    });
+    (layer as L.Path).on("mouseout", () => {
+      setHoveredGeology(null);
+    });
   }
 
   function onEachDistrict(feature: GeoJSON.Feature, layer: Layer) {
     const p = feature.properties as Record<string, string>;
     const name = p?.Distrito || p?.DISTRITO || p?.NAME_2 || p?.name || "District";
     layer.bindTooltip(name, { sticky: true });
+
+    (layer as L.Path).on("mouseover", () => {
+      setHoveredAdmin({
+        province: province ?? undefined,
+        district: name,
+      });
+    });
+    (layer as L.Path).on("mouseout", () => {
+      setHoveredAdmin(province ? { province, district: district ?? undefined } : null);
+    });
   }
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -247,27 +299,30 @@ export default function MapView({
 
         <div className="w-px h-4 bg-slate-700" />
 
-        <button
-          type="button"
-          onClick={() => {
-            const next = !compareActive;
-            setCompareActive(next);
-            if (next && showTimeLapse) setShowTimeLapse(false);
-            if (next && activeViewMode === "3d") {
-              handleViewModeChange("2d");
-            }
-          }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-            compareActive
-              ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
-              : "text-slate-200 hover:text-white hover:bg-slate-800"
-          }`}
-          title="Comparação Split-Screen Antes / Depois"
-        >
-          <Columns2 size={14} className={compareActive ? "text-white" : "text-indigo-400"} />
-          <span>Comparar</span>
-          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-400/20 text-indigo-300 font-extrabold hidden sm:inline">Antes / Depois</span>
-        </button>
+        {/* Split-Screen Compare button (ocultado temporariamente a pedido do utilizador, lógica preservada) */}
+        {false && (
+          <button
+            type="button"
+            onClick={() => {
+              const next = !compareActive;
+              setCompareActive(next);
+              if (next && showTimeLapse) setShowTimeLapse(false);
+              if (next && activeViewMode === "3d") {
+                handleViewModeChange("2d");
+              }
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              compareActive
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                : "text-slate-200 hover:text-white hover:bg-slate-800"
+            }`}
+            title="Comparação Split-Screen Antes / Depois"
+          >
+            <Columns2 size={14} className={compareActive ? "text-white" : "text-indigo-400"} />
+            <span>Comparar</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-400/20 text-indigo-300 font-extrabold hidden sm:inline">Antes / Depois</span>
+          </button>
+        )}
       </div>
 
       {/* TimeLapse Player Floating Overlay */}
@@ -284,8 +339,8 @@ export default function MapView({
         </div>
       )}
 
-      {/* Split-Screen Compare Curtain Overlay */}
-      {compareActive && (
+      {/* Split-Screen Compare Curtain Overlay (ocultado temporariamente a pedido do utilizador, lógica preservada) */}
+      {false && compareActive && (
         <SplitScreenCompare
           splitPercent={splitPercent}
           onSplitChange={setSplitPercent}
@@ -338,13 +393,15 @@ export default function MapView({
             </div>
           )}
 
-          {/* Coordinate display */}
-          {coords && (
-            <div className="absolute bottom-8 right-3 z-[600] bg-white/90 backdrop-blur-sm border border-slate-200 shadow-sm rounded-md px-2.5 py-1 text-xs font-mono text-slate-600 pointer-events-none select-none">
-              {coords.lat >= 0 ? "+" : ""}{coords.lat.toFixed(5)}°,&nbsp;
-              {coords.lng >= 0 ? "+" : ""}{coords.lng.toFixed(5)}°
-            </div>
-          )}
+          {/* Real-time Hover Pixel Inspector HUD */}
+          <PixelInspectorHUD
+            coords={coords}
+            elevation={coordsElevation}
+            geology={hoveredGeology}
+            admin={hoveredAdmin}
+            viewMode="2d"
+            className="absolute bottom-6 right-3 sm:right-4 z-[600]"
+          />
 
           {/* Google Maps Bottom-Left Layer Controller */}
           <BasemapSwitcher
@@ -446,7 +503,21 @@ export default function MapView({
 
             <ScaleControl position="bottomleft" imperial={false} />
             <MapStateTracker onMapState={onMapState} mapRef={mapRef} />
-            <CoordTracker onMove={(lat, lng) => setCoords(lat !== null && lng !== null ? { lat, lng } : null)} />
+            <CoordTracker
+              onMove={(lat, lng, ele) => {
+                if (lat !== null && lng !== null) {
+                  setCoords({ lat, lng });
+                  if (ele !== undefined && ele !== null) {
+                    setCoordsElevation(ele);
+                  }
+                } else {
+                  setCoords(null);
+                  setCoordsElevation(null);
+                  setHoveredGeology(null);
+                  setHoveredAdmin(null);
+                }
+              }}
+            />
 
             {layers.geology && province && geologyGeoJSON && (
               <>

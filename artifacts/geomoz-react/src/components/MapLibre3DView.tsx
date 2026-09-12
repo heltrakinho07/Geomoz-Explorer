@@ -9,6 +9,9 @@ import {
   getGoogleTileUrls,
   sampleElevationProfile,
   alignCameraToSection,
+  calculateSlopeDegrees,
+  classifySlope,
+  classifySpectralIndex,
   type ProfileStats,
   type ProfilePoint,
 } from "@/lib/dem-terrain";
@@ -16,6 +19,11 @@ import type { BasemapType } from "@/lib/basemaps";
 import BasemapSwitcher from "./BasemapSwitcher";
 import TerrainControls, { type LandmarkPreset } from "./TerrainControls";
 import Profile3DViewer from "./Profile3DViewer";
+import PixelInspectorHUD, {
+  type GeologyContext,
+  type AdminContext,
+  type AnalysisContext,
+} from "./PixelInspectorHUD";
 import type { LayerState } from "./Sidebar";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { useGeologyGeoJSON, useProvincesGeoJSON } from "@/hooks/useGeoMoz";
@@ -33,6 +41,7 @@ interface MapLibre3DViewProps {
   overlayGeoJSON?: GeoJSON.FeatureCollection | null;
   overlayGeoJSONKey?: string;
   showProfileTool?: boolean;
+  activeAnalysis?: AnalysisContext | null;
   onBasemapChange?: (b: BasemapType) => void;
   onViewModeChange?: (mode: "2d" | "3d") => void;
   onProvinceClick?: (name: string) => void;
@@ -52,6 +61,7 @@ export default function MapLibre3DView({
   overlayGeoJSON,
   overlayGeoJSONKey,
   showProfileTool = false,
+  activeAnalysis,
   onBasemapChange,
   onViewModeChange,
   onProvinceClick,
@@ -66,6 +76,11 @@ export default function MapLibre3DView({
   const [exaggeration, setExaggeration] = useState(1.5);
   const [projection, setProjection] = useState<"globe" | "mercator">("globe");
   const [coords, setCoords] = useState<{ lat: number; lng: number; ele?: number } | null>(null);
+  const [slope, setSlope] = useState<number | null>(null);
+  const [slopeClass, setSlopeClass] = useState<string | null>(null);
+  const [hoveredGeology, setHoveredGeology] = useState<GeologyContext | null>(null);
+  const [hoveredAdmin, setHoveredAdmin] = useState<AdminContext | null>(null);
+  const [hoveredAnalysisValue, setHoveredAnalysisValue] = useState<number | string | null>(null);
 
   // Profile tool state
   const [profileModeActive, setProfileModeActive] = useState(false);
@@ -179,20 +194,83 @@ export default function MapLibre3DView({
     };
     map.on("move", onMove);
 
-    // Track mouse coordinates and elevation
+    // Track mouse coordinates, elevation, slope, and rendered features
     const onMouseMove = (e: maplibregl.MapMouseEvent) => {
       const lng = e.lngLat.lng;
       const lat = e.lngLat.lat;
       let ele: number | undefined;
+      let slopeDeg: number | null = null;
+      let slopeClassLabel: string | null = null;
+
       try {
         const queried = map.queryTerrainElevation([lng, lat]);
-        if (queried !== null && queried !== undefined) ele = Math.round(queried);
+        if (queried !== null && queried !== undefined) {
+          ele = Math.round(queried);
+          slopeDeg = calculateSlopeDegrees(map, lng, lat);
+          if (slopeDeg !== null) {
+            slopeClassLabel = classifySlope(slopeDeg);
+          }
+        }
       } catch {}
+
+      // Query features under cursor (geology, study area, vector overlay)
+      let hoveredGeo: GeologyContext | null = null;
+      let hoveredAdmin: AdminContext | null = null;
+      let hoveredAnalysisVal: string | number | null = null;
+
+      try {
+        const queryLayers: string[] = [];
+        if (map.getLayer("geology-3d-fill")) queryLayers.push("geology-3d-fill");
+        if (map.getLayer("provinces-3d-line")) queryLayers.push("provinces-3d-line");
+        if (map.getLayer("analytical-vector-fill")) queryLayers.push("analytical-vector-fill");
+        if (map.getLayer("active-study-area-fill")) queryLayers.push("active-study-area-fill");
+
+        if (queryLayers.length > 0) {
+          const features = map.queryRenderedFeatures(e.point, { layers: queryLayers });
+          for (const f of features) {
+            const props = (f.properties || {}) as Record<string, any>;
+            if (f.layer.id === "geology-3d-fill" && !hoveredGeo) {
+              hoveredGeo = {
+                name: props.Legend || props.LEGEND || props.code2006,
+                code: props.code2006,
+                era: props.ERA,
+                period: props.PERIOD,
+              };
+            }
+            if ((f.layer.id === "provinces-3d-line" || f.layer.id === "active-study-area-fill") && !hoveredAdmin) {
+              if (props.Provincia || props.PROVINCIA || props.NAME_1) {
+                hoveredAdmin = {
+                  province: props.Provincia || props.PROVINCIA || props.NAME_1,
+                  district: props.Distrito || props.DISTRITO || props.NAME_2,
+                };
+              }
+            }
+            if (f.layer.id === "analytical-vector-fill") {
+              if (props._spectralValue !== undefined) {
+                hoveredAnalysisVal = Number(props._spectralValue);
+              }
+            }
+          }
+        }
+      } catch {}
+
       setCoords({ lat, lng, ele });
+      setSlope(slopeDeg);
+      setSlopeClass(slopeClassLabel);
+      setHoveredGeology(hoveredGeo);
+      setHoveredAdmin(hoveredAdmin || (province ? { province, district: district ?? undefined } : null));
+      setHoveredAnalysisValue(hoveredAnalysisVal);
     };
     map.on("mousemove", onMouseMove);
 
-    const onMouseOut = () => setCoords(null);
+    const onMouseOut = () => {
+      setCoords(null);
+      setSlope(null);
+      setSlopeClass(null);
+      setHoveredGeology(null);
+      setHoveredAdmin(null);
+      setHoveredAnalysisValue(null);
+    };
     map.getCanvas().addEventListener("mouseout", onMouseOut);
 
     return () => {
@@ -838,21 +916,29 @@ export default function MapLibre3DView({
         </div>
       )}
 
-      {/* Coordinates & Elevation HUD */}
-      {coords && (
-        <div className="absolute bottom-6 right-4 z-[600] bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border border-slate-200 dark:border-slate-800 shadow-sm rounded-lg px-3 py-1.5 text-xs font-mono text-slate-700 dark:text-slate-300 pointer-events-none select-none flex items-center gap-3">
-          <span>
-            {coords.lat >= 0 ? "+" : ""}
-            {coords.lat.toFixed(5)}°, {coords.lng >= 0 ? "+" : ""}
-            {coords.lng.toFixed(5)}°
-          </span>
-          {coords.ele !== undefined && (
-            <span className="font-bold text-sky-600 bg-sky-50 dark:bg-sky-950/60 px-1.5 py-0.5 rounded">
-              ⛰️ {coords.ele} m
-            </span>
-          )}
-        </div>
-      )}
+      {/* Real-time Hover Pixel Inspector HUD */}
+      <PixelInspectorHUD
+        coords={coords}
+        elevation={coords?.ele}
+        slope={slope}
+        slopeClass={slopeClass}
+        geology={hoveredGeology}
+        admin={hoveredAdmin}
+        analysis={
+          activeAnalysis
+            ? {
+                ...activeAnalysis,
+                value: hoveredAnalysisValue ?? activeAnalysis.value,
+                classLabel:
+                  hoveredAnalysisValue !== null && typeof hoveredAnalysisValue === "number" && activeAnalysis.label
+                    ? classifySpectralIndex(activeAnalysis.label, hoveredAnalysisValue) || activeAnalysis.classLabel
+                    : activeAnalysis.classLabel,
+              }
+            : null
+        }
+        viewMode="3d"
+        className="absolute bottom-6 right-4 z-[600]"
+      />
 
       {/* Topographic Profile 3D Viewer Panel */}
       {showProfileTool && (
