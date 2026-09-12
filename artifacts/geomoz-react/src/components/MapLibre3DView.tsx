@@ -18,6 +18,12 @@ import {
 import type { BasemapType } from "@/lib/basemaps";
 import BasemapSwitcher from "./BasemapSwitcher";
 import TerrainControls, { type LandmarkPreset } from "./TerrainControls";
+import {
+  calculateSolarState,
+  getPresetState,
+  type SolarState,
+  type SolarPresetKey,
+} from "@/lib/solar-simulation";
 import Profile3DViewer from "./Profile3DViewer";
 import PixelInspectorHUD, {
   type GeologyContext,
@@ -81,6 +87,11 @@ export default function MapLibre3DView({
   const [hoveredGeology, setHoveredGeology] = useState<GeologyContext | null>(null);
   const [hoveredAdmin, setHoveredAdmin] = useState<AdminContext | null>(null);
   const [hoveredAnalysisValue, setHoveredAnalysisValue] = useState<number | string | null>(null);
+
+  // Solar simulation state
+  const [solarState, setSolarState] = useState<SolarState>(() =>
+    calculateSolarState(12, true, "noon")
+  );
 
   // Profile tool state
   const [profileModeActive, setProfileModeActive] = useState(false);
@@ -487,6 +498,117 @@ export default function MapLibre3DView({
     });
   }, []);
 
+  // Solar simulation handlers
+  const handleSolarHourChange = useCallback((hour: number) => {
+    setSolarState((prev) => calculateSolarState(hour, prev.shadowEnabled));
+  }, []);
+
+  const handleSelectSolarPreset = useCallback((presetKey: SolarPresetKey) => {
+    setSolarState((prev) => getPresetState(presetKey, prev.shadowEnabled));
+  }, []);
+
+  const handleToggleShadows = useCallback(() => {
+    setSolarState((prev) =>
+      calculateSolarState(prev.hour, !prev.shadowEnabled, prev.presetKey)
+    );
+  }, []);
+
+  // Synchronize Solar Simulation: Map light, dynamic hillshade shadows, and sky colors
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    const syncSolar = () => {
+      if (!map.isStyleLoaded()) return;
+
+      // 1. Native 3D Terrain Light
+      try {
+        map.setLight({
+          anchor: "map",
+          position: [1.5, solarState.azimuth, solarState.polarAngle],
+          color: solarState.lightColor,
+          intensity: solarState.lightIntensity,
+        });
+      } catch (err) {
+        console.warn("Could not set map light:", err);
+      }
+
+      // 2. Dynamic 3D Hillshade Shadows
+      const HILLSHADE_ID = "dem-dynamic-hillshade";
+      try {
+        if (!map.getLayer(HILLSHADE_ID)) {
+          // Add hillshade above basemap layer, but under vectors and overlays
+          const beforeLayer = map.getLayer("profile-line-glow")
+            ? "profile-line-glow"
+            : map.getLayer("active-study-area-fill")
+            ? "active-study-area-fill"
+            : map.getLayer("analytical-overlay-layer")
+            ? "analytical-overlay-layer"
+            : undefined;
+
+          map.addLayer(
+            {
+              id: HILLSHADE_ID,
+              type: "hillshade",
+              source: TERRAIN_SOURCE_ID,
+              paint: {
+                "hillshade-illumination-direction": solarState.azimuth,
+                "hillshade-illumination-anchor": "map",
+                "hillshade-exaggeration": solarState.shadowEnabled
+                  ? solarState.shadowExaggeration
+                  : 0,
+                "hillshade-shadow-color": "rgba(15, 23, 42, 0.55)",
+                "hillshade-highlight-color":
+                  solarState.lightIntensity > 0.5
+                    ? "rgba(255, 255, 255, 0.25)"
+                    : "rgba(147, 197, 253, 0.15)",
+                "hillshade-accent-color": "rgba(0, 0, 0, 0.4)",
+              },
+            },
+            beforeLayer
+          );
+        } else {
+          map.setPaintProperty(
+            HILLSHADE_ID,
+            "hillshade-illumination-direction",
+            solarState.azimuth
+          );
+          map.setPaintProperty(
+            HILLSHADE_ID,
+            "hillshade-exaggeration",
+            solarState.shadowEnabled ? solarState.shadowExaggeration : 0
+          );
+          map.setPaintProperty(
+            HILLSHADE_ID,
+            "hillshade-highlight-color",
+            solarState.lightIntensity > 0.5
+              ? "rgba(255, 255, 255, 0.25)"
+              : "rgba(147, 197, 253, 0.15)"
+          );
+        }
+      } catch (err) {
+        console.warn("Could not sync hillshade layer:", err);
+      }
+
+      // 3. Dynamic Atmospheric Sky & Fog
+      try {
+        if (typeof (map as any).setSky === "function") {
+          (map as any).setSky({
+            "sky-color": solarState.skyColor,
+            "horizon-color": solarState.horizonColor,
+            "fog-color": solarState.fogColor,
+          });
+        }
+      } catch {}
+    };
+
+    if (map.isStyleLoaded()) {
+      syncSolar();
+    } else {
+      map.once("styledata", syncSolar);
+    }
+  }, [solarState]);
+
   // Sync AOI / Province polygon layers
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -890,6 +1012,7 @@ export default function MapLibre3DView({
         projection={projection}
         profileModeActive={profileModeActive}
         showProfileTool={showProfileTool}
+        solarState={solarState}
         onPitchChange={handlePitchChange}
         onExaggerationChange={handleExaggerationChange}
         onResetNorth={handleResetNorth}
@@ -902,6 +1025,9 @@ export default function MapLibre3DView({
           }
         }}
         onFlyToPreset={handleFlyToPreset}
+        onSolarHourChange={handleSolarHourChange}
+        onSelectSolarPreset={handleSelectSolarPreset}
+        onToggleShadows={handleToggleShadows}
         className="absolute top-20 right-4 z-[600]"
       />
 

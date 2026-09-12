@@ -6,7 +6,9 @@ import {
 import { useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
 import AreaUpload from "./AreaUpload";
 import type { AreaOfInterest, AOISource } from "@/lib/aoi";
-import { mozambiqueAOI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
+import { mozambiqueAOI, customAOI, countryAOI, GLOBAL_AOI } from "@/lib/aoi";
+import type { WorldCountry } from "@/lib/world-countries";
+import CountrySelectModal from "./CountrySelectModal";
 
 interface ZoneSelectProps {
   aoi: AreaOfInterest;
@@ -29,6 +31,7 @@ type Panel = "province" | "upload" | null;
  */
 export default function ZoneSelect({ aoi, onAOIChange, onDrawingRequest, compact }: ZoneSelectProps) {
   const [activePanel, setActivePanel] = useState<Panel>(null);
+  const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
   const { data: provinceNames } = useProvinceNames();
   const { data: districtNames } = useDistrictNames(aoi.province);
 
@@ -44,6 +47,12 @@ export default function ZoneSelect({ aoi, onAOIChange, onDrawingRequest, compact
 
   function handleGeometryLoaded(geojson: GeoJSON.GeoJSON, label: string) {
     onAOIChange(customAOI(geojson, label, "upload"));
+    setActivePanel(null);
+  }
+
+  function handleCountrySelected(country: WorldCountry) {
+    onAOIChange(countryAOI(country));
+    setIsCountryModalOpen(false);
     setActivePanel(null);
   }
 
@@ -63,9 +72,11 @@ export default function ZoneSelect({ aoi, onAOIChange, onDrawingRequest, compact
           className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border transition-all ${
             isCustom
               ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-              : aoi.source === "global"
-                ? "bg-sky-50 border-sky-200 text-sky-600"
-                : "bg-sky-50 border-sky-200 text-sky-700"
+              : aoi.source === "country"
+                ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                : aoi.source === "global"
+                  ? "bg-sky-50 border-sky-200 text-sky-600"
+                  : "bg-sky-50 border-sky-200 text-sky-700"
           }`}
         >
           <Globe size={12} />
@@ -120,12 +131,28 @@ export default function ZoneSelect({ aoi, onAOIChange, onDrawingRequest, compact
                   <ChevronDown className="absolute right-2 top-2 h-3 w-3 text-slate-400 pointer-events-none" />
                 </div>
               )}
+              <button
+                onClick={() => {
+                  setActivePanel(null);
+                  setIsCountryModalOpen(true);
+                }}
+                className="flex items-center gap-2 w-full px-2.5 py-2 text-xs font-medium rounded-lg border border-slate-200 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100 hover:border-indigo-300 transition-colors"
+              >
+                🌍 Selecionar País do Mundo...
+              </button>
               <div className="border-t border-slate-100 pt-2">
                 <AreaUpload onGeometryLoaded={(geojson, label) => { handleGeometryLoaded(geojson, label); setActivePanel(null); }} />
               </div>
             </div>
           </div>
         )}
+
+        <CountrySelectModal
+          isOpen={isCountryModalOpen}
+          onClose={() => setIsCountryModalOpen(false)}
+          onSelect={handleCountrySelected}
+          selectedCountryCode={aoi.countryCode}
+        />
       </div>
     );
   }
@@ -148,7 +175,7 @@ export default function ZoneSelect({ aoi, onAOIChange, onDrawingRequest, compact
       </div>
 
       {/* Method selector */}
-      <div className="grid grid-cols-3 gap-1">
+      <div className="grid grid-cols-4 gap-1">
         <button
           onClick={() => setActivePanel(activePanel === "province" ? null : "province")}
           className={`flex items-center justify-center gap-1 text-[10px] py-1.5 rounded-lg border transition-colors ${
@@ -158,6 +185,19 @@ export default function ZoneSelect({ aoi, onAOIChange, onDrawingRequest, compact
           }`}
         >
           <Globe size={11} /> Província
+        </button>
+        <button
+          onClick={() => {
+            setActivePanel(null);
+            setIsCountryModalOpen(true);
+          }}
+          className={`flex items-center justify-center gap-1 text-[10px] py-1.5 rounded-lg border transition-colors ${
+            aoi.source === "country"
+              ? "bg-indigo-50 border-indigo-200 text-indigo-700 font-medium"
+              : "border-slate-200 text-slate-500 hover:bg-slate-50"
+          }`}
+        >
+          <Globe size={11} /> País
         </button>
         <button
           onClick={() => setActivePanel(activePanel === "upload" ? null : "upload")}
@@ -225,6 +265,27 @@ export default function ZoneSelect({ aoi, onAOIChange, onDrawingRequest, compact
         </div>
       )}
 
+      {/* Active country indicator */}
+      {aoi.source === "country" && (
+        <div className="flex items-start gap-2 p-2.5 rounded-lg border bg-indigo-50/70 border-indigo-200">
+          <Globe size={13} className="mt-0.5 shrink-0 text-indigo-600" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium truncate text-indigo-800">{aoi.label}</p>
+            <p className="text-[10px] text-indigo-600">
+              🌍 País soberano ({aoi.countryCode}) • Enquadramento universal GEE
+            </p>
+          </div>
+          <button
+            onClick={() => onAOIChange(GLOBAL_AOI)}
+            className="shrink-0 flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-red-600 bg-red-50 hover:bg-red-500 hover:text-white border border-red-200 hover:border-red-500 rounded-lg transition-all"
+            title="Remover país selecionado"
+          >
+            <Trash2 size={10} />
+            Limpar
+          </button>
+        </div>
+      )}
+
       {/* Active upload/draw indicator */}
       {isCustom && (
         <div className={`flex items-start gap-2 p-2.5 rounded-lg border ${
@@ -257,6 +318,14 @@ export default function ZoneSelect({ aoi, onAOIChange, onDrawingRequest, compact
           </button>
         </div>
       )}
+
+      {/* Country Select Modal */}
+      <CountrySelectModal
+        isOpen={isCountryModalOpen}
+        onClose={() => setIsCountryModalOpen(false)}
+        onSelect={handleCountrySelected}
+        selectedCountryCode={aoi.countryCode}
+      />
     </div>
   );
 }

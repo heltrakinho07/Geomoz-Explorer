@@ -7,7 +7,10 @@
  * - The whole world (null geometry → GEE uses the region bbox)
  */
 
-export type AOISource = "mozambique" | "upload" | "draw" | "global";
+import type { WorldCountry } from "./world-countries";
+import { countryToGeoJSON } from "./world-countries";
+
+export type AOISource = "mozambique" | "country" | "upload" | "draw" | "global";
 
 export interface AreaOfInterest {
   /** How this AOI was defined */
@@ -19,7 +22,13 @@ export interface AreaOfInterest {
   /** Mozambique district name */
   district: string | null;
 
-  /** Custom GeoJSON geometry (source === "upload" | "draw") */
+  /** Selected world country code (source === "country") */
+  countryCode?: string | null;
+
+  /** Selected world country name (source === "country") */
+  countryName?: string | null;
+
+  /** Custom GeoJSON geometry (source === "upload" | "draw" | "country") */
   geometry: GeoJSON.GeoJSON | null;
 
   /** Human-readable label for display */
@@ -57,6 +66,21 @@ export function mozambiqueAOI(
   };
 }
 
+/** Create a country AOI for any sovereign nation in the world */
+export function countryAOI(country: WorldCountry): AreaOfInterest {
+  const geojson = countryToGeoJSON(country);
+  return {
+    source: "country",
+    province: null,
+    district: null,
+    countryCode: country.code,
+    countryName: country.name,
+    geometry: geojson,
+    label: `${country.flag} ${country.name}`,
+    bounds: country.bounds,
+  };
+}
+
 /** Create a custom-GeoJSON AOI from upload or drawing */
 export function customAOI(
   geometry: GeoJSON.GeoJSON,
@@ -85,7 +109,7 @@ export function aoiToAPI(aoi: AreaOfInterest): {
       geometry: null,
     };
   }
-  if (aoi.source === "upload" || aoi.source === "draw") {
+  if (aoi.source === "upload" || aoi.source === "draw" || aoi.source === "country") {
     // Extract geometry from FeatureCollection or Feature if needed
     let geom: Record<string, unknown> | null = null;
     if (aoi.geometry) {

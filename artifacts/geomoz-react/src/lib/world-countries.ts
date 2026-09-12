@@ -1,0 +1,596 @@
+export interface WorldCountry {
+  name: string;
+  nameEn: string;
+  code: string; // ISO 3166-1 alpha-3
+  code2: string; // ISO 3166-1 alpha-2
+  flag: string;
+  continent: "África" | "América do Sul" | "América do Norte" | "Europa" | "Ásia" | "Oceania";
+  center: [number, number]; // [lng, lat]
+  bounds: [[number, number], [number, number]]; // [[south, west], [north, east]]
+}
+
+/**
+ * Helper to build a GeoJSON Bounding Box Polygon for a country
+ */
+export function countryToGeoJSON(country: WorldCountry): GeoJSON.FeatureCollection {
+  const [[south, west], [north, east]] = country.bounds;
+  return {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        properties: {
+          name: country.name,
+          nameEn: country.nameEn,
+          code: country.code,
+          flag: country.flag,
+          continent: country.continent,
+        },
+        geometry: {
+          type: "Polygon",
+          coordinates: [
+            [
+              [west, south],
+              [east, south],
+              [east, north],
+              [west, north],
+              [west, south],
+            ],
+          ],
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * Comprehensive catalog of countries with bounds, coordinates, and metadata.
+ */
+export const WORLD_COUNTRIES: WorldCountry[] = [
+  // ── Países Lusófonos e África Austral (Prioritários) ────────────────────────
+  {
+    name: "Moçambique",
+    nameEn: "Mozambique",
+    code: "MOZ",
+    code2: "MZ",
+    flag: "🇲🇿",
+    continent: "África",
+    center: [35.5296, -18.6657],
+    bounds: [[-26.8687, 30.2173], [-10.4712, 40.8441]],
+  },
+  {
+    name: "Angola",
+    nameEn: "Angola",
+    code: "AGO",
+    code2: "AO",
+    flag: "🇦🇴",
+    continent: "África",
+    center: [17.8739, -11.2027],
+    bounds: [[-18.0421, 11.6792], [-4.3884, 24.0821]],
+  },
+  {
+    name: "Brasil",
+    nameEn: "Brazil",
+    code: "BRA",
+    code2: "BR",
+    flag: "🇧🇷",
+    continent: "América do Sul",
+    center: [-51.9253, -14.235],
+    bounds: [[-33.7507, -73.9828], [5.2718, -34.7931]],
+  },
+  {
+    name: "Portugal",
+    nameEn: "Portugal",
+    code: "PRT",
+    code2: "PT",
+    flag: "🇵🇹",
+    continent: "Europa",
+    center: [-8.2245, 39.3999],
+    bounds: [[36.9619, -9.5305], [42.1543, -6.1892]],
+  },
+  {
+    name: "Cabo Verde",
+    nameEn: "Cape Verde",
+    code: "CPV",
+    code2: "CV",
+    flag: "🇨🇻",
+    continent: "África",
+    center: [-24.0132, 16.0021],
+    bounds: [[14.795, -25.3585], [17.2052, -22.6657]],
+  },
+  {
+    name: "São Tomé e Príncipe",
+    nameEn: "Sao Tome and Principe",
+    code: "STP",
+    code2: "ST",
+    flag: "🇸🇹",
+    continent: "África",
+    center: [6.6131, 0.1864],
+    bounds: [[-0.0135, 6.4527], [1.7061, 7.4641]],
+  },
+  {
+    name: "Guiné-Bissau",
+    nameEn: "Guinea-Bissau",
+    code: "GNB",
+    code2: "GW",
+    flag: "🇬🇼",
+    continent: "África",
+    center: [-15.1804, 11.8037],
+    bounds: [[10.8698, -16.7196], [12.6848, -13.6394]],
+  },
+  {
+    name: "Timor-Leste",
+    nameEn: "East Timor",
+    code: "TLS",
+    code2: "TL",
+    flag: "🇹🇱",
+    continent: "Ásia",
+    center: [125.7275, -8.8742],
+    bounds: [[-9.5028, 124.0453], [-8.1287, 127.3486]],
+  },
+  {
+    name: "Guiné Equatorial",
+    nameEn: "Equatorial Guinea",
+    code: "GNQ",
+    code2: "GQ",
+    flag: "🇬🇶",
+    continent: "África",
+    center: [10.2679, 1.6508],
+    bounds: [[-1.4727, 5.6179], [3.7844, 11.3326]],
+  },
+  {
+    name: "África do Sul",
+    nameEn: "South Africa",
+    code: "ZAF",
+    code2: "ZA",
+    flag: "🇿🇦",
+    continent: "África",
+    center: [22.9375, -30.5595],
+    bounds: [[-34.8342, 16.4519], [-22.125, 32.8905]],
+  },
+  {
+    name: "Zimbabué",
+    nameEn: "Zimbabwe",
+    code: "ZWE",
+    code2: "ZW",
+    flag: "🇿🇼",
+    continent: "África",
+    center: [29.1549, -19.0154],
+    bounds: [[-22.4218, 25.237], [-15.6095, 33.0563]],
+  },
+  {
+    name: "Zâmbia",
+    nameEn: "Zambia",
+    code: "ZMB",
+    code2: "ZM",
+    flag: "🇿🇲",
+    continent: "África",
+    center: [27.8493, -13.1339],
+    bounds: [[-18.0792, 21.9994], [-8.272, 33.7056]],
+  },
+  {
+    name: "Tanzânia",
+    nameEn: "Tanzania",
+    code: "TZA",
+    code2: "TZ",
+    flag: "🇹🇿",
+    continent: "África",
+    center: [34.8888, -6.369],
+    bounds: [[-11.761, 29.3272], [-0.9842, 40.4446]],
+  },
+  {
+    name: "Malawi",
+    nameEn: "Malawi",
+    code: "MWI",
+    code2: "MW",
+    flag: "🇲🇼",
+    continent: "África",
+    center: [34.3015, -13.2543],
+    bounds: [[-17.1295, 32.6738], [-9.364, 35.9179]],
+  },
+  {
+    name: "Quénia",
+    nameEn: "Kenya",
+    code: "KEN",
+    code2: "KE",
+    flag: "🇰🇪",
+    continent: "África",
+    center: [37.9062, -0.0236],
+    bounds: [[-4.678, 33.9089], [5.0334, 41.9069]],
+  },
+  {
+    name: "Namíbia",
+    nameEn: "Namibia",
+    code: "NAM",
+    code2: "NA",
+    flag: "🇳🇦",
+    continent: "África",
+    center: [18.4904, -22.9576],
+    bounds: [[-28.9714, 11.7342], [-16.9634, 25.2618]],
+  },
+  {
+    name: "Botsuana",
+    nameEn: "Botswana",
+    code: "BWA",
+    code2: "BW",
+    flag: "🇧🇼",
+    continent: "África",
+    center: [24.6849, -22.3285],
+    bounds: [[-26.9073, 19.9995], [-17.7808, 29.3737]],
+  },
+  {
+    name: "Eswatini",
+    nameEn: "Eswatini",
+    code: "SWZ",
+    code2: "SZ",
+    flag: "🇸🇿",
+    continent: "África",
+    center: [31.4659, -26.5225],
+    bounds: [[-27.317, 30.794], [-25.7196, 32.1378]],
+  },
+  {
+    name: "República Democrática do Congo",
+    nameEn: "DR Congo",
+    code: "COD",
+    code2: "CD",
+    flag: "🇨🇩",
+    continent: "África",
+    center: [21.7587, -4.0383],
+    bounds: [[-13.456, 12.2062], [5.3861, 31.3059]],
+  },
+  {
+    name: "Madagáscar",
+    nameEn: "Madagascar",
+    code: "MDG",
+    code2: "MG",
+    flag: "🇲🇬",
+    continent: "África",
+    center: [46.8691, -18.7669],
+    bounds: [[-25.6085, 43.2283], [-11.9454, 50.4839]],
+  },
+
+  // ── Resto de África ──────────────────────────────────────────────────────────
+  {
+    name: "Nigéria",
+    nameEn: "Nigeria",
+    code: "NGA",
+    code2: "NG",
+    flag: "🇳🇬",
+    continent: "África",
+    center: [8.6753, 9.082],
+    bounds: [[4.273, 2.6769], [13.892, 14.678]],
+  },
+  {
+    name: "Etiópia",
+    nameEn: "Ethiopia",
+    code: "ETH",
+    code2: "ET",
+    flag: "🇪🇹",
+    continent: "África",
+    center: [40.4897, 9.145],
+    bounds: [[3.4024, 32.9999], [14.8942, 47.9882]],
+  },
+  {
+    name: "Egito",
+    nameEn: "Egypt",
+    code: "EGY",
+    code2: "EG",
+    flag: "🇪🇬",
+    continent: "África",
+    center: [30.8025, 26.8206],
+    bounds: [[21.9999, 24.6999], [31.6679, 36.8999]],
+  },
+  {
+    name: "Marrocos",
+    nameEn: "Morocco",
+    code: "MAR",
+    code2: "MA",
+    flag: "🇲🇦",
+    continent: "África",
+    center: [-7.0926, 31.7917],
+    bounds: [[21.421, -17.067], [35.9225, -1.0268]],
+  },
+  {
+    name: "Gana",
+    nameEn: "Ghana",
+    code: "GHA",
+    code2: "GH",
+    flag: "🇬🇭",
+    continent: "África",
+    center: [-1.0232, 7.9465],
+    bounds: [[4.7389, -3.2555], [11.175, 1.1994]],
+  },
+  {
+    name: "Senegal",
+    nameEn: "Senegal",
+    code: "SEN",
+    code2: "SN",
+    flag: "🇸🇳",
+    continent: "África",
+    center: [-14.4524, 14.4974],
+    bounds: [[12.3071, -17.5432], [16.6928, -11.3486]],
+  },
+  {
+    name: "Costa do Marfim",
+    nameEn: "Ivory Coast",
+    code: "CIV",
+    code2: "CI",
+    flag: "🇨🇮",
+    continent: "África",
+    center: [-5.5471, 7.54],
+    bounds: [[4.3571, -8.602], [10.74, -2.493]],
+  },
+  {
+    name: "Ruanda",
+    nameEn: "Rwanda",
+    code: "RWA",
+    code2: "RW",
+    flag: "🇷🇼",
+    continent: "África",
+    center: [29.8739, -1.9403],
+    bounds: [[-2.8398, 28.8617], [-1.0474, 30.8992]],
+  },
+  {
+    name: "Uganda",
+    nameEn: "Uganda",
+    code: "UGA",
+    code2: "UG",
+    flag: "🇺🇬",
+    continent: "África",
+    center: [32.2903, 1.3733],
+    bounds: [[-1.4823, 29.5735], [4.234, 35.0354]],
+  },
+
+  // ── Américas ────────────────────────────────────────────────────────────────
+  {
+    name: "Estados Unidos",
+    nameEn: "United States",
+    code: "USA",
+    code2: "US",
+    flag: "🇺🇸",
+    continent: "América do Norte",
+    center: [-95.7129, 37.0902],
+    bounds: [[24.3963, -125.0], [49.3844, -66.9346]],
+  },
+  {
+    name: "Canadá",
+    nameEn: "Canada",
+    code: "CAN",
+    code2: "CA",
+    flag: "🇨🇦",
+    continent: "América do Norte",
+    center: [-106.3468, 56.1304],
+    bounds: [[41.6766, -141.0019], [83.1106, -52.6194]],
+  },
+  {
+    name: "México",
+    nameEn: "Mexico",
+    code: "MEX",
+    code2: "MX",
+    flag: "🇲🇽",
+    continent: "América do Norte",
+    center: [-102.5528, 23.6345],
+    bounds: [[14.5388, -118.4077], [32.7187, -86.7104]],
+  },
+  {
+    name: "Chile",
+    nameEn: "Chile",
+    code: "CHL",
+    code2: "CL",
+    flag: "🇨🇱",
+    continent: "América do Sul",
+    center: [-71.543, -35.6751],
+    bounds: [[-55.98, -75.6444], [-17.4984, -66.4178]],
+  },
+  {
+    name: "Argentina",
+    nameEn: "Argentina",
+    code: "ARG",
+    code2: "AR",
+    flag: "🇦🇷",
+    continent: "América do Sul",
+    center: [-63.6167, -38.4161],
+    bounds: [[-55.0574, -73.5784], [-21.7812, -53.6374]],
+  },
+  {
+    name: "Peru",
+    nameEn: "Peru",
+    code: "PER",
+    code2: "PE",
+    flag: "🇵🇪",
+    continent: "América do Sul",
+    center: [-75.0152, -9.19],
+    bounds: [[-18.3509, -81.3282], [-0.0388, -68.6523]],
+  },
+  {
+    name: "Colômbia",
+    nameEn: "Colombia",
+    code: "COL",
+    code2: "CO",
+    flag: "🇨🇴",
+    continent: "América do Sul",
+    center: [-74.2973, 4.5709],
+    bounds: [[-4.2276, -79.0232], [12.4589, -66.8472]],
+  },
+
+  // ── Europa ──────────────────────────────────────────────────────────────────
+  {
+    name: "Espanha",
+    nameEn: "Spain",
+    code: "ESP",
+    code2: "ES",
+    flag: "🇪🇸",
+    continent: "Europa",
+    center: [-3.7492, 40.4637],
+    bounds: [[35.9996, -9.3015], [43.7924, 3.3223]],
+  },
+  {
+    name: "França",
+    nameEn: "France",
+    code: "FRA",
+    code2: "FR",
+    flag: "🇫🇷",
+    continent: "Europa",
+    center: [2.2137, 46.2276],
+    bounds: [[41.3333, -5.1422], [51.0892, 9.56]],
+  },
+  {
+    name: "Reino Unido",
+    nameEn: "United Kingdom",
+    code: "GBR",
+    code2: "GB",
+    flag: "🇬🇧",
+    continent: "Europa",
+    center: [-3.436, 55.3781],
+    bounds: [[49.9599, -7.5722], [58.635, 1.7689]],
+  },
+  {
+    name: "Alemanha",
+    nameEn: "Germany",
+    code: "DEU",
+    code2: "DE",
+    flag: "🇩🇪",
+    continent: "Europa",
+    center: [10.4515, 51.1657],
+    bounds: [[47.2701, 5.8663], [55.0581, 15.0419]],
+  },
+  {
+    name: "Itália",
+    nameEn: "Italy",
+    code: "ITA",
+    code2: "IT",
+    flag: "🇮🇹",
+    continent: "Europa",
+    center: [12.5674, 41.8719],
+    bounds: [[35.4929, 6.6267], [47.092, 18.5206]],
+  },
+  {
+    name: "Noruega",
+    nameEn: "Norway",
+    code: "NOR",
+    code2: "NO",
+    flag: "🇳🇴",
+    continent: "Europa",
+    center: [8.4689, 60.472],
+    bounds: [[57.96, 4.64], [71.1855, 31.0575]],
+  },
+  {
+    name: "Suíça",
+    nameEn: "Switzerland",
+    code: "CHE",
+    code2: "CH",
+    flag: "🇨🇭",
+    continent: "Europa",
+    center: [8.2275, 46.8182],
+    bounds: [[45.818, 5.9559], [47.8085, 10.4923]],
+  },
+
+  // ── Ásia e Oceania ──────────────────────────────────────────────────────────
+  {
+    name: "China",
+    nameEn: "China",
+    code: "CHN",
+    code2: "CN",
+    flag: "🇨🇳",
+    continent: "Ásia",
+    center: [104.1954, 35.8617],
+    bounds: [[18.16, 73.66], [53.55, 134.77]],
+  },
+  {
+    name: "Índia",
+    nameEn: "India",
+    code: "IND",
+    code2: "IN",
+    flag: "🇮🇳",
+    continent: "Ásia",
+    center: [78.9629, 20.5937],
+    bounds: [[6.7535, 68.1624], [35.5087, 97.3956]],
+  },
+  {
+    name: "Japão",
+    nameEn: "Japan",
+    code: "JPN",
+    code2: "JP",
+    flag: "🇯🇵",
+    continent: "Ásia",
+    center: [138.2529, 36.2048],
+    bounds: [[24.2, 122.93], [45.52, 153.98]],
+  },
+  {
+    name: "Austrália",
+    nameEn: "Australia",
+    code: "AUS",
+    code2: "AU",
+    flag: "🇦🇺",
+    continent: "Oceania",
+    center: [133.7751, -25.2744],
+    bounds: [[-43.6346, 113.3389], [-10.0514, 153.5695]],
+  },
+  {
+    name: "Nova Zelândia",
+    nameEn: "New Zealand",
+    code: "NZL",
+    code2: "NZ",
+    flag: "🇳🇿",
+    continent: "Oceania",
+    center: [174.886, -40.9006],
+    bounds: [[-47.28, 166.42], [-34.42, 178.58]],
+  },
+  {
+    name: "Indonésia",
+    nameEn: "Indonesia",
+    code: "IDN",
+    code2: "ID",
+    flag: "🇮🇩",
+    continent: "Ásia",
+    center: [113.9213, -0.7893],
+    bounds: [[-11.0076, 95.0108], [5.9069, 141.0194]],
+  },
+  {
+    name: "Emirados Árabes Unidos",
+    nameEn: "United Arab Emirates",
+    code: "ARE",
+    code2: "AE",
+    flag: "🇦🇪",
+    continent: "Ásia",
+    center: [53.8478, 23.4241],
+    bounds: [[22.6333, 51.5833], [26.0694, 56.3812]],
+  },
+  {
+    name: "Arábia Saudita",
+    nameEn: "Saudi Arabia",
+    code: "SAU",
+    code2: "SA",
+    flag: "🇸🇦",
+    continent: "Ásia",
+    center: [45.0792, 23.8859],
+    bounds: [[16.38, 34.5], [32.15, 55.67]],
+  },
+];
+
+/**
+ * Filter countries by search query (name in PT or EN, code, or continent).
+ */
+export function searchCountries(query: string, continentFilter?: string): WorldCountry[] {
+  const q = query.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  return WORLD_COUNTRIES.filter((c) => {
+    if (continentFilter && continentFilter !== "Todos" && c.continent !== continentFilter) {
+      return false;
+    }
+
+    if (!q) return true;
+
+    const namePt = c.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const nameEn = c.nameEn.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const code = c.code.toLowerCase();
+    const code2 = c.code2.toLowerCase();
+
+    return (
+      namePt.includes(q) ||
+      nameEn.includes(q) ||
+      code.includes(q) ||
+      code2.includes(q)
+    );
+  });
+}

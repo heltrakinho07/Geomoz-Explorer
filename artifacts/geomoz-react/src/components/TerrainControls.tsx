@@ -8,8 +8,14 @@ import {
   Activity,
   ChevronDown,
   Sparkles,
+  Sun,
 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
+import {
+  type SolarState,
+  type SolarPresetKey,
+  SOLAR_PRESETS,
+} from "@/lib/solar-simulation";
 
 export interface LandmarkPreset {
   name: string;
@@ -50,13 +56,58 @@ export const GLOBAL_LANDMARKS: LandmarkPreset[] = [
     description: "Maior vulcão e pico de África",
   },
   {
-    name: "Monte Evereste",
-    region: "Himalaias (8.848m)",
-    center: [86.925, 27.9881],
+    name: "Monte Fuji",
+    region: "Honshu, Japão (3.776m)",
+    center: [138.7274, 35.3606],
+    zoom: 12.5,
+    pitch: 65,
+    bearing: 30,
+    description: "Estratovulcão cónico sagrado",
+  },
+  {
+    name: "Vulcão Licancabur & Atacama",
+    region: "Fronteira Chile-Bolívia (5.916m)",
+    center: [-67.8833, -22.8333],
     zoom: 12,
+    pitch: 68,
+    bearing: 160,
+    description: "Altiplano desértico e lago de cratera",
+  },
+  {
+    name: "Cratera de Ngorongoro & Rift",
+    region: "Tanzânia (Rift Este-Africano)",
+    center: [35.5833, -3.1667],
+    zoom: 11.5,
+    pitch: 60,
+    bearing: 80,
+    description: "Caldeira vulcânica intacta de 260 km²",
+  },
+  {
+    name: "Cataratas de Vitória & Zambeze",
+    region: "Fronteira Zâmbia-Zimbabué",
+    center: [25.856, -17.9244],
+    zoom: 13.5,
+    pitch: 65,
+    bearing: 110,
+    description: "Garganta e falha tectónica em basalto",
+  },
+  {
+    name: "Fiorde de Geiranger",
+    region: "Sunnmøre, Noruega",
+    center: [7.2058, 62.1049],
+    zoom: 12.5,
     pitch: 72,
-    bearing: 200,
-    description: "O teto do mundo",
+    bearing: 45,
+    description: "Relevo glaciar escarpado e fiordes",
+  },
+  {
+    name: "Monte Roraima",
+    region: "Escudo das Guianas (Tepui 2.810m)",
+    center: [-60.7583, 5.1433],
+    zoom: 12.5,
+    pitch: 70,
+    bearing: 215,
+    description: "Planalto tabular pré-câmbrico",
   },
   {
     name: "Grand Canyon",
@@ -66,6 +117,15 @@ export const GLOBAL_LANDMARKS: LandmarkPreset[] = [
     pitch: 65,
     bearing: 75,
     description: "Erosão estratigráfica milenar",
+  },
+  {
+    name: "Monte Evereste",
+    region: "Himalaias (8.848m)",
+    center: [86.925, 27.9881],
+    zoom: 12,
+    pitch: 72,
+    bearing: 200,
+    description: "O teto do mundo",
   },
   {
     name: "Monte Branco",
@@ -85,12 +145,16 @@ interface TerrainControlsProps {
   projection: "globe" | "mercator";
   profileModeActive: boolean;
   showProfileTool?: boolean;
+  solarState?: SolarState;
   onPitchChange: (pitch: number) => void;
   onExaggerationChange: (exag: number) => void;
   onResetNorth: () => void;
   onToggleProjection: () => void;
   onToggleProfileMode: () => void;
   onFlyToPreset: (preset: LandmarkPreset) => void;
+  onSolarHourChange?: (hour: number) => void;
+  onSelectSolarPreset?: (presetKey: SolarPresetKey) => void;
+  onToggleShadows?: () => void;
   className?: string;
 }
 
@@ -101,16 +165,21 @@ export default function TerrainControls({
   projection,
   profileModeActive,
   showProfileTool = false,
+  solarState,
   onPitchChange,
   onExaggerationChange,
   onResetNorth,
   onToggleProjection,
   onToggleProfileMode,
   onFlyToPreset,
+  onSolarHourChange,
+  onSelectSolarPreset,
+  onToggleShadows,
   className = "",
 }: TerrainControlsProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [showPresets, setShowPresets] = useState(false);
+  const [showSolar, setShowSolar] = useState(false);
 
   return (
     <div
@@ -200,12 +269,31 @@ export default function TerrainControls({
           </button>
         )}
 
+        {/* Solar Simulation & Dynamic Shadows Toggle */}
+        <button
+          type="button"
+          onClick={() => {
+            setShowSolar(!showSolar);
+            setShowSettings(false);
+            setShowPresets(false);
+          }}
+          title="Simulação Solar e Sombras Dinâmicas no Terreno 3D"
+          className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
+            showSolar
+              ? "bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-2 ring-amber-400"
+              : "text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+          }`}
+        >
+          <Sun size={18} className={showSolar ? "text-amber-600 dark:text-amber-400" : "text-amber-500"} />
+        </button>
+
         {/* Terrain Settings Drawer Toggle */}
         <button
           type="button"
           onClick={() => {
             setShowSettings(!showSettings);
             setShowPresets(false);
+            setShowSolar(false);
           }}
           title="Ajustes de Relevo e Exagero Vertical"
           className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
@@ -223,6 +311,7 @@ export default function TerrainControls({
           onClick={() => {
             setShowPresets(!showPresets);
             setShowSettings(false);
+            setShowSolar(false);
           }}
           title="Destinos Mundiais em 3D (Evereste, Namúli, Kilimanjaro...)"
           className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
@@ -383,6 +472,109 @@ export default function TerrainControls({
                 </span>
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Solar Simulation & Shadows Panel */}
+      {showSolar && (
+        <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 p-3 w-72 text-xs flex flex-col gap-3 animate-in fade-in slide-in-from-right-2 duration-150">
+          <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-1.5 font-semibold text-amber-700 dark:text-amber-400">
+              <Sun size={15} />
+              <span>Simulação Solar & Sombras 3D</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowSolar(false)}
+              className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Quick Presets */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Momentos do Dia:</span>
+            <div className="grid grid-cols-5 gap-1">
+              {SOLAR_PRESETS.map((preset) => {
+                const isActive = solarState?.presetKey === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => onSelectSolarPreset?.(preset.id)}
+                    title={`${preset.label} (${preset.timeString}): ${preset.description}`}
+                    className={`py-1 px-1 rounded-lg border text-center flex flex-col items-center transition-all ${
+                      isActive
+                        ? "bg-amber-500 text-white border-amber-600 shadow-sm font-bold"
+                        : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:bg-amber-50 hover:border-amber-200 text-slate-700 dark:text-slate-200"
+                    }`}
+                  >
+                    <span className="text-sm">{preset.icon}</span>
+                    <span className="text-[8px] truncate mt-0.5">{preset.label.split(" ")[0]}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Solar Hour Slider */}
+          <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800">
+            <div className="flex justify-between items-center text-slate-600 dark:text-slate-300">
+              <span>Hora Solar:</span>
+              <span className="font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded text-xs">
+                {solarState?.timeString ?? "12:00"}
+              </span>
+            </div>
+            <Slider
+              value={[solarState?.hour ?? 12]}
+              min={0}
+              max={23.9}
+              step={0.25}
+              onValueChange={([val]) => onSolarHourChange?.(val)}
+              className="py-1 cursor-pointer"
+            />
+            <div className="flex justify-between text-[10px] text-slate-400">
+              <span>00:00 (Noite)</span>
+              <span>12:00 (Zenite)</span>
+              <span>23:59</span>
+            </div>
+          </div>
+
+          {/* Sun Coordinates & Shadows Toggle */}
+          <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 flex flex-col gap-2">
+            <div className="grid grid-cols-2 gap-2 text-[10px]">
+              <div>
+                <span className="text-slate-400 block">Azimute Solar:</span>
+                <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">
+                  {solarState?.azimuth ?? 180}°
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block">Elevação Solar:</span>
+                <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">
+                  {solarState?.elevation ?? 72}°
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-1.5 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
+              <span className="text-[11px] font-medium text-slate-700 dark:text-slate-200">
+                Sombras do Terreno (Hillshade)
+              </span>
+              <button
+                type="button"
+                onClick={onToggleShadows}
+                className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all ${
+                  solarState?.shadowEnabled
+                    ? "bg-amber-500 text-white border-amber-600 shadow-sm"
+                    : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600"
+                }`}
+              >
+                {solarState?.shadowEnabled ? "Ativas" : "Desativadas"}
+              </button>
+            </div>
           </div>
         </div>
       )}
