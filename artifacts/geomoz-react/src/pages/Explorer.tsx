@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, Suspense } from "react";
-import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard, BrainCircuit, Pen, Menu } from "lucide-react";
+import { Link } from "wouter";
+import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard, BrainCircuit, Pen, Menu, Home, LogIn } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -13,6 +14,7 @@ import { LazyGeoAnalises, LazyHidroGeoMoz, LazyGeoperigos, LazyAguaSubterranea, 
 import { apiUrl, apiFetch } from "@/lib/api";
 import SettingsDialog from "@/components/SettingsDialog";
 import GeeCredentialsDialog from "@/components/GeeCredentialsDialog";
+import AuthModal from "@/components/AuthModal";
 import { useAuth } from "@/hooks/useAuth";
 import ZoneSelect from "@/components/ZoneSelect";
 import type { AreaOfInterest } from "@/lib/aoi";
@@ -83,7 +85,7 @@ export default function Explorer() {
     setActiveTabState(tab);
     try {
       const slugMap: Record<Tab, string> = {
-        "Mapa": "",
+        "Mapa": "mapa",
         "Análise": "estatisticas",
         "GeoAnálises": "analises",
         "Bacias Hidrográficas": "hidrografia",
@@ -94,8 +96,8 @@ export default function Explorer() {
         "Exportar": "exportar",
       };
       const slug = slugMap[tab];
-      const newUrl = slug ? `/${slug}` : "/";
-      if (window.location.pathname !== newUrl) {
+      const newUrl = slug ? `/${slug}` : "/app";
+      if (window.location.pathname !== newUrl && window.location.pathname !== "/") {
         window.history.replaceState({ tab }, "", newUrl);
       }
     } catch {}
@@ -114,6 +116,7 @@ export default function Explorer() {
   const [mapZoom, setMapZoom] = useState(5);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [geeDialogOpen, setGeeDialogOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
   const { user } = useAuth();
   const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [finishRequest, setFinishRequest] = useState(0);
@@ -313,13 +316,30 @@ function LoadingSkeleton({ label }: { label: string }) {
       <header className="flex-none h-14 border-b border-slate-200/50 glass-panel px-3 sm:px-4 flex items-center justify-between shrink-0 z-30 transition-all">
         <div className="flex items-center gap-3 md:gap-5">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-sky-500 flex items-center justify-center text-white shadow-sm shrink-0">
-              <Globe size={17} />
-            </div>
-            <span className="font-bold text-slate-900 tracking-tight text-sm sm:text-base whitespace-nowrap">GeoMoz</span>
-            <Badge variant="outline" className="hidden sm:inline-flex ml-0.5 text-[10px] font-medium border-sky-200 text-sky-700 bg-sky-50">
-              Global 3D
-            </Badge>
+            <Link
+              href="/"
+              title="Voltar à Página Inicial do GeoMoz-Explorer"
+              className="flex items-center gap-2 cursor-pointer hover:opacity-90 transition-opacity"
+            >
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-sm shrink-0">
+                <Globe size={17} />
+              </div>
+              <span className="font-bold text-slate-900 tracking-tight text-sm sm:text-base whitespace-nowrap">
+                GeoMoz<span className="text-sky-600">Explorer</span>
+              </span>
+              <Badge variant="outline" className="hidden sm:inline-flex ml-0.5 text-[10px] font-medium border-sky-200 text-sky-700 bg-sky-50">
+                3D
+              </Badge>
+            </Link>
+
+            <Link
+              href="/"
+              title="Voltar à Página Inicial"
+              className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-sky-600 hover:bg-sky-50 border border-slate-200 rounded-lg transition-colors ml-1"
+            >
+              <Home size={13} />
+              <span>Início</span>
+            </Link>
           </div>
 
           <nav className="hidden md:flex items-center gap-0.5">
@@ -464,25 +484,36 @@ function LoadingSkeleton({ label }: { label: string }) {
             <Settings size={16} />
           </button>
 
-          {/* User Account / GEE login button */}
-          <button
-            onClick={() => setGeeDialogOpen(true)}
-            className="flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-full border border-slate-200 hover:border-sky-300 hover:bg-sky-50/50 transition-all text-xs"
-            title={user ? `Sessão iniciada como ${user.email}` : "Ligar ao Google Earth Engine"}
-          >
-            <Avatar className="h-7 w-7 border border-slate-200 shadow-xs">
-              {user?.photoURL ? (
-                <img src={user.photoURL} alt={user.displayName || "Utilizador"} className="h-full w-full object-cover rounded-full" />
-              ) : (
-                <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-sky-600 text-white text-[10px] font-bold">
-                  {user?.email ? user.email.slice(0, 2).toUpperCase() : "GEE"}
-                </AvatarFallback>
-              )}
-            </Avatar>
-            <span className="hidden sm:inline font-medium text-slate-700 max-w-[120px] truncate">
-              {user ? (user.displayName || user.email?.split("@")[0]) : "Ligar GEE"}
-            </span>
-          </button>
+          {/* User Account / Login button */}
+          {user ? (
+            <button
+              onClick={() => setGeeDialogOpen(true)}
+              className="flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-full border border-slate-200 hover:border-sky-300 hover:bg-sky-50/50 transition-all text-xs"
+              title={`Sessão iniciada como ${user.email} (Clique para opções GEE)`}
+            >
+              <Avatar className="h-7 w-7 border border-slate-200 shadow-xs">
+                {user?.photoURL ? (
+                  <img src={user.photoURL} alt={user.displayName || "Utilizador"} className="h-full w-full object-cover rounded-full" />
+                ) : (
+                  <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-sky-600 text-white text-[10px] font-bold">
+                    {user?.email ? user.email.slice(0, 2).toUpperCase() : "U"}
+                  </AvatarFallback>
+                )}
+              </Avatar>
+              <span className="hidden sm:inline font-medium text-slate-700 max-w-[120px] truncate">
+                {user.displayName || user.email?.split("@")[0]}
+              </span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setAuthModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white text-xs font-semibold shadow-sm transition-all"
+              title="Iniciar Sessão ou Criar Conta no GeoMoz"
+            >
+              <LogIn size={13} />
+              <span className="hidden sm:inline">Entrar</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -652,9 +683,10 @@ function LoadingSkeleton({ label }: { label: string }) {
         </div>
       )}
 
-      {/* Settings Dialog */}
+      {/* Settings & Auth Dialogs */}
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <GeeCredentialsDialog open={geeDialogOpen} onOpenChange={setGeeDialogOpen} />
+      <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
 
       {/* Mobile Bottom Navigation Bar (md:hidden) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-14 bg-white/95 backdrop-blur-md border-t border-slate-200 z-[800] flex items-center justify-around px-1 shadow-lg">

@@ -1,6 +1,8 @@
 import React, { Component, type ReactNode, type ErrorInfo } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Switch, Route } from "wouter";
 import { Toaster } from "@/components/ui/toaster";
+import LandingPage from "@/pages/LandingPage";
 import Explorer from "@/pages/Explorer";
 import { AuthProvider } from "@/hooks/useAuth";
 
@@ -75,7 +77,24 @@ export default function App() {
     <AuthProvider>
       <QueryClientProvider client={queryClient}>
         <ErrorBoundary FallbackComponent={ErrorFallback}>
-          <Explorer />
+          <Switch>
+            <Route path="/">{() => <LandingPage />}</Route>
+            <Route path="/login">{() => <LandingPage initialAuthMode="login" />}</Route>
+            <Route path="/register">{() => <LandingPage initialAuthMode="register" />}</Route>
+            <Route path="/app">{() => <Explorer />}</Route>
+            <Route path="/explorer">{() => <Explorer />}</Route>
+            <Route path="/mapa">{() => <Explorer />}</Route>
+            <Route path="/estatisticas">{() => <Explorer />}</Route>
+            <Route path="/analises">{() => <Explorer />}</Route>
+            <Route path="/hidrografia">{() => <Explorer />}</Route>
+            <Route path="/agua-subterranea">{() => <Explorer />}</Route>
+            <Route path="/geoperigos">{() => <Explorer />}</Route>
+            <Route path="/geomoz-ai">{() => <Explorer />}</Route>
+            <Route path="/dashboard">{() => <Explorer />}</Route>
+            <Route path="/exportar">{() => <Explorer />}</Route>
+            {/* Fallback to Explorer for any other direct link */}
+            <Route>{() => <Explorer />}</Route>
+          </Switch>
         </ErrorBoundary>
         <Toaster />
       </QueryClientProvider>
