@@ -3185,3 +3185,53 @@ def compute_targeting_zones(
                           ),
         "dateRange":      f"{start_date} → {end_date}",
     }
+
+# ── GeoTIFF raster export via getDownloadURL ──────────────────────────────────
+
+def get_index_download_url(
+    index: str,
+    region_geojson: Optional[dict],
+    start_date: str = "2023-01-01",
+    end_date: str = "2023-12-31",
+    cloud_pct: int = 30,
+    scale: int = 30,
+) -> dict:
+    """Generate a direct GeoTIFF raster download URL from GEE for a given index and AOI."""
+    import ee
+
+    if index not in INDEX_REGISTRY:
+        raise ValueError(f"Índice desconhecido '{index}'. Disponíveis: {list(INDEX_REGISTRY)}")
+
+    cfg = INDEX_REGISTRY[index]
+    region = _to_ee_region(region_geojson)
+
+    s2 = l8 = dem = rivers = None
+    needs = cfg["needs"]
+    if "s2" in needs:
+        s2, _ = _build_s2_composite(region, start_date, end_date, cloud_pct)
+    if "l8" in needs:
+        l8, _ = _build_l8_composite(region, start_date, end_date, cloud_pct)
+    if "dem" in needs:
+        dem = _build_dem(region)
+    if "rivers" in needs:
+        rivers = _build_rivers_raster(region)
+
+    idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers).clip(region)
+
+    download_params = {
+        "name": f"geomoz_{index}_{start_date}_{end_date}",
+        "scale": scale,
+        "crs": "EPSG:4326",
+        "region": region,
+        "format": "GEO_TIFF",
+    }
+
+    url = idx_img.getDownloadURL(download_params)
+    return {
+        "downloadUrl": url,
+        "index": index,
+        "name": cfg["name"],
+        "scale": scale,
+        "format": "GEO_TIFF",
+        "dateRange": f"{start_date} → {end_date}",
+    }

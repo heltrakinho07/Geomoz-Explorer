@@ -1,3 +1,4 @@
+import GeoMozAIAgentTab from "@/components/GeoMozAIAgentTab";
 /**
  * GeoMoz AI — Geological Machine Learning Module.
  *
@@ -23,7 +24,7 @@ import {
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
-  BrainCircuit, GitBranch, Map, BarChart2, Loader2, Info,
+  Sparkles, BrainCircuit, GitBranch, Map, BarChart2, Loader2, Info,
   ChevronDown, Play, Target, Star, TrendingUp, Cpu,
   Satellite, Layers, Crosshair, Calendar, Settings2,
   Plus, Trash2, Check, X,
@@ -75,7 +76,7 @@ const MINERAL_OPTIONS: { value: MineralType; label: string; icon: React.ReactNod
   { value: "hydrocarbons",   label: "Hidrocarbonetos",      icon: <Flame size={20} className="text-orange-500" />, desc: "Bacias mesozoicas, calcário, evaporite" },
 ];
 
-type AITab = "clustering" | "pca" | "about" | "alphaearth";
+type AITab = "agent" | "alphaearth" | "clustering" | "pca" | "about";
 
 type AlphaEarthMode = "pca" | "cluster" | "change" | "similarity" | "classify";
 
@@ -1029,19 +1030,20 @@ function AboutTab() {
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function GeoMozAI() {
-  const [activeTab, setActiveTab] = useState<AITab>("clustering");
+  const [activeTab, setActiveTab] = useState<AITab>("agent");
   const [loadEnabled, setLoadEnabled] = useState(false);
   const { data: summaryData, isLoading, error } = useProvinceSummary(loadEnabled);
   const summaryItems = summaryData?.provinces ?? [];
 
   const tabs: { id: AITab; label: string; icon: React.ReactNode }[] = [
-    { id: "clustering",   label: "Clustering Territorial", icon: <GitBranch size={13} /> },
-    { id: "pca",          label: "Análise PCA",           icon: <BarChart2 size={13} /> },
-    { id: "alphaearth",   label: "AlphaEarth",            icon: <Satellite size={13} /> },
-    { id: "about",        label: "Sobre / Roadmap",       icon: <Info size={13} /> },
+    { id: "agent",        label: "Agente de Estudo (GIS/GEE)", icon: <Sparkles size={13} className="text-violet-500" /> },
+    { id: "alphaearth",   label: "AlphaEarth Foundations",     icon: <Satellite size={13} /> },
+    { id: "clustering",   label: "Clustering Territorial",     icon: <GitBranch size={13} /> },
+    { id: "pca",          label: "Análise PCA",                icon: <BarChart2 size={13} /> },
+    { id: "about",        label: "Sobre / Roadmap",            icon: <Info size={13} /> },
   ];
 
-  const showLoadGate = activeTab !== "about" && activeTab !== "alphaearth";
+  const showLoadGate = activeTab !== "about" && activeTab !== "alphaearth" && activeTab !== "agent";
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
@@ -1065,7 +1067,9 @@ export default function GeoMozAI() {
         ))}
       </div>
 
-      {activeTab === "alphaearth" ? (
+      {activeTab === "agent" ? (
+        <GeoMozAIAgentTab />
+      ) : activeTab === "alphaearth" ? (
         <AlphaEarthTab />
       ) : showLoadGate && !loadEnabled ? (
         <div className="flex-1 flex items-center justify-center">
