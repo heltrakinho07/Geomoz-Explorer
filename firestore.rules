@@ -1,0 +1,36 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Each authenticated user has full read/write isolation over their own documents
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // Project Workspaces
+      match /projects/{projectId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+
+        // Study Runs & Analyses within project
+        match /runs/{runId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+      }
+
+      // Credentials & GEE OAuth tokens
+      match /credentials/{credId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // User Settings & GEE preferences
+      match /settings/{settingId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

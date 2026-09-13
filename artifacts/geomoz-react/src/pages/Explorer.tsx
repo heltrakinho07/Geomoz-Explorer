@@ -1,3 +1,7 @@
+import ProjectSelectorButton from "@/components/ProjectSelectorButton";
+import ProjectWorkspaceModal from "@/components/ProjectWorkspaceModal";
+import { useProject } from "@/context/ProjectContext";
+import { FolderKanban } from "lucide-react";
 import { useRef, useState, useEffect, Suspense } from "react";
 import { Link } from "wouter";
 import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard, BrainCircuit, Pen, Menu, Home, LogIn } from "lucide-react";
@@ -118,6 +122,26 @@ export default function Explorer() {
   const [geeDialogOpen, setGeeDialogOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const { user } = useAuth();
+  const { activeProject } = useProject();
+  const [projectModalOpen, setProjectModalOpen] = useState(false);
+
+  // Sync AOI and map view when active project changes
+  useEffect(() => {
+    if (activeProject?.aoi) {
+      setAOI(activeProject.aoi);
+      if (activeProject.aoi.source === "mozambique") {
+        setProvince(activeProject.aoi.province);
+        setDistrict(activeProject.aoi.district);
+      } else {
+        setProvince(null);
+        setDistrict(null);
+      }
+      if (activeProject.aoi.bounds) {
+        mapRef.current?.flyToBounds(activeProject.aoi.bounds, { padding: [30, 30], duration: 1.2 });
+      }
+    }
+  }, [activeProject]);
+
   const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [finishRequest, setFinishRequest] = useState(0);
 
@@ -340,6 +364,9 @@ function LoadingSkeleton({ label }: { label: string }) {
               <Home size={13} />
               <span>Início</span>
             </Link>
+
+            {/* Project Workspace Pill Selector */}
+            <ProjectSelectorButton onClick={() => setProjectModalOpen(true)} className="ml-1 shrink-0" />
           </div>
 
           <nav className="hidden md:flex items-center gap-0.5">
@@ -681,6 +708,26 @@ function LoadingSkeleton({ label }: { label: string }) {
       <GeeCredentialsDialog open={geeDialogOpen} onOpenChange={setGeeDialogOpen} />
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
 
+      {/* Project Workspace Modal */}
+      <ProjectWorkspaceModal
+        open={projectModalOpen}
+        onOpenChange={setProjectModalOpen}
+        currentPlatformAOI={aoi}
+        onSelectProjectAOI={(projAOI) => {
+          setAOI(projAOI);
+          if (projAOI.source === "mozambique") {
+            setProvince(projAOI.province);
+            setDistrict(projAOI.district);
+          } else {
+            setProvince(null);
+            setDistrict(null);
+          }
+          if (projAOI.bounds) {
+            mapRef.current?.flyToBounds(projAOI.bounds, { padding: [30, 30], duration: 1.2 });
+          }
+        }}
+      />
+
       {/* Mobile Bottom Navigation Bar (md:hidden) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-14 bg-white/95 backdrop-blur-md border-t border-slate-200 z-[800] flex items-center justify-around px-1 shadow-lg">
         <button
@@ -744,6 +791,24 @@ function LoadingSkeleton({ label }: { label: string }) {
               <span className="font-bold text-sm text-slate-800">Todos os Módulos GeoMoz</span>
               <button onClick={() => setMobileMoreMenuOpen(false)} className="p-1 text-slate-400 hover:text-slate-600">
                 <X size={18} />
+              </button>
+            </div>
+            <div className="mb-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMoreMenuOpen(false);
+                  setProjectModalOpen(true);
+                }}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl border border-sky-200 bg-sky-50 text-sky-800 text-xs font-semibold"
+              >
+                <span className="flex items-center gap-2">
+                  <FolderKanban size={16} className="text-sky-600" />
+                  Project Workspace
+                </span>
+                <span className="text-[10px] text-sky-600">
+                  {activeProject ? activeProject.name : "Selecionar Estudo"} →
+                </span>
               </button>
             </div>
             <div className="grid grid-cols-2 gap-2.5">

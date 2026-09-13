@@ -1,3 +1,4 @@
+import { useProject } from "@/context/ProjectContext";
 /**
  * GeoAnálises — Sentinel-2 spectral analysis module.
  *
@@ -16,7 +17,7 @@ import {
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
-  Satellite, BarChart2, Layers, Info, ChevronDown,
+  FolderPlus, FolderKanban, Satellite, BarChart2, Layers, Info, ChevronDown,
   Cpu, FlaskConical, CloudSun, Droplets, Flame,
   CheckCircle2, XCircle, Loader2, Play, RefreshCw,
   ExternalLink, ShieldCheck,
@@ -640,6 +641,71 @@ function GeeAnalysisPanel({
   const [error, setError]         = useState<string | null>(null);
   const [result, setResult]       = useState<GeeResult | null>(null);
 
+  const { activeProject, saveRunToActiveProject } = useProject();
+  const { toast } = useToast();
+  const [savingRun, setSavingRun] = useState(false);
+  const [runSaved, setRunSaved]   = useState(false);
+
+  // Sync project period when active project changes
+  useEffect(() => {
+    if (activeProject?.period) {
+      if (activeProject.period.startDate) setStartDate(activeProject.period.startDate);
+      if (activeProject.period.endDate) setEndDate(activeProject.period.endDate);
+    }
+  }, [activeProject]);
+
+  useEffect(() => {
+    setRunSaved(false);
+  }, [activeIndex, result]);
+
+  async function handleSaveRunToProject() {
+    if (!activeProject) {
+      toast({
+        variant: "destructive",
+        title: "Nenhum projeto selecionado",
+        description: "Selecione ou crie um projeto no menu superior para guardar esta análise.",
+      });
+      return;
+    }
+    if (!result) return;
+
+    setSavingRun(true);
+    try {
+      await saveRunToActiveProject({
+        name: `${def.short} (${def.label})`,
+        type: "remote_sensing",
+        sensor: "Sentinel-2 (Copernicus)",
+        code: activeIndex,
+        formula: def.formula || "",
+        dateRange: {
+          start: startDate,
+          end: endDate,
+        },
+        metrics: {
+          min: result.stats.p10,
+          max: result.stats.p90,
+          mean: result.stats.p50,
+          cloudCoverPercentage: cloudPct,
+        },
+        tileUrl: result.tileUrl,
+        notes: `Clipping: ${district ? `${district}, ${province}` : province || "Moçambique"} | Cenas: ${result.sceneCount}`,
+      });
+      setRunSaved(true);
+      toast({
+        title: "Análise guardada com sucesso!",
+        description: `Adicionada ao projeto "${activeProject.name}".`,
+      });
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao guardar análise",
+        description: e.message || "Tente novamente.",
+      });
+    } finally {
+      setSavingRun(false);
+    }
+  }
+
   const def = INDEX_DEFS.find(d => d.id === activeIndex)!;
 
   async function runAnalysis() {
@@ -756,14 +822,62 @@ function GeeAnalysisPanel({
       {result && !running && (
         <div className="space-y-3">
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <CheckCircle2 size={13} className="text-emerald-600" />
-              <span className="text-xs font-semibold text-emerald-700">Análise GEE completa</span>
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 size={13} className="text-emerald-600" />
+                <span className="text-xs font-semibold text-emerald-700">Análise GEE completa</span>
+              </div>
             </div>
             <div className="text-xs text-emerald-700 space-y-0.5">
               <div>{result.sceneCount} cenas Sentinel-2 usadas</div>
               <div>Período: {result.dateRange}</div>
             </div>
+          </div>
+
+          {/* Save to Project Workspace Action */}
+          <div className="bg-sky-50/80 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200 truncate">
+                <FolderKanban size={14} className="text-sky-600 shrink-0" />
+                <span className="truncate">
+                  {activeProject ? (
+                    <>Projeto: <span className="text-sky-700 dark:text-sky-300 font-bold">{activeProject.name}</span></>
+                  ) : (
+                    <span className="text-slate-500 font-normal">Nenhum projeto ativo</span>
+                  )}
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSaveRunToProject}
+              disabled={savingRun || runSaved || !activeProject}
+              className={`w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all ${
+                runSaved
+                  ? "bg-emerald-600 text-white"
+                  : activeProject
+                  ? "bg-sky-600 hover:bg-sky-700 text-white shadow-xs"
+                  : "bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed"
+              }`}
+            >
+              {savingRun ? (
+                <>
+                  <Loader2 size={13} className="animate-spin" />
+                  <span>A guardar no estudo…</span>
+                </>
+              ) : runSaved ? (
+                <>
+                  <CheckCircle2 size={13} />
+                  <span>Guardado no Estudo</span>
+                </>
+              ) : (
+                <>
+                  <FolderPlus size={13} />
+                  <span>{activeProject ? "Guardar Análise no Projeto Ativo" : "Selecione um Estudo no Menu Superior"}</span>
+                </>
+              )}
+            </button>
           </div>
 
           {Object.keys(result.stats).length > 0 && (

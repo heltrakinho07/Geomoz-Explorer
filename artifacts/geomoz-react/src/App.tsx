@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/toaster";
 import LandingPage from "@/pages/LandingPage";
 import Explorer from "@/pages/Explorer";
 import { AuthProvider } from "@/hooks/useAuth";
+import { ProjectProvider } from "@/context/ProjectContext";
+
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -100,6 +102,7 @@ export default function App() {
   return (
     <AuthProvider>
       <QueryClientProvider client={queryClient}>
+        <ProjectProvider>
         <ErrorBoundary FallbackComponent={ErrorFallback}>
           <Switch>
             <Route path="/">{() => <LandingPage />}</Route>
@@ -121,6 +124,7 @@ export default function App() {
           </Switch>
         </ErrorBoundary>
         <Toaster />
+        </ProjectProvider>
       </QueryClientProvider>
     </AuthProvider>
   );
