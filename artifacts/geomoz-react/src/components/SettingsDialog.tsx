@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -7,472 +7,486 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { apiUrl, apiFetch } from "@/lib/api";
+import { useAuth } from "../hooks/useAuth";
+import { useGeeAuth } from "../hooks/useGeeAuth";
+import { useProject } from "../context/ProjectContext";
 import {
   Settings,
-  Globe,
+  Cpu,
+  User,
+  Sliders,
+  Database,
   CheckCircle2,
-  XCircle,
+  AlertCircle,
   Loader2,
-  KeyRound,
-  ShieldCheck,
-  AlertTriangle,
-  Info,
-  RefreshCw,
   ExternalLink,
-  ChevronRight,
+  ShieldCheck,
+  RefreshCw,
+  LogOut,
+  LogIn,
+  KeyRound,
+  Trash2,
+  Globe,
+  Layers,
 } from "lucide-react";
-
-/* ── Types ────────────────────────────────────────────────────────────────── */
-
-interface GEEConfig {
-  status: {
-    connected: boolean;
-    auth_type: string | null;
-    project: string | null;
-    message: string;
-  };
-  config: {
-    hasServiceAccountKey: boolean;
-    maskedServiceAccount: {
-      client_email: string;
-      project_id: string;
-      key_prefix: string;
-      has_private_key: boolean;
-    } | null;
-    envProjectId: string | null;
-    envProjectSource: string | null;
-  };
-  endpoints: Record<string, unknown>;
-}
-
-interface GEEConfigureResponse {
-  configured: boolean;
-  connected: boolean;
-  message: string;
-  auth_type?: string;
-  project?: string;
-}
-
-/* ── Hook ─────────────────────────────────────────────────────────────────── */
-
-function useGEEConfig() {
-  const [config, setConfig] = useState<GEEConfig | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchConfig = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiFetch("/geomoz-api/gee/config");
-      if (!res.ok) throw new Error(`Erro ${res.status}: ${res.statusText}`);
-      const data: GEEConfig = await res.json();
-      setConfig(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao carregar configuração");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchConfig();
-  }, [fetchConfig]);
-
-  return { config, loading, error, refetch: fetchConfig };
-}
-
-/* ── Component ────────────────────────────────────────────────────────────── */
+import { apiFetch } from "@/lib/api";
 
 interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
+type SettingsTab = "gee" | "profile" | "preferences" | "storage";
+
 export default function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
-  const { config, loading, error, refetch } = useGEEConfig();
+  const { user, signOut } = useAuth();
+  const { geeConnected, geeProject, loading: geeLoading, error: geeError, connectGee, disconnectGee, refreshStatus } = useGeeAuth();
+  const { projects } = useProject();
 
-  const [saKey, setSaKey] = useState("");
-  const [projectId, setProjectId] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saveResult, setSaveResult] = useState<{
-    type: "success" | "error";
-    message: string;
-  } | null>(null);
+  const [activeTab, setActiveTab] = useState<SettingsTab>("gee");
+  const [projectIdInput, setProjectIdInput] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const [testResult, setTestResult] = useState<{ connected: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{
-    connected: boolean;
-    message: string;
-  } | null>(null);
 
-  // Reset local state when dialog opens
-  useEffect(() => {
-    if (open) {
-      setSaKey("");
-      setProjectId("");
-      setSaveResult(null);
-      setTestResult(null);
-      refetch();
-    }
-  }, [open, refetch]);
-
-  async function handleSave() {
-    if (!saKey.trim() && !projectId.trim()) {
-      setSaveResult({
-        type: "error",
-        message: "Introduza a chave da service account e/ou o project ID.",
-      });
-      return;
-    }
-
-    setSaving(true);
-    setSaveResult(null);
+  // Basemap preference state
+  const [preferredBasemap, setPreferredBasemap] = useState(() => {
     try {
-      const body: Record<string, string> = {};
-      if (saKey.trim()) body.service_account_key = saKey.trim();
-      if (projectId.trim()) body.project_id = projectId.trim();
-
-      const res = await apiFetch("/geomoz-api/gee/configure", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data: GEEConfigureResponse = await res.json();
-
-      if (data.configured && data.connected) {
-        setSaveResult({ type: "success", message: data.message });
-        refetch();
-      } else {
-        setSaveResult({ type: "error", message: data.message });
-      }
-    } catch (err) {
-      setSaveResult({
-        type: "error",
-        message: err instanceof Error ? err.message : "Erro de rede ao configurar GEE",
-      });
-    } finally {
-      setSaving(false);
+      return localStorage.getItem("geomoz_preferred_basemap") || "hybrid";
+    } catch {
+      return "hybrid";
     }
-  }
+  });
 
-  async function handleTest() {
+  const handleConnectGee = async () => {
+    setConnecting(true);
+    setTestResult(null);
+    try {
+      await connectGee(projectIdInput.trim() || undefined);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await apiFetch("/geomoz-api/gee/status");
+      let headers: Record<string, string> = {};
+      if (user) {
+        const idToken = await user.getIdToken();
+        headers["Authorization"] = `Bearer ${idToken}`;
+      }
+      const res = await apiFetch("/geomoz-api/gee/status", { headers });
       const data = await res.json();
-      setTestResult({
-        connected: data.connected,
-        message: data.connected
-          ? `Conectado via ${data.auth_type} (projeto: ${data.project || "n/a"})`
-          : data.message,
-      });
-    } catch (err) {
+      if (data.connected) {
+        setTestResult({
+          connected: true,
+          message: `Conexão bem-sucedida! Projeto: ${data.project || "Padrão"} (${data.auth_type || "OAuth2"})`,
+        });
+      } else {
+        setTestResult({
+          connected: false,
+          message: "GEE não conectado ou credenciais pendentes.",
+        });
+      }
+    } catch (e: any) {
       setTestResult({
         connected: false,
-        message: err instanceof Error ? err.message : "Falha ao testar conexão",
+        message: e.message || "Erro de conexão ao servidor.",
       });
     } finally {
       setTesting(false);
     }
-  }
+  };
 
-  const isConnected = config?.status?.connected ?? false;
+  const handleSavePreferences = () => {
+    try {
+      localStorage.setItem("geomoz_preferred_basemap", preferredBasemap);
+      alert("Preferências guardadas com sucesso.");
+    } catch {}
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[580px] max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl p-0 overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl">
+        {/* Header */}
+        <div className="p-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
-              <Settings size={20} className="text-slate-600" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-md">
+              <Settings size={20} />
             </div>
             <div>
-              <DialogTitle className="text-xl">Configurações</DialogTitle>
-              <DialogDescription>
-                Configure as credenciais do Google Earth Engine
+              <DialogTitle className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                Definições do Sistema
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-300 mt-0.5">
+                Configuração de credenciais Google Earth Engine, perfil de utilizador e preferências da plataforma.
               </DialogDescription>
             </div>
           </div>
-        </DialogHeader>
 
-        <div className="space-y-6 mt-2">
-          {/* ── GEE Status Card ── */}
-          <div className="rounded-xl border border-slate-200 overflow-hidden">
-            <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 border-b border-slate-200">
-              <Globe size={16} className="text-slate-500" />
-              <span className="text-sm font-semibold text-slate-700">
-                Google Earth Engine
-              </span>
-              {loading ? (
-                <Badge variant="outline" className="ml-auto text-xs gap-1.5">
-                  <Loader2 size={10} className="animate-spin" />
-                  A verificar…
-                </Badge>
-              ) : isConnected ? (
-                <Badge className="ml-auto bg-emerald-500 hover:bg-emerald-500 text-white border-0 text-xs gap-1">
-                  <CheckCircle2 size={10} />
-                  Conectado
-                </Badge>
-              ) : (
-                <Badge variant="destructive" className="ml-auto text-xs gap-1">
-                  <XCircle size={10} />
-                  Desconectado
-                </Badge>
-              )}
-            </div>
+          {/* Settings Tabs */}
+          <div className="flex items-center gap-1 mt-4 pt-3 border-t border-slate-800/80 overflow-x-auto">
+            <button
+              onClick={() => setActiveTab("gee")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                activeTab === "gee"
+                  ? "bg-sky-500 text-white shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Cpu size={14} />
+              <span>Google Earth Engine</span>
+            </button>
 
-            {error ? (
-              <div className="p-4">
-                <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-100 rounded-lg">
-                  <AlertTriangle size={16} className="text-red-400 mt-0.5 shrink-0" />
+            <button
+              onClick={() => setActiveTab("profile")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                activeTab === "profile"
+                  ? "bg-sky-500 text-white shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <User size={14} />
+              <span>Perfil & Conta</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("preferences")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                activeTab === "preferences"
+                  ? "bg-sky-500 text-white shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Sliders size={14} />
+              <span>Preferências</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("storage")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                activeTab === "storage"
+                  ? "bg-sky-500 text-white shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Database size={14} />
+              <span>Armazenamento</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Content Body */}
+        <div className="p-5 max-h-[65vh] overflow-y-auto space-y-4">
+          {activeTab === "gee" && (
+            <div className="space-y-4">
+              {/* Status Card */}
+              <div
+                className={`p-4 rounded-xl border flex items-start justify-between gap-3 ${
+                  geeConnected
+                    ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800"
+                    : "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5">
+                    {geeConnected ? (
+                      <CheckCircle2 size={20} className="text-emerald-600" />
+                    ) : (
+                      <AlertCircle size={20} className="text-amber-600" />
+                    )}
+                  </div>
                   <div>
-                    <p className="text-sm font-medium text-red-700">Erro de conexão</p>
-                    <p className="text-xs text-red-500 mt-0.5">{error}</p>
-                  </div>
-                </div>
-              </div>
-            ) : config ? (
-              <div className="p-4 space-y-3">
-                {/* Connection details */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-400 mb-1">Estado</p>
-                    <div className="flex items-center gap-1.5">
-                      <div
-                        className={`w-2 h-2 rounded-full ${
-                          isConnected ? "bg-emerald-500" : "bg-red-400"
-                        }`}
-                      />
-                      <span className="text-sm font-medium text-slate-700">
-                        {isConnected ? "Conectado" : "Desconectado"}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-400 mb-1">Tipo de Autenticação</p>
-                    <p className="text-sm font-medium text-slate-700">
-                      {config.status.auth_type === "service_account"
-                        ? "Service Account"
-                        : config.status.auth_type === "application_default"
-                        ? "Credenciais Locais"
-                        : "—"}
-                    </p>
-                  </div>
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-400 mb-1">Projeto</p>
-                    <p className="text-sm font-medium text-slate-700 font-mono">
-                      {config.config.envProjectId ||
-                       config.config.maskedServiceAccount?.project_id ||
-                       "—"}
-                    </p>
-                  </div>
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-400 mb-1">Service Account</p>
-                    <p className="text-sm font-medium text-slate-700 truncate" title={config.config.maskedServiceAccount?.client_email}>
-                      {config.config.maskedServiceAccount?.client_email
-                        ? config.config.maskedServiceAccount.client_email
-                        : config.config.hasServiceAccountKey
-                        ? "Configurada (local)"
-                        : "—"}
+                    <h4
+                      className={`text-sm font-bold ${
+                        geeConnected ? "text-emerald-900 dark:text-emerald-200" : "text-amber-900 dark:text-amber-200"
+                      }`}
+                    >
+                      {geeConnected ? "Google Earth Engine Conectado" : "Conexão GEE Pendente"}
+                    </h4>
+                    <p
+                      className={`text-xs mt-0.5 ${
+                        geeConnected ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"
+                      }`}
+                    >
+                      {geeConnected
+                        ? `A sua quota e projeto estão ativas para processamento de satélite. Projeto vinculado: ${
+                            geeProject || "Padrão"
+                          }.`
+                        : "Autentique a sua conta Google com permissões Earth Engine para processamento individual de satélites."}
                     </p>
                   </div>
                 </div>
 
-                {/* Test connection button */}
-                <button
-                  onClick={handleTest}
-                  disabled={testing}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {testing ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <RefreshCw size={14} />
-                  )}
-                  {testing ? "A testar…" : "Testar Conexão"}
-                </button>
+                {geeConnected && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={disconnectGee}
+                    className="border-red-200 text-red-600 hover:bg-red-50 text-xs shrink-0"
+                  >
+                    <Trash2 size={13} className="mr-1" />
+                    Remover Projeto
+                  </Button>
+                )}
+              </div>
+
+              {/* OAuth Connection Card */}
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3">
+                <div className="space-y-1">
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <ShieldCheck size={14} className="text-sky-500" />
+                    Autenticação via Terceiros (OAuth 2.0)
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    A plataforma utiliza o protocolo OAuth 2.0 padrão da Google. Ao iniciar sessão, o token e o ID do projeto ficam guardados de forma segura na sua conta e não precisa de autenticar novamente a cada visita.
+                  </p>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                    ID do Projeto Google Cloud (Earth Engine)
+                  </label>
+                  <Input
+                    type="text"
+                    value={projectIdInput}
+                    onChange={(e) => setProjectIdInput(e.target.value)}
+                    placeholder={geeProject || "ex: meu-projeto-gee-123"}
+                    className="text-xs font-mono bg-white dark:bg-slate-900"
+                  />
+                  <p className="text-[10px] text-slate-400">
+                    O identificador do projeto Google Cloud onde a Earth Engine API está ativa com a sua quota pessoal.
+                  </p>
+                </div>
+
+                {geeError && (
+                  <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                    <AlertCircle size={14} className="shrink-0" />
+                    <span>{geeError}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2.5 pt-2">
+                  <Button
+                    onClick={handleConnectGee}
+                    disabled={connecting || geeLoading}
+                    className="flex-1 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold py-2 rounded-xl"
+                  >
+                    {connecting ? (
+                      <>
+                        <Loader2 size={13} className="animate-spin mr-1.5" />
+                        A autenticar via Google…
+                      </>
+                    ) : (
+                      <>
+                        <KeyRound size={13} className="mr-1.5" />
+                        {geeConnected ? "Reautenticar / Atualizar Projeto" : "Conectar com o Google (Earth Engine)"}
+                      </>
+                    )}
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    onClick={handleTestConnection}
+                    disabled={testing}
+                    className="text-xs py-2 rounded-xl"
+                  >
+                    {testing ? (
+                      <Loader2 size={13} className="animate-spin mr-1.5" />
+                    ) : (
+                      <RefreshCw size={13} className="mr-1.5" />
+                    )}
+                    Testar Conexão
+                  </Button>
+                </div>
 
                 {testResult && (
                   <div
-                    className={`flex items-start gap-2.5 p-3 rounded-lg text-sm ${
+                    className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
                       testResult.connected
-                        ? "bg-emerald-50 border border-emerald-100 text-emerald-700"
-                        : "bg-red-50 border border-red-100 text-red-700"
+                        ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                        : "bg-red-50 border-red-200 text-red-800"
                     }`}
                   >
                     {testResult.connected ? (
-                      <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+                      <CheckCircle2 size={14} className="shrink-0 text-emerald-600" />
                     ) : (
-                      <XCircle size={16} className="mt-0.5 shrink-0" />
+                      <AlertCircle size={14} className="shrink-0 text-red-600" />
                     )}
                     <span>{testResult.message}</span>
                   </div>
                 )}
               </div>
-            ) : (
-              <div className="p-6 flex items-center justify-center">
-                <Loader2 size={20} className="animate-spin text-slate-300" />
-              </div>
-            )}
-          </div>
 
-          {/* ── Credentials Form ── */}
-          <div className="rounded-xl border border-slate-200 overflow-hidden">
-            <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 border-b border-slate-200">
-              <KeyRound size={16} className="text-slate-500" />
-              <span className="text-sm font-semibold text-slate-700">
-                Credenciais GEE
-              </span>
-              {config?.config?.hasServiceAccountKey && (
-                <Badge variant="outline" className="text-xs gap-1 ml-auto">
-                  <ShieldCheck size={10} className="text-emerald-500" />
-                  Chave ativa (env)
-                </Badge>
-              )}
+              {/* Documentation links */}
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-xl space-y-2 text-xs">
+                <span className="font-bold text-slate-700 dark:text-slate-300 block">
+                  Recursos & Ativação de Quotas
+                </span>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <a
+                    href="https://code.earthengine.google.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-sky-600 hover:text-sky-700 underline"
+                  >
+                    <ExternalLink size={12} />
+                    <span>Google Earth Engine Code Editor</span>
+                  </a>
+                  <a
+                    href="https://console.cloud.google.com/apis/library/earthengine.googleapis.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-sky-600 hover:text-sky-700 underline"
+                  >
+                    <ExternalLink size={12} />
+                    <span>Google Cloud Console API</span>
+                  </a>
+                </div>
+              </div>
             </div>
+          )}
 
-            <div className="p-4 space-y-4">
-              {/* Info box */}
-              <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-100 rounded-lg">
-                <Info size={16} className="text-amber-400 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-amber-700">
-                    Ambiente local: credenciais carregadas do sistema
-                  </p>
-                  <p className="text-xs text-amber-600 mt-0.5">
-                    As credenciais definidas nas variáveis de ambiente estão a ser usadas.
-                    Para usar outras, preencha os campos abaixo.
-                  </p>
+          {activeTab === "profile" && (
+            <div className="space-y-4">
+              {user ? (
+                <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full overflow-hidden bg-sky-500 text-white flex items-center justify-center font-bold text-base">
+                      {user.photoURL ? (
+                        <img src={user.photoURL} alt={user.displayName || "Utilizador"} className="w-full h-full object-cover" />
+                      ) : (
+                        user.email?.slice(0, 2).toUpperCase()
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                        {user.displayName || "Investigador GeoMoz"}
+                      </h4>
+                      <p className="text-xs text-slate-500">{user.email}</p>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
+                    <div>
+                      UID de Acesso: <span className="font-mono text-[11px] text-slate-800 dark:text-slate-200">{user.uid}</span>
+                    </div>
+                    <div>
+                      Estado: <span className="font-semibold text-emerald-600">Sessão Autenticada</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => signOut()}
+                      className="text-xs"
+                    >
+                      <LogOut size={13} className="mr-1.5" />
+                      Terminar Sessão
+                    </Button>
+                  </div>
                 </div>
-              </div>
-
-              {/* Service Account Key */}
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-                  Chave da Service Account (JSON)
-                </label>
-                <div className="relative">
-                  <Textarea
-                    value={saKey}
-                    onChange={(e) => setSaKey(e.target.value)}
-                    placeholder={config?.config?.hasServiceAccountKey ? "Chave ativa do ambiente (substituir…)" : "Cole o JSON completo da service account…"}
-                    className="min-h-[120px] font-mono text-xs resize-y"
-                  />
-                </div>
-                <p className="text-xs text-slate-400">
-                  JSON completo do ficheiro service-account-key.json
-                </p>
-              </div>
-
-              {/* Project ID */}
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-                  Project ID (GCP)
-                </label>
-                <Input
-                  value={projectId}
-                  onChange={(e) => setProjectId(e.target.value)}
-                  placeholder={config?.config?.envProjectId || "eengine-project"}
-                  className="font-mono"
-                />
-                <p className="text-xs text-slate-400">
-                  ID do projeto Google Cloud (ex: eengine-project)
-                </p>
-              </div>
-
-              {/* Save button */}
-              <div className="flex items-center gap-3">
-                <Button
-                  onClick={handleSave}
-                  disabled={saving || (!saKey.trim() && !projectId.trim())}
-                  className="flex-1"
-                >
-                  {saving ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" />
-                      A configurar…
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck size={14} />
-                      Aplicar Credenciais
-                    </>
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setSaKey("");
-                    setProjectId("");
-                  }}
-                  disabled={!saKey && !projectId}
-                >
-                  Limpar
-                </Button>
-              </div>
-
-              {saveResult && (
-                <div
-                  className={`flex items-start gap-2.5 p-3 rounded-lg text-sm ${
-                    saveResult.type === "success"
-                      ? "bg-emerald-50 border border-emerald-100 text-emerald-700"
-                      : "bg-red-50 border border-red-100 text-red-700"
-                  }`}
-                >
-                  {saveResult.type === "success" ? (
-                    <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-                  ) : (
-                    <XCircle size={16} className="mt-0.5 shrink-0" />
-                  )}
-                  <span>{saveResult.message}</span>
+              ) : (
+                <div className="p-6 text-center space-y-3 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  <User size={32} className="mx-auto text-slate-400" />
+                  <p className="text-xs text-slate-500">
+                    Inicie sessão na plataforma para ativar armazenamento multi-tenant e gerir projetos de estudo permanentes.
+                  </p>
                 </div>
               )}
             </div>
-          </div>
+          )}
 
-          {/* ── Info & Links ── */}
-          <div className="rounded-xl border border-slate-200 overflow-hidden">
-            <div className="px-4 py-3 space-y-2">
-              <a
-                href="https://code.earthengine.google.com/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-50 transition-colors group"
-              >
-                <div className="flex items-center gap-2.5">
-                  <ExternalLink size={14} className="text-slate-400" />
-                  <span className="text-sm text-slate-600 group-hover:text-slate-900">
-                    Google Earth Engine
-                  </span>
+          {activeTab === "preferences" && (
+            <div className="space-y-4">
+              <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                  Mapa Base Predefinido
+                </h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPreferredBasemap("hybrid")}
+                    className={`p-2.5 rounded-xl border text-xs text-left transition-all ${
+                      preferredBasemap === "hybrid"
+                        ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 font-bold"
+                        : "border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    Google Híbrido (Satélite + Vias)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreferredBasemap("satellite")}
+                    className={`p-2.5 rounded-xl border text-xs text-left transition-all ${
+                      preferredBasemap === "satellite"
+                        ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 font-bold"
+                        : "border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    Satélite Puro
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreferredBasemap("terrain")}
+                    className={`p-2.5 rounded-xl border text-xs text-left transition-all ${
+                      preferredBasemap === "terrain"
+                        ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 font-bold"
+                        : "border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    Google Terreno / Altimetria
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreferredBasemap("osm")}
+                    className={`p-2.5 rounded-xl border text-xs text-left transition-all ${
+                      preferredBasemap === "osm"
+                        ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 font-bold"
+                        : "border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    OpenStreetMap
+                  </button>
                 </div>
-                <ChevronRight size={14} className="text-slate-300 group-hover:text-slate-500" />
-              </a>
-              <a
-                href="https://console.cloud.google.com/apis/credentials"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-50 transition-colors group"
-              >
-                <div className="flex items-center gap-2.5">
-                  <KeyRound size={14} className="text-slate-400" />
-                  <span className="text-sm text-slate-600 group-hover:text-slate-900">
-                    Criar Service Account (GCP Console)
-                  </span>
+
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-700 flex justify-end">
+                  <Button size="sm" onClick={handleSavePreferences} className="text-xs bg-sky-600 hover:bg-sky-700">
+                    Guardar Preferências
+                  </Button>
                 </div>
-                <ChevronRight size={14} className="text-slate-300 group-hover:text-slate-500" />
-              </a>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* ── Footer ── */}
-          <div className="text-center text-xs text-slate-400 pb-2">
-            GeoMoz Explorer v2.1.0 · {config?.status?.project ? `Projeto: ${config.status.project}` : ""}
-          </div>
+          {activeTab === "storage" && (
+            <div className="space-y-4">
+              <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                  Resumo de Armazenamento no Firestore
+                </h4>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <div className="text-slate-400 text-[11px]">Projetos de Estudo</div>
+                    <div className="text-lg font-bold text-slate-800 dark:text-white mt-0.5">
+                      {projects.length}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <div className="text-slate-400 text-[11px]">Estado da Nuvem</div>
+                    <div className="text-sm font-bold text-emerald-600 mt-0.5">Sincronizado</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

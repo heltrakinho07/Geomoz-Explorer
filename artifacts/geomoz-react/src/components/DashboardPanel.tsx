@@ -1,489 +1,605 @@
 /**
- * DashboardPanel — integrated overview of all GeoMoz modules with quick export.
+ * DashboardPanel — Centro de Comando Geoespacial e Gestão de Estudos GeoMoz.
  *
- * Provides:
- *  - Summary cards for each module with key metrics
- *  - Quick-export buttons for combined analysis results
- *  - System status overview
- *  - One-click report generation
+ * Funcionalidades:
+ *  - Gestão de Projetos de Estudo (Ativação, listagem e criação)
+ *  - Portais de Lançamento de Módulos (Mapa, GeoAnálises, Hidrologia, Água Subterrânea, Geoperigos, IA, Dossiê)
+ *  - Visão geral das últimas análises e métricas zonais do estudo ativo
+ *  - Estado e Quota BYO-GEE (Google Earth Engine via OAuth 2.0 / GCP Project ID)
+ *  - Conformidade estrita: ícones SVG puros (Lucide React) e restrições de segurança geológica
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import React from "react";
 import {
-  Globe, Satellite, Mountain, Droplets, Flame,
-  Waves, Navigation, Building2, Activity,
-  Download, Loader2, CheckCircle2, Sprout,
-  FileText, BarChart2, Layers,
-  ExternalLink, RefreshCw,
+  Globe,
+  Satellite,
+  Droplets,
+  Droplet,
+  AlertTriangle,
+  BrainCircuit,
+  FileText,
+  Plus,
+  FolderKanban,
+  CheckCircle2,
+  AlertCircle,
+  MapPin,
+  Calendar,
+  Layers,
+  ArrowRight,
+  Cpu,
+  Settings,
+  ShieldCheck,
+  BarChart3,
+  Sprout,
+  Building2,
+  Leaf,
+  Loader2,
 } from "lucide-react";
-import { apiUrl, apiFetch } from "@/lib/api";
-import type { Stats } from "@/hooks/useGeoMoz";
+import { useAuth } from "@/hooks/useAuth";
+import { useGeeAuth } from "@/hooks/useGeeAuth";
+import { useProject } from "@/context/ProjectContext";
+import type { ProjectCategory } from "@/types/project";
+import { Button } from "@/components/ui/button";
 
 interface DashboardPanelProps {
-  province: string | null;
-  district: string | null;
+  province?: string | null;
+  district?: string | null;
+  onTabChange?: (tab: string) => void;
+  onOpenProjectModal?: () => void;
+  onOpenSettings?: () => void;
 }
 
-interface ModuleCard {
+interface ModuleLauncher {
   id: string;
-  name: string;
+  tab: string;
+  title: string;
   description: string;
   icon: React.ReactNode;
-  color: string;
-  bgColor: string;
-  status: "active" | "requires_data" | "requires_gee";
-  indexCount: number;
+  colorClass: string;
+  badgeBgClass: string;
+  accentBorder: string;
+  tag: string;
 }
 
-interface GeeStatus {
-  connected: boolean;
-  auth_type: string | null;
-  project: string | null;
-  message: string;
-}
-
-interface GeeIndexInfo {
-  id: string;
-  group: string;
-  name: string;
-  formula: string;
-}
-
-const MODULES: ModuleCard[] = [
-  { id: "geology", name: "Cartografia & Limites", description: "Visualização territorial, limites de províncias e distritos",
-    icon: <Globe size={18} />, color: "text-sky-600", bgColor: "bg-sky-50", status: "active", indexCount: 0 },
-  { id: "spectral", name: "Sensoriamento Remoto", description: "NDVI, BSI, EVI, SAVI, NDRE, Cobertura do Solo",
-    icon: <Satellite size={18} />, color: "text-emerald-600", bgColor: "bg-emerald-50", status: "requires_gee", indexCount: 0 },
-  { id: "terrain", name: "Relevo & Morfologia", description: "Elevação, Hipsometria, Declive, Hillshade, Classes Topo, Perfil, Curvas",
-    icon: <Mountain size={18} />, color: "text-amber-600", bgColor: "bg-amber-50", status: "requires_gee", indexCount: 0 },
-  { id: "agriculture", name: "Agricultura", description: "EVI, NDMI, SAVI, GCI, MSAVI2, Saúde Culturas",
-    icon: <BarChart2 size={18} />, color: "text-green-600", bgColor: "bg-green-50", status: "requires_gee", indexCount: 0 },
-  { id: "drought", name: "Seca & Stress Hídrico", description: "NDDI, Severidade de Seca",
-    icon: <Flame size={18} />, color: "text-orange-600", bgColor: "bg-orange-50", status: "requires_gee", indexCount: 0 },
-  { id: "fire", name: "Incêndios & Desflorestação", description: "NBR, dNBR, Severidade, Hansen, MODIS BA, Risco",
-    icon: <Flame size={18} />, color: "text-red-600", bgColor: "bg-red-50", status: "requires_gee", indexCount: 0 },
-  { id: "coastal", name: "Zonas Costeiras & Marinhas", description: "Mangal, Índice Costeiro, Erosão, Tsunami",
-    icon: <Waves size={18} />, color: "text-cyan-600", bgColor: "bg-cyan-50", status: "requires_gee", indexCount: 0 },
-  { id: "climate", name: "Clima & Desastres", description: "Precipitação, Temperatura, Rotas Ciclones, Risco Ciclone",
-    icon: <Navigation size={18} />, color: "text-violet-600", bgColor: "bg-violet-50", status: "requires_gee", indexCount: 0 },
-  { id: "urban", name: "Urbano & Infraestruturas", description: "Expansão Urbana, Impermeável, Ilha Calor",
-    icon: <Building2 size={18} />, color: "text-stone-600", bgColor: "bg-stone-50", status: "requires_gee", indexCount: 0 },
-  { id: "health", name: "Saúde Pública", description: "Risco Malária, Acesso Saúde, Saneamento, Risco Epidémico",
-    icon: <Activity size={18} />, color: "text-rose-600", bgColor: "bg-rose-50", status: "requires_gee", indexCount: 0 },
-  { id: "water", name: "Água & Turbidez", description: "NDTI, Qualidade Água",
-    icon: <Droplets size={18} />, color: "text-blue-600", bgColor: "bg-blue-50", status: "requires_gee", indexCount: 0 },
-  { id: "biophysical", name: "Biofísicos", description: "LAI, Altura dossel",
-    icon: <Sprout size={18} />, color: "text-teal-600", bgColor: "bg-teal-50", status: "requires_gee", indexCount: 0 },
+const MODULE_LAUNCHERS: ModuleLauncher[] = [
+  {
+    id: "mapa",
+    tab: "Mapa",
+    title: "Mapa Geoespacial 2D / 3D",
+    description: "Navegação cartográfica contínua com DEM Copernicus 30m, desenho vetorial de AOI e inspeção de terreno.",
+    icon: <Globe size={22} />,
+    colorClass: "text-sky-500",
+    badgeBgClass: "bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400",
+    accentBorder: "hover:border-sky-500/40",
+    tag: "Copernicus 30m",
+  },
+  {
+    id: "geoanalises",
+    tab: "GeoAnálises",
+    title: "GeoAnálises Espectrais",
+    description: "Mais de 40 índices biofísicos Sentinel-2 e Landsat (NDVI, NDMI, NDRE, EVI, BSI) sem nuvens.",
+    icon: <Satellite size={22} />,
+    colorClass: "text-indigo-500",
+    badgeBgClass: "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400",
+    accentBorder: "hover:border-indigo-500/40",
+    tag: "Sentinel-2 & Landsat",
+  },
+  {
+    id: "bacias",
+    tab: "Bacias Hidrográficas",
+    title: "Bacias & Rede Hidrográfica",
+    description: "Delineação hidrológica automática, direção D8, acumulação de fluxo e morfometria fluvial contínua.",
+    icon: <Droplets size={22} />,
+    colorClass: "text-cyan-500",
+    badgeBgClass: "bg-cyan-50 dark:bg-cyan-950/60 text-cyan-600 dark:text-cyan-400",
+    accentBorder: "hover:border-cyan-500/40",
+    tag: "Modelação D8",
+  },
+  {
+    id: "agua_subterranea",
+    tab: "Água Subterrânea",
+    title: "Potencial Hidrogeológico",
+    description: "Modelação multicritério AHP para potencial hidrogeológico e vulnerabilidade aquífera DRASTIC.",
+    icon: <Droplet size={22} />,
+    colorClass: "text-teal-500",
+    badgeBgClass: "bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400",
+    accentBorder: "hover:border-teal-500/40",
+    tag: "AHP & Aquíferos",
+  },
+  {
+    id: "geoperigos",
+    tab: "Geoperigos",
+    title: "Geoperigos & Riscos Naturais",
+    description: "Deteção de cheias via radar SAR Sentinel-1, suscetibilidade a deslizamentos e anomalias de relevo.",
+    icon: <AlertTriangle size={22} />,
+    colorClass: "text-amber-500",
+    badgeBgClass: "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400",
+    accentBorder: "hover:border-amber-500/40",
+    tag: "Sentinel-1 SAR",
+  },
+  {
+    id: "geomoz_ai",
+    tab: "GeoMoz AI",
+    title: "GeoMoz AI Agent",
+    description: "Agente geoespacial autónomo para transformar pedidos analíticos em sequências GIS/GEE completas.",
+    icon: <BrainCircuit size={22} />,
+    colorClass: "text-purple-500",
+    badgeBgClass: "bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400",
+    accentBorder: "hover:border-purple-500/40",
+    tag: "Agente Inteligente",
+  },
+  {
+    id: "exportar",
+    tab: "Exportar",
+    title: "Dossiê do Estudo & Exportar",
+    description: "Geração de dossiê técnico estruturado em PDF institucional, HTML executivo e GeoTIFFs raster.",
+    icon: <FileText size={22} />,
+    colorClass: "text-emerald-500",
+    badgeBgClass: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400",
+    accentBorder: "hover:border-emerald-500/40",
+    tag: "PDF, HTML & TIFF",
+  },
 ];
 
-/**
- * Maps each module id to one or more GEE index groups.
- * The backend defines groups in INDEX_REGISTRY inside gee_presets.py.
- */
-const MODULE_GROUP_MAP: Record<string, string[]> = {
-  spectral:    ["spectral"],
-  terrain:     ["terrain", "landsat"],
-  agriculture: ["agriculture"],
-  drought:     ["drought"],
-  fire:        ["fire"],
-  coastal:     ["coastal"],
-  climate:     ["climate"],
-  urban:       ["urban"],
-  health:      ["health"],
-  water:       ["water"],
-  biophysical: ["biophysical"],
-};
+export default function DashboardPanel({
+  onTabChange,
+  onOpenProjectModal,
+  onOpenSettings,
+}: DashboardPanelProps) {
+  const { user } = useAuth();
+  const { geeConnected, geeProject } = useGeeAuth();
+  const { projects, activeProject, activeRuns, setActiveProject, runsLoading } = useProject();
 
-function fmt(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return n.toLocaleString();
-}
-
-const MZ_AREA = 801_590;
-
-export default function DashboardPanel({ province, district }: DashboardPanelProps) {
-  const qc = useQueryClient();
-  const [geeStatus, setGeeStatus] = useState<GeeStatus | null>(null);
-  const [geeLoading, setGeeLoading] = useState(false);
-  const [exporting, setExporting] = useState<string | null>(null);
-
-  // ── Dynamic index counts from the API ──────────────────────────────────
-
-  const { data: indicesData, isLoading: indicesLoading } = useQuery<{ indices: GeeIndexInfo[] }>({
-    queryKey: ["gee-indices"],
-    queryFn: () => apiFetch("/geomoz-api/gee/indices").then(r => r.json()),
-    staleTime: 5 * 60_000,
-  });
-
-  const groupCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    (indicesData?.indices ?? []).forEach(idx => {
-      counts[idx.group] = (counts[idx.group] || 0) + 1;
-    });
-    return counts;
-  }, [indicesData]);
-
-  function getIndexCount(moduleId: string): number {
-    const groups = MODULE_GROUP_MAP[moduleId];
-    if (!groups) return 0;
-    return groups.reduce((sum, g) => sum + (groupCounts[g] || 0), 0);
-  }
-
-  const totalIndices = useMemo(
-    () => MODULES.reduce((acc, m) => acc + getIndexCount(m.id), 0),
-    [groupCounts]
-  );
-
-  // ── GEE status check ───────────────────────────────────────────────────
-
-  const title = district ? `${district}, ${province}` : province ?? "Moçambique";
-
-  function getStats() { return qc.getQueryData<Stats>(["stats", province, district]); }
-
-  const checkGee = useCallback(async () => {
-    setGeeLoading(true);
-    try {
-      const res = await apiFetch("/geomoz-api/gee/status");
-      const data = await res.json() as GeeStatus & { indices?: string[] };
-      setGeeStatus(data);
-    } catch {
-      setGeeStatus({ connected: false, auth_type: null, project: null, message: "API indisponível" });
-    } finally {
-      setGeeLoading(false);
+  const getCategoryIcon = (category?: ProjectCategory) => {
+    switch (category) {
+      case "agricultura":
+        return <Sprout size={14} className="text-emerald-500 shrink-0" />;
+      case "recursos_hidricos":
+        return <Droplets size={14} className="text-cyan-500 shrink-0" />;
+      case "ordenamento_territorial":
+        return <Building2 size={14} className="text-indigo-500 shrink-0" />;
+      case "geoperigos":
+        return <AlertTriangle size={14} className="text-amber-500 shrink-0" />;
+      case "conservacao_ambiental":
+        return <Leaf size={14} className="text-teal-500 shrink-0" />;
+      case "estudo_geral":
+      default:
+        return <Globe size={14} className="text-sky-500 shrink-0" />;
     }
-  }, []);
+  };
 
-  useEffect(() => { checkGee(); }, [checkGee]);
-
-  // Generate a combined JSON report of all current analysis data
-  function handleExportReport() {
-    setExporting("report");
-    try {
-      const stats = getStats();
-      const report = {
-        metadata: {
-          title: "GeoMoz Explorer — Relatório Integrado",
-          area: title,
-          province,
-          district,
-          generatedAt: new Date().toISOString(),
-          geeConnected: geeStatus?.connected ?? false,
-          totalIndices,
-        },
-        geology: stats ? {
-          totalFeatures: stats.totalFeatures,
-          totalUnits: stats.totalUnits,
-          totalAreaKm2: stats.totalAreaKm2,
-          dominant: stats.dominant,
-          lithologies: stats.lithologies.map(l => ({
-            name: l.name,
-            color: l.color,
-            areaKm2: l.areaKm2,
-            percent: l.percent,
-          })),
-          coveragePct: ((stats.totalAreaKm2 / MZ_AREA) * 100).toFixed(2),
-        } : null,
-        modules: MODULES.map(m => ({
-          name: m.name,
-          indices: getIndexCount(m.id),
-          status: m.status,
-        })),
-      };
-      const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `GeoMoz_Relatorio_${province ?? "Mocambique"}_${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error("Export error", e);
-    } finally {
-      setExporting(null);
+  const getCategoryLabel = (category?: ProjectCategory) => {
+    switch (category) {
+      case "agricultura":
+        return "Agricultura & Segurança Alimentar";
+      case "recursos_hidricos":
+        return "Recursos Hídricos & Aquíferos";
+      case "ordenamento_territorial":
+        return "Ordenamento Territorial";
+      case "geoperigos":
+        return "Geoperigos & Riscos";
+      case "conservacao_ambiental":
+        return "Conservação Ambiental";
+      case "estudo_geral":
+      default:
+        return "Estudo Geral";
     }
-  }
-
-  // Export current index list as CSV (async)
-  async function handleExportIndices() {
-    setExporting("indices");
-    try {
-      const res = await apiFetch("/geomoz-api/gee/indices");
-      const data = await res.json() as { indices: GeeIndexInfo[] };
-      const indices = data.indices ?? [];
-      const rows = [
-        ["id", "grupo", "nome", "formula"],
-        ...indices.map((i: GeeIndexInfo) => [
-          i.id, i.group,
-          `"${(i.name ?? "").replace(/"/g, '""')}"`,
-          `"${(i.formula ?? "").replace(/"/g, '""')}"`,
-        ]),
-      ];
-      const csv = rows.map(r => r.join(",")).join("\n");
-      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `GeoMoz_Indices_${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error("Indices export error", e);
-    } finally {
-      setExporting(null);
-    }
-  }
-
-  // ── Geology stats ──
-  const stats = getStats();
-  const countLabel = indicesLoading ? "…" : String(totalIndices);
+  };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gradient-to-br from-slate-50 to-white">
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h2 className="text-2xl font-bold text-slate-900">Dashboard GeoMoz</h2>
-              <p className="text-sm text-slate-500 mt-1">
-                Visão geral integrada de todos os módulos de análise e exportação.
+    <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 sm:p-6 md:p-8">
+      <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8">
+        {/* 1. Header Banner & Quick Actions */}
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden border border-slate-800">
+          <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-radial from-sky-500/10 to-transparent pointer-events-none" />
+          
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="space-y-2 max-w-2xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/20 border border-sky-400/30 text-sky-300 text-xs font-semibold">
+                <ShieldCheck size={14} />
+                <span>Centro de Comando Geoespacial</span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+                GeoMoz <span className="text-sky-400">Explorer</span>
+              </h1>
+              <p className="text-sm text-slate-300 leading-relaxed">
+                Plataforma profissional de estudos geoespaciais integrados. Conduza projetos desde a delimitação da área de estudo, processamento de satélite, modelação hidrológica até à emissão de dossiês técnicos.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium border ${
-                geeLoading ? "text-slate-400 border-slate-200 bg-slate-50" :
-                geeStatus?.connected ? "text-emerald-700 border-emerald-200 bg-emerald-50" :
-                "text-amber-700 border-amber-200 bg-amber-50"
-              }`}>
-                {geeLoading ? (
-                  <><Loader2 size={10} className="animate-spin" /> GEE…</>
-                ) : geeStatus?.connected ? (
-                  <><CheckCircle2 size={10} /> GEE Conectado</>
-                ) : (
-                  <><RefreshCw size={10} /> GEE Offline</>
-                )}
-              </div>
-              <button
-                onClick={checkGee}
-                className="text-xs text-sky-500 hover:text-sky-700 p-1 rounded-md hover:bg-sky-50"
-                title="Actualizar estado GEE"
+
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
+              <Button
+                onClick={onOpenProjectModal}
+                className="bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-lg shadow-sky-500/20 flex items-center gap-2 transition-all cursor-pointer"
               >
-                <RefreshCw size={12} />
-              </button>
+                <Plus size={16} />
+                <span>Novo Projeto de Estudo</span>
+              </Button>
+
+              <Button
+                onClick={onOpenSettings}
+                variant="outline"
+                className="bg-slate-800/80 hover:bg-slate-750 text-slate-200 border-slate-700 font-semibold text-xs sm:text-sm px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all cursor-pointer"
+              >
+                <Settings size={15} />
+                <span>Definições</span>
+              </Button>
             </div>
+          </div>
+
+          {/* Quick Info Strip */}
+          <div className="mt-6 pt-5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-4 text-xs">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1.5 text-slate-300">
+                <FolderKanban size={14} className="text-sky-400" />
+                <span>Total de Projetos: <strong className="text-white font-bold">{projects.length}</strong></span>
+              </div>
+              <div className="h-3.5 w-px bg-slate-800" />
+              <div className="flex items-center gap-1.5 text-slate-300">
+                <BarChart3 size={14} className="text-emerald-400" />
+                <span>Análises no Estudo Ativo: <strong className="text-white font-bold">{activeRuns.length}</strong></span>
+              </div>
+            </div>
+
+            <button
+              onClick={onOpenSettings}
+              className={`flex items-center gap-2 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
+                geeConnected
+                  ? "bg-emerald-950/40 border-emerald-800 text-emerald-300 hover:bg-emerald-900/40"
+                  : "bg-amber-950/40 border-amber-800 text-amber-300 hover:bg-amber-900/40"
+              }`}
+            >
+              {geeConnected ? (
+                <>
+                  <CheckCircle2 size={13} className="text-emerald-400" />
+                  <span>Quota GEE Ativa ({geeProject || "Projeto Google Cloud"})</span>
+                </>
+              ) : (
+                <>
+                  <AlertCircle size={13} className="text-amber-400" />
+                  <span>Conectar Quota Earth Engine</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
 
-        {/* Active area stats */}
-        {stats && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            <div className="bg-gradient-to-br from-sky-500 to-blue-600 rounded-xl p-4 text-white shadow-sm">
-              <div className="text-[10px] opacity-80 uppercase tracking-wider">Feições</div>
-              <div className="text-xl font-bold mt-1">{fmt(stats.totalFeatures)}</div>
+        {/* 2. Active Project Workspace (Estudo Ativo) */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FolderKanban size={18} className="text-sky-500" />
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+                Estudo Geoespacial em Curso
+              </h2>
             </div>
-            <div className="bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl p-4 text-white shadow-sm">
-              <div className="text-[10px] opacity-80 uppercase tracking-wider">Unidades</div>
-              <div className="text-xl font-bold mt-1">{fmt(stats.totalUnits)}</div>
-            </div>
-            <div className="bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl p-4 text-white shadow-sm">
-              <div className="text-[10px] opacity-80 uppercase tracking-wider">Área (km²)</div>
-              <div className="text-xl font-bold mt-1">{fmt(stats.totalAreaKm2)}</div>
-            </div>
-            <div className="bg-gradient-to-br from-teal-500 to-emerald-600 rounded-xl p-4 text-white shadow-sm">
-              <div className="text-[10px] opacity-80 uppercase tracking-wider">Cobertura MZ</div>
-              <div className="text-xl font-bold mt-1">{((stats.totalAreaKm2 / MZ_AREA) * 100).toFixed(1)}%</div>
-            </div>
+            <button
+              onClick={onOpenProjectModal}
+              className="text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <span>Gerir Projetos & Histórico</span>
+              <ArrowRight size={13} />
+            </button>
           </div>
-        )}
 
-        {!province && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-xs text-amber-700">
-            <strong>Seleccione uma província</strong> no mapa para ver estatísticas geológicas detalhadas e exportar dados.
-          </div>
-        )}
-
-        {/* Top lithologies (inline preview) */}
-        {stats && stats.lithologies.length > 0 && (
-          <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6 shadow-sm">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-              Top Litologias — {title}
-            </h3>
-            <div className="space-y-1.5">
-              {stats.lithologies.slice(0, 8).map((l, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs">
-                  <span className="w-3 h-3 rounded shrink-0" style={{ background: l.color }} />
-                  <span className="flex-1 text-slate-700 truncate">{l.name}</span>
-                  <div className="w-24 bg-slate-100 h-2 rounded-full overflow-hidden shrink-0">
-                    <div className="h-full rounded-full" style={{ width: `${l.percent}%`, background: l.color }} />
+          {activeProject ? (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xs hover:border-sky-500/40 transition-all">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                      {getCategoryIcon(activeProject.category)}
+                      {getCategoryLabel(activeProject.category)}
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                      <CheckCircle2 size={11} /> Estudo Ativo
+                    </span>
                   </div>
-                  <span className="w-10 text-right font-mono text-slate-500">{l.percent}%</span>
+
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                    {activeProject.name}
+                  </h3>
+
+                  {activeProject.description && (
+                    <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-2xl leading-relaxed">
+                      {activeProject.description}
+                    </p>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 dark:text-slate-400 pt-1">
+                    <div className="flex items-center gap-1.5">
+                      <MapPin size={13} className="text-sky-500 shrink-0" />
+                      <span>Área de Estudo: <strong className="text-slate-700 dark:text-slate-200">{activeProject.aoi.label}</strong></span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Calendar size={13} className="text-indigo-500 shrink-0" />
+                      <span>Criado em: {new Date(activeProject.createdAt).toLocaleDateString("pt-MZ")}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap lg:flex-col items-stretch gap-2 shrink-0">
+                  <Button
+                    onClick={() => onTabChange?.("Mapa")}
+                    className="bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs px-3.5 py-2 rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    <Globe size={14} />
+                    <span>Ver no Mapa 3D</span>
+                  </Button>
+
+                  <Button
+                    onClick={() => onTabChange?.("GeoAnálises")}
+                    variant="outline"
+                    className="border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs px-3.5 py-2 rounded-xl flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Satellite size={14} className="text-indigo-500" />
+                    <span>Calcular Índices</span>
+                  </Button>
+
+                  <Button
+                    onClick={() => onTabChange?.("Exportar")}
+                    variant="outline"
+                    className="border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs px-3.5 py-2 rounded-xl flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <FileText size={14} className="text-emerald-500" />
+                    <span>Dossiê & Relatório</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-6 sm:p-8 text-center space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-sky-50 dark:bg-sky-950/60 text-sky-500 flex items-center justify-center mx-auto">
+                <FolderKanban size={24} />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
+                  Nenhum Estudo Selecionado
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                  Crie ou ative um projeto de estudo para vincular automaticamente as suas análises de satélite, dados de drenagem e relatórios exportáveis.
+                </p>
+              </div>
+              <Button
+                onClick={onOpenProjectModal}
+                className="bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs px-4 py-2 rounded-xl inline-flex items-center gap-2 cursor-pointer shadow-md"
+              >
+                <Plus size={14} />
+                <span>Criar Primeiro Estudo</span>
+              </Button>
+            </div>
+          )}
+
+          {/* Quick Project Switcher (if user has multiple projects) */}
+          {projects.length > 1 && (
+            <div className="bg-slate-100/70 dark:bg-slate-900/50 rounded-xl p-3 border border-slate-200/80 dark:border-slate-800">
+              <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <FolderKanban size={12} />
+                <span>Outros Estudos Disponíveis</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                {projects
+                  .filter((p) => p.id !== activeProject?.id)
+                  .slice(0, 3)
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => setActiveProject(p)}
+                      className="flex items-center justify-between p-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-sky-400 transition-all text-left cursor-pointer group"
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate group-hover:text-sky-500">
+                          {p.name}
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                          {p.aoi.label}
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 shrink-0">
+                        Ativar →
+                      </span>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 3. Module Portals (Portais de Lançamento) */}
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Layers size={18} className="text-indigo-500" />
+              <span>Módulos de Investigação & Análise</span>
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Selecione o módulo para iniciar processamento de satélite ou modelação territorial.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+            {MODULE_LAUNCHERS.map((mod) => (
+              <div
+                key={mod.id}
+                onClick={() => onTabChange?.(mod.tab)}
+                className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col justify-between hover:shadow-md transition-all cursor-pointer group ${mod.accentBorder}`}
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className={`w-10 h-10 rounded-xl ${mod.badgeBgClass} flex items-center justify-center shrink-0 transition-transform group-hover:scale-105`}>
+                      <span className={mod.colorClass}>{mod.icon}</span>
+                    </div>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                      {mod.tag}
+                    </span>
+                  </div>
+
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-sky-500 transition-colors">
+                    {mod.title}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                    {mod.description}
+                  </p>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs font-semibold text-slate-500 group-hover:text-sky-500">
+                  <span>Abrir Módulo</span>
+                  <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 4. Recent Study Runs & Metrics Overview */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <BarChart3 size={18} className="text-emerald-500" />
+              <span>Resultados & Análises do Estudo Ativo</span>
+            </h2>
+            {activeRuns.length > 0 && (
+              <button
+                onClick={() => onTabChange?.("Exportar")}
+                className="text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <span>Exportar Dossiê Completo</span>
+                <ArrowRight size={13} />
+              </button>
+            )}
+          </div>
+
+          {runsLoading ? (
+            <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <Loader2 size={24} className="animate-spin text-sky-500 mx-auto mb-2" />
+              <p className="text-xs text-slate-400">A carregar registos de análise…</p>
+            </div>
+          ) : activeRuns.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {activeRuns.slice(0, 4).map((run) => (
+                <div
+                  key={run.id}
+                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 hover:border-slate-300 dark:hover:border-slate-700 transition-all space-y-2.5"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                        {run.name}
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                        Sensor: {run.sensor} · Código: {run.code}
+                      </div>
+                    </div>
+                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-sky-50 dark:bg-sky-950 text-sky-600 dark:text-sky-400 font-semibold border border-sky-200 dark:border-sky-800 shrink-0">
+                      {new Date(run.createdAt).toLocaleDateString("pt-MZ")}
+                    </span>
+                  </div>
+
+                  {run.metrics && (
+                    <div className="grid grid-cols-4 gap-1.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 text-center">
+                      <div>
+                        <div className="text-[9px] text-slate-400 uppercase font-medium">Média</div>
+                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                          {run.metrics.mean !== undefined ? run.metrics.mean.toFixed(3) : "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] text-slate-400 uppercase font-medium">Mín</div>
+                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                          {run.metrics.min !== undefined ? run.metrics.min.toFixed(3) : "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] text-slate-400 uppercase font-medium">Máx</div>
+                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                          {run.metrics.max !== undefined ? run.metrics.max.toFixed(3) : "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] text-slate-400 uppercase font-medium">Desvio</div>
+                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                          {run.metrics.stdDev !== undefined ? run.metrics.stdDev.toFixed(3) : "—"}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                    <span className="truncate">
+                      Janela: {run.dateRange.start} a {run.dateRange.end}
+                    </span>
+                    <button
+                      onClick={() => onTabChange?.("Exportar")}
+                      className="text-sky-600 dark:text-sky-400 hover:underline font-semibold shrink-0 cursor-pointer"
+                    >
+                      Dossiê →
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Modules overview */}
-        <div className="mb-6">
-          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-            Módulos de Análise ({countLabel}{indicesLoading ? "" : " índices no total"})
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {MODULES.map(m => {
-              const cnt = m.id === "geology" ? 0 : getIndexCount(m.id);
-              return (
-                <div
-                  key={m.id}
-                  className="bg-white border border-slate-200 rounded-xl p-3.5 flex items-center gap-3 hover:shadow-sm transition-shadow"
-                >
-                  <div className={`w-9 h-9 rounded-lg ${m.bgColor} flex items-center justify-center shrink-0`}>
-                    <span className={m.color}>{m.icon}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-slate-900">{m.name}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                        m.status === "active"
-                          ? "bg-sky-100 text-sky-700"
-                          : m.status === "requires_gee"
-                          ? "bg-amber-100 text-amber-700"
-                          : "bg-slate-100 text-slate-600"
-                      }`}>
-                        {m.status === "active" ? "Activo" : m.status === "requires_gee" ? "GEE" : "Dados"}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 mt-0.5 truncate">{m.description}</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-lg font-bold text-slate-700">{indicesLoading ? "…" : cnt}</div>
-                    <div className="text-[10px] text-slate-400">{cnt === 1 ? "índice" : "índices"}</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          ) : (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center text-slate-500 space-y-2">
+              <BarChart3 size={28} className="mx-auto text-slate-400" />
+              <p className="text-xs font-medium">
+                Ainda não foram guardadas análises para este projeto de estudo.
+              </p>
+              <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                Calcule um índice biofísico no módulo <strong>GeoAnálises</strong> ou use o <strong>GeoMoz AI</strong> para gerar os primeiros resultados.
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* Quick export actions */}
-        <div className="mb-6">
-          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-            Exportação Rápida
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {/* Relatório JSON */}
-            <button
-              onClick={handleExportReport}
-              disabled={exporting === "report"}
-              className="bg-white border border-slate-200 rounded-xl p-4 hover:shadow-md hover:-translate-y-0.5 transition-all text-left group"
-            >
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-lg bg-sky-50 flex items-center justify-center shrink-0 group-hover:bg-sky-100 transition-colors">
-                  <FileText size={20} className="text-sky-500" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-slate-900">Relatório JSON</div>
-                  <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-                    Relatório completo com dados geológicos, módulos e áreas.
-                  </p>
-                </div>
-                <div className="shrink-0">
-                  {exporting === "report" ? (
-                    <Loader2 size={16} className="animate-spin text-sky-500" />
-                  ) : (
-                    <Download size={16} className="text-slate-400 group-hover:text-sky-500 transition-colors" />
-                  )}
-                </div>
+        {/* 5. Cloud Infrastructure & BYO-GEE Quota Card */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-500 flex items-center justify-center shrink-0">
+                <Cpu size={20} />
               </div>
-            </button>
+              <div>
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                  Infraestrutura de Processamento (BYO-GEE)
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Modelo Bring-Your-Own-GEE com autenticação OAuth 2.0 Google Cloud.
+                </p>
+              </div>
+            </div>
 
-            {/* Exportar Índices CSV */}
-            <button
-              onClick={handleExportIndices}
-              disabled={exporting === "indices" || !geeStatus?.connected}
-              className="bg-white border border-slate-200 rounded-xl p-4 hover:shadow-md hover:-translate-y-0.5 transition-all text-left group"
+            <Button
+              onClick={onOpenSettings}
+              variant="outline"
+              className="text-xs font-semibold px-3 py-1.5 rounded-xl border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0 cursor-pointer flex items-center gap-1.5"
             >
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0 group-hover:bg-emerald-100 transition-colors">
-                  <BarChart2 size={20} className="text-emerald-500" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-slate-900">Índices GEE (CSV)</div>
-                  <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-                    Lista completa de todos os {totalIndices} índices disponíveis, com grupo, nome e fórmula.
-                  </p>
-                </div>
-                <div className="shrink-0">
-                  {exporting === "indices" ? (
-                    <Loader2 size={16} className="animate-spin text-emerald-500" />
-                  ) : (
-                    <Download size={16} className="text-slate-400 group-hover:text-emerald-500 transition-colors" />
-                  )}
-                </div>
-              </div>
-            </button>
-
-            {/* External link to Export Panel */}
-            <a
-              href="#exportar"
-              onClick={(e) => {
-                e.preventDefault();
-                const exportTab = document.querySelector('[data-tab="Exportar"]') as HTMLButtonElement;
-                if (exportTab) exportTab.click();
-              }}
-              className="bg-white border border-slate-200 rounded-xl p-4 hover:shadow-md hover:-translate-y-0.5 transition-all text-left group block"
-            >
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-lg bg-violet-50 flex items-center justify-center shrink-0 group-hover:bg-violet-100 transition-colors">
-                  <Layers size={20} className="text-violet-500" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-slate-900">Painel de Exportação</div>
-                  <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-                    PDF, HTML, CSV, GeoJSON, PNG e Shapefile — formatos completos.
-                  </p>
-                </div>
-                <div className="shrink-0">
-                  <ExternalLink size={16} className="text-slate-400 group-hover:text-violet-500 transition-colors" />
-                </div>
-              </div>
-            </a>
+              <Settings size={13} />
+              <span>Gerir Credenciais</span>
+            </Button>
           </div>
-        </div>
 
-        {/* Module status summary */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-            Estado do Sistema
-          </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            <div className="bg-slate-50 rounded-lg p-3 text-center">
-              <div className="text-sm font-bold text-slate-800">{MODULES.length}</div>
-              <div className="text-[10px] text-slate-400 uppercase mt-0.5">Módulos</div>
-            </div>
-            <div className="bg-slate-50 rounded-lg p-3 text-center">
-              <div className="text-sm font-bold text-slate-800">{countLabel}</div>
-              <div className="text-[10px] text-slate-400 uppercase mt-0.5">Índices</div>
-            </div>
-            <div className="bg-sky-50 rounded-lg p-3 text-center">
-              <div className="text-sm font-bold text-sky-700">
-                {geeStatus?.connected ? "Ligado" : "Offline"}
-              </div>
-              <div className="text-[10px] text-sky-400 uppercase mt-0.5">GEE</div>
-            </div>
-            <div className="bg-emerald-50 rounded-lg p-3 text-center">
-              <div className="text-sm font-bold text-emerald-700">
-                {stats ? ((stats.totalAreaKm2 / MZ_AREA) * 100).toFixed(1) : "0.0"}%
-              </div>
-              <div className="text-[10px] text-emerald-400 uppercase mt-0.5">Cobertura</div>
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 text-xs text-slate-600 dark:text-slate-300 space-y-1 leading-relaxed">
+            <p>
+              <strong>Isolamento Total de Quota:</strong> Cada utilizador autentica-se com a sua conta Google e define o seu próprio <em>Google Cloud Earth Engine Project ID</em>. O processamento de imagens de satélite e computação em nuvem é faturado diretamente à quota do seu projeto GCP, garantindo total privacidade e independência.
+            </p>
+            <div className="pt-2 flex flex-wrap items-center gap-3 text-[11px] font-medium">
+              <span className="text-slate-500">Estado:</span>
+              {geeConnected ? (
+                <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-bold">
+                  <CheckCircle2 size={12} /> Conectado ({geeProject || "Quota Ativa"})
+                </span>
+              ) : (
+                <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1 font-bold">
+                  <AlertCircle size={12} /> Pendente de Configuração
+                </span>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="mt-8 text-center text-xs text-slate-400">
-          GeoMoz Explorer v2.1 · {new Date().getFullYear()} · Dados geológicos de Moçambique
+        {/* 6. Footer */}
+        <div className="text-center text-xs text-slate-400 dark:text-slate-600 pb-4">
+          GeoMoz Explorer · Infraestrutura Geoespacial de Moçambique · {new Date().getFullYear()}
         </div>
       </div>
     </div>

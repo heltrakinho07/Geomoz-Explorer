@@ -44,7 +44,7 @@ export const GLOBAL_AOI: AreaOfInterest = {
   province: null,
   district: null,
   geometry: null,
-  label: "🌍 Mundo (sem clipping)",
+  label: "Mundo (Global)",
 };
 
 /** Create a Mozambique province/district AOI */
@@ -56,7 +56,7 @@ export function mozambiqueAOI(
     ? `${district}, ${province}`
     : province
       ? `${province} (Moçambique)`
-      : "🇲🇿 Moçambique";
+      : "Moçambique (Nacional)";
   return {
     source: "mozambique",
     province: province ?? null,

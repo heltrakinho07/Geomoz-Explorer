@@ -1,10 +1,29 @@
-import ProjectSelectorButton from "@/components/ProjectSelectorButton";
-import ProjectWorkspaceModal from "@/components/ProjectWorkspaceModal";
-import { useProject } from "@/context/ProjectContext";
-import { FolderKanban } from "lucide-react";
-import { useRef, useState, useEffect, Suspense } from "react";
+import React, { useRef, useState, useEffect, Suspense } from "react";
 import { Link } from "wouter";
-import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard, BrainCircuit, Pen, Menu, Home, LogIn } from "lucide-react";
+import {
+  Globe,
+  Settings,
+  Search,
+  X,
+  Loader2,
+  MapPin,
+  Satellite,
+  Droplets,
+  AlertTriangle,
+  Droplet,
+  CheckCircle2,
+  AlertCircle,
+  XCircle,
+  LayoutDashboard,
+  BrainCircuit,
+  Pen,
+  Menu,
+  Home,
+  LogIn,
+  FolderKanban,
+  FileText,
+  Layers,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -14,12 +33,21 @@ import MapView from "@/components/MapView";
 import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
 import DashboardPanel from "@/components/DashboardPanel";
-import { LazyGeoAnalises, LazyHidroGeoMoz, LazyGeoperigos, LazyAguaSubterranea, LazyGeoMozAI } from "@/lib/lazy-pages";
-import { apiUrl, apiFetch } from "@/lib/api";
+import {
+  LazyGeoAnalises,
+  LazyHidroGeoMoz,
+  LazyGeoperigos,
+  LazyAguaSubterranea,
+  LazyGeoMozAI,
+} from "@/lib/lazy-pages";
+import { apiFetch } from "@/lib/api";
 import SettingsDialog from "@/components/SettingsDialog";
 import GeeCredentialsDialog from "@/components/GeeCredentialsDialog";
 import AuthModal from "@/components/AuthModal";
 import { useAuth } from "@/hooks/useAuth";
+import { useGeeAuth } from "@/hooks/useGeeAuth";
+import { useProject } from "@/context/ProjectContext";
+import ProjectWorkspaceModal from "@/components/ProjectWorkspaceModal";
 import ZoneSelect from "@/components/ZoneSelect";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { mozambiqueAOI, GLOBAL_AOI, customAOI } from "@/lib/aoi";
@@ -32,28 +60,34 @@ interface NominatimResult {
   boundingbox: [string, string, string, string];
 }
 
-type Tab = "Mapa" | "Análise" | "GeoAnálises" | "Bacias Hidrográficas" | "Água Subterrânea" | "Geoperigos" | "GeoMoz AI" | "Dashboard" | "Exportar";
-
-const TABS: { id: Tab; icon: React.ReactNode; label: string }[] = [
-  { id: "Mapa",                 icon: <Globe size={13} />,    label: "Mapa" },
-  // { id: "Análise",              icon: null,                   label: "Análise" }, // Ocultado para segurança de dados (reativação futura)
-  { id: "GeoAnálises",         icon: <Satellite size={13} />, label: "GeoAnálises" },
-  { id: "Bacias Hidrográficas", icon: <Droplets size={13} />, label: "Bacias Hidrográficas" },
-  { id: "Água Subterrânea",     icon: <Droplet size={13} />,  label: "Água Subterrânea" },
-  { id: "Geoperigos",           icon: <AlertTriangle size={13} />, label: "Geoperigos" },
-  { id: "GeoMoz AI",           icon: <BrainCircuit size={13} />, label: "GeoMoz AI" },
-  { id: "Dashboard",            icon: <LayoutDashboard size={13} />, label: "Dashboard" },
-  { id: "Exportar",             icon: null,                   label: "Exportar" },
-];
+type Tab =
+  | "Dashboard"
+  | "Mapa"
+  | "Análise"
+  | "GeoAnálises"
+  | "Bacias Hidrográficas"
+  | "Água Subterrânea"
+  | "Geoperigos"
+  | "GeoMoz AI"
+  | "Exportar";
 
 export default function Explorer() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const { geeConnected, geeProject } = useGeeAuth();
+  const { activeProject } = useProject();
+
   const [province, setProvince] = useState<string | null>(null);
   const [district, setDistrict] = useState<string | null>(null);
   const [colorBy, setColorBy] = useState("code2006");
-  const [layers, setLayers] = useState<LayerState>({ provinces: true, districts: false, geology: false });
+  const [layers, setLayers] = useState<LayerState>({
+    provinces: true,
+    districts: false,
+    geology: false, // Security constraint: default false
+  });
+
   const getInitialTab = (): Tab => {
-    if (typeof window === "undefined") return "Mapa";
+    if (typeof window === "undefined") return "Dashboard";
     const path = window.location.pathname.toLowerCase();
     const hash = window.location.hash.toLowerCase();
     const search = new URLSearchParams(window.location.search);
@@ -74,13 +108,13 @@ export default function Explorer() {
     if (path.includes("ai") || hash.includes("ai") || tabParam?.includes("ai")) {
       return "GeoMoz AI";
     }
-    if (path.includes("dash") || hash.includes("dash") || tabParam?.includes("dash")) {
-      return "Dashboard";
+    if (path.includes("mapa") || hash.includes("mapa") || tabParam?.includes("mapa")) {
+      return "Mapa";
     }
     if (path.includes("export") || hash.includes("export") || tabParam?.includes("export")) {
       return "Exportar";
     }
-    return "Mapa";
+    return "Dashboard";
   };
 
   const [activeTab, setActiveTabState] = useState<Tab>(getInitialTab);
@@ -89,15 +123,15 @@ export default function Explorer() {
     setActiveTabState(tab);
     try {
       const slugMap: Record<Tab, string> = {
-        "Mapa": "mapa",
-        "Análise": "estatisticas",
-        "GeoAnálises": "analises",
+        Dashboard: "dashboard",
+        Mapa: "mapa",
+        Análise: "estatisticas",
+        GeoAnálises: "analises",
         "Bacias Hidrográficas": "hidrografia",
         "Água Subterrânea": "agua-subterranea",
-        "Geoperigos": "geoperigos",
+        Geoperigos: "geoperigos",
         "GeoMoz AI": "geomoz-ai",
-        "Dashboard": "dashboard",
-        "Exportar": "exportar",
+        Exportar: "exportar",
       };
       const slug = slugMap[tab];
       const newUrl = slug ? `/${slug}` : "/app";
@@ -115,15 +149,13 @@ export default function Explorer() {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  const [isStatsExpanded, setIsStatsExpanded] = useState(false);
   const [mapCenter, setMapCenter] = useState<[number, number]>([-18, 35]);
   const [mapZoom, setMapZoom] = useState(5);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [geeDialogOpen, setGeeDialogOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const { user } = useAuth();
-  const { activeProject } = useProject();
   const [projectModalOpen, setProjectModalOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Sync AOI and map view when active project changes
   useEffect(() => {
@@ -177,7 +209,6 @@ export default function Explorer() {
     } catch {}
   };
 
-  // Sync with storage and external custom events
   useEffect(() => {
     const handleCustom = (e: Event) => {
       const mode = (e as CustomEvent).detail as "2d" | "3d";
@@ -191,20 +222,17 @@ export default function Explorer() {
     };
   }, []);
 
-  // Mobile navigation and search state
+  // Mobile search state
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const [mobileMoreMenuOpen, setMobileMoreMenuOpen] = useState(false);
 
-  // Keep aoi synced with province/district when selecting or clearing Mozambique regions.
   useEffect(() => {
     setAOI(mozambiqueAOI(province, district));
   }, [province, district]);
 
   function toggleLayer(key: keyof LayerState) {
-    setLayers(prev => ({ ...prev, [key]: !prev[key] }));
+    setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
-  // Close search dropdown on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -216,7 +244,11 @@ export default function Explorer() {
   }, []);
 
   async function runSearch(q: string, worldwide = searchWorldwide) {
-    if (!q.trim()) { setSearchResults([]); setShowResults(false); return; }
+    if (!q.trim()) {
+      setSearchResults([]);
+      setShowResults(false);
+      return;
+    }
     setSearchLoading(true);
     try {
       const cc = worldwide ? "" : "&countrycodes=mz";
@@ -238,13 +270,14 @@ export default function Explorer() {
     }
   }
 
-  // Auto-search while typing (debounced, ≥3 chars) — Enter still forces a search
   useEffect(() => {
-    if (skipAutoSearchRef.current) { skipAutoSearchRef.current = false; return; }
+    if (skipAutoSearchRef.current) {
+      skipAutoSearchRef.current = false;
+      return;
+    }
     if (searchQuery.trim().length < 3) return;
     const t = setTimeout(() => runSearch(searchQuery), 450);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, searchWorldwide]);
 
   function handleSearchKey(e: React.KeyboardEvent) {
@@ -252,28 +285,33 @@ export default function Explorer() {
     if (e.key === "Escape") setShowResults(false);
   }
 
-  /** Suspense fallback — full-page skeleton while a lazy chunk is loading. */
-function LoadingSkeleton({ label }: { label: string }) {
-  return (
-    <div className="flex-1 flex items-center justify-center bg-slate-50">
-      <div className="flex flex-col items-center gap-4">
-        <div className="relative">
-          <div className="w-12 h-12 rounded-2xl bg-sky-100 flex items-center justify-center">
+  function LoadingSkeleton({ label }: { label: string }) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-slate-50 dark:bg-slate-900">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-sky-100 dark:bg-sky-950 flex items-center justify-center">
             <Loader2 size={24} className="text-sky-500 animate-spin" />
           </div>
-        </div>
-        <div className="text-center">
-          <p className="text-sm font-medium text-slate-600">A carregar {label}…</p>
-          <p className="text-xs text-slate-400 mt-1">Módulo será activado em segundos</p>
+          <div className="text-center">
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              A carregar {label}…
+            </p>
+            <p className="text-xs text-slate-400 mt-1">Módulo será ativado em segundos</p>
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   function flyToResult(result: NominatimResult) {
     const [latMin, latMax, lonMin, lonMax] = result.boundingbox.map(Number);
-    mapRef.current?.flyToBounds([[latMin, lonMin], [latMax, lonMax]], { padding: [30, 30], duration: 1.2 });
+    mapRef.current?.flyToBounds(
+      [
+        [latMin, lonMin],
+        [latMax, lonMax],
+      ],
+      { padding: [30, 30], duration: 1.2 }
+    );
     setShowResults(false);
     setMobileSearchOpen(false);
     skipAutoSearchRef.current = true;
@@ -281,7 +319,6 @@ function LoadingSkeleton({ label }: { label: string }) {
     setActiveTab("Mapa");
   }
 
-  /** Handle AOI change — sync province/district for mozambique mode */
   function handleAOIChange(newAOI: AreaOfInterest) {
     setDrawingEnabled(false);
     setAOI(newAOI);
@@ -310,400 +347,544 @@ function LoadingSkeleton({ label }: { label: string }) {
     setDistrict(null);
   }
 
-  const sharedSidebar = (
-    <Sidebar
-      province={province}
-      district={district}
-      onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-      onDistrictChange={setDistrict}
-      layers={layers}
-      onLayerToggle={toggleLayer}
-      colorBy={colorBy}
-      onColorByChange={setColorBy}
-      drawingEnabled={drawingEnabled}
-      onFinishDrawing={() => setFinishRequest(v => v + 1)}
-    />
-  );
-
-  // Tab accent colours
-  const tabAccent: Partial<Record<Tab, string>> = {
-    "GeoAnálises":          "bg-indigo-500 shadow-indigo-200",
-    "Bacias Hidrográficas": "bg-blue-600 shadow-blue-200",
-    "Geoperigos":           "bg-rose-600 shadow-rose-200",
-    "Água Subterrânea":     "bg-cyan-600 shadow-cyan-200",
+  const getTabMeta = (tab: Tab) => {
+    switch (tab) {
+      case "Dashboard":
+        return {
+          icon: <LayoutDashboard size={18} className="text-sky-500 shrink-0" />,
+          title: "Dashboard",
+          subtitle: "Centro de Comando & Gestão de Projetos",
+        };
+      case "Mapa":
+        return {
+          icon: <Globe size={18} className="text-sky-500 shrink-0" />,
+          title: "Mapa Geoespacial",
+          subtitle: "2D / 3D Hipsometria & Relevo",
+        };
+      case "GeoAnálises":
+        return {
+          icon: <Satellite size={18} className="text-indigo-500 shrink-0" />,
+          title: "GeoAnálises Espectrais",
+          subtitle: "Índices Biofísicos Sentinel-2 & Landsat",
+        };
+      case "Bacias Hidrográficas":
+        return {
+          icon: <Droplets size={18} className="text-cyan-500 shrink-0" />,
+          title: "Bacias Hidrográficas",
+          subtitle: "Delineação D8 & Rede de Drenagem",
+        };
+      case "Água Subterrânea":
+        return {
+          icon: <Droplet size={18} className="text-teal-500 shrink-0" />,
+          title: "Água Subterrânea",
+          subtitle: "Potencial Hidrogeológico AHP",
+        };
+      case "Geoperigos":
+        return {
+          icon: <AlertTriangle size={18} className="text-amber-500 shrink-0" />,
+          title: "Geoperigos & Riscos",
+          subtitle: "Deteção SAR de Cheias & Erosão",
+        };
+      case "GeoMoz AI":
+        return {
+          icon: <BrainCircuit size={18} className="text-purple-500 shrink-0" />,
+          title: "GeoMoz AI Agent",
+          subtitle: "Planeamento Geoespacial Inteligente",
+        };
+      case "Exportar":
+        return {
+          icon: <FileText size={18} className="text-emerald-500 shrink-0" />,
+          title: "Dossiê do Estudo & Exportação",
+          subtitle: "Relatórios Técnicos PDF, HTML & GeoTIFF",
+        };
+      case "Análise":
+      default:
+        return {
+          icon: <LayoutDashboard size={18} className="text-sky-500 shrink-0" />,
+          title: "GeoMoz Explorer",
+          subtitle: "Plataforma de Estudos Geoespaciais",
+        };
+    }
   };
 
+  const currentTabMeta = getTabMeta(activeTab);
+
   return (
-    <div className="flex flex-col h-screen w-full bg-white text-slate-900 font-sans overflow-hidden">
-      {/* Navbar */}
-      {/* Navbar */}
-      <header className="flex-none h-14 border-b border-slate-200/50 glass-panel px-3 sm:px-4 flex items-center justify-between shrink-0 z-30 transition-all">
-        <div className="flex items-center gap-3 md:gap-5">
-          <div className="flex items-center gap-2">
-            <Link
-              href="/"
-              title="Voltar à Página Inicial do GeoMoz-Explorer"
-              className="flex items-center gap-2 cursor-pointer hover:opacity-90 transition-opacity"
-            >
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-sm shrink-0">
-                <Globe size={17} />
-              </div>
-              <span className="font-bold text-slate-900 tracking-tight text-sm sm:text-base whitespace-nowrap">
-                GeoMoz<span className="text-sky-600">Explorer</span>
-              </span>
-              <Badge variant="outline" className="hidden sm:inline-flex ml-0.5 text-[10px] font-medium border-sky-200 text-sky-700 bg-sky-50">
-                3D
-              </Badge>
-            </Link>
+    <div className="flex h-screen w-full bg-slate-900 text-slate-900 font-sans overflow-hidden">
+      {/* 1. Desktop & Mobile Modern Navigation Sidebar */}
+      <Sidebar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onOpenProjectModal={() => setProjectModalOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
+      />
 
-            <Link
-              href="/"
-              title="Voltar à Página Inicial"
-              className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-sky-600 hover:bg-sky-50 border border-slate-200 rounded-lg transition-colors ml-1"
-            >
-              <Home size={13} />
-              <span>Início</span>
-            </Link>
-
-            {/* Project Workspace Pill Selector */}
-            <ProjectSelectorButton onClick={() => setProjectModalOpen(true)} className="ml-1 shrink-0" />
-          </div>
-
-          <nav className="hidden md:flex items-center gap-0.5">
-            {TABS.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                data-tab={tab.id}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs lg:text-sm font-medium rounded-lg transition-all ${
-                  activeTab === tab.id
-                    ? `${tabAccent[tab.id] ?? "bg-sky-500 shadow-sky-200"} text-white shadow-sm`
-                    : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
-                }`}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        <div className="flex items-center gap-1.5 sm:gap-2.5">
-          {/* Mobile Search button */}
-          {activeTab === "Mapa" && (
+      {/* 2. Main Workspace (Clean Topbar + Active View) */}
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-white dark:bg-slate-950">
+        {/* Decluttered Top Header */}
+        <header className="flex-none h-14 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 sm:px-4 flex items-center justify-between shrink-0 z-30 transition-all">
+          {/* Left: Mobile Toggle & Current Module Title */}
+          <div className="flex items-center gap-3 min-w-0">
             <button
-              type="button"
-              onClick={() => setMobileSearchOpen(v => !v)}
-              className={`md:hidden p-1.5 rounded-lg border transition-colors ${
-                mobileSearchOpen ? "bg-sky-50 border-sky-300 text-sky-600" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-              }`}
-              title="Pesquisar Localização"
+              onClick={() => setMobileSidebarOpen(true)}
+              className="md:hidden p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title="Abrir Menu de Navegação"
             >
-              <Search size={15} />
+              <Menu size={18} />
             </button>
-          )}
 
-          {/* Geocoding search (visible on Mapa tab on desktop) */}
-          {activeTab === "Mapa" && (
-            <div className="relative hidden md:block" ref={searchRef}>
-              <div className="relative flex items-center">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  onKeyDown={handleSearchKey}
-                  onFocus={() => { if (searchResults.length) setShowResults(true); }}
-                  placeholder={searchWorldwide ? "Pesquisar localização (mundo)…" : "Pesquisar localização em MZ…"}
-                  className="pl-8 pr-20 py-1.5 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white focus:border-sky-300 w-64 transition-all"
-                />
+            <div className="flex items-center gap-2 min-w-0">
+              {currentTabMeta.icon}
+              <div className="flex flex-col min-w-0">
+                <span className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                  {currentTabMeta.title}
+                </span>
+                <span className="hidden sm:inline text-[10px] text-slate-400 truncate">
+                  {currentTabMeta.subtitle}
+                </span>
+              </div>
+            </div>
+
+            {/* 2D / 3D Mode Switcher (on Mapa tab) */}
+            {activeTab === "Mapa" && (
+              <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 ml-2 shrink-0">
                 <button
-                  onClick={() => setSearchWorldwide(w => !w)}
-                  title={searchWorldwide ? "A pesquisar no mundo inteiro — clique para limitar a Moçambique" : "A pesquisar só em Moçambique — clique para pesquisar no mundo"}
-                  className={`absolute right-8 top-1/2 -translate-y-1/2 text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors ${
-                    searchWorldwide ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  onClick={() => handleGlobalViewModeChange("2d")}
+                  className={`px-2 py-0.5 text-[11px] font-bold rounded-md transition-all ${
+                    globalViewMode === "2d"
+                      ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-xs"
+                      : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                   }`}
                 >
-                  {searchWorldwide ? "🌍" : "MZ"}
+                  2D
                 </button>
-                {searchLoading ? (
-                  <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 animate-spin" />
-                ) : searchQuery ? (
+                <button
+                  onClick={() => handleGlobalViewModeChange("3d")}
+                  className={`px-2 py-0.5 text-[11px] font-bold rounded-md transition-all ${
+                    globalViewMode === "3d"
+                      ? "bg-sky-500 text-white shadow-xs"
+                      : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                  }`}
+                >
+                  3D
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Center: Contextual Search & AOI Tools (only on Mapa) */}
+          {activeTab === "Mapa" && (
+            <div className="hidden lg:flex items-center gap-2">
+              {/* Geocoding Search Input */}
+              <div className="relative" ref={searchRef}>
+                <div className="relative flex items-center">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={handleSearchKey}
+                    onFocus={() => {
+                      if (searchResults.length) setShowResults(true);
+                    }}
+                    placeholder={
+                      searchWorldwide
+                        ? "Pesquisar localização (mundo)…"
+                        : "Pesquisar localização em MZ…"
+                    }
+                    className="pl-8 pr-16 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 w-56 xl:w-64 transition-all"
+                  />
                   <button
-                    onClick={() => { setSearchQuery(""); setSearchResults([]); setShowResults(false); }}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    onClick={() => setSearchWorldwide((w) => !w)}
+                    title={
+                      searchWorldwide
+                        ? "Pesquisa global ativa — clique para filtrar por Moçambique"
+                        : "Pesquisa em Moçambique ativa — clique para global"
+                    }
+                    className={`absolute right-7 top-1/2 -translate-y-1/2 text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors ${
+                      searchWorldwide
+                        ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400"
+                        : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                    }`}
                   >
-                    <X size={14} />
+                    {searchWorldwide ? (
+                      <Globe size={11} className="text-indigo-600 dark:text-indigo-400" />
+                    ) : (
+                      <span className="text-[10px] font-bold">MZ</span>
+                    )}
                   </button>
-                ) : null}
+                  {searchLoading ? (
+                    <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 animate-spin" />
+                  ) : searchQuery ? (
+                    <button
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSearchResults([]);
+                        setShowResults(false);
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X size={13} />
+                    </button>
+                  ) : null}
+                </div>
+
+                {showResults && searchResults.length > 0 && (
+                  <div className="absolute top-full mt-1.5 left-0 right-0 z-[1000] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl overflow-hidden">
+                    {searchResults.map((r) => (
+                      <button
+                        key={r.place_id}
+                        onClick={() => flyToResult(r)}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-sky-50 dark:hover:bg-slate-800 transition-colors text-left border-b border-slate-100 dark:border-slate-800 last:border-0"
+                      >
+                        <MapPin size={13} className="text-sky-500 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                            {r.display_name.split(",")[0]}
+                          </div>
+                          <div className="text-[10px] text-slate-400 truncate">
+                            {r.display_name.split(",").slice(1, 3).join(",").trim()}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {showResults && searchResults.length > 0 && (
-                <div className="absolute top-full mt-1.5 left-0 right-0 z-[1000] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
-                  {searchResults.map(r => (
-                    <button
-                      key={r.place_id}
-                      onClick={() => flyToResult(r)}
-                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 hover:bg-sky-50 transition-colors text-left border-b border-slate-50 last:border-0"
-                    >
-                      <MapPin size={13} className="text-sky-400 shrink-0" />
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium text-slate-800 truncate">{r.display_name.split(",")[0]}</div>
-                        <div className="text-xs text-slate-400 truncate">{r.display_name.split(",").slice(1, 3).join(",").trim()}</div>
-                      </div>
-                    </button>
-                  ))}
-                  <div className="px-3 py-1.5 text-xs text-slate-400 bg-slate-50">© Nominatim / OpenStreetMap</div>
-                </div>
-              )}
-
-              {showResults && !searchLoading && searchResults.length === 0 && searchQuery && (
-                <div className="absolute top-full mt-1.5 left-0 right-0 z-[1000] bg-white border border-slate-200 rounded-xl shadow-lg p-3 text-sm text-slate-400 text-center">
-                  Nenhum resultado encontrado{searchWorldwide ? "" : " em Moçambique"}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* AOI selector on Mapa tab for custom drawing/upload or Mozambique selection */}
-          {activeTab === "Mapa" && (
-            <div className="hidden md:flex items-center gap-2 mr-1">
+              {/* AOI Selector */}
               <ZoneSelect
                 aoi={aoi}
                 onAOIChange={handleAOIChange}
                 onDrawingRequest={() => setDrawingEnabled(true)}
               />
+
               <button
                 onClick={() => setDrawingEnabled(true)}
-                title="Desenhar uma área"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-fuchsia-200 text-fuchsia-700 hover:bg-fuchsia-50 transition-colors text-sm font-medium"
+                title="Desenhar polígono de interesse"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-fuchsia-200 dark:border-fuchsia-800/60 text-fuchsia-700 dark:text-fuchsia-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-950/40 transition-colors text-xs font-semibold"
               >
-                <Pen size={14} />
-                Desenhar
+                <Pen size={12} />
+                <span>Desenhar</span>
               </button>
+
+              {aoi.source !== "global" && (
+                <button
+                  type="button"
+                  onClick={handleClearAOI}
+                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs transition-colors"
+                >
+                  <X size={12} />
+                  <span>Limpar</span>
+                </button>
+              )}
             </div>
           )}
-          {activeTab === "Mapa" && aoi.source !== "global" && (
+
+          {/* Right: Quick Controls (Active Study, GEE Badge, Settings, Profile) */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Mobile search toggle on Mapa */}
+            {activeTab === "Mapa" && (
+              <button
+                type="button"
+                onClick={() => setMobileSearchOpen((v) => !v)}
+                className={`lg:hidden p-1.5 rounded-lg border transition-colors ${
+                  mobileSearchOpen
+                    ? "bg-sky-50 border-sky-300 text-sky-600"
+                    : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
+                }`}
+                title="Pesquisar Localização"
+              >
+                <Search size={15} />
+              </button>
+            )}
+
+            {/* Active Study Pill */}
             <button
-              type="button"
-              onClick={handleClearAOI}
-              className="hidden md:inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+              onClick={() => setProjectModalOpen(true)}
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:border-sky-400 transition-colors text-xs"
+              title="Gerir Estudo Ativo"
             >
-              <X size={12} /> Limpar AOI
-            </button>
-          )}
-
-          {/* GEE status indicator */}
-          <button
-            onClick={() => setGeeDialogOpen(true)}
-            className="hover:opacity-80 transition-opacity"
-            title="Estado do Google Earth Engine (clique para configurar)"
-          >
-            <GEEStatusDot />
-          </button>
-
-          <div className="h-5 w-px bg-slate-200" />
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
-            title="Configurações"
-          >
-            <Settings size={16} />
-          </button>
-
-          {/* User Account / Login button */}
-          {user ? (
-            <button
-              onClick={() => setGeeDialogOpen(true)}
-              className="flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-full border border-slate-200 hover:border-sky-300 hover:bg-sky-50/50 transition-all text-xs"
-              title={`Sessão iniciada como ${user.email} (Clique para opções GEE)`}
-            >
-              <Avatar className="h-7 w-7 border border-slate-200 shadow-xs">
-                {user?.photoURL ? (
-                  <img src={user.photoURL} alt={user.displayName || "Utilizador"} className="h-full w-full object-cover rounded-full" />
-                ) : (
-                  <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-sky-600 text-white text-[10px] font-bold">
-                    {user?.email ? user.email.slice(0, 2).toUpperCase() : "U"}
-                  </AvatarFallback>
-                )}
-              </Avatar>
-              <span className="hidden sm:inline font-medium text-slate-700 max-w-[120px] truncate">
-                {user.displayName || user.email?.split("@")[0]}
+              <FolderKanban size={13} className="text-sky-500" />
+              <span className="font-semibold text-slate-700 dark:text-slate-200 max-w-[130px] truncate">
+                {activeProject ? activeProject.name : "Selecionar Estudo"}
               </span>
             </button>
-          ) : (
-            <button
-              onClick={() => setAuthModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white text-xs font-semibold shadow-sm transition-all"
-              title="Iniciar Sessão ou Criar Conta no GeoMoz"
-            >
-              <LogIn size={13} />
-              <span className="hidden sm:inline">Entrar</span>
-            </button>
-          )}
-        </div>
-      </header>
 
-      {/* Mobile Search Dropdown Bar */}
-      {mobileSearchOpen && activeTab === "Mapa" && (
-        <div className="md:hidden flex-none bg-white border-b border-slate-200 p-2 z-20 shadow-md">
-          <div className="relative flex items-center">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              autoFocus
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              onKeyDown={handleSearchKey}
-              placeholder={searchWorldwide ? "Pesquisar no mundo…" : "Pesquisar em MZ…"}
-              className="w-full pl-8 pr-16 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white"
-            />
+            {/* GEE Quota Quick Status */}
             <button
-              onClick={() => setSearchWorldwide(w => !w)}
-              className={`absolute right-7 top-1/2 -translate-y-1/2 text-[9px] font-bold px-1.5 py-0.5 rounded transition-colors ${
-                searchWorldwide ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-600"
+              onClick={() => setSettingsOpen(true)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors ${
+                geeConnected
+                  ? "bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"
+                  : "bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
               }`}
+              title="Estado do Google Earth Engine (Clique para configurar Quota)"
             >
-              {searchWorldwide ? "🌍" : "MZ"}
+              {geeConnected ? (
+                <CheckCircle2 size={12} className="text-emerald-500" />
+              ) : (
+                <AlertCircle size={12} className="text-amber-500" />
+              )}
+              <span className="hidden md:inline">
+                {geeConnected ? geeProject || "GEE Ativo" : "GEE Offline"}
+              </span>
             </button>
-            {searchLoading ? (
-              <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 animate-spin" />
-            ) : searchQuery ? (
+
+            {/* Settings Trigger */}
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title="Definições do Sistema"
+            >
+              <Settings size={16} />
+            </button>
+
+            {/* User Profile / Login */}
+            {user ? (
               <button
-                onClick={() => { setSearchQuery(""); setSearchResults([]); setShowResults(false); }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                onClick={() => setSettingsOpen(true)}
+                className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full border border-slate-200 dark:border-slate-700 hover:border-sky-300 text-xs"
+                title={`Sessão iniciada como ${user.email}`}
               >
-                <X size={14} />
+                <Avatar className="h-6 w-6 border border-slate-200 dark:border-slate-700">
+                  {user.photoURL ? (
+                    <img
+                      src={user.photoURL}
+                      alt={user.displayName || "Utilizador"}
+                      className="h-full w-full object-cover rounded-full"
+                    />
+                  ) : (
+                    <AvatarFallback className="bg-sky-600 text-white text-[9px] font-bold">
+                      {user.email ? user.email.slice(0, 2).toUpperCase() : "U"}
+                    </AvatarFallback>
+                  )}
+                </Avatar>
+                <span className="hidden xl:inline font-semibold text-slate-700 dark:text-slate-200 max-w-[100px] truncate">
+                  {user.displayName || user.email?.split("@")[0]}
+                </span>
               </button>
-            ) : null}
+            ) : (
+              <button
+                onClick={() => setAuthModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all shadow-xs"
+              >
+                <LogIn size={13} />
+                <span className="hidden sm:inline">Entrar</span>
+              </button>
+            )}
           </div>
+        </header>
 
-          {showResults && searchResults.length > 0 && (
-            <div className="mt-1.5 bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden max-h-52 overflow-y-auto">
-              {searchResults.map(r => (
+        {/* Mobile Search Dropdown Bar on Mapa */}
+        {mobileSearchOpen && activeTab === "Mapa" && (
+          <div className="lg:hidden flex-none bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-2 z-20 shadow-md">
+            <div className="relative flex items-center">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              <input
+                type="text"
+                autoFocus
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleSearchKey}
+                placeholder={searchWorldwide ? "Pesquisar no mundo…" : "Pesquisar em MZ…"}
+                className="w-full pl-8 pr-16 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              />
+              <button
+                onClick={() => setSearchWorldwide((w) => !w)}
+                className={`absolute right-7 top-1/2 -translate-y-1/2 text-[9px] font-bold px-1.5 py-0.5 rounded transition-colors ${
+                  searchWorldwide
+                    ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400"
+                    : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                }`}
+              >
+                {searchWorldwide ? (
+                  <Globe size={11} className="text-indigo-600 dark:text-indigo-400" />
+                ) : (
+                  <span className="text-[9px] font-bold">MZ</span>
+                )}
+              </button>
+              {searchLoading ? (
+                <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 animate-spin" />
+              ) : searchQuery ? (
                 <button
-                  key={r.place_id}
-                  onClick={() => flyToResult(r)}
-                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-sky-50 transition-colors text-left border-b border-slate-100 last:border-0"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setSearchResults([]);
+                    setShowResults(false);
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
-                  <MapPin size={13} className="text-sky-500 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-xs font-medium text-slate-800 truncate">{r.display_name.split(",")[0]}</div>
-                    <div className="text-[10px] text-slate-400 truncate">{r.display_name.split(",").slice(1, 3).join(",").trim()}</div>
-                  </div>
+                  <X size={13} />
                 </button>
-              ))}
+              ) : null}
             </div>
+
+            {showResults && searchResults.length > 0 && (
+              <div className="mt-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl overflow-hidden max-h-52 overflow-y-auto">
+                {searchResults.map((r) => (
+                  <button
+                    key={r.place_id}
+                    onClick={() => flyToResult(r)}
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-sky-50 dark:hover:bg-slate-800 transition-colors text-left border-b border-slate-100 dark:border-slate-800 last:border-0"
+                  >
+                    <MapPin size={13} className="text-sky-500 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                        {r.display_name.split(",")[0]}
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate">
+                        {r.display_name.split(",").slice(1, 3).join(",").trim()}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 3. Main Content Views */}
+        <main className="flex-1 flex overflow-hidden">
+          {activeTab === "Dashboard" && (
+            <DashboardPanel
+              province={province}
+              district={district}
+              onTabChange={setActiveTab}
+              onOpenProjectModal={() => setProjectModalOpen(true)}
+              onOpenSettings={() => setSettingsOpen(true)}
+            />
           )}
-        </div>
-      )}
 
-      {/* Body */}
-      {activeTab === "Dashboard" ? (
-        <div className="flex flex-1 overflow-hidden pb-14 md:pb-0">
-          {sharedSidebar}
-          <DashboardPanel province={province} district={district} />
-        </div>
-      ) : activeTab === "Exportar" ? (
-        <div className="flex flex-1 overflow-hidden pb-14 md:pb-0">
-          {sharedSidebar}
-          <ExportPanel province={province} district={district} colorBy={colorBy} layers={layers} mapCenter={mapCenter} mapZoom={mapZoom} />
-        </div>
-      ) : activeTab === "Análise" ? (
-        <div className="flex flex-1 overflow-hidden pb-14 md:pb-0">
-          {sharedSidebar}
-          <StatsPanel province={province} district={district} colorBy={colorBy} isExpanded onToggleExpand={() => setActiveTab("Mapa")} />
-        </div>
-      ) : activeTab === "GeoAnálises" ? (
-        <div className="flex flex-1 overflow-hidden pb-14 md:pb-0">
-          <Suspense fallback={<LoadingSkeleton label="GeoAnálises" />}>
-            <LazyGeoAnalises
-              aoi={aoi}
+          {activeTab === "Mapa" && (
+            <MapView
               province={province}
               district={district}
-              onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-              onDistrictChange={setDistrict}
-              onAOIChange={handleAOIChange}
+              layers={layers}
+              colorBy={colorBy}
+              aoi={aoi}
+              drawingEnabled={drawingEnabled}
+              finishRequest={finishRequest}
+              onDrawComplete={handleDrawComplete}
+              onDrawCancel={handleDrawCancel}
+              mapRef={mapRef}
+              onProvinceClick={(name) => {
+                setProvince(name);
+                setDistrict(null);
+              }}
+              onMapState={(c, z) => {
+                setMapCenter(c);
+                setMapZoom(z);
+              }}
               viewMode={globalViewMode}
               onViewModeChange={handleGlobalViewModeChange}
             />
-          </Suspense>
-        </div>
-      ) : activeTab === "Bacias Hidrográficas" ? (
-        <div className="flex flex-1 overflow-hidden pb-14 md:pb-0">
-          <Suspense fallback={<LoadingSkeleton label="Bacias Hidrográficas" />}>
-            <LazyHidroGeoMoz
-              aoi={aoi}
-              province={province}
-              district={district}
-              onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-              onDistrictChange={setDistrict}
-              onAOIChange={handleAOIChange}
-              viewMode={globalViewMode}
-              onViewModeChange={handleGlobalViewModeChange}
-            />
-          </Suspense>
-        </div>
-      ) : activeTab === "Água Subterrânea" ? (
-        <div className="flex flex-1 overflow-hidden pb-14 md:pb-0">
-          <Suspense fallback={<LoadingSkeleton label="Água Subterrânea" />}>
-            <LazyAguaSubterranea
-              aoi={aoi}
-              province={province}
-              district={district}
-              onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-              onDistrictChange={setDistrict}
-              onAOIChange={handleAOIChange}
-              viewMode={globalViewMode}
-              onViewModeChange={handleGlobalViewModeChange}
-            />
-          </Suspense>
-        </div>
-      ) : activeTab === "Geoperigos" ? (
-        <div className="flex flex-1 overflow-hidden pb-14 md:pb-0">
-          <Suspense fallback={<LoadingSkeleton label="Geoperigos" />}>
-            <LazyGeoperigos
-              aoi={aoi}
-              province={province}
-              district={district}
-              onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-              onDistrictChange={setDistrict}
-              onAOIChange={handleAOIChange}
-              viewMode={globalViewMode}
-              onViewModeChange={handleGlobalViewModeChange}
-            />
-          </Suspense>
-        </div>
-      ) : activeTab === "GeoMoz AI" ? (
-        <div className="flex flex-1 overflow-hidden pb-14 md:pb-0">
-          <Suspense fallback={<LoadingSkeleton label="GeoMoz AI" />}>
-            <LazyGeoMozAI />
-          </Suspense>
-        </div>
-      ) : (
-        /* Default: Mapa */
-        <div className="flex flex-1 overflow-hidden pb-14 md:pb-0">
-          {sharedSidebar}
-          <MapView
-            province={province}
-            district={district}
-            layers={layers}
-            colorBy={colorBy}
-            aoi={aoi}
-            drawingEnabled={drawingEnabled}
-            finishRequest={finishRequest}
-            onDrawComplete={handleDrawComplete}
-            onDrawCancel={handleDrawCancel}
-            mapRef={mapRef}
-            onProvinceClick={name => { setProvince(name); setDistrict(null); }}
-            onMapState={(c, z) => { setMapCenter(c); setMapZoom(z); }}
-            viewMode={globalViewMode}
-            onViewModeChange={handleGlobalViewModeChange}
-          />
-        </div>
-      )}
+          )}
 
-      {/* Settings & Auth Dialogs */}
+          {activeTab === "GeoAnálises" && (
+            <Suspense fallback={<LoadingSkeleton label="GeoAnálises" />}>
+              <LazyGeoAnalises
+                aoi={aoi}
+                province={province}
+                district={district}
+                onProvinceChange={(p) => {
+                  setProvince(p);
+                  setDistrict(null);
+                }}
+                onDistrictChange={setDistrict}
+                onAOIChange={handleAOIChange}
+                viewMode={globalViewMode}
+                onViewModeChange={handleGlobalViewModeChange}
+              />
+            </Suspense>
+          )}
+
+          {activeTab === "Bacias Hidrográficas" && (
+            <Suspense fallback={<LoadingSkeleton label="Bacias Hidrográficas" />}>
+              <LazyHidroGeoMoz
+                aoi={aoi}
+                province={province}
+                district={district}
+                onProvinceChange={(p) => {
+                  setProvince(p);
+                  setDistrict(null);
+                }}
+                onDistrictChange={setDistrict}
+                onAOIChange={handleAOIChange}
+                viewMode={globalViewMode}
+                onViewModeChange={handleGlobalViewModeChange}
+              />
+            </Suspense>
+          )}
+
+          {activeTab === "Água Subterrânea" && (
+            <Suspense fallback={<LoadingSkeleton label="Água Subterrânea" />}>
+              <LazyAguaSubterranea
+                aoi={aoi}
+                province={province}
+                district={district}
+                onProvinceChange={(p) => {
+                  setProvince(p);
+                  setDistrict(null);
+                }}
+                onDistrictChange={setDistrict}
+                onAOIChange={handleAOIChange}
+                viewMode={globalViewMode}
+                onViewModeChange={handleGlobalViewModeChange}
+              />
+            </Suspense>
+          )}
+
+          {activeTab === "Geoperigos" && (
+            <Suspense fallback={<LoadingSkeleton label="Geoperigos" />}>
+              <LazyGeoperigos
+                aoi={aoi}
+                province={province}
+                district={district}
+                onProvinceChange={(p) => {
+                  setProvince(p);
+                  setDistrict(null);
+                }}
+                onDistrictChange={setDistrict}
+                onAOIChange={handleAOIChange}
+                viewMode={globalViewMode}
+                onViewModeChange={handleGlobalViewModeChange}
+              />
+            </Suspense>
+          )}
+
+          {activeTab === "GeoMoz AI" && (
+            <Suspense fallback={<LoadingSkeleton label="GeoMoz AI" />}>
+              <LazyGeoMozAI />
+            </Suspense>
+          )}
+
+          {activeTab === "Exportar" && (
+            <ExportPanel
+              province={province}
+              district={district}
+              colorBy={colorBy}
+              layers={layers}
+              mapCenter={mapCenter}
+              mapZoom={mapZoom}
+            />
+          )}
+
+          {activeTab === "Análise" && (
+            <StatsPanel
+              province={province}
+              district={district}
+              colorBy={colorBy}
+              isExpanded
+              onToggleExpand={() => setActiveTab("Mapa")}
+            />
+          )}
+        </main>
+      </div>
+
+      {/* 4. Modals & Dialogs */}
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <GeeCredentialsDialog open={geeDialogOpen} onOpenChange={setGeeDialogOpen} />
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
@@ -727,172 +908,6 @@ function LoadingSkeleton({ label }: { label: string }) {
           }
         }}
       />
-
-      {/* Mobile Bottom Navigation Bar (md:hidden) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-14 bg-white/95 backdrop-blur-md border-t border-slate-200 z-[800] flex items-center justify-around px-1 shadow-lg">
-        <button
-          onClick={() => setActiveTab("Mapa")}
-          className={`flex flex-col items-center justify-center flex-1 py-1 text-[10px] font-medium transition-colors ${
-            activeTab === "Mapa" ? "text-sky-600 font-bold" : "text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          <Globe size={18} className={activeTab === "Mapa" ? "text-sky-600" : "text-slate-500"} />
-          <span className="mt-0.5">Mapa</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab("GeoAnálises")}
-          className={`flex flex-col items-center justify-center flex-1 py-1 text-[10px] font-medium transition-colors ${
-            activeTab === "GeoAnálises" ? "text-indigo-600 font-bold" : "text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          <Satellite size={18} className={activeTab === "GeoAnálises" ? "text-indigo-600" : "text-slate-500"} />
-          <span className="mt-0.5">Análises</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab("Bacias Hidrográficas")}
-          className={`flex flex-col items-center justify-center flex-1 py-1 text-[10px] font-medium transition-colors ${
-            activeTab === "Bacias Hidrográficas" ? "text-blue-600 font-bold" : "text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          <Droplets size={18} className={activeTab === "Bacias Hidrográficas" ? "text-blue-600" : "text-slate-500"} />
-          <span className="mt-0.5">Bacias</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab("Geoperigos")}
-          className={`flex flex-col items-center justify-center flex-1 py-1 text-[10px] font-medium transition-colors ${
-            activeTab === "Geoperigos" ? "text-rose-600 font-bold" : "text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          <AlertTriangle size={18} className={activeTab === "Geoperigos" ? "text-rose-600" : "text-slate-500"} />
-          <span className="mt-0.5">Perigos</span>
-        </button>
-
-        <button
-          onClick={() => setMobileMoreMenuOpen(true)}
-          className={`flex flex-col items-center justify-center flex-1 py-1 text-[10px] font-medium transition-colors ${
-            mobileMoreMenuOpen ? "text-slate-900 font-bold" : "text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          <Menu size={18} className="text-slate-500" />
-          <span className="mt-0.5">Mais</span>
-        </button>
-      </nav>
-
-      {/* Mobile "Mais" Bottom Sheet Modal */}
-      {mobileMoreMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-[1000] flex flex-col justify-end">
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity" onClick={() => setMobileMoreMenuOpen(false)} />
-          <div className="relative bg-white rounded-t-2xl p-4 shadow-2xl border-t border-slate-200 max-h-[85vh] overflow-y-auto z-10 animate-in slide-in-from-bottom duration-200">
-            <div className="w-10 h-1 bg-slate-300 rounded-full mx-auto mb-3" />
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
-              <span className="font-bold text-sm text-slate-800">Todos os Módulos GeoMoz</span>
-              <button onClick={() => setMobileMoreMenuOpen(false)} className="p-1 text-slate-400 hover:text-slate-600">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="mb-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileMoreMenuOpen(false);
-                  setProjectModalOpen(true);
-                }}
-                className="w-full flex items-center justify-between p-2.5 rounded-xl border border-sky-200 bg-sky-50 text-sky-800 text-xs font-semibold"
-              >
-                <span className="flex items-center gap-2">
-                  <FolderKanban size={16} className="text-sky-600" />
-                  Project Workspace
-                </span>
-                <span className="text-[10px] text-sky-600">
-                  {activeProject ? activeProject.name : "Selecionar Estudo"} →
-                </span>
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-2.5">
-              {TABS.map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    setActiveTab(tab.id);
-                    setMobileMoreMenuOpen(false);
-                  }}
-                  className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition-all ${
-                    activeTab === tab.id
-                      ? "border-sky-500 bg-sky-50/80 text-sky-700 font-semibold"
-                      : "border-slate-200 hover:bg-slate-50 text-slate-700"
-                  }`}
-                >
-                  <div className={`p-1.5 rounded-lg ${activeTab === tab.id ? "bg-sky-500 text-white" : "bg-slate-100 text-slate-600"}`}>
-                    {tab.icon || <Globe size={14} />}
-                  </div>
-                  <span className="text-xs truncate">{tab.label}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-              <button
-                onClick={() => { setMobileMoreMenuOpen(false); setSettingsOpen(true); }}
-                className="flex items-center gap-2 text-xs text-slate-600 hover:text-slate-900 font-medium py-1.5 px-3 rounded-lg hover:bg-slate-100"
-              >
-                <Settings size={14} /> Configurações
-              </button>
-              <button
-                onClick={() => { setMobileMoreMenuOpen(false); setGeeDialogOpen(true); }}
-                className="flex items-center gap-2 text-xs text-slate-600 hover:text-slate-900 font-medium py-1.5 px-3 rounded-lg hover:bg-slate-100"
-              >
-                <GEEStatusDot /> Conta GEE
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Small GEE connection indicator shown in the top-right navbar. */
-function GEEStatusDot() {
-  const [status, setStatus] = useState<"loading" | "connected" | "disconnected">("loading");
-
-  useEffect(() => {
-    let cancelled = false;
-    apiFetch("/geomoz-api/gee/status")
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled) setStatus(d.connected ? "connected" : "disconnected");
-      })
-      .catch(() => {
-        if (!cancelled) setStatus("disconnected");
-      });
-    return () => { cancelled = true; };
-  }, []);
-
-  return (
-    <div className="flex items-center gap-1.5" title={
-      status === "connected"
-        ? "GEE Conectado"
-        : status === "disconnected"
-        ? "GEE Desconectado"
-        : "A verificar GEE…"
-    }>
-      {status === "loading" ? (
-        <Loader2 size={10} className="text-slate-300 animate-spin" />
-      ) : status === "connected" ? (
-        <CheckCircle2 size={10} className="text-emerald-500" />
-      ) : (
-        <XCircle size={10} className="text-red-400" />
-      )}
-      <span className={`text-[10px] font-medium ${
-        status === "connected" ? "text-emerald-600" :
-        status === "disconnected" ? "text-red-400" :
-        "text-slate-300"
-      }`}>
-        GEE
-      </span>
     </div>
   );
 }

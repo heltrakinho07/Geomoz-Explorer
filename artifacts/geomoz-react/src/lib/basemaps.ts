@@ -14,7 +14,7 @@ export const GOOGLE_BASEMAPS: Record<BasemapType, BasemapLayerConfig> = {
   hybrid: {
     id: "hybrid",
     label: "Google Híbrido",
-    icon: "🛰️",
+    icon: "Satellite",
     url: "https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
     subdomains: "0123",
     maxZoom: 20,
@@ -23,7 +23,7 @@ export const GOOGLE_BASEMAPS: Record<BasemapType, BasemapLayerConfig> = {
   terrain: {
     id: "terrain",
     label: "Google Relevo",
-    icon: "⛰️",
+    icon: "Mountain",
     url: "https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}",
     subdomains: "0123",
     maxZoom: 20,
@@ -32,7 +32,7 @@ export const GOOGLE_BASEMAPS: Record<BasemapType, BasemapLayerConfig> = {
   satellite: {
     id: "satellite",
     label: "Google Satélite",
-    icon: "🌍",
+    icon: "Globe",
     url: "https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
     subdomains: "0123",
     maxZoom: 20,
@@ -41,7 +41,7 @@ export const GOOGLE_BASEMAPS: Record<BasemapType, BasemapLayerConfig> = {
   roadmap: {
     id: "roadmap",
     label: "Google Estradas",
-    icon: "🗺️",
+    icon: "Map",
     url: "https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
     subdomains: "0123",
     maxZoom: 20,

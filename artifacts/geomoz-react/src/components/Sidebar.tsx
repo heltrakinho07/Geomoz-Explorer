@@ -1,296 +1,365 @@
-import { useState, useEffect } from "react";
-import { Filter, Layers, ChevronDown, X, MapPin, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
-import { useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
+import React, { useState } from "react";
+import { Link } from "wouter";
+import {
+  LayoutDashboard,
+  Globe,
+  Satellite,
+  Droplets,
+  Droplet,
+  AlertTriangle,
+  BrainCircuit,
+  FileText,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  FolderKanban,
+  CheckCircle2,
+  AlertCircle,
+  LogOut,
+  LogIn,
+  Sprout,
+  Building2,
+  Leaf,
+  Cpu,
+  Layers,
+  X,
+} from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useAuth } from "@/hooks/useAuth";
+import { useGeeAuth } from "@/hooks/useGeeAuth";
+import { useProject } from "@/context/ProjectContext";
+import type { ProjectCategory } from "@/types/project";
 
+// Backward compatibility export
 export interface LayerState {
   provinces: boolean;
   districts: boolean;
   geology: boolean;
 }
 
-interface SidebarProps {
-  province: string | null;
-  district: string | null;
-  onProvinceChange: (v: string | null) => void;
-  onDistrictChange: (v: string | null) => void;
-  layers: LayerState;
-  onLayerToggle: (key: keyof LayerState) => void;
-  colorBy: string;
-  onColorByChange: (v: string) => void;
-  drawingEnabled?: boolean;
-  onFinishDrawing?: () => void;
+export interface SidebarProps {
+  activeTab: string;
+  onTabChange: (tab: any) => void;
+  onOpenProjectModal?: () => void;
+  onOpenSettings?: () => void;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
-const COLOR_OPTIONS = [
-  { value: "code2006", label: "code2006", desc: "Código 2006 (Padrão)" },
-  { value: "Legend", label: "Legend", desc: "Litologia" },
-  { value: "ERA", label: "ERA", desc: "Era Geológica" },
-  { value: "PERIOD", label: "PERIOD", desc: "Período" },
-];
+interface NavItem {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  badge?: string;
+}
 
-const LAYER_DEFS: { key: keyof LayerState; label: string; colorClass: string }[] = [
-  // { key: "geology", label: "Litologia/Geologia", colorClass: "bg-sky-500" }, // Ocultado para segurança de dados (reativação futura)
-  { key: "provinces", label: "Províncias", colorClass: "bg-slate-400" },
-  { key: "districts", label: "Distritos", colorClass: "bg-slate-300" },
+const NAV_ITEMS: NavItem[] = [
+  { id: "Dashboard", label: "Dashboard", icon: <LayoutDashboard size={17} /> },
+  { id: "Mapa", label: "Mapa 2D / 3D", icon: <Globe size={17} /> },
+  { id: "GeoAnálises", label: "GeoAnálises", icon: <Satellite size={17} /> },
+  { id: "Bacias Hidrográficas", label: "Bacias Hidrográficas", icon: <Droplets size={17} /> },
+  { id: "Água Subterrânea", label: "Água Subterrânea", icon: <Droplet size={17} /> },
+  { id: "Geoperigos", label: "Geoperigos", icon: <AlertTriangle size={17} /> },
+  { id: "GeoMoz AI", label: "GeoMoz AI Agent", icon: <BrainCircuit size={17} /> },
+  { id: "Exportar", label: "Dossiê & Exportar", icon: <FileText size={17} /> },
 ];
 
 export default function Sidebar({
-  province, district, onProvinceChange, onDistrictChange,
-  layers, onLayerToggle, colorBy, onColorByChange,
-  drawingEnabled, onFinishDrawing,
+  activeTab,
+  onTabChange,
+  onOpenProjectModal,
+  onOpenSettings,
+  mobileOpen = false,
+  onMobileClose,
 }: SidebarProps) {
-  const [width, setWidth] = useState<number>(260);
-  const [resizing, setResizing] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  // attach global mouse handlers when resizing
-  useEffect(() => {
-    function onMove(e: MouseEvent) {
-      if (!resizing) return;
-      const newWidth = Math.max(200, Math.min(800, e.clientX));
-      setWidth(newWidth);
-    }
-    function onUp() { setResizing(false); }
-    if (resizing) {
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-    }
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-  }, [resizing]);
-  const { data: provinceData, isLoading: loadingProvinces } = useProvinceNames();
-  const { data: districtData, isLoading: loadingDistricts } = useDistrictNames(province);
+  const { user, signOut } = useAuth();
+  const { geeConnected, geeProject } = useGeeAuth();
+  const { activeProject, activeRuns } = useProject();
 
-  const hasSelection = !!province || !!district;
+  const getCategoryIcon = (cat?: ProjectCategory) => {
+    switch (cat) {
+      case "agricultura":
+        return <Sprout size={13} className="text-emerald-500" />;
+      case "recursos_hidricos":
+        return <Droplets size={13} className="text-cyan-500" />;
+      case "ordenamento_territorial":
+        return <Building2 size={13} className="text-indigo-500" />;
+      case "geoperigos":
+        return <AlertTriangle size={13} className="text-amber-500" />;
+      case "conservacao_ambiental":
+        return <Leaf size={13} className="text-teal-500" />;
+      case "estudo_geral":
+      default:
+        return <Globe size={13} className="text-sky-500" />;
+    }
+  };
 
-  const content = (
-    <>
-      {/* Active selection banner */}
-      {hasSelection && (
-        <div className="flex items-center justify-between px-3 py-2 bg-sky-50 border-b border-sky-100">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <MapPin size={12} className="text-sky-500 shrink-0" />
-            <span className="text-xs text-sky-800 font-medium truncate">
-              {district ? `${district}, ${province}` : province}
-            </span>
+  const handleNavClick = (tabId: string) => {
+    onTabChange(tabId);
+    if (mobileOpen && onMobileClose) {
+      onMobileClose();
+    }
+  };
+
+  const sidebarContent = (
+    <div className="flex flex-col h-full bg-slate-900 text-slate-200 select-none border-r border-slate-800">
+      {/* 1. Header: Brand Logo & Collapse Toggle */}
+      <div className="h-14 px-3 flex items-center justify-between border-b border-slate-800/80 shrink-0">
+        <Link
+          href="/"
+          className="flex items-center gap-2.5 overflow-hidden hover:opacity-90 transition-opacity"
+          title="GeoMoz Explorer — Início"
+        >
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-md shrink-0">
+            <Globe size={17} />
           </div>
+          {!collapsed && (
+            <div className="flex flex-col">
+              <span className="font-bold text-white tracking-tight text-sm whitespace-nowrap">
+                GeoMoz <span className="text-sky-400">Explorer</span>
+              </span>
+              <span className="text-[9px] text-slate-400 font-medium tracking-wide">
+                Estudos Geoespaciais
+              </span>
+            </div>
+          )}
+        </Link>
+
+        <button
+          onClick={() => setCollapsed((v) => !v)}
+          className="hidden md:flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          title={collapsed ? "Expandir barra lateral" : "Recolher barra lateral"}
+        >
+          {collapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+        </button>
+
+        {mobileOpen && (
           <button
-            onClick={() => { onProvinceChange(null); onDistrictChange(null); }}
-            className="ml-2 text-sky-400 hover:text-sky-700 shrink-0 flex items-center gap-1 text-xs font-medium hover:bg-sky-100 rounded px-1.5 py-0.5 transition-colors"
-            title="Limpar seleção"
+            onClick={onMobileClose}
+            className="md:hidden p-1 text-slate-400 hover:text-white"
+            title="Fechar menu"
           >
-            <X size={11} />
-            Limpar
+            <X size={18} />
           </button>
-        </div>
-      )}
-
-      {/* Filter area */}
-      <div className="p-4 border-b border-slate-100">
-        {drawingEnabled && (
-          <div className="flex justify-end mb-2">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                onFinishDrawing?.();
-              }}
-              title="Concluir desenho"
-              className="text-xs bg-emerald-600 text-white px-2 py-1 rounded mr-1 hover:bg-emerald-700"
-            >
-              <CheckCircle2 size={14} />
-            </button>
-          </div>
         )}
-        <div className="flex items-center gap-2 mb-3">
-          <Filter className="w-4 h-4 text-slate-400" />
-          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Filtrar Área</h3>
-        </div>
+      </div>
 
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-500">Província</label>
-            <div className="relative">
-              <select
-                className="w-full appearance-none bg-white border border-slate-200 text-sm rounded-md pl-3 pr-8 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 cursor-pointer shadow-sm transition-colors"
-                value={province ?? ""}
-                onChange={(e) => { onProvinceChange(e.target.value || null); onDistrictChange(null); }}
-                disabled={loadingProvinces}
-              >
-                <option value="">Todas as Províncias</option>
-                {provinceData?.names.map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2.5 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
+      {/* 2. Active Study / Project Card */}
+      <div className="p-2.5 border-b border-slate-800/60 shrink-0">
+        {activeProject ? (
+          <button
+            type="button"
+            onClick={onOpenProjectModal}
+            className={`w-full text-left rounded-xl p-2.5 transition-all border ${
+              collapsed
+                ? "flex justify-center bg-slate-800/60 border-slate-700/60"
+                : "bg-gradient-to-br from-slate-800/80 to-slate-850 border-slate-700/70 hover:border-sky-500/50 hover:bg-slate-800"
+            }`}
+            title={`Estudo Ativo: ${activeProject.name} (Clique para alternar ou gerir)`}
+          >
+            {collapsed ? (
+              <div className="w-6 h-6 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center">
+                <FolderKanban size={14} />
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <span className="text-[9px] uppercase font-bold tracking-wider text-sky-400 flex items-center gap-1">
+                    <FolderKanban size={10} /> Estudo Ativo
+                  </span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-700 text-slate-300 font-medium">
+                    {activeRuns.length} runs
+                  </span>
+                </div>
+                <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+                  {getCategoryIcon(activeProject.category)}
+                  <span className="truncate">{activeProject.name}</span>
+                </div>
+                <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                  {activeProject.aoi.label}
+                </div>
+              </div>
+            )}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onOpenProjectModal}
+            className={`w-full text-left rounded-xl p-2 border border-dashed border-slate-700 hover:border-sky-400/60 text-slate-400 hover:text-sky-300 hover:bg-slate-800/50 transition-all ${
+              collapsed ? "flex justify-center" : "flex items-center gap-2"
+            }`}
+            title="Clique para criar ou selecionar um Projeto de Estudo"
+          >
+            <div className="w-6 h-6 rounded-lg bg-slate-800 flex items-center justify-center shrink-0">
+              <Plus size={13} />
             </div>
-          </div>
+            {!collapsed && (
+              <div className="text-xs font-medium truncate">
+                <span>Selecionar / Criar Estudo</span>
+              </div>
+            )}
+          </button>
+        )}
+      </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-500">Distrito</label>
-            <div className="relative">
-              <select
-                className={`w-full appearance-none bg-white border border-slate-200 text-sm rounded-md pl-3 pr-8 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 cursor-pointer shadow-sm transition-colors ${!province ? "opacity-40 cursor-not-allowed bg-slate-50" : ""}`}
-                value={district ?? ""}
-                onChange={(e) => onDistrictChange(e.target.value || null)}
-                disabled={!province || loadingDistricts}
-              >
-                <option value="">{province ? "Todos os Distritos" : "Selecione a Província"}</option>
-                {districtData?.names.map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2.5 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
-            </div>
-          </div>
-
-          {/* Quick clear button when district selected */}
-          {district && (
+      {/* 3. Main Navigation Links */}
+      <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
+        {NAV_ITEMS.map((item) => {
+          const isActive = activeTab === item.id;
+          return (
             <button
-              onClick={() => onDistrictChange(null)}
-              className="w-full text-xs text-slate-400 hover:text-slate-600 flex items-center justify-center gap-1 py-1 hover:bg-slate-50 rounded transition-colors"
+              key={item.id}
+              onClick={() => handleNavClick(item.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group ${
+                isActive
+                  ? "bg-sky-500 text-white shadow-md shadow-sky-500/20"
+                  : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/70"
+              } ${collapsed ? "justify-center px-0" : ""}`}
+              title={collapsed ? item.label : undefined}
             >
-              <X size={11} /> Ver toda a província
+              <div
+                className={`shrink-0 transition-transform group-hover:scale-105 ${
+                  isActive ? "text-white" : "text-slate-400 group-hover:text-slate-200"
+                }`}
+              >
+                {item.icon}
+              </div>
+              {!collapsed && <span className="truncate">{item.label}</span>}
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* 4. Footer: GEE Status, Settings & User Profile */}
+      <div className="p-2.5 border-t border-slate-800/80 space-y-1.5 shrink-0 bg-slate-950/40">
+        {/* GEE Quota Button / Indicator */}
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          className={`w-full flex items-center gap-2 p-2 rounded-xl text-xs transition-colors border ${
+            geeConnected
+              ? "bg-emerald-950/30 border-emerald-800/40 text-emerald-300 hover:bg-emerald-900/40"
+              : "bg-amber-950/30 border-amber-800/40 text-amber-300 hover:bg-amber-900/40"
+          } ${collapsed ? "justify-center p-2" : ""}`}
+          title={
+            geeConnected
+              ? `Google Earth Engine Conectado (Projeto: ${geeProject || "Padrão"})`
+              : "Conectar Google Earth Engine (Clique para configurar)"
+          }
+        >
+          <div className="shrink-0">
+            {geeConnected ? (
+              <CheckCircle2 size={14} className="text-emerald-400" />
+            ) : (
+              <AlertCircle size={14} className="text-amber-400" />
+            )}
+          </div>
+          {!collapsed && (
+            <div className="flex-1 min-w-0 text-left">
+              <div className="text-[11px] font-bold leading-tight truncate">
+                {geeConnected ? "GEE Conectado" : "Conectar GEE"}
+              </div>
+              <div className="text-[9px] text-slate-400 truncate">
+                {geeConnected ? geeProject || "Quota Ativa" : "Requer autenticação"}
+              </div>
+            </div>
+          )}
+        </button>
+
+        {/* Settings button */}
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors ${
+            collapsed ? "justify-center px-0" : ""
+          }`}
+          title="Definições do Sistema"
+        >
+          <Settings size={16} className="shrink-0" />
+          {!collapsed && <span>Definições</span>}
+        </button>
+
+        {/* User Account / Sign In */}
+        <div className="pt-1.5 border-t border-slate-800/60">
+          {user ? (
+            <div
+              className={`flex items-center justify-between p-1.5 rounded-xl bg-slate-800/40 ${
+                collapsed ? "justify-center" : ""
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Avatar className="h-7 w-7 border border-slate-700 shrink-0">
+                  {user.photoURL ? (
+                    <img
+                      src={user.photoURL}
+                      alt={user.displayName || "Utilizador"}
+                      className="h-full w-full object-cover rounded-full"
+                    />
+                  ) : (
+                    <AvatarFallback className="bg-sky-600 text-white text-[10px] font-bold">
+                      {user.email ? user.email.slice(0, 2).toUpperCase() : "U"}
+                    </AvatarFallback>
+                  )}
+                </Avatar>
+                {!collapsed && (
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-slate-200 truncate">
+                      {user.displayName || user.email?.split("@")[0]}
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">{user.email}</div>
+                  </div>
+                )}
+              </div>
+              {!collapsed && (
+                <button
+                  onClick={() => signOut()}
+                  className="text-slate-400 hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-750 transition-colors shrink-0"
+                  title="Terminar Sessão"
+                >
+                  <LogOut size={14} />
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={onOpenSettings}
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all ${
+                collapsed ? "justify-center px-0" : ""
+              }`}
+              title="Iniciar Sessão"
+            >
+              <LogIn size={15} />
+              {!collapsed && <span>Entrar na Conta</span>}
             </button>
           )}
         </div>
       </div>
-
-      {/* Layers */}
-      <div className="p-4 border-b border-slate-100">
-        <div className="flex items-center gap-2 mb-3">
-          <Layers className="w-4 h-4 text-slate-400" />
-          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Camadas</h3>
-        </div>
-        <div className="space-y-1.5">
-          {LAYER_DEFS.map((l) => (
-            <div key={l.key} className="flex items-center justify-between px-2 py-2 rounded-lg hover:bg-slate-50 transition-colors group">
-              <div className="flex items-center gap-2.5">
-                <div className={`w-2.5 h-2.5 rounded-sm ${l.colorClass} shadow-sm`} />
-                <span className="text-sm text-slate-700 font-medium">{l.label}</span>
-              </div>
-              <Switch checked={layers[l.key]} onCheckedChange={() => onLayerToggle(l.key)} />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Color by (ocultado para segurança de dados - preservado para reativação futura) */}
-      {false && (
-        <div className="p-4 flex-1">
-          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Colorir Por</h3>
-          <div className="space-y-1">
-            {COLOR_OPTIONS.map((opt) => (
-              <label
-                key={opt.value}
-                className={`flex items-center gap-2.5 px-2 py-2 rounded-lg cursor-pointer transition-colors ${
-                  colorBy === opt.value ? "bg-sky-50 border border-sky-100" : "hover:bg-slate-50"
-                }`}
-              >
-                <div className="relative flex items-center justify-center shrink-0">
-                  <input
-                    type="radio"
-                    name="colorBy"
-                    checked={colorBy === opt.value}
-                    onChange={() => onColorByChange(opt.value)}
-                    className="peer sr-only"
-                  />
-                  <div className={`w-4 h-4 rounded-full border-2 transition-all ${
-                    colorBy === opt.value ? "border-sky-500 bg-sky-500 scale-90" : "border-slate-300"
-                  } flex items-center justify-center`}>
-                    {colorBy === opt.value && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                  </div>
-                </div>
-                <div>
-                  <div className={`text-sm font-medium ${colorBy === opt.value ? "text-sky-700" : "text-slate-700"}`}>
-                    {opt.label}
-                  </div>
-                  <div className="text-xs text-slate-400">{opt.desc}</div>
-                </div>
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Footer info */}
-      <div className="p-3 border-t border-slate-100 bg-slate-50/50">
-        <p className="text-xs text-slate-400 text-center leading-relaxed">
-          Dados: <span className="font-medium text-slate-500">geomoz library</span><br />
-          Escala: EPSG:32736 (UTM 36S)
-        </p>
-      </div>
-    </>
+    </div>
   );
 
   return (
     <>
-      {/* Desktop Sidebar */}
+      {/* Desktop Sidebar (Fixed Left) */}
       <aside
-        style={{ width: collapsed ? "0px" : `${width}px` }}
-        className={`hidden lg:flex relative glass-panel border-r border-slate-200/50 flex-col shrink-0 transition-all duration-200 ${
-          collapsed ? "overflow-hidden border-r-0" : "overflow-y-auto"
+        className={`hidden md:flex flex-col shrink-0 transition-all duration-300 z-40 ${
+          collapsed ? "w-[68px]" : "w-60 xl:w-64"
         }`}
       >
-        {!collapsed && content}
-        {/* Resize handle */}
-        {!collapsed && (
-          <div
-            className="absolute right-0 top-0 bottom-0 w-2 -mr-2 cursor-col-resize z-50"
-            onMouseDown={() => setResizing(true)}
-            onTouchStart={() => setResizing(true)}
-          />
-        )}
+        {sidebarContent}
       </aside>
 
-      {/* Desktop Toggle Button */}
-      <button
-        type="button"
-        onClick={() => setCollapsed(v => !v)}
-        style={{ left: collapsed ? "0px" : `${width}px` }}
-        title={collapsed ? "Expandir barra lateral" : "Recolher barra lateral"}
-        className="hidden lg:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-l-0 border-slate-200 dark:border-slate-800 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 transition-all duration-200 text-slate-500 hover:text-slate-800"
-      >
-        {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
-      </button>
-
-      {/* Mobile Trigger Button */}
-      <button
-        type="button"
-        onClick={() => setMobileOpen(true)}
-        className="lg:hidden absolute top-4 left-32 sm:left-40 z-[600] flex items-center gap-1.5 px-3 py-1.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 shadow-md rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 transition-all pointer-events-auto"
-        title="Abrir Filtros e Camadas"
-      >
-        <Filter size={13} className="text-sky-600" />
-        <span>Filtros</span>
-        {hasSelection && (
-          <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
-        )}
-      </button>
-
-      {/* Mobile Off-canvas Drawer */}
+      {/* Mobile Drawer */}
       {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-[850] bg-black/40 backdrop-blur-xs flex animate-in fade-in duration-150 pointer-events-auto">
-          <div className="w-[85vw] max-w-xs h-full bg-white dark:bg-slate-900 flex flex-col shadow-2xl animate-in slide-in-from-left duration-200 overflow-y-auto">
-            <div className="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <span className="font-bold text-xs text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                <Filter size={14} className="text-sky-600" />
-                <span>Filtros & Camadas</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => setMobileOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            {content}
+        <div className="md:hidden fixed inset-0 z-[1000] flex">
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+            onClick={onMobileClose}
+          />
+          <div className="relative w-64 max-w-[80vw] h-full shadow-2xl animate-in slide-in-from-left duration-200 z-10">
+            {sidebarContent}
           </div>
-          <div className="flex-1" onClick={() => setMobileOpen(false)} />
         </div>
       )}
     </>

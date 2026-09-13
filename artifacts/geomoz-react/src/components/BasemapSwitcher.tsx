@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
-import { Layers, Globe, Mountain, Map as MapIcon, X, Check } from "lucide-react";
+import { Layers, Globe, Mountain, Map as MapIcon, X, Check, Satellite } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 interface BasemapSwitcherProps {
@@ -33,7 +33,7 @@ const MAP_TYPE_OPTIONS: MapTypeOption[] = [
     label: "Satélite",
     sublabel: "Imagens ópticas puras",
     previewBg: "bg-slate-800 border-slate-700 text-white",
-    icon: <span className="text-lg">🌍</span>,
+    icon: <Globe size={20} className="text-sky-400" />,
   },
   {
     id: "terrain",
@@ -47,7 +47,7 @@ const MAP_TYPE_OPTIONS: MapTypeOption[] = [
     label: "Híbrido",
     sublabel: "Satélite com nomes e vias",
     previewBg: "bg-indigo-950 border-indigo-800 text-white",
-    icon: <span className="text-lg">🛰️</span>,
+    icon: <Satellite size={20} className="text-indigo-400" />,
   },
 ];
 
