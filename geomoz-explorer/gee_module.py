@@ -118,7 +118,6 @@ def _build_cache_key_for_request(
 # ── Initialization ─────────────────────────────────────────────────────────────
 
 
-from google.oauth2.credentials import Credentials
 import gee_session_store
 
 def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
@@ -144,6 +143,7 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
         if effective_token:
             try:
                 import ee
+                from google.oauth2.credentials import Credentials
                 creds = Credentials(token=effective_token)
                 ee.Initialize(credentials=creds, project=effective_project)
                 _gee_initialized = True

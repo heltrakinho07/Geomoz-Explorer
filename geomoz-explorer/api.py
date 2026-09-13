@@ -641,9 +641,6 @@ def gee_configure(req: GEEServiceAccountKeyRequest):
 
 
 
-class GEEDownloadRequest(GEEIndexRequest):
-    scale: Optional[int] = 30
-
 class StudySynthesisRequest(BaseModel):
     projectName: str
     category: str
@@ -685,6 +682,10 @@ class GEEIndexRequest(BaseModel):
         except ValueError:
             raise ValueError('Date must be in YYYY-MM-DD format')
         return v
+
+
+class GEEDownloadRequest(GEEIndexRequest):
+    scale: Optional[int] = 30
 
 
 class GEERenderRequest(BaseModel):
@@ -815,6 +816,7 @@ async def gee_status_endpoint(request: Request):
     allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
     user_token = gee_session_store.get_token(uid) if uid else None
 
+    from gee_presets import INDEX_REGISTRY
     return {
         "connected": st.get("connected", False),
         "project": st.get("project") or gee_project,
@@ -822,7 +824,8 @@ async def gee_status_endpoint(request: Request):
         "user_connected": bool(gee_token or gee_project or (user_token.get("access_token") if user_token else None)),
         "server_connected": st.get("auth_type") in ("service_account", "adc") or has_sa,
         "allow_server_fallback": allow_server,
-        "message": st.get("message")
+        "message": st.get("message"),
+        "indices": list(INDEX_REGISTRY.keys())
     }
 
 @app.post("/geomoz-api/gee/index")
