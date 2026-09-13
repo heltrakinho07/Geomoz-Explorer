@@ -157,7 +157,8 @@ export default function Explorer() {
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  // Sync AOI and map view when active project changes
+  // Sync AOI and map view when active project changes (keyed on id to prevent circular re-renders)
+  const activeProjectId = activeProject?.id;
   useEffect(() => {
     if (activeProject?.aoi) {
       setAOI(activeProject.aoi);
@@ -172,7 +173,7 @@ export default function Explorer() {
         mapRef.current?.flyToBounds(activeProject.aoi.bounds, { padding: [30, 30], duration: 1.2 });
       }
     }
-  }, [activeProject]);
+  }, [activeProjectId]);
 
   const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [finishRequest, setFinishRequest] = useState(0);
@@ -226,7 +227,14 @@ export default function Explorer() {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   useEffect(() => {
-    setAOI(mozambiqueAOI(province, district));
+    if (province) {
+      setAOI((prev) => {
+        if (prev.source === "mozambique" && prev.province === province && prev.district === district) {
+          return prev;
+        }
+        return mozambiqueAOI(province, district);
+      });
+    }
   }, [province, district]);
 
   function toggleLayer(key: keyof LayerState) {
@@ -407,10 +415,31 @@ export default function Explorer() {
     }
   };
 
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    try {
+      return (localStorage.getItem("geomoz_theme") as "light" | "dark") || "light";
+    } catch {
+      return "light";
+    }
+  });
+
+  useEffect(() => {
+    const handleThemeChange = (e: Event) => {
+      const newTheme = (e as CustomEvent).detail as "light" | "dark";
+      if (newTheme) setTheme(newTheme);
+    };
+    window.addEventListener("geomoz_theme_changed", handleThemeChange);
+    return () => window.removeEventListener("geomoz_theme_changed", handleThemeChange);
+  }, []);
+
   const currentTabMeta = getTabMeta(activeTab);
 
   return (
-    <div className="flex h-screen w-full bg-slate-900 text-slate-900 font-sans overflow-hidden">
+    <div
+      className={`flex h-screen w-full font-sans overflow-hidden transition-colors duration-200 ${
+        theme === "dark" ? "dark bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900"
+      }`}
+    >
       {/* 1. Desktop & Mobile Modern Navigation Sidebar */}
       <Sidebar
         activeTab={activeTab}

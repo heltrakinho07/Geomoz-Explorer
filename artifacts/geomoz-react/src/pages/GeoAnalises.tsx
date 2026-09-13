@@ -2521,7 +2521,7 @@ export default function GeoAnalises({
 
   const [geeCredsOpen, setGeeCredsOpen] = useState(false);
   const [basemap, setBasemap] = useState<BasemapType>("hybrid");
-  const { geeConnected } = useGeeAuth();
+  const { geeConnected, geeProject } = useGeeAuth();
   const { toast } = useToast();
   const [activeTab, setActiveTab]     = useState<SpectralTab>("s2");
   const [showS2, setShowS2]           = useState(false);
@@ -2568,7 +2568,7 @@ export default function GeoAnalises({
   const [profileError, setProfileError]     = useState<string | null>(null);
   const [showEdges, setShowEdges]     = useState(true);
   const [useGEE, setUseGEE]           = useState(true);
-  const geeReady = Boolean(geeStatus?.connected && useGEE);
+  const geeReady = Boolean((geeStatus?.connected || geeConnected) && useGEE);
   const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [visParams, setVisParams] = useState<RasterVisParams>(DEFAULT_VIS_PARAMS);
   const [visPanelOpen, setVisPanelOpen] = useState(false);
@@ -2658,10 +2658,23 @@ export default function GeoAnalises({
 
   useEffect(() => { checkGee(); if(geeConnected) setGeeCredsOpen(false); }, [checkGee, geeConnected]);
 
-  // Switch to proxy mode automatically if GEE not connected
+  // Enable GEE mode when user has active GEE connection, or fallback to proxy if disconnected
   useEffect(() => {
-    if (geeStatus && !geeStatus.connected) setUseGEE(false);
-  }, [geeStatus]);
+    if (geeConnected) {
+      setUseGEE(true);
+      if (!geeStatus?.connected) {
+        setGeeStatus((prev) => ({
+          connected: true,
+          project: geeProject || prev?.project || "geoprocessamento-426809",
+          auth_type: prev?.auth_type || "oauth2",
+          message: "Conectado via Quota de Utilizador",
+          indices: prev?.indices || [],
+        }));
+      }
+    } else if (geeStatus && !geeStatus.connected) {
+      setUseGEE(false);
+    }
+  }, [geeStatus, geeConnected, geeProject]);
 
   // Clear GEE tiles when switching index
   useEffect(() => {

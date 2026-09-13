@@ -32,7 +32,10 @@ export default function GeeCredentialsDialog({
   const [projectInput, setProjectInput] = useState("");
 
   const handleConnect = async () => {
-    await connectGee(projectInput.trim() || undefined);
+    try {
+      await connectGee(projectInput.trim() || undefined);
+      onOpenChange(false);
+    } catch {}
   };
 
   return (
@@ -65,7 +68,7 @@ export default function GeeCredentialsDialog({
           )}
 
           {/* Connected State */}
-          {user && geeConnected ? (
+          {geeConnected ? (
             <div className="space-y-4">
               <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-2xl flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
@@ -74,7 +77,7 @@ export default function GeeCredentialsDialog({
                 <div>
                   <h4 className="text-sm font-semibold text-emerald-900">Earth Engine Ligado</h4>
                   <p className="text-xs text-emerald-700 truncate max-w-[240px]">
-                    {user.email}
+                    {user?.email || "Quota & Projeto Ativos"}
                   </p>
                 </div>
               </div>

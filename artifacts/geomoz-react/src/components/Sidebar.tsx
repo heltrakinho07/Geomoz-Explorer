@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "wouter";
 import {
   LayoutDashboard,
@@ -21,8 +21,8 @@ import {
   Sprout,
   Building2,
   Leaf,
-  Cpu,
-  Layers,
+  Sun,
+  Moon,
   X,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -51,18 +51,17 @@ interface NavItem {
   id: string;
   label: string;
   icon: React.ReactNode;
-  badge?: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: "Dashboard", label: "Dashboard", icon: <LayoutDashboard size={17} /> },
-  { id: "Mapa", label: "Mapa 2D / 3D", icon: <Globe size={17} /> },
-  { id: "GeoAnálises", label: "GeoAnálises", icon: <Satellite size={17} /> },
-  { id: "Bacias Hidrográficas", label: "Bacias Hidrográficas", icon: <Droplets size={17} /> },
-  { id: "Água Subterrânea", label: "Água Subterrânea", icon: <Droplet size={17} /> },
-  { id: "Geoperigos", label: "Geoperigos", icon: <AlertTriangle size={17} /> },
-  { id: "GeoMoz AI", label: "GeoMoz AI Agent", icon: <BrainCircuit size={17} /> },
-  { id: "Exportar", label: "Dossiê & Exportar", icon: <FileText size={17} /> },
+  { id: "Dashboard", label: "Dashboard", icon: <LayoutDashboard size={20} /> },
+  { id: "Mapa", label: "Mapa 2D / 3D", icon: <Globe size={20} /> },
+  { id: "GeoAnálises", label: "GeoAnálises", icon: <Satellite size={20} /> },
+  { id: "Bacias Hidrográficas", label: "Bacias Hidrográficas", icon: <Droplets size={20} /> },
+  { id: "Água Subterrânea", label: "Água Subterrânea", icon: <Droplet size={20} /> },
+  { id: "Geoperigos", label: "Geoperigos", icon: <AlertTriangle size={20} /> },
+  { id: "GeoMoz AI", label: "GeoMoz AI Agent", icon: <BrainCircuit size={20} /> },
+  { id: "Exportar", label: "Dossiê & Exportar", icon: <FileText size={20} /> },
 ];
 
 export default function Sidebar({
@@ -78,21 +77,50 @@ export default function Sidebar({
   const { geeConnected, geeProject } = useGeeAuth();
   const { activeProject, activeRuns } = useProject();
 
+  // Dark mode theme state synchronized with landing page & localStorage
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("geomoz_theme");
+      if (saved === "dark") return true;
+      if (saved === "light") return false;
+      return document.documentElement.classList.contains("dark");
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (isDark) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("geomoz_theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("geomoz_theme", "light");
+    }
+    window.dispatchEvent(
+      new CustomEvent("geomoz_theme_changed", { detail: isDark ? "dark" : "light" })
+    );
+  }, [isDark]);
+
+  const toggleTheme = () => {
+    setIsDark((prev) => !prev);
+  };
+
   const getCategoryIcon = (cat?: ProjectCategory) => {
     switch (cat) {
       case "agricultura":
-        return <Sprout size={13} className="text-emerald-500" />;
+        return <Sprout size={15} className="text-emerald-500 shrink-0" />;
       case "recursos_hidricos":
-        return <Droplets size={13} className="text-cyan-500" />;
+        return <Droplets size={15} className="text-cyan-500 shrink-0" />;
       case "ordenamento_territorial":
-        return <Building2 size={13} className="text-indigo-500" />;
+        return <Building2 size={15} className="text-indigo-500 shrink-0" />;
       case "geoperigos":
-        return <AlertTriangle size={13} className="text-amber-500" />;
+        return <AlertTriangle size={15} className="text-amber-500 shrink-0" />;
       case "conservacao_ambiental":
-        return <Leaf size={13} className="text-teal-500" />;
+        return <Leaf size={15} className="text-teal-500 shrink-0" />;
       case "estudo_geral":
       default:
-        return <Globe size={13} className="text-sky-500" />;
+        return <Globe size={15} className="text-sky-500 shrink-0" />;
     }
   };
 
@@ -104,23 +132,23 @@ export default function Sidebar({
   };
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-slate-900 text-slate-200 select-none border-r border-slate-800">
+    <div className="flex flex-col h-full bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 select-none border-r border-slate-200/90 dark:border-slate-850 transition-colors duration-200">
       {/* 1. Header: Brand Logo & Collapse Toggle */}
-      <div className="h-14 px-3 flex items-center justify-between border-b border-slate-800/80 shrink-0">
+      <div className="h-16 px-4 flex items-center justify-between border-b border-slate-200/80 dark:border-slate-850 shrink-0">
         <Link
           href="/"
-          className="flex items-center gap-2.5 overflow-hidden hover:opacity-90 transition-opacity"
+          className="flex items-center gap-3 overflow-hidden hover:opacity-90 transition-opacity cursor-pointer"
           title="GeoMoz Explorer — Início"
         >
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-md shrink-0">
-            <Globe size={17} />
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-sky-500/20 shrink-0">
+            <Globe size={20} />
           </div>
           {!collapsed && (
-            <div className="flex flex-col">
-              <span className="font-bold text-white tracking-tight text-sm whitespace-nowrap">
-                GeoMoz <span className="text-sky-400">Explorer</span>
+            <div className="flex flex-col min-w-0">
+              <span className="font-black text-slate-900 dark:text-white tracking-tight text-base whitespace-nowrap">
+                GeoMoz <span className="text-sky-600 dark:text-sky-400">Explorer</span>
               </span>
-              <span className="text-[9px] text-slate-400 font-medium tracking-wide">
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium tracking-normal truncate">
                 Estudos Geoespaciais
               </span>
             </div>
@@ -129,55 +157,55 @@ export default function Sidebar({
 
         <button
           onClick={() => setCollapsed((v) => !v)}
-          className="hidden md:flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          className="hidden md:flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
           title={collapsed ? "Expandir barra lateral" : "Recolher barra lateral"}
         >
-          {collapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+          {collapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
         </button>
 
         {mobileOpen && (
           <button
             onClick={onMobileClose}
-            className="md:hidden p-1 text-slate-400 hover:text-white"
+            className="md:hidden p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             title="Fechar menu"
           >
-            <X size={18} />
+            <X size={20} />
           </button>
         )}
       </div>
 
       {/* 2. Active Study / Project Card */}
-      <div className="p-2.5 border-b border-slate-800/60 shrink-0">
+      <div className="p-3 border-b border-slate-200/80 dark:border-slate-850 shrink-0">
         {activeProject ? (
           <button
             type="button"
             onClick={onOpenProjectModal}
-            className={`w-full text-left rounded-xl p-2.5 transition-all border ${
+            className={`w-full text-left rounded-xl p-3 transition-all border cursor-pointer ${
               collapsed
-                ? "flex justify-center bg-slate-800/60 border-slate-700/60"
-                : "bg-gradient-to-br from-slate-800/80 to-slate-850 border-slate-700/70 hover:border-sky-500/50 hover:bg-slate-800"
+                ? "flex justify-center bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                : "bg-slate-50/80 dark:bg-slate-900/90 border-slate-200 dark:border-slate-800 hover:border-sky-500/60 dark:hover:border-sky-500/60 hover:bg-sky-50/40 dark:hover:bg-slate-850 shadow-xs"
             }`}
             title={`Estudo Ativo: ${activeProject.name} (Clique para alternar ou gerir)`}
           >
             {collapsed ? (
-              <div className="w-6 h-6 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center">
-                <FolderKanban size={14} />
+              <div className="w-8 h-8 rounded-lg bg-sky-500/15 text-sky-600 dark:text-sky-400 flex items-center justify-center">
+                <FolderKanban size={17} />
               </div>
             ) : (
               <div>
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className="text-[9px] uppercase font-bold tracking-wider text-sky-400 flex items-center gap-1">
-                    <FolderKanban size={10} /> Estudo Ativo
+                <div className="flex items-center justify-between gap-1 mb-1.5">
+                  <span className="text-xs uppercase font-extrabold tracking-wider text-sky-600 dark:text-sky-400 flex items-center gap-1.5">
+                    <FolderKanban size={13} /> Estudo Ativo
                   </span>
-                  <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-700 text-slate-300 font-medium">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold">
                     {activeRuns.length} runs
                   </span>
                 </div>
-                <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+                <div className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate flex items-center gap-2">
                   {getCategoryIcon(activeProject.category)}
                   <span className="truncate">{activeProject.name}</span>
                 </div>
-                <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                <div className="text-xs text-slate-500 dark:text-slate-400 truncate mt-1">
                   {activeProject.aoi.label}
                 </div>
               </div>
@@ -187,17 +215,17 @@ export default function Sidebar({
           <button
             type="button"
             onClick={onOpenProjectModal}
-            className={`w-full text-left rounded-xl p-2 border border-dashed border-slate-700 hover:border-sky-400/60 text-slate-400 hover:text-sky-300 hover:bg-slate-800/50 transition-all ${
-              collapsed ? "flex justify-center" : "flex items-center gap-2"
+            className={`w-full text-left rounded-xl p-3 border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-sky-500/60 text-slate-600 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-50/30 dark:hover:bg-slate-900/50 transition-all cursor-pointer ${
+              collapsed ? "flex justify-center" : "flex items-center gap-2.5"
             }`}
             title="Clique para criar ou selecionar um Projeto de Estudo"
           >
-            <div className="w-6 h-6 rounded-lg bg-slate-800 flex items-center justify-center shrink-0">
-              <Plus size={13} />
+            <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
+              <Plus size={16} />
             </div>
             {!collapsed && (
-              <div className="text-xs font-medium truncate">
-                <span>Selecionar / Criar Estudo</span>
+              <div className="text-sm font-semibold truncate">
+                <span>Criar / Selecionar Estudo</span>
               </div>
             )}
           </button>
@@ -205,23 +233,23 @@ export default function Sidebar({
       </div>
 
       {/* 3. Main Navigation Links */}
-      <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-2.5 py-3.5 space-y-1.5 overflow-y-auto">
         {NAV_ITEMS.map((item) => {
           const isActive = activeTab === item.id;
           return (
             <button
               key={item.id}
               onClick={() => handleNavClick(item.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group ${
+              className={`w-full flex items-center gap-3.5 px-3.5 py-3 rounded-xl text-sm font-semibold transition-all group cursor-pointer ${
                 isActive
-                  ? "bg-sky-500 text-white shadow-md shadow-sky-500/20"
-                  : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/70"
+                  ? "bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-md shadow-sky-500/25"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/90 dark:hover:bg-slate-900"
               } ${collapsed ? "justify-center px-0" : ""}`}
               title={collapsed ? item.label : undefined}
             >
               <div
-                className={`shrink-0 transition-transform group-hover:scale-105 ${
-                  isActive ? "text-white" : "text-slate-400 group-hover:text-slate-200"
+                className={`shrink-0 transition-transform duration-200 group-hover:scale-105 ${
+                  isActive ? "text-white" : "text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200"
                 }`}
               >
                 {item.icon}
@@ -232,16 +260,16 @@ export default function Sidebar({
         })}
       </nav>
 
-      {/* 4. Footer: GEE Status, Settings & User Profile */}
-      <div className="p-2.5 border-t border-slate-800/80 space-y-1.5 shrink-0 bg-slate-950/40">
+      {/* 4. Footer: GEE Status, Dark/Light Mode, Settings & User Profile */}
+      <div className="p-3 border-t border-slate-200/80 dark:border-slate-850 space-y-2 shrink-0 bg-slate-50/70 dark:bg-slate-900/60">
         {/* GEE Quota Button / Indicator */}
         <button
           type="button"
           onClick={onOpenSettings}
-          className={`w-full flex items-center gap-2 p-2 rounded-xl text-xs transition-colors border ${
+          className={`w-full flex items-center gap-2.5 p-2.5 rounded-xl text-xs transition-colors border cursor-pointer ${
             geeConnected
-              ? "bg-emerald-950/30 border-emerald-800/40 text-emerald-300 hover:bg-emerald-900/40"
-              : "bg-amber-950/30 border-amber-800/40 text-amber-300 hover:bg-amber-900/40"
+              ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/70 dark:hover:bg-emerald-900/40"
+              : "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100/70 dark:hover:bg-amber-900/40"
           } ${collapsed ? "justify-center p-2" : ""}`}
           title={
             geeConnected
@@ -251,46 +279,70 @@ export default function Sidebar({
         >
           <div className="shrink-0">
             {geeConnected ? (
-              <CheckCircle2 size={14} className="text-emerald-400" />
+              <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400" />
             ) : (
-              <AlertCircle size={14} className="text-amber-400" />
+              <AlertCircle size={16} className="text-amber-600 dark:text-amber-400" />
             )}
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0 text-left">
-              <div className="text-[11px] font-bold leading-tight truncate">
+              <div className="text-xs font-bold leading-tight truncate">
                 {geeConnected ? "GEE Conectado" : "Conectar GEE"}
               </div>
-              <div className="text-[9px] text-slate-400 truncate">
+              <div className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
                 {geeConnected ? geeProject || "Quota Ativa" : "Requer autenticação"}
               </div>
             </div>
           )}
         </button>
 
-        {/* Settings button */}
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors ${
-            collapsed ? "justify-center px-0" : ""
-          }`}
-          title="Definições do Sistema"
-        >
-          <Settings size={16} className="shrink-0" />
-          {!collapsed && <span>Definições</span>}
-        </button>
+        {/* Theme (Day / Night) & Settings Row */}
+        <div className="flex items-center gap-1.5">
+          {/* Day / Night Mode Toggle Button */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold border transition-all cursor-pointer ${
+              collapsed ? "w-full justify-center px-0" : "flex-1"
+            } ${
+              isDark
+                ? "bg-slate-900 border-slate-800 text-amber-400 hover:text-amber-300 hover:border-slate-700"
+                : "bg-white border-slate-200 text-slate-700 hover:text-slate-900 hover:border-slate-300 shadow-xs"
+            }`}
+            title={isDark ? "Mudar para Modo Claro" : "Mudar para Modo Noturno"}
+          >
+            {isDark ? <Sun size={17} className="shrink-0" /> : <Moon size={17} className="shrink-0 text-slate-600" />}
+            {!collapsed && (
+              <span className="truncate text-xs font-bold">
+                {isDark ? "Modo Claro" : "Modo Noturno"}
+              </span>
+            )}
+          </button>
+
+          {/* Settings button */}
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shadow-xs ${
+              collapsed ? "w-full justify-center px-0 mt-1" : ""
+            }`}
+            title="Definições do Sistema"
+          >
+            <Settings size={17} className="shrink-0" />
+            {!collapsed && <span className="text-xs font-bold">Definições</span>}
+          </button>
+        </div>
 
         {/* User Account / Sign In */}
-        <div className="pt-1.5 border-t border-slate-800/60">
+        <div className="pt-2 border-t border-slate-200/80 dark:border-slate-850">
           {user ? (
             <div
-              className={`flex items-center justify-between p-1.5 rounded-xl bg-slate-800/40 ${
+              className={`flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 ${
                 collapsed ? "justify-center" : ""
               }`}
             >
-              <div className="flex items-center gap-2 min-w-0">
-                <Avatar className="h-7 w-7 border border-slate-700 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Avatar className="h-8 w-8 border border-slate-200 dark:border-slate-700 shrink-0">
                   {user.photoURL ? (
                     <img
                       src={user.photoURL}
@@ -298,39 +350,39 @@ export default function Sidebar({
                       className="h-full w-full object-cover rounded-full"
                     />
                   ) : (
-                    <AvatarFallback className="bg-sky-600 text-white text-[10px] font-bold">
+                    <AvatarFallback className="bg-sky-600 text-white text-xs font-bold">
                       {user.email ? user.email.slice(0, 2).toUpperCase() : "U"}
                     </AvatarFallback>
                   )}
                 </Avatar>
                 {!collapsed && (
                   <div className="min-w-0">
-                    <div className="text-xs font-bold text-slate-200 truncate">
+                    <div className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
                       {user.displayName || user.email?.split("@")[0]}
                     </div>
-                    <div className="text-[10px] text-slate-400 truncate">{user.email}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{user.email}</div>
                   </div>
                 )}
               </div>
               {!collapsed && (
                 <button
                   onClick={() => signOut()}
-                  className="text-slate-400 hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-750 transition-colors shrink-0"
+                  className="text-slate-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
                   title="Terminar Sessão"
                 >
-                  <LogOut size={14} />
+                  <LogOut size={16} />
                 </button>
               )}
             </div>
           ) : (
             <button
               onClick={onOpenSettings}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all ${
+              className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-sm font-bold transition-all shadow-md shadow-sky-600/20 cursor-pointer ${
                 collapsed ? "justify-center px-0" : ""
               }`}
               title="Iniciar Sessão"
             >
-              <LogIn size={15} />
+              <LogIn size={17} />
               {!collapsed && <span>Entrar na Conta</span>}
             </button>
           )}
@@ -344,7 +396,7 @@ export default function Sidebar({
       {/* Desktop Sidebar (Fixed Left) */}
       <aside
         className={`hidden md:flex flex-col shrink-0 transition-all duration-300 z-40 ${
-          collapsed ? "w-[68px]" : "w-60 xl:w-64"
+          collapsed ? "w-[72px]" : "w-64 xl:w-72"
         }`}
       >
         {sidebarContent}
@@ -357,7 +409,7 @@ export default function Sidebar({
             className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
             onClick={onMobileClose}
           />
-          <div className="relative w-64 max-w-[80vw] h-full shadow-2xl animate-in slide-in-from-left duration-200 z-10">
+          <div className="relative w-72 max-w-[85vw] h-full shadow-2xl animate-in slide-in-from-left duration-200 z-10">
             {sidebarContent}
           </div>
         </div>

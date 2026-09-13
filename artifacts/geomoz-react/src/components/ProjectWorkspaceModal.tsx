@@ -129,11 +129,12 @@ export default function ProjectWorkspaceModal({
         onSelectProjectAOI(newProj.aoi);
       }
 
-      // Reset form & go back to list
+      // Reset form & set project as active
       setName("");
       setDescription("");
       setActiveTab("list");
       setSelectedProjectIdForRuns(newProj.id);
+      onOpenChange(false);
     } catch (err: any) {
       setFormError(err.message || "Erro ao criar projeto.");
     } finally {

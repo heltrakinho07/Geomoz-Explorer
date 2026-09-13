@@ -55,67 +55,60 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const [runsLoading, setRunsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Subscribe to user projects in Firestore
-  useEffect(() => {
-    if (!user) {
-      setProjects([]);
-      setActiveProjectState(null);
-      setActiveRuns([]);
-      setLoading(false);
-      return;
-    }
+  const effectiveUid = user?.uid || "guest_local_user";
 
+  // Subscribe to user projects with local cache fallback
+  useEffect(() => {
     setLoading(true);
     const unsubscribe = subscribeUserProjects(
-      user.uid,
+      effectiveUid,
       (updatedProjects) => {
         setProjects(updatedProjects);
         setLoading(false);
 
-        // Auto-select or restore active project
+        // Auto-select or restore active project safely (preserve reference if unchanged)
         const savedId = localStorage.getItem(ACTIVE_PROJECT_KEY);
         if (savedId) {
           const match = updatedProjects.find((p) => p.id === savedId);
           if (match) {
-            setActiveProjectState(match);
+            setActiveProjectState((prev) => (prev?.id === match.id ? prev : match));
             return;
           }
         }
 
-        // If no active project or previous selection was deleted, default to first or null
         setActiveProjectState((prev) => {
           if (!prev) return updatedProjects.length > 0 ? updatedProjects[0] : null;
           const stillExists = updatedProjects.find((p) => p.id === prev.id);
-          return stillExists || (updatedProjects.length > 0 ? updatedProjects[0] : null);
+          return stillExists ? prev : (updatedProjects.length > 0 ? updatedProjects[0] : null);
         });
       },
       (err) => {
-        console.error("Failed to subscribe to projects:", err);
-        setError("Não foi possível carregar os projetos em tempo real.");
+        console.warn("Projects subscription notice:", err);
         setLoading(false);
       }
     );
 
     return () => unsubscribe();
-  }, [user]);
+  }, [effectiveUid]);
 
-  // Load study runs when activeProject changes
+  // Load study runs when activeProject ID changes
+  const activeProjectId = activeProject?.id;
   const refreshRuns = useCallback(async () => {
-    if (!user || !activeProject) {
+    if (!activeProjectId) {
       setActiveRuns([]);
       return;
     }
 
     setRunsLoading(true);
     try {
-      const runs = await apiListStudyRuns(user.uid, activeProject.id);
+      const runs = await apiListStudyRuns(effectiveUid, activeProjectId);
       setActiveRuns(runs);
     } catch (err) {
-      console.error("Error loading project runs:", err);
+      console.warn("Error loading project runs:", err);
     } finally {
       setRunsLoading(false);
     }
-  }, [user, activeProject]);
+  }, [effectiveUid, activeProjectId]);
 
   useEffect(() => {
     refreshRuns();
@@ -123,7 +116,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   // Set active project and save preference
   const setActiveProject = useCallback((project: GeoMozProject | null) => {
-    setActiveProjectState(project);
+    setActiveProjectState((prev) => (prev?.id === project?.id ? prev : project));
     if (project) {
       localStorage.setItem(ACTIVE_PROJECT_KEY, project.id);
     } else {
@@ -145,13 +138,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     [projects, setActiveProject]
   );
 
-  // Create Project
+  // Create Project (infallible resolution)
   const createProject = useCallback(
     async (input: CreateProjectInput): Promise<GeoMozProject> => {
-      if (!user) throw new Error("É necessário iniciar sessão para criar um projeto.");
       setError(null);
       try {
-        const newProj = await apiCreateProject(user.uid, input);
+        const newProj = await apiCreateProject(effectiveUid, input);
         setActiveProject(newProj);
         return newProj;
       } catch (err: any) {
@@ -160,32 +152,30 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         throw err;
       }
     },
-    [user, setActiveProject]
+    [effectiveUid, setActiveProject]
   );
 
   // Update Project
   const updateProject = useCallback(
     async (projectId: string, input: UpdateProjectInput): Promise<void> => {
-      if (!user) throw new Error("Utilizador não autenticado.");
       setError(null);
       try {
-        await apiUpdateProject(user.uid, projectId, input);
+        await apiUpdateProject(effectiveUid, projectId, input);
       } catch (err: any) {
         console.error("Failed to update project:", err);
         setError("Erro ao atualizar projeto.");
         throw err;
       }
     },
-    [user]
+    [effectiveUid]
   );
 
   // Delete Project
   const deleteProject = useCallback(
     async (projectId: string): Promise<void> => {
-      if (!user) throw new Error("Utilizador não autenticado.");
       setError(null);
       try {
-        await apiDeleteProject(user.uid, projectId);
+        await apiDeleteProject(effectiveUid, projectId);
         if (activeProject?.id === projectId) {
           setActiveProject(null);
         }
@@ -195,7 +185,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         throw err;
       }
     },
-    [user, activeProject, setActiveProject]
+    [effectiveUid, activeProject?.id, setActiveProject]
   );
 
   // Save study run to active project
@@ -203,36 +193,36 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     async (
       run: Omit<StudyRun, "id" | "projectId" | "createdAt">
     ): Promise<StudyRun | null> => {
-      if (!user || !activeProject) {
+      if (!activeProjectId) {
         return null;
       }
 
       try {
-        const saved = await apiAddStudyRun(user.uid, activeProject.id, run);
-        setActiveRuns((prev) => [saved, ...prev]);
+        const saved = await apiAddStudyRun(effectiveUid, activeProjectId, run);
+        setActiveRuns((prev) => [saved, ...prev.filter((r) => r.id !== saved.id)]);
         return saved;
       } catch (err) {
         console.error("Failed to save study run to active project:", err);
         throw err;
       }
     },
-    [user, activeProject]
+    [effectiveUid, activeProjectId]
   );
 
   // Delete study run
   const deleteRunFromActiveProject = useCallback(
     async (runId: string): Promise<void> => {
-      if (!user || !activeProject) return;
+      if (!activeProjectId) return;
 
       try {
-        await apiDeleteStudyRun(user.uid, activeProject.id, runId);
+        await apiDeleteStudyRun(effectiveUid, activeProjectId, runId);
         setActiveRuns((prev) => prev.filter((r) => r.id !== runId));
       } catch (err) {
         console.error("Failed to delete study run:", err);
         throw err;
       }
     },
-    [user, activeProject]
+    [effectiveUid, activeProjectId]
   );
 
   return (

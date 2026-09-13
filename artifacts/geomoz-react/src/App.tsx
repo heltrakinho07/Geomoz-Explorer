@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import LandingPage from "@/pages/LandingPage";
 import Explorer from "@/pages/Explorer";
 import { AuthProvider } from "@/hooks/useAuth";
+import { GeeAuthProvider } from "@/hooks/useGeeAuth";
 import { ProjectProvider } from "@/context/ProjectContext";
 
 
@@ -101,31 +102,33 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <AuthProvider>
-      <QueryClientProvider client={queryClient}>
-        <ProjectProvider>
-        <ErrorBoundary FallbackComponent={ErrorFallback}>
-          <Switch>
-            <Route path="/">{() => <LandingPage />}</Route>
-            <Route path="/login">{() => <LandingPage initialAuthMode="login" />}</Route>
-            <Route path="/register">{() => <LandingPage initialAuthMode="register" />}</Route>
-            <Route path="/app">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-            <Route path="/explorer">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-            <Route path="/mapa">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-            <Route path="/estatisticas">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-            <Route path="/analises">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-            <Route path="/hidrografia">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-            <Route path="/agua-subterranea">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-            <Route path="/geoperigos">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-            <Route path="/geomoz-ai">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-            <Route path="/dashboard">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-            <Route path="/exportar">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-            {/* Fallback to Explorer protected for any other direct link */}
-            <Route>{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-          </Switch>
-        </ErrorBoundary>
-        <Toaster />
-        </ProjectProvider>
-      </QueryClientProvider>
+      <GeeAuthProvider>
+        <QueryClientProvider client={queryClient}>
+          <ProjectProvider>
+            <ErrorBoundary FallbackComponent={ErrorFallback}>
+              <Switch>
+                <Route path="/">{() => <LandingPage />}</Route>
+                <Route path="/login">{() => <LandingPage initialAuthMode="login" />}</Route>
+                <Route path="/register">{() => <LandingPage initialAuthMode="register" />}</Route>
+                <Route path="/app">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+                <Route path="/explorer">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+                <Route path="/mapa">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+                <Route path="/estatisticas">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+                <Route path="/analises">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+                <Route path="/hidrografia">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+                <Route path="/agua-subterranea">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+                <Route path="/geoperigos">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+                <Route path="/geomoz-ai">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+                <Route path="/dashboard">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+                <Route path="/exportar">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+                {/* Fallback to Explorer protected for any other direct link */}
+                <Route>{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+              </Switch>
+            </ErrorBoundary>
+            <Toaster />
+          </ProjectProvider>
+        </QueryClientProvider>
+      </GeeAuthProvider>
     </AuthProvider>
   );
 }

@@ -80,6 +80,7 @@ export default function ZoneSelect({ aoi, onAOIChange, onDrawingRequest, compact
           }`}
         >
           <Globe size={12} />
+          <span className="max-w-[120px] truncate">{aoi.source === "global" ? "🌍 Mundo" : aoi.label}</span>
           <span className="max-w-[120px] truncate">{aoi.source === "global" ? "Mundo" : aoi.label}</span>
           {isCustom && aoi.source === "upload" && <Upload size={10} className="text-emerald-400" />}
           {aoi.source !== "global" && (
@@ -101,6 +102,7 @@ export default function ZoneSelect({ aoi, onAOIChange, onDrawingRequest, compact
                 onClick={() => { onAOIChange(GLOBAL_AOI); setActivePanel(null); }}
                 className="flex items-center gap-2 w-full px-2.5 py-2 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-sky-50 hover:border-sky-200 transition-colors"
               >
+                🌍 Mundo (sem clipping)
                 <Globe size={13} className="text-sky-500 shrink-0" />
                 <span>Mundo (sem clipping)</span>
               </button>
@@ -110,6 +112,7 @@ export default function ZoneSelect({ aoi, onAOIChange, onDrawingRequest, compact
                   value={aoi.province ?? ""}
                   onChange={e => { handleProvinceChange(e.target.value); }}
                 >
+                  <option value="">🇲🇿 Moçambique</option>
                   <option value="">Moçambique (Nacional)</option>
                   {provinceNames?.names.map(n => (
                     <option key={n} value={n}>{n}</option>
@@ -139,6 +142,7 @@ export default function ZoneSelect({ aoi, onAOIChange, onDrawingRequest, compact
                 }}
                 className="flex items-center gap-2 w-full px-2.5 py-2 text-xs font-medium rounded-lg border border-slate-200 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100 hover:border-indigo-300 transition-colors"
               >
+                🌍 Selecionar País do Mundo...
                 <Globe size={13} className="text-indigo-500 shrink-0" />
                 <span>Selecionar País do Mundo...</span>
               </button>
@@ -274,6 +278,7 @@ export default function ZoneSelect({ aoi, onAOIChange, onDrawingRequest, compact
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-medium truncate text-indigo-800">{aoi.label}</p>
             <p className="text-[10px] text-indigo-600">
+              🌍 País soberano ({aoi.countryCode}) • Enquadramento universal GEE
               País soberano ({aoi.countryCode}) • Enquadramento universal GEE
             </p>
           </div>

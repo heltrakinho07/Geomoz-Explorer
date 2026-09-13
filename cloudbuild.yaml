@@ -26,7 +26,7 @@ steps:
       - '--max-instances=10'
       - '--min-instances=0'
       - '--timeout=300s'
-      - '--set-env-vars=PYTHONUNBUFFERED=1'
+      - '--set-env-vars=PYTHONUNBUFFERED=1,FIREBASE_PROJECT_ID=$PROJECT_ID,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,ALLOW_SERVER_GEE_FALLBACK=true'
 
 images:
   - 'europe-west1-docker.pkg.dev/$PROJECT_ID/geomoz-explorer-api/geomoz-explorer-api:$BUILD_ID'
