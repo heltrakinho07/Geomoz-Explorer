@@ -27,8 +27,6 @@ import {
   AlertTriangle, Sparkles, ArrowLeft, LayoutGrid, Search, Globe, SlidersHorizontal,
   Clock, Columns2,
 } from "lucide-react";
-import MapLibre3DView from "@/components/MapLibre3DView";
-import TimeLapsePlayer, { type TimeLapsePeriodMode } from "@/components/TimeLapsePlayer";
 import SplitScreenCompare, { type CompareMode } from "@/components/SplitScreenCompare";
 import PixelInspectorHUD, { type AnalysisContext } from "@/components/PixelInspectorHUD";
 import { sampleTerrariumElevation } from "@/lib/dem-terrain";
@@ -39,7 +37,6 @@ import {
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
 
-import { useGeologyGeoJSON } from "@/hooks/useGeoMoz";
 import { useGeeAuth } from "@/hooks/useGeeAuth";
 import GeeCredentialsDialog from "@/components/GeeCredentialsDialog";
 import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
@@ -263,43 +260,13 @@ const INDEX_DEFS: IndexDef[] = [
   { id: "ndvi", label: "NDVI", short: "Vegetação", icon: <CloudSun size={13} />, group: "spectral",
     formula: "NDVI = (B8 − B4) / (B8 + B4)",
     bands: "NIR (B8) · Vermelho (B4)",
-    interpretation: "Valores > 0.5 indicam cobertura vegetal densa (depósitos quaternários, aluviões). Valores negativos = rocha exposta, água.",
-    lowLabel: "Rocha / solo", highLabel: "Vegetação densa" },
-  { id: "fe_oxide", label: "Fe-Óxidos", short: "Fe-Óxidos", icon: <Flame size={13} />, group: "spectral",
-    formula: "Fe-Oxide = B4 / B2",
-    bands: "Vermelho (B4) · Azul (B2)",
-    interpretation: "Detecta BIF, laterite e gossã sobre sulfuretos. Fundamental para prospecção de Fe, Mn e zonas de oxidação.",
-    lowLabel: "Rocha fresca", highLabel: "BIF / laterite / gossã" },
-  { id: "clay", label: "Argilas", short: "Argilas", icon: <Droplets size={13} />, group: "spectral",
-    formula: "Clay = B11 / B8A",
-    bands: "SWIR1 (B11) · Red-Edge3 (B8A)",
-    interpretation: "Minerais argilosos (caulinite, esmectite, illite). Mapeia saprolite e zonas de alteração argílica.",
-    lowLabel: "Quartzo / rocha fresca", highLabel: "Argilas / xisto / saprolite" },
-  { id: "hydrothermal", label: "Hidrotermal", short: "Hidrotermal", icon: <FlaskConical size={13} />, group: "spectral",
-    formula: "(B11+B4) / (B8A+B3)",
-    bands: "SWIR1 (B11) · B4 · Red-Edge3 (B8A) · Verde (B3)",
-    interpretation: "Zonas de alteração hidrotermal (silicificação, sericitização, argilização). Crítico para prospecção de Au, Ag, Cu, Mo.",
-    lowLabel: "Sem alteração", highLabel: "Skarn / greisen / alteração intensa" },
+    interpretation: "Índice de Vegetação por Diferença Normalizada. Valores elevados indicam vegetação densa e vigorosa; valores baixos indicam solo exposto e corpos de água.",
+    lowLabel: "Solo / água", highLabel: "Vegetação densa" },
   { id: "bare_soil", label: "Solo Exposto", short: "BSI", icon: <BarChart2 size={13} />, group: "spectral",
     formula: "(B11+B4−B8−B2) / (B11+B4+B8+B2)",
     bands: "B11 · B4 · NIR (B8) · Azul (B2)",
-    interpretation: "Zonas de solo exposto e erosão. Mapeia áreas de mineração activa e monitorização de uso do solo.",
-    lowLabel: "Vegetação / escuro", highLabel: "Solo / rocha exposta" },
-  { id: "al_oh", label: "Argílica/Fílica", short: "Al-OH", icon: <FlaskConical size={13} />, group: "spectral",
-    formula: "Al-OH = B11 / B12",
-    bands: "SWIR1 (B11 ~1610 nm) · SWIR2 (B12 ~2190 nm)",
-    interpretation: "Absorção Al-OH (~2200 nm) de sericite, caulinite e alunite → alteração argílica/fílica em sistemas epitermais/pórfiro (Au-Ag-Cu). Limite do Sentinel-2: 2 bandas SWIR; para separação completa usar ASTER.",
-    lowLabel: "Sem alteração", highLabel: "Sericite / argila / alunite" },
-  { id: "ferrous", label: "Ferro Ferroso", short: "Fe²⁺", icon: <Flame size={13} />, group: "spectral",
-    formula: "Ferrous = B12 / B8A",
-    bands: "SWIR2 (B12) · Red-Edge3 (B8A)",
-    interpretation: "Realça minerais ferrosos (Fe²⁺): clorite, anfíbola, biotite — rochas máficas/ultramáficas e alteração propilítica. Complementar ao Fe-óxido (Fe³⁺).",
-    lowLabel: "Félsico / oxidado", highLabel: "Máfico / Fe²⁺" },
-  { id: "gossan", label: "Gossan", short: "Gossan", icon: <Mountain size={13} />, group: "spectral",
-    formula: "Gossan = (B4/B2) × (B11/B12)",
-    bands: "B4 · B2 · B11 · B12",
-    interpretation: "Capas de ferro (gossã) sobre corpos sulfuretados: combina óxido de ferro (Fe³⁺) + alteração argílica. Alvo directo de exploração de sulfuretos (Cu, Zn, Pb, Au).",
-    lowLabel: "Rocha fresca", highLabel: "Gossã / capa de ferro" },
+    interpretation: "Índice de Solo Exposto (Bare Soil Index) para monitorização ambiental, erosão e degradação territorial.",
+    lowLabel: "Vegetação / escuro", highLabel: "Solo exposto" },
 
   // ── Landsat 8 ──────────────────────────────────────────────────────────
   { id: "ndvi_l8", label: "NDVI L8", short: "NDVI L8", icon: <Trees size={13} />, group: "landsat",
@@ -2373,19 +2340,6 @@ export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
     tabIds: ["ndmi", "nddi", "mangrove_health", "coastal_index", "coastal_erosion", "tsunami_risk"],
   },
   {
-    id: "geology",
-    title: "Geologia Espectral & Potencial Mineral",
-    subtitle: "Sentinel-2 SWIR · Alteração Hidrotermal & DEM Sobel",
-    badge: "Prospecção Geocientífica",
-    badgeColor: "bg-purple-100 text-purple-800 border-purple-200",
-    icon: Gem,
-    gradient: "from-purple-600 to-indigo-600",
-    description: "Mapeamento de halos de alteração hidrotermal (argilas, sericite, óxidos de ferro, gossan), extração de lineamentos estruturais e IA de targeting mineral.",
-    highlights: ["Alteração Hidrotermal", "Argilas & Saprolite", "Fe-Óxidos & Gossan", "Lineamentos DEM Sobel", "Targeting Mineral Multi-critério"],
-    defaultTab: "hydrothermal",
-    tabIds: ["hydrothermal", "fe_oxide", "clay", "al_oh", "ferrous", "gossan", "lineaments", "targeting"],
-  },
-  {
     id: "fire",
     title: "Incêndios, Queimadas & Uso do Solo",
     subtitle: "Sentinel-2, MODIS & ESA WorldCover",
@@ -2413,14 +2367,14 @@ export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
   },
   {
     id: "satellite",
-    title: "Satélite Óptico & Time-Lapse Multitemporal",
+    title: "Satélite Óptico & Mosaicos Multitemporais",
     subtitle: "Sentinel-2 Cloudless EOX · 2016–2024 (10 m)",
-    badge: "Time-Lapse & Split-Screen",
+    badge: "Mosaicos Sentinel-2 10m",
     badgeColor: "bg-sky-100 text-sky-800 border-sky-300 font-bold",
     icon: Satellite,
     gradient: "from-sky-500 to-indigo-600",
-    description: "Mosaicos anuais de alta resolução (10 m) sem nuvens do Sentinel-2 cobrindo a série 2016 a 2024. Inclui animação contínua Time-Lapse com velocidade ajustável e comparador de tela dividida (Antes vs Depois) para análise de grandes transformações.",
-    highlights: ["Time-Lapse Dinâmico (2016–2024)", "Split-Screen (Antes / Depois)", "Ciclones Idai & Freddy", "RGB Cor Real 10 m"],
+    description: "Mosaicos anuais de alta resolução (10 m) sem nuvens do Sentinel-2 cobrindo a série 2016 a 2024 para análise de grandes transformações ambientais e de infraestruturas.",
+    highlights: ["Mosaicos Sentinel-2 (2016–2024)", "Série Histórica 10m", "Ciclones Idai & Freddy", "RGB Cor Real 10 m"],
     defaultTab: "s2",
     tabIds: ["s2"],
   },
@@ -2458,8 +2412,6 @@ export default function GeoAnalises({
   const [activeTab, setActiveTab]     = useState<SpectralTab>("s2");
   const [showS2, setShowS2]           = useState(false);
   const [selectedYear, setSelectedYear] = useState("2024");
-  const [showTimeLapse, setShowTimeLapse] = useState(false);
-  const [timeLapsePlaying, setTimeLapsePlaying] = useState(false);
   const [compareActive, setCompareActive] = useState(false);
   const [splitPercent, setSplitPercent] = useState(50);
   const [compareLeftYear, setCompareLeftYear] = useState("2023");
@@ -2476,7 +2428,6 @@ export default function GeoAnalises({
   const [isProcessingCompareGee, setIsProcessingCompareGee] = useState(false);
   const [compareGeeError, setCompareGeeError] = useState<string | null>(null);
   const lastCompareKeyRef = useRef<string>("");
-  const [timeLapsePeriodMode, setTimeLapsePeriodMode] = useState<TimeLapsePeriodMode>("recent");
   const [coords2D, setCoords2D] = useState<{ lat: number; lng: number } | null>(null);
   const [elevation2D, setElevation2D] = useState<number | null>(null);
   const [hoveredProxyValue, setHoveredProxyValue] = useState<number | null>(null);
@@ -2529,10 +2480,8 @@ export default function GeoAnalises({
     return null;
   }, [activeTab, showS2, selectedYear, geeTile, contoursTile, topoClassesTile, landCoverTile, lineamentsTile, targetingTile, spiNdviResult, spiLayerMode]);
 
-  const { data: geologyGeoJSON, isFetching } = useGeologyGeoJSON(
-    province, district, "code2006",
-    activeTab !== "s2" && !useGEE
-  );
+  const geologyGeoJSON = null;
+  const isFetching = false;
 
   // Fetch GEE status on mount
   // ── PDF Export (universal for all analysis types) ────────────────
@@ -2776,44 +2725,16 @@ export default function GeoAnalises({
     } finally { setProfileRunning(false); }
   }, [profilePoints, profileSamples]);
 
-  // Synthetic spectral overlay (proxy mode) — disabled for s2/composite/terrain
-  const spectralGeoJSON = useMemo(() => {
-    if (!geologyGeoJSON || activeTab === "s2" || activeTab === "spi_ndvi" || useGEE) return null;
-    if (GEE_ONLY_INDICES.includes(activeTab as SpectralIndex)) return null;
-    const index = activeTab as SpectralIndex;
-    return {
-      ...geologyGeoJSON,
-      features: geologyGeoJSON.features.map(f => ({
-        ...f,
-        properties: {
-          ...f.properties,
-          _spectralColor: applyColormap(
-            computeSpectralValue(
-              String(f.properties?.Legend ?? f.properties?.LEGEND ?? f.properties?.code2006 ?? ""),
-              String(f.properties?.ERA ?? ""),
-              String(f.properties?.PERIOD ?? ""),
-              index
-            ),
-            index
-          ),
-          _spectralValue: computeSpectralValue(
-            String(f.properties?.Legend ?? f.properties?.LEGEND ?? f.properties?.code2006 ?? ""),
-            String(f.properties?.ERA ?? ""),
-            String(f.properties?.PERIOD ?? ""),
-            index
-          ),
-        },
-      })),
-    };
-  }, [geologyGeoJSON, activeTab, useGEE]);
+  // Synthetic spectral overlay disabled for data security
+  const spectralGeoJSON = null;
 
   const activeDef = INDEX_DEFS.find(d => d.id === activeTab);
   // Parse available bands from the active index definition
   const activeDefBands = activeDef?.bands ? activeDef.bands.split(/[·,]/).map(b => b.trim()).filter(Boolean) : [];
   const isComposite   = false;
   void isComposite;
-  const isLineaments  = activeTab === "lineaments";
-  const isTargeting   = activeTab === "targeting";
+  const isLineaments  = false;
+  const isTargeting   = false;
   const isProfile     = activeTab === "profile";
   const isContours    = activeTab === "contours";
   const isTopoCustom  = activeTab === "topo_custom";
@@ -2822,10 +2743,10 @@ export default function GeoAnalises({
 
   const isTerrain     = activeDef?.group === "terrain";
   const isGeeOnly     = (activeDef && GEE_ONLY_INDICES.includes(activeDef.id))
-                        || isLineaments || isTargeting || isProfile || isContours || isLandCover
+                        || isProfile || isContours || isLandCover
                         || isSpiNdvi;
   const isTopoClass   = activeTab === "topo_class";
-  const spectralKey = `spectral-${activeTab}-${province}-${district}-${geologyGeoJSON?.features?.length ?? 0}`;
+  const spectralKey = `spectral-${activeTab}-${province}-${district}`;
   const geeTileKey  = `gee-${activeTab}-${geeTile?.tileUrl ?? ""}`;
 
   const activeAnalysisContext: AnalysisContext | null = useMemo(() => {
@@ -2839,7 +2760,7 @@ export default function GeoAnalises({
     if (isLineaments) {
       return {
         label: "Lineamentos Estruturais (SRTM/GLO-30)",
-        category: "Geologia Estrutural",
+        category: "Relevo & Estruturas",
         classLabel: lineamentsTile ? `${lineamentsTile.sampleCount || 0} amostras` : undefined,
       };
     }
@@ -2901,7 +2822,7 @@ export default function GeoAnalises({
   const tabGroups: { name: string; badge: string; badgeColor: string; tabs: { id: string; label: string; icon: React.ReactNode }[] }[] = [
     { name: "Mosaico Óptico",         badge: "Sentinel-2 · EOX",    badgeColor: "bg-sky-100 text-sky-700",
       tabs: [{ id: "s2", label: "S-2 Cloudless", icon: <Satellite size={13} /> }] },
-    { name: "Vegetação & Mineralogia", badge: "Sentinel-2 · 10–20 m", badgeColor: "bg-emerald-100 text-emerald-700",
+    { name: "Vegetação & Solo",        badge: "Sentinel-2 · 10–20 m", badgeColor: "bg-emerald-100 text-emerald-700",
       tabs: INDEX_DEFS.filter(d => d.group === "spectral").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
     { name: "Landsat 8",              badge: "Landsat · 30 m",       badgeColor: "bg-orange-100 text-orange-700",
       tabs: INDEX_DEFS.filter(d => d.group === "landsat").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
@@ -2912,10 +2833,6 @@ export default function GeoAnalises({
         { id: "profile",     label: "Perfil A→B",     icon: <Route size={13} /> },
         { id: "contours",    label: "Curvas Nível",   icon: <Waves size={13} /> },
       ]},
-    { name: "Estruturas Geológicas",  badge: "GEE · DEM + Sobel",   badgeColor: "bg-fuchsia-100 text-fuchsia-700",
-      tabs: [{ id: "lineaments", label: "Lineamentos", icon: <Activity size={13} /> }] },
-    { name: "Potencial Mineral",      badge: "GEE · Multi-critério", badgeColor: "bg-yellow-100 text-yellow-700",
-      tabs: [{ id: "targeting",  label: "Targeting",   icon: <Target size={13} /> }] },
     { name: "Uso & Cobertura",        badge: "ESA WorldCover · 10 m", badgeColor: "bg-lime-100 text-lime-700",
       tabs: [{ id: "landcover", label: "Cobertura do Solo", icon: <Sprout size={13} /> }] },
     { name: "Agricultura",              badge: "Sentinel-2 · 10–20 m",  badgeColor: "bg-green-100 text-green-700",
@@ -3080,21 +2997,20 @@ export default function GeoAnalises({
                 {/* Multitemporal Quick Access Banner Buttons */}
                 <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-white/15">
                   <span className="text-[11px] text-sky-200 font-semibold flex items-center gap-1 mr-1">
-                    <Clock size={12} className="text-sky-300" /> Acesso Rápido:
+                    <Satellite size={12} className="text-sky-300" /> Acesso Rápido:
                   </span>
                   <button
                     type="button"
                     onClick={() => {
                       setSelectedCategory("satellite");
                       setActiveTab("s2");
-                      setShowTimeLapse(true);
                       setShowS2(true);
                       setCompareActive(false);
                     }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold shadow-md transition-all active:scale-95"
                   >
-                    <Clock size={12} className="animate-spin" />
-                    <span>Time-Lapse Dinâmico (2016–2024)</span>
+                    <Satellite size={12} />
+                    <span>Mosaicos Sentinel-2 (2016–2024)</span>
                   </button>
                   <button
                     type="button"
@@ -3102,7 +3018,6 @@ export default function GeoAnalises({
                       setSelectedCategory("satellite");
                       setActiveTab("s2");
                       setCompareActive(true);
-                      setShowTimeLapse(false);
                       setShowS2(true);
                     }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md transition-all active:scale-95"
@@ -3143,7 +3058,6 @@ export default function GeoAnalises({
                       setSelectedCategory(cat.id);
                       setActiveTab(cat.defaultTab);
                       if (cat.id === "optical" || cat.id === "satellite") {
-                        setShowTimeLapse(true);
                         setShowS2(true);
                       }
                     }}
@@ -3246,61 +3160,6 @@ export default function GeoAnalises({
 
             {/* Right Header Actions */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              {/* TimeLapse toggle button */}
-              <button
-                type="button"
-                onClick={() => {
-                  setShowTimeLapse(v => !v);
-                  if (compareActive) setCompareActive(false);
-                }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold shadow-xs transition-all ${
-                  showTimeLapse
-                    ? "bg-sky-500 text-white border-sky-400 shadow-md shadow-sky-500/20 ring-2 ring-sky-300/40 scale-105"
-                    : "bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200"
-                }`}
-                title="Linha do Tempo e Animação Time-Lapse (2016–2024)"
-              >
-                <Clock size={13} className={showTimeLapse ? "text-white animate-spin" : "text-sky-500"} />
-                <span>Time-Lapse</span>
-                <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 font-extrabold hidden sm:inline">2016–2024</span>
-              </button>
-
-              {/* Split-Screen Compare button (ocultado temporariamente a pedido do utilizador, lógica preservada) */}
-              {false && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCompareActive(v => !v);
-                    if (showTimeLapse) setShowTimeLapse(false);
-                  }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold shadow-xs transition-all ${
-                    compareActive
-                      ? "bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20 ring-2 ring-indigo-300/40 scale-105"
-                      : "bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200"
-                  }`}
-                  title="Comparar a análise selecionada entre o período padrão 2023 e o período recente (Ecrã Dividido)"
-                >
-                  <Columns2 size={13} className={compareActive ? "text-white" : "text-indigo-600"} />
-                  <span>Comparar</span>
-                  <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 font-extrabold hidden sm:inline">2023 ⟷ Recente</span>
-                </button>
-              )}
-
-              <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-
-              <button
-                onClick={() => handleViewModeChange(viewMode === "2d" ? "3d" : "2d")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-2xs transition-all ${
-                  viewMode === "3d"
-                    ? "bg-gradient-to-r from-sky-500 to-indigo-600 text-white border-transparent shadow-sky-200"
-                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
-                }`}
-                title={viewMode === "3d" ? "Mudar para 2D" : "Mudar para 3D Real"}
-              >
-                <Globe size={13} />
-                <span className="hidden sm:inline">{viewMode === "3d" ? "Modo 3D Real" : "Modo 2D"}</span>
-              </button>
-
               <button
                 onClick={exportGeoAnalisesPdf}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium shadow-2xs"
@@ -3586,22 +3445,8 @@ export default function GeoAnalises({
                 <button
                   type="button"
                   onClick={() => {
-                    setShowTimeLapse(true);
-                    setShowS2(true);
-                    if (compareActive) setCompareActive(false);
-                  }}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-700 rounded-xl text-xs font-bold transition-all shadow-2xs"
-                >
-                  <Clock size={14} className="text-sky-600" />
-                  <span>Abrir Animação Time-Lapse</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
                     setCompareActive(true);
                     setShowS2(true);
-                    if (showTimeLapse) setShowTimeLapse(false);
                   }}
                   className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-bold transition-all shadow-2xs"
                 >
@@ -3808,24 +3653,6 @@ export default function GeoAnalises({
             </div>
           )}
 
-          {/* TimeLapse Player Floating Overlay */}
-          {showTimeLapse && !compareActive && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[650] w-[95%] sm:w-[90%] max-w-xl">
-              <TimeLapsePlayer
-                currentYear={selectedYear}
-                onYearChange={setSelectedYear}
-                isPlaying={timeLapsePlaying}
-                onPlayChange={setTimeLapsePlaying}
-                activeAnalysisName={
-                  INDEX_DEFS.find((d) => d.id === activeTab)?.label ||
-                  (activeTab === "s2" ? "Sentinel-2 Mosaicos" : activeTab)
-                }
-                periodMode={timeLapsePeriodMode}
-                onPeriodModeChange={setTimeLapsePeriodMode}
-                onClose={() => setShowTimeLapse(false)}
-              />
-            </div>
-          )}
 
           {/* Floating HUD status indicator during GEE computation (ocultado temporariamente a pedido do utilizador) */}
           {false && compareActive && isProcessingCompareGee && (
@@ -3890,42 +3717,15 @@ export default function GeoAnalises({
             />
           )}
 
-          {viewMode === "3d" ? (
-            <MapLibre3DView
-              province={province}
-              district={district}
-              aoi={aoi}
-              basemap={basemap}
-              viewMode={viewMode}
-              onBasemapChange={setBasemap}
-              onViewModeChange={handleViewModeChange}
-              showProfileTool={selectedCategory === "terrain"}
-              overlayRasterUrl={activeOverlayUrl}
-              overlayOpacity={visParams.opacity}
-              overlayGeoJSON={
-                !geeReady && activeTab !== "s2" && spectralGeoJSON
-                  ? (spectralGeoJSON as GeoJSON.FeatureCollection)
-                  : isTargeting && overlapResult?.zones?.features?.length
-                  ? (overlapResult.zones as GeoJSON.FeatureCollection)
-                  : null
-              }
-              overlayGeoJSONKey={spectralKey}
-              activeAnalysis={activeAnalysisContext}
-              className="w-full h-full"
-            />
-          ) : (
-            <>
-              {/* Basemap Switcher (Google Maps) */}
-              <BasemapSwitcher
-                current={basemap}
-                onChange={setBasemap}
-                viewMode={viewMode}
-                onViewModeChange={handleViewModeChange}
-                className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
-                position="bottom-left"
-              />
+          {/* Basemap Switcher (Google Maps) */}
+          <BasemapSwitcher
+            current={basemap}
+            onChange={setBasemap}
+            className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
+            position="bottom-left"
+          />
 
-              <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }}>
+          <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }}>
             {/* Base tiles */}
             {compareActive ? (
               <>
@@ -4254,8 +4054,6 @@ export default function GeoAnalises({
             viewMode="2d"
             className="absolute bottom-6 right-3 sm:right-4 z-[600]"
           />
-        </>
-      )}
           {/* RasterVisPanel — floating visualization controls */}
           {geeReady && geeTile && activeTab !== "s2" && (
             <>

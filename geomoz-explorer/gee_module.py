@@ -144,9 +144,10 @@ def _init_gee(uid: str = None) -> None:
                 logger.error("Failed to initialize GEE with user OAuth token: %s", e)
                 # Fall through to service account fallback
 
-        # Fallback to server-side GEE_SERVICE_ACCOUNT_KEY if configured
+        # Fallback to server-side GEE_SERVICE_ACCOUNT_KEY only if explicitly allowed
+        allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower() == "true"
         sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
-        if sa_key:
+        if allow_server and sa_key:
             try:
                 import ee
                 import json
@@ -167,7 +168,7 @@ def _init_gee(uid: str = None) -> None:
                 _gee_error = str(e)
                 raise RuntimeError(f"Erro ao inicializar GEE com Service Account: {e}")
 
-        _gee_error = "Utilizador não tem ligação ao GEE e não há credenciais de servidor configuradas."
+        _gee_error = "Conta do Google Earth Engine não conectada. Conecte a sua conta GEE nas configurações de perfil para utilizar a sua própria cota."
         raise RuntimeError(_gee_error)
 
 
@@ -182,30 +183,35 @@ def reset_gee():
 
 def gee_status(uid: str = None) -> dict:
     global _gee_error
-    try:
-        import ee
-        ee.String("ok").getInfo()
-        sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "")
-        auth_type = "oauth2"
-        project = os.environ.get("GEE_PROJECT_ID", "")
-        if not project and sa_key:
-            try:
-                project = json.loads(sa_key).get("project_id", "")
-            except Exception:
-                pass
+    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower() == "true"
+    token_data = gee_session_store.get_token(uid) if uid else None
+    if token_data and token_data.get("access_token"):
         return {
             "connected": True,
-            "auth_type": auth_type,
-            "project": project,
-            "message": f"GEE conectado ({auth_type})",
+            "auth_type": "oauth2",
+            "project": token_data.get("project") or os.environ.get("GEE_PROJECT_ID", ""),
+            "message": "GEE conectado com cota própria de utilizador (OAuth2)",
         }
-    except Exception as exc:
-        return {
-            "connected": False,
-            "auth_type": None,
-            "project": None,
-            "message": str(exc),
-        }
+    if allow_server:
+        sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "")
+        if sa_key:
+            project = os.environ.get("GEE_PROJECT_ID", "")
+            try:
+                project = json.loads(sa_key).get("project_id", project)
+            except Exception:
+                pass
+            return {
+                "connected": True,
+                "auth_type": "service_account",
+                "project": project,
+                "message": "GEE conectado via servidor",
+            }
+    return {
+        "connected": False,
+        "auth_type": None,
+        "project": None,
+        "message": "Não conectado. Conecte a sua conta do Google Earth Engine no perfil para usar a sua própria cota.",
+    }
 
 
 # ── Geometry helpers ───────────────────────────────────────────────────────────

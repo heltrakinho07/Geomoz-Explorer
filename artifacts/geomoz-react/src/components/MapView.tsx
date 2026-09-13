@@ -211,7 +211,7 @@ export default function MapView({
   function onEachProvince(feature: GeoJSON.Feature, layer: Layer) {
     const p = feature.properties as Record<string, string>;
     const name = p?.Provincia || p?.PROVINCIA || p?.NAME_1 || p?.name || "Province";
-    layer.bindTooltip(`<b>${name}</b><br/><span style="color:#64748b;font-size:11px">Clique para ver geologia</span>`, { sticky: true });
+    layer.bindTooltip(`<b>${name}</b><br/><span style="color:#64748b;font-size:11px">Clique para focar província</span>`, { sticky: true });
     layer.on("click", () => onProvinceClick?.(name));
     (layer as L.Path).on("mouseover", (e) => {
       (e.target as L.Path).setStyle({ fillOpacity: 0.35, weight: 2, fillColor: "#0ea5e9" });
@@ -374,22 +374,12 @@ export default function MapView({
         />
       ) : (
         <>
-          {loadingGeology && province && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[600] bg-white border border-slate-200 shadow-md rounded-full px-4 py-1.5 text-xs font-medium text-slate-600 flex items-center gap-2 pointer-events-none">
-              <svg className="animate-spin w-3.5 h-3.5 text-sky-500" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-              </svg>
-              A carregar geologia…
-            </div>
-          )}
-
           {!province && (
             <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[600] bg-white/95 backdrop-blur-sm border border-sky-200 shadow-lg rounded-xl px-5 py-3 text-sm text-slate-700 flex items-center gap-2.5 pointer-events-none max-w-xs text-center">
               <svg className="w-4 h-4 text-sky-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              Clique numa <strong>&nbsp;Província&nbsp;</strong> no mapa ou no filtro para ver a geologia
+              Clique numa <strong>&nbsp;Província&nbsp;</strong> no mapa ou no filtro para focar a área
             </div>
           )}
 
@@ -397,7 +387,7 @@ export default function MapView({
           <PixelInspectorHUD
             coords={coords}
             elevation={coordsElevation}
-            geology={hoveredGeology}
+            geology={null}
             admin={hoveredAdmin}
             viewMode="2d"
             className="absolute bottom-6 right-3 sm:right-4 z-[600]"
@@ -519,7 +509,8 @@ export default function MapView({
               }}
             />
 
-            {layers.geology && province && geologyGeoJSON && (
+            {/* Camada de geologia oculta para protecção de dados (preservada para reactivação futura) */}
+            {false && layers.geology && province && geologyGeoJSON && (
               <>
                 <FitBounds data={geologyGeoJSON} deps={[province, district]} />
                 <GeoJSONLayer data={geologyGeoJSON} layerKey={geologyKey} style={geologyStyle} onEachFeature={onEachGeology} />
@@ -528,7 +519,7 @@ export default function MapView({
 
             {layers.provinces && provinceGeoJSON && (
               <>
-                {!province && <FitBounds data={provinceGeoJSON} deps={[]} />}
+                <FitBounds data={provinceGeoJSON} deps={[province, district]} />
                 <GeoJSONLayer data={provinceGeoJSON} layerKey={provKey} style={provinceStyle} onEachFeature={onEachProvince} />
               </>
             )}

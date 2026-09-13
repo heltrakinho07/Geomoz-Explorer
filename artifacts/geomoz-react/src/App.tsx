@@ -72,6 +72,30 @@ function ErrorFallback({ error, resetErrorBoundary }: any) {
   );
 }
 
+import { useAuth } from "@/hooks/useAuth";
+import { Loader2 } from "lucide-react";
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-900 text-white">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={32} className="text-sky-400 animate-spin" />
+          <p className="text-xs text-slate-400 font-medium">A verificar credenciais de acesso…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LandingPage initialAuthMode="login" />;
+  }
+
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -81,19 +105,19 @@ export default function App() {
             <Route path="/">{() => <LandingPage />}</Route>
             <Route path="/login">{() => <LandingPage initialAuthMode="login" />}</Route>
             <Route path="/register">{() => <LandingPage initialAuthMode="register" />}</Route>
-            <Route path="/app">{() => <Explorer />}</Route>
-            <Route path="/explorer">{() => <Explorer />}</Route>
-            <Route path="/mapa">{() => <Explorer />}</Route>
-            <Route path="/estatisticas">{() => <Explorer />}</Route>
-            <Route path="/analises">{() => <Explorer />}</Route>
-            <Route path="/hidrografia">{() => <Explorer />}</Route>
-            <Route path="/agua-subterranea">{() => <Explorer />}</Route>
-            <Route path="/geoperigos">{() => <Explorer />}</Route>
-            <Route path="/geomoz-ai">{() => <Explorer />}</Route>
-            <Route path="/dashboard">{() => <Explorer />}</Route>
-            <Route path="/exportar">{() => <Explorer />}</Route>
-            {/* Fallback to Explorer for any other direct link */}
-            <Route>{() => <Explorer />}</Route>
+            <Route path="/app">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+            <Route path="/explorer">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+            <Route path="/mapa">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+            <Route path="/estatisticas">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+            <Route path="/analises">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+            <Route path="/hidrografia">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+            <Route path="/agua-subterranea">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+            <Route path="/geoperigos">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+            <Route path="/geomoz-ai">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+            <Route path="/dashboard">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+            <Route path="/exportar">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+            {/* Fallback to Explorer protected for any other direct link */}
+            <Route>{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
           </Switch>
         </ErrorBoundary>
         <Toaster />

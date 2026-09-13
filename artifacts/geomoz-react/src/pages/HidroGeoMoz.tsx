@@ -31,7 +31,6 @@ import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
 import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
 import BasemapSwitcher from "@/components/BasemapSwitcher";
-import MapLibre3DView from "@/components/MapLibre3DView";
 import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
@@ -878,37 +877,13 @@ export default function HidroGeoMoz({
 
       {/* ── Map ──────────────────────────────────────────────────────────── */}
       <div className={`flex-1 relative overflow-hidden ${mode === "delineate" ? "cursor-crosshair" : ""}`} ref={mapContainerRef}>
-        {viewMode === "3d" ? (
-          <MapLibre3DView
-            province={province}
-            district={district}
-            aoi={aoi}
-            basemap={basemap}
-            viewMode={viewMode}
-            onBasemapChange={setBasemap}
-            onViewModeChange={handleViewModeChange}
-            showProfileTool={false}
-            overlayRasterUrl={
-              watershedData?.tileUrl ||
-              drainageTile?.tileUrl ||
-              (basinReport && reportLayer === "lulc" ? basinReport.landcoverTile :
-               basinReport && reportLayer === "cn" ? basinReport.runoff.cnTile : null)
-            }
-            overlayOpacity={0.8}
-            overlayGeoJSON={watershedData?.geojson ?? null}
-            className="w-full h-full"
-          />
-        ) : (
-          <>
-            <BasemapSwitcher
-              current={basemap}
-              onChange={setBasemap}
-              viewMode={viewMode}
-              onViewModeChange={handleViewModeChange}
-              className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
-              position="bottom-left"
-            />
-            <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} ref={mapRef} zoomControl={false}>
+        <BasemapSwitcher
+          current={basemap}
+          onChange={setBasemap}
+          className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
+          position="bottom-left"
+        />
+        <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} ref={mapRef} zoomControl={false}>
               <ZoomControl position="topright" />
               <MapTools />
               <ScaleControl position="bottomright" imperial={false} />
@@ -988,8 +963,6 @@ export default function HidroGeoMoz({
                 onCancel={() => setDrawingEnabled(false)}
               />
             </MapContainer>
-          </>
-        )}
 
         {/* Legend */}
         <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-blue-100 p-3 pointer-events-none text-[11px] min-w-[130px]">

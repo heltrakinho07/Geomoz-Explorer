@@ -222,8 +222,8 @@ export default function PixelInspectorHUD({
             </div>
           )}
 
-          {/* Geological Formation Context */}
-          {geology && geology.name && (
+          {/* Geological Formation Context (ocultado para segurança de dados - preservado para reactivação futura)
+          geology && geology.name && (
             <div className="flex items-center gap-1.5 text-slate-200">
               <Layers size={12} className="text-amber-400 shrink-0" />
               <span className="font-medium text-amber-200 truncate max-w-[220px] sm:max-w-xs" title={geology.name}>
@@ -240,7 +240,7 @@ export default function PixelInspectorHUD({
                 </span>
               )}
             </div>
-          )}
+          ) */}
 
           {/* Administrative Division Context */}
           {admin && (admin.province || admin.district) && (

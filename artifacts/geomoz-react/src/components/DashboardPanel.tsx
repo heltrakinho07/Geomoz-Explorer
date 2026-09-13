@@ -51,9 +51,9 @@ interface GeeIndexInfo {
 }
 
 const MODULES: ModuleCard[] = [
-  { id: "geology", name: "Geologia & Mapa", description: "Visualização geológica, litologias, províncias e distritos",
+  { id: "geology", name: "Cartografia & Limites", description: "Visualização territorial, limites de províncias e distritos",
     icon: <Globe size={18} />, color: "text-sky-600", bgColor: "bg-sky-50", status: "active", indexCount: 0 },
-  { id: "spectral", name: "Sensoriamento Remoto", description: "NDVI, Fe-Óxidos, Argilas, Hidrotermal, BSI, Al-OH, Ferroso, Gossan",
+  { id: "spectral", name: "Sensoriamento Remoto", description: "NDVI, BSI, EVI, SAVI, NDRE, Cobertura do Solo",
     icon: <Satellite size={18} />, color: "text-emerald-600", bgColor: "bg-emerald-50", status: "requires_gee", indexCount: 0 },
   { id: "terrain", name: "Relevo & Morfologia", description: "Elevação, Hipsometria, Declive, Hillshade, Classes Topo, Perfil, Curvas",
     icon: <Mountain size={18} />, color: "text-amber-600", bgColor: "bg-amber-50", status: "requires_gee", indexCount: 0 },

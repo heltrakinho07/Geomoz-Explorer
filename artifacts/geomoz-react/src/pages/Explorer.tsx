@@ -31,8 +31,8 @@ interface NominatimResult {
 type Tab = "Mapa" | "Análise" | "GeoAnálises" | "Bacias Hidrográficas" | "Água Subterrânea" | "Geoperigos" | "GeoMoz AI" | "Dashboard" | "Exportar";
 
 const TABS: { id: Tab; icon: React.ReactNode; label: string }[] = [
-  { id: "Mapa",                 icon: <Globe size={13} />,    label: "Mapa 3D" },
-  { id: "Análise",              icon: null,                   label: "Análise" },
+  { id: "Mapa",                 icon: <Globe size={13} />,    label: "Mapa" },
+  // { id: "Análise",              icon: null,                   label: "Análise" }, // Ocultado para segurança de dados (reativação futura)
   { id: "GeoAnálises",         icon: <Satellite size={13} />, label: "GeoAnálises" },
   { id: "Bacias Hidrográficas", icon: <Droplets size={13} />, label: "Bacias Hidrográficas" },
   { id: "Água Subterrânea",     icon: <Droplet size={13} />,  label: "Água Subterrânea" },
@@ -47,7 +47,7 @@ export default function Explorer() {
   const [province, setProvince] = useState<string | null>(null);
   const [district, setDistrict] = useState<string | null>(null);
   const [colorBy, setColorBy] = useState("code2006");
-  const [layers, setLayers] = useState<LayerState>({ provinces: true, districts: false, geology: true });
+  const [layers, setLayers] = useState<LayerState>({ provinces: true, districts: false, geology: false });
   const getInitialTab = (): Tab => {
     if (typeof window === "undefined") return "Mapa";
     const path = window.location.pathname.toLowerCase();
@@ -673,13 +673,6 @@ function LoadingSkeleton({ label }: { label: string }) {
             viewMode={globalViewMode}
             onViewModeChange={handleGlobalViewModeChange}
           />
-          <StatsPanel
-            province={province}
-            district={district}
-            colorBy={colorBy}
-            isExpanded={isStatsExpanded}
-            onToggleExpand={() => setIsStatsExpanded(v => !v)}
-          />
         </div>
       )}
 
@@ -697,7 +690,7 @@ function LoadingSkeleton({ label }: { label: string }) {
           }`}
         >
           <Globe size={18} className={activeTab === "Mapa" ? "text-sky-600" : "text-slate-500"} />
-          <span className="mt-0.5">Mapa 3D</span>
+          <span className="mt-0.5">Mapa</span>
         </button>
 
         <button

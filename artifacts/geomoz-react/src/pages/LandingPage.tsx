@@ -41,6 +41,8 @@ import {
   ArrowUpRight,
   Check,
   FileText,
+  ZoomIn,
+  Map as MapIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
@@ -78,7 +80,9 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
     return "pt";
   });
 
-  const [activeAnalysisGroup, setActiveAnalysisGroup] = useState<string>("minerals");
+  const [activeAnalysisGroup, setActiveAnalysisGroup] = useState<string>("vegetation");
+  const [reliefTab, setReliefTab] = useState<"panel" | "map" | "vector">("panel");
+  const [expandedImage, setExpandedImage] = useState<{ src: string; title: string; subtitle?: string } | null>(null);
 
   useEffect(() => {
     if (initialAuthMode) {
@@ -106,6 +110,10 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
   };
 
   const handleLaunchApp = () => {
+    if (!user) {
+      openAuth("register");
+      return;
+    }
     setLocation("/app");
   };
 
@@ -122,7 +130,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         casosDeUso: "Casos de Uso",
         login: "Iniciar Sessão",
         register: "Criar Conta",
-        launch: "Lançar Plataforma 3D",
+        launch: "Lançar Plataforma",
         logout: "Terminar Sessão",
         userBadge: "Conta Ativa",
       },
@@ -133,7 +141,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         titleHighlight: "Morfometria Planetária 3D",
         subtitle:
           "A plataforma analítica definitiva que une o processamento em nuvem do Google Earth Engine, modelos de terreno Copernicus 30m em tempo real, hidrologia multicritério e inteligência artificial preditiva. De Moçambique para qualquer coordenada do globo, 100% no seu navegador.",
-        ctaPrimary: "Lançar Plataforma 3D",
+        ctaPrimary: "Lançar Plataforma",
         ctaSecondary: "Criar Conta Gratuita",
         ctaExplore: "Ver Recursos Analíticos",
         hudBadge: "Motor Digital WebGL 3D • Copernicus GLO-30",
@@ -146,8 +154,8 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         lithologyVal: "Granito Plutónico (Pré-Câmbrico)",
         spectral: "Sentinel-2 NDVI",
         spectralVal: "0.78 (Vigor Vegetal Alto)",
-        alteration: "Alteração Hidrotermal",
-        alterationVal: "0.64 (Anomalia Argilosa)",
+        alteration: "Humidade do Solo (NDMI)",
+        alterationVal: "0.52 (Equilibrada)",
         interactiveBanner: "Clique para carregar o modelo de terreno e espectrometria em 3D",
       },
       stats: {
@@ -156,7 +164,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         s1Desc: "Copernicus DEM GLO-30 & SRTM sem lacunas",
         s2Value: "40+ Índices",
         s2Title: "Análises de Satélite Automatizadas",
-        s2Desc: "NDVI, NDWI, Óxidos de Ferro, Gossan e Argilas",
+        s2Desc: "NDVI, NDWI, NDMI, BSI, EVI e Bio-análises",
         s3Value: "190+ Países",
         s3Title: "Enquadramento Global Imediato",
         s3Desc: "Foco automático e limites administrativos mundiais",
@@ -167,7 +175,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
       pillars: {
         tag: "Arquitetura Analítica Territorial",
         title: "Os 6 Pilares Tecnológicos do GeoMoz",
-        desc: "Uma infraestrutura integrada para engenheiros geólogos, hidrólogos, peritos em SIG, investigadores e gestores públicos que exigem rigor científico e agilidade operacional.",
+        desc: "Uma infraestrutura integrada para engenheiros, hidrólogos, peritos em SIG, investigadores e gestores públicos que exigem rigor científico e agilidade operacional.",
         p1Title: "Morfometria Topográfica & Relevo 3D",
         p1Badge: "Copernicus 30m",
         p1Desc: "Navegação tridimensional contínua com cálculo de perfis de elevação A-B em tempo real, gradientes de declive contínuos em graus e percentagem, curvas de nível dinâmicas e sombreamento hipsométrico analítico.",
@@ -176,15 +184,15 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
 
         p2Title: "Deteção Remota por Satélite (GEE)",
         p2Badge: "Sentinel-2 & Landsat",
-        p2Desc: "Pipeline direto com a infraestrutura da Google. Mais de 40 índices biofísicos e espectrais para vigor vegetal, recursos hídricos, solos nus, mapeamento mineral de gossans e anomalias de alteração hidrotermal.",
+        p2Desc: "Pipeline direto com a infraestrutura da Google. Mais de 40 índices biofísicos e espectrais para vigor vegetal, recursos hídricos, solos nus, expansão urbana e monitorização climática.",
         p2Sub: "Composições livres de nuvens",
         p2Cta: "Calcular Índices →",
 
-        p3Title: "Geologia Estrutural & Lineamentos",
-        p3Badge: "Mapeamento Tectónico",
-        p3Desc: "Cartografia geológica vetorial de Moçambique sincronizada com o relevo. Deteção automática de lineamentos estruturais, fraturas e falhas usando filtragem direcional laplaciana e sobel para prospeção mineral.",
-        p3Sub: "Litologia, falhas e fraturas",
-        p3Cta: "Ver Geologia →",
+        p3Title: "Cartografia & Geometria Territorial",
+        p3Badge: "Mapeamento Base",
+        p3Desc: "Cartografia administrativa e limites territoriais sincronizados com o relevo. Deteção morfométrica de escarpas, declividades e relevo estrutural para ordenamento territorial sustentável.",
+        p3Sub: "Limites territoriais e morfologia",
+        p3Cta: "Ver Mapa Territorial →",
 
         p4Title: "HidroGeoMoz & Bacias Hidrográficas",
         p4Badge: "D8 & Strahler",
@@ -200,31 +208,43 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
 
         p6Title: "GeoMoz AI & Inteligência Planetária",
         p6Badge: "Machine Learning",
-        p6Desc: "Algoritmos geoestatísticos e de inteligência artificial: K-Means geológico com offloading WebWorker, projeção PCA 2-componentes para separação litofaciológica e scoring de favorabilidade para minerais críticos.",
+        p6Desc: "Algoritmos geoestatísticos e de inteligência artificial: K-Means multi-espectral com offloading WebWorker, projeção PCA 2-componentes para zoneamento bioambiental e classificação AlphaEarth de uso do solo.",
         p6Sub: "K-Means, PCA e Random Forest",
         p6Cta: "Explorar IA →",
       },
       reliefSection: {
         tag: "Morfometria & Terreno Digital",
         title: "Relevo 3D de Alta Resolução e Perfis Topográficos",
-        desc: "Abandone modelos estáticos. O GeoMoz processa o modelo digital de elevação Copernicus GLO-30m para produzir análises morfométricas tridimensionais com precisão milimétrica em qualquer canto da Terra.",
+        desc: "Abandone modelos estáticos. O GeoMoz processa o modelo digital de elevação Copernicus GLO-30m para produzir análises morfométricas tridimensionais com precisão métrica em qualquer canto da Terra.",
+        tabProfile: "Painel Altimétrico (Real)",
+        tabMap: "Traçado no Mapa",
+        tabCurve: "Curva Analítica",
         f1Title: "Perfis Topográficos de Corte A-B",
         f1Desc: "Desenhe uma linha em qualquer coordenada geográfica para gerar instantaneamente o perfil altimétrico, cálculo de desnível acumulado, cota máxima, cota mínima e rácio de declive.",
         f2Title: "Matriz Contínua de Declives e Vertentes",
         f2Desc: "Identifique vertentes escarpadas, vales aluvionares e planaltos com classificação automática de declividade em graus e percentagem para planeamento de engenharia civil e risco de deslizamento.",
         f3Title: "Hipsometria e Sombreamento de Relevo (Hillshade)",
-        f3Desc: "Gere sombreamento analítico de relevo que ressalta falhas geológicas, escarpas de falha, canhões e diques de forma nítida sem ruído visual.",
-        demoProfileTitle: "Corte Topográfico Transversal (Amostra A-B)",
+        f3Desc: "Gere sombreamento analítico de relevo que ressalta falhas geomorfológicas, escarpas, canhões e vales de forma nítida sem ruído visual.",
+        demoProfileTitle: "Corte Topográfico Transversal (Manica → Gorongosa → Marromeu)",
         distance: "Distância Total",
+        distanceVal: "544.90 km",
         minElev: "Cota Mínima",
+        minElevVal: "0 m (Costa)",
         maxElev: "Cota Máxima",
-        reliefGain: "Desnível Total",
+        maxElevVal: "2.026 m (Montanha)",
+        reliefGain: "Amplitude Altimétrica",
+        reliefGainVal: "2.026 m",
+        accumulatedAscent: "Subida Acumulada",
+        accumulatedAscentVal: "+1.858 m",
+        accumulatedDescent: "Descida Acumulada",
+        accumulatedDescentVal: "-3.457 m",
+        samplingPoints: "200 pontos Copernicus GLO-30m",
       },
       remoteSection: {
         tag: "Laboratório de Deteção Remota",
         title: "Mais de 40 Análises Espectrais e Biofísicas Integradas",
         desc: "Filtre por domínio de aplicação e explore o poder dos sensores multiespectrais Sentinel-2 (MSI) e Landsat 8/9 (OLI) processados na nuvem do Google Earth Engine.",
-        tabMinerals: "Minerais & Geologia",
+        tabMinerals: "Solos & Superfície",
         tabVegetation: "Vegetação & Agricultura",
         tabWater: "Hidrologia & Recursos Hídricos",
         tabHazards: "Geoperigos & Desastres",
@@ -249,8 +269,8 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         tag: "Aplicações Práticas",
         title: "Construído para os Desafios Reais do Território",
         desc: "Capacite equipas multidisciplinares com uma plataforma unificada de dados geoespaciais e inteligência territorial.",
-        u1Title: "Mineração & Recursos Minerais",
-        u1Desc: "Identificação preliminar de alvos de prospeção (ouro, lítio, cobre, terras raras, grafite), mapeamento de óxidos de ferro, gossans, argilas hidrotérmicas e fraturas sem necessidade de deslocações preliminares de campo de alto custo.",
+        u1Title: "Monitorização Ambiental & Ecossistemas",
+        u1Desc: "Avaliação do estado de conservação de biomas florestais, mangais costeiros e zonas húmidas. Deteção de perturbações ecológicas, regeneração natural e degradação de habitats com satélites de alta resolução.",
         u2Title: "Governo, Municípios & Gestão Territorial",
         u2Desc: "Ordenamento do uso do solo, cartografia de expansão urbana com NDBI, vigilância contínua de bacias hidrográficas e plano de contingência para eventos climáticos extremos e cheias fluviais.",
         u3Title: "Agricultura & Segurança Hídrica",
@@ -261,16 +281,16 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
       ctaFinal: {
         title: "Pronto para elevar a sua análise geoespacial a outro nível?",
         subtitle:
-          "Sem necessidade de downloads pesados ou configurações complexas de servidores SIG. Abra o GeoMoz Explorer 3D e processe inteligência planetária em segundos.",
-        ctaLaunch: "Entrar na Plataforma 3D",
+          "Sem necessidade de downloads pesados ou configurações complexas de servidores SIG. Abra o GeoMoz Explorer e processe inteligência planetária em segundos.",
+        ctaLaunch: "Entrar na Plataforma",
         ctaRegister: "Criar Conta Gratuita",
         disclaimer: "Aceleração WebGL 3D • Google Earth Engine API • Dados abertos da ESA e NASA",
       },
       footer: {
-        desc: "Plataforma de inteligência geoespacial planetária, deteção remota multiespectral e modelação 3D de terreno em tempo real.",
+        desc: "Plataforma de inteligência geoespacial planetária, deteção remota multiespectral e modelação de terreno em tempo real.",
         author: "Desenvolvido por Helder Traquinho & Equipa GeoMoz.",
         modules: "Módulos do Sistema",
-        m1: "Mapa 3D & Relevo Mundial",
+        m1: "Mapa & Relevo Mundial",
         m2: "GeoAnálises & Satélite (Sentinel-2)",
         m3: "Bacias Hidrográficas (HydroGeoMoz)",
         m4: "Água Subterrânea (Modelo AHP)",
@@ -281,28 +301,28 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         s2: "Google Earth Engine Platform",
         s3: "Sentinel-2 MSI & Sentinel-1 SAR (Copernicus)",
         s4: "Landsat 8-9 OLI (USGS / NASA)",
-        s5: "Instituto Nacional de Minas de Moçambique (INAMI)",
+        s5: "Direção Nacional de Geografia e Cadastro (CENACARTA)",
         s6: "HydroSHEDS & HydroBASINS (WWF / USGS)",
         account: "Acesso & Sessão",
         loggedInAs: "Sessão iniciada como:",
         logout: "Terminar Sessão",
         login: "Iniciar Sessão (Login)",
         register: "Criar Nova Conta",
-        openPlatform: "Abrir Plataforma 3D →",
+        openPlatform: "Abrir Plataforma →",
         rights: "GeoMoz-Explorer. Todos os direitos reservados.",
-        mission: "Concebido para a excelência e soberania no conhecimento geocientífico.",
+        mission: "Desenvolvido para soberania científica e excelência em inteligência territorial.",
       },
     },
     en: {
       nav: {
-        recursos: "Capabilities",
+        recursos: "Resources",
         relevo3d: "3D Relief",
         detecaoRemota: "Remote Sensing",
         hidrogeologia: "Hydrogeology",
         casosDeUso: "Use Cases",
         login: "Sign In",
         register: "Sign Up",
-        launch: "Launch 3D Platform",
+        launch: "Launch Platform",
         logout: "Sign Out",
         userBadge: "Active Account",
       },
@@ -313,7 +333,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         titleHighlight: "3D Planetary Morphometry",
         subtitle:
           "The definitive analytical platform merging Google Earth Engine cloud computation, real-time Copernicus 30m digital terrain models, multi-criteria hydrogeology, and predictive artificial intelligence. From Mozambique to any coordinate on the planet, 100% in your browser.",
-        ctaPrimary: "Launch 3D Platform",
+        ctaPrimary: "Launch Platform",
         ctaSecondary: "Create Free Account",
         ctaExplore: "View Analytical Features",
         hudBadge: "3D WebGL Digital Engine • Copernicus GLO-30",
@@ -326,8 +346,8 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         lithologyVal: "Plutonic Granite (Precambrian)",
         spectral: "Sentinel-2 NDVI",
         spectralVal: "0.78 (High Vegetation Vigor)",
-        alteration: "Hydrothermal Alteration",
-        alterationVal: "0.64 (Clay Mineral Anomaly)",
+        alteration: "Soil Moisture (NDMI)",
+        alterationVal: "0.52 (Balanced)",
         interactiveBanner: "Click to load real-time 3D terrain model & satellite spectrometry",
       },
       stats: {
@@ -336,7 +356,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         s1Desc: "Copernicus DEM GLO-30 & SRTM seamless coverage",
         s2Value: "40+ Indices",
         s2Title: "Automated Satellite Analyses",
-        s2Desc: "NDVI, NDWI, Iron Oxides, Gossan and Hydrothermal Clays",
+        s2Desc: "NDVI, NDWI, NDMI, BSI, EVI and Bio-indices",
         s3Value: "190+ Nations",
         s3Title: "Immediate Global Framing",
         s3Desc: "Automatic focus and worldwide administrative boundaries",
@@ -347,7 +367,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
       pillars: {
         tag: "Territorial Intelligence Architecture",
         title: "The 6 Technological Pillars of GeoMoz",
-        desc: "An integrated analytical infrastructure designed for geological engineers, hydrologists, GIS experts, researchers, and public decision-makers requiring scientific rigor with operational speed.",
+        desc: "An integrated analytical infrastructure designed for engineers, hydrologists, GIS experts, researchers, and public decision-makers requiring scientific rigor with operational speed.",
         p1Title: "3D Morphometry & Digital Elevation",
         p1Badge: "Copernicus 30m",
         p1Desc: "Seamless 3D navigation with real-time A-B elevation cross-sections, continuous slope gradients in degrees and percentage, dynamic contour lines, and analytical hypsometric shading.",
@@ -356,15 +376,15 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
 
         p2Title: "Satellite Remote Sensing (GEE)",
         p2Badge: "Sentinel-2 & Landsat",
-        p2Desc: "Direct pipeline into Google's cloud infrastructure. Over 40 biophysical and spectral indices for crop vigor, water resources, bare soil, gossan signatures, and hydrothermal mineral alteration.",
+        p2Desc: "Direct pipeline into Google's cloud infrastructure. Over 40 biophysical and spectral indices for crop vigor, water resources, bare soil, urban growth, and climate tracking.",
         p2Sub: "Cloud-free composite mosaics",
         p2Cta: "Calculate Indices →",
 
-        p3Title: "Structural Geology & Lineaments",
-        p3Badge: "Tectonic Mapping",
-        p3Desc: "Vector geological cartography of Mozambique synchronized with 3D relief. Automated extraction of structural lineaments, fractures, and faults using directional laplacian and sobel filters.",
-        p3Sub: "Lithology, faults and fractures",
-        p3Cta: "View Geology →",
+        p3Title: "Cartography & Territorial Geometry",
+        p3Badge: "Base Mapping",
+        p3Desc: "Administrative cartography and territorial boundaries synchronized with 3D relief. Morphometric identification of escarpments, slopes, and structural relief for sustainable spatial planning.",
+        p3Sub: "Territorial boundaries & morphology",
+        p3Cta: "View Territorial Map →",
 
         p4Title: "HidroGeoMoz & River Basins",
         p4Badge: "D8 & Strahler",
@@ -380,7 +400,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
 
         p6Title: "GeoMoz AI & Planetary Intelligence",
         p6Badge: "Machine Learning",
-        p6Desc: "Geostatistical and AI algorithms: Geological K-Means clustering with WebWorker multi-threading, 2-component PCA projection for lithofacies segregation, and mineral favorability scoring for critical minerals.",
+        p6Desc: "Geostatistical and AI algorithms: Multi-spectral K-Means clustering with WebWorker multi-threading, 2-component PCA projection for bio-environmental zoning, and AlphaEarth land cover classification.",
         p6Sub: "K-Means, PCA and Random Forest",
         p6Cta: "Explore AI →",
       },
@@ -388,25 +408,37 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         tag: "Morphometry & Digital Terrain",
         title: "High-Resolution 3D Relief and Topographic Profiles",
         desc: "Move beyond flat, static maps. GeoMoz processes the Copernicus GLO-30m digital elevation model to deliver true 3D morphometric analyses with metric accuracy anywhere on Earth.",
+        tabProfile: "Elevation Profile (Real)",
+        tabMap: "Map Transect",
+        tabCurve: "Analytical Curve",
         f1Title: "Topographic A-B Cross-Section Profiles",
         f1Desc: "Draw a line across any geographical coordinate to generate instant altimetric profiles, cumulative elevation gains, maximum peak elevations, minimum valley depths, and slope gradient ratios.",
         f2Title: "Continuous Slope & Gradient Matrix",
         f2Desc: "Detect steep cliffs, alluvial valleys, and plateaus with automated slope categorization in degrees and percentage for civil engineering, geotechnical risk, and landslide assessment.",
         f3Title: "Hypsometry & Analytical Hillshading",
-        f3Desc: "Generate analytical terrain shading that sharply highlights tectonic faults, fault scarps, canyons, and igneous dykes without optical distortion or visual noise.",
-        demoProfileTitle: "Topographic Cross-Section (Sample Transect A-B)",
+        f3Desc: "Generate analytical terrain shading that sharply highlights geomorphological scarps, canyons, and valleys without optical distortion or visual noise.",
+        demoProfileTitle: "Topographic Cross-Section (Manica → Gorongosa → Marromeu)",
         distance: "Total Distance",
+        distanceVal: "544.90 km",
         minElev: "Min Elevation",
+        minElevVal: "0 m (Coast)",
         maxElev: "Max Elevation",
-        reliefGain: "Total Relief Gain",
+        maxElevVal: "2,026 m (Peak)",
+        reliefGain: "Elevation Amplitude",
+        reliefGainVal: "2,026 m",
+        accumulatedAscent: "Cumulative Ascent",
+        accumulatedAscentVal: "+1,858 m",
+        accumulatedDescent: "Cumulative Descent",
+        accumulatedDescentVal: "-3,457 m",
+        samplingPoints: "200 sampled points via Copernicus GLO-30m",
       },
       remoteSection: {
         tag: "Remote Sensing Laboratory",
         title: "Over 40 Integrated Spectral & Biophysical Analyses",
         desc: "Filter by application domain and explore the power of Sentinel-2 (MSI) and Landsat 8/9 (OLI) multispectral sensors processed on Google Earth Engine's massive cloud infrastructure.",
-        tabMinerals: "Minerals & Geology",
+        tabMinerals: "Soil & Surface",
         tabVegetation: "Vegetation & Agriculture",
-        tabWater: "Hydrology & Water Resources",
+        tabWater: "Hidrology & Water Resources",
         tabHazards: "Geohazards & Disasters",
         tabAI: "Artificial Intelligence",
         ctaLaunchAnalyses: "Run in GeoAnalyses Module",
@@ -429,8 +461,8 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         tag: "Real-World Applications",
         title: "Engineered for Territorial Challenges",
         desc: "Empower multidisciplinary teams with a single source of truth for geospatial datasets and planetary intelligence.",
-        u1Title: "Mining & Critical Minerals",
-        u1Desc: "Preliminary target identification for gold, lithium, copper, rare earths, and graphite. Map iron oxides, gossans, hydrothermal clays, and structural fractures prior to costly field exploration programs.",
+        u1Title: "Environmental Monitoring & Ecosystems",
+        u1Desc: "Conservation status assessment for forests, coastal mangroves, and wetlands. Detection of ecological disturbances, natural regeneration, and habitat dynamics using high-resolution satellites.",
         u2Title: "Government & Territorial Governance",
         u2Desc: "Land use planning, urban expansion monitoring with NDBI, continuous river basin oversight, and proactive contingency planning against climate emergencies, floods, and cyclones.",
         u3Title: "Agriculture & Water Security",
@@ -441,16 +473,16 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
       ctaFinal: {
         title: "Ready to elevate your territorial intelligence?",
         subtitle:
-          "No bulky desktop GIS installations, no license hurdles. Open GeoMoz Explorer 3D and start processing planetary intelligence in seconds.",
-        ctaLaunch: "Enter 3D Platform",
+          "No bulky desktop GIS installations, no license hurdles. Open GeoMoz Explorer and start processing planetary intelligence in seconds.",
+        ctaLaunch: "Enter Platform",
         ctaRegister: "Create Free Account",
         disclaimer: "3D WebGL Acceleration • Google Earth Engine API • Open datasets from ESA & NASA",
       },
       footer: {
-        desc: "Planetary geospatial intelligence, multispectral satellite remote sensing, and real-time 3D terrain modeling.",
+        desc: "Planetary geospatial intelligence, multispectral satellite remote sensing, and real-time terrain modeling.",
         author: "Engineered by Helder Traquinho & GeoMoz Team.",
         modules: "System Modules",
-        m1: "3D Globe & World Relief",
+        m1: "World Map & Relief",
         m2: "GeoAnalyses & Satellite (Sentinel-2)",
         m3: "River Basins (HidroGeoMoz)",
         m4: "Groundwater (AHP Model)",
@@ -461,14 +493,14 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         s2: "Google Earth Engine Platform",
         s3: "Sentinel-2 MSI & Sentinel-1 SAR (Copernicus)",
         s4: "Landsat 8-9 OLI (USGS / NASA)",
-        s5: "National Mining Institute of Mozambique (INAMI)",
+        s5: "National Directorate of Geography and Cadastre (CENACARTA)",
         s6: "HydroSHEDS & HydroBASINS (WWF / USGS)",
         account: "Access & Account",
         loggedInAs: "Signed in as:",
         logout: "Sign Out",
         login: "Sign In (Login)",
         register: "Create New Account",
-        openPlatform: "Open 3D Platform →",
+        openPlatform: "Open Platform →",
         rights: "GeoMoz-Explorer. All rights reserved.",
         mission: "Designed for scientific sovereignty and excellence in earth intelligence.",
       },
@@ -478,48 +510,48 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
   // ── Real Analyses Catalog ───────────────────────────────────────────────────
   const ANALYSIS_ITEMS = [
     {
-      group: "minerals",
-      code: "FeOx",
-      name: lang === "pt" ? "Óxidos de Ferro (Hematite / Goethite)" : "Iron Oxides (Hematite / Goethite)",
-      formula: "B4 / B2 (Sentinel-2)",
-      sensor: "Sentinel-2 MSI / Landsat 8",
+      group: "soil",
+      code: "BSI",
+      name: lang === "pt" ? "Índice de Solo Nu (Bare Soil Index)" : "Bare Soil Index",
+      formula: "((B11 + B4) - (B8 + B2)) / ((B11 + B4) + (B8 + B2))",
+      sensor: "Sentinel-2 MSI / Landsat",
       desc:
         lang === "pt"
-          ? "Rácio espectral sensível a minerais ferrosos e coberturas limoníticas, essencial para prospeção de depósitos de ferro e sulfuretos oxidados."
-          : "Spectral ratio sensitive to ferrous minerals and limonitic caps, critical for iron and oxidized sulfide ore exploration.",
+          ? "Separação precisa entre solo exposto, áreas construídas e cobertura vegetal em transição ecológica."
+          : "Precise delineation of bare soil, urbanized areas, and seasonal vegetative cover shifts.",
     },
     {
-      group: "minerals",
-      code: "Clay",
-      name: lang === "pt" ? "Minerais de Argila & Al-OH" : "Clay Minerals & Al-OH",
-      formula: "B11 / B12 (SWIR1 / SWIR2)",
+      group: "soil",
+      code: "SAVI",
+      name: lang === "pt" ? "Índice de Vegetação Ajustado ao Solo" : "Soil-Adjusted Vegetation Index",
+      formula: "1.5 * (B8 - B4) / (B8 + B4 + 0.5)",
       sensor: "Sentinel-2 MSI",
       desc:
         lang === "pt"
-          ? "Deteta absorção profunda de alumínio-hidroxilo (Al-OH), identificando caulinite, ilite e zonas de alteração argílica filítica."
-          : "Detects diagnostic aluminum-hydroxyl (Al-OH) absorption, identifying kaolinite, illite, and argillic alteration halos.",
+          ? "Minimiza a influência e reflexão do substrato pedológico em áreas de savana semiárida e cobertura esparsa."
+          : "Minimizes soil brightness background influence in arid and semi-arid low canopy regions.",
     },
     {
-      group: "minerals",
-      code: "Gossan",
-      name: lang === "pt" ? "Índice de Gossan / Chapéu de Ferro" : "Gossan / Iron Hat Index",
-      formula: "B11 / B4",
+      group: "soil",
+      code: "NDRE",
+      name: lang === "pt" ? "Índice de Clorofila Red-Edge" : "Normalized Difference Red Edge",
+      formula: "(B8 - B5) / (B8 + B5)",
       sensor: "Sentinel-2 MSI",
       desc:
         lang === "pt"
-          ? "Destaca zonas de oxidação de sulfuretos maciços expostos à superfície com alta concentração de óxidos secundários."
-          : "Highlights massive sulfide oxidation caps exposed at surface with high secondary iron concentrations.",
+          ? "Sensível ao teor de clorofila em copas densas sem sofrer os efeitos de saturação precoce do NDVI tradicional."
+          : "Sensitive to leaf chlorophyll content in dense canopies without premature NDVI saturation.",
     },
     {
-      group: "minerals",
-      code: "Hydro",
-      name: lang === "pt" ? "Alteração Hidrotermal Composta" : "Composite Hydrothermal Alteration",
-      formula: "(B11 + B4) / (B8A + B3)",
+      group: "soil",
+      code: "MNDWI",
+      name: lang === "pt" ? "Índice de Água Modificado (Xu)" : "Modified Normalized Difference Water Index",
+      formula: "(B3 - B11) / (B3 + B11)",
       sensor: "Sentinel-2 MSI",
       desc:
         lang === "pt"
-          ? "Combina simultaneamente absorção de argilas e reflexão de óxidos de ferro para mapear halos de pórfiro e veios epitermais."
-          : "Simultaneously combines clay absorption and iron oxide reflectance to trace porphyry halos and epithermal veins.",
+          ? "Elimina falsos positivos de água superficial em solos húmidos e zonas urbanas de alta refletância."
+          : "Eliminates false water detections across wet soils and high-reflectance urban ground.",
     },
     {
       group: "vegetation",
@@ -1240,208 +1272,223 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* Pillar 1: 3D Topographic Morphometry */}
-            <div
-              className={`p-6 rounded-2xl border transition-all hover:shadow-xl flex flex-col justify-between group ${
-                isDark
-                  ? "bg-slate-900/60 border-slate-800 hover:border-sky-500/50 hover:shadow-sky-500/10"
-                  : "bg-white border-slate-200 hover:border-sky-400 hover:shadow-sky-100"
-              }`}
-            >
-              <div>
-                <div className="w-12 h-12 rounded-xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-600 dark:text-sky-400 mb-4 group-hover:scale-110 transition-transform">
-                  <Mountain size={24} />
-                </div>
-                <h3 className="text-base font-bold mb-2 flex items-center gap-2">
-                  <span>{t.pillars.p1Title}</span>
-                  <span className="text-[9px] text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950 px-1.5 py-0.5 rounded border border-sky-200 dark:border-sky-800">
-                    {t.pillars.p1Badge}
-                  </span>
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  {t.pillars.p1Desc}
-                </p>
-              </div>
-              <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">{t.pillars.p1Sub}</span>
-                <a
-                  href="#relevo-3d"
-                  className="text-sky-600 dark:text-sky-400 font-semibold group-hover:translate-x-0.5 transition-transform"
+          {/* 6 Core Pillars Grid with Real Analytics Screenshots */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7">
+            {[
+              {
+                id: "p1",
+                icon: <Mountain size={20} />,
+                title: t.pillars.p1Title,
+                badge: t.pillars.p1Badge,
+                desc: t.pillars.p1Desc,
+                sub: t.pillars.p1Sub,
+                cta: t.pillars.p1Cta,
+                href: "#relevo-3d",
+                isAction: false,
+                image: "/screenshots/perfil_topografico_painel.png",
+                imageAlt: "GeoMoz Perfil Topográfico de Elevação A-B",
+                caption: lang === "pt" ? "Perfil Altimétrico Real (544.90 km)" : "Real Altimetric Profile (544.90 km)",
+                subtitle: lang === "pt" ? "Transecto A-B com 200 pontos de amostragem Copernicus DEM GLO-30m" : "A-B cross-section with 200 sampled points Copernicus DEM 30m",
+                colorScheme: {
+                  border: isDark ? "hover:border-sky-500/50 hover:shadow-sky-500/10" : "hover:border-sky-400 hover:shadow-sky-100",
+                  iconBox: "bg-sky-500/10 border-sky-500/30 text-sky-600 dark:text-sky-400",
+                  badge: "text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950 border-sky-200 dark:border-sky-800",
+                  cta: "text-sky-600 dark:text-sky-400",
+                },
+              },
+              {
+                id: "p2",
+                icon: <Satellite size={20} />,
+                title: t.pillars.p2Title,
+                badge: t.pillars.p2Badge,
+                desc: t.pillars.p2Desc,
+                sub: t.pillars.p2Sub,
+                cta: t.pillars.p2Cta,
+                href: "#detecao-remota",
+                isAction: false,
+                image: "/screenshots/detecao_remota.jpg",
+                imageAlt: "GeoMoz Deteção Remota Multiespectral",
+                caption: lang === "pt" ? "Sentinel-2 MSI • Espectrometria & NDVI" : "Sentinel-2 MSI • Spectrometry & NDVI",
+                subtitle: lang === "pt" ? "Histograma de reflectância e cálculo em nuvem via Google Earth Engine" : "Reflectance histogram and cloud compute via Google Earth Engine",
+                colorScheme: {
+                  border: isDark ? "hover:border-indigo-500/50 hover:shadow-indigo-500/10" : "hover:border-indigo-400 hover:shadow-indigo-100",
+                  iconBox: "bg-indigo-500/10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400",
+                  badge: "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950 border-indigo-200 dark:border-indigo-800",
+                  cta: "text-indigo-600 dark:text-indigo-400",
+                },
+              },
+              {
+                id: "p3",
+                icon: <MapIcon size={20} />,
+                title: t.pillars.p3Title,
+                badge: t.pillars.p3Badge,
+                desc: t.pillars.p3Desc,
+                sub: t.pillars.p3Sub,
+                cta: t.pillars.p3Cta,
+                href: "/mapa",
+                isAction: true,
+                image: "/screenshots/perfil_topografico_mapa.png",
+                imageAlt: "GeoMoz Traçado Territorial no Mapa",
+                caption: lang === "pt" ? "Cartografia e Relevo Territorial" : "Cartography & Territorial Relief",
+                subtitle: lang === "pt" ? "Mapeamento tridimensional com limites e vértices georreferenciados" : "3D terrain mapping with georeferenced administrative boundaries",
+                colorScheme: {
+                  border: isDark ? "hover:border-emerald-500/50 hover:shadow-emerald-500/10" : "hover:border-emerald-400 hover:shadow-emerald-100",
+                  iconBox: "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
+                  badge: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800",
+                  cta: "text-emerald-600 dark:text-emerald-400",
+                },
+              },
+              {
+                id: "p4",
+                icon: <Droplets size={20} />,
+                title: t.pillars.p4Title,
+                badge: t.pillars.p4Badge,
+                desc: t.pillars.p4Desc,
+                sub: t.pillars.p4Sub,
+                cta: t.pillars.p4Cta,
+                href: "#hidrogeologia",
+                isAction: false,
+                image: "/screenshots/bacias_hidrograficas.jpg",
+                imageAlt: "HydroGeoMoz Bacias e Rede de Drenagem",
+                caption: lang === "pt" ? "HydroBASINS & Rede Fluvial Strahler" : "HydroBASINS & Strahler Stream Order",
+                subtitle: lang === "pt" ? "Hierarquia hidrológica, coeficiente de Gravelius e tempo de Kirpich" : "Hydrological hierarchy, Gravelius index and Kirpich concentration time",
+                colorScheme: {
+                  border: isDark ? "hover:border-blue-500/50 hover:shadow-blue-500/10" : "hover:border-blue-400 hover:shadow-blue-100",
+                  iconBox: "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400",
+                  badge: "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800",
+                  cta: "text-blue-600 dark:text-blue-400",
+                },
+              },
+              {
+                id: "p5",
+                icon: <Droplet size={20} />,
+                title: t.pillars.p5Title,
+                badge: t.pillars.p5Badge,
+                desc: t.pillars.p5Desc,
+                sub: t.pillars.p5Sub,
+                cta: t.pillars.p5Cta,
+                href: "#hidrogeologia",
+                isAction: false,
+                image: "/screenshots/agua_subterranea.jpg",
+                imageAlt: "GeoMoz Modelação de Água Subterrânea AHP",
+                caption: lang === "pt" ? "Modelação AHP de Aquíferos & TWI" : "Aquifer AHP Modeling & TWI",
+                subtitle: lang === "pt" ? "Zonamento de potencialidade hídrica subterrânea e locação de furos" : "Groundwater potential zoning and borehole technical suitability",
+                colorScheme: {
+                  border: isDark ? "hover:border-cyan-500/50 hover:shadow-cyan-500/10" : "hover:border-cyan-400 hover:shadow-cyan-100",
+                  iconBox: "bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400",
+                  badge: "text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950 border-cyan-200 dark:border-cyan-800",
+                  cta: "text-cyan-600 dark:text-cyan-400",
+                },
+              },
+              {
+                id: "p6",
+                icon: <BrainCircuit size={20} />,
+                title: t.pillars.p6Title,
+                badge: t.pillars.p6Badge,
+                desc: t.pillars.p6Desc,
+                sub: t.pillars.p6Sub,
+                cta: t.pillars.p6Cta,
+                href: "/geoanalises",
+                isAction: true,
+                image: "/screenshots/geomoz_ai.jpg",
+                imageAlt: "GeoMoz AI Inteligência Planetária",
+                caption: lang === "pt" ? "K-Means Territorial & Dispersão PCA" : "Territorial K-Means & PCA Projection",
+                subtitle: lang === "pt" ? "Classificação biofísica não supervisionada e redução dimensional" : "Unsupervised biophysical clustering and dimensional reduction",
+                colorScheme: {
+                  border: isDark ? "hover:border-purple-500/50 hover:shadow-purple-500/10" : "hover:border-purple-400 hover:shadow-purple-100",
+                  iconBox: "bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400",
+                  badge: "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950 border-purple-200 dark:border-purple-800",
+                  cta: "text-purple-600 dark:text-purple-400",
+                },
+              },
+            ].map((pillar) => (
+              <div
+                key={pillar.id}
+                className={`rounded-2xl border transition-all hover:shadow-xl flex flex-col justify-between group overflow-hidden ${
+                  isDark
+                    ? `bg-slate-900/60 border-slate-800 ${pillar.colorScheme.border}`
+                    : `bg-white border-slate-200 shadow-sm ${pillar.colorScheme.border}`
+                }`}
+              >
+                {/* Visual Preview Banner */}
+                <div
+                  className="relative h-48 w-full overflow-hidden bg-slate-950 cursor-pointer group/img"
+                  onClick={() =>
+                    setExpandedImage({
+                      src: pillar.image,
+                      title: pillar.title,
+                      subtitle: pillar.subtitle,
+                    })
+                  }
                 >
-                  {t.pillars.p1Cta}
-                </a>
-              </div>
-            </div>
+                  <img
+                    src={pillar.image}
+                    alt={pillar.imageAlt}
+                    className="w-full h-full object-cover object-center group-hover/img:scale-105 transition-transform duration-500"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
 
-            {/* Pillar 2: Remote Sensing & Spectrometry */}
-            <div
-              className={`p-6 rounded-2xl border transition-all hover:shadow-xl flex flex-col justify-between group ${
-                isDark
-                  ? "bg-slate-900/60 border-slate-800 hover:border-sky-500/50 hover:shadow-sky-500/10"
-                  : "bg-white border-slate-200 hover:border-sky-400 hover:shadow-sky-100"
-              }`}
-            >
-              <div>
-                <div className="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-4 group-hover:scale-110 transition-transform">
-                  <Satellite size={24} />
-                </div>
-                <h3 className="text-base font-bold mb-2 flex items-center gap-2">
-                  <span>{t.pillars.p2Title}</span>
-                  <span className="text-[9px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
-                    {t.pillars.p2Badge}
-                  </span>
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  {t.pillars.p2Desc}
-                </p>
-              </div>
-              <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">{t.pillars.p2Sub}</span>
-                <a
-                  href="#detecao-remota"
-                  className="text-indigo-600 dark:text-indigo-400 font-semibold group-hover:translate-x-0.5 transition-transform"
-                >
-                  {t.pillars.p2Cta}
-                </a>
-              </div>
-            </div>
+                  {/* Top Badge */}
+                  <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-white border border-white/20">
+                      {pillar.badge}
+                    </span>
+                  </div>
 
-            {/* Pillar 3: Geology & Structural Lineaments */}
-            <div
-              className={`p-6 rounded-2xl border transition-all hover:shadow-xl flex flex-col justify-between group ${
-                isDark
-                  ? "bg-slate-900/60 border-slate-800 hover:border-emerald-500/50 hover:shadow-emerald-500/10"
-                  : "bg-white border-slate-200 hover:border-emerald-400 hover:shadow-emerald-100"
-              }`}
-            >
-              <div>
-                <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4 group-hover:scale-110 transition-transform">
-                  <Gem size={24} />
+                  {/* Bottom Caption Overlay with Zoom hint */}
+                  <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between pointer-events-none">
+                    <span className="text-[11px] font-semibold text-slate-100 truncate drop-shadow">
+                      {pillar.caption}
+                    </span>
+                    <span className="text-[10px] text-sky-300 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center gap-1 shrink-0 ml-2 bg-black/60 px-1.5 py-0.5 rounded border border-white/20">
+                      <ZoomIn size={11} />
+                      <span>{lang === "pt" ? "Ampliar" : "Enlarge"}</span>
+                    </span>
+                  </div>
                 </div>
-                <h3 className="text-base font-bold mb-2 flex items-center gap-2">
-                  <span>{t.pillars.p3Title}</span>
-                  <span className="text-[9px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-                    {t.pillars.p3Badge}
-                  </span>
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  {t.pillars.p3Desc}
-                </p>
-              </div>
-              <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">{t.pillars.p3Sub}</span>
-                <Button
-                  variant="link"
-                  size="sm"
-                  onClick={handleLaunchApp}
-                  className="text-emerald-600 dark:text-emerald-400 font-semibold p-0 h-auto"
-                >
-                  {t.pillars.p3Cta}
-                </Button>
-              </div>
-            </div>
 
-            {/* Pillar 4: HidroGeoMoz River Basins */}
-            <div
-              className={`p-6 rounded-2xl border transition-all hover:shadow-xl flex flex-col justify-between group ${
-                isDark
-                  ? "bg-slate-900/60 border-slate-800 hover:border-blue-500/50 hover:shadow-blue-500/10"
-                  : "bg-white border-slate-200 hover:border-blue-400 hover:shadow-blue-100"
-              }`}
-            >
-              <div>
-                <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-600 dark:text-blue-400 mb-4 group-hover:scale-110 transition-transform">
-                  <Droplets size={24} />
-                </div>
-                <h3 className="text-base font-bold mb-2 flex items-center gap-2">
-                  <span>{t.pillars.p4Title}</span>
-                  <span className="text-[9px] text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800">
-                    {t.pillars.p4Badge}
-                  </span>
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  {t.pillars.p4Desc}
-                </p>
-              </div>
-              <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">{t.pillars.p4Sub}</span>
-                <a
-                  href="#hidrogeologia"
-                  className="text-blue-600 dark:text-blue-400 font-semibold group-hover:translate-x-0.5 transition-transform"
-                >
-                  {t.pillars.p4Cta}
-                </a>
-              </div>
-            </div>
+                {/* Pillar Card Body */}
+                <div className="p-5 sm:p-6 flex flex-col flex-1 justify-between">
+                  <div>
+                    <div className="flex items-center gap-3 mb-3">
+                      <div
+                        className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform ${pillar.colorScheme.iconBox}`}
+                      >
+                        {pillar.icon}
+                      </div>
+                      <h3 className="text-base font-bold leading-tight">
+                        {pillar.title}
+                      </h3>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                      {pillar.desc}
+                    </p>
+                  </div>
 
-            {/* Pillar 5: Groundwater AHP Modeling */}
-            <div
-              className={`p-6 rounded-2xl border transition-all hover:shadow-xl flex flex-col justify-between group ${
-                isDark
-                  ? "bg-slate-900/60 border-slate-800 hover:border-cyan-500/50 hover:shadow-cyan-500/10"
-                  : "bg-white border-slate-200 hover:border-cyan-400 hover:shadow-cyan-100"
-              }`}
-            >
-              <div>
-                <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-600 dark:text-cyan-400 mb-4 group-hover:scale-110 transition-transform">
-                  <Droplet size={24} />
+                  <div className="mt-5 pt-3.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
+                    <span className="text-slate-500 font-medium">{pillar.sub}</span>
+                    {pillar.isAction ? (
+                      <Button
+                        variant="link"
+                        size="sm"
+                        onClick={handleLaunchApp}
+                        className={`font-bold p-0 h-auto ${pillar.colorScheme.cta} group-hover:translate-x-0.5 transition-transform`}
+                      >
+                        {pillar.cta}
+                      </Button>
+                    ) : (
+                      <a
+                        href={pillar.href}
+                        className={`font-bold ${pillar.colorScheme.cta} group-hover:translate-x-0.5 transition-transform`}
+                      >
+                        {pillar.cta}
+                      </a>
+                    )}
+                  </div>
                 </div>
-                <h3 className="text-base font-bold mb-2 flex items-center gap-2">
-                  <span>{t.pillars.p5Title}</span>
-                  <span className="text-[9px] text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950 px-1.5 py-0.5 rounded border border-cyan-200 dark:border-cyan-800">
-                    {t.pillars.p5Badge}
-                  </span>
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  {t.pillars.p5Desc}
-                </p>
               </div>
-              <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">{t.pillars.p5Sub}</span>
-                <a
-                  href="#hidrogeologia"
-                  className="text-cyan-600 dark:text-cyan-400 font-semibold group-hover:translate-x-0.5 transition-transform"
-                >
-                  {t.pillars.p5Cta}
-                </a>
-              </div>
-            </div>
-
-            {/* Pillar 6: GeoMoz AI & Machine Learning */}
-            <div
-              className={`p-6 rounded-2xl border transition-all hover:shadow-xl flex flex-col justify-between group ${
-                isDark
-                  ? "bg-slate-900/60 border-slate-800 hover:border-purple-500/50 hover:shadow-purple-500/10"
-                  : "bg-white border-slate-200 hover:border-purple-400 hover:shadow-purple-100"
-              }`}
-            >
-              <div>
-                <div className="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-600 dark:text-purple-400 mb-4 group-hover:scale-110 transition-transform">
-                  <BrainCircuit size={24} />
-                </div>
-                <h3 className="text-base font-bold mb-2 flex items-center gap-2">
-                  <span>{t.pillars.p6Title}</span>
-                  <span className="text-[9px] text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950 px-1.5 py-0.5 rounded border border-purple-200 dark:border-purple-800">
-                    {t.pillars.p6Badge}
-                  </span>
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  {t.pillars.p6Desc}
-                </p>
-              </div>
-              <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">{t.pillars.p6Sub}</span>
-                <Button
-                  variant="link"
-                  size="sm"
-                  onClick={handleLaunchApp}
-                  className="text-purple-600 dark:text-purple-400 font-semibold p-0 h-auto"
-                >
-                  {t.pillars.p6Cta}
-                </Button>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </section>
@@ -1537,7 +1584,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
               </div>
             </div>
 
-            {/* Interactive Profile Visualization Card */}
+            {/* Interactive Profile Visualization Card with Real Transect System Prints */}
             <div className="lg:col-span-6">
               <div
                 className={`p-6 rounded-2xl border shadow-xl ${
@@ -1546,61 +1593,166 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                     : "bg-white border-slate-200"
                 }`}
               >
-                <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800 mb-4">
+                {/* Header with Title & Tab Switcher */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800 mb-4">
                   <div className="flex items-center gap-2">
-                    <Mountain size={18} className="text-sky-500" />
-                    <span className="text-xs font-bold">{t.reliefSection.demoProfileTitle}</span>
-                  </div>
-                  <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
-                    Copernicus DEM 30m
-                  </span>
-                </div>
-
-                {/* SVG Transect Diagram */}
-                <div className="w-full h-44 bg-slate-950 rounded-xl p-3 relative overflow-hidden flex flex-col justify-between">
-                  <div className="flex justify-between text-[10px] font-mono text-slate-400 z-10">
-                    <span>Ponto A (Vale do Licungo: 340m)</span>
-                    <span className="text-amber-400 font-bold">Pico Namúli (2.419m)</span>
-                    <span>Ponto B (Gurúè: 620m)</span>
+                    <Mountain size={18} className="text-sky-500 shrink-0" />
+                    <div>
+                      <span className="text-xs font-bold block">{t.reliefSection.demoProfileTitle}</span>
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        {t.reliefSection.samplingPoints}
+                      </span>
+                    </div>
                   </div>
 
-                  <svg viewBox="0 0 500 130" className="w-full h-28 my-auto overflow-visible">
-                    {/* Grid lines */}
-                    <line x1="0" y1="20" x2="500" y2="20" stroke="#334155" strokeDasharray="3 3" strokeWidth="0.5" />
-                    <line x1="0" y1="60" x2="500" y2="60" stroke="#334155" strokeDasharray="3 3" strokeWidth="0.5" />
-                    <line x1="0" y1="100" x2="500" y2="100" stroke="#334155" strokeDasharray="3 3" strokeWidth="0.5" />
-
-                    {/* Mountain Profile Path */}
-                    <path
-                      d="M0 115 Q80 110, 140 95 T260 15 Q340 70, 420 85 T500 105 L500 130 L0 130 Z"
-                      fill="url(#profile-gradient-ab)"
-                    />
-                    <path
-                      d="M0 115 Q80 110, 140 95 T260 15 Q340 70, 420 85 T500 105"
-                      stroke="#38bdf8"
-                      strokeWidth="2.5"
-                    />
-
-                    {/* Peak Marker Point */}
-                    <circle cx="260" cy="15" r="4" fill="#f59e0b" />
-                    <line x1="260" y1="15" x2="260" y2="120" stroke="#f59e0b" strokeDasharray="2 2" strokeWidth="1" />
-
-                    <defs>
-                      <linearGradient id="profile-gradient-ab" x1="0%" y1="0%" x2="0%" y2="1">
-                        <stop offset="0%" stopColor="#0284c7" stopOpacity="0.6" />
-                        <stop offset="100%" stopColor="#0284c7" stopOpacity="0.05" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-
-                  <div className="flex justify-between text-[9px] font-mono text-slate-500 z-10">
-                    <span>0.0 km</span>
-                    <span>12.5 km</span>
-                    <span>24.8 km</span>
+                  {/* Switcher Tabs */}
+                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800 shrink-0 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => setReliefTab("panel")}
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all ${
+                        reliefTab === "panel"
+                          ? "bg-sky-600 text-white shadow-sm"
+                          : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+                      }`}
+                    >
+                      {t.reliefSection.tabProfile}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReliefTab("map")}
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all ${
+                        reliefTab === "map"
+                          ? "bg-sky-600 text-white shadow-sm"
+                          : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+                      }`}
+                    >
+                      {t.reliefSection.tabMap}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReliefTab("vector")}
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all ${
+                        reliefTab === "vector"
+                          ? "bg-sky-600 text-white shadow-sm"
+                          : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+                      }`}
+                    >
+                      {t.reliefSection.tabCurve}
+                    </button>
                   </div>
                 </div>
 
-                {/* Profile Metrics Grid */}
+                {/* Display Body according to tab */}
+                <div className="relative w-full rounded-xl overflow-hidden border border-slate-200/40 dark:border-slate-800 bg-slate-950">
+                  {reliefTab === "panel" && (
+                    <div
+                      className="relative h-60 sm:h-72 w-full cursor-pointer group/zoom"
+                      onClick={() =>
+                        setExpandedImage({
+                          src: "/screenshots/perfil_topografico_painel.png",
+                          title: lang === "pt" ? "Perfil Topográfico de Elevação (Copernicus DEM 30m) - Transecto A-B" : "Elevation Topographic Profile (Copernicus DEM 30m) - Transect A-B",
+                          subtitle: lang === "pt" ? "Painel de telemetria analítica com 200 pontos de amostragem altimétrica ao longo de 544.90 km" : "Analytical telemetry panel with 200 altimetric sampling points along 544.90 km",
+                        })
+                      }
+                    >
+                      <img
+                        src="/screenshots/perfil_topografico_painel.png"
+                        alt="Painel de Perfil Topográfico Real GeoMoz"
+                        className="w-full h-full object-cover object-center group-hover/zoom:scale-105 transition-transform duration-500"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
+                      <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/20 text-white text-[10px] font-mono">
+                        <ZoomIn size={12} className="text-sky-400" />
+                        <span>{lang === "pt" ? "Clique para Expandir" : "Click to Enlarge"}</span>
+                      </div>
+                      <div className="absolute bottom-2.5 left-3 right-3 text-[11px] text-slate-200 font-medium">
+                        {lang === "pt"
+                          ? "Transecto A-B: Manica (2.026m) → Vale da Gorongosa → Marromeu / Costa (0m)"
+                          : "Transect A-B: Manica (2,026m) → Gorongosa Rift Valley → Marromeu / Coast (0m)"}
+                      </div>
+                    </div>
+                  )}
+
+                  {reliefTab === "map" && (
+                    <div
+                      className="relative h-60 sm:h-72 w-full cursor-pointer group/zoom"
+                      onClick={() =>
+                        setExpandedImage({
+                          src: "/screenshots/perfil_topografico_mapa.png",
+                          title: lang === "pt" ? "Traçado Geográfico do Transecto A-B no Mapa do GeoMoz" : "A-B Geographic Transect Line on GeoMoz Map",
+                          subtitle: lang === "pt" ? "Traçado transversal contínuo sobre o modelo digital de terreno de Moçambique" : "Continuous transversal transect line over Mozambique's digital elevation terrain",
+                        })
+                      }
+                    >
+                      <img
+                        src="/screenshots/perfil_topografico_mapa.png"
+                        alt="Traçado no Mapa GeoMoz"
+                        className="w-full h-full object-cover object-top group-hover/zoom:scale-105 transition-transform duration-500"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
+                      <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/20 text-white text-[10px] font-mono">
+                        <ZoomIn size={12} className="text-sky-400" />
+                        <span>{lang === "pt" ? "Clique para Expandir" : "Click to Enlarge"}</span>
+                      </div>
+                      <div className="absolute bottom-2.5 left-3 right-3 text-[11px] text-slate-200 font-medium">
+                        {lang === "pt"
+                          ? "Extensão espacial de 544.90 km através das províncias de Manica e Sofala"
+                          : "544.90 km spatial extent across Manica and Sofala provinces"}
+                      </div>
+                    </div>
+                  )}
+
+                  {reliefTab === "vector" && (
+                    <div className="w-full h-60 sm:h-72 bg-slate-950 p-4 relative overflow-hidden flex flex-col justify-between">
+                      <div className="flex justify-between text-[10px] font-mono text-slate-400 z-10">
+                        <span>Ponto A (Manica: 2.026m)</span>
+                        <span className="text-amber-400 font-bold">Vale da Gorongosa (120m)</span>
+                        <span>Ponto B (Marromeu: 0m)</span>
+                      </div>
+
+                      <svg viewBox="0 0 500 130" className="w-full h-36 my-auto overflow-visible">
+                        {/* Grid lines */}
+                        <line x1="0" y1="20" x2="500" y2="20" stroke="#334155" strokeDasharray="3 3" strokeWidth="0.5" />
+                        <line x1="0" y1="60" x2="500" y2="60" stroke="#334155" strokeDasharray="3 3" strokeWidth="0.5" />
+                        <line x1="0" y1="100" x2="500" y2="100" stroke="#334155" strokeDasharray="3 3" strokeWidth="0.5" />
+
+                        {/* Mountain Profile Path */}
+                        <path
+                          d="M0 20 Q70 15, 120 75 T240 110 Q320 85, 410 115 T500 128 L500 130 L0 130 Z"
+                          fill="url(#profile-gradient-ab-real)"
+                        />
+                        <path
+                          d="M0 20 Q70 15, 120 75 T240 110 Q320 85, 410 115 T500 128"
+                          stroke="#38bdf8"
+                          strokeWidth="2.5"
+                        />
+
+                        {/* High Peak Marker Point */}
+                        <circle cx="20" cy="20" r="4" fill="#f59e0b" />
+                        <line x1="20" y1="20" x2="20" y2="128" stroke="#f59e0b" strokeDasharray="2 2" strokeWidth="1" />
+
+                        {/* Low Depression Point */}
+                        <circle cx="240" cy="110" r="4" fill="#38bdf8" />
+
+                        <defs>
+                          <linearGradient id="profile-gradient-ab-real" x1="0%" y1="0%" x2="0%" y2="1">
+                            <stop offset="0%" stopColor="#0284c7" stopOpacity="0.6" />
+                            <stop offset="100%" stopColor="#0284c7" stopOpacity="0.05" />
+                          </linearGradient>
+                        </defs>
+                      </svg>
+
+                      <div className="flex justify-between text-[9px] font-mono text-slate-500 z-10">
+                        <span>0.0 km</span>
+                        <span>272.5 km</span>
+                        <span>544.90 km</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Real Profile Metrics Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-4 text-center">
                   <div
                     className={`p-2.5 rounded-xl border ${
@@ -1609,7 +1761,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                   >
                     <span className="text-[10px] text-slate-500 block">{t.reliefSection.distance}</span>
                     <span className="font-mono font-bold text-xs text-sky-600 dark:text-sky-400">
-                      24.8 km
+                      {t.reliefSection.distanceVal}
                     </span>
                   </div>
 
@@ -1618,26 +1770,32 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                       isDark ? "bg-slate-950 border-slate-800" : "bg-slate-50 border-slate-200"
                     }`}
                   >
-                    <span className="text-[10px] text-slate-500 block">{t.reliefSection.minElev}</span>
-                    <span className="font-mono font-bold text-xs">340 m</span>
-                  </div>
-
-                  <div
-                    className={`p-2.5 rounded-xl border ${
-                      isDark ? "bg-slate-950 border-slate-800" : "bg-slate-50 border-slate-200"
-                    }`}
-                  >
-                    <span className="text-[10px] text-slate-500 block">{t.reliefSection.maxElev}</span>
-                    <span className="font-mono font-bold text-xs text-amber-500">2.419 m</span>
-                  </div>
-
-                  <div
-                    className={`p-2.5 rounded-xl border ${
-                      isDark ? "bg-slate-950 border-slate-800" : "bg-slate-50 border-slate-200"
-                    }`}
-                  >
                     <span className="text-[10px] text-slate-500 block">{t.reliefSection.reliefGain}</span>
-                    <span className="font-mono font-bold text-emerald-500">+2.079 m</span>
+                    <span className="font-mono font-bold text-xs text-amber-500">
+                      {t.reliefSection.reliefGainVal}
+                    </span>
+                  </div>
+
+                  <div
+                    className={`p-2.5 rounded-xl border ${
+                      isDark ? "bg-slate-950 border-slate-800" : "bg-slate-50 border-slate-200"
+                    }`}
+                  >
+                    <span className="text-[10px] text-slate-500 block">{t.reliefSection.accumulatedAscent}</span>
+                    <span className="font-mono font-bold text-xs text-emerald-500">
+                      {t.reliefSection.accumulatedAscentVal}
+                    </span>
+                  </div>
+
+                  <div
+                    className={`p-2.5 rounded-xl border ${
+                      isDark ? "bg-slate-950 border-slate-800" : "bg-slate-50 border-slate-200"
+                    }`}
+                  >
+                    <span className="text-[10px] text-slate-500 block">{t.reliefSection.accumulatedDescent}</span>
+                    <span className="font-mono font-bold text-xs text-rose-500">
+                      {t.reliefSection.accumulatedDescentVal}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1661,10 +1819,83 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
             </p>
           </div>
 
+          {/* Real Sentinel-2 Satellite Laboratory Preview Banner */}
+          <div
+            className={`mb-10 rounded-2xl border overflow-hidden transition-all ${
+              isDark
+                ? "bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border-indigo-500/30 shadow-xl"
+                : "bg-gradient-to-r from-white via-indigo-50/50 to-white border-indigo-200 shadow-md"
+            }`}
+          >
+            <div className="grid grid-cols-1 lg:grid-cols-12 items-center">
+              <div
+                className="lg:col-span-6 relative h-64 sm:h-72 cursor-pointer group/zoom bg-slate-950"
+                onClick={() =>
+                  setExpandedImage({
+                    src: "/screenshots/detecao_remota.jpg",
+                    title: lang === "pt" ? "Deteção Remota Multiespectral Sentinel-2 (MSI)" : "Multispectral Remote Sensing Sentinel-2 (MSI)",
+                    subtitle: lang === "pt" ? "Espectrometria biofísica de NDVI, histograma de reflectância e mascaramento de nuvens via Google Earth Engine" : "Biophysical spectrometry of NDVI, reflectance histogram, and cloud masking via Google Earth Engine",
+                  })
+                }
+              >
+                <img
+                  src="/screenshots/detecao_remota.jpg"
+                  alt="Espectrometria Sentinel-2 GeoMoz"
+                  className="w-full h-full object-cover object-center group-hover/zoom:scale-105 transition-transform duration-500"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
+                <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/20 text-white text-[10px] font-mono font-bold">
+                  <Satellite size={12} className="text-indigo-400" />
+                  <span>Sentinel-2 MSI Level-2A</span>
+                </div>
+                <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] text-sky-300 border border-white/20">
+                  <ZoomIn size={12} />
+                  <span>{lang === "pt" ? "Ampliar" : "Enlarge"}</span>
+                </div>
+                <div className="absolute bottom-2.5 left-3 right-3 text-[11px] text-slate-200 font-medium truncate">
+                  {lang === "pt" ? "Cálculo em tempo real de índices biofísicos com distribuição Gaussiana de NDVI" : "Real-time biophysical index computation with Gaussian NDVI distribution"}
+                </div>
+              </div>
+
+              <div className="lg:col-span-6 p-6 sm:p-8 space-y-4 text-left">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono uppercase tracking-wider font-extrabold px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                    Google Earth Engine Native
+                  </span>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                    <CheckCircle2 size={12} />
+                    {lang === "pt" ? "Nuvem Zero-Download" : "Zero-Download Cloud"}
+                  </span>
+                </div>
+                <h3 className="text-lg sm:text-xl font-black tracking-tight">
+                  {lang === "pt"
+                    ? "Espectrometria de Alta Precisão & Séries Temporais"
+                    : "High-Precision Spectrometry & Multi-Sensor Time Series"}
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                  {lang === "pt"
+                    ? "Processe imagens de satélite sem descarregar gigabytes de ficheiros pesados. O GeoMoz executa a álgebra de bandas nos servidores de computação em nuvem da Google, gerando mosaicos livres de nuvens e histogramas estatísticos em tempo real."
+                    : "Process satellite imagery without downloading gigabytes of heavy files. GeoMoz runs band algebra directly across Google's cloud computing servers, generating cloud-free mosaics and analytical histograms in real time."}
+                </p>
+
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div className={`p-3 rounded-xl border ${isDark ? "bg-slate-900 border-slate-800" : "bg-slate-50 border-slate-200"}`}>
+                    <span className="text-[10px] text-slate-500 block">{lang === "pt" ? "Resolução Espacial" : "Spatial Resolution"}</span>
+                    <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">10m - 20m</span>
+                  </div>
+                  <div className={`p-3 rounded-xl border ${isDark ? "bg-slate-900 border-slate-800" : "bg-slate-50 border-slate-200"}`}>
+                    <span className="text-[10px] text-slate-500 block">{lang === "pt" ? "Tempo de Revisita" : "Revisit Time"}</span>
+                    <span className="text-xs font-mono font-bold text-emerald-500">5 {lang === "pt" ? "dias" : "days"}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Category Filter Pills */}
           <div className="flex justify-center gap-2 overflow-x-auto pb-4 mb-8 scrollbar-none">
             {[
-              { id: "minerals", label: t.remoteSection.tabMinerals, icon: <Gem size={14} /> },
+              { id: "soil", label: t.remoteSection.tabMinerals, icon: <Layers size={14} /> },
               { id: "vegetation", label: t.remoteSection.tabVegetation, icon: <Sprout size={14} /> },
               { id: "water", label: t.remoteSection.tabWater, icon: <Droplets size={14} /> },
               { id: "hazards", label: t.remoteSection.tabHazards, icon: <AlertTriangle size={14} /> },
@@ -1763,6 +1994,107 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
             <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
               {t.hydroSection.desc}
             </p>
+          </div>
+
+          {/* Real Hydrogeology Showcase: HydroBASINS & Groundwater AHP Potential */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+            {/* Hydro Showcase 1: Watersheds & Stream Orders */}
+            <div
+              className={`rounded-2xl border overflow-hidden transition-all hover:shadow-xl ${
+                isDark ? "bg-slate-900/70 border-slate-800" : "bg-white border-slate-200 shadow-sm"
+              }`}
+            >
+              <div
+                className="relative h-56 sm:h-64 w-full bg-slate-950 cursor-pointer group/zoom"
+                onClick={() =>
+                  setExpandedImage({
+                    src: "/screenshots/bacias_hidrograficas.jpg",
+                    title: lang === "pt" ? "Delineação HydroBASINS & Rede de Drenagem de Strahler" : "HydroBASINS Watershed Delineation & Strahler Stream Order",
+                    subtitle: lang === "pt" ? "Polígonos de bacias de nível 6, hierarquia fluvial 1–5 e tempos de concentração de Kirpich" : "Level 6 watershed polygons, 1–5 river hierarchy and Kirpich concentration times",
+                  })
+                }
+              >
+                <img
+                  src="/screenshots/bacias_hidrograficas.jpg"
+                  alt="HydroBASINS Moçambique"
+                  className="w-full h-full object-cover object-center group-hover/zoom:scale-105 transition-transform duration-500"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
+                <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/20 text-white text-[10px] font-mono font-bold">
+                  <Waves size={12} className="text-blue-400" />
+                  <span>HydroSHEDS & HydroBASINS</span>
+                </div>
+                <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] text-sky-300 border border-white/20">
+                  <ZoomIn size={12} />
+                  <span>{lang === "pt" ? "Ampliar" : "Enlarge"}</span>
+                </div>
+                <div className="absolute bottom-2.5 left-3 right-3 text-[11px] text-slate-200 font-medium truncate">
+                  {lang === "pt" ? "Bacias hidrográficas e linhas de fluxo ordenadas por Strahler" : "Watersheds and Strahler-ordered stream drainage lines"}
+                </div>
+              </div>
+              <div className="p-5 text-left">
+                <h4 className="text-base font-bold mb-1.5 flex items-center justify-between">
+                  <span>{lang === "pt" ? "Delineação Automática de Bacias" : "Automated Basin Delineation"}</span>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                    Nível Pfafstetter 4–8
+                  </span>
+                </h4>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                  {lang === "pt"
+                    ? "Extração contínua de divisores topográficos de água, coeficiente de compacidade de Gravelius e hierarquia completa de cursos de água através de algoritmo D8 sobre o Copernicus DEM."
+                    : "Continuous extraction of drainage divides, Gravelius compactness index, and complete stream hierarchies using the D8 flow algorithm over Copernicus DEM."}
+                </p>
+              </div>
+            </div>
+
+            {/* Hydro Showcase 2: Groundwater AHP Suitability */}
+            <div
+              className={`rounded-2xl border overflow-hidden transition-all hover:shadow-xl ${
+                isDark ? "bg-slate-900/70 border-slate-800" : "bg-white border-slate-200 shadow-sm"
+              }`}
+            >
+              <div
+                className="relative h-56 sm:h-64 w-full bg-slate-950 cursor-pointer group/zoom"
+                onClick={() =>
+                  setExpandedImage({
+                    src: "/screenshots/agua_subterranea.jpg",
+                    title: lang === "pt" ? "Prospeção de Água Subterrânea (Modelo AHP Multicritério)" : "Groundwater Potential Modeling (Multi-Criteria AHP)",
+                    subtitle: lang === "pt" ? "Mapa de favorabilidade hidrogeológica, densidade de fraturas, TWI e locação de furos artesianos" : "Hydrogeological suitability heatmap, fracture density, TWI and borehole targeting",
+                  })
+                }
+              >
+                <img
+                  src="/screenshots/agua_subterranea.jpg"
+                  alt="Modelo AHP Aquíferos GeoMoz"
+                  className="w-full h-full object-cover object-center group-hover/zoom:scale-105 transition-transform duration-500"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
+                <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/20 text-white text-[10px] font-mono font-bold">
+                  <Droplet size={12} className="text-cyan-400" />
+                  <span>AHP Multi-Criteria Matrix</span>
+                </div>
+                <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] text-sky-300 border border-white/20">
+                  <ZoomIn size={12} />
+                  <span>{lang === "pt" ? "Ampliar" : "Enlarge"}</span>
+                </div>
+                <div className="absolute bottom-2.5 left-3 right-3 text-[11px] text-slate-200 font-medium truncate">
+                  {lang === "pt" ? "Índice TWI, densidade de drenagem e zonas ótimas de recarga" : "Topographic Wetness Index (TWI) and optimal aquifer recharge zones"}
+                </div>
+              </div>
+              <div className="p-5 text-left">
+                <h4 className="text-base font-bold mb-1.5 flex items-center justify-between">
+                  <span>{lang === "pt" ? "Modelação Preditiva de Aquíferos" : "Predictive Aquifer Modeling"}</span>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
+                    AHP + TWI + CHIRPS
+                  </span>
+                </h4>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                  {lang === "pt"
+                    ? "Substitua adivinhações por modelação multicritério Saaty (AHP). Cruzamento espacial ponderado de declividade, solos, TWI e precipitação para assegurar taxa máxima de sucesso em furos de água potável."
+                    : "Eliminate guesswork with Saaty Analytic Hierarchy Process (AHP). Weighted spatial integration of slope, soil permeability, TWI, and rainfall to maximize successful borehole drilling yields."}
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
@@ -2114,6 +2446,69 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
           setLocation("/app");
         }}
       />
+      {/* ── 12. High-Resolution Screenshot Lightbox Modal ────────────────────── */}
+      {expandedImage && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 md:p-10 bg-black/85 backdrop-blur-md transition-opacity animate-in fade-in duration-200"
+          onClick={() => setExpandedImage(null)}
+        >
+          <div
+            className={`relative max-w-5xl w-full max-h-[92vh] flex flex-col rounded-2xl overflow-hidden border shadow-2xl ${
+              isDark ? "bg-slate-950 border-slate-800" : "bg-white border-slate-200"
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-900/50">
+              <div className="flex items-center gap-2.5 truncate">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                <span className="text-xs sm:text-sm font-bold truncate">
+                  {expandedImage.title}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExpandedImage(null)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+                aria-label="Close image modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Image Viewport */}
+            <div className="relative flex-1 overflow-auto bg-slate-950 flex items-center justify-center p-2 min-h-[260px]">
+              <img
+                src={expandedImage.src}
+                alt={expandedImage.title}
+                className="max-w-full max-h-[72vh] object-contain rounded-lg shadow-lg"
+              />
+            </div>
+
+            {/* Modal Footer / Telemetry Context */}
+            {expandedImage.subtitle && (
+              <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <p className="text-slate-600 dark:text-slate-400 text-[11px] leading-relaxed">
+                  {expandedImage.subtitle}
+                </p>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setExpandedImage(null);
+                    handleLaunchApp();
+                  }}
+                  className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-xl px-4 py-1.5 h-auto shrink-0 self-end sm:self-auto"
+                >
+                  <span>{lang === "pt" ? "Executar Análise na Plataforma" : "Run Analysis in Platform"}</span>
+                  <ArrowRight size={12} className="ml-1" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

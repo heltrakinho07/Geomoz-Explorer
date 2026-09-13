@@ -58,6 +58,11 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+.venv-win/
+build/
+desktop/
+build-*/
+dist-*/
 google-cloud-sdk/
 *.tar.gz
 

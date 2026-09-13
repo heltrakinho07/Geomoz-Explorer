@@ -75,7 +75,7 @@ const MINERAL_OPTIONS: { value: MineralType; label: string; icon: React.ReactNod
   { value: "hydrocarbons",   label: "Hidrocarbonetos",      icon: <Flame size={20} className="text-orange-500" />, desc: "Bacias mesozoicas, calcário, evaporite" },
 ];
 
-type AITab = "clustering" | "favorability" | "pca" | "about" | "alphaearth";
+type AITab = "clustering" | "pca" | "about" | "alphaearth";
 
 type AlphaEarthMode = "pca" | "cluster" | "change" | "similarity" | "classify";
 
@@ -1035,8 +1035,7 @@ export default function GeoMozAI() {
   const summaryItems = summaryData?.provinces ?? [];
 
   const tabs: { id: AITab; label: string; icon: React.ReactNode }[] = [
-    { id: "clustering",   label: "Clustering Geológico", icon: <GitBranch size={13} /> },
-    { id: "favorability", label: "Mapa de Favorabilidade", icon: <Target size={13} /> },
+    { id: "clustering",   label: "Clustering Territorial", icon: <GitBranch size={13} /> },
     { id: "pca",          label: "Análise PCA",           icon: <BarChart2 size={13} /> },
     { id: "alphaearth",   label: "AlphaEarth",            icon: <Satellite size={13} /> },
     { id: "about",        label: "Sobre / Roadmap",       icon: <Info size={13} /> },
@@ -1049,7 +1048,7 @@ export default function GeoMozAI() {
       <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center shadow-sm"><BrainCircuit size={17} className="text-white" /></div>
-          <div><h2 className="font-semibold text-slate-900 text-sm leading-tight">GeoMoz AI — Motor de Inteligência Artificial</h2><p className="text-xs text-slate-400">K-Means · PCA · Favorabilidade · AlphaEarth Foundations</p></div>
+          <div><h2 className="font-semibold text-slate-900 text-sm leading-tight">GeoMoz AI — Motor de Inteligência Artificial</h2><p className="text-xs text-slate-400">K-Means · PCA · AlphaEarth Foundations</p></div>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs bg-violet-50 text-violet-600 border border-violet-200 px-2 py-0.5 rounded-full font-medium">β — Em desenvolvimento activo</span>
@@ -1073,14 +1072,14 @@ export default function GeoMozAI() {
           <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-sm text-center shadow-sm">
             <div className="w-14 h-14 bg-violet-50 rounded-2xl flex items-center justify-center mx-auto mb-4"><BrainCircuit size={26} className="text-violet-500" /></div>
             <h3 className="font-bold text-slate-900 mb-2">Carregar Dados de Províncias</h3>
-            <p className="text-sm text-slate-500 mb-4 leading-relaxed">O módulo AI precisa dos dados geológicos de todas as províncias para análise. A primeira execução pode demorar 15–30 s.</p>
+            <p className="text-sm text-slate-500 mb-4 leading-relaxed">O módulo AI precisa dos dados territoriais de todas as províncias para análise. A primeira execução pode demorar 15–30 s.</p>
             <button onClick={() => setLoadEnabled(true)} className="w-full py-2.5 bg-violet-500 hover:bg-violet-600 text-white font-semibold text-sm rounded-xl transition-colors shadow-sm shadow-violet-200"><Star size={14} className="inline mr-2" />Iniciar Análise AI</button>
           </div>
         </div>
       ) : isLoading && showLoadGate ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-4">
           <Loader2 size={26} className="text-violet-500 animate-spin" />
-          <p className="font-semibold text-slate-700">A processar dados geológicos…</p>
+          <p className="font-semibold text-slate-700">A processar dados territoriais…</p>
         </div>
       ) : error && showLoadGate ? (
         <div className="flex-1 flex items-center justify-center">
@@ -1091,7 +1090,6 @@ export default function GeoMozAI() {
         </div>
       ) : (
         activeTab === "clustering" ? <ClusteringTab summaryItems={summaryItems} /> :
-        activeTab === "favorability" ? <FavorabilityTab summaryItems={summaryItems} /> :
         activeTab === "pca" ? <PCATab summaryItems={summaryItems} /> :
         <AboutTab />
       )}

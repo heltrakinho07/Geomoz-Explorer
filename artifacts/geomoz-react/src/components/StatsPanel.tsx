@@ -79,7 +79,7 @@ export default function StatsPanel({ province, district, colorBy, isExpanded, on
             <div className="flex flex-col items-center justify-center gap-2 py-8 text-slate-400">
               <MapPin size={22} className="text-slate-200" />
               <p className="text-xs text-center text-slate-400 leading-relaxed">
-                Selecione uma província<br />para ver as métricas de geologia
+                Selecione uma província<br />para ver as métricas territoriais
               </p>
             </div>
           ) : isLoading ? (

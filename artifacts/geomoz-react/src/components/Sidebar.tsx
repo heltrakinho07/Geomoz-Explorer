@@ -30,7 +30,7 @@ const COLOR_OPTIONS = [
 ];
 
 const LAYER_DEFS: { key: keyof LayerState; label: string; colorClass: string }[] = [
-  { key: "geology", label: "Litologia/Geologia", colorClass: "bg-sky-500" },
+  // { key: "geology", label: "Litologia/Geologia", colorClass: "bg-sky-500" }, // Ocultado para segurança de dados (reativação futura)
   { key: "provinces", label: "Províncias", colorClass: "bg-slate-400" },
   { key: "districts", label: "Distritos", colorClass: "bg-slate-300" },
 ];
@@ -178,41 +178,43 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Color by */}
-      <div className="p-4 flex-1">
-        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Colorir Por</h3>
-        <div className="space-y-1">
-          {COLOR_OPTIONS.map((opt) => (
-            <label
-              key={opt.value}
-              className={`flex items-center gap-2.5 px-2 py-2 rounded-lg cursor-pointer transition-colors ${
-                colorBy === opt.value ? "bg-sky-50 border border-sky-100" : "hover:bg-slate-50"
-              }`}
-            >
-              <div className="relative flex items-center justify-center shrink-0">
-                <input
-                  type="radio"
-                  name="colorBy"
-                  checked={colorBy === opt.value}
-                  onChange={() => onColorByChange(opt.value)}
-                  className="peer sr-only"
-                />
-                <div className={`w-4 h-4 rounded-full border-2 transition-all ${
-                  colorBy === opt.value ? "border-sky-500 bg-sky-500 scale-90" : "border-slate-300"
-                } flex items-center justify-center`}>
-                  {colorBy === opt.value && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+      {/* Color by (ocultado para segurança de dados - preservado para reativação futura) */}
+      {false && (
+        <div className="p-4 flex-1">
+          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Colorir Por</h3>
+          <div className="space-y-1">
+            {COLOR_OPTIONS.map((opt) => (
+              <label
+                key={opt.value}
+                className={`flex items-center gap-2.5 px-2 py-2 rounded-lg cursor-pointer transition-colors ${
+                  colorBy === opt.value ? "bg-sky-50 border border-sky-100" : "hover:bg-slate-50"
+                }`}
+              >
+                <div className="relative flex items-center justify-center shrink-0">
+                  <input
+                    type="radio"
+                    name="colorBy"
+                    checked={colorBy === opt.value}
+                    onChange={() => onColorByChange(opt.value)}
+                    className="peer sr-only"
+                  />
+                  <div className={`w-4 h-4 rounded-full border-2 transition-all ${
+                    colorBy === opt.value ? "border-sky-500 bg-sky-500 scale-90" : "border-slate-300"
+                  } flex items-center justify-center`}>
+                    {colorBy === opt.value && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                  </div>
                 </div>
-              </div>
-              <div>
-                <div className={`text-sm font-medium ${colorBy === opt.value ? "text-sky-700" : "text-slate-700"}`}>
-                  {opt.label}
+                <div>
+                  <div className={`text-sm font-medium ${colorBy === opt.value ? "text-sky-700" : "text-slate-700"}`}>
+                    {opt.label}
+                  </div>
+                  <div className="text-xs text-slate-400">{opt.desc}</div>
                 </div>
-                <div className="text-xs text-slate-400">{opt.desc}</div>
-              </div>
-            </label>
-          ))}
+              </label>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Footer info */}
       <div className="p-3 border-t border-slate-100 bg-slate-50/50">
@@ -276,7 +278,7 @@ export default function Sidebar({
             <div className="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <span className="font-bold text-xs text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
                 <Filter size={14} className="text-sky-600" />
-                <span>Filtros & Geologia</span>
+                <span>Filtros & Camadas</span>
               </span>
               <button
                 type="button"

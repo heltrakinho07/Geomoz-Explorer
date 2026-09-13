@@ -52,14 +52,30 @@ async def require_gee_auth(request: Request) -> str:
         try:
             decoded = firebase_auth.verify_id_token(token)
             uid = decoded.get("uid")
-        except Exception:
-            pass
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Token de autenticação inválido: {str(e)}")
+
+    if not uid:
+        raise HTTPException(
+            status_code=401,
+            detail="Autenticação necessária. Por favor, inicie sessão na plataforma para executar análises."
+        )
+
+    import gee_session_store
+    user_token = gee_session_store.get_token(uid)
+    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower() == "true"
+    if not user_token and not allow_server:
+        raise HTTPException(
+            status_code=403,
+            detail="É necessário conectar a sua conta do Google Earth Engine nas opções de perfil para utilizar a sua própria cota."
+        )
+
     from gee_module import _init_gee
     try:
         _init_gee(uid)
     except RuntimeError as e:
         raise HTTPException(status_code=403, detail=str(e))
-    return uid or "anonymous"
+    return uid
 from pydantic import BaseModel, field_validator, constr
 
 # ── Package imports ────────────────────────────────────────────────────────
@@ -772,14 +788,16 @@ async def gee_status_endpoint(request: Request):
             pass
     token = gee_session_store.get_token(uid) if uid else None
     has_sa = bool(os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip())
-    connected = bool(token) or has_sa
-    auth_type = "oauth2" if token else ("service_account" if has_sa else None)
+    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower() == "true"
+    connected = bool(token) or (allow_server and has_sa)
+    auth_type = "oauth2" if token else ("service_account" if (allow_server and has_sa) else None)
     return {
         "connected": connected,
-        "project": (token.get("project") if token else None) or os.environ.get("GEE_PROJECT_ID", None),
+        "project": (token.get("project") if token else None) or (os.environ.get("GEE_PROJECT_ID", None) if allow_server else None),
         "auth_type": auth_type,
         "user_connected": bool(token),
-        "server_connected": has_sa
+        "server_connected": has_sa,
+        "allow_server_fallback": allow_server
     }
 
 @app.post("/geomoz-api/gee/index")

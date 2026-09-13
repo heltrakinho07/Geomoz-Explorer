@@ -45,7 +45,7 @@ function buildHtmlMap(
 ): string {
   const title = district ? `${district}, ${province}` : province ?? "Moçambique";
   const date = new Date().toLocaleDateString("pt-PT", { day: "2-digit", month: "long", year: "numeric" });
-  const layersLabel = [layers.geology && "Geologia", layers.provinces && "Províncias", layers.districts && "Distritos"].filter(Boolean).join(", ");
+  const layersLabel = [layers.provinces && "Províncias", layers.districts && "Distritos"].filter(Boolean).join(", ");
 
   const geoScript = geologyGJ
     ? `var geo=L.geoJSON(${JSON.stringify(geologyGJ)},{style:function(f){return{color:'#fff',weight:.4,fillColor:(f.properties&&f.properties._color)||'#64748b',fillOpacity:.82};},onEachFeature:function(f,l){var p=f.properties||{};var h='';if(p.Legend)h+='<b>'+p.Legend+'</b><br>';if(p.code2006)h+='Code: '+p.code2006+'<br>';if(p.ERA)h+='Era: '+p.ERA+'<br>';if(p.PERIOD)h+='Período: '+p.PERIOD;if(h)l.bindTooltip(h,{sticky:true});}}).addTo(map);`
@@ -889,38 +889,43 @@ export default function ExportPanel({ province, district, colorBy, layers, mapCe
             disabledMsg="Selecione uma província para activar"
           />
           <ExportCard
-            id="geojson"
-            icon={<Map className="text-violet-500" size={22} />}
-            title="GeoJSON — Geologia Filtrada"
-            desc="GeoJSON da camada de geologia actualmente filtrada (província / distrito), com todas as propriedades originais e a cor _color calculada. Compatível com QGIS, ArcGIS, Mapbox, Python/GeoPandas."
-            btnLabel="Descarregar GeoJSON"
-            btnClass="bg-violet-500 hover:bg-violet-600 shadow-violet-200"
-            onClick={handleGeoJson}
-            disabled={!hasData}
-            disabledMsg="Selecione uma província para activar"
-          />
-          <ExportCard
             id="png"
             icon={<ImageIcon className="text-orange-500" size={22} />}
             title="Mapa PNG (imagem)"
-            desc="Imagem PNG 1600×1100 da vista actual do mapa: base cartográfica, geologia colorida, fronteiras, legenda das top litologias, barra de escala e seta de norte. Pronta para relatórios e apresentações."
+            desc="Imagem PNG 1600×1100 da vista actual do mapa: base cartográfica, fronteiras provinciais e distritais, barra de escala e seta de norte. Pronta para relatórios e apresentações."
             btnLabel="Descarregar PNG"
             btnClass="bg-orange-500 hover:bg-orange-600 shadow-orange-200"
             onClick={handlePng}
-            disabled={!hasData || !getGeology()}
-            disabledMsg="Carregue a geologia no mapa primeiro"
-          />
-          <ExportCard
-            id="shp"
-            icon={<FolderArchive className="text-cyan-600" size={22} />}
-            title="Shapefile (ZIP)"
-            desc="ESRI Shapefile da geologia filtrada, gerado no servidor com GeoPandas e comprimido em ZIP (.shp/.shx/.dbf/.prj). Formato padrão para QGIS, ArcGIS e software SIG clássico."
-            btnLabel="Descarregar SHP"
-            btnClass="bg-cyan-600 hover:bg-cyan-700 shadow-cyan-200"
-            onClick={handleShp}
             disabled={!hasData}
             disabledMsg="Selecione uma província para activar"
           />
+          {/* GeoJSON e Shapefile da geologia ocultados para protecção de dados (reativação futura) */}
+          {false && (
+            <>
+              <ExportCard
+                id="geojson"
+                icon={<Map className="text-violet-500" size={22} />}
+                title="GeoJSON — Geologia Filtrada"
+                desc="GeoJSON da camada de geologia actualmente filtrada."
+                btnLabel="Descarregar GeoJSON"
+                btnClass="bg-violet-500 hover:bg-violet-600 shadow-violet-200"
+                onClick={handleGeoJson}
+                disabled={!hasData}
+                disabledMsg="Selecione uma província para activar"
+              />
+              <ExportCard
+                id="shp"
+                icon={<FolderArchive className="text-cyan-600" size={22} />}
+                title="Shapefile (ZIP)"
+                desc="ESRI Shapefile da geologia filtrada comprimido em ZIP."
+                btnLabel="Descarregar SHP"
+                btnClass="bg-cyan-600 hover:bg-cyan-700 shadow-cyan-200"
+                onClick={handleShp}
+                disabled={!hasData}
+                disabledMsg="Selecione uma província para activar"
+              />
+            </>
+          )}
         </div>
 
         {exportError && (

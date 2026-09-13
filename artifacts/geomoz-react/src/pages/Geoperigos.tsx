@@ -20,7 +20,6 @@ import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
 import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
 import BasemapSwitcher from "@/components/BasemapSwitcher";
-import MapLibre3DView from "@/components/MapLibre3DView";
 import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
@@ -339,67 +338,48 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
           Filtros
         </button>
 
-        {viewMode === "3d" ? (
-          <MapLibre3DView
-            province={province}
-            district={district}
-            aoi={aoi}
-            basemap={basemap}
-            viewMode={viewMode}
-            onBasemapChange={setBasemap}
-            onViewModeChange={onViewModeChange}
-            overlayRasterUrl={tool === "flood" ? flood?.floodTile : erosion?.tile}
-            overlayOpacity={0.8}
-            className="w-full h-full"
+        <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl={false}>
+          <TileLayer
+            key={basemap}
+            crossOrigin="anonymous"
+            url={GOOGLE_BASEMAPS[basemap].url}
+            subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
+            attribution={GOOGLE_BASEMAPS[basemap].attribution}
+            maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
           />
-        ) : (
-          <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl={false}>
-            <TileLayer
-              key={basemap}
-              crossOrigin="anonymous"
-              url={GOOGLE_BASEMAPS[basemap].url}
-              subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
-              attribution={GOOGLE_BASEMAPS[basemap].attribution}
-              maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
-            />
-            <ScaleControl position="bottomright" imperial={false} />
-            <ZoomControl position="topright" />
-            <AreaSelect
-              province={province} district={district}
-              onProvinceChange={p => { onProvinceChange(p); onDistrictChange(null); }}
-              onDistrictChange={onDistrictChange}
-              accent="#e11d48"
-            />
-            {tool === "flood" && flood && showPerm && (
-              <TileLayer crossOrigin="anonymous" key={`perm-${flood.permWaterTile}`} url={flood.permWaterTile} opacity={0.6} maxZoom={18} />
-            )}
-            {tool === "flood" && flood && (
-              <TileLayer crossOrigin="anonymous" key={`flood-${flood.floodTile}`} url={flood.floodTile} opacity={0.85} maxZoom={18} />
-            )}
-            {tool === "erosion" && erosion && (
-              <TileLayer crossOrigin="anonymous" key={`ero-${erosion.tile}`} url={erosion.tile} opacity={0.75} maxZoom={18} />
-            )}
-            <MapTools />
-            <MapDraw
-              enabled={drawingEnabled}
-              hasDrawnAOI={aoi.source === "draw"}
-              onClearAOI={() => onAOIChange(GLOBAL_AOI)}
-              onDrawComplete={(geom, label) => { setDrawingEnabled(false); onAOIChange(customAOI(geom, label, "draw")); }}
-              onCancel={() => setDrawingEnabled(false)}
-            />
-          </MapContainer>
-        )}
+          <ScaleControl position="bottomright" imperial={false} />
+          <ZoomControl position="topright" />
+          <AreaSelect
+            province={province} district={district}
+            onProvinceChange={p => { onProvinceChange(p); onDistrictChange(null); }}
+            onDistrictChange={onDistrictChange}
+            accent="#e11d48"
+          />
+          {tool === "flood" && flood && showPerm && (
+            <TileLayer crossOrigin="anonymous" key={`perm-${flood.permWaterTile}`} url={flood.permWaterTile} opacity={0.6} maxZoom={18} />
+          )}
+          {tool === "flood" && flood && (
+            <TileLayer crossOrigin="anonymous" key={`flood-${flood.floodTile}`} url={flood.floodTile} opacity={0.85} maxZoom={18} />
+          )}
+          {tool === "erosion" && erosion && (
+            <TileLayer crossOrigin="anonymous" key={`ero-${erosion.tile}`} url={erosion.tile} opacity={0.75} maxZoom={18} />
+          )}
+          <MapTools />
+          <MapDraw
+            enabled={drawingEnabled}
+            hasDrawnAOI={aoi.source === "draw"}
+            onClearAOI={() => onAOIChange(GLOBAL_AOI)}
+            onDrawComplete={(geom, label) => { setDrawingEnabled(false); onAOIChange(customAOI(geom, label, "draw")); }}
+            onCancel={() => setDrawingEnabled(false)}
+          />
+        </MapContainer>
 
-        {viewMode !== "3d" && (
-          <BasemapSwitcher
-            current={basemap}
-            onChange={setBasemap}
-            viewMode={viewMode}
-            onViewModeChange={onViewModeChange}
-            className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
-            position="bottom-left"
-          />
-        )}
+        <BasemapSwitcher
+          current={basemap}
+          onChange={setBasemap}
+          className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
+          position="bottom-left"
+        />
 
         {/* Loading overlay */}
         {loading && (
