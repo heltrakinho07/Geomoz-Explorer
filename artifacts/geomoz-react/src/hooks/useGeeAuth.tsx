@@ -21,6 +21,7 @@ geeProvider.setCustomParameters({
 
 const LOCAL_STORAGE_GEE_PROJECT = "geomoz_gee_project";
 const LOCAL_STORAGE_GEE_CONNECTED = "geomoz_gee_connected";
+const LOCAL_STORAGE_GEE_TOKEN = "geomoz_gee_oauth_token";
 
 export interface GeeAuthContextType {
   geeConnected: boolean;
@@ -28,6 +29,7 @@ export interface GeeAuthContextType {
   loading: boolean;
   error: string | null;
   connectGee: (project?: string) => Promise<void>;
+  setProjectOnly: (project: string) => Promise<void>;
   disconnectGee: () => Promise<void>;
   refreshStatus: () => Promise<void>;
 }
@@ -103,6 +105,9 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
               localStorage.setItem(LOCAL_STORAGE_GEE_PROJECT, saved.project);
               localStorage.setItem(LOCAL_STORAGE_GEE_CONNECTED, "true");
             }
+            if (saved?.access_token) {
+              localStorage.setItem(LOCAL_STORAGE_GEE_TOKEN, saved.access_token);
+            }
           }
         } catch {}
       }
@@ -114,6 +119,44 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
+
+  const setProjectOnly = async (project: string) => {
+    const chosenProject = project.trim() || "geoprocessamento-426809";
+    setGeeConnected(true);
+    setGeeProject(chosenProject);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_GEE_PROJECT, chosenProject);
+      localStorage.setItem(LOCAL_STORAGE_GEE_CONNECTED, "true");
+    } catch {}
+
+    // Register with backend in background
+    try {
+      let headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (auth?.currentUser) {
+        try {
+          const idToken = await auth.currentUser.getIdToken();
+          headers["Authorization"] = `Bearer ${idToken}`;
+        } catch {}
+      }
+      const token = typeof window !== "undefined" ? localStorage.getItem(LOCAL_STORAGE_GEE_TOKEN) : null;
+      await apiFetch("/geomoz-api/gee/oauth-token", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          access_token: token || "",
+          project: chosenProject,
+        }),
+      }).catch(() => null);
+    } catch {}
+
+    // Persist to Firestore in background
+    if (auth?.currentUser && db) {
+      try {
+        const docRef = doc(db, "users", auth.currentUser.uid, "settings", "gee");
+        await setDoc(docRef, { project: chosenProject, updatedAt: new Date().toISOString() }, { merge: true });
+      } catch {}
+    }
+  };
 
   const connectGee = async (project?: string) => {
     setLoading(true);
@@ -136,6 +179,10 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         const accessToken = credential?.accessToken;
 
         if (accessToken) {
+          try {
+            localStorage.setItem(LOCAL_STORAGE_GEE_TOKEN, accessToken);
+          } catch {}
+
           let headers: Record<string, string> = {
             "Content-Type": "application/json",
           };
@@ -198,6 +245,7 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
       try {
         localStorage.removeItem(LOCAL_STORAGE_GEE_PROJECT);
         localStorage.removeItem(LOCAL_STORAGE_GEE_CONNECTED);
+        localStorage.removeItem(LOCAL_STORAGE_GEE_TOKEN);
       } catch {}
 
       if (user && db) {
@@ -224,6 +272,7 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         loading,
         error,
         connectGee,
+        setProjectOnly,
         disconnectGee,
         refreshStatus: fetchStatus,
       }}
@@ -250,6 +299,7 @@ export function useGeeAuth(): GeeAuthContextType {
       loading: false,
       error: null,
       connectGee: async () => {},
+      setProjectOnly: async () => {},
       disconnectGee: async () => {},
       refreshStatus: async () => {},
     };

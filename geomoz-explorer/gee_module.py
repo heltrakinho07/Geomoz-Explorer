@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 _lock = threading.Lock()
 _gee_initialized = False
 _gee_error: Optional[str] = None
+_last_initialized_project: Optional[str] = None
+_last_initialized_token: Optional[str] = None
 
 # ── In-memory cache for computed ee.Image objects ─────────────────────────────
 #
@@ -119,93 +121,148 @@ def _build_cache_key_for_request(
 from google.oauth2.credentials import Credentials
 import gee_session_store
 
-def _init_gee(uid: str = None) -> None:
+def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
     """Initialize GEE with the user's token or fallback to server credentials."""
-    global _gee_initialized, _gee_error
+    global _gee_initialized, _gee_error, _last_initialized_project, _last_initialized_token
 
     with _lock:
         default_project = (
-            os.environ.get("GEE_PROJECT_ID")
+            project
+            or os.environ.get("GEE_PROJECT_ID")
             or os.environ.get("GCP_PROJECT_ID")
             or "geoprocessamento-426809"
         ).strip()
 
         token_data = gee_session_store.get_token(uid) if uid else None
-        if token_data and token_data.get("access_token"):
+        effective_token = token or (token_data.get("access_token") if token_data else None)
+        effective_project = project or (token_data.get("project") if token_data else None) or default_project
+
+        # If already initialized with this exact project and token, reuse existing session
+        if _gee_initialized and _last_initialized_project == effective_project and _last_initialized_token == effective_token:
+            return
+
+        if effective_token:
             try:
                 import ee
-                creds = Credentials(token=token_data["access_token"])
-                user_project = token_data.get("project") or default_project
-                ee.Initialize(credentials=creds, project=user_project)
+                creds = Credentials(token=effective_token)
+                ee.Initialize(credentials=creds, project=effective_project)
                 _gee_initialized = True
                 _gee_error = None
+                _last_initialized_project = effective_project
+                _last_initialized_token = effective_token
+                logger.info("GEE initialized successfully with OAuth token for project: %s", effective_project)
                 return
             except Exception as e:
-                logger.error("Failed to initialize GEE with user OAuth token: %s", e)
-                # Fall through to service account fallback
+                logger.warning("Failed to initialize GEE with user OAuth token: %s", e)
+                # Fall through to service account or ADC fallback
 
-        # Fallback to server-side GEE_SERVICE_ACCOUNT_KEY only if explicitly allowed
-        allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower() == "true"
+        # Fallback to server credentials
+        allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
         sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
         if allow_server and sa_key:
-            try:
-                import ee
-                import json
-                from google.oauth2 import service_account
-                key_dict = json.loads(sa_key) if isinstance(sa_key, str) else sa_key
-                scopes = getattr(ee.oauth, 'SCOPES', ['https://www.googleapis.com/auth/earthengine'])
-                creds = service_account.Credentials.from_service_account_info(
-                    key_dict,
-                    scopes=scopes
-                )
-                sa_project = key_dict.get("project_id") or default_project
-                ee.Initialize(credentials=creds, project=sa_project)
-                _gee_initialized = True
-                _gee_error = None
-                return
-            except Exception as e:
-                logger.error("Failed to initialize GEE with service account: %s", e)
-                _gee_error = str(e)
-                raise RuntimeError(f"Erro ao inicializar GEE com Service Account: {e}")
+            for proj_candidate in [effective_project, default_project]:
+                try:
+                    import ee
+                    import json
+                    from google.oauth2 import service_account
+                    key_dict = json.loads(sa_key) if isinstance(sa_key, str) else sa_key
+                    scopes = getattr(ee.oauth, 'SCOPES', ['https://www.googleapis.com/auth/earthengine'])
+                    creds = service_account.Credentials.from_service_account_info(
+                        key_dict,
+                        scopes=scopes
+                    )
+                    sa_project = proj_candidate or key_dict.get("project_id") or default_project
+                    ee.Initialize(credentials=creds, project=sa_project)
+                    _gee_initialized = True
+                    _gee_error = None
+                    _last_initialized_project = sa_project
+                    _last_initialized_token = None
+                    logger.info("GEE initialized successfully with Service Account for project: %s", sa_project)
+                    return
+                except Exception as e:
+                    logger.warning("Failed to initialize GEE with service account for project '%s': %s", proj_candidate, e)
 
-        _gee_error = "Conta do Google Earth Engine não conectada. Conecte a sua conta GEE nas configurações de perfil para utilizar a sua própria cota."
+        # Fallback to Google Application Default Credentials (e.g. running on Cloud Run / GCP VM)
+        if allow_server:
+            for proj_candidate in [effective_project, default_project, None]:
+                try:
+                    import ee
+                    import google.auth
+                    creds, adc_project = google.auth.default(scopes=['https://www.googleapis.com/auth/earthengine'])
+                    target_proj = proj_candidate or adc_project or default_project
+                    ee.Initialize(credentials=creds, project=target_proj)
+                    _gee_initialized = True
+                    _gee_error = None
+                    _last_initialized_project = target_proj
+                    _last_initialized_token = None
+                    logger.info("GEE initialized successfully with Application Default Credentials for project: %s", target_proj)
+                    return
+                except Exception as adc_err:
+                    logger.warning("Application Default Credentials fallback attempt for project '%s': %s", proj_candidate, adc_err)
+
+        _gee_error = f"Não foi possível inicializar o Earth Engine para o projeto '{effective_project}'. Verifique se a sua conta tem a API do Earth Engine ativada ou reautentique nas Definições."
         raise RuntimeError(_gee_error)
 
 
 def reset_gee():
-    global _gee_initialized, _gee_error
+    global _gee_initialized, _gee_error, _last_initialized_project, _last_initialized_token
     with _lock:
         _gee_initialized = False
         _gee_error = None
+        _last_initialized_project = None
+        _last_initialized_token = None
         _cache_clear()
         logger.info("GEE reset: auth cleared + index-image cache cleared (%d entries)", len(_INDEX_IMAGE_CACHE))
 
 
-def gee_status(uid: str = None) -> dict:
+def gee_status(uid: str = None, project: str = None, token: str = None) -> dict:
     global _gee_error
-    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower() == "true"
+    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
     token_data = gee_session_store.get_token(uid) if uid else None
-    if token_data and token_data.get("access_token"):
+    effective_token = token or (token_data.get("access_token") if token_data else None)
+    effective_project = project or (token_data.get("project") if token_data else None)
+
+    if effective_token:
         return {
             "connected": True,
             "auth_type": "oauth2",
-            "project": token_data.get("project") or os.environ.get("GEE_PROJECT_ID", ""),
+            "project": effective_project or os.environ.get("GEE_PROJECT_ID", "geoprocessamento-426809"),
             "message": "GEE conectado com cota própria de utilizador (OAuth2)",
+        }
+    if effective_project:
+        return {
+            "connected": True,
+            "auth_type": "user_project",
+            "project": effective_project,
+            "message": f"GEE vinculado ao projeto: {effective_project}",
         }
     if allow_server:
         sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "")
         if sa_key:
-            project = os.environ.get("GEE_PROJECT_ID", "")
+            proj = os.environ.get("GEE_PROJECT_ID", "")
             try:
-                project = json.loads(sa_key).get("project_id", project)
+                proj = json.loads(sa_key).get("project_id", proj)
             except Exception:
                 pass
             return {
                 "connected": True,
                 "auth_type": "service_account",
-                "project": project,
+                "project": proj,
                 "message": "GEE conectado via servidor",
             }
+        # Check ADC
+        try:
+            import google.auth
+            _, adc_project = google.auth.default(scopes=['https://www.googleapis.com/auth/earthengine'])
+            return {
+                "connected": True,
+                "auth_type": "adc",
+                "project": adc_project or os.environ.get("GEE_PROJECT_ID", "geoprocessamento-426809"),
+                "message": "GEE conectado via Application Default Credentials",
+            }
+        except Exception:
+            pass
+
     return {
         "connected": False,
         "auth_type": None,

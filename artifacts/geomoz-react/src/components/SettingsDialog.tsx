@@ -41,7 +41,16 @@ type SettingsTab = "gee" | "profile" | "preferences" | "storage";
 
 export default function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { user, signOut } = useAuth();
-  const { geeConnected, geeProject, loading: geeLoading, error: geeError, connectGee, disconnectGee, refreshStatus } = useGeeAuth();
+  const {
+    geeConnected,
+    geeProject,
+    loading: geeLoading,
+    error: geeError,
+    connectGee,
+    setProjectOnly,
+    disconnectGee,
+    refreshStatus,
+  } = useGeeAuth();
   const { projects } = useProject();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("gee");
@@ -59,6 +68,27 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     }
   });
 
+  const handleSaveProjectOnly = async () => {
+    const val = projectIdInput.trim();
+    if (!val) return;
+    setConnecting(true);
+    setTestResult(null);
+    try {
+      await setProjectOnly(val);
+      setTestResult({
+        connected: true,
+        message: `Projeto vinculado com sucesso: ${val}. As análises de satélite usarão esta quota.`,
+      });
+    } catch (err: any) {
+      setTestResult({
+        connected: false,
+        message: err?.message || "Erro ao vincular projeto.",
+      });
+    } finally {
+      setConnecting(false);
+    }
+  };
+
   const handleConnectGee = async () => {
     setConnecting(true);
     setTestResult(null);
@@ -75,22 +105,17 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     setTesting(true);
     setTestResult(null);
     try {
-      let headers: Record<string, string> = {};
-      if (user) {
-        const idToken = await user.getIdToken();
-        headers["Authorization"] = `Bearer ${idToken}`;
-      }
-      const res = await apiFetch("/geomoz-api/gee/status", { headers });
-      const data = await res.json();
+      const res = await apiFetch("/geomoz-api/gee/status");
+      const data = await res.json().catch(() => ({}));
       if (data.connected) {
         setTestResult({
           connected: true,
-          message: `Conexão bem-sucedida! Projeto: ${data.project || "Padrão"} (${data.auth_type || "OAuth2"})`,
+          message: `Conexão ativa! Projeto: ${data.project || "Padrão"} (${data.auth_type || "Cota Servidor / ADC"}). ${data.message || ""}`,
         });
       } else {
         setTestResult({
           connected: false,
-          message: "GEE não conectado ou credenciais pendentes.",
+          message: data.message || "GEE não conectado ou credenciais pendentes.",
         });
       }
     } catch (e: any) {
@@ -252,13 +277,24 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                   <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
                     ID do Projeto Google Cloud (Earth Engine)
                   </label>
-                  <Input
-                    type="text"
-                    value={projectIdInput}
-                    onChange={(e) => setProjectIdInput(e.target.value)}
-                    placeholder={geeProject || "ex: meu-projeto-gee-123"}
-                    className="text-xs font-mono bg-white dark:bg-slate-900"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      type="text"
+                      value={projectIdInput}
+                      onChange={(e) => setProjectIdInput(e.target.value)}
+                      placeholder={geeProject || "ex: meu-projeto-gee-123"}
+                      className="text-xs font-mono bg-white dark:bg-slate-900 flex-1"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSaveProjectOnly}
+                      disabled={connecting || !projectIdInput.trim()}
+                      className="text-xs shrink-0 font-medium border-sky-300 text-sky-700 hover:bg-sky-50 dark:border-sky-700 dark:text-sky-300"
+                    >
+                      Vincular Projeto
+                    </Button>
+                  </div>
                   <p className="text-[10px] text-slate-400">
                     O identificador do projeto Google Cloud onde a Earth Engine API está ativa com a sua quota pessoal.
                   </p>
@@ -285,7 +321,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                     ) : (
                       <>
                         <KeyRound size={13} className="mr-1.5" />
-                        {geeConnected ? "Reautenticar / Atualizar Projeto" : "Conectar com o Google (Earth Engine)"}
+                        {geeConnected ? "Reautenticar com Google (OAuth 2.0)" : "Entrar com o Google (Earth Engine)"}
                       </>
                     )}
                   </Button>

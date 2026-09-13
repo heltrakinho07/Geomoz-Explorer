@@ -67,12 +67,14 @@ async def require_firebase_auth(request: Request) -> str:
 async def require_gee_auth(request: Request) -> str:
     auth_header = request.headers.get("Authorization", "")
     uid = _extract_uid_from_header(auth_header)
+    gee_project = request.headers.get("X-GEE-Project", "").strip() or None
+    gee_token = request.headers.get("X-GEE-Token", "").strip() or None
 
     import gee_session_store
     user_token = gee_session_store.get_token(uid) if uid else None
     has_sa = bool(os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip())
     allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
-    if not user_token and not allow_server and not has_sa:
+    if not gee_token and not gee_project and not user_token and not allow_server and not has_sa:
         raise HTTPException(
             status_code=403,
             detail="É necessário conectar a sua conta do Google Earth Engine nas opções para utilizar a sua própria cota."
@@ -80,7 +82,7 @@ async def require_gee_auth(request: Request) -> str:
 
     from gee_module import _init_gee
     try:
-        _init_gee(uid or "default")
+        _init_gee(uid=uid or "default", project=gee_project, token=gee_token)
     except RuntimeError as e:
         raise HTTPException(status_code=403, detail=str(e))
     return uid or "default"
@@ -791,6 +793,12 @@ async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_fir
         "access_token": req.access_token,
         "project": req.project
     })
+    if req.access_token or req.project:
+        try:
+            from gee_module import _init_gee
+            _init_gee(uid=uid, project=req.project, token=req.access_token or None)
+        except Exception as e:
+            logger.warning("Immediate GEE init attempt during oauth-token save: %s", e)
     return {"message": "Token guardado com sucesso."}
 
 @app.get("/geomoz-api/gee/status")
@@ -798,18 +806,23 @@ async def gee_status_endpoint(request: Request):
     import gee_session_store
     auth_header = request.headers.get("Authorization", "")
     uid = _extract_uid_from_header(auth_header)
-    token = gee_session_store.get_token(uid) if uid else None
+    gee_project = request.headers.get("X-GEE-Project", "").strip() or None
+    gee_token = request.headers.get("X-GEE-Token", "").strip() or None
+
+    from gee_module import gee_status
+    st = gee_status(uid=uid, project=gee_project, token=gee_token)
     has_sa = bool(os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip())
     allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
-    connected = bool(token) or (allow_server and has_sa)
-    auth_type = "oauth2" if token else ("service_account" if (allow_server and has_sa) else None)
+    user_token = gee_session_store.get_token(uid) if uid else None
+
     return {
-        "connected": connected,
-        "project": (token.get("project") if token else None) or (os.environ.get("GEE_PROJECT_ID", None) if allow_server else None),
-        "auth_type": auth_type,
-        "user_connected": bool(token),
-        "server_connected": has_sa,
-        "allow_server_fallback": allow_server
+        "connected": st.get("connected", False),
+        "project": st.get("project") or gee_project,
+        "auth_type": st.get("auth_type"),
+        "user_connected": bool(gee_token or gee_project or (user_token.get("access_token") if user_token else None)),
+        "server_connected": st.get("auth_type") in ("service_account", "adc") or has_sa,
+        "allow_server_fallback": allow_server,
+        "message": st.get("message")
     }
 
 @app.post("/geomoz-api/gee/index")

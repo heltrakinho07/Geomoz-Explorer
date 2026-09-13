@@ -28,10 +28,22 @@ import { auth } from "./firebase";
 
 export async function apiFetch(inputUrlOrPath: string, options?: RequestInit): Promise<Response> {
   const url = apiUrl(inputUrlOrPath);
-  const token = auth?.currentUser ? await auth.currentUser.getIdToken(false) : null;
+  const token = auth?.currentUser ? await auth.currentUser.getIdToken(false).catch(() => null) : null;
   const headers = new Headers(options?.headers);
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
+  }
+  if (typeof window !== "undefined") {
+    try {
+      const geeProject = localStorage.getItem("geomoz_gee_project");
+      const geeToken = localStorage.getItem("geomoz_gee_oauth_token");
+      if (geeProject && !headers.has("X-GEE-Project")) {
+        headers.set("X-GEE-Project", geeProject);
+      }
+      if (geeToken && !headers.has("X-GEE-Token")) {
+        headers.set("X-GEE-Token", geeToken);
+      }
+    } catch {}
   }
   return fetch(url, { ...options, headers });
 }
