@@ -671,8 +671,8 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         # flat slope, and DEM-derived proxy for vegetation buffer
         import ee
         jrc_water = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
-        coastline = jrc_water.gt(40).selfMask().clip(region).clip(region)
-        coast_dist = coastline.fastDistanceTransform(True).sqrt().multiply(30).rename("dist")
+        coastline = jrc_water.gt(40).selfMask().clip(region)
+        coast_dist = coastline.fastDistanceTransform(1024).sqrt().multiply(30).rename("dist")
         max_dist = 50000
         prox_raw = ee.Image(1).subtract(coast_dist.divide(max_dist)).clamp(0, 1)
         inv_elev = ee.Image(1).subtract(dem.divide(50).clamp(0, 1))
@@ -700,7 +700,7 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         import ee
         jrc_water = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
         coastline = jrc_water.gt(40).selfMask()
-        coast_dist = coastline.fastDistanceTransform(True).sqrt().multiply(30).rename("dist")
+        coast_dist = coastline.fastDistanceTransform(1024).sqrt().multiply(30).rename("dist")
         max_dist = 30000
         prox_raw = ee.Image(1).subtract(coast_dist.divide(max_dist)).clamp(0, 1)
         inv_elev = ee.Image(1).subtract(dem.divide(30).clamp(0, 1))
@@ -847,7 +847,7 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         built_up = lc.eq(50).rename("built")
         # Distance transform from built-up areas
         # Closer to built-up = higher access
-        built_dist = built_up.selfMask().fastDistanceTransform(True).sqrt().multiply(30)
+        built_dist = built_up.selfMask().fastDistanceTransform(1024).sqrt().multiply(30)
         max_dist = 50000
         proximity = ee.Image(1).subtract(built_dist.divide(max_dist)).clamp(0, 1).rename("index")
         # Fallback: use NDBI where no built-up detected
@@ -894,7 +894,7 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         malaria_cond = precip_n.multiply(0.30).add(temp_n.multiply(0.25)).add(ndwi_n.multiply(0.20)).add(inv_elev.multiply(0.15)).add(inv_ndvi.multiply(0.10))
         # Flood proximity (JRC water occurrence)
         jrc_water = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
-        flood_prox = jrc_water.gt(10).selfMask().fastDistanceTransform(True).sqrt().multiply(30)
+        flood_prox = jrc_water.gt(10).selfMask().fastDistanceTransform(1024).sqrt().multiply(30)
         inund_prox = ee.Image(1).subtract(flood_prox.divide(30000)).clamp(0, 1).unmask(0).rename("inund")
         # Healthcare access inverse (from NDBI)
         ndbi = s2.normalizedDifference(["B11", "B8"])

@@ -520,6 +520,238 @@ function ColormapLegend({ index }: { index: SpectralIndex }) {
   );
 }
 
+// ── Comprehensive Index Legend View ──────────────────────────────────────────
+
+function IndexLegendView({
+  activeTab,
+  activeDef,
+  topoClassesTile,
+  contoursTile,
+  lineamentsTile,
+  targetingTile,
+  spiNdviResult,
+  spiLayerMode,
+  geeReady,
+}: {
+  activeTab: string;
+  activeDef?: (typeof INDEX_DEFS)[number];
+  topoClassesTile?: TopoClassesResult | null;
+  contoursTile?: ContoursResult | null;
+  lineamentsTile?: LineamentsResult | null;
+  targetingTile?: TargetingResult | null;
+  spiNdviResult?: SpiNdviResult | null;
+  spiLayerMode?: "spi" | "ndvi";
+  geeReady?: boolean;
+}) {
+  if (activeTab === "topo_class" || activeTab === "topo_custom") {
+    const classes = [
+      { name: "Planície (< 5 m)", color: "#1a9850" },
+      { name: "Terraço (5–15 m)", color: "#66bd63" },
+      { name: "Vertente Suave (15–30 m)", color: "#fee08b" },
+      { name: "Colinas Baixas (30–60 m)", color: "#fdae61" },
+      { name: "Colinas Altas (> 60 m)", color: "#a50026" },
+      { name: "Água & Rios", color: "#3690c0" },
+    ];
+    return (
+      <div className="space-y-1 text-xs">
+        <div className="text-[10px] text-slate-500 font-semibold mb-1">6 Classes Morfológicas (GLO-30)</div>
+        <div className="space-y-1">
+          {classes.map((c, i) => (
+            <div key={i} className="flex items-center justify-between gap-1.5 py-0.5">
+              <div className="flex items-center gap-1.5 truncate">
+                <span className="inline-block w-3 h-3 rounded shrink-0" style={{ background: c.color }} />
+                <span className="text-slate-700 dark:text-slate-300 truncate text-[11px]">{c.name}</span>
+              </div>
+              {topoClassesTile?.areasPct && topoClassesTile.areasPct[i] != null && (
+                <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                  {topoClassesTile.areasPct[i].toFixed(1)}%
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (activeTab === "coastal_erosion") {
+    const classes = [
+      { name: "Terreno Estável (sem alteração)", color: "#1a9850" },
+      { name: "Ganho de Terra / Progradação", color: "#fee08b" },
+      { name: "Perda de Terra / Erosão Costeira", color: "#e53935" },
+      { name: "Água Permanente (JRC GSW)", color: "#0064c8" },
+    ];
+    return (
+      <div className="space-y-1 text-xs">
+        <div className="text-[10px] text-slate-500 font-semibold mb-1">Transição Linha de Costa (1984–2021)</div>
+        <div className="space-y-1">
+          {classes.map((c, i) => (
+            <div key={i} className="flex items-center gap-1.5 py-0.5">
+              <span className="inline-block w-3 h-3 rounded shrink-0" style={{ background: c.color }} />
+              <span className="text-slate-700 dark:text-slate-300 truncate text-[11px]">{c.name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (activeTab === "landcover") {
+    const classes = [
+      { name: "Árvores / Floresta (10)", color: "#006400" },
+      { name: "Matagal / Arbustos (20)", color: "#ffbb22" },
+      { name: "Pastagens (30)", color: "#ffff4c" },
+      { name: "Culturas Agrícolas (40)", color: "#f096ff" },
+      { name: "Edificado / Urbano (50)", color: "#fa0000" },
+      { name: "Solo Desnudo (60)", color: "#b4b4b4" },
+      { name: "Corpos de Água (80)", color: "#0064c8" },
+      { name: "Zonas Húmidas (90)", color: "#0096a0" },
+      { name: "Mangais (95)", color: "#00cf75" },
+    ];
+    return (
+      <div className="space-y-1 text-xs">
+        <div className="text-[10px] text-slate-500 font-semibold mb-1">ESA WorldCover 10 m</div>
+        <div className="space-y-0.5 max-h-40 overflow-y-auto pr-1">
+          {classes.map((c, i) => (
+            <div key={i} className="flex items-center gap-1.5 py-0.5">
+              <span className="inline-block w-2.5 h-2.5 rounded shrink-0" style={{ background: c.color }} />
+              <span className="text-slate-700 dark:text-slate-300 truncate text-[10px]">{c.name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (activeTab === "contours") {
+    return (
+      <div className="space-y-1.5 text-xs">
+        <div className="text-[10px] text-slate-500 font-semibold mb-1">Curvas Altimétricas (DEM GLO-30)</div>
+        <div className="flex items-center gap-2 text-[11px] text-slate-700 dark:text-slate-300">
+          <span className="inline-block w-5 h-1 bg-amber-900 rounded shrink-0" />
+          <span>Curva-mestra ({contoursTile?.indexIntervalM || 250} m com cota)</span>
+        </div>
+        <div className="flex items-center gap-2 text-[11px] text-slate-700 dark:text-slate-300">
+          <span className="inline-block w-5 h-0.5 bg-amber-600 rounded shrink-0" />
+          <span>Curva normal ({contoursTile?.intervalM || 50} m)</span>
+        </div>
+        {contoursTile && (
+          <div className="text-[10px] text-slate-400 mt-1 pt-1 border-t border-slate-100">
+            Variação: {contoursTile.minElevM?.toFixed(0) ?? "0"} m → {contoursTile.maxElevM?.toFixed(0) ?? "—"} m
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (activeTab === "lineaments") {
+    return (
+      <div className="space-y-1.5 text-xs">
+        <div className="text-[10px] text-slate-500 font-semibold mb-1">Feições Estruturais (Filtros Direcionais)</div>
+        <div className="flex items-center gap-2 text-[11px] text-slate-700 dark:text-slate-300">
+          <span className="inline-block w-5 h-0.5 bg-fuchsia-600 rounded shrink-0" />
+          <span>Fraturas & Falhas Mapeadas</span>
+        </div>
+        <div className="mt-2">
+          <div className="text-[9px] text-slate-400 mb-0.5">Densidade Estrutural (km/km²)</div>
+          <div className="h-2.5 rounded bg-gradient-to-r from-blue-600 via-fuchsia-500 to-rose-600" />
+          <div className="flex justify-between text-[9px] text-slate-400 mt-0.5">
+            <span>Baixa densidade</span>
+            <span>Alta densidade</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeTab === "targeting") {
+    return (
+      <div className="space-y-1.5 text-xs">
+        <div className="text-[10px] text-slate-500 font-semibold mb-1">Favorabilidade Mineral (0–100)</div>
+        <div className="h-3 rounded-full bg-gradient-to-r from-[#0d47a1] via-[#7b1fa2] via-[#e53935] via-[#fdd835] to-[#fffde7]" />
+        <div className="flex justify-between text-[9px] text-slate-400 mt-0.5">
+          <span>0 · Baixo potencial</span>
+          <span>100 · Alvo prioritário</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeTab === "profile") {
+    return (
+      <div className="space-y-1.5 text-xs">
+        <div className="text-[10px] text-slate-500 font-semibold mb-1">Traçado Topográfico A→B</div>
+        <div className="flex items-center gap-2 text-[11px] text-slate-700 dark:text-slate-300">
+          <span className="inline-block w-2.5 h-2.5 rounded-full bg-sky-500 shrink-0" />
+          <span>Pontos de Controle no Relevo</span>
+        </div>
+        <div className="text-[10px] text-slate-400 leading-relaxed">
+          Clique em 2 ou mais pontos no mapa para traçar a linha de perfil altimétrico.
+        </div>
+      </div>
+    );
+  }
+
+  if (activeTab === "spi_ndvi") {
+    return (
+      <div className="space-y-2 text-xs">
+        <div>
+          <div className="text-[10px] text-slate-500 font-semibold mb-0.5">SPI (Precipitação Padronizada)</div>
+          <div className="h-2.5 rounded bg-gradient-to-r from-red-600 via-amber-400 to-blue-600" />
+          <div className="flex justify-between text-[9px] text-slate-400 mt-0.5">
+            <span>−2 · Seca Extrema</span>
+            <span>+2 · Muito Húmido</span>
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-500 font-semibold mb-0.5">NDVI (Índice de Vegetação)</div>
+          <div className="h-2.5 rounded bg-gradient-to-r from-[#8b5a2b] via-[#f0dc82] to-[#006400]" />
+          <div className="flex justify-between text-[9px] text-slate-400 mt-0.5">
+            <span>0 · Solo Nu</span>
+            <span>0.9 · Vegetação Densa</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeTab === "s2") {
+    return (
+      <div className="space-y-1.5 text-xs">
+        <div className="text-[10px] text-slate-500 font-semibold mb-1">Composição de Cor Real (RGB)</div>
+        <div className="text-[11px] text-slate-700 dark:text-slate-300">
+          Banda 4 (Vermelho) · Banda 3 (Verde) · Banda 2 (Azul)
+        </div>
+        <div className="text-[10px] text-slate-400">
+          Mosaico Sentinel-2 Cloudless sem nuvens (Copernicus 10 m).
+        </div>
+      </div>
+    );
+  }
+
+  if (activeDef) {
+    const stops = Array.from({ length: 10 }, (_, i) =>
+      applyColormap(i / 9, activeDef.id as SpectralIndex)
+    ).join(", ");
+    return (
+      <div className="space-y-1.5">
+        <div className="h-3 w-full rounded shadow-2xs" style={{ background: `linear-gradient(to right, ${stops})` }} />
+        <div className="flex justify-between text-[10px] text-slate-500 font-medium mt-0.5">
+          <span>{activeDef.lowLabel}</span>
+          <span>{activeDef.highLabel}</span>
+        </div>
+        {activeDef.formula && (
+          <div className="text-[10px] text-slate-400 truncate mt-1">
+            <span className="font-mono text-slate-500">{activeDef.formula}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return null;
+}
+
 // ── GEE Status badge ───────────────────────────────────────────────────────────
 
 function GeeStatusBadge({ status }: { status: GeeStatus | null; loading: boolean }) {
@@ -2860,8 +3092,8 @@ export default function GeoAnalises({
   const activeDefBands = activeDef?.bands ? activeDef.bands.split(/[·,]/).map(b => b.trim()).filter(Boolean) : [];
   const isComposite   = false;
   void isComposite;
-  const isLineaments  = false;
-  const isTargeting   = false;
+  const isLineaments  = activeTab === "lineaments";
+  const isTargeting   = activeTab === "targeting";
   const isProfile     = activeTab === "profile";
   const isContours    = activeTab === "contours";
   const isTopoCustom  = activeTab === "topo_custom";
@@ -2875,6 +3107,165 @@ export default function GeoAnalises({
   const isTopoClass   = activeTab === "topo_class";
   const spectralKey = `spectral-${activeTab}-${province}-${district}`;
   const geeTileKey  = `gee-${activeTab}-${geeTile?.tileUrl ?? ""}`;
+
+  const [isCalculatingActiveIndex, setIsCalculatingActiveIndex] = useState(false);
+  const [activeIndexError, setActiveIndexError] = useState<string | null>(null);
+
+  const activeIndexLabel = activeDef?.short || activeDef?.label || (
+    activeTab === "s2" ? "S-2 Cloudless" :
+    activeTab === "lineaments" ? "Lineamentos" :
+    activeTab === "targeting" ? "Targeting" :
+    activeTab === "profile" ? "Perfil A→B" :
+    activeTab === "contours" ? "Curvas Nível" :
+    activeTab === "topo_custom" ? "Classes Custom" :
+    activeTab === "landcover" ? "Cobertura Solo" :
+    activeTab === "spi_ndvi" ? "SPI × NDVI" :
+    activeTab
+  );
+
+  const hasActiveResult = Boolean(
+    (geeTile && activeDef && !isLineaments && !isProfile && !isContours && !isTopoCustom && !isLandCover && !isTargeting && !isSpiNdvi) ||
+    (isLineaments && lineamentsTile) ||
+    (isContours && contoursTile) ||
+    (isTopoCustom && topoClassesTile) ||
+    (isLandCover && landCoverTile) ||
+    (isTargeting && targetingTile) ||
+    (isProfile && profileResult) ||
+    (isSpiNdvi && spiNdviResult) ||
+    (activeTab === "s2" && showS2)
+  );
+
+  const handleCalculateActiveIndex = async () => {
+    setIsCalculatingActiveIndex(true);
+    setActiveIndexError(null);
+    try {
+      if (activeDef && !isLineaments && !isProfile && !isContours && !isTopoCustom && !isLandCover && !isTargeting && !isSpiNdvi && activeTab !== "s2") {
+        setGeeTile(null);
+        const res = await apiFetch("/geomoz-api/gee/index", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            index: activeTab,
+            province: province || null,
+            district: district || null,
+            geometry: apiParams.geometry ?? null,
+            start_date: "2023-01-01",
+            end_date: "2023-12-31",
+            cloud_pct: 30,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: res.statusText }));
+          throw new Error(err.detail ?? "Erro GEE desconhecido");
+        }
+        const data: GeeResult = await res.json();
+        setGeeTile(data);
+        setUseGEE(true);
+      } else if (isLineaments) {
+        setLineamentsTile(null);
+        const res = await apiFetch("/geomoz-api/gee/lineaments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            province: province || null,
+            district: district || null,
+            geometry: apiParams.geometry ?? null,
+            sigma: 1.0,
+            threshold: 0.1,
+            min_len_m: 500,
+          }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.detail || "Erro ao calcular lineamentos");
+        setLineamentsTile(await res.json());
+      } else if (isContours) {
+        setContoursTile(null);
+        const res = await apiFetch("/geomoz-api/gee/contours", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            province: province || null,
+            district: district || null,
+            geometry: apiParams.geometry ?? null,
+            interval_m: 50,
+            index_interval_m: 250,
+          }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.detail || "Erro ao calcular curvas de nível");
+        setContoursTile(await res.json());
+      } else if (isTopoCustom) {
+        setTopoClassesTile(null);
+        const res = await apiFetch("/geomoz-api/gee/topo-classes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            province: province || null,
+            district: district || null,
+            geometry: apiParams.geometry ?? null,
+          }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.detail || "Erro ao classificar relevo");
+        setTopoClassesTile(await res.json());
+      } else if (isLandCover) {
+        setLandCoverTile(null);
+        const res = await apiFetch("/geomoz-api/gee/landcover", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            province: province || null,
+            district: district || null,
+            geometry: apiParams.geometry ?? null,
+            year: 2021,
+          }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.detail || "Erro ao calcular cobertura do solo");
+        setLandCoverTile(await res.json());
+      } else if (isTargeting) {
+        setTargetingTile(null);
+        const res = await apiFetch("/geomoz-api/gee/targeting", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            province: province || null,
+            district: district || null,
+            geometry: apiParams.geometry ?? null,
+            mineral_type: "gold",
+          }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.detail || "Erro ao calcular alvo mineral");
+        setTargetingTile(await res.json());
+      } else if (isProfile) {
+        if (profilePoints.length >= 2) {
+          await runProfile();
+        } else {
+          toast({
+            title: "Traçado do perfil necessário",
+            description: "Clique em 2 ou mais pontos no mapa para traçar a linha A→B antes de calcular.",
+          });
+        }
+      } else if (isSpiNdvi) {
+        setSpiNdviResult(null);
+        const res = await apiFetch("/geomoz-api/gee/spi-ndvi", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            province: province || null,
+            district: district || null,
+            geometry: apiParams.geometry ?? null,
+            year: 2023,
+          }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.detail || "Erro ao calcular SPI × NDVI");
+        setSpiNdviResult(await res.json());
+      } else if (activeTab === "s2") {
+        setShowS2(true);
+      }
+    } catch (err: any) {
+      console.error("Calculate index error:", err);
+      setActiveIndexError(err?.message || "Erro ao calcular índice.");
+    } finally {
+      setIsCalculatingActiveIndex(false);
+    }
+  };
 
   const activeAnalysisContext: AnalysisContext | null = useMemo(() => {
     if (activeTab === "s2" || showS2) {
@@ -3352,20 +3743,87 @@ export default function GeoAnalises({
               </div>
 
               {/* GEE status / real vs proxy switch */}
-              {geeStatus?.connected && (
-                <div className="p-3 border-b border-slate-100 flex items-center justify-between text-xs">
-                  <span className="text-slate-600 font-medium">Modo GEE</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-400 text-[11px]">{useGEE ? "Real" : "Proxy"}</span>
-                    <button
-                      onClick={() => { setUseGEE(v => !v); setGeeTile(null); }}
-                      className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors ${useGEE ? "bg-sky-500" : "bg-slate-300"}`}
-                    >
-                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${useGEE ? "translate-x-4" : "translate-x-0.5"}`} />
-                    </button>
-                  </div>
+              <div className="p-3 border-b border-slate-100 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-700 font-semibold">Modo GEE</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                    geeReady ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"
+                  }`}>
+                    {geeReady ? "Ativo" : "Proxy"}
+                  </span>
                 </div>
-              )}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-400 text-[11px]">{useGEE ? "Real" : "Proxy"}</span>
+                  <button
+                    onClick={() => { setUseGEE(v => !v); setGeeTile(null); }}
+                    className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors cursor-pointer ${useGEE ? "bg-sky-500" : "bg-slate-300"}`}
+                    title={useGEE ? "Mudar para modo proxy" : "Mudar para modo GEE real"}
+                  >
+                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${useGEE ? "translate-x-4" : "translate-x-0.5"}`} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Botão Calcular Índice no Sidebar */}
+              <div className="p-3 border-b border-slate-100 space-y-2 bg-slate-50/50">
+                <button
+                  type="button"
+                  onClick={handleCalculateActiveIndex}
+                  disabled={isCalculatingActiveIndex}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 disabled:from-slate-300 disabled:to-slate-400 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-sky-500/20 active:scale-[0.98] cursor-pointer"
+                >
+                  {isCalculatingActiveIndex ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      <span>A processar no GEE...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play size={14} className="fill-white" />
+                      <span>Calcular {activeIndexLabel}</span>
+                    </>
+                  )}
+                </button>
+
+                {hasActiveResult && (
+                  <div className="flex items-center justify-between text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                    <span className="flex items-center gap-1 font-medium">
+                      <CheckCircle2 size={12} className="text-emerald-600" />
+                      Resultado Ativo
+                    </span>
+                    <span className="text-[10px] text-slate-400">GEE 24h</span>
+                  </div>
+                )}
+
+                {activeIndexError && (
+                  <div className="text-[11px] text-rose-600 bg-rose-50 dark:bg-rose-950/30 p-2 rounded-lg border border-rose-200 dark:border-rose-800 leading-tight">
+                    <strong>Erro:</strong> {activeIndexError}
+                  </div>
+                )}
+              </div>
+
+              {/* Legenda do Índice Selecionado na Sidebar */}
+              <div className="p-3 border-b border-slate-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Legenda
+                  </h4>
+                  <span className="text-[9px] text-slate-400 truncate max-w-[120px]">
+                    {activeIndexLabel}
+                  </span>
+                </div>
+                <IndexLegendView
+                  activeTab={activeTab}
+                  activeDef={activeDef}
+                  topoClassesTile={topoClassesTile}
+                  contoursTile={contoursTile}
+                  lineamentsTile={lineamentsTile}
+                  targetingTile={targetingTile}
+                  spiNdviResult={spiNdviResult}
+                  spiLayerMode={spiLayerMode}
+                  geeReady={geeReady}
+                />
+              </div>
             </div>
 
         {/* Draggable Results Panel */}
@@ -4384,6 +4842,22 @@ export default function GeoAnalises({
                       <span className="truncate">{TERRAIN_CLASS_NAMES[i]}</span>
                     </div>
                   ))}
+                </div>
+              )}
+              {!isTopoClass && activeDef && (
+                <div className="mt-2 pt-2 border-t border-slate-100">
+                  <div
+                    className="h-2.5 w-full rounded"
+                    style={{
+                      background: `linear-gradient(to right, ${Array.from({ length: 8 }, (_, i) =>
+                        applyColormap(i / 7, activeDef.id as SpectralIndex)
+                      ).join(", ")})`,
+                    }}
+                  />
+                  <div className="flex justify-between text-[9px] text-slate-400 mt-0.5 font-medium">
+                    <span>{activeDef.lowLabel.split("/")[0]}</span>
+                    <span>{activeDef.highLabel.split("/")[0]}</span>
+                  </div>
                 </div>
               )}
             </div>
