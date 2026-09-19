@@ -171,14 +171,12 @@ _thread_pool_executor = ThreadPoolExecutor(max_workers=4)
 
 app = FastAPI(title="GeoMoz API", version="2.1.0")
 
-# CORS configuration - use environment variable for allowed origins
-# Default to localhost for development, set CORS_ORIGINS env var for production
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
-
+# CORS configuration - allow all origins (localhost, 127.0.0.1, 192.168.*, null/electron)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_origin_regex=r".*",
+    allow_credentials=True,
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
