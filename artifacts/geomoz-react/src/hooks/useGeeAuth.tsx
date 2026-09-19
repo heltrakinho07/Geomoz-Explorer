@@ -227,7 +227,18 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
 
     try {
       if (auth) {
-        const result = await signInWithPopup(auth, geeProvider);
+        // Race popup with a 60-second timeout to prevent infinite spinning
+        const popupPromise = signInWithPopup(auth, geeProvider);
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => {
+            const timeoutErr: any = new Error(
+              "A janela de início de sessão demorou a responder ou ficou oculta em segundo plano. Verifique se o seu navegador não bloqueou pop-ups."
+            );
+            timeoutErr.code = "auth/popup-timeout";
+            reject(timeoutErr);
+          }, 60000)
+        );
+        const result: any = await Promise.race([popupPromise, timeoutPromise]);
         const credential = GoogleAuthProvider.credentialFromResult(result);
         const accessToken = credential?.accessToken;
         const email = result.user?.email || emailCandidate;
@@ -289,9 +300,16 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (err: any) {
       console.warn("Google popup result note:", err);
-      if (err.code !== "auth/popup-closed-by-user") {
-        setError(err.message || "Erro na autenticação Google.");
+      let userMsg = err.message || "Erro na autenticação Google.";
+      if (err.code === "auth/popup-blocked") {
+        userMsg = "O navegador bloqueou a janela pop-up de início de sessão. Por favor, permita pop-ups para este site na barra de endereços.";
+      } else if (err.code === "auth/popup-closed-by-user") {
+        userMsg = "A janela de autenticação foi fechada antes de concluir.";
+      } else if (err.code === "auth/popup-timeout") {
+        userMsg = err.message;
       }
+      setError(userMsg);
+      throw new Error(userMsg);
     } finally {
       setLoading(false);
     }
