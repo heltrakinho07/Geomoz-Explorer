@@ -38,27 +38,28 @@ export async function apiFetch(inputUrlOrPath: string, options?: RequestInit): P
       const uid = auth?.currentUser?.uid;
       const userProjectKey = uid && uid !== "guest_user" ? `geomoz_gee_user_${uid}_project` : null;
       const userTokenKey = uid && uid !== "guest_user" ? `geomoz_gee_user_${uid}_token` : null;
-
-      let geeProject = (userProjectKey ? localStorage.getItem(userProjectKey) : null)
-        || localStorage.getItem("geomoz_gee_project")
-        || "geoprocessamento-426809";
-
-      // Sanitize old dummy project
-      if (geeProject === "eengine-project") {
-        geeProject = "geoprocessamento-426809";
-        try {
-          if (userProjectKey) localStorage.setItem(userProjectKey, geeProject);
-          localStorage.setItem("geomoz_gee_project", geeProject);
-        } catch {}
-      }
+      const userTokenTsKey = uid && uid !== "guest_user" ? `geomoz_gee_user_${uid}_token_ts` : null;
 
       const geeToken = (userTokenKey ? localStorage.getItem(userTokenKey) : null)
         || localStorage.getItem("geomoz_gee_oauth_token");
+      const geeTokenTs = (userTokenTsKey ? localStorage.getItem(userTokenTsKey) : null)
+        || localStorage.getItem("geomoz_gee_oauth_token_timestamp");
+
+      const isExpired = geeTokenTs && (Date.now() - parseInt(geeTokenTs, 10) > 50 * 60 * 1000);
+
+      if (isExpired && geeToken) {
+        try {
+          if (userTokenKey) localStorage.removeItem(userTokenKey);
+          if (userTokenTsKey) localStorage.removeItem(userTokenTsKey);
+          localStorage.removeItem("geomoz_gee_oauth_token");
+          localStorage.removeItem("geomoz_gee_oauth_token_timestamp");
+        } catch {}
+      }
 
       if (geeProject && !headers.has("X-GEE-Project")) {
         headers.set("X-GEE-Project", geeProject);
       }
-      if (geeToken && !headers.has("X-GEE-Token")) {
+      if (geeToken && !isExpired && !headers.has("X-GEE-Token")) {
         headers.set("X-GEE-Token", geeToken);
       }
     } catch {}

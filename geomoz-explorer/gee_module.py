@@ -151,6 +151,8 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
                 from google.oauth2.credentials import Credentials
                 creds = Credentials(token=effective_token)
                 ee.Initialize(credentials=creds, project=effective_project)
+                # Verify that the access token is valid by performing a minimal API call
+                ee.Number(1).getInfo()
                 _gee_initialized = True
                 _gee_error = None
                 _last_initialized_project = effective_project
@@ -160,6 +162,18 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
                 return
             except Exception as e:
                 logger.warning("Failed to initialize GEE with user '%s' OAuth token: %s", uid, e)
+                err_str = str(e)
+                if (
+                    "The credentials do not contain the necessary fields" in err_str
+                    or "refresh the access token" in err_str
+                    or "invalid_grant" in err_str
+                    or "expired" in err_str.lower()
+                ):
+                    if uid:
+                        try:
+                            gee_session_store.set_token(uid, {"access_token": None})
+                        except Exception:
+                            pass
 
         # 2. Try user's personal Service Account Key JSON
         if user_sa_key:
@@ -279,8 +293,8 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
                     logger.warning("ADC init attempt for project '%s': %s", effective_project, proj_err)
 
         _gee_error = (
-            f"O utilizador não possui credenciais ativas do Earth Engine para o projeto '{effective_project}'. "
-            "Por favor, conecte a sua conta Google com permissões GEE ou cole a sua Chave de Serviço JSON nas Definições."
+            f"A sua sessão do Google Earth Engine expirou ou não possui credenciais ativas para o projeto '{effective_project}'. "
+            "Por favor, reconecte a sua conta Google no painel de opções ou insira uma Chave de Conta de Serviço (JSON) nas Definições."
         )
         raise RuntimeError(_gee_error)
 

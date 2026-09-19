@@ -102,8 +102,42 @@ async def require_gee_auth(request: Request) -> str:
     try:
         _init_gee(uid=uid or "default", project=gee_project, token=gee_token)
     except RuntimeError as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        err_msg = str(e)
+        if "expirou" in err_msg or "necessary fields" in err_msg or "refresh" in err_msg:
+            raise HTTPException(status_code=401, detail=err_msg)
+        raise HTTPException(status_code=403, detail=err_msg)
     return uid or "default"
+
+def handle_gee_api_error(exc: Exception, prefix: str = "Cálculo GEE", uid: str = None):
+    msg = str(exc)
+    from gee_module import reset_gee
+    import gee_session_store
+
+    if "roles/serviceusage.serviceUsageConsumer" in msg or "Caller does not have required permission to use project" in msg:
+        raise HTTPException(
+            403,
+            f"A sua conta Google não tem permissão para usar o projeto configurado. "
+            f"Por favor abra as Definições, insira o ID do seu projeto Google Cloud (ex: geoprocessamento-426809 ou o projeto do Code Editor) "
+            f"e confirme se a Earth Engine API está ativada."
+        )
+    if (
+        "The credentials do not contain the necessary fields need to refresh the access token" in msg
+        or "RefreshError" in msg
+        or "invalid_grant" in msg
+        or "Token has been expired or revoked" in msg
+        or "expirou" in msg
+    ):
+        reset_gee()
+        if uid:
+            try:
+                gee_session_store.set_token(uid, {"access_token": None})
+            except Exception:
+                pass
+        raise HTTPException(
+            401,
+            detail="A sua sessão do Google Earth Engine expirou. Por favor clique em 'Reconectar Google Earth Engine' nas Definições ou no cabeçalho para renovar o acesso."
+        )
+    raise HTTPException(500, f"{prefix} falhou: {exc}")
 from pydantic import BaseModel, field_validator, constr
 
 # ── Package imports ────────────────────────────────────────────────────────
@@ -944,15 +978,7 @@ async def gee_index(req: GEEIndexRequest, uid: str = Depends(require_gee_auth)):
     except RuntimeError as exc:
         raise HTTPException(503, str(exc))
     except Exception as exc:
-        msg = str(exc)
-        if "roles/serviceusage.serviceUsageConsumer" in msg or "Caller does not have required permission to use project" in msg:
-            raise HTTPException(
-                403,
-                f"A sua conta Google não tem permissão para usar o projeto configurado. "
-                f"Por favor abra as Definições, insira o ID do seu projeto Google Cloud (ex: geoprocessamento-426809 ou o projeto do Code Editor) "
-                f"e confirme se a Earth Engine API está ativada."
-            )
-        raise HTTPException(500, f"GEE computation failed: {exc}")
+        handle_gee_api_error(exc, prefix="Cálculo GEE", uid=uid)
 
 
 
@@ -980,7 +1006,7 @@ async def gee_download_url(req: GEEDownloadRequest, uid: str = Depends(require_g
     except RuntimeError as exc:
         raise HTTPException(503, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"Falha ao gerar GeoTIFF no GEE: {exc}")
+        handle_gee_api_error(exc, prefix="Geração GeoTIFF GEE", uid=uid)
 
 
 @app.post("/geomoz-api/ai/synthesize-study")

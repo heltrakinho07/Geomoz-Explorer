@@ -26,7 +26,7 @@ import {
   TrendingDown, Route, Waves, X, FileDown,
   Sprout, ChevronLeft, ChevronRight, Navigation, Building2,
   AlertTriangle, Sparkles, ArrowLeft, LayoutGrid, Search, Globe, SlidersHorizontal,
-  Clock, Columns2,
+  Clock, Columns2, LogIn,
 } from "lucide-react";
 import SplitScreenCompare, { type CompareMode } from "@/components/SplitScreenCompare";
 import PixelInspectorHUD, { type AnalysisContext } from "@/components/PixelInspectorHUD";
@@ -853,6 +853,67 @@ function GeeSetupGuide({ onRetry }: { onRetry: () => void }) {
   );
 }
 
+function GeeErrorAlert({
+  error,
+  onReconnect,
+}: {
+  error: string;
+  onReconnect?: () => Promise<void>;
+}) {
+  const [reconnecting, setReconnecting] = useState(false);
+  const isAuthError =
+    error.includes("expirou") ||
+    error.includes("credentials do not contain") ||
+    error.includes("refresh the access token") ||
+    error.includes("RefreshError") ||
+    error.includes("401") ||
+    error.includes("permissão") ||
+    error.includes("roles/serviceusage");
+
+  return (
+    <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl p-3 text-xs text-red-700 dark:text-red-300 leading-relaxed space-y-2">
+      <div>
+        <strong>Erro:</strong> {error}
+      </div>
+      {isAuthError && (
+        <div className="pt-1 flex flex-wrap items-center gap-2">
+          {onReconnect && (
+            <button
+              type="button"
+              disabled={reconnecting}
+              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 shadow-sm"
+              onClick={async () => {
+                setReconnecting(true);
+                try {
+                  await onReconnect();
+                } finally {
+                  setReconnecting(false);
+                }
+              }}
+            >
+              {reconnecting ? (
+                <>
+                  <Loader2 size={12} className="animate-spin" /> A conectar...
+                </>
+              ) : (
+                <>
+                  <LogIn size={12} /> Reconectar Conta Google
+                </>
+              )}
+            </button>
+          )}
+          <a
+            href="/settings"
+            className="inline-flex items-center text-xs font-medium text-red-700 dark:text-red-300 underline hover:no-underline px-1 py-0.5"
+          >
+            Abrir Definições / Chave de Serviço →
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── GEE Analysis Panel ─────────────────────────────────────────────────────────
 
 function GeeAnalysisPanel({
@@ -866,6 +927,7 @@ function GeeAnalysisPanel({
   onTileReady: (result: GeeResult | null) => void;
   onOpenCompare?: () => void;
 }) {
+  const { connectGee } = useGeeAuth();
   const [startDate, setStartDate] = useState("2023-01-01");
   const [endDate, setEndDate]     = useState("2023-12-31");
   const [cloudPct, setCloudPct]   = useState(30);
@@ -1045,9 +1107,13 @@ function GeeAnalysisPanel({
 
       {/* Error */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700 leading-relaxed">
-          <strong>Erro:</strong> {error}
-        </div>
+        <GeeErrorAlert
+          error={error}
+          onReconnect={async () => {
+            await connectGee();
+            setError(null);
+          }}
+        />
       )}
 
       {/* Result */}

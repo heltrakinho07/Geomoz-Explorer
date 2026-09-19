@@ -29,6 +29,25 @@ const getUserStorageKey = (key: string, uid?: string | null) => {
   return `geomoz_gee_${scope}_${key}`;
 };
 
+const saveTokenToStorage = (uid: string | undefined | null, token: string) => {
+  const now = Date.now();
+  if (typeof window !== "undefined") {
+    localStorage.setItem(getUserStorageKey("token", uid), token);
+    localStorage.setItem(getUserStorageKey("token_ts", uid), String(now));
+    localStorage.setItem("geomoz_gee_oauth_token", token);
+    localStorage.setItem("geomoz_gee_oauth_token_timestamp", String(now));
+  }
+};
+
+const clearTokenFromStorage = (uid?: string | null) => {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem(getUserStorageKey("token", uid));
+    localStorage.removeItem(getUserStorageKey("token_ts", uid));
+    localStorage.removeItem("geomoz_gee_oauth_token");
+    localStorage.removeItem("geomoz_gee_oauth_token_timestamp");
+  }
+};
+
 export interface GeeAuthContextType {
   geeConnected: boolean;
   geeProject: string | null;
@@ -96,6 +115,21 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      // Check if OAuth token is expired (> 50 min)
+      if (token) {
+        const tokenTsStr =
+          localStorage.getItem(getUserStorageKey("token_ts", uid)) ||
+          localStorage.getItem("geomoz_gee_oauth_token_timestamp");
+        if (tokenTsStr) {
+          const ts = parseInt(tokenTsStr, 10);
+          if (Date.now() - ts > 50 * 60 * 1000) {
+            clearTokenFromStorage(uid);
+            token = null;
+            connected = false;
+          }
+        }
+      }
+
       // Sanitize old dummy project
       if (project === "eengine-project" || !project) {
         project = "geoprocessamento-426809";
@@ -128,6 +162,9 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
           const data = await res.json().catch(() => ({}));
           if (data.connected !== undefined) {
             setGeeConnected(Boolean(data.connected));
+            if (!data.connected && token) {
+              clearTokenFromStorage(uid);
+            }
           }
           if (data.project) {
             setGeeProject(data.project);
@@ -135,6 +172,9 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
           if (data.account) {
             setGeeAccount(data.account);
           }
+        } else if (res && (res.status === 401 || res.status === 403)) {
+          clearTokenFromStorage(uid);
+          setGeeConnected(false);
         }
       }
     } catch (e: any) {
@@ -156,12 +196,11 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
             const defaultProject = geeProject || "geoprocessamento-426809";
 
             if (accessToken) {
+              saveTokenToStorage(uid, accessToken);
               if (typeof window !== "undefined") {
-                localStorage.setItem(getUserStorageKey("token", uid), accessToken);
                 localStorage.setItem(getUserStorageKey("project", uid), defaultProject);
                 localStorage.setItem(getUserStorageKey("account", uid), email);
                 localStorage.setItem(getUserStorageKey("connected", uid), "true");
-                localStorage.setItem("geomoz_gee_oauth_token", accessToken);
                 localStorage.setItem("geomoz_gee_project", defaultProject);
               }
 
@@ -359,12 +398,11 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         const email = result.user?.email || emailCandidate;
 
         if (accessToken) {
+          saveTokenToStorage(uid, accessToken);
           if (typeof window !== "undefined") {
-            localStorage.setItem(getUserStorageKey("token", uid), accessToken);
             localStorage.setItem(getUserStorageKey("project", uid), chosenProject);
             localStorage.setItem(getUserStorageKey("account", uid), email);
             localStorage.setItem(getUserStorageKey("connected", uid), "true");
-            localStorage.setItem("geomoz_gee_oauth_token", accessToken);
             localStorage.setItem("geomoz_gee_project", chosenProject);
           }
 
@@ -441,12 +479,11 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
       setGeeProject(null);
       setGeeAccount(null);
 
+      clearTokenFromStorage(uid);
       if (typeof window !== "undefined") {
         localStorage.setItem(getUserStorageKey("connected", uid), "false");
         localStorage.removeItem(getUserStorageKey("project", uid));
         localStorage.removeItem(getUserStorageKey("account", uid));
-        localStorage.removeItem(getUserStorageKey("token", uid));
-        localStorage.removeItem("geomoz_gee_oauth_token");
       }
 
       if (user && db && user.uid !== "guest_user") {
