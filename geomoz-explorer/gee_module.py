@@ -123,15 +123,35 @@ def _build_cache_key_for_request(
 
 import gee_session_store
 
+def _load_env_file():
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        if k.strip() not in os.environ:
+                            os.environ[k.strip()] = v.strip()
+        except Exception:
+            pass
+
+_load_env_file()
+
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+
 _last_initialized_uid = None
 
 def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
-    """Initialize GEE with the active user's credentials (OAuth, user service account, or local CLI)."""
+    """Initialize GEE with the active user's credentials (OAuth refresh_token, OAuth access_token, user service account, or local CLI)."""
     global _gee_initialized, _gee_error, _last_initialized_project, _last_initialized_token, _last_initialized_uid
 
     with _lock:
         token_data = gee_session_store.get_token(uid) if uid else None
         effective_token = token or (token_data.get("access_token") if token_data else None)
+        user_refresh_token = token_data.get("refresh_token") if token_data else None
         user_sa_key = token_data.get("service_account_key") if token_data else None
         effective_project = (
             project
@@ -143,6 +163,30 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
         # If already initialized for this exact user, project and token, reuse session
         if _gee_initialized and _last_initialized_uid == uid and _last_initialized_project == effective_project and _last_initialized_token == effective_token:
             return
+
+        # 0. Try user's personal permanent OAuth refresh_token (never expires!)
+        if user_refresh_token:
+            try:
+                import ee
+                from google.oauth2.credentials import Credentials
+                creds = Credentials(
+                    token=effective_token,
+                    refresh_token=user_refresh_token,
+                    token_uri="https://oauth2.googleapis.com/token",
+                    client_id=GOOGLE_CLIENT_ID,
+                    client_secret=GOOGLE_CLIENT_SECRET,
+                    scopes=['https://www.googleapis.com/auth/earthengine']
+                )
+                ee.Initialize(credentials=creds, project=effective_project)
+                _gee_initialized = True
+                _gee_error = None
+                _last_initialized_project = effective_project
+                _last_initialized_token = effective_token
+                _last_initialized_uid = uid
+                logger.info("GEE initialized PERMANENTLY with user '%s' refresh_token for project: %s", uid, effective_project)
+                return
+            except Exception as e:
+                logger.warning("Failed to initialize GEE with user '%s' refresh_token: %s", uid, e)
 
         # 1. Try user's personal OAuth token
         if effective_token:
@@ -328,11 +372,16 @@ def gee_status(uid: str = None, project: str = None, token: str = None) -> dict:
             "message": "Nenhuma credencial do Earth Engine configurada para este utilizador.",
         }
 
+    is_perm = bool(token_data and (token_data.get("refresh_token") or token_data.get("service_account_key")))
+    has_rt = bool(token_data and token_data.get("refresh_token"))
+
     # If already successfully initialized for THIS user
     if _gee_initialized and _last_initialized_uid == uid and _last_initialized_project == effective_project:
         return {
             "connected": True,
             "auth_type": "user_credentials",
+            "is_permanent": is_perm,
+            "has_refresh_token": has_rt,
             "project": _last_initialized_project,
             "account": token_data.get("account") if token_data else None,
             "message": f"GEE conectado com sucesso para o utilizador (Projeto: {_last_initialized_project})",
@@ -344,6 +393,8 @@ def gee_status(uid: str = None, project: str = None, token: str = None) -> dict:
         return {
             "connected": True,
             "auth_type": "user_credentials",
+            "is_permanent": is_perm,
+            "has_refresh_token": has_rt,
             "project": _last_initialized_project or effective_project,
             "account": token_data.get("account") if token_data else None,
             "message": f"GEE verificado com sucesso para o utilizador (Projeto: {_last_initialized_project or effective_project})",
@@ -352,6 +403,8 @@ def gee_status(uid: str = None, project: str = None, token: str = None) -> dict:
         return {
             "connected": False,
             "auth_type": "none",
+            "is_permanent": False,
+            "has_refresh_token": False,
             "project": effective_project,
             "account": token_data.get("account") if token_data else None,
             "message": str(exc),

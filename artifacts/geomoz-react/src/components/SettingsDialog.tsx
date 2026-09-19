@@ -45,6 +45,8 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     geeConnected,
     geeProject,
     geeAccount,
+    isPermanent,
+    hasRefreshToken,
     loading: geeLoading,
     error:    geeError,
     connectGee,
@@ -308,7 +310,11 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                         geeConnected ? "text-emerald-900 dark:text-emerald-200" : "text-amber-900 dark:text-amber-200"
                       }`}
                     >
-                      {geeConnected ? "Google Earth Engine Conectado (Ativo)" : "Credenciais GEE Pendentes / Não Ativas"}
+                      {geeConnected
+                        ? isPermanent
+                          ? "Google Earth Engine Conectado (Permanente - Não Expira)"
+                          : "Google Earth Engine Conectado (Ativo)"
+                        : "Credenciais GEE Pendentes / Não Ativas"}
                     </h4>
                     <p
                       className={`text-xs mt-0.5 ${
@@ -451,7 +457,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                             d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                           />
                         </svg>
-                        <span>Ligar com a Conta Google (Earth Engine)</span>
+                        <span>Ligar com a Conta Google (Acesso Permanente)</span>
                       </Button>
                       <button
                         type="button"

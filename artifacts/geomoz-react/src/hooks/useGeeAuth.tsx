@@ -52,6 +52,8 @@ export interface GeeAuthContextType {
   geeConnected: boolean;
   geeProject: string | null;
   geeAccount: string | null;
+  isPermanent: boolean;
+  hasRefreshToken: boolean;
   loading: boolean;
   error: string | null;
   connectGee: (project?: string, accountEmail?: string) => Promise<void>;
@@ -74,6 +76,8 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
   const [geeConnected, setGeeConnected] = useState<boolean>(false);
   const [geeProject, setGeeProject] = useState<string | null>(null);
   const [geeAccount, setGeeAccount] = useState<string | null>(null);
+  const [isPermanent, setIsPermanent] = useState<boolean>(false);
+  const [hasRefreshToken, setHasRefreshToken] = useState<boolean>(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -162,6 +166,8 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
           const data = await res.json().catch(() => ({}));
           if (data.connected !== undefined) {
             setGeeConnected(Boolean(data.connected));
+            setIsPermanent(Boolean(data.is_permanent || data.has_refresh_token));
+            setHasRefreshToken(Boolean(data.has_refresh_token));
             if (!data.connected && token) {
               clearTokenFromStorage(uid);
             }
@@ -175,6 +181,8 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         } else if (res && (res.status === 401 || res.status === 403)) {
           clearTokenFromStorage(uid);
           setGeeConnected(false);
+          setIsPermanent(false);
+          setHasRefreshToken(false);
         }
       }
     } catch (e: any) {
@@ -326,6 +334,9 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
       }
 
       setGeeConnected(Boolean(data.connected));
+      if (serviceAccountJson && serviceAccountJson.trim()) {
+        setIsPermanent(true);
+      }
       return {
         success: Boolean(data.connected),
         message:
@@ -370,6 +381,8 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const GOOGLE_CLIENT_ID = "628082413338-o588j9sajmpvd0se4rmahaqaddjlnkpk.apps.googleusercontent.com";
+
   const connectGee = async (project?: string, accountEmail?: string) => {
     setLoading(true);
     setError(null);
@@ -379,6 +392,73 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
     if (chosenProject === "eengine-project") chosenProject = "geoprocessamento-426809";
     const emailCandidate = accountEmail?.trim() || geeAccount || user?.email || "";
 
+    // 1. First priority: Google Identity Services (GIS) Code Flow for PERMANENT refresh_token
+    if (typeof window !== "undefined" && (window as any).google?.accounts?.oauth2) {
+      try {
+        const codePromise = new Promise<{ code: string }>((resolve, reject) => {
+          const client = (window as any).google.accounts.oauth2.initCodeClient({
+            client_id: GOOGLE_CLIENT_ID,
+            scope: "https://www.googleapis.com/auth/earthengine https://www.googleapis.com/auth/userinfo.email openid",
+            ux_mode: "popup",
+            select_account: true,
+            callback: (response: any) => {
+              if (response.code) {
+                resolve({ code: response.code });
+              } else if (response.error) {
+                reject(new Error(response.error_description || response.error));
+              } else {
+                reject(new Error("Nenhum código de autorização retornado pela Google."));
+              }
+            },
+            error_callback: (err: any) => {
+              reject(err);
+            },
+          });
+          client.requestCode();
+        });
+
+        const { code } = await codePromise;
+        let headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (auth?.currentUser) {
+          try {
+            const idToken = await auth.currentUser.getIdToken();
+            if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+          } catch {}
+        }
+
+        const exchangeRes = await apiFetch("/geomoz-api/gee/oauth/exchange-code", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            code,
+            redirect_uri: "postmessage",
+            project: chosenProject,
+          }),
+        });
+
+        if (!exchangeRes.ok) {
+          const errData = await exchangeRes.json().catch(() => ({}));
+          throw new Error(errData.detail || "Falha na troca de autorização permanente com a Google.");
+        }
+
+        const data = await exchangeRes.json();
+        setGeeConnected(Boolean(data.connected));
+        setIsPermanent(Boolean(data.is_permanent || data.has_refresh_token));
+        setHasRefreshToken(Boolean(data.has_refresh_token));
+        setGeeProject(data.project || chosenProject);
+        if (typeof window !== "undefined") {
+          localStorage.setItem(getUserStorageKey("project", uid), data.project || chosenProject);
+          localStorage.setItem(getUserStorageKey("connected", uid), "true");
+          localStorage.setItem("geomoz_gee_project", data.project || chosenProject);
+        }
+        return;
+      } catch (gisErr: any) {
+        console.warn("GIS Code Flow attempt note:", gisErr);
+        // Fall through to Firebase popup if user cancelled GIS or it wasn't supported
+      }
+    }
+
+    // 2. Fallback: Firebase signInWithPopup
     try {
       if (auth) {
         // Race popup with a 25-second timeout so it never hangs indefinitely
@@ -476,6 +556,8 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
       const uid = user?.uid;
 
       setGeeConnected(false);
+      setIsPermanent(false);
+      setHasRefreshToken(false);
       setGeeProject(null);
       setGeeAccount(null);
 
@@ -516,6 +598,8 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         geeConnected,
         geeProject,
         geeAccount,
+        isPermanent,
+        hasRefreshToken,
         loading,
         error,
         connectGee,
@@ -538,6 +622,8 @@ export function useGeeAuth(): GeeAuthContextType {
       geeConnected: false,
       geeProject: null,
       geeAccount: null,
+      isPermanent: false,
+      hasRefreshToken: false,
       loading: false,
       error: null,
       connectGee: async () => {},

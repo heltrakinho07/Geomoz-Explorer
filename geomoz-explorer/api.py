@@ -905,6 +905,11 @@ class OAuthTokenRequest(BaseModel):
     access_token: str
     project: Optional[str] = None
 
+class OAuthCodeRequest(BaseModel):
+    code: str
+    redirect_uri: Optional[str] = "postmessage"
+    project: Optional[str] = None
+
 @app.post("/geomoz-api/gee/oauth-token")
 async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_firebase_auth)):
     import gee_session_store
@@ -919,6 +924,74 @@ async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_fir
         except Exception as e:
             logger.warning("Immediate GEE init attempt during oauth-token save: %s", e)
     return {"message": "Token guardado com sucesso."}
+
+@app.post("/geomoz-api/gee/oauth/exchange-code")
+async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(require_firebase_auth)):
+    import urllib.request
+    import urllib.parse
+    import json
+    import time
+    import gee_session_store
+    from gee_module import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, _init_gee, reset_gee
+
+    token_url = "https://oauth2.googleapis.com/token"
+    post_data = urllib.parse.urlencode({
+        "code": req.code,
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri": req.redirect_uri or "postmessage",
+        "grant_type": "authorization_code",
+    }).encode("utf-8")
+
+    req_obj = urllib.request.Request(token_url, data=post_data, method="POST")
+    req_obj.add_header("Content-Type", "application/x-www-form-urlencoded")
+    try:
+        with urllib.request.urlopen(req_obj) as resp:
+            token_response = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        err_msg = e.read().decode("utf-8")
+        logger.error("OAuth code exchange error for user '%s': %s", uid, err_msg)
+        raise HTTPException(400, f"Falha na troca de código com a Google: {err_msg}")
+    except Exception as e:
+        logger.error("OAuth request error for user '%s': %s", uid, e)
+        raise HTTPException(500, f"Erro de conexão com o servidor de autenticação Google: {e}")
+
+    access_token = token_response.get("access_token")
+    refresh_token = token_response.get("refresh_token")
+    project = req.project or "geoprocessamento-426809"
+
+    user_data = gee_session_store.get_token(uid) or {}
+    user_data["access_token"] = access_token
+    if refresh_token:
+        user_data["refresh_token"] = refresh_token
+    user_data["project"] = project
+    user_data["updated_at"] = time.time()
+    user_data["expires_in"] = token_response.get("expires_in", 3600)
+
+    gee_session_store.set_token(uid, user_data)
+    logger.info("Permanent GEE OAuth credentials stored for user '%s': has_refresh_token=%s", uid, bool(refresh_token or user_data.get("refresh_token")))
+
+    reset_gee()
+    try:
+        _init_gee(uid=uid, project=project, token=access_token)
+        return {
+            "success": True,
+            "connected": True,
+            "is_permanent": bool(refresh_token or user_data.get("refresh_token")),
+            "has_refresh_token": bool(refresh_token or user_data.get("refresh_token")),
+            "project": project,
+            "message": "Google Earth Engine conectado permanentemente para a sua conta!",
+        }
+    except Exception as e:
+        logger.warning("GEE init failed after code exchange for user '%s': %s", uid, e)
+        return {
+            "success": True,
+            "connected": False,
+            "is_permanent": bool(refresh_token or user_data.get("refresh_token")),
+            "has_refresh_token": bool(refresh_token or user_data.get("refresh_token")),
+            "project": project,
+            "message": f"Credenciais guardadas, mas a inicialização falhou: {e}",
+        }
 
 @app.get("/geomoz-api/gee/status")
 async def gee_status_endpoint(request: Request):
@@ -939,7 +1012,9 @@ async def gee_status_endpoint(request: Request):
         "connected": st.get("connected", False),
         "project": st.get("project") or gee_project,
         "auth_type": st.get("auth_type"),
-        "user_connected": bool(gee_token or gee_project or (user_token.get("access_token") if user_token else None)),
+        "is_permanent": st.get("is_permanent", False),
+        "has_refresh_token": st.get("has_refresh_token", False),
+        "user_connected": bool(gee_token or gee_project or (user_token.get("access_token") if user_token else None) or (user_token.get("refresh_token") if user_token else None)),
         "server_connected": st.get("auth_type") in ("service_account", "adc") or has_sa,
         "allow_server_fallback": allow_server,
         "message": st.get("message"),
