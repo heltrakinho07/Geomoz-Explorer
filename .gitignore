@@ -57,6 +57,8 @@ service-account-key.json
 *-service-account*.json
 service_account*.json
 service_account.json
+.gee_sessions.json
+*.gee_sessions.json
 .env.local
 .env.*.local
 __pycache__/

@@ -689,30 +689,34 @@ def gee_configure(req: GEEServiceAccountKeyRequest, request: Request):
     gee_session_store.set_token(uid, user_data)
     logger.info("GEE credentials stored for user '%s': project=%s, account=%s", uid, user_data.get("project"), user_data.get("account"))
 
-    # Reset and test initialization specifically for this user
-    reset_gee()
-    try:
-        _init_gee(uid=uid, project=user_data.get("project"))
-        status = _gee_status(uid=uid, project=user_data.get("project"))
-        status["configured"] = True
-        status["message"] = f"GEE configurado e conectado com sucesso para o utilizador ({user_data.get('project')})!"
-        return status
-    except RuntimeError as exc:
-        logger.warning("GEE reinitialization failed after configuration update for user '%s': %s", uid, exc)
-        return {
-            "configured": True,
-            "connected": False,
-            "project": user_data.get("project"),
-            "account": user_data.get("account"),
-            "message": f"Definições guardadas para a sua conta, mas a ligação GEE falhou: {exc}",
-        }
-    except Exception as exc:
-        logger.error("Unexpected error during GEE configuration for user '%s': %s", uid, exc)
-        return {
-            "configured": True,
-            "connected": False,
-            "message": f"Erro inesperado: {exc}",
-        }
+    # If user provided a service account key or token, test verification
+    has_creds = bool(user_data.get("service_account_key") or user_data.get("access_token"))
+    if has_creds:
+        reset_gee()
+        try:
+            _init_gee(uid=uid, project=user_data.get("project"))
+            status = _gee_status(uid=uid, project=user_data.get("project"))
+            status["configured"] = True
+            status["message"] = f"GEE conectado com sucesso para o seu utilizador ({user_data.get('project')})!"
+            return status
+        except Exception as exc:
+            logger.warning("GEE reinitialization failed after configuration update for user '%s': %s", uid, exc)
+            return {
+                "configured": True,
+                "connected": False,
+                "project": user_data.get("project"),
+                "account": user_data.get("account"),
+                "message": f"Definições guardadas. Verificação de credenciais: {exc}",
+            }
+
+    # If user only specified project/account, save immediately without blocking
+    return {
+        "configured": True,
+        "connected": False,
+        "project": user_data.get("project"),
+        "account": user_data.get("account"),
+        "message": f"Projeto '{user_data.get('project')}' vinculado com sucesso ao seu perfil! Agora basta ligar com a sua Conta Google.",
+    }
 
 
 

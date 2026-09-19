@@ -186,21 +186,21 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
                 logger.warning("Failed to initialize GEE with user '%s' service account: %s", uid, e)
 
         # 3. Try local Earth Engine user credentials (from 'earthengine authenticate')
-        for proj_candidate in [effective_project, "geoprocessamento-426809"]:
-            if not proj_candidate:
-                continue
+        home = os.path.expanduser("~")
+        has_local_creds = os.path.exists(os.path.join(home, ".config", "earthengine", "credentials"))
+        if has_local_creds:
             try:
                 import ee
-                ee.Initialize(project=proj_candidate)
+                ee.Initialize(project=effective_project)
                 _gee_initialized = True
                 _gee_error = None
-                _last_initialized_project = proj_candidate
+                _last_initialized_project = effective_project
                 _last_initialized_token = None
                 _last_initialized_uid = uid
-                logger.info("GEE initialized successfully with local Earth Engine user credentials for project: %s", proj_candidate)
+                logger.info("GEE initialized successfully with local Earth Engine user credentials for project: %s", effective_project)
                 return
             except Exception as e:
-                logger.debug("Local EE user credentials init failed for project '%s': %s", proj_candidate, e)
+                logger.debug("Local EE user credentials init failed for project '%s': %s", effective_project, e)
 
         # 4. Fallback to server credentials if allowed and user has not configured custom credentials
         allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
@@ -230,32 +230,31 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
                 logger.warning("Failed to initialize GEE with server service account file '%s': %s", sa_file, e)
 
         if allow_server and sa_key:
-            for proj_candidate in [effective_project, "geoprocessamento-426809"]:
-                try:
-                    import ee
-                    import json
-                    from google.oauth2 import service_account
-                    key_dict = json.loads(sa_key) if isinstance(sa_key, str) else sa_key
-                    scopes = getattr(ee.oauth, 'SCOPES', ['https://www.googleapis.com/auth/earthengine'])
-                    creds = service_account.Credentials.from_service_account_info(
-                        key_dict,
-                        scopes=scopes
-                    )
-                    sa_project = proj_candidate or key_dict.get("project_id")
-                    ee.Initialize(credentials=creds, project=sa_project)
-                    _gee_initialized = True
-                    _gee_error = None
-                    _last_initialized_project = sa_project
-                    _last_initialized_token = None
-                    _last_initialized_uid = uid
-                    logger.info("GEE initialized successfully with server Service Account for project: %s", sa_project)
-                    return
-                except Exception as e:
-                    logger.warning("Failed to initialize GEE with server service account for project '%s': %s", proj_candidate, e)
+            try:
+                import ee
+                import json
+                from google.oauth2 import service_account
+                key_dict = json.loads(sa_key) if isinstance(sa_key, str) else sa_key
+                scopes = getattr(ee.oauth, 'SCOPES', ['https://www.googleapis.com/auth/earthengine'])
+                creds = service_account.Credentials.from_service_account_info(
+                    key_dict,
+                    scopes=scopes
+                )
+                sa_project = effective_project or key_dict.get("project_id")
+                ee.Initialize(credentials=creds, project=sa_project)
+                _gee_initialized = True
+                _gee_error = None
+                _last_initialized_project = sa_project
+                _last_initialized_token = None
+                _last_initialized_uid = uid
+                logger.info("GEE initialized successfully with server Service Account for project: %s", sa_project)
+                return
+            except Exception as e:
+                logger.warning("Failed to initialize GEE with server service account for project '%s': %s", effective_project, e)
 
-        # 5. Fallback to Google Application Default Credentials
+        # 5. Fallback to Google Application Default Credentials (only if explicitly configured in environment)
         global _adc_checked, _adc_creds, _adc_project
-        if allow_server:
+        if allow_server and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
             if not _adc_checked:
                 _adc_checked = True
                 try:
@@ -266,20 +265,18 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
                     logger.info("Application Default Credentials not available: %s", adc_err)
 
             if _adc_creds is not None:
-                import ee
-                for proj_candidate in [effective_project, _adc_project, None]:
-                    try:
-                        target_proj = proj_candidate or effective_project
-                        ee.Initialize(credentials=_adc_creds, project=target_proj)
-                        _gee_initialized = True
-                        _gee_error = None
-                        _last_initialized_project = target_proj
-                        _last_initialized_token = None
-                        _last_initialized_uid = uid
-                        logger.info("GEE initialized successfully with ADC for project: %s", target_proj)
-                        return
-                    except Exception as proj_err:
-                        logger.warning("ADC init attempt for project '%s': %s", proj_candidate, proj_err)
+                try:
+                    import ee
+                    ee.Initialize(credentials=_adc_creds, project=effective_project)
+                    _gee_initialized = True
+                    _gee_error = None
+                    _last_initialized_project = effective_project
+                    _last_initialized_token = None
+                    _last_initialized_uid = uid
+                    logger.info("GEE initialized successfully with ADC for project: %s", effective_project)
+                    return
+                except Exception as proj_err:
+                    logger.warning("ADC init attempt for project '%s': %s", effective_project, proj_err)
 
         _gee_error = (
             f"O utilizador não possui credenciais ativas do Earth Engine para o projeto '{effective_project}'. "
