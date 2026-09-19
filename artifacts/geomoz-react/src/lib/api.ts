@@ -35,8 +35,26 @@ export async function apiFetch(inputUrlOrPath: string, options?: RequestInit): P
   }
   if (typeof window !== "undefined") {
     try {
-      const geeProject = localStorage.getItem("geomoz_gee_project");
-      const geeToken = localStorage.getItem("geomoz_gee_oauth_token");
+      const uid = auth?.currentUser?.uid;
+      const userProjectKey = uid && uid !== "guest_user" ? `geomoz_gee_user_${uid}_project` : null;
+      const userTokenKey = uid && uid !== "guest_user" ? `geomoz_gee_user_${uid}_token` : null;
+
+      let geeProject = (userProjectKey ? localStorage.getItem(userProjectKey) : null)
+        || localStorage.getItem("geomoz_gee_project")
+        || "geoprocessamento-426809";
+
+      // Sanitize old dummy project
+      if (geeProject === "eengine-project") {
+        geeProject = "geoprocessamento-426809";
+        try {
+          if (userProjectKey) localStorage.setItem(userProjectKey, geeProject);
+          localStorage.setItem("geomoz_gee_project", geeProject);
+        } catch {}
+      }
+
+      const geeToken = (userTokenKey ? localStorage.getItem(userTokenKey) : null)
+        || localStorage.getItem("geomoz_gee_oauth_token");
+
       if (geeProject && !headers.has("X-GEE-Project")) {
         headers.set("X-GEE-Project", geeProject);
       }

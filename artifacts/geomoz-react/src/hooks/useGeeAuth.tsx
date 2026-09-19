@@ -6,7 +6,12 @@ import React, {
   useCallback,
   ReactNode,
 } from "react";
-import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import {
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  GoogleAuthProvider,
+} from "firebase/auth";
 import { auth, db } from "../lib/firebase";
 import { doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { useAuth } from "./useAuth";
@@ -15,8 +20,7 @@ import { apiFetch } from "@/lib/api";
 const geeProvider = new GoogleAuthProvider();
 geeProvider.addScope("https://www.googleapis.com/auth/earthengine");
 geeProvider.setCustomParameters({
-  prompt: "consent",
-  access_type: "offline",
+  prompt: "select_account",
 });
 
 // Helper for per-user localStorage isolation
@@ -32,6 +36,7 @@ export interface GeeAuthContextType {
   loading: boolean;
   error: string | null;
   connectGee: (project?: string, accountEmail?: string) => Promise<void>;
+  connectGeeWithRedirect: (project?: string, accountEmail?: string) => Promise<void>;
   setProjectOnly: (project: string, accountName?: string) => Promise<void>;
   saveCredentials: (
     project: string,
@@ -91,6 +96,17 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      // Sanitize old dummy project
+      if (project === "eengine-project" || !project) {
+        project = "geoprocessamento-426809";
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(getUserStorageKey("project", uid), project);
+            localStorage.setItem("geomoz_gee_project", project);
+          } catch {}
+        }
+      }
+
       setGeeProject(project);
       setGeeAccount(account);
       setGeeConnected(connected);
@@ -126,6 +142,71 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
+  // Handle OAuth redirect return on component mount
+  useEffect(() => {
+    if (!auth) return;
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (result && result.user) {
+          try {
+            const credential = GoogleAuthProvider.credentialFromResult(result);
+            const accessToken = credential?.accessToken;
+            const uid = result.user.uid;
+            const email = result.user.email || geeAccount || "";
+            const defaultProject = geeProject || "geoprocessamento-426809";
+
+            if (accessToken) {
+              if (typeof window !== "undefined") {
+                localStorage.setItem(getUserStorageKey("token", uid), accessToken);
+                localStorage.setItem(getUserStorageKey("project", uid), defaultProject);
+                localStorage.setItem(getUserStorageKey("account", uid), email);
+                localStorage.setItem(getUserStorageKey("connected", uid), "true");
+                localStorage.setItem("geomoz_gee_oauth_token", accessToken);
+                localStorage.setItem("geomoz_gee_project", defaultProject);
+              }
+
+              setGeeProject(defaultProject);
+              setGeeAccount(email);
+              setGeeConnected(true);
+
+              let headers: Record<string, string> = { "Content-Type": "application/json" };
+              const idToken = await result.user.getIdToken(false).catch(() => null);
+              if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+
+              await apiFetch("/geomoz-api/gee/oauth-token", {
+                method: "POST",
+                headers,
+                body: JSON.stringify({
+                  access_token: accessToken,
+                  project: defaultProject,
+                }),
+              }).catch(() => null);
+
+              if (db && uid !== "guest_user") {
+                const docRef = doc(db, "users", uid, "settings", "gee");
+                await setDoc(
+                  docRef,
+                  {
+                    project: defaultProject,
+                    account: email,
+                    access_token: accessToken,
+                    connected: true,
+                    connectedAt: new Date().toISOString(),
+                  },
+                  { merge: true }
+                ).catch(() => null);
+              }
+            }
+          } catch (e) {
+            console.warn("GEE redirect result processing note:", e);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn("GEE getRedirectResult error:", err);
+      });
+  }, [user, geeAccount, geeProject]);
+
   // When user logs in, switches, or logs out, reload that user's specific status
   useEffect(() => {
     fetchStatus();
@@ -140,14 +221,18 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const uid = user?.uid;
-      const chosenProject = project.trim() || geeProject || "";
+      let chosenProject = project.trim() || geeProject || "geoprocessamento-426809";
+      if (chosenProject === "eengine-project") {
+        chosenProject = "geoprocessamento-426809";
+      }
       const chosenAccount = account?.trim() || geeAccount || (user?.email || "");
 
-      // 1. Save to user-scoped localStorage
+      // 1. Save to user-scoped and global localStorage
       if (typeof window !== "undefined") {
         localStorage.setItem(getUserStorageKey("project", uid), chosenProject);
         localStorage.setItem(getUserStorageKey("account", uid), chosenAccount);
         localStorage.setItem(getUserStorageKey("connected", uid), "true");
+        localStorage.setItem("geomoz_gee_project", chosenProject);
       }
 
       setGeeProject(chosenProject);
@@ -221,26 +306,52 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
     await saveCredentials(project, accountName);
   };
 
+  const connectGeeWithRedirect = async (project?: string, accountEmail?: string) => {
+    if (!auth) return;
+    setLoading(true);
+    setError(null);
+    const uid = user?.uid;
+    let chosenProject = project?.trim() || geeProject || "geoprocessamento-426809";
+    if (chosenProject === "eengine-project") chosenProject = "geoprocessamento-426809";
+    const emailCandidate = accountEmail?.trim() || geeAccount || user?.email || "";
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem(getUserStorageKey("project", uid), chosenProject);
+      if (emailCandidate) localStorage.setItem(getUserStorageKey("account", uid), emailCandidate);
+      localStorage.setItem("geomoz_gee_project", chosenProject);
+    }
+
+    try {
+      await signInWithRedirect(auth, geeProvider);
+    } catch (err: any) {
+      setLoading(false);
+      const msg = err.message || "Erro ao redirecionar para a Google.";
+      setError(msg);
+      throw new Error(msg);
+    }
+  };
+
   const connectGee = async (project?: string, accountEmail?: string) => {
     setLoading(true);
     setError(null);
 
     const uid = user?.uid;
-    const chosenProject = project?.trim() || geeProject || "";
+    let chosenProject = project?.trim() || geeProject || "geoprocessamento-426809";
+    if (chosenProject === "eengine-project") chosenProject = "geoprocessamento-426809";
     const emailCandidate = accountEmail?.trim() || geeAccount || user?.email || "";
 
     try {
       if (auth) {
-        // Race popup with a 60-second timeout to prevent infinite spinning
+        // Race popup with a 25-second timeout so it never hangs indefinitely
         const popupPromise = signInWithPopup(auth, geeProvider);
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => {
             const timeoutErr: any = new Error(
-              "A janela de início de sessão demorou a responder ou ficou oculta em segundo plano. Verifique se o seu navegador não bloqueou pop-ups."
+              "A janela de início de sessão da Google não abriu ou foi fechada. Se o pop-up estiver bloqueado pelo navegador, use o botão 'Autenticar por Redirecionamento'."
             );
             timeoutErr.code = "auth/popup-timeout";
             reject(timeoutErr);
-          }, 60000)
+          }, 25000)
         );
         const result: any = await Promise.race([popupPromise, timeoutPromise]);
         const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -250,13 +361,15 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         if (accessToken) {
           if (typeof window !== "undefined") {
             localStorage.setItem(getUserStorageKey("token", uid), accessToken);
-            if (chosenProject) localStorage.setItem(getUserStorageKey("project", uid), chosenProject);
-            if (email) localStorage.setItem(getUserStorageKey("account", uid), email);
+            localStorage.setItem(getUserStorageKey("project", uid), chosenProject);
+            localStorage.setItem(getUserStorageKey("account", uid), email);
             localStorage.setItem(getUserStorageKey("connected", uid), "true");
+            localStorage.setItem("geomoz_gee_oauth_token", accessToken);
+            localStorage.setItem("geomoz_gee_project", chosenProject);
           }
 
-          setGeeProject(chosenProject || null);
-          setGeeAccount(email || null);
+          setGeeProject(chosenProject);
+          setGeeAccount(email);
           setGeeConnected(true);
 
           let headers: Record<string, string> = {
@@ -306,7 +419,7 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
       console.warn("Google popup result note:", err);
       let userMsg = err.message || "Erro na autenticação Google.";
       if (err.code === "auth/popup-blocked") {
-        userMsg = "O navegador bloqueou a janela pop-up de início de sessão. Por favor, permita pop-ups para este site na barra de endereços.";
+        userMsg = "O navegador bloqueou a janela pop-up. Clique em 'Autenticar por Redirecionamento' abaixo para entrar sem pop-ups.";
       } else if (err.code === "auth/popup-closed-by-user") {
         userMsg = "A janela de autenticação foi fechada antes de concluir.";
       } else if (err.code === "auth/popup-timeout") {
@@ -333,6 +446,7 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem(getUserStorageKey("project", uid));
         localStorage.removeItem(getUserStorageKey("account", uid));
         localStorage.removeItem(getUserStorageKey("token", uid));
+        localStorage.removeItem("geomoz_gee_oauth_token");
       }
 
       if (user && db && user.uid !== "guest_user") {
@@ -368,6 +482,7 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         loading,
         error,
         connectGee,
+        connectGeeWithRedirect,
         saveCredentials,
         setProjectOnly,
         disconnectGee,
@@ -389,6 +504,7 @@ export function useGeeAuth(): GeeAuthContextType {
       loading: false,
       error: null,
       connectGee: async () => {},
+      connectGeeWithRedirect: async () => {},
       setProjectOnly: async () => {},
       saveCredentials: async () => ({ success: false, message: "" }),
       disconnectGee: async () => {},

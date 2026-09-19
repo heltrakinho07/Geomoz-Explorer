@@ -2,6 +2,9 @@ import { useState, useEffect, createContext, useContext, ReactNode } from "react
 import {
   User,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  GoogleAuthProvider,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
@@ -9,7 +12,9 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged,
 } from "firebase/auth";
-import { auth, googleProvider } from "../lib/firebase";
+import { auth, googleProvider, db } from "../lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
+import { apiFetch } from "../lib/api";
 
 export interface AuthContextType {
   user: User | null;
@@ -19,6 +24,7 @@ export interface AuthContextType {
   continueAsGuest: () => void;
   signIn: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  signInWithGoogleRedirect: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   registerWithEmail: (email: string, password: string, displayName?: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -133,14 +139,126 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
   };
 
+  useEffect(() => {
+    if (!auth) return;
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (result && result.user) {
+          try {
+            const credential = GoogleAuthProvider.credentialFromResult(result);
+            const accessToken = credential?.accessToken;
+            const uid = result.user.uid;
+            const email = result.user.email || "";
+            const defaultProject = "geoprocessamento-426809";
+
+            if (accessToken && uid) {
+              if (typeof window !== "undefined") {
+                localStorage.setItem(`geomoz_gee_user_${uid}_token`, accessToken);
+                localStorage.setItem(`geomoz_gee_user_${uid}_project`, defaultProject);
+                localStorage.setItem(`geomoz_gee_user_${uid}_account`, email);
+                localStorage.setItem(`geomoz_gee_user_${uid}_connected`, "true");
+                localStorage.setItem("geomoz_gee_oauth_token", accessToken);
+                localStorage.setItem("geomoz_gee_project", defaultProject);
+              }
+
+              result.user.getIdToken(false).then((idToken) => {
+                const headers: Record<string, string> = { "Content-Type": "application/json" };
+                if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+                apiFetch("/geomoz-api/gee/oauth-token", {
+                  method: "POST",
+                  headers,
+                  body: JSON.stringify({
+                    access_token: accessToken,
+                    project: defaultProject,
+                  }),
+                }).catch(() => null);
+              }).catch(() => null);
+
+              if (db && uid !== "guest_user") {
+                const docRef = doc(db, "users", uid, "settings", "gee");
+                setDoc(
+                  docRef,
+                  {
+                    project: defaultProject,
+                    account: email,
+                    access_token: accessToken,
+                    connected: true,
+                    connectedAt: new Date().toISOString(),
+                  },
+                  { merge: true }
+                ).catch(() => null);
+              }
+            }
+          } catch (e) {
+            console.warn("Redirect credential capture notice:", e);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn("getRedirectResult notice:", err);
+      });
+  }, []);
+
   const signInWithGoogle = async () => {
     if (!auth) return;
     setError(null);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
       try {
         localStorage.removeItem(GUEST_STORAGE_KEY);
       } catch {}
+
+      // Automatically capture GEE access token from the Google login!
+      try {
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        const accessToken = credential?.accessToken;
+        const uid = result.user?.uid;
+        const email = result.user?.email || "";
+        const defaultProject = "geoprocessamento-426809";
+
+        if (accessToken && uid) {
+          if (typeof window !== "undefined") {
+            localStorage.setItem(`geomoz_gee_user_${uid}_token`, accessToken);
+            localStorage.setItem(`geomoz_gee_user_${uid}_project`, defaultProject);
+            localStorage.setItem(`geomoz_gee_user_${uid}_account`, email);
+            localStorage.setItem(`geomoz_gee_user_${uid}_connected`, "true");
+            localStorage.setItem("geomoz_gee_oauth_token", accessToken);
+            localStorage.setItem("geomoz_gee_project", defaultProject);
+          }
+
+          // Register with backend in background
+          result.user.getIdToken(false).then((idToken) => {
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+            apiFetch("/geomoz-api/gee/oauth-token", {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                access_token: accessToken,
+                project: defaultProject,
+              }),
+            }).catch(() => null);
+          }).catch(() => null);
+
+          // Persist in Firestore
+          if (db && uid !== "guest_user") {
+            const docRef = doc(db, "users", uid, "settings", "gee");
+            setDoc(
+              docRef,
+              {
+                project: defaultProject,
+                account: email,
+                access_token: accessToken,
+                connected: true,
+                connectedAt: new Date().toISOString(),
+              },
+              { merge: true }
+            ).catch(() => null);
+          }
+        }
+      } catch (tokenErr) {
+        console.warn("Auto-capturing GEE token during Google login notice:", tokenErr);
+      }
     } catch (err: any) {
       console.error("Error signing in with Google", err);
       const msg = formatAuthError(err);
@@ -149,6 +267,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (enriched as any).code = err?.code || "";
       (enriched as any).originalMessage = err?.message || "";
       throw enriched;
+    }
+  };
+
+  const signInWithGoogleRedirect = async () => {
+    if (!auth) return;
+    setError(null);
+    try {
+      await signInWithRedirect(auth, googleProvider);
+    } catch (err: any) {
+      console.error("Error signing in with Google Redirect", err);
+      const msg = formatAuthError(err);
+      setError(msg);
+      throw new Error(msg);
     }
   };
 
@@ -241,6 +372,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         continueAsGuest,
         signIn: signInWithGoogle,
         signInWithGoogle,
+        signInWithGoogleRedirect,
         signInWithEmail,
         registerWithEmail,
         resetPassword,
