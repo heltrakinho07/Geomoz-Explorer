@@ -19,17 +19,25 @@ geeProvider.setCustomParameters({
   access_type: "offline",
 });
 
-const LOCAL_STORAGE_GEE_PROJECT = "geomoz_gee_project";
-const LOCAL_STORAGE_GEE_CONNECTED = "geomoz_gee_connected";
-const LOCAL_STORAGE_GEE_TOKEN = "geomoz_gee_oauth_token";
+// Helper for per-user localStorage isolation
+const getUserStorageKey = (key: string, uid?: string | null) => {
+  const scope = uid && uid !== "guest_user" ? `user_${uid}` : "guest";
+  return `geomoz_gee_${scope}_${key}`;
+};
 
 export interface GeeAuthContextType {
   geeConnected: boolean;
   geeProject: string | null;
+  geeAccount: string | null;
   loading: boolean;
   error: string | null;
-  connectGee: (project?: string) => Promise<void>;
-  setProjectOnly: (project: string) => Promise<void>;
+  connectGee: (project?: string, accountEmail?: string) => Promise<void>;
+  setProjectOnly: (project: string, accountName?: string) => Promise<void>;
+  saveCredentials: (
+    project: string,
+    account?: string,
+    serviceAccountJson?: string
+  ) => Promise<{ success: boolean; message: string }>;
   disconnectGee: () => Promise<void>;
   refreshStatus: () => Promise<void>;
 }
@@ -39,98 +47,121 @@ const GeeAuthContext = createContext<GeeAuthContextType | undefined>(undefined);
 export function GeeAuthProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
 
-  const [geeConnected, setGeeConnected] = useState<boolean>(() => {
-    try {
-      return (
-        localStorage.getItem(LOCAL_STORAGE_GEE_CONNECTED) === "true" ||
-        Boolean(localStorage.getItem(LOCAL_STORAGE_GEE_PROJECT))
-      );
-    } catch {
-      return false;
-    }
-  });
-
-  const [geeProject, setGeeProject] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem(LOCAL_STORAGE_GEE_PROJECT) || null;
-    } catch {
-      return null;
-    }
-  });
-
+  const [geeConnected, setGeeConnected] = useState<boolean>(false);
+  const [geeProject, setGeeProject] = useState<string | null>(null);
+  const [geeAccount, setGeeAccount] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
-      const localProject = localStorage.getItem(LOCAL_STORAGE_GEE_PROJECT);
-      const localConnected = localStorage.getItem(LOCAL_STORAGE_GEE_CONNECTED) === "true";
+      const uid = user?.uid;
+      let project: string | null = null;
+      let account: string | null = null;
+      let token: string | null = null;
+      let connected = false;
 
-      if (localConnected && localProject) {
-        setGeeConnected(true);
-        setGeeProject(localProject);
-      }
-
-      // Check backend status in background
-      let headers: Record<string, string> = {};
-      if (user) {
-        try {
-          const idToken = await user.getIdToken();
-          headers["Authorization"] = `Bearer ${idToken}`;
-        } catch {}
-      }
-
-      const res = await apiFetch("/geomoz-api/gee/status", { headers }).catch(() => null);
-      if (res && res.ok) {
-        const data = await res.json().catch(() => ({}));
-        if (data.connected) {
-          setGeeConnected(true);
-          const proj = data.project || localProject || "geoprocessamento-426809";
-          setGeeProject(proj);
-          localStorage.setItem(LOCAL_STORAGE_GEE_PROJECT, proj);
-          localStorage.setItem(LOCAL_STORAGE_GEE_CONNECTED, "true");
-        }
-      }
-
-      // Check Firestore if available
-      if (user && db) {
+      // 1. If registered user, first check their personal Firestore document
+      if (user && db && user.uid !== "guest_user") {
         try {
           const docRef = doc(db, "users", user.uid, "settings", "gee");
           const snap = await getDoc(docRef);
           if (snap.exists()) {
             const saved = snap.data();
-            if (saved?.project) {
-              setGeeProject(saved.project);
-              setGeeConnected(true);
-              localStorage.setItem(LOCAL_STORAGE_GEE_PROJECT, saved.project);
-              localStorage.setItem(LOCAL_STORAGE_GEE_CONNECTED, "true");
-            }
-            if (saved?.access_token) {
-              localStorage.setItem(LOCAL_STORAGE_GEE_TOKEN, saved.access_token);
-            }
+            project = saved?.project || null;
+            account = saved?.account || user.email || null;
+            token = saved?.access_token || null;
+            connected = Boolean(saved?.connected || token || saved?.service_account_key || project);
           }
-        } catch {}
+        } catch (fsErr) {
+          console.warn("Firestore GEE load notice:", fsErr);
+        }
+      }
+
+      // 2. Fallback to per-user localStorage cache if Firestore didn't have it
+      if (!project && typeof window !== "undefined") {
+        project = localStorage.getItem(getUserStorageKey("project", uid));
+        account = localStorage.getItem(getUserStorageKey("account", uid));
+        token = localStorage.getItem(getUserStorageKey("token", uid));
+        const connVal = localStorage.getItem(getUserStorageKey("connected", uid));
+        if (connVal === "false") {
+          connected = false;
+        } else if (connVal === "true") {
+          connected = true;
+        }
+      }
+
+      setGeeProject(project);
+      setGeeAccount(account);
+      setGeeConnected(connected);
+
+      // 3. Verify real backend status for this user
+      if (project || token) {
+        let headers: Record<string, string> = {};
+        if (project) headers["X-GEE-Project"] = project;
+        if (token) headers["X-GEE-Token"] = token;
+        if (user) {
+          try {
+            const idToken = await user.getIdToken();
+            headers["Authorization"] = `Bearer ${idToken}`;
+          } catch {}
+        }
+
+        const res = await apiFetch("/geomoz-api/gee/status", { headers }).catch(() => null);
+        if (res && res.ok) {
+          const data = await res.json().catch(() => ({}));
+          if (data.connected !== undefined) {
+            setGeeConnected(Boolean(data.connected));
+          }
+          if (data.project) {
+            setGeeProject(data.project);
+          }
+          if (data.account) {
+            setGeeAccount(data.account);
+          }
+        }
       }
     } catch (e: any) {
       console.warn("GEE status fetch notice:", e);
     }
   }, [user]);
 
+  // When user logs in, switches, or logs out, reload that user's specific status
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
 
-  const setProjectOnly = async (project: string) => {
-    const chosenProject = project.trim() || "geoprocessamento-426809";
-    setGeeConnected(true);
-    setGeeProject(chosenProject);
+  const saveCredentials = async (
+    project: string,
+    account?: string,
+    serviceAccountJson?: string
+  ): Promise<{ success: boolean; message: string }> => {
+    setLoading(true);
+    setError(null);
     try {
-      localStorage.setItem(LOCAL_STORAGE_GEE_PROJECT, chosenProject);
-      localStorage.setItem(LOCAL_STORAGE_GEE_CONNECTED, "true");
-    } catch {}
+      const uid = user?.uid;
+      const chosenProject = project.trim() || geeProject || "";
+      const chosenAccount = account?.trim() || geeAccount || (user?.email || "");
 
-    // Register with backend in background
-    try {
+      // 1. Save to user-scoped localStorage
+      if (typeof window !== "undefined") {
+        localStorage.setItem(getUserStorageKey("project", uid), chosenProject);
+        localStorage.setItem(getUserStorageKey("account", uid), chosenAccount);
+        localStorage.setItem(getUserStorageKey("connected", uid), "true");
+      }
+
+      setGeeProject(chosenProject);
+      setGeeAccount(chosenAccount);
+
+      // 2. Configure on backend for this specific user
+      const payload: any = {
+        project_id: chosenProject,
+        account: chosenAccount,
+      };
+      if (serviceAccountJson && serviceAccountJson.trim()) {
+        payload.service_account_key = serviceAccountJson.trim();
+      }
+
       let headers: Record<string, string> = { "Content-Type": "application/json" };
       if (auth?.currentUser) {
         try {
@@ -138,50 +169,80 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
           headers["Authorization"] = `Bearer ${idToken}`;
         } catch {}
       }
-      const token = typeof window !== "undefined" ? localStorage.getItem(LOCAL_STORAGE_GEE_TOKEN) : null;
-      await apiFetch("/geomoz-api/gee/oauth-token", {
+
+      const res = await apiFetch("/geomoz-api/gee/configure", {
         method: "POST",
         headers,
-        body: JSON.stringify({
-          access_token: token || "",
-          project: chosenProject,
-        }),
-      }).catch(() => null);
-    } catch {}
+        body: JSON.stringify(payload),
+      });
 
-    // Persist to Firestore in background
-    if (auth?.currentUser && db) {
-      try {
-        const docRef = doc(db, "users", auth.currentUser.uid, "settings", "gee");
-        await setDoc(docRef, { project: chosenProject, updatedAt: new Date().toISOString() }, { merge: true });
-      } catch {}
+      const data = await res.json().catch(() => ({}));
+
+      // 3. Persist to Firestore under this user's profile
+      if (auth?.currentUser && db && auth.currentUser.uid !== "guest_user") {
+        try {
+          const docRef = doc(db, "users", auth.currentUser.uid, "settings", "gee");
+          const fsData: any = {
+            project: chosenProject,
+            account: chosenAccount,
+            connected: Boolean(data.connected),
+            updatedAt: new Date().toISOString(),
+          };
+          if (serviceAccountJson && serviceAccountJson.trim()) {
+            fsData.service_account_key = serviceAccountJson.trim();
+          }
+          await setDoc(docRef, fsData, { merge: true });
+        } catch (fsErr) {
+          console.warn("Firestore GEE persist warning:", fsErr);
+        }
+      }
+
+      setGeeConnected(Boolean(data.connected));
+      return {
+        success: Boolean(data.connected),
+        message:
+          data.message ||
+          (data.connected ? "GEE configurado e conectado com sucesso!" : "Configuração guardada."),
+      };
+    } catch (err: any) {
+      const msg = err.message || "Erro ao guardar definições.";
+      setError(msg);
+      return { success: false, message: msg };
+    } finally {
+      setLoading(false);
     }
   };
 
-  const connectGee = async (project?: string) => {
+  const setProjectOnly = async (project: string, accountName?: string) => {
+    await saveCredentials(project, accountName);
+  };
+
+  const connectGee = async (project?: string, accountEmail?: string) => {
     setLoading(true);
     setError(null);
 
-    const chosenProject = project?.trim() || geeProject || "geoprocessamento-426809";
-
-    // 1. Immediately enable locally so the system unlocks without any freeze
-    setGeeConnected(true);
-    setGeeProject(chosenProject);
-    try {
-      localStorage.setItem(LOCAL_STORAGE_GEE_PROJECT, chosenProject);
-      localStorage.setItem(LOCAL_STORAGE_GEE_CONNECTED, "true");
-    } catch {}
+    const uid = user?.uid;
+    const chosenProject = project?.trim() || geeProject || "";
+    const emailCandidate = accountEmail?.trim() || geeAccount || user?.email || "";
 
     try {
       if (auth) {
         const result = await signInWithPopup(auth, geeProvider);
         const credential = GoogleAuthProvider.credentialFromResult(result);
         const accessToken = credential?.accessToken;
+        const email = result.user?.email || emailCandidate;
 
         if (accessToken) {
-          try {
-            localStorage.setItem(LOCAL_STORAGE_GEE_TOKEN, accessToken);
-          } catch {}
+          if (typeof window !== "undefined") {
+            localStorage.setItem(getUserStorageKey("token", uid), accessToken);
+            if (chosenProject) localStorage.setItem(getUserStorageKey("project", uid), chosenProject);
+            if (email) localStorage.setItem(getUserStorageKey("account", uid), email);
+            localStorage.setItem(getUserStorageKey("connected", uid), "true");
+          }
+
+          setGeeProject(chosenProject || null);
+          setGeeAccount(email || null);
+          setGeeConnected(true);
 
           let headers: Record<string, string> = {
             "Content-Type": "application/json",
@@ -193,7 +254,7 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
             } catch {}
           }
 
-          // Register with backend in background
+          // Register with backend for this user
           await apiFetch("/geomoz-api/gee/oauth-token", {
             method: "POST",
             headers,
@@ -205,15 +266,17 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
             console.warn("Background OAuth registration note:", err);
           });
 
-          // Persist to Firestore in background
-          if (auth.currentUser && db) {
+          // Persist to Firestore for this user
+          if (auth.currentUser && db && auth.currentUser.uid !== "guest_user") {
             try {
               const docRef = doc(db, "users", auth.currentUser.uid, "settings", "gee");
               await setDoc(
                 docRef,
                 {
                   project: chosenProject,
+                  account: email,
                   access_token: accessToken,
+                  connected: true,
                   connectedAt: new Date().toISOString(),
                 },
                 { merge: true }
@@ -226,11 +289,8 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (err: any) {
       console.warn("Google popup result note:", err);
-      // If user closed popup but provided a project, keep the project enabled
-      if (err.code === "auth/popup-closed-by-user") {
-        console.info("Popup closed by user. Project configuration retained locally:", chosenProject);
-      } else {
-        setError(err.message || "Erro de conexão ao Google Earth Engine.");
+      if (err.code !== "auth/popup-closed-by-user") {
+        setError(err.message || "Erro na autenticação Google.");
       }
     } finally {
       setLoading(false);
@@ -240,23 +300,36 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
   const disconnectGee = async () => {
     try {
       setLoading(true);
+      const uid = user?.uid;
+
       setGeeConnected(false);
       setGeeProject(null);
-      try {
-        localStorage.removeItem(LOCAL_STORAGE_GEE_PROJECT);
-        localStorage.removeItem(LOCAL_STORAGE_GEE_CONNECTED);
-        localStorage.removeItem(LOCAL_STORAGE_GEE_TOKEN);
-      } catch {}
+      setGeeAccount(null);
 
-      if (user && db) {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(getUserStorageKey("connected", uid), "false");
+        localStorage.removeItem(getUserStorageKey("project", uid));
+        localStorage.removeItem(getUserStorageKey("account", uid));
+        localStorage.removeItem(getUserStorageKey("token", uid));
+      }
+
+      if (user && db && user.uid !== "guest_user") {
         try {
           await deleteDoc(doc(db, "users", user.uid, "settings", "gee"));
         } catch {}
       }
 
+      let headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (auth?.currentUser) {
+        try {
+          const idToken = await auth.currentUser.getIdToken();
+          headers["Authorization"] = `Bearer ${idToken}`;
+        } catch {}
+      }
+
       await apiFetch("/geomoz-api/gee/oauth-token", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ access_token: "", project: null }),
       }).catch(() => null);
     } finally {
@@ -269,9 +342,11 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
       value={{
         geeConnected,
         geeProject,
+        geeAccount,
         loading,
         error,
         connectGee,
+        saveCredentials,
         setProjectOnly,
         disconnectGee,
         refreshStatus: fetchStatus,
@@ -285,21 +360,15 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
 export function useGeeAuth(): GeeAuthContextType {
   const context = useContext(GeeAuthContext);
   if (!context) {
-    // Graceful fallback for components outside provider
-    const isConn =
-      typeof window !== "undefined" &&
-      (localStorage.getItem(LOCAL_STORAGE_GEE_CONNECTED) === "true" ||
-        Boolean(localStorage.getItem(LOCAL_STORAGE_GEE_PROJECT)));
-    const proj =
-      typeof window !== "undefined" ? localStorage.getItem(LOCAL_STORAGE_GEE_PROJECT) : null;
-
     return {
-      geeConnected: isConn,
-      geeProject: proj,
+      geeConnected: false,
+      geeProject: null,
+      geeAccount: null,
       loading: false,
       error: null,
       connectGee: async () => {},
       setProjectOnly: async () => {},
+      saveCredentials: async () => ({ success: false, message: "" }),
       disconnectGee: async () => {},
       refreshStatus: async () => {},
     };

@@ -19,9 +19,11 @@ import {
   ChevronRight,
   ExternalLink,
   ShieldCheck,
-  RefreshCw,
   Clock,
   ArrowRight,
+  KeyRound,
+  Check,
+  X,
 } from "lucide-react";
 import { MapContainer, TileLayer, ScaleControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -78,6 +80,29 @@ const QUICK_WORKFLOWS: QuickWorkflow[] = [
       { code: "elevation", name: "Hipsometria Altimétrica", sensor: "Copernicus DEM 30m" },
     ],
   },
+  {
+    id: "mineral_exploration",
+    title: "Prospeção Mineral & Alteração Hidrotermal",
+    description: "Mapeia anomalias de argilas, óxidos de ferro e gossan para targeting de ouro e metais de base.",
+    icon: <Mountain size={18} className="text-amber-600" />,
+    badge: "Geologia · Sentinel-2 / Landsat",
+    indices: [
+      { code: "clay", name: "Argilas e Hidroxilos (Al-OH)", sensor: "Sentinel-2 MSI" },
+      { code: "fe_oxide", name: "Óxidos de Ferro (Hematite/Goethite)", sensor: "Sentinel-2 MSI" },
+      { code: "gossan", name: "Gossan / Chapéu de Ferro", sensor: "Sentinel-2 MSI" },
+    ],
+  },
+  {
+    id: "alphaearth_foundation",
+    title: "Anomalias de Superfície (AlphaEarth Foundations)",
+    description: "Aplica o modelo fundacional do Google DeepMind (embeddings 64-d) para detetar assinaturas geológicas anómalas.",
+    icon: <Sparkles size={18} className="text-indigo-500" />,
+    badge: "AlphaEarth · DeepMind",
+    indices: [
+      { code: "alphaearth_pca", name: "AlphaEarth 64-d PCA", sensor: "DeepMind Satellite Embedding" },
+      { code: "slope", name: "Declividade Topográfica", sensor: "Copernicus DEM 30m" },
+    ],
+  },
 ];
 
 export default function GeoMozAIAgentTab() {
@@ -92,6 +117,28 @@ export default function GeoMozAIAgentTab() {
   const [activeTileName, setActiveTileName] = useState<string>("");
   const [completedRuns, setCompletedRuns] = useState<any[]>([]);
   const [selectedLayerIndex, setSelectedLayerIndex] = useState<number>(0);
+
+  const [geminiApiKey, setGeminiApiKey] = useState<string>(() => {
+    try {
+      return localStorage.getItem("geomoz_gemini_api_key") || "";
+    } catch {
+      return "";
+    }
+  });
+  const [tempKeyInput, setTempKeyInput] = useState<string>(geminiApiKey);
+  const [showKeyInput, setShowKeyInput] = useState<boolean>(false);
+
+  const handleSaveGeminiKey = (key: string) => {
+    const trimmed = key.trim();
+    setGeminiApiKey(trimmed);
+    try {
+      if (trimmed) {
+        localStorage.setItem("geomoz_gemini_api_key", trimmed);
+      } else {
+        localStorage.removeItem("geomoz_gemini_api_key");
+      }
+    } catch {}
+  };
 
   const runWorkflow = async (workflow: QuickWorkflow) => {
     if (!activeProject) {
@@ -140,18 +187,29 @@ export default function GeoMozAIAgentTab() {
         );
 
         try {
-          const res = await apiFetch("/geomoz-api/gee/index", {
+          const isAlphaEarth = targetIdx.code === "alphaearth_pca";
+          const endpoint = isAlphaEarth ? "/geomoz-api/gee/embedding" : "/geomoz-api/gee/index";
+          const reqBody = isAlphaEarth
+            ? {
+                year: Number(endDate.slice(0, 4)) || 2024,
+                province: aoiPayload.province || null,
+                district: aoiPayload.district || null,
+                geometry: aoiPayload.geometry || null,
+              }
+            : {
+                index: targetIdx.code,
+                province: aoiPayload.province || null,
+                district: aoiPayload.district || null,
+                geometry: aoiPayload.geometry || null,
+                start_date: startDate,
+                end_date: endDate,
+                cloud_pct: 30,
+              };
+
+          const res = await apiFetch(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              index: targetIdx.code,
-              province: aoiPayload.province || null,
-              district: aoiPayload.district || null,
-              geometry: aoiPayload.geometry || null,
-              start_date: startDate,
-              end_date: endDate,
-              cloud_pct: 30,
-            }),
+            body: JSON.stringify(reqBody),
           });
 
           if (!res.ok) {
@@ -265,18 +323,95 @@ export default function GeoMozAIAgentTab() {
     }
   };
 
-  const handleCustomPromptSubmit = (e: React.FormEvent) => {
+  const handleCustomPromptSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || isRunning) return;
 
-    const lower = prompt.toLowerCase();
-    if (lower.includes("agua") || lower.includes("água") || lower.includes("hidro") || lower.includes("seca")) {
-      runWorkflow(QUICK_WORKFLOWS[1]);
-    } else if (lower.includes("cheia") || lower.includes("inunda") || lower.includes("perigo")) {
-      runWorkflow(QUICK_WORKFLOWS[2]);
-    } else {
-      // Default to agricultural & vegetation potential
-      runWorkflow(QUICK_WORKFLOWS[0]);
+    setIsRunning(true);
+    setSynthesis(null);
+    setCompletedRuns([]);
+    setActiveTileUrl(null);
+
+    const userMsg = prompt.trim();
+    setSteps([
+      { id: "planner", name: "Formulação do Plano Geoespacial (GeoMoz Agent)...", status: "running" },
+    ]);
+
+    try {
+      const aoiPayload = activeProject ? aoiToAPI(activeProject.aoi) : {};
+      const currentMapState = {
+        aoi: {
+          label: activeProject?.aoi.label || "Moçambique",
+          province: aoiPayload.province || null,
+          district: aoiPayload.district || null,
+          geometry: aoiPayload.geometry || null,
+        },
+        temporalWindow: activeProject?.period || { startDate: "2024-01-01", endDate: "2024-12-31" },
+        gee_token: (typeof window !== "undefined" ? localStorage.getItem("geomoz_gee_token") : null) || undefined,
+        gee_project: (typeof window !== "undefined" ? localStorage.getItem("geomoz_gee_project") : null) || "geoprocessamento-426809",
+      };
+
+      const effectiveGeminiKey = geminiApiKey.trim() || undefined;
+
+      const res = await apiFetch("/geomoz-api/ai/agent-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userMsg,
+          current_map_state: currentMapState,
+          gemini_api_key: effectiveGeminiKey,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Erro do Agente: HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+
+      if (data.steps && data.steps.length > 0) {
+        setSteps(data.steps);
+      }
+
+      if (data.map_actions && data.map_actions.length > 0) {
+        const computed: any[] = [];
+        data.map_actions.forEach((act: any) => {
+          if (act.type === "ADD_LAYER" && act.tileUrl) {
+            computed.push({
+              name: act.name || "Camada do Agente",
+              type: "remote_sensing",
+              sensor: "Agent GEE",
+              code: act.id,
+              dateRange: activeProject?.period,
+              metrics: {},
+              tileUrl: act.tileUrl,
+            });
+          }
+        });
+
+        if (computed.length > 0) {
+          setCompletedRuns(computed);
+          setActiveTileUrl(computed[0].tileUrl);
+          setActiveTileName(computed[0].name);
+
+          if (activeProject) {
+            for (const run of computed) {
+              await saveRunToActiveProject(run);
+            }
+          }
+        }
+      }
+
+      if (data.synthesis) {
+        setSynthesis(data.synthesis);
+      }
+    } catch (err: any) {
+      setSteps((prev) => [
+        ...prev,
+        { id: "error", name: "Falha na execução do agente", status: "error", resultSummary: err.message },
+      ]);
+    } finally {
+      setIsRunning(false);
     }
   };
 
@@ -290,8 +425,63 @@ export default function GeoMozAIAgentTab() {
             <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30 flex items-center gap-1">
               <Sparkles size={11} /> GeoMoz AI Agent
             </span>
-            <span className="text-[10px] text-slate-400">GIS/GEE Pipeline</span>
+            <button
+              type="button"
+              onClick={() => {
+                setTempKeyInput(geminiApiKey);
+                setShowKeyInput(!showKeyInput);
+              }}
+              className={`text-[10px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1 transition-all ${
+                geminiApiKey
+                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30"
+                  : "bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700"
+              }`}
+              title={geminiApiKey ? "Gemini 2.0 Ativo (chave guardada)" : "Configurar Chave Gemini API"}
+            >
+              <KeyRound size={10} />
+              <span>{geminiApiKey ? "Gemini 2.0 Ativo" : "+ Chave Gemini"}</span>
+            </button>
           </div>
+
+          {showKeyInput && (
+            <div className="mb-3 p-2.5 bg-slate-950/90 rounded-xl border border-violet-500/40 text-xs space-y-2 animate-in fade-in duration-150">
+              <div className="flex items-center justify-between text-[11px] text-slate-200">
+                <span className="font-semibold flex items-center gap-1">
+                  <KeyRound size={12} className="text-violet-400" />
+                  Chave Gemini API (Google AI Studio)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowKeyInput(false)}
+                  className="text-slate-400 hover:text-white p-0.5"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  type="password"
+                  value={tempKeyInput}
+                  onChange={(e) => setTempKeyInput(e.target.value)}
+                  placeholder="Cole aqui a chave (AIzaSy...)"
+                  className="flex-1 px-2.5 py-1 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white font-mono focus:outline-none focus:border-violet-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleSaveGeminiKey(tempKeyInput);
+                    setShowKeyInput(false);
+                  }}
+                  className="px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-semibold rounded-lg flex items-center gap-1 shrink-0"
+                >
+                  <Check size={11} /> Guardar
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400">
+                A chave é guardada localmente no browser e usada nas análises com o Gemini 2.0 Flash.
+              </p>
+            </div>
+          )}
 
           <h3 className="text-sm font-bold text-white flex items-center gap-1.5 truncate">
             {activeProject ? activeProject.name : "Nenhum Estudo Selecionado"}
@@ -323,7 +513,7 @@ export default function GeoMozAIAgentTab() {
                 type="text"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="ex: Analisa o potencial agrícola e vigor vegetal desta área..."
+                placeholder="ex: Encontra zonas de Maputo com risco de cheia e pouca vegetação..."
                 className="w-full pl-3 pr-24 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:bg-white"
               />
               <button

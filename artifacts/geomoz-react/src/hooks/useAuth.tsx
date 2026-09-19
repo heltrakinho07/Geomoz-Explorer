@@ -11,10 +11,12 @@ import {
 } from "firebase/auth";
 import { auth, googleProvider } from "../lib/firebase";
 
-interface AuthContextType {
+export interface AuthContextType {
   user: User | null;
   loading: boolean;
   error: string | null;
+  isGuest: boolean;
+  continueAsGuest: () => void;
   signIn: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
@@ -27,9 +29,38 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
-function formatAuthError(err: any): string {
+const GUEST_STORAGE_KEY = "geomoz_guest_session";
+
+export const GUEST_USER: User = {
+  uid: "guest_user",
+  displayName: "Convidado (Modo Demo)",
+  email: "convidado@geomoz.org",
+  isAnonymous: true,
+  emailVerified: true,
+  phoneNumber: null,
+  photoURL: null,
+  providerId: "anonymous",
+  metadata: {} as any,
+  providerData: [],
+  refreshToken: "",
+  tenantId: null,
+  delete: async () => {},
+  getIdToken: async () => "guest-token",
+  getIdTokenResult: async () => ({} as any),
+  reload: async () => {},
+  toJSON: () => ({}),
+};
+
+export function formatAuthError(err: any): string {
   if (!err) return "Ocorreu um erro desconhecido na autenticação.";
   const code = err.code || "";
+  const rawMsg = err.message || "";
+
+  if (code === "auth/unauthorized-domain" || rawMsg.includes("unauthorized-domain")) {
+    const currentDomain = typeof window !== "undefined" ? window.location.hostname : "o domínio atual";
+    return `Domínio '${currentDomain}' não autorizado no Firebase OAuth. Adicione '${currentDomain}' na Consola do Firebase (Authentication > Settings > Authorized Domains). Também pode entrar de imediato no 'Modo Convidado'.`;
+  }
+
   switch (code) {
     case "auth/invalid-email":
       return "O endereço de e-mail introduzido não é válido.";
@@ -54,7 +85,14 @@ function formatAuthError(err: any): string {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      if (typeof window !== "undefined" && localStorage.getItem(GUEST_STORAGE_KEY) === "true") {
+        return GUEST_USER;
+      }
+    } catch {}
+    return null;
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,7 +103,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+      if (currentUser) {
+        try {
+          localStorage.removeItem(GUEST_STORAGE_KEY);
+        } catch {}
+        setUser(currentUser);
+      } else {
+        try {
+          if (localStorage.getItem(GUEST_STORAGE_KEY) === "true") {
+            setUser(GUEST_USER);
+            setLoading(false);
+            return;
+          }
+        } catch {}
+        setUser(null);
+      }
       setLoading(false);
     });
     return unsubscribe;
@@ -73,15 +125,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearError = () => setError(null);
 
+  const continueAsGuest = () => {
+    try {
+      localStorage.setItem(GUEST_STORAGE_KEY, "true");
+    } catch {}
+    setUser(GUEST_USER);
+    setError(null);
+  };
+
   const signInWithGoogle = async () => {
     if (!auth) return;
     setError(null);
     try {
       await signInWithPopup(auth, googleProvider);
+      try {
+        localStorage.removeItem(GUEST_STORAGE_KEY);
+      } catch {}
     } catch (err: any) {
       console.error("Error signing in with Google", err);
-      setError(formatAuthError(err));
-      throw err;
+      const msg = formatAuthError(err);
+      setError(msg);
+      const enriched = new Error(msg);
+      (enriched as any).code = err?.code || "";
+      (enriched as any).originalMessage = err?.message || "";
+      throw enriched;
     }
   };
 
@@ -90,11 +157,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       await signInWithEmailAndPassword(auth, email.trim(), password);
+      try {
+        localStorage.removeItem(GUEST_STORAGE_KEY);
+      } catch {}
     } catch (err: any) {
       console.error("Error signing in with Email", err);
       const msg = formatAuthError(err);
       setError(msg);
-      throw new Error(msg);
+      const enriched = new Error(msg);
+      (enriched as any).code = err?.code || "";
+      throw enriched;
     }
   };
 
@@ -103,16 +175,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      try {
+        localStorage.removeItem(GUEST_STORAGE_KEY);
+      } catch {}
       if (displayName && cred.user) {
         await updateProfile(cred.user, { displayName });
-        // Refresh current user state with display name
         setUser({ ...cred.user, displayName });
       }
     } catch (err: any) {
       console.error("Error registering with Email", err);
       const msg = formatAuthError(err);
       setError(msg);
-      throw new Error(msg);
+      const enriched = new Error(msg);
+      (enriched as any).code = err?.code || "";
+      throw enriched;
     }
   };
 
@@ -125,11 +201,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("Error sending reset password email", err);
       const msg = formatAuthError(err);
       setError(msg);
-      throw new Error(msg);
+      const enriched = new Error(msg);
+      (enriched as any).code = err?.code || "";
+      throw enriched;
     }
   };
 
   const signOut = async () => {
+    try {
+      localStorage.removeItem(GUEST_STORAGE_KEY);
+    } catch {}
+    setUser(null);
     if (!auth) return;
     setError(null);
     try {
@@ -147,12 +229,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   };
 
+  const isGuest = user?.uid === "guest_user";
+
   return (
     <AuthContext.Provider
       value={{
         user,
         loading,
         error,
+        isGuest,
+        continueAsGuest,
         signIn: signInWithGoogle,
         signInWithGoogle,
         signInWithEmail,

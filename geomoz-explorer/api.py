@@ -19,6 +19,24 @@ from fastapi import FastAPI, Query, HTTPException, Request, File, UploadFile, De
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import Response
+# Automatic .env discovery
+for _env_candidate in [
+    os.path.join(os.path.dirname(__file__), ".env"),
+    os.path.join(os.getcwd(), ".env"),
+    os.path.join(os.getcwd(), "geomoz-explorer", ".env"),
+]:
+    if os.path.exists(_env_candidate):
+        try:
+            with open(_env_candidate, "r", encoding="utf-8") as _f:
+                for _line in _f:
+                    _line = _line.strip()
+                    if _line and not _line.startswith("#") and "=" in _line:
+                        _k, _v = _line.split("=", 1)
+                        _cleaned_val = _v.strip().strip("`").strip('"').strip("'")
+                        if _cleaned_val and _cleaned_val != "SUA_CHAVE_AQUI":
+                            os.environ[_k.strip()] = _cleaned_val
+        except Exception:
+            pass
 
 try:
     import firebase_admin
@@ -535,6 +553,7 @@ async def convert_geom(file: UploadFile = File(...)):
 class GEEServiceAccountKeyRequest(BaseModel):
     service_account_key: Optional[str] = None
     project_id: Optional[str] = None
+    account: Optional[str] = None
 
 
 @app.get("/geomoz-api/gee/config")
@@ -588,53 +607,109 @@ def gee_config():
     }
 
 
+def _update_env_file(updates: dict):
+    """Safely update key=value pairs in geomoz-explorer/.env."""
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    lines = []
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        except Exception:
+            lines = []
+    
+    new_lines = []
+    seen = set()
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in updates:
+                new_lines.append(f"{key}={updates[key]}\n")
+                seen.add(key)
+                continue
+        new_lines.append(line)
+    
+    for key, val in updates.items():
+        if key not in seen:
+            new_lines.append(f"{key}={val}\n")
+            
+    try:
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+    except Exception as e:
+        logger.warning("Could not write to .env: %s", e)
+
+
 @app.post("/geomoz-api/gee/configure")
-def gee_configure(req: GEEServiceAccountKeyRequest):
+def gee_configure(req: GEEServiceAccountKeyRequest, request: Request):
     """
-    Update GEE credentials and reinitialize the connection.
-    Accepts service_account_key (JSON string) and/or project_id.
-    Returns the new connection status.
+    Update GEE credentials for the active authenticated user and reinitialize.
+    Accepts service_account_key (JSON string), project_id, and/or account.
+    Persists configuration in gee_session_store (Firestore/memory) per user.
     """
+    import gee_session_store
     from gee_module import reset_gee, _init_gee, gee_status as _gee_status
 
+    auth_header = request.headers.get("Authorization", "")
+    uid = _extract_uid_from_header(auth_header) or "default"
+
     changed = False
+    user_data = gee_session_store.get_token(uid) or {}
 
-    if req.service_account_key is not None:
-        os.environ["GEE_SERVICE_ACCOUNT_KEY"] = req.service_account_key.strip()
+    if req.service_account_key is not None and req.service_account_key.strip():
+        raw_sa = req.service_account_key.strip()
+        user_data["service_account_key"] = raw_sa
         changed = True
-        logger.info("GEE service account key updated via API")
+        try:
+            sa_dict = json.loads(raw_sa)
+            if not req.project_id and sa_dict.get("project_id"):
+                req.project_id = sa_dict.get("project_id")
+            if not req.account and sa_dict.get("client_email"):
+                req.account = sa_dict.get("client_email")
+        except Exception as sa_err:
+            logger.warning("Could not parse service account JSON for user '%s': %s", uid, sa_err)
 
-    if req.project_id is not None:
-        os.environ["GEE_PROJECT_ID"] = req.project_id.strip()
+    if req.project_id is not None and req.project_id.strip():
+        user_data["project"] = req.project_id.strip()
         changed = True
-        logger.info("GEE project ID updated via API to: %s", req.project_id)
+
+    if req.account is not None and req.account.strip():
+        user_data["account"] = req.account.strip()
+        changed = True
 
     if not changed:
         return {
             "configured": False,
+            "connected": False,
             "message": "Nenhuma credencial fornecida. Envie service_account_key e/ou project_id.",
         }
 
-    # Reset and reinitialize GEE
+    user_data["updated_at"] = time.time()
+    gee_session_store.set_token(uid, user_data)
+    logger.info("GEE credentials stored for user '%s': project=%s, account=%s", uid, user_data.get("project"), user_data.get("account"))
+
+    # Reset and test initialization specifically for this user
     reset_gee()
     try:
-        _init_gee()
-        status = _gee_status()
+        _init_gee(uid=uid, project=user_data.get("project"))
+        status = _gee_status(uid=uid, project=user_data.get("project"))
         status["configured"] = True
-        status["message"] = "GEE configurado e conectado com sucesso!"
-        logger.info("GEE reinitialized successfully after configuration update")
+        status["message"] = f"GEE configurado e conectado com sucesso para o utilizador ({user_data.get('project')})!"
         return status
     except RuntimeError as exc:
-        logger.error("GEE reinitialization failed after configuration update: %s", exc)
+        logger.warning("GEE reinitialization failed after configuration update for user '%s': %s", uid, exc)
         return {
-            "configured": False,
+            "configured": True,
             "connected": False,
-            "message": f"Falha ao conectar GEE: {exc}",
+            "project": user_data.get("project"),
+            "account": user_data.get("account"),
+            "message": f"Definições guardadas para a sua conta, mas a ligação GEE falhou: {exc}",
         }
     except Exception as exc:
-        logger.error("Unexpected error during GEE configuration: %s", exc)
+        logger.error("Unexpected error during GEE configuration for user '%s': %s", uid, exc)
         return {
-            "configured": False,
+            "configured": True,
             "connected": False,
             "message": f"Erro inesperado: {exc}",
         }
@@ -647,6 +722,13 @@ class StudySynthesisRequest(BaseModel):
     aoiLabel: str
     period: dict
     runs: list[dict]
+
+
+class AgentChatRequest(BaseModel):
+    message: str
+    current_map_state: Optional[dict] = None
+    chat_history: Optional[list] = None
+    gemini_api_key: Optional[str] = None
 
 class GEEIndexRequest(BaseModel):
     index:      str
@@ -935,6 +1017,27 @@ async def synthesize_study(req: StudySynthesisRequest):
 2. Integração destes resultados nos instrumentos municipais e de gestão territorial setorial.
 """
     return {"synthesis": conclusion}
+
+
+@app.post("/geomoz-api/ai/agent-chat")
+async def agent_chat(req: AgentChatRequest):
+    """
+    GeoMoz AI Agent — Interprets spatial intent, executes deterministic GIS tools via ReAct,
+    and returns map actions, step checklists, and technical diagnostic synthesis.
+    """
+    try:
+        from agent.planner import GeoMozAgent
+        result = await GeoMozAgent.process_user_request(
+            user_message=req.message,
+            current_map_state=req.current_map_state or {},
+            chat_history=req.chat_history or [],
+            gemini_api_key=req.gemini_api_key
+        )
+        return result
+    except Exception as exc:
+        logger.exception("Error in agent_chat: %s", exc)
+        raise HTTPException(500, f"Erro na execução do agente GeoMoz: {exc}")
+
 
 @app.post("/geomoz-api/gee/render")
 async def gee_render(req: GEERenderRequest, uid: str = Depends(require_gee_auth)):

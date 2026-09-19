@@ -44,20 +44,31 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const {
     geeConnected,
     geeProject,
+    geeAccount,
     loading: geeLoading,
     error: geeError,
     connectGee,
     setProjectOnly,
+    saveCredentials,
     disconnectGee,
     refreshStatus,
   } = useGeeAuth();
   const { projects } = useProject();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("gee");
-  const [projectIdInput, setProjectIdInput] = useState("");
+  const [projectIdInput, setProjectIdInput] = useState(geeProject || "eengine-project");
+  const [accountInput, setAccountInput] = useState(geeAccount || "");
+  const [saKeyInput, setSaKeyInput] = useState("");
+  const [showSaInput, setShowSaInput] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [testResult, setTestResult] = useState<{ connected: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
+
+  // Sync inputs with active context and user profile
+  React.useEffect(() => {
+    setProjectIdInput(geeProject || "");
+    setAccountInput(geeAccount || (user?.email || ""));
+  }, [geeProject, geeAccount, user]);
 
   // Basemap preference state
   const [preferredBasemap, setPreferredBasemap] = useState(() => {
@@ -68,21 +79,27 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     }
   });
 
-  const handleSaveProjectOnly = async () => {
-    const val = projectIdInput.trim();
-    if (!val) return;
+  const handleSaveAllGee = async () => {
+    const proj = projectIdInput.trim() || geeProject || "eengine-project";
+    const acc = accountInput.trim() || geeAccount || "";
+    const sa = saKeyInput.trim() || undefined;
+
     setConnecting(true);
     setTestResult(null);
     try {
-      await setProjectOnly(val);
+      const res = await saveCredentials(proj, acc, sa);
       setTestResult({
-        connected: true,
-        message: `Projeto vinculado com sucesso: ${val}. As análises de satélite usarão esta quota.`,
+        connected: res.success,
+        message: res.message,
       });
+      if (res.success && sa) {
+        setSaKeyInput("");
+        setShowSaInput(false);
+      }
     } catch (err: any) {
       setTestResult({
         connected: false,
-        message: err?.message || "Erro ao vincular projeto.",
+        message: err?.message || "Erro ao guardar credenciais.",
       });
     } finally {
       setConnecting(false);
@@ -93,7 +110,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     setConnecting(true);
     setTestResult(null);
     try {
-      await connectGee(projectIdInput.trim() || undefined);
+      await connectGee(projectIdInput.trim() || undefined, accountInput.trim() || undefined);
     } catch (err) {
       console.error(err);
     } finally {
@@ -105,12 +122,16 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await apiFetch("/geomoz-api/gee/status");
+      const res = await apiFetch("/geomoz-api/gee/status", {
+        headers: {
+          "X-GEE-Project": projectIdInput.trim() || geeProject || "eengine-project",
+        },
+      });
       const data = await res.json().catch(() => ({}));
       if (data.connected) {
         setTestResult({
           connected: true,
-          message: `Conexão ativa! Projeto: ${data.project || "Padrão"} (${data.auth_type || "Cota Servidor / ADC"}). ${data.message || ""}`,
+          message: `Conexão ativa! Projeto: ${data.project || "Padrão"} (${data.auth_type || "Cota Verificada"}). ${data.message || ""}`,
         });
       } else {
         setTestResult({
@@ -232,7 +253,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                         geeConnected ? "text-emerald-900 dark:text-emerald-200" : "text-amber-900 dark:text-amber-200"
                       }`}
                     >
-                      {geeConnected ? "Google Earth Engine Conectado" : "Conexão GEE Pendente"}
+                      {geeConnected ? "Google Earth Engine Conectado (Ativo)" : "Credenciais GEE Pendentes / Não Ativas"}
                     </h4>
                     <p
                       className={`text-xs mt-0.5 ${
@@ -240,10 +261,8 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       }`}
                     >
                       {geeConnected
-                        ? `A sua quota e projeto estão ativas para processamento de satélite. Projeto vinculado: ${
-                            geeProject || "Padrão"
-                          }.`
-                        : "Autentique a sua conta Google com permissões Earth Engine para processamento individual de satélites."}
+                        ? `Projeto vinculado: ${geeProject || "eengine-project"} | Conta: ${geeAccount || "Quota Ativa"}`
+                        : `Projeto selecionado: ${geeProject || "eengine-project"}. Insira a Chave de Serviço JSON ou execute 'earthengine authenticate' no terminal.`}
                     </p>
                   </div>
                 </div>
@@ -256,48 +275,98 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                     className="border-red-200 text-red-600 hover:bg-red-50 text-xs shrink-0"
                   >
                     <Trash2 size={13} className="mr-1" />
-                    Remover Projeto
+                    Desconectar
                   </Button>
                 )}
               </div>
 
-              {/* OAuth Connection Card */}
-              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3">
+              {/* Main Credentials Form Card */}
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-4">
                 <div className="space-y-1">
-                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                    <ShieldCheck size={14} className="text-sky-500" />
-                    Autenticação via Terceiros (OAuth 2.0)
-                  </h4>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <ShieldCheck size={14} className="text-sky-500" />
+                      Configuração Pessoal do Google Earth Engine
+                    </h4>
+                    {user ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300 font-medium self-start sm:self-auto">
+                        Perfil: {user.email || user.displayName || "Utilizador Registado"}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 font-medium self-start sm:self-auto">
+                        Modo Convidado (Local)
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                    A plataforma utiliza o protocolo OAuth 2.0 padrão da Google. Ao iniciar sessão, o token e o ID do projeto ficam guardados de forma segura na sua conta e não precisa de autenticar novamente a cada visita.
+                    Cada utilizador registado possui a sua própria conta e cota do Google Earth Engine. As credenciais configuradas aqui são exclusivas da sua conta e não interferem com os demais utilizadores do sistema.
                   </p>
                 </div>
 
-                <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
-                    ID do Projeto Google Cloud (Earth Engine)
-                  </label>
-                  <div className="flex gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200 dark:border-slate-700">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                      Conta / E-mail Earth Engine
+                    </label>
+                    <Input
+                      type="text"
+                      value={accountInput}
+                      onChange={(e) => setAccountInput(e.target.value)}
+                      placeholder="ex: geoanalises@eengine-project.iam.gserviceaccount.com"
+                      className="text-xs bg-white dark:bg-slate-900"
+                    />
+                    <p className="text-[10px] text-slate-400">
+                      E-mail da sua conta Google ou da Conta de Serviço.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                      ID do Projeto Google Cloud
+                    </label>
                     <Input
                       type="text"
                       value={projectIdInput}
                       onChange={(e) => setProjectIdInput(e.target.value)}
-                      placeholder={geeProject || "ex: meu-projeto-gee-123"}
-                      className="text-xs font-mono bg-white dark:bg-slate-900 flex-1"
+                      placeholder="eengine-project"
+                      className="text-xs font-mono bg-white dark:bg-slate-900"
                     />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleSaveProjectOnly}
-                      disabled={connecting || !projectIdInput.trim()}
-                      className="text-xs shrink-0 font-medium border-sky-300 text-sky-700 hover:bg-sky-50 dark:border-sky-700 dark:text-sky-300"
-                    >
-                      Vincular Projeto
-                    </Button>
+                    <p className="text-[10px] text-slate-400">
+                      ID do projeto GCP onde a Earth Engine API está habilitada.
+                    </p>
                   </div>
-                  <p className="text-[10px] text-slate-400">
-                    O identificador do projeto Google Cloud onde a Earth Engine API está ativa com a sua quota pessoal.
-                  </p>
+                </div>
+
+                {/* Service Account JSON Section */}
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                      <KeyRound size={13} className="text-amber-500" />
+                      Chave de Conta de Serviço (JSON)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowSaInput(!showSaInput)}
+                      className="text-[11px] text-sky-600 hover:text-sky-700 font-medium underline"
+                    >
+                      {showSaInput ? "Ocultar JSON" : "Colar Chave JSON"}
+                    </button>
+                  </div>
+
+                  {showSaInput && (
+                    <div className="space-y-2">
+                      <textarea
+                        value={saKeyInput}
+                        onChange={(e) => setSaKeyInput(e.target.value)}
+                        placeholder={`{\n  "type": "service_account",\n  "project_id": "eengine-project",\n  "private_key_id": "...",\n  "private_key": "-----BEGIN PRIVATE KEY-----...",\n  "client_email": "geoanalises@eengine-project.iam.gserviceaccount.com"\n}`}
+                        rows={5}
+                        className="w-full text-[11px] font-mono p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                      />
+                      <p className="text-[10px] text-slate-500">
+                        A chave JSON é guardada com segurança no servidor local e persistida no ficheiro <code>service_account.json</code> e <code>.env</code>.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {geeError && (
@@ -307,21 +376,22 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                   </div>
                 )}
 
-                <div className="flex items-center gap-2.5 pt-2">
+                {/* Action Buttons */}
+                <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
                   <Button
-                    onClick={handleConnectGee}
+                    onClick={handleSaveAllGee}
                     disabled={connecting || geeLoading}
-                    className="flex-1 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold py-2 rounded-xl"
+                    className="w-full sm:flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-2 rounded-xl shadow-sm"
                   >
                     {connecting ? (
                       <>
                         <Loader2 size={13} className="animate-spin mr-1.5" />
-                        A autenticar via Google…
+                        A guardar definições…
                       </>
                     ) : (
                       <>
-                        <KeyRound size={13} className="mr-1.5" />
-                        {geeConnected ? "Reautenticar com Google (OAuth 2.0)" : "Entrar com o Google (Earth Engine)"}
+                        <CheckCircle2 size={13} className="mr-1.5" />
+                        Guardar Definições Permanentes
                       </>
                     )}
                   </Button>
@@ -330,14 +400,40 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                     variant="outline"
                     onClick={handleTestConnection}
                     disabled={testing}
-                    className="text-xs py-2 rounded-xl"
+                    className="w-full sm:w-auto text-xs py-2 rounded-xl"
                   >
                     {testing ? (
                       <Loader2 size={13} className="animate-spin mr-1.5" />
                     ) : (
                       <RefreshCw size={13} className="mr-1.5" />
                     )}
-                    Testar Conexão
+                    Testar Conexão em Tempo Real
+                  </Button>
+                </div>
+
+                {/* Terminal CLI Hint */}
+                <div className="p-3 rounded-lg bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-800 text-[11px] text-sky-900 dark:text-sky-300 space-y-1.5">
+                  <span className="font-semibold block">Autenticação rápida no seu PC via Terminal:</span>
+                  <code className="block p-1.5 bg-sky-100 dark:bg-sky-900/40 rounded text-[10px] font-mono select-all">
+                    & "d:\GEOLITHICA\.venv\Scripts\python.exe" -m ee.cli.eecli authenticate
+                  </code>
+                  <span className="text-[10px] text-sky-700 dark:text-sky-400 block">
+                    Este comando abre o navegador e guarda a autorização permanente do GEE na sua máquina.
+                  </span>
+                </div>
+
+                {/* Alternative Browser OAuth Button */}
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                  <span className="text-xs text-slate-500">Ou use o navegador:</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleConnectGee}
+                    disabled={connecting || geeLoading}
+                    className="text-xs text-slate-600 hover:text-sky-600"
+                  >
+                    <KeyRound size={12} className="mr-1" />
+                    Entrar via Pop-up Google
                   </Button>
                 </div>
 

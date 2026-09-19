@@ -15,15 +15,18 @@ def _get_db():
 
 def set_token(uid: str, token_data: dict) -> None:
     """Store GEE token data for a user in memory and optionally persist in Firestore."""
-    _user_sessions[uid] = token_data
-    logger.info("GEE token stored in memory for user: %s", uid)
+    if uid in _user_sessions:
+        _user_sessions[uid].update(token_data)
+    else:
+        _user_sessions[uid] = dict(token_data)
+    logger.info("GEE credentials stored in memory for user: %s", uid)
     db = _get_db()
     if db:
         try:
             db.collection("users").document(uid).collection("settings").document("gee").set(token_data, merge=True)
-            logger.info("GEE token persisted to Firestore for user: %s", uid)
+            logger.info("GEE credentials persisted to Firestore for user: %s", uid)
         except Exception as e:
-            logger.warning("Failed to persist GEE token to Firestore: %s", e)
+            logger.warning("Failed to persist GEE credentials to Firestore: %s", e)
 
 def get_token(uid: str) -> Optional[dict]:
     """Retrieve GEE token data for a user from memory or Firestore."""

@@ -17,7 +17,7 @@ import os
 import json
 import logging
 import threading
-from typing import Optional
+from typing import Optional, Any
 
 from gee_presets import (
     INDEX_REGISTRY, MINERAL_PRESETS,
@@ -33,6 +33,9 @@ _gee_initialized = False
 _gee_error: Optional[str] = None
 _last_initialized_project: Optional[str] = None
 _last_initialized_token: Optional[str] = None
+_adc_checked: bool = False
+_adc_creds: Optional[Any] = None
+_adc_project: Optional[str] = None
 
 # ── In-memory cache for computed ee.Image objects ─────────────────────────────
 #
@@ -120,26 +123,28 @@ def _build_cache_key_for_request(
 
 import gee_session_store
 
+_last_initialized_uid = None
+
 def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
-    """Initialize GEE with the user's token or fallback to server credentials."""
-    global _gee_initialized, _gee_error, _last_initialized_project, _last_initialized_token
+    """Initialize GEE with the active user's credentials (OAuth, user service account, or local CLI)."""
+    global _gee_initialized, _gee_error, _last_initialized_project, _last_initialized_token, _last_initialized_uid
 
     with _lock:
-        default_project = (
+        token_data = gee_session_store.get_token(uid) if uid else None
+        effective_token = token or (token_data.get("access_token") if token_data else None)
+        user_sa_key = token_data.get("service_account_key") if token_data else None
+        effective_project = (
             project
+            or (token_data.get("project") if token_data else None)
             or os.environ.get("GEE_PROJECT_ID")
-            or os.environ.get("GCP_PROJECT_ID")
             or "geoprocessamento-426809"
         ).strip()
 
-        token_data = gee_session_store.get_token(uid) if uid else None
-        effective_token = token or (token_data.get("access_token") if token_data else None)
-        effective_project = project or (token_data.get("project") if token_data else None) or default_project
-
-        # If already initialized with this exact project and token, reuse existing session
-        if _gee_initialized and _last_initialized_project == effective_project and _last_initialized_token == effective_token:
+        # If already initialized for this exact user, project and token, reuse session
+        if _gee_initialized and _last_initialized_uid == uid and _last_initialized_project == effective_project and _last_initialized_token == effective_token:
             return
 
+        # 1. Try user's personal OAuth token
         if effective_token:
             try:
                 import ee
@@ -150,17 +155,82 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
                 _gee_error = None
                 _last_initialized_project = effective_project
                 _last_initialized_token = effective_token
-                logger.info("GEE initialized successfully with OAuth token for project: %s", effective_project)
+                _last_initialized_uid = uid
+                logger.info("GEE initialized successfully with OAuth token for user '%s', project: %s", uid, effective_project)
                 return
             except Exception as e:
-                logger.warning("Failed to initialize GEE with user OAuth token: %s", e)
-                # Fall through to service account or ADC fallback
+                logger.warning("Failed to initialize GEE with user '%s' OAuth token: %s", uid, e)
 
-        # Fallback to server credentials
+        # 2. Try user's personal Service Account Key JSON
+        if user_sa_key:
+            try:
+                import ee
+                import json
+                from google.oauth2 import service_account
+                key_dict = json.loads(user_sa_key) if isinstance(user_sa_key, str) else user_sa_key
+                scopes = getattr(ee.oauth, 'SCOPES', ['https://www.googleapis.com/auth/earthengine'])
+                creds = service_account.Credentials.from_service_account_info(
+                    key_dict,
+                    scopes=scopes
+                )
+                sa_project = effective_project or key_dict.get("project_id")
+                ee.Initialize(credentials=creds, project=sa_project)
+                _gee_initialized = True
+                _gee_error = None
+                _last_initialized_project = sa_project
+                _last_initialized_token = None
+                _last_initialized_uid = uid
+                logger.info("GEE initialized successfully with user's Service Account for user '%s', project: %s", uid, sa_project)
+                return
+            except Exception as e:
+                logger.warning("Failed to initialize GEE with user '%s' service account: %s", uid, e)
+
+        # 3. Try local Earth Engine user credentials (from 'earthengine authenticate')
+        for proj_candidate in [effective_project, "geoprocessamento-426809"]:
+            if not proj_candidate:
+                continue
+            try:
+                import ee
+                ee.Initialize(project=proj_candidate)
+                _gee_initialized = True
+                _gee_error = None
+                _last_initialized_project = proj_candidate
+                _last_initialized_token = None
+                _last_initialized_uid = uid
+                logger.info("GEE initialized successfully with local Earth Engine user credentials for project: %s", proj_candidate)
+                return
+            except Exception as e:
+                logger.debug("Local EE user credentials init failed for project '%s': %s", proj_candidate, e)
+
+        # 4. Fallback to server credentials if allowed and user has not configured custom credentials
         allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
         sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
+        sa_file = os.environ.get("GEE_SERVICE_ACCOUNT_FILE", "").strip() or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+        if not sa_file:
+            local_sa = os.path.join(os.path.dirname(__file__), "service_account.json")
+            if os.path.exists(local_sa):
+                sa_file = local_sa
+
+        if allow_server and sa_file and os.path.exists(sa_file):
+            try:
+                import ee
+                from google.oauth2 import service_account
+                scopes = getattr(ee.oauth, 'SCOPES', ['https://www.googleapis.com/auth/earthengine'])
+                creds = service_account.Credentials.from_service_account_file(sa_file, scopes=scopes)
+                sa_project = creds.project_id or effective_project
+                ee.Initialize(credentials=creds, project=sa_project)
+                _gee_initialized = True
+                _gee_error = None
+                _last_initialized_project = sa_project
+                _last_initialized_token = None
+                _last_initialized_uid = uid
+                logger.info("GEE initialized successfully with server Service Account file '%s' for project: %s", sa_file, sa_project)
+                return
+            except Exception as e:
+                logger.warning("Failed to initialize GEE with server service account file '%s': %s", sa_file, e)
+
         if allow_server and sa_key:
-            for proj_candidate in [effective_project, default_project]:
+            for proj_candidate in [effective_project, "geoprocessamento-426809"]:
                 try:
                     import ee
                     import json
@@ -171,104 +241,110 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
                         key_dict,
                         scopes=scopes
                     )
-                    sa_project = proj_candidate or key_dict.get("project_id") or default_project
+                    sa_project = proj_candidate or key_dict.get("project_id")
                     ee.Initialize(credentials=creds, project=sa_project)
                     _gee_initialized = True
                     _gee_error = None
                     _last_initialized_project = sa_project
                     _last_initialized_token = None
-                    logger.info("GEE initialized successfully with Service Account for project: %s", sa_project)
+                    _last_initialized_uid = uid
+                    logger.info("GEE initialized successfully with server Service Account for project: %s", sa_project)
                     return
                 except Exception as e:
-                    logger.warning("Failed to initialize GEE with service account for project '%s': %s", proj_candidate, e)
+                    logger.warning("Failed to initialize GEE with server service account for project '%s': %s", proj_candidate, e)
 
-        # Fallback to Google Application Default Credentials (e.g. running on Cloud Run / GCP VM)
+        # 5. Fallback to Google Application Default Credentials
+        global _adc_checked, _adc_creds, _adc_project
         if allow_server:
-            for proj_candidate in [effective_project, default_project, None]:
+            if not _adc_checked:
+                _adc_checked = True
                 try:
-                    import ee
                     import google.auth
-                    creds, adc_project = google.auth.default(scopes=['https://www.googleapis.com/auth/earthengine'])
-                    target_proj = proj_candidate or adc_project or default_project
-                    ee.Initialize(credentials=creds, project=target_proj)
-                    _gee_initialized = True
-                    _gee_error = None
-                    _last_initialized_project = target_proj
-                    _last_initialized_token = None
-                    logger.info("GEE initialized successfully with Application Default Credentials for project: %s", target_proj)
-                    return
+                    _adc_creds, _adc_project = google.auth.default(scopes=['https://www.googleapis.com/auth/earthengine'])
                 except Exception as adc_err:
-                    logger.warning("Application Default Credentials fallback attempt for project '%s': %s", proj_candidate, adc_err)
+                    _adc_creds = None
+                    logger.info("Application Default Credentials not available: %s", adc_err)
 
-        _gee_error = f"Não foi possível inicializar o Earth Engine para o projeto '{effective_project}'. Verifique se a sua conta tem a API do Earth Engine ativada ou reautentique nas Definições."
+            if _adc_creds is not None:
+                import ee
+                for proj_candidate in [effective_project, _adc_project, None]:
+                    try:
+                        target_proj = proj_candidate or effective_project
+                        ee.Initialize(credentials=_adc_creds, project=target_proj)
+                        _gee_initialized = True
+                        _gee_error = None
+                        _last_initialized_project = target_proj
+                        _last_initialized_token = None
+                        _last_initialized_uid = uid
+                        logger.info("GEE initialized successfully with ADC for project: %s", target_proj)
+                        return
+                    except Exception as proj_err:
+                        logger.warning("ADC init attempt for project '%s': %s", proj_candidate, proj_err)
+
+        _gee_error = (
+            f"O utilizador não possui credenciais ativas do Earth Engine para o projeto '{effective_project}'. "
+            "Por favor, conecte a sua conta Google com permissões GEE ou cole a sua Chave de Serviço JSON nas Definições."
+        )
         raise RuntimeError(_gee_error)
 
 
 def reset_gee():
-    global _gee_initialized, _gee_error, _last_initialized_project, _last_initialized_token
+    global _gee_initialized, _gee_error, _last_initialized_project, _last_initialized_token, _last_initialized_uid
     with _lock:
         _gee_initialized = False
         _gee_error = None
         _last_initialized_project = None
         _last_initialized_token = None
+        _last_initialized_uid = None
         _cache_clear()
         logger.info("GEE reset: auth cleared + index-image cache cleared (%d entries)", len(_INDEX_IMAGE_CACHE))
 
 
 def gee_status(uid: str = None, project: str = None, token: str = None) -> dict:
-    global _gee_error
-    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
+    global _gee_error, _gee_initialized, _last_initialized_project, _last_initialized_uid
     token_data = gee_session_store.get_token(uid) if uid else None
     effective_token = token or (token_data.get("access_token") if token_data else None)
+    user_sa_key = token_data.get("service_account_key") if token_data else None
     effective_project = project or (token_data.get("project") if token_data else None)
 
-    if effective_token:
+    # If this specific user has no project or credentials, report unconfigured
+    if not effective_token and not user_sa_key and not effective_project:
         return {
-            "connected": True,
-            "auth_type": "oauth2",
-            "project": effective_project or os.environ.get("GEE_PROJECT_ID", "geoprocessamento-426809"),
-            "message": "GEE conectado com cota própria de utilizador (OAuth2)",
+            "connected": False,
+            "auth_type": "none",
+            "project": None,
+            "account": None,
+            "message": "Nenhuma credencial do Earth Engine configurada para este utilizador.",
         }
-    if effective_project:
-        return {
-            "connected": True,
-            "auth_type": "user_project",
-            "project": effective_project,
-            "message": f"GEE vinculado ao projeto: {effective_project}",
-        }
-    if allow_server:
-        sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "")
-        if sa_key:
-            proj = os.environ.get("GEE_PROJECT_ID", "")
-            try:
-                proj = json.loads(sa_key).get("project_id", proj)
-            except Exception:
-                pass
-            return {
-                "connected": True,
-                "auth_type": "service_account",
-                "project": proj,
-                "message": "GEE conectado via servidor",
-            }
-        # Check ADC
-        try:
-            import google.auth
-            _, adc_project = google.auth.default(scopes=['https://www.googleapis.com/auth/earthengine'])
-            return {
-                "connected": True,
-                "auth_type": "adc",
-                "project": adc_project or os.environ.get("GEE_PROJECT_ID", "geoprocessamento-426809"),
-                "message": "GEE conectado via Application Default Credentials",
-            }
-        except Exception:
-            pass
 
-    return {
-        "connected": False,
-        "auth_type": None,
-        "project": None,
-        "message": "Não conectado. Conecte a sua conta do Google Earth Engine no perfil para usar a sua própria cota.",
-    }
+    # If already successfully initialized for THIS user
+    if _gee_initialized and _last_initialized_uid == uid and _last_initialized_project == effective_project:
+        return {
+            "connected": True,
+            "auth_type": "user_credentials",
+            "project": _last_initialized_project,
+            "account": token_data.get("account") if token_data else None,
+            "message": f"GEE conectado com sucesso para o utilizador (Projeto: {_last_initialized_project})",
+        }
+
+    # Otherwise attempt initialization for THIS user
+    try:
+        _init_gee(uid=uid, project=effective_project, token=effective_token)
+        return {
+            "connected": True,
+            "auth_type": "user_credentials",
+            "project": _last_initialized_project or effective_project,
+            "account": token_data.get("account") if token_data else None,
+            "message": f"GEE verificado com sucesso para o utilizador (Projeto: {_last_initialized_project or effective_project})",
+        }
+    except Exception as exc:
+        return {
+            "connected": False,
+            "auth_type": "none",
+            "project": effective_project,
+            "account": token_data.get("account") if token_data else None,
+            "message": str(exc),
+        }
 
 
 # ── Geometry helpers ───────────────────────────────────────────────────────────
@@ -374,7 +450,7 @@ def _build_rivers_raster(region):
     """Rasterize HydroSHEDS FreeFlowingRivers within region (value 1, else 0)."""
     import ee
     rivers_fc = ee.FeatureCollection("WWF/HydroSHEDS/v1/FreeFlowingRivers").filterBounds(region)
-    return ee.Image().byte().paint(rivers_fc, 1).rename("water")
+    return ee.Image().byte().paint(rivers_fc, 1).clip(region).rename("water")
 
 
 # ── Index image builder ────────────────────────────────────────────────────────
@@ -385,6 +461,10 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
 
     if index == "ndvi":
         return s2.normalizedDifference(["B8", "B4"]).rename("index")
+    if index == "ndwi":
+        return s2.normalizedDifference(["B3", "B8"]).rename("index")
+    if index == "mndwi":
+        return s2.normalizedDifference(["B3", "B11"]).rename("index")
     if index == "fe_oxide":
         return s2.select("B4").divide(s2.select("B2")).rename("index")
     if index == "clay":
@@ -1786,7 +1866,7 @@ def compute_lineaments_tile(
     region_geojson: Optional[dict],
     smooth_m: int = 30,
     density_radius_m: int = 750,
-    rose_samples: int = 4000,
+    rose_samples: int = 1500,
 ) -> dict:
     """Detect topographic lineaments from the DEM and return:
       - density tile (heat-style)
@@ -1811,12 +1891,13 @@ def compute_lineaments_tile(
     density_map = density_vis.getMapId()
     edges_map = edges_vis.getMapId()
 
-    # Orientation rose
+    # Orientation rose with safe scale and robust error handling
     masked_dir = layers["direction"].updateMask(layers["edges_bin"])
-    sample_fc = masked_dir.sample(
-        region=region, scale=90, numPixels=rose_samples, dropNulls=True, seed=42,
-    )
+    dirs = []
     try:
+        sample_fc = masked_dir.sample(
+            region=region, scale=120, numPixels=rose_samples, dropNulls=True, seed=42,
+        )
         dirs = sample_fc.aggregate_array("dir").getInfo() or []
     except Exception as exc:
         logger.warning("Failed to sample orientation directions: %s", exc)
@@ -1836,7 +1917,7 @@ def compute_lineaments_tile(
     try:
         mean_density = density.unmask(0).reduceRegion(
             reducer=ee.Reducer.mean(), geometry=region,
-            scale=200, bestEffort=True, maxPixels=int(1e9),
+            scale=250, bestEffort=True, maxPixels=int(1e9),
         ).get("density").getInfo()
     except Exception as exc:
         logger.warning("Failed to compute lineament density: %s", exc)
@@ -1941,6 +2022,7 @@ def _build_targeting_score(
             norm = img.subtract(nmin).divide(nmax - nmin).clamp(0, 1)
         if k in invert_set:
             norm = ee.Image(1).subtract(norm)
+        norm = norm.unmask(0)
         weighted = norm.multiply(w)
         composite = weighted if composite is None else composite.add(weighted)
 
@@ -1979,7 +2061,7 @@ def compute_targeting_tile(
             reducer=ee.Reducer.mean().combine(
                 ee.Reducer.percentile([90, 95, 99]), sharedInputs=True,
             ),
-            geometry=region, scale=200, bestEffort=True, maxPixels=int(1e9),
+            geometry=region, scale=250, bestEffort=True, maxPixels=int(1e9),
         ).getInfo() or {}
     except Exception as exc:
         logger.warning("Failed to compute targeting stats: %s", exc)
@@ -2617,10 +2699,25 @@ def compute_drainage_tile(region_geojson: Optional[dict], threshold: int = 500) 
 
 
 def compute_river_network(region_geojson: Optional[dict]) -> dict:
-    """Multi-order river network derived from HydroSHEDS flow accumulation."""
+    """Multi-order river network derived from HydroSHEDS flow accumulation and FreeFlowingRivers."""
     import ee
     region = _to_ee_region(region_geojson)
-    acc    = ee.Image("WWF/HydroSHEDS/15ACC").select("b1").clip(region)
+
+    # 1. Vector FreeFlowingRivers painted as raster (User requested: WWF/HydroSHEDS/v1/FreeFlowingRivers)
+    vector_tile = None
+    try:
+        rivers_fc = ee.FeatureCollection("WWF/HydroSHEDS/v1/FreeFlowingRivers").filterBounds(region)
+        rivers_raster = ee.Image().byte().paint(rivers_fc, 1).clip(region).rename("water")
+        vector_tile = (
+            rivers_raster.selfMask()
+            .visualize(palette=["3366ff"])
+            .getMapId()["tile_fetcher"].url_format
+        )
+    except Exception as exc:
+        logger.warning("Failed to render FreeFlowingRivers vector raster: %s", exc)
+
+    # 2. Flow accumulation multi-order raster (Strahler 1-5)
+    acc = ee.Image("WWF/HydroSHEDS/15ACC").select("b1").clip(region)
 
     classified = (
         ee.Image(0)
@@ -2639,8 +2736,9 @@ def compute_river_network(region_geojson: Optional[dict]) -> dict:
                     .getMapId()["tile_fetcher"].url_format
 
     return {
-        "tileUrl":       tile_all,
-        "majorTileUrl":  tile_major,
+        "tileUrl":            tile_all,
+        "majorTileUrl":       tile_major,
+        "freeFlowingTileUrl": vector_tile,
         "orders": {
             "1_headwaters": 100,
             "2_small":      500,
@@ -2656,10 +2754,10 @@ def compute_watershed_from_point(
     lat: float,
     lon: float,
     region_geojson: Optional[dict],
-    max_iter: int = 60,
+    max_iter: int = 40,
     level: int = 10,
 ) -> dict:
-    """Delineate the basin at a clicked location."""
+    """Delineate the basin at a clicked location with double fallback hierarchy."""
     import ee
 
     pt = ee.Geometry.Point([lon, lat])
@@ -2668,44 +2766,48 @@ def compute_watershed_from_point(
         if hb is not None:
             return hb
     except Exception as e:
-        logger.exception("Erro silencioso capturado: %s", e)
+        logger.warning("HydroBASINS lookup failed, falling back to D8: %s", e)
 
     return _watershed_d8(lat, lon, region_geojson, max_iter)
 
 
 def _watershed_hydrobasins(pt, lat: float, lon: float, level: int):
-    """Containing HydroBASINS sub-basin (instant, real boundary). None if absent."""
+    """Containing HydroBASINS / HydroATLAS sub-basin (instant, real boundary). None if absent."""
     import ee
     keep = ["HYBAS_ID", "SUB_AREA", "UP_AREA", "ORDER_"]
     seen: list = []
-    order = [level] + [l for l in (12, 10, 8, 6) if l != level]
+    order = [level] + [l for l in (10, 8, 6, 12) if l != level]
     for lvl in order:
         if lvl in seen or not (1 <= lvl <= 12):
             continue
         seen.append(lvl)
-        cid = f"WWF/HydroATLAS/v1/Basins/level{lvl:02d}"
-        try:
-            fc = (ee.FeatureCollection(cid).filterBounds(pt)
-                  .select(keep, None, True).limit(1))
-            geojson = fc.getInfo()
-            feats = geojson.get("features", [])
-            if not feats:
+        cids = [
+            f"WWF/HydroATLAS/v1/Basins/level{lvl:02d}",
+            f"WWF/HydroSHEDS/v1/Basins/hybas_af_lev{lvl:02d}_v1c",
+        ]
+        for cid in cids:
+            try:
+                fc = (ee.FeatureCollection(cid).filterBounds(pt)
+                      .select(keep, None, True).limit(1))
+                geojson = fc.getInfo()
+                feats = geojson.get("features", [])
+                if not feats:
+                    continue
+                props = feats[0].get("properties", {})
+                area_km2 = float(props.get("SUB_AREA") or props.get("UP_AREA") or 0)
+                tile = (fc.style(color="0d47a1", fillColor="1565c033", width=2)
+                        .getMapId()["tile_fetcher"].url_format)
+                return {
+                    "tileUrl":   tile,
+                    "geojson":   geojson,
+                    "pourPoint": [lat, lon],
+                    "areaKm2":   round(float(area_km2), 2),
+                    "maxIter":   0,
+                    "level":     lvl,
+                    "source":    "hydrobasins",
+                }
+            except Exception:
                 continue
-            props = feats[0].get("properties", {})
-            area_km2 = float(props.get("SUB_AREA") or 0)
-            tile = (fc.style(color="0d47a1", fillColor="1565c033", width=2)
-                    .getMapId()["tile_fetcher"].url_format)
-            return {
-                "tileUrl":   tile,
-                "geojson":   geojson,
-                "pourPoint": [lat, lon],
-                "areaKm2":   round(float(area_km2), 2),
-                "maxIter":   0,
-                "level":     lvl,
-                "source":    "hydrobasins",
-            }
-        except Exception:
-            continue
     return None
 
 
@@ -2713,9 +2815,9 @@ def _watershed_d8(
     lat: float,
     lon: float,
     region_geojson: Optional[dict],
-    max_iter: int = 60,
+    max_iter: int = 40,
 ) -> dict:
-    """Delineate a watershed from a pour point using D8 flow direction."""
+    """Delineate a watershed from a pour point using D8 flow direction with dynamic snap."""
     import ee
 
     fdir = ee.Image("WWF/HydroSHEDS/15DIR").select("b1")
@@ -2724,28 +2826,32 @@ def _watershed_d8(
 
     pour_pt = ee.Geometry.Point([lon, lat])
 
-    min_acc  = 500
+    # Dynamic Snap to drainage: try cascading thresholds (500 -> 100 -> 20 -> pour_pt)
     snap_buf = pour_pt.buffer(15_000)
-    snap_img = (
-        acc.updateMask(acc.gte(min_acc))
-        .addBands(ee.Image.pixelLonLat())
-    )
-    snapped = snap_img.reduceRegion(
-        reducer   = ee.Reducer.max(3).setOutputs(["acc", "lon", "lat"]),
-        geometry  = snap_buf,
-        scale     = 500,
-        maxPixels = int(1e7),
-        bestEffort= True,
-    )
-    snap_lon = snapped.get("lon")
-    snap_lat = snapped.get("lat")
-    if snap_lon.getInfo() is None:
-        raise RuntimeError(
-            "Nenhum canal de drenagem encontrado perto do ponto. "
-            "Clique mais perto de um rio/curso de água."
-        )
-    seed_pt = ee.Geometry.Point([snap_lon, snap_lat])
+    snap_lon = None
+    snap_lat = None
+    for min_acc in (500, 100, 20):
+        try:
+            snap_img = acc.updateMask(acc.gte(min_acc)).addBands(ee.Image.pixelLonLat())
+            snapped = snap_img.reduceRegion(
+                reducer   = ee.Reducer.max(3).setOutputs(["acc", "lon", "lat"]),
+                geometry  = snap_buf,
+                scale     = 500,
+                maxPixels = int(1e7),
+                bestEffort= True,
+            )
+            val_lon = snapped.get("lon").getInfo()
+            if val_lon is not None:
+                snap_lon = val_lon
+                snap_lat = snapped.get("lat").getInfo()
+                break
+        except Exception:
+            continue
 
+    if snap_lon is None or snap_lat is None:
+        snap_lon, snap_lat = lon, lat
+
+    seed_pt = ee.Geometry.Point([snap_lon, snap_lat])
     seed_geom = ee.Geometry(seed_pt).buffer(600)
     basin = (
         ee.Image.constant(1)
@@ -2756,7 +2862,9 @@ def _watershed_d8(
         .unmask(0)
     )
 
-    for _ in range(max_iter):
+    # Safe iteration limit to avoid computation timeouts
+    effective_iter = min(max_iter, 45)
+    for _ in range(effective_iter):
         upstream = (
             fdir.eq(1  ).And(basin.translate(-1,  0, "pixels", proj))
             .Or(fdir.eq(2  ).And(basin.translate(-1, -1, "pixels", proj)))
@@ -2770,8 +2878,8 @@ def _watershed_d8(
         basin = basin.Or(upstream).reproject(proj).unmask(0)
 
     basin = basin.selfMask()
-
-    clip_region = _to_ee_region(region_geojson) or pour_pt.buffer(max_iter * 600)
+    clip_region = _to_ee_region(region_geojson) or pour_pt.buffer(effective_iter * 600)
+    
     vec = basin.reduceToVectors(
         geometry       = clip_region,
         scale          = 500,
@@ -2781,19 +2889,27 @@ def _watershed_d8(
         labelProperty  = "basin",
     )
 
-    area_km2 = vec.geometry().area(maxError=100).divide(1e6)
+    try:
+        area_km2_val = round(float(vec.geometry().area(maxError=100).divide(1e6).getInfo()), 2)
+    except Exception:
+        area_km2_val = 0.0
 
     tile_url = (
         basin.visualize(palette=["0d47a1"], opacity=0.45)
         .getMapId()["tile_fetcher"].url_format
     )
 
+    try:
+        geojson_data = vec.getInfo()
+    except Exception:
+        geojson_data = {"type": "FeatureCollection", "features": []}
+
     return {
         "tileUrl":    tile_url,
-        "geojson":    vec.getInfo(),
-        "pourPoint":  [lat, lon],
-        "areaKm2":    round(float(area_km2.getInfo()), 2),
-        "maxIter":    max_iter,
+        "geojson":    geojson_data,
+        "pourPoint":  [snap_lat, snap_lon],
+        "areaKm2":    area_km2_val,
+        "maxIter":    effective_iter,
     }
 
 

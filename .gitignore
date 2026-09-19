@@ -50,8 +50,13 @@ Thumbs.db
 .local/
 
 # Secrets / credentials — never commit
+.env
+*.env
+.env.*
 service-account-key.json
 *-service-account*.json
+service_account*.json
+service_account.json
 .env.local
 .env.*.local
 __pycache__/

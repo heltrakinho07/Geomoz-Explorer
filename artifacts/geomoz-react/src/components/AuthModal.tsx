@@ -21,6 +21,7 @@ import {
   ArrowRight,
   ShieldCheck,
   Sparkles,
+  ExternalLink,
 } from "lucide-react";
 import { useLocation } from "wouter";
 
@@ -42,6 +43,7 @@ export default function AuthModal({
   const [, setLocation] = useLocation();
   const {
     user,
+    continueAsGuest,
     signInWithGoogle,
     signInWithEmail,
     registerWithEmail,
@@ -149,11 +151,19 @@ export default function AuthModal({
   };
 
   const handleGuestEntry = () => {
+    continueAsGuest();
+    onSuccess?.();
     onClose();
     setLocation("/app");
   };
 
   const displayError = localError || authError;
+  const isUnauthorizedDomain = Boolean(
+    displayError &&
+      (displayError.toLowerCase().includes("unauthorized-domain") ||
+        displayError.toLowerCase().includes("domínio") ||
+        displayError.toLowerCase().includes("autorizado no firebase"))
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -224,12 +234,59 @@ export default function AuthModal({
         <div className="p-6 space-y-4">
           {/* Error Message */}
           {displayError && (
-            <div className="flex items-start gap-2.5 p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl text-xs text-rose-700 dark:text-rose-300 animate-in fade-in duration-150">
-              <AlertCircle size={16} className="text-rose-500 shrink-0 mt-0.5" />
-              <div className="space-y-0.5 leading-snug">
-                <strong className="block font-semibold">Atenção:</strong>
-                <p>{displayError}</p>
+            <div className="flex flex-col gap-2.5 p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl text-xs text-rose-800 dark:text-rose-200 animate-in fade-in duration-150">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle size={17} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                <div className="space-y-1 leading-snug flex-1">
+                  <strong className="block font-semibold text-rose-950 dark:text-rose-100">
+                    {isUnauthorizedDomain ? "Domínio Não Autorizado no Firebase Auth" : "Atenção:"}
+                  </strong>
+                  <p>{displayError}</p>
+                </div>
               </div>
+
+              {isUnauthorizedDomain && (
+                <div className="pt-2 border-t border-rose-200 dark:border-rose-900/60 space-y-2 text-[11px]">
+                  <div className="bg-white/80 dark:bg-slate-900/70 p-2.5 rounded-lg border border-rose-200/70 dark:border-rose-900/50 text-slate-700 dark:text-slate-300">
+                    <p className="font-semibold text-slate-900 dark:text-slate-100 mb-1">
+                      Como autorizar o seu domínio na Google:
+                    </p>
+                    <ol className="list-decimal list-inside space-y-1 text-slate-600 dark:text-slate-400">
+                      <li>
+                        Abra a{" "}
+                        <a
+                          href="https://console.firebase.google.com/project/geoprocessamento-426809/authentication/settings"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sky-600 dark:text-sky-400 underline font-medium inline-flex items-center gap-0.5 hover:text-sky-700"
+                        >
+                          Consola do Firebase (Authentication &gt; Settings) <ExternalLink size={10} />
+                        </a>
+                      </li>
+                      <li>
+                        No separador <strong>Authorized domains</strong>, clique em <strong>Add domain</strong>.
+                      </li>
+                      <li>
+                        Adicione o host atual:{" "}
+                        <code className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-rose-600 dark:text-rose-300 font-mono font-bold">
+                          {typeof window !== "undefined" ? window.location.hostname : "localhost"}
+                        </code>{" "}
+                        (e também <code className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-rose-600 dark:text-rose-300 font-mono">127.0.0.1</code>).
+                      </li>
+                    </ol>
+                  </div>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleGuestEntry}
+                    className="w-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold py-2 h-auto rounded-lg shadow-sm flex items-center justify-center gap-2"
+                  >
+                    <Sparkles size={14} />
+                    <span>Continuar em Modo Convidado (Explorar GeoMoz sem Bloqueio)</span>
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
