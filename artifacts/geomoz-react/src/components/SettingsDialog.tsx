@@ -498,7 +498,6 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                   <span>{testResult.message}</span>
                 </div>
               )}
-              </div>
 
               {/* Documentation links */}
               <div className="p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-xl space-y-2 text-xs">
