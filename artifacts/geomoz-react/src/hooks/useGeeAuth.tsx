@@ -165,8 +165,10 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
       let headers: Record<string, string> = { "Content-Type": "application/json" };
       if (auth?.currentUser) {
         try {
-          const idToken = await auth.currentUser.getIdToken();
-          headers["Authorization"] = `Bearer ${idToken}`;
+          const idTokenPromise = auth.currentUser.getIdToken();
+          const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 3000));
+          const idToken = await Promise.race([idTokenPromise, timeoutPromise]);
+          if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
         } catch {}
       }
 
@@ -178,7 +180,7 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
 
       const data = await res.json().catch(() => ({}));
 
-      // 3. Persist to Firestore under this user's profile
+      // 3. Persist to Firestore under this user's profile (fire-and-forget, non-blocking)
       if (auth?.currentUser && db && auth.currentUser.uid !== "guest_user") {
         try {
           const docRef = doc(db, "users", auth.currentUser.uid, "settings", "gee");
@@ -191,9 +193,11 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
           if (serviceAccountJson && serviceAccountJson.trim()) {
             fsData.service_account_key = serviceAccountJson.trim();
           }
-          await setDoc(docRef, fsData, { merge: true });
+          setDoc(docRef, fsData, { merge: true }).catch((fsErr) => {
+            console.warn("Firestore GEE persist notice:", fsErr);
+          });
         } catch (fsErr) {
-          console.warn("Firestore GEE persist warning:", fsErr);
+          console.warn("Firestore GEE persist notice:", fsErr);
         }
       }
 
