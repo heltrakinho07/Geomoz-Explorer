@@ -56,7 +56,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const { projects } = useProject();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("gee");
-  const [projectIdInput, setProjectIdInput] = useState(geeProject || "eengine-project");
+  const [projectIdInput, setProjectIdInput] = useState(geeProject || "geoprocessamento-426809");
   const [accountInput, setAccountInput] = useState(geeAccount || "");
   const [saKeyInput, setSaKeyInput] = useState("");
   const [showSaInput, setShowSaInput] = useState(false);
@@ -66,7 +66,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
 
   // Sync inputs with active context and user profile
   React.useEffect(() => {
-    setProjectIdInput(geeProject || "");
+    setProjectIdInput(geeProject || "geoprocessamento-426809");
     setAccountInput(geeAccount || (user?.email || ""));
   }, [geeProject, geeAccount, user]);
 
@@ -80,7 +80,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   });
 
   const handleSaveAllGee = async () => {
-    const proj = projectIdInput.trim() || geeProject || "eengine-project";
+    const proj = projectIdInput.trim() || geeProject || "geoprocessamento-426809";
     const acc = accountInput.trim() || geeAccount || "";
     const sa = saKeyInput.trim() || undefined;
 
@@ -269,8 +269,8 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       }`}
                     >
                       {geeConnected
-                        ? `Projeto vinculado: ${geeProject || "eengine-project"} | Conta: ${geeAccount || "Quota Ativa"}`
-                        : `Projeto selecionado: ${geeProject || "eengine-project"}. Conecte a sua conta Google com 1 clique abaixo para processar imagens.`}
+                        ? `Projeto vinculado: ${geeProject || "geoprocessamento-426809"} | Conta: ${geeAccount || "Quota Ativa"}`
+                        : `Projeto selecionado: ${geeProject || "geoprocessamento-426809"}. Conecte a sua conta Google com 1 clique abaixo para processar imagens.`}
                     </p>
                   </div>
                 </div>
@@ -379,7 +379,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                         type="text"
                         value={projectIdInput}
                         onChange={(e) => setProjectIdInput(e.target.value)}
-                        placeholder="eengine-project"
+                        placeholder="geoprocessamento-426809"
                         className="text-xs font-mono bg-white dark:bg-slate-900 flex-1"
                       />
                       <Button
@@ -395,8 +395,16 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       </Button>
                     </div>
                     <p className="text-[10px] text-slate-400">
-                      ID do projeto GCP onde a API do Earth Engine está ativada (padrão: <code>eengine-project</code>).
+                      ID do projeto GCP onde a API do Earth Engine está ativada (ex: <code>geoprocessamento-426809</code> ou o projeto indicado no <a href="https://code.earthengine.google.com" target="_blank" rel="noreferrer" className="text-sky-600 underline">Code Editor</a>).
                     </p>
+                    <a
+                      href={`https://console.cloud.google.com/apis/library/earthengine.googleapis.com?project=${projectIdInput.trim() || "geoprocessamento-426809"}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] text-sky-600 hover:underline inline-flex items-center gap-1"
+                    >
+                      Ativar Earth Engine API neste projeto na Consola GCP <ExternalLink size={9} />
+                    </a>
                   </div>
 
                   <div className="flex items-center gap-2 pt-1">
@@ -436,7 +444,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                         type="text"
                         value={accountInput}
                         onChange={(e) => setAccountInput(e.target.value)}
-                        placeholder="ex: geoanalises@eengine-project.iam.gserviceaccount.com"
+                        placeholder="ex: geoanalises@geoprocessamento-426809.iam.gserviceaccount.com"
                         className="text-xs bg-white dark:bg-slate-900"
                       />
                     </div>
@@ -448,7 +456,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       <textarea
                         value={saKeyInput}
                         onChange={(e) => setSaKeyInput(e.target.value)}
-                        placeholder={`{\n  "type": "service_account",\n  "project_id": "eengine-project",\n  "private_key_id": "...",\n  "private_key": "-----BEGIN PRIVATE KEY-----...",\n  "client_email": "geoanalises@eengine-project.iam.gserviceaccount.com"\n}`}
+                        placeholder={`{\n  "type": "service_account",\n  "project_id": "geoprocessamento-426809",\n  "private_key_id": "...",\n  "private_key": "-----BEGIN PRIVATE KEY-----...",\n  "client_email": "geoanalises@geoprocessamento-426809.iam.gserviceaccount.com"\n}`}
                         rows={4}
                         className="w-full text-[11px] font-mono p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                       />

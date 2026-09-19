@@ -944,6 +944,14 @@ async def gee_index(req: GEEIndexRequest, uid: str = Depends(require_gee_auth)):
     except RuntimeError as exc:
         raise HTTPException(503, str(exc))
     except Exception as exc:
+        msg = str(exc)
+        if "roles/serviceusage.serviceUsageConsumer" in msg or "Caller does not have required permission to use project" in msg:
+            raise HTTPException(
+                403,
+                f"A sua conta Google não tem permissão para usar o projeto configurado. "
+                f"Por favor abra as Definições, insira o ID do seu projeto Google Cloud (ex: geoprocessamento-426809 ou o projeto do Code Editor) "
+                f"e confirme se a Earth Engine API está ativada."
+            )
         raise HTTPException(500, f"GEE computation failed: {exc}")
 
 
