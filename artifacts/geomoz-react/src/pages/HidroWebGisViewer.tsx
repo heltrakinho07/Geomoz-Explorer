@@ -39,6 +39,8 @@ import {
   X,
   FileCode,
   LocateFixed,
+  Sun,
+  Moon,
 } from "lucide-react";
 import MapTools from "@/components/MapTools";
 import { downloadStandaloneBasinHtml } from "@/lib/standalone-html-export";
@@ -195,6 +197,38 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
 
   // Link copy feedback
   const [copied, setCopied] = useState<boolean>(false);
+
+  // Theme state (Dark / Light Mode)
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    try {
+      return (localStorage.getItem("geomoz_theme") as "dark" | "light") || "dark";
+    } catch {
+      return "dark";
+    }
+  });
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    try {
+      localStorage.setItem("geomoz_theme", next);
+      if (next === "dark") {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    try {
+      if (theme === "dark") {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
+    } catch {}
+  }, [theme]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -795,37 +829,56 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
   }
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 font-sans">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-200">
       {/* ── Top Navigation Bar ────────────────────────────────────────────── */}
-      <header className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between z-30 shrink-0">
+      <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 flex items-center justify-between z-30 shrink-0 transition-colors duration-200">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-cyan-500/20">
-              <Droplets size={17} />
+          <div className="flex items-center gap-2.5">
+            {/* Official GeoMoz Logo Container */}
+            <div className="w-10 h-10 rounded-2xl p-[2px] bg-gradient-to-tr from-sky-500 via-sky-400 to-indigo-600 shadow-md shadow-sky-500/25 shrink-0">
+              <div className="w-full h-full rounded-[14px] bg-white dark:bg-slate-900 flex items-center justify-center">
+                <Globe size={22} className="text-sky-500" />
+              </div>
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-white tracking-tight">GeoMoz</span>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+              <div className="flex items-center gap-1.5">
+                <span className="text-base font-black text-slate-900 dark:text-white tracking-tight">GeoMoz</span>
+                <span className="text-base font-black text-sky-500 dark:text-sky-400">Explorer</span>
+                <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800 shadow-xs">
+                  3D
+                </span>
+                <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 ml-1">
                   WebGIS
                 </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1 font-medium">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1 font-medium">
                   <Eye size={10} /> Apenas Leitura
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">Visualizador Hidrológico & Cartográfico</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-tight">
+                Inteligência Geoespacial Planetária
+              </p>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Theme Toggle Button (Modo Claro / Escuro) */}
+          <button
+            onClick={toggleTheme}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-medium transition-all shadow-sm"
+            title={theme === "dark" ? "Alternar para Modo Claro" : "Alternar para Modo Escuro"}
+          >
+            {theme === "dark" ? <Sun size={13} className="text-amber-400" /> : <Moon size={13} className="text-slate-600" />}
+            <span className="hidden sm:inline">{theme === "dark" ? "Modo Claro" : "Modo Escuro"}</span>
+          </button>
+
           {/* Share Button / Copy Link */}
           <button
             onClick={handleCopyLink}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-medium transition-all shadow-sm"
             title="Copiar link permanente de visualização"
           >
-            {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+            {copied ? <Check size={13} className="text-emerald-500 dark:text-emerald-400" /> : <Copy size={13} />}
             <span>{copied ? "Link Copiado!" : "Copiar Link"}</span>
           </button>
 
@@ -838,7 +891,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
               wsStats,
               pourPoint: PP,
             })}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-xs font-medium transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-cyan-600 dark:text-cyan-300 border border-slate-200 dark:border-slate-700 text-xs font-medium transition-all shadow-sm"
             title="Descarregar ficheiro HTML autónomo que abre em qualquer computador offline"
           >
             <FileCode size={13} />
@@ -856,7 +909,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
 
           <a
             href="/app"
-            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-300 text-xs font-medium transition-all border border-slate-700/50"
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium transition-all border border-slate-200 dark:border-slate-700/50"
           >
             <ExternalLink size={12} />
             <span className="hidden sm:inline">Explorador Completo</span>
@@ -878,18 +931,18 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           />
 
           {/* Floating Layers Quick Bar */}
-          <div className="absolute top-4 left-4 z-[500] bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-800 shadow-xl p-2 flex items-center gap-1 text-xs">
-            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-2">Camadas:</span>
+          <div className="absolute top-4 left-4 z-[500] bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-2 flex items-center gap-1 text-xs transition-colors duration-200">
+            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider px-2">Camadas:</span>
 
             <button
               onClick={() => setActiveLayer(l => l === "lulc" ? "none" : "lulc")}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-xl font-medium transition-all ${
                 activeLayer === "lulc"
-                  ? "bg-lime-500/20 text-lime-300 border border-lime-500/40"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                  ? "bg-lime-500/20 text-lime-600 dark:text-lime-300 border border-lime-500/40"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-lime-400" />
+              <span className="w-2 h-2 rounded-full bg-lime-500" />
               Uso do Solo (10m)
             </button>
 
@@ -897,29 +950,29 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
               onClick={() => setActiveLayer(l => l === "cn" ? "none" : "cn")}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-xl font-medium transition-all ${
                 activeLayer === "cn"
-                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                  ? "bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/40"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
               Escoamento (CN)
             </button>
 
-            <div className="w-[1px] h-4 bg-slate-800 mx-1" />
+            <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-800 mx-1" />
 
             <button
               onClick={() => setShowDrainage(v => !v)}
               className={`flex items-center gap-1 px-2 py-1 rounded-xl font-medium transition-all ${
                 showDrainage
-                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
-                  : "text-slate-500 hover:text-slate-300 hover:bg-slate-800"
+                  ? "bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 border border-cyan-500/40"
+                  : "text-slate-600 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
               }`}
             >
               <GitBranch size={11} />
               Linhas de Água
             </button>
 
-            <div className="w-[1px] h-4 bg-slate-800 mx-1" />
+            <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-800 mx-1" />
 
             <button
               onClick={() => {
@@ -928,9 +981,9 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                 }
               }}
               title="A minha localização atual (GPS / Onde Estou)"
-              className="flex items-center gap-1 px-2 py-1 rounded-xl font-medium transition-all text-slate-400 hover:text-sky-300 hover:bg-slate-800"
+              className="flex items-center gap-1 px-2 py-1 rounded-xl font-medium transition-all text-slate-600 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-300 hover:bg-slate-100 dark:hover:bg-slate-800"
             >
-              <LocateFixed size={11} className="text-sky-400" />
+              <LocateFixed size={11} className="text-sky-500" />
               <span>Onde Estou</span>
             </button>
           </div>
@@ -1018,37 +1071,37 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           </MapContainer>
 
           {/* Floating Cartographic Legend on Map */}
-          <div className="absolute bottom-8 left-20 z-[500] bg-slate-900/90 backdrop-blur-md rounded-2xl shadow-xl border border-slate-800 p-3 pointer-events-none text-[11px] min-w-[170px] text-slate-200">
-            <div className="font-bold text-cyan-400 mb-1.5 flex items-center gap-1.5 text-xs">
+          <div className="absolute bottom-8 left-20 z-[500] bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-3 pointer-events-none text-[11px] min-w-[170px] text-slate-700 dark:text-slate-200 transition-colors duration-200">
+            <div className="font-bold text-sky-600 dark:text-cyan-400 mb-1.5 flex items-center gap-1.5 text-xs">
               <Compass size={12} /> Legenda do Mapa
             </div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="w-4 h-1.5 rounded border border-cyan-400 bg-cyan-400/20" />
-              <span className="text-slate-300">Limite da Bacia</span>
+              <span className="w-4 h-1.5 rounded border border-cyan-500 bg-cyan-500/20" />
+              <span className="text-slate-700 dark:text-slate-300">Limite da Bacia</span>
             </div>
             {showDrainage && (
               <div className="flex items-center gap-2 mb-1">
                 <span className="w-4 h-1 rounded bg-[#0284c7]" />
-                <span className="text-slate-300">Linhas de Água</span>
+                <span className="text-slate-700 dark:text-slate-300">Linhas de Água</span>
               </div>
             )}
             {activeLayer === "lulc" && (
-              <div className="mt-2 pt-2 border-t border-slate-800 space-y-1">
-                <div className="text-[10px] font-semibold text-slate-400 uppercase">Uso do Solo (10m)</div>
+              <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800 space-y-1">
+                <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">Uso do Solo (10m)</div>
                 {report.landcover.slice(0, 5).map(c => (
                   <div key={c.code} className="flex items-center gap-1.5 text-[10px]">
                     <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: c.color }} />
-                    <span className="truncate text-slate-300">{c.label}</span>
-                    <span className="text-slate-400 ml-auto font-mono">{c.pct}%</span>
+                    <span className="truncate text-slate-700 dark:text-slate-300">{c.label}</span>
+                    <span className="text-slate-500 dark:text-slate-400 ml-auto font-mono">{c.pct}%</span>
                   </div>
                 ))}
               </div>
             )}
             {activeLayer === "cn" && (
-              <div className="mt-2 pt-2 border-t border-slate-800 space-y-1">
-                <div className="text-[10px] font-semibold text-slate-400 uppercase">Curve Number (CN)</div>
+              <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800 space-y-1">
+                <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">Curve Number (CN)</div>
                 <div className="h-1.5 rounded-full" style={{ background: "linear-gradient(to right,#1a9850,#fee08b,#d73027)" }} />
-                <div className="flex justify-between text-[9px] text-slate-400">
+                <div className="flex justify-between text-[9px] text-slate-500 dark:text-slate-400">
                   <span>Infiltração</span>
                   <span>Escoamento</span>
                 </div>
@@ -1060,7 +1113,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
         {/* Sidebar Toggle Button */}
         <button
           onClick={() => setSidebarOpen(v => !v)}
-          className="absolute top-20 right-0 z-[600] bg-slate-900 border border-slate-800 text-slate-300 p-2 rounded-l-xl shadow-xl hover:text-white transition-all"
+          className="absolute top-20 right-0 z-[600] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 p-2 rounded-l-xl shadow-xl hover:text-slate-900 dark:hover:text-white transition-all"
           title={sidebarOpen ? "Ocultar painel" : "Mostrar painel"}
         >
           {sidebarOpen ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
@@ -1068,9 +1121,9 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
 
         {/* ── Right Panel (Details & Metrics) ────────────────────────────── */}
         {sidebarOpen && (
-          <aside className="w-84 md:w-96 bg-slate-900 border-l border-slate-800 overflow-y-auto shrink-0 flex flex-col z-20 text-slate-200">
+          <aside className="w-84 md:w-96 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0 flex flex-col z-20 text-slate-800 dark:text-slate-200 transition-colors duration-200">
             {/* Header card */}
-            <div className="p-4 border-b border-slate-800 bg-slate-900/50">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
               <div className="bg-gradient-to-tr from-blue-700 via-blue-600 to-cyan-600 rounded-2xl p-4 text-white shadow-lg shadow-blue-900/20">
                 <div className="flex items-center justify-between text-xs opacity-80 mb-1">
                   <span>Área da Bacia</span>
@@ -1092,8 +1145,8 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
               {/* Morfometria */}
               <div>
                 <div className="flex items-center gap-1.5 mb-2.5">
-                  <Mountain size={13} className="text-blue-400" />
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Morfometria da Bacia</span>
+                  <Mountain size={13} className="text-blue-500 dark:text-blue-400" />
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Morfometria da Bacia</span>
                 </div>
                 <div className="grid grid-cols-3 gap-1.5">
                   {[
@@ -1107,9 +1160,9 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                     ["Compacidade", `${report.morphometry.compactness}`],
                     ["Fator forma", `${report.morphometry.formFactor}`],
                   ].map(([k, v]) => (
-                    <div key={k} className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-2 text-center">
-                      <div className="text-[9px] text-slate-400 uppercase tracking-wide leading-tight mb-0.5">{k}</div>
-                      <div className="text-xs font-bold text-slate-100">{v}</div>
+                    <div key={k} className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-2 text-center">
+                      <div className="text-[9px] text-slate-500 dark:text-slate-400 uppercase tracking-wide leading-tight mb-0.5">{k}</div>
+                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100">{v}</div>
                     </div>
                   ))}
                 </div>
@@ -1119,23 +1172,23 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
-                    <Activity size={13} className="text-lime-400" />
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Uso do Solo (ESA 10m)</span>
+                    <Activity size={13} className="text-lime-500 dark:text-lime-400" />
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Uso do Solo (ESA 10m)</span>
                   </div>
                   <button
                     onClick={() => setActiveLayer(l => l === "lulc" ? "none" : "lulc")}
-                    className="text-[10px] text-cyan-400 hover:underline font-medium"
+                    className="text-[10px] text-sky-600 dark:text-cyan-400 hover:underline font-medium"
                   >
                     {activeLayer === "lulc" ? "Ocultar" : "Ver no mapa"}
                   </button>
                 </div>
-                <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-3 space-y-1.5">
+                <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-3 space-y-1.5">
                   {report.landcover.slice(0, 6).map(c => (
                     <div key={c.code} className="flex items-center gap-2 text-xs">
                       <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: c.color }} />
-                      <span className="text-slate-300 flex-1 truncate">{c.label}</span>
-                      <span className="text-slate-400 font-mono text-[11px]">{c.pct}%</span>
-                      <span className="text-slate-500 text-[10px] w-14 text-right">{c.areaKm2.toFixed(0)} km²</span>
+                      <span className="text-slate-700 dark:text-slate-300 flex-1 truncate">{c.label}</span>
+                      <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">{c.pct}%</span>
+                      <span className="text-slate-400 dark:text-slate-500 text-[10px] w-14 text-right">{c.areaKm2.toFixed(0)} km²</span>
                     </div>
                   ))}
                 </div>
@@ -1144,21 +1197,27 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
               {/* Precipitação Mensal (CHIRPS) */}
               <div>
                 <div className="flex items-center gap-1.5 mb-2">
-                  <Droplets size={13} className="text-blue-400" />
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <Droplets size={13} className="text-blue-500 dark:text-blue-400" />
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Chuva Mensal · {report.precipAnnualMm.toLocaleString("pt-PT")} mm/ano
                   </span>
                 </div>
-                <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-2.5">
+                <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-2.5">
                   <ResponsiveContainer width="100%" height={100}>
                     <BarChart
                       data={report.precipMonthly.map((v, i) => ({ m: "JFMAMJJASOND"[i], mm: v }))}
                       margin={{ top: 4, right: 4, left: -24, bottom: 0 }}
                     >
-                      <XAxis dataKey="m" tick={{ fontSize: 9, fill: "#94a3b8" }} interval={0} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 9, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={28} />
+                      <XAxis dataKey="m" tick={{ fontSize: 9, fill: theme === "dark" ? "#94a3b8" : "#64748b" }} interval={0} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 9, fill: theme === "dark" ? "#94a3b8" : "#64748b" }} axisLine={false} tickLine={false} width={28} />
                       <Tooltip
-                        contentStyle={{ background: "#0f172a", borderColor: "#334155", borderRadius: "8px", fontSize: "11px" }}
+                        contentStyle={{
+                          background: theme === "dark" ? "#0f172a" : "#ffffff",
+                          borderColor: theme === "dark" ? "#334155" : "#cbd5e1",
+                          color: theme === "dark" ? "#f8fafc" : "#0f172a",
+                          borderRadius: "8px",
+                          fontSize: "11px",
+                        }}
                         formatter={(v: number) => [`${v} mm`, "Precipitação"]}
                       />
                       <Bar dataKey="mm" fill="#0284c7" radius={[2, 2, 0, 0]} />
@@ -1171,23 +1230,23 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
-                    <Waves size={13} className="text-amber-400" />
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Escoamento (Curve Number)</span>
+                    <Waves size={13} className="text-amber-500 dark:text-amber-400" />
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Escoamento (Curve Number)</span>
                   </div>
                   <button
                     onClick={() => setActiveLayer(l => l === "cn" ? "none" : "cn")}
-                    className="text-[10px] text-cyan-400 hover:underline font-medium"
+                    className="text-[10px] text-sky-600 dark:text-cyan-400 hover:underline font-medium"
                   >
                     {activeLayer === "cn" ? "Ocultar" : "Ver no mapa"}
                   </button>
                 </div>
-                <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-3">
+                <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-300">CN Médio da Bacia</span>
-                    <span className="text-base font-bold text-white font-mono">{report.runoff.cnMean ?? "—"}</span>
+                    <span className="text-xs text-slate-700 dark:text-slate-300">CN Médio da Bacia</span>
+                    <span className="text-base font-bold text-slate-900 dark:text-white font-mono">{report.runoff.cnMean ?? "—"}</span>
                   </div>
                   <div className="h-2 rounded-full mt-2" style={{ background: "linear-gradient(to right,#1a9850,#fee08b,#d73027)" }} />
-                  <div className="flex justify-between text-[9px] text-slate-400 mt-1">
+                  <div className="flex justify-between text-[9px] text-slate-500 dark:text-slate-400 mt-1">
                     <span>40 · Alta infiltração</span>
                     <span>Escoamento rápido · 100</span>
                   </div>
@@ -1198,10 +1257,10 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
               {wsStats && (
                 <div>
                   <div className="flex items-center gap-1.5 mb-2">
-                    <Gauge size={13} className="text-red-400" />
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Índices de Risco</span>
+                    <Gauge size={13} className="text-red-500 dark:text-red-400" />
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Índices de Risco</span>
                   </div>
-                  <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-3 space-y-2.5">
+                  <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-3 space-y-2.5">
                     {[
                       { label: "Risco de Erosão", val: wsStats.erosionRisk, icon: Wind, color: "#f59e0b" },
                       { label: "Risco de Cheia", val: wsStats.floodRisk, icon: Waves, color: "#ef4444" },
@@ -1209,12 +1268,12 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                     ].map(r => (
                       <div key={r.label} className="space-y-1">
                         <div className="flex justify-between text-xs">
-                          <span className="text-slate-300 flex items-center gap-1.5">
+                          <span className="text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                             <r.icon size={11} style={{ color: r.color }} /> {r.label}
                           </span>
                           <span className="font-bold font-mono" style={{ color: r.color }}>{r.val.toFixed(0)}/100</span>
                         </div>
-                        <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                        <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                           <div className="h-full rounded-full" style={{ width: `${r.val}%`, background: r.color }} />
                         </div>
                       </div>
@@ -1239,7 +1298,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                     wsStats,
                     pourPoint: PP,
                   })}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-xs font-semibold rounded-2xl transition-all shadow-sm"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-cyan-700 dark:text-cyan-300 border border-slate-200 dark:border-slate-700 text-xs font-semibold rounded-2xl transition-all shadow-sm"
                   title="Descarregar ficheiro HTML autónomo que abre em qualquer computador offline"
                 >
                   <FileCode size={14} /> Exportar WebGIS em HTML (Offline)
@@ -1252,28 +1311,28 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
 
       {/* ── Export Modal (Escolha do Tipo de Mapa QGIS) ──────────────────── */}
       {exportModalOpen && (
-        <div className="fixed inset-0 z-[1000] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl text-slate-100 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="fixed inset-0 z-[1000] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl text-slate-900 dark:text-slate-100 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-xl bg-blue-600/20 text-blue-600 dark:text-blue-400 flex items-center justify-center">
                   <FileDown size={16} />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold">Exportação Cartográfica (Estilo QGIS)</h3>
-                  <p className="text-[11px] text-slate-400">Selecione os mapas e elementos a incluir no PDF</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Selecione os mapas e elementos a incluir no PDF</p>
                 </div>
               </div>
               <button
                 onClick={() => setExportModalOpen(false)}
-                className="text-slate-400 hover:text-white text-xs p-1"
+                className="text-slate-400 hover:text-slate-900 dark:hover:text-white text-xs p-1"
               >
                 <X size={14} />
               </button>
             </div>
 
             <div className="my-4 space-y-2.5 text-xs">
-              <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+              <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                 Composição do Relatório PDF:
               </label>
 
@@ -1299,25 +1358,25 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                   onClick={() => setExportType(opt.id as any)}
                   className={`p-3 rounded-2xl border cursor-pointer transition-all ${
                     exportType === opt.id
-                      ? "bg-blue-600/15 border-blue-500 text-white shadow-md shadow-blue-500/10"
-                      : "bg-slate-800/50 border-slate-700/60 text-slate-300 hover:bg-slate-800"
+                      ? "bg-blue-50 dark:bg-blue-600/15 border-blue-500 text-slate-900 dark:text-white shadow-md shadow-blue-500/10"
+                      : "bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/60 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
                   }`}
                 >
                   <div className="flex items-center justify-between font-semibold">
                     <span>{opt.title}</span>
-                    {exportType === opt.id && <Check size={14} className="text-blue-400" />}
+                    {exportType === opt.id && <Check size={14} className="text-blue-500 dark:text-blue-400" />}
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">{opt.desc}</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{opt.desc}</p>
                 </div>
               ))}
 
-              <div className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-3 text-[11px] text-slate-400 space-y-1 mt-3">
-                <div className="font-semibold text-slate-300">Elementos Cartográficos Incluídos:</div>
-                <div className="flex flex-wrap gap-2 text-[10px] text-cyan-300 pt-1">
-                  <span className="bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-800/60 flex items-center gap-1"><Compass size={11} /> Rosa dos Ventos</span>
-                  <span className="bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-800/60 flex items-center gap-1"><Ruler size={11} /> Barra de Escala Gráfica</span>
-                  <span className="bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-800/60 flex items-center gap-1"><Globe size={11} /> Graticule Lat/Lon</span>
-                  <span className="bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-800/60 flex items-center gap-1"><FileText size={11} /> Legenda Temática</span>
+              <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3 text-[11px] text-slate-600 dark:text-slate-400 space-y-1 mt-3">
+                <div className="font-semibold text-slate-700 dark:text-slate-300">Elementos Cartográficos Incluídos:</div>
+                <div className="flex flex-wrap gap-2 text-[10px] text-cyan-600 dark:text-cyan-300 pt-1">
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Compass size={11} /> Rosa dos Ventos</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Ruler size={11} /> Barra de Escala Gráfica</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Globe size={11} /> Graticule Lat/Lon</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><FileText size={11} /> Legenda Temática</span>
                 </div>
               </div>
             </div>
@@ -1325,7 +1384,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
             <div className="flex items-center gap-2 pt-2">
               <button
                 onClick={() => setExportModalOpen(false)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all"
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-all"
               >
                 Cancelar
               </button>

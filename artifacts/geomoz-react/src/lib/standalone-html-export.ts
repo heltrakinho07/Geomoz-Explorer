@@ -140,26 +140,40 @@ export function generateStandaloneBasinHtml(options: ExportStandaloneHtmlOptions
       align-items: center;
       gap: 0.75rem;
     }
+    .brand-logo-wrapper {
+      width: 40px;
+      height: 40px;
+      border-radius: 14px;
+      padding: 2px;
+      background: linear-gradient(135deg, #0284c7 0%, #6366f1 100%);
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25);
+      flex-shrink: 0;
+      display: flex;
+    }
     .brand-logo {
-      width: 38px;
-      height: 38px;
+      width: 100%;
+      height: 100%;
       border-radius: 12px;
-      background: linear-gradient(135deg, #0284c7, #06b6d4);
+      background: #ffffff;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: 800;
-      color: white;
-      font-size: 1rem;
-      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+      color: #0284c7;
+    }
+    html[data-theme="dark"] .brand-logo {
+      background: #0f172a;
+      color: #38bdf8;
     }
     .brand-title {
       font-size: 1.05rem;
-      font-weight: 700;
+      font-weight: 800;
       color: var(--text-main);
       display: flex;
       align-items: center;
       gap: 0.5rem;
+    }
+    html[data-theme="dark"] .brand-title span:first-child span {
+      color: #38bdf8;
     }
     .brand-subtitle {
       font-size: 0.72rem;
@@ -180,6 +194,39 @@ export function generateStandaloneBasinHtml(options: ExportStandaloneHtmlOptions
       background: var(--bg-sub);
       color: var(--accent);
       border: 1px solid var(--border-sub);
+    }
+    .badge-3d {
+      background: #e0f2fe;
+      color: #0284c7;
+      border: 1px solid #7dd3fc;
+      font-weight: 800;
+      border-radius: 6px;
+      padding: 0.1rem 0.4rem;
+    }
+    html[data-theme="dark"] .badge-3d {
+      background: rgba(14, 165, 233, 0.2);
+      color: #38bdf8;
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+    .badge-webgis {
+      background: rgba(14, 165, 233, 0.12);
+      color: #0284c7;
+      border: 1px solid rgba(14, 165, 233, 0.25);
+    }
+    html[data-theme="dark"] .badge-webgis {
+      background: rgba(14, 165, 233, 0.15);
+      color: #38bdf8;
+      border-color: rgba(14, 165, 233, 0.3);
+    }
+    .badge-readonly {
+      background: rgba(16, 185, 129, 0.12);
+      color: #059669;
+      border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+    html[data-theme="dark"] .badge-readonly {
+      background: rgba(16, 185, 129, 0.15);
+      color: #10b981;
+      border-color: rgba(16, 185, 129, 0.3);
     }
     .header-actions {
       display: flex;
@@ -682,20 +729,25 @@ export function generateStandaloneBasinHtml(options: ExportStandaloneHtmlOptions
   <!-- ── Header ────────────────────────────────────────── -->
   <header>
     <div class="brand">
-      <div class="brand-logo" title="GeoMoz Explorer">
-        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/>
-          <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
-          <path d="M2 12h20"/>
-        </svg>
+      <div class="brand-logo-wrapper" title="GeoMoz Explorer">
+        <div class="brand-logo">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+            <path d="M2 12h20"/>
+          </svg>
+        </div>
       </div>
       <div>
         <div class="brand-title">
-          <span>GeoMoz <span style="color: #38bdf8;">Explorer</span></span>
-          <span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border-color: rgba(14, 165, 233, 0.3);">WebGIS</span>
-          <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border-color: rgba(16, 185, 129, 0.3);">Apenas Leitura</span>
+          <span>GeoMoz <span style="color: #0284c7;">Explorer</span></span>
+          <span class="badge badge-3d">3D</span>
+          <span class="badge badge-webgis">WebGIS</span>
+          <span class="badge badge-readonly">Apenas Leitura</span>
         </div>
         <div class="brand-subtitle">
+          <span style="font-weight: 600;">Inteligência Geoespacial Planetária</span>
+          <span>·</span>
           <span>${title}</span>
           <span>·</span>
           <span>${dateStr}</span>
