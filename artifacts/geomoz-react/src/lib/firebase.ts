@@ -2,9 +2,17 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
+const getAuthDomain = () => {
+  if (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN) {
+    return import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
+  }
+  // Branded OAuth domain: displays "Continuar para geomoz.geolithica.com" instead of firebaseapp.com
+  return "geomoz.geolithica.com";
+};
+
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBecN1965syLWnc6Q2bj7BjtlfCfKxGRLA",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "geoprocessamento-426809.firebaseapp.com",
+  authDomain: getAuthDomain(),
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "geoprocessamento-426809",
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "geoprocessamento-426809.firebasestorage.app",
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "628082413338",
