@@ -199,6 +199,10 @@ export default function HidroGeoMoz({
   const [loadingWS,     setLoadingWS]     = useState(false);
   const [wsStats,       setWsStats]       = useState<BasinStats | null>(null);
   const [loadingWsSt,   setLoadingWsSt]   = useState(false);
+  const [watershedDrainageTile, setWatershedDrainageTile] = useState<string | null>(null);
+  const [loadingWatershedDrainage, setLoadingWatershedDrainage] = useState(false);
+  const [showWatershedDrainage, setShowWatershedDrainage] = useState(true);
+  const [watershedDrainThresh, setWatershedDrainThresh] = useState(250);
 
   // Full hydro-environmental basin report
   const [basinReport,   setBasinReport]   = useState<BasinReport | null>(null);
@@ -317,10 +321,32 @@ export default function HidroGeoMoz({
     finally { setLoadingRN(false); }
   }
 
+  // Watershed drainage network calculation
+  const loadWatershedDrainage = useCallback(async (geom: any, thresh = watershedDrainThresh) => {
+    if (!geom) return;
+    setLoadingWatershedDrainage(true);
+    try {
+      const r = await apiFetch("/geomoz-api/gee/drainage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ geometry: geom, threshold: thresh }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setWatershedDrainageTile(data.tileUrl);
+      }
+    } catch (err) {
+      console.error("Erro ao gerar linhas de água da bacia:", err);
+    } finally {
+      setLoadingWatershedDrainage(false);
+    }
+  }, [watershedDrainThresh]);
+
   // Watershed delineation
   async function onMapClick(lat: number, lng: number) {
     if (mode !== "delineate") return;
     setError(null); setPourPoint([lat, lng]); setWatershedData(null); setWsStats(null);
+    setWatershedDrainageTile(null);
     setBasinReport(null); setReportLayer("none"); setLoadingWS(true);
     const ok = await checkGEE();
     if (!ok) { setLoadingWS(false); return; }
@@ -335,13 +361,18 @@ export default function HidroGeoMoz({
       const wd: WatershedResult = await r.json();
       setWatershedData(wd);
       setLoadingWS(false);   // show the basin immediately; stats load separately
+      const basinGeom = wd.geojson?.features?.[0]?.geometry ?? wd.geojson;
+      // Auto-fetch drainage network clipped to the delineated basin
+      if (basinGeom) {
+        loadWatershedDrainage(basinGeom, watershedDrainThresh);
+      }
       // Auto-stats for delineated watershed
       if (wd.geojson?.features?.length) {
         setLoadingWsSt(true);
         try {
           const sr = await apiFetch("/geomoz-api/gee/basin-stats", { method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ geometry: wd.geojson.features[0]?.geometry ?? wd.geojson }) });
+            body: JSON.stringify({ geometry: basinGeom }) });
           if (sr.ok) setWsStats(await sr.json());
         } catch { /* silent */ } finally { setLoadingWsSt(false); }
       }
@@ -732,7 +763,7 @@ export default function HidroGeoMoz({
   const activeStats = mode === "delineate" ? wsStats : basinStats;
   const hasRightContent = mode === "delineate"
     ? (loadingWS || loadingWsSt || pourPoint !== null || wsStats !== null)
-    : (selectedFeat !== null || statsData !== null || loadingStats);
+    : (selectedFeat !== null || (aoi.source === "mozambique" && statsData !== null) || loadingStats);
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -940,6 +971,12 @@ export default function HidroGeoMoz({
                 </>
               )}
 
+              {/* Delineated watershed drainage lines / Rede de linhas de água da bacia */}
+              {watershedData && showWatershedDrainage && watershedDrainageTile && (
+                <TileLayer crossOrigin="anonymous" key={`ws-drain-${watershedDrainageTile}`}
+                  url={watershedDrainageTile} attribution="HydroSHEDS · WWF" opacity={0.9} zIndex={450} maxZoom={18} />
+              )}
+
               {/* Basin report overlays (toggleable): land cover / SCS-CN runoff */}
               {basinReport && reportLayer === "lulc" && (
                 <TileLayer crossOrigin="anonymous" key={`rep-lulc-${basinReport.landcoverTile}`} url={basinReport.landcoverTile}
@@ -977,6 +1014,12 @@ export default function HidroGeoMoz({
               <div className="font-semibold text-blue-800 dark:text-blue-300 mb-2 flex items-center gap-1"><Crosshair size={11} /> Sub-bacia</div>
               <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow-sm" /><span className="text-slate-600 dark:text-slate-300">Ponto clicado</span></div>
               <div className="flex items-center gap-1.5"><span className="inline-block w-5 h-1.5 rounded border-2 border-blue-800 bg-blue-600/20" /><span className="text-slate-600 dark:text-slate-300">Bacia delimitada</span></div>
+              {showWatershedDrainage && watershedDrainageTile && (
+                <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-slate-100 dark:border-slate-800">
+                  <span className="inline-block w-5 h-1 rounded bg-[#0284c7]" />
+                  <span className="text-slate-600 dark:text-slate-300">Linhas de água</span>
+                </div>
+              )}
             </>
           )}
           {showRiverNet && riverNet && (
@@ -1061,6 +1104,79 @@ export default function HidroGeoMoz({
                     <div className="text-3xl font-bold">{watershedData.areaKm2.toLocaleString("pt-PT")}</div>
                     <div className="text-xs opacity-75">km²</div>
                     <div className="mt-2 text-xs opacity-70">{watershedData.source === "hydrobasins" ? `HydroBASINS · nível ${watershedData.level ?? level}` : "D8 · HydroSHEDS"}</div>
+                  </div>
+
+                  {/* Linhas de Água da Bacia Delimitada */}
+                  <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 border border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1.5">
+                        <GitBranch size={13} className="text-cyan-500" />
+                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                          Linhas de Água da Bacia
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => setShowWatershedDrainage(v => !v)}
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors ${
+                          showWatershedDrainage
+                            ? "bg-cyan-100 dark:bg-cyan-950/50 text-cyan-700 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800"
+                            : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+                        }`}
+                      >
+                        {showWatershedDrainage ? "Visível" : "Oculto"}
+                      </button>
+                    </div>
+
+                    {loadingWatershedDrainage ? (
+                      <div className="flex items-center gap-2 text-[11px] text-slate-400 py-1.5">
+                        <Loader2 size={12} className="animate-spin text-cyan-500" />
+                        <span>A traçar canais e afluentes no GEE…</span>
+                      </div>
+                    ) : watershedDrainageTile ? (
+                      <div className="space-y-2">
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Rede hidrográfica recortada ao interior da bacia (HydroSHEDS).
+                        </p>
+                        <div className="flex items-center gap-2 pt-1">
+                          <label className="text-[10px] text-slate-400 shrink-0">Densidade:</label>
+                          <select
+                            value={watershedDrainThresh}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setWatershedDrainThresh(val);
+                              const geom = watershedData?.geojson?.features?.[0]?.geometry ?? watershedData?.geojson;
+                              if (geom) loadWatershedDrainage(geom, val);
+                            }}
+                            className="flex-1 text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                          >
+                            <option value={100}>Muito Alta (100 px)</option>
+                            <option value={250}>Alta (250 px)</option>
+                            <option value={500}>Média (500 px)</option>
+                            <option value={1000}>Baixa (1000 px)</option>
+                          </select>
+                          <button
+                            onClick={() => {
+                              const geom = watershedData?.geojson?.features?.[0]?.geometry ?? watershedData?.geojson;
+                              if (geom) loadWatershedDrainage(geom, watershedDrainThresh);
+                            }}
+                            title="Recalcular linhas de água"
+                            className="p-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 rounded-lg text-slate-600 dark:text-slate-300 transition-colors"
+                          >
+                            <RefreshCw size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          const geom = watershedData?.geojson?.features?.[0]?.geometry ?? watershedData?.geojson;
+                          if (geom) loadWatershedDrainage(geom, watershedDrainThresh);
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-cyan-50 dark:bg-cyan-950/30 hover:bg-cyan-100 dark:hover:bg-cyan-900/40 border border-cyan-200 dark:border-cyan-800/50 text-cyan-700 dark:text-cyan-300 text-[11px] font-medium rounded-lg transition-colors"
+                      >
+                        <GitBranch size={11} /> Gerar Linhas de Água
+                      </button>
+                    )}
                   </div>
 
                   {/* Stats loading (separate from basin delineation) */}
@@ -1304,8 +1420,8 @@ export default function HidroGeoMoz({
                   </div>
                 )}
 
-                {/* Geology charts */}
-                {lithoData.length > 0 && (
+                {/* Geology charts (Only for Mozambique and when no specific basin is selected) */}
+                {aoi.source === "mozambique" && !selectedFeat && lithoData.length > 0 && (
                   <div>
                     <SectionHeader title="Top Litologias por Área" icon={Activity} />
                     <ResponsiveContainer width="100%" height={160}>
@@ -1319,8 +1435,8 @@ export default function HidroGeoMoz({
                   </div>
                 )}
 
-                {/* Geology table */}
-                {statsData && (
+                {/* Geology table (Only for Mozambique and when no specific basin is selected) */}
+                {aoi.source === "mozambique" && !selectedFeat && statsData && (
                   <div>
                     <SectionHeader title="Unidades Geológicas" icon={Layers} />
                     <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl overflow-hidden">
@@ -1352,7 +1468,7 @@ export default function HidroGeoMoz({
                 )}
 
                 {/* Empty state */}
-                {!selectedFeat && !statsData && (
+                {!selectedFeat && !basinStats && (!statsData || aoi.source !== "mozambique") && (
                   <div className="flex flex-col items-center justify-center gap-2 py-12 text-slate-400">
                     <Globe size={24} className="text-slate-300 dark:text-slate-600" />
                     <span className="text-sm text-center">Selecione uma área ou carregue as bacias para ver análise geocientífica.</span>
