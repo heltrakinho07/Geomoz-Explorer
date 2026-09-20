@@ -41,9 +41,12 @@ import {
   LocateFixed,
   Sun,
   Moon,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import MapTools from "@/components/MapTools";
 import { downloadStandaloneBasinHtml } from "@/lib/standalone-html-export";
+import { decodeSharePayload } from "@/lib/share-payload";
 import {
   BarChart,
   Bar,
@@ -195,6 +198,9 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
   const [exportType, setExportType] = useState<"both" | "lulc" | "cn">("both");
   const [exportingPdf, setExportingPdf] = useState<boolean>(false);
 
+  // Mobile drawer state
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState<boolean>(false);
+
   // Link copy feedback
   const [copied, setCopied] = useState<boolean>(false);
 
@@ -235,63 +241,116 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
     const id = propId || params.get("id") || "";
     setShareId(id);
 
-    if (!id) {
-      // Try local storage fallback
-      const cached = localStorage.getItem("geomoz_last_hidro_share");
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          setSharedData(parsed);
+    // 1. Self-contained payload from URL hash (same logic as HTML file: 0ms, 100% permanent, no server needed)
+    if (typeof window !== "undefined" && window.location.hash) {
+      decodeSharePayload(window.location.hash).then((decoded) => {
+        if (decoded && (decoded.basinReport || decoded.watershedData)) {
+          setSharedData(decoded as any);
           setLoading(false);
-          return;
-        } catch {}
-      }
-      setError("Nenhum identificador de análise partilhada fornecido.");
-      setLoading(false);
-      return;
+          setError(null);
+          if (id) {
+            try {
+              localStorage.setItem(`geomoz_share_${id}`, JSON.stringify(decoded));
+              localStorage.setItem("geomoz_last_hidro_share", JSON.stringify(decoded));
+            } catch {}
+          }
+        }
+      });
     }
 
-    // 1. Instant recovery from local cache if this share was opened or created here
+    // 2. Recovery from local cache
     let hasLocalCache = false;
-    try {
-      const cachedById = localStorage.getItem(`geomoz_share_${id}`);
-      if (cachedById) {
-        const parsed = JSON.parse(cachedById);
-        setSharedData(parsed);
-        setLoading(false);
-        hasLocalCache = true;
-      }
-    } catch {}
+    if (id) {
+      try {
+        const cachedById = localStorage.getItem(`geomoz_share_${id}`);
+        if (cachedById) {
+          const parsed = JSON.parse(cachedById);
+          setSharedData(parsed);
+          setLoading(false);
+          setError(null);
+          hasLocalCache = true;
+        }
+      } catch {}
+    }
 
-    // 2. Fetch from server to sync / load if first time
+    // 3. Fallback: Search in saved analyses
+    if (!hasLocalCache && id) {
+      try {
+        const savedRaw = localStorage.getItem("geomoz_saved_analyses");
+        if (savedRaw) {
+          const savedList = JSON.parse(savedRaw);
+          const found = Array.isArray(savedList)
+            ? savedList.find((s: any) => s.id === id || s.shareId === id)
+            : null;
+          if (found && (found.basinReport || found.watershedData)) {
+            setSharedData(found);
+            setLoading(false);
+            setError(null);
+            hasLocalCache = true;
+          }
+        }
+      } catch {}
+    }
+
+    // 4. Fetch from server
     async function fetchShare() {
-      if (!hasLocalCache) setLoading(true);
-      setError(null);
+      if (!hasLocalCache && !window.location.hash) setLoading(true);
       try {
         const res = await fetch(apiUrl(`/geomoz-api/share/${id}`));
-        if (!res.ok) {
-          if (!hasLocalCache) {
-            throw new Error("A análise solicitada não foi encontrada ou o link expirou.");
+        if (res.ok) {
+          const json = await res.json();
+          const data: SharedData = json.data;
+          setSharedData(data);
+          setError(null);
+          try {
+            localStorage.setItem(`geomoz_share_${id}`, JSON.stringify(data));
+            localStorage.setItem("geomoz_last_hidro_share", JSON.stringify(data));
+          } catch {}
+        } else {
+          // If server returns 404, check last share fallback
+          if (!hasLocalCache && !window.location.hash) {
+            const lastShare = localStorage.getItem("geomoz_last_hidro_share");
+            if (lastShare) {
+              setSharedData(JSON.parse(lastShare));
+              setError(null);
+            } else {
+              throw new Error("A análise solicitada não foi encontrada ou o link expirou.");
+            }
           }
-          return;
         }
-        const json = await res.json();
-        const data: SharedData = json.data;
-        setSharedData(data);
-        try {
-          localStorage.setItem(`geomoz_share_${id}`, JSON.stringify(data));
-          localStorage.setItem("geomoz_last_hidro_share", JSON.stringify(data));
-        } catch {}
       } catch (err: any) {
-        if (!hasLocalCache) {
-          setError(err.message || "Erro ao carregar os dados partilhados.");
+        if (!hasLocalCache && !window.location.hash) {
+          const lastShare = localStorage.getItem("geomoz_last_hidro_share");
+          if (lastShare) {
+            try {
+              setSharedData(JSON.parse(lastShare));
+              setError(null);
+            } catch {
+              setError(err.message || "Erro ao carregar os dados partilhados.");
+            }
+          } else {
+            setError(err.message || "Erro ao carregar os dados partilhados.");
+          }
         }
       } finally {
         setLoading(false);
       }
     }
 
-    fetchShare();
+    if (id) {
+      fetchShare();
+    } else if (!window.location.hash) {
+      const cached = localStorage.getItem("geomoz_last_hidro_share");
+      if (cached) {
+        try {
+          setSharedData(JSON.parse(cached));
+          setLoading(false);
+          return;
+        } catch {}
+      }
+      setError("Nenhum identificador ou dados de análise partilhada fornecidos.");
+      setLoading(false);
+    }
   }, [propId]);
 
   // Fit bounds when map or geojson loads
@@ -828,58 +887,250 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
     );
   }
 
-  return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-200">
-      {/* ── Top Navigation Bar ────────────────────────────────────────────── */}
-      <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 flex items-center justify-between z-30 shrink-0 transition-colors duration-200">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2.5">
-            {/* Official GeoMoz Logo Container */}
-            <div className="w-10 h-10 rounded-2xl p-[2px] bg-gradient-to-tr from-sky-500 via-sky-400 to-indigo-600 shadow-md shadow-sky-500/25 shrink-0">
-              <div className="w-full h-full rounded-[14px] bg-white dark:bg-slate-900 flex items-center justify-center">
-                <Globe size={22} className="text-sky-500" />
+  // Helper to render sidebar metrics content (shared between desktop sidebar and mobile bottom sheet)
+  const renderSidebarContent = () => {
+    if (!report) return null;
+    return (
+      <>
+        {/* Header card */}
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+          <div className="bg-gradient-to-tr from-blue-700 via-blue-600 to-cyan-600 rounded-2xl p-4 text-white shadow-lg shadow-blue-900/20">
+            <div className="flex items-center justify-between text-xs opacity-80 mb-1">
+              <span>Área da Bacia</span>
+              <span className="bg-white/20 px-2 py-0.5 rounded-full text-[10px] font-mono">EPSG:4326</span>
+            </div>
+            <div className="text-3xl font-extrabold tracking-tight">
+              {totalArea.toLocaleString("pt-PT")} <span className="text-lg font-medium opacity-80">km²</span>
+            </div>
+            <div className="mt-2 text-xs opacity-80 flex items-center gap-1.5">
+              <MapPin size={11} />
+              <span>
+                {PP ? `Exutório: ${PP[0].toFixed(4)}°, ${PP[1].toFixed(4)}°` : "Bacia hidrográfica selecionada"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-5 flex-1">
+          {/* Morfometria */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-2.5">
+              <Mountain size={13} className="text-blue-500 dark:text-blue-400" />
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Morfometria da Bacia</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {[
+                ["Perímetro", `${report.morphometry.perimeterKm.toFixed(0)} km`],
+                ["Relevo", `${report.morphometry.reliefM.toFixed(0)} m`],
+                ["Declive méd.", `${report.morphometry.slopeMeanDeg.toFixed(1)}°`],
+                ["Elev. mín.", `${report.morphometry.elevMinM.toFixed(0)} m`],
+                ["Elev. média", `${report.morphometry.elevMeanM.toFixed(0)} m`],
+                ["Elev. máx.", `${report.morphometry.elevMaxM.toFixed(0)} m`],
+                ["Dens. dren.", `${report.morphometry.drainageDensity} km/km²`],
+                ["Compacidade", `${report.morphometry.compactness}`],
+                ["Fator forma", `${report.morphometry.formFactor}`],
+              ].map(([k, v]) => (
+                <div key={k} className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-2 text-center">
+                  <div className="text-[9px] text-slate-500 dark:text-slate-400 uppercase tracking-wide leading-tight mb-0.5">{k}</div>
+                  <div className="text-xs font-bold text-slate-900 dark:text-slate-100">{v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Uso e Cobertura do Solo */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <Activity size={13} className="text-lime-500 dark:text-lime-400" />
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Uso do Solo (ESA 10m)</span>
+              </div>
+              <button
+                onClick={() => setActiveLayer(l => l === "lulc" ? "none" : "lulc")}
+                className="text-[10px] text-sky-600 dark:text-cyan-400 hover:underline font-medium"
+              >
+                {activeLayer === "lulc" ? "Ocultar" : "Ver no mapa"}
+              </button>
+            </div>
+            <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-3 space-y-1.5">
+              {report.landcover.slice(0, 6).map(c => (
+                <div key={c.code} className="flex items-center gap-2 text-xs">
+                  <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: c.color }} />
+                  <span className="text-slate-700 dark:text-slate-300 flex-1 truncate">{c.label}</span>
+                  <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">{c.pct}%</span>
+                  <span className="text-slate-400 dark:text-slate-500 text-[10px] w-14 text-right">{c.areaKm2.toFixed(0)} km²</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Precipitação Mensal (CHIRPS) */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-2">
+              <Droplets size={13} className="text-blue-500 dark:text-blue-400" />
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                Chuva Mensal · {report.precipAnnualMm.toLocaleString("pt-PT")} mm/ano
+              </span>
+            </div>
+            <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-2.5">
+              <ResponsiveContainer width="100%" height={100}>
+                <BarChart
+                  data={report.precipMonthly.map((v, i) => ({ m: "JFMAMJJASOND"[i], mm: v }))}
+                  margin={{ top: 4, right: 4, left: -24, bottom: 0 }}
+                >
+                  <XAxis dataKey="m" tick={{ fontSize: 9, fill: theme === "dark" ? "#94a3b8" : "#64748b" }} interval={0} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 9, fill: theme === "dark" ? "#94a3b8" : "#64748b" }} axisLine={false} tickLine={false} width={28} />
+                  <Tooltip
+                    contentStyle={{
+                      background: theme === "dark" ? "#0f172a" : "#ffffff",
+                      borderColor: theme === "dark" ? "#334155" : "#cbd5e1",
+                      color: theme === "dark" ? "#f8fafc" : "#0f172a",
+                      borderRadius: "8px",
+                      fontSize: "11px",
+                    }}
+                    formatter={(v: number) => [`${v} mm`, "Precipitação"]}
+                  />
+                  <Bar dataKey="mm" fill="#0284c7" radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Escoamento Superficial (SCS CN) */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <Waves size={13} className="text-amber-500 dark:text-amber-400" />
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Escoamento (Curve Number)</span>
+              </div>
+              <button
+                onClick={() => setActiveLayer(l => l === "cn" ? "none" : "cn")}
+                className="text-[10px] text-sky-600 dark:text-cyan-400 hover:underline font-medium"
+              >
+                {activeLayer === "cn" ? "Ocultar" : "Ver no mapa"}
+              </button>
+            </div>
+            <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-700 dark:text-slate-300">CN Médio da Bacia</span>
+                <span className="text-base font-bold text-slate-900 dark:text-white font-mono">{report.runoff.cnMean ?? "—"}</span>
+              </div>
+              <div className="h-2 rounded-full mt-2" style={{ background: "linear-gradient(to right,#1a9850,#fee08b,#d73027)" }} />
+              <div className="flex justify-between text-[9px] text-slate-500 dark:text-slate-400 mt-1">
+                <span>40 · Alta infiltração</span>
+                <span>Escoamento rápido · 100</span>
               </div>
             </div>
+          </div>
+
+          {/* Índices de Risco (se existirem) */}
+          {wsStats && (
             <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-base font-black text-slate-900 dark:text-white tracking-tight">GeoMoz</span>
-                <span className="text-base font-black text-sky-500 dark:text-sky-400">Explorer</span>
-                <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800 shadow-xs">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Gauge size={13} className="text-red-500 dark:text-red-400" />
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Índices de Risco</span>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-3 space-y-2.5">
+                {[
+                  { label: "Risco de Erosão", val: wsStats.erosionRisk, icon: Wind, color: "#f59e0b" },
+                  { label: "Risco de Cheia", val: wsStats.floodRisk, icon: Waves, color: "#ef4444" },
+                  { label: "Pot. Hidrogeológico", val: wsStats.hydroPotential, icon: Zap, color: "#10b981" },
+                ].map(r => (
+                  <div key={r.label} className="space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                        <r.icon size={11} style={{ color: r.color }} /> {r.label}
+                      </span>
+                      <span className="font-bold font-mono" style={{ color: r.color }}>{r.val.toFixed(0)}/100</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${r.val}%`, background: r.color }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Botões Exportar PDF e HTML no Sidebar */}
+          <div className="pt-2 space-y-2">
+            <button
+              onClick={() => setExportModalOpen(true)}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-semibold rounded-2xl transition-all shadow-lg shadow-blue-600/25"
+            >
+              <FileDown size={14} /> Descarregar Relatório PDF (Estilo QGIS)
+            </button>
+            <button
+              onClick={() => downloadStandaloneBasinHtml({
+                title: `Bacia Hidrográfica — ${totalArea.toLocaleString("pt-PT")} km²`,
+                basinReport: report,
+                watershedData: wsData,
+                wsStats,
+                pourPoint: PP,
+              })}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-cyan-700 dark:text-cyan-300 border border-slate-200 dark:border-slate-700 text-xs font-semibold rounded-2xl transition-all shadow-sm"
+              title="Descarregar ficheiro HTML autónomo que abre em qualquer computador offline"
+            >
+              <FileCode size={14} /> Exportar WebGIS em HTML (Offline)
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  };
+
+  return (
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-200">
+      {/* ── Top Navigation Bar (Responsive Header) ────────────────────────── */}
+      <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 sm:px-4 flex items-center justify-between z-30 shrink-0 transition-colors duration-200">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            {/* Official GeoMoz Logo Container */}
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl p-[2px] bg-gradient-to-tr from-sky-500 via-sky-400 to-indigo-600 shadow-md shadow-sky-500/25 shrink-0">
+              <div className="w-full h-full rounded-[14px] bg-white dark:bg-slate-900 flex items-center justify-center">
+                <Globe size={20} className="text-sky-500" />
+              </div>
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
+                <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white tracking-tight">GeoMoz</span>
+                <span className="text-sm sm:text-base font-black text-sky-500 dark:text-sky-400">Explorer</span>
+                <span className="text-[9px] sm:text-[10px] font-extrabold px-1.5 py-0.2 rounded-md bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800 shadow-xs">
                   3D
                 </span>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 ml-1">
+                <span className="hidden xs:inline-block text-[9px] sm:text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
                   WebGIS
                 </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1 font-medium">
+                <span className="hidden sm:inline-flex text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 items-center gap-1 font-medium">
                   <Eye size={10} /> Apenas Leitura
                 </span>
               </div>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-tight">
+              <p className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-tight truncate hidden sm:block">
                 Inteligência Geoespacial Planetária
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Theme Toggle Button (Modo Claro / Escuro) */}
           <button
             onClick={toggleTheme}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-medium transition-all shadow-sm"
+            className="flex items-center justify-center w-8 h-8 sm:w-auto sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-medium transition-all shadow-sm"
             title={theme === "dark" ? "Alternar para Modo Claro" : "Alternar para Modo Escuro"}
           >
-            {theme === "dark" ? <Sun size={13} className="text-amber-400" /> : <Moon size={13} className="text-slate-600" />}
-            <span className="hidden sm:inline">{theme === "dark" ? "Modo Claro" : "Modo Escuro"}</span>
+            {theme === "dark" ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} className="text-slate-600" />}
+            <span className="hidden md:inline ml-1.5">{theme === "dark" ? "Modo Claro" : "Modo Escuro"}</span>
           </button>
 
           {/* Share Button / Copy Link */}
           <button
             onClick={handleCopyLink}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-medium transition-all shadow-sm"
+            className="flex items-center justify-center w-8 h-8 sm:w-auto sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-medium transition-all shadow-sm"
             title="Copiar link permanente de visualização"
           >
-            {copied ? <Check size={13} className="text-emerald-500 dark:text-emerald-400" /> : <Copy size={13} />}
-            <span>{copied ? "Link Copiado!" : "Copiar Link"}</span>
+            {copied ? <Check size={14} className="text-emerald-500 dark:text-emerald-400" /> : <Copy size={14} />}
+            <span className="hidden md:inline ml-1.5">{copied ? "Copiado!" : "Copiar Link"}</span>
           </button>
 
           {/* Export HTML Button */}
@@ -891,33 +1142,34 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
               wsStats,
               pourPoint: PP,
             })}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-cyan-600 dark:text-cyan-300 border border-slate-200 dark:border-slate-700 text-xs font-medium transition-all shadow-sm"
-            title="Descarregar ficheiro HTML autónomo que abre em qualquer computador offline"
+            className="flex items-center justify-center w-8 h-8 sm:w-auto sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-cyan-600 dark:text-cyan-300 border border-slate-200 dark:border-slate-700 text-xs font-medium transition-all shadow-sm"
+            title="Descarregar ficheiro HTML autónomo"
           >
-            <FileCode size={13} />
-            <span className="hidden sm:inline">Exportar HTML</span>
+            <FileCode size={14} />
+            <span className="hidden lg:inline ml-1.5">Exportar HTML</span>
           </button>
 
           {/* Export PDF Button */}
           <button
             onClick={() => setExportModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-semibold transition-all shadow-md shadow-blue-600/20"
+            className="flex items-center justify-center h-8 px-2.5 sm:px-3.5 sm:h-auto sm:py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-semibold transition-all shadow-md shadow-blue-600/20"
+            title="Exportar PDF Cartográfico (QGIS)"
           >
-            <FileDown size={13} />
-            <span>Exportar PDF (QGIS)</span>
+            <FileDown size={14} />
+            <span className="hidden sm:inline ml-1.5">PDF (QGIS)</span>
           </button>
 
           <a
             href="/app"
-            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium transition-all border border-slate-200 dark:border-slate-700/50"
+            className="hidden sm:flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium transition-all border border-slate-200 dark:border-slate-700/50"
           >
             <ExternalLink size={12} />
-            <span className="hidden sm:inline">Explorador Completo</span>
+            <span className="hidden md:inline">Explorador</span>
           </a>
         </div>
       </header>
 
-      {/* ── Main Layout (Map + Sidebar) ───────────────────────────────────── */}
+      {/* ── Main Layout (Map + Sidebar / Bottom Sheet) ─────────────────────── */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* Map Container */}
         <div className="flex-1 relative overflow-hidden" ref={mapContainerRef}>
@@ -925,54 +1177,55 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           <BasemapSwitcher
             current={basemap}
             onChange={setBasemap}
-            className="absolute bottom-6 left-4 z-[600]"
+            className="absolute bottom-16 sm:bottom-6 left-3 sm:left-4 z-[600]"
             position="bottom-left"
             show3dToggle={false}
           />
 
           {/* Floating Layers Quick Bar */}
-          <div className="absolute top-4 left-4 z-[500] bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-2 flex items-center gap-1 text-xs transition-colors duration-200">
-            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider px-2">Camadas:</span>
+          <div className="absolute top-3 sm:top-4 left-3 sm:left-4 z-[500] bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-1.5 sm:p-2 flex items-center gap-1 text-xs max-w-[calc(100vw-1.5rem)] overflow-x-auto transition-colors duration-200">
+            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider px-1.5 sm:px-2 hidden xs:inline">Camadas:</span>
 
             <button
               onClick={() => setActiveLayer(l => l === "lulc" ? "none" : "lulc")}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-xl font-medium transition-all ${
+              className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl font-medium transition-all text-[11px] sm:text-xs shrink-0 ${
                 activeLayer === "lulc"
                   ? "bg-lime-500/20 text-lime-600 dark:text-lime-300 border border-lime-500/40"
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-lime-500" />
-              Uso do Solo (10m)
+              <span className="w-2 h-2 rounded-full bg-lime-500 shrink-0" />
+              <span>Uso do Solo</span>
             </button>
 
             <button
               onClick={() => setActiveLayer(l => l === "cn" ? "none" : "cn")}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-xl font-medium transition-all ${
+              className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl font-medium transition-all text-[11px] sm:text-xs shrink-0 ${
                 activeLayer === "cn"
                   ? "bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/40"
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
-              Escoamento (CN)
+              <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+              <span>Escoamento (CN)</span>
             </button>
 
-            <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-800 mx-1" />
+            <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-800 mx-0.5 sm:mx-1 shrink-0" />
 
             <button
               onClick={() => setShowDrainage(v => !v)}
-              className={`flex items-center gap-1 px-2 py-1 rounded-xl font-medium transition-all ${
+              className={`flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-xl font-medium transition-all text-[11px] sm:text-xs shrink-0 ${
                 showDrainage
                   ? "bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 border border-cyan-500/40"
                   : "text-slate-600 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
               }`}
             >
-              <GitBranch size={11} />
-              Linhas de Água
+              <GitBranch size={11} className="shrink-0" />
+              <span className="hidden sm:inline">Linhas de Água</span>
+              <span className="sm:hidden">Rios</span>
             </button>
 
-            <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-800 mx-1" />
+            <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-800 mx-0.5 sm:mx-1 shrink-0" />
 
             <button
               onClick={() => {
@@ -981,10 +1234,10 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                 }
               }}
               title="A minha localização atual (GPS / Onde Estou)"
-              className="flex items-center gap-1 px-2 py-1 rounded-xl font-medium transition-all text-slate-600 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-xl font-medium transition-all text-slate-600 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] sm:text-xs shrink-0"
             >
-              <LocateFixed size={11} className="text-sky-500" />
-              <span>Onde Estou</span>
+              <LocateFixed size={11} className="text-sky-500 shrink-0" />
+              <span className="hidden xs:inline">Onde Estou</span>
             </button>
           </div>
 
@@ -1071,7 +1324,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           </MapContainer>
 
           {/* Floating Cartographic Legend on Map */}
-          <div className="absolute bottom-8 left-20 z-[500] bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-3 pointer-events-none text-[11px] min-w-[170px] text-slate-700 dark:text-slate-200 transition-colors duration-200">
+          <div className="hidden sm:block absolute bottom-8 left-20 z-[500] bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-3 pointer-events-none text-[11px] min-w-[170px] text-slate-700 dark:text-slate-200 transition-colors duration-200">
             <div className="font-bold text-sky-600 dark:text-cyan-400 mb-1.5 flex items-center gap-1.5 text-xs">
               <Compass size={12} /> Legenda do Mapa
             </div>
@@ -1110,202 +1363,71 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           </div>
         </div>
 
-        {/* Sidebar Toggle Button */}
+        {/* Desktop Sidebar Toggle Button */}
         <button
           onClick={() => setSidebarOpen(v => !v)}
-          className="absolute top-20 right-0 z-[600] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 p-2 rounded-l-xl shadow-xl hover:text-slate-900 dark:hover:text-white transition-all"
+          className="hidden md:flex absolute top-20 right-0 z-[600] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 p-2 rounded-l-xl shadow-xl hover:text-slate-900 dark:hover:text-white transition-all"
           title={sidebarOpen ? "Ocultar painel" : "Mostrar painel"}
         >
           {sidebarOpen ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
 
-        {/* ── Right Panel (Details & Metrics) ────────────────────────────── */}
+        {/* ── Desktop Right Panel (Details & Metrics) ───────────────────────── */}
         {sidebarOpen && (
-          <aside className="w-84 md:w-96 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0 flex flex-col z-20 text-slate-800 dark:text-slate-200 transition-colors duration-200">
-            {/* Header card */}
-            <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-              <div className="bg-gradient-to-tr from-blue-700 via-blue-600 to-cyan-600 rounded-2xl p-4 text-white shadow-lg shadow-blue-900/20">
-                <div className="flex items-center justify-between text-xs opacity-80 mb-1">
-                  <span>Área da Bacia</span>
-                  <span className="bg-white/20 px-2 py-0.5 rounded-full text-[10px] font-mono">EPSG:4326</span>
-                </div>
-                <div className="text-3xl font-extrabold tracking-tight">
-                  {totalArea.toLocaleString("pt-PT")} <span className="text-lg font-medium opacity-80">km²</span>
-                </div>
-                <div className="mt-2 text-xs opacity-80 flex items-center gap-1.5">
-                  <MapPin size={11} />
-                  <span>
-                    {PP ? `Exutório: ${PP[0].toFixed(4)}°, ${PP[1].toFixed(4)}°` : "Bacia hidrográfica selecionada"}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 space-y-5 flex-1">
-              {/* Morfometria */}
-              <div>
-                <div className="flex items-center gap-1.5 mb-2.5">
-                  <Mountain size={13} className="text-blue-500 dark:text-blue-400" />
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Morfometria da Bacia</span>
-                </div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {[
-                    ["Perímetro", `${report.morphometry.perimeterKm.toFixed(0)} km`],
-                    ["Relevo", `${report.morphometry.reliefM.toFixed(0)} m`],
-                    ["Declive méd.", `${report.morphometry.slopeMeanDeg.toFixed(1)}°`],
-                    ["Elev. mín.", `${report.morphometry.elevMinM.toFixed(0)} m`],
-                    ["Elev. média", `${report.morphometry.elevMeanM.toFixed(0)} m`],
-                    ["Elev. máx.", `${report.morphometry.elevMaxM.toFixed(0)} m`],
-                    ["Dens. dren.", `${report.morphometry.drainageDensity} km/km²`],
-                    ["Compacidade", `${report.morphometry.compactness}`],
-                    ["Fator forma", `${report.morphometry.formFactor}`],
-                  ].map(([k, v]) => (
-                    <div key={k} className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-2 text-center">
-                      <div className="text-[9px] text-slate-500 dark:text-slate-400 uppercase tracking-wide leading-tight mb-0.5">{k}</div>
-                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100">{v}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Uso e Cobertura do Solo */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <Activity size={13} className="text-lime-500 dark:text-lime-400" />
-                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Uso do Solo (ESA 10m)</span>
-                  </div>
-                  <button
-                    onClick={() => setActiveLayer(l => l === "lulc" ? "none" : "lulc")}
-                    className="text-[10px] text-sky-600 dark:text-cyan-400 hover:underline font-medium"
-                  >
-                    {activeLayer === "lulc" ? "Ocultar" : "Ver no mapa"}
-                  </button>
-                </div>
-                <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-3 space-y-1.5">
-                  {report.landcover.slice(0, 6).map(c => (
-                    <div key={c.code} className="flex items-center gap-2 text-xs">
-                      <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: c.color }} />
-                      <span className="text-slate-700 dark:text-slate-300 flex-1 truncate">{c.label}</span>
-                      <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">{c.pct}%</span>
-                      <span className="text-slate-400 dark:text-slate-500 text-[10px] w-14 text-right">{c.areaKm2.toFixed(0)} km²</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Precipitação Mensal (CHIRPS) */}
-              <div>
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Droplets size={13} className="text-blue-500 dark:text-blue-400" />
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Chuva Mensal · {report.precipAnnualMm.toLocaleString("pt-PT")} mm/ano
-                  </span>
-                </div>
-                <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-2.5">
-                  <ResponsiveContainer width="100%" height={100}>
-                    <BarChart
-                      data={report.precipMonthly.map((v, i) => ({ m: "JFMAMJJASOND"[i], mm: v }))}
-                      margin={{ top: 4, right: 4, left: -24, bottom: 0 }}
-                    >
-                      <XAxis dataKey="m" tick={{ fontSize: 9, fill: theme === "dark" ? "#94a3b8" : "#64748b" }} interval={0} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 9, fill: theme === "dark" ? "#94a3b8" : "#64748b" }} axisLine={false} tickLine={false} width={28} />
-                      <Tooltip
-                        contentStyle={{
-                          background: theme === "dark" ? "#0f172a" : "#ffffff",
-                          borderColor: theme === "dark" ? "#334155" : "#cbd5e1",
-                          color: theme === "dark" ? "#f8fafc" : "#0f172a",
-                          borderRadius: "8px",
-                          fontSize: "11px",
-                        }}
-                        formatter={(v: number) => [`${v} mm`, "Precipitação"]}
-                      />
-                      <Bar dataKey="mm" fill="#0284c7" radius={[2, 2, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Escoamento Superficial (SCS CN) */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <Waves size={13} className="text-amber-500 dark:text-amber-400" />
-                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Escoamento (Curve Number)</span>
-                  </div>
-                  <button
-                    onClick={() => setActiveLayer(l => l === "cn" ? "none" : "cn")}
-                    className="text-[10px] text-sky-600 dark:text-cyan-400 hover:underline font-medium"
-                  >
-                    {activeLayer === "cn" ? "Ocultar" : "Ver no mapa"}
-                  </button>
-                </div>
-                <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-700 dark:text-slate-300">CN Médio da Bacia</span>
-                    <span className="text-base font-bold text-slate-900 dark:text-white font-mono">{report.runoff.cnMean ?? "—"}</span>
-                  </div>
-                  <div className="h-2 rounded-full mt-2" style={{ background: "linear-gradient(to right,#1a9850,#fee08b,#d73027)" }} />
-                  <div className="flex justify-between text-[9px] text-slate-500 dark:text-slate-400 mt-1">
-                    <span>40 · Alta infiltração</span>
-                    <span>Escoamento rápido · 100</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Índices de Risco (se existirem) */}
-              {wsStats && (
-                <div>
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Gauge size={13} className="text-red-500 dark:text-red-400" />
-                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Índices de Risco</span>
-                  </div>
-                  <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-3 space-y-2.5">
-                    {[
-                      { label: "Risco de Erosão", val: wsStats.erosionRisk, icon: Wind, color: "#f59e0b" },
-                      { label: "Risco de Cheia", val: wsStats.floodRisk, icon: Waves, color: "#ef4444" },
-                      { label: "Pot. Hidrogeológico", val: wsStats.hydroPotential, icon: Zap, color: "#10b981" },
-                    ].map(r => (
-                      <div key={r.label} className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                            <r.icon size={11} style={{ color: r.color }} /> {r.label}
-                          </span>
-                          <span className="font-bold font-mono" style={{ color: r.color }}>{r.val.toFixed(0)}/100</span>
-                        </div>
-                        <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                          <div className="h-full rounded-full" style={{ width: `${r.val}%`, background: r.color }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Botões Exportar PDF e HTML no Sidebar */}
-              <div className="pt-2 space-y-2">
-                <button
-                  onClick={() => setExportModalOpen(true)}
-                  className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-semibold rounded-2xl transition-all shadow-lg shadow-blue-600/25"
-                >
-                  <FileDown size={14} /> Descarregar Relatório PDF (Estilo QGIS)
-                </button>
-                <button
-                  onClick={() => downloadStandaloneBasinHtml({
-                    title: `Bacia Hidrográfica — ${totalArea.toLocaleString("pt-PT")} km²`,
-                    basinReport: report,
-                    watershedData: wsData,
-                    wsStats,
-                    pourPoint: PP,
-                  })}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-cyan-700 dark:text-cyan-300 border border-slate-200 dark:border-slate-700 text-xs font-semibold rounded-2xl transition-all shadow-sm"
-                  title="Descarregar ficheiro HTML autónomo que abre em qualquer computador offline"
-                >
-                  <FileCode size={14} /> Exportar WebGIS em HTML (Offline)
-                </button>
-              </div>
-            </div>
+          <aside className="hidden md:flex w-84 md:w-96 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0 flex-col z-20 text-slate-800 dark:text-slate-200 transition-colors duration-200">
+            {renderSidebarContent()}
           </aside>
+        )}
+
+        {/* ── Mobile Floating Bottom Bar to open Metrics Bottom Sheet ───────── */}
+        <div className="md:hidden absolute bottom-4 inset-x-3 z-[500] flex justify-center pointer-events-none">
+          <button
+            type="button"
+            onClick={() => setMobileDrawerOpen(true)}
+            className="pointer-events-auto flex items-center gap-2 px-4 py-2.5 bg-slate-900/95 dark:bg-slate-800/95 text-white rounded-2xl shadow-2xl border border-slate-700/80 backdrop-blur-md text-xs font-bold transition-transform active:scale-95"
+          >
+            <FileText size={15} className="text-cyan-400" />
+            <span>Ver Relatório & Métricas</span>
+            <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-mono">
+              {totalArea.toLocaleString("pt-PT")} km²
+            </span>
+            <ChevronUp size={14} className="text-slate-400" />
+          </button>
+        </div>
+
+        {/* ── Mobile Bottom Sheet Drawer ────────────────────────────────────── */}
+        {mobileDrawerOpen && (
+          <div className="md:hidden fixed inset-0 z-[750] flex flex-col justify-end">
+            <div
+              className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity"
+              onClick={() => setMobileDrawerOpen(false)}
+            />
+            <div className="relative z-10 bg-white dark:bg-slate-900 rounded-t-3xl max-h-[82vh] flex flex-col shadow-2xl border-t border-slate-200 dark:border-slate-800 animate-in slide-in-from-bottom-5 duration-300">
+              <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
+                    <FileText size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">Relatório da Bacia</h3>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Área: {totalArea.toLocaleString("pt-PT")} km² · {report.morphometry?.reliefM?.toFixed(1) ?? "—"} m relevo
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setMobileDrawerOpen(false)}
+                  className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto">
+                {renderSidebarContent()}
+              </div>
+            </div>
+          </div>
         )}
       </div>
 

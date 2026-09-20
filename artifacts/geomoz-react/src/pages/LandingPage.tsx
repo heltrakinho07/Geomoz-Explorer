@@ -1089,7 +1089,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
 
             {/* Screen Graphic Area */}
             <div
-              className={`relative rounded-xl overflow-hidden aspect-[16/9] md:aspect-[21/10] border flex flex-col justify-between p-4 sm:p-6 text-left ${
+              className={`relative rounded-xl overflow-hidden min-h-[340px] sm:min-h-[280px] md:aspect-[21/10] border flex flex-col justify-between p-3.5 sm:p-6 text-left ${
                 isDark ? "bg-slate-900 border-slate-800" : "bg-slate-900 text-white border-slate-200"
               }`}
             >
@@ -1137,46 +1137,46 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
               </svg>
 
               {/* Overlay HUD 1: Simulated Pixel Inspector & Topographic Readout */}
-              <div className="relative z-10 max-w-sm bg-slate-950/90 backdrop-blur-md p-4 rounded-xl border border-slate-700/80 shadow-2xl space-y-2.5 text-xs text-slate-100">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <div className="flex items-center gap-1.5 font-bold text-sky-400">
-                    <Activity size={15} />
+              <div className="relative z-10 w-full sm:max-w-sm bg-slate-950/90 backdrop-blur-md p-3 sm:p-4 rounded-xl border border-slate-700/80 shadow-2xl space-y-2 sm:space-y-2.5 text-xs text-slate-100">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 sm:pb-2">
+                  <div className="flex items-center gap-1.5 font-bold text-sky-400 text-[11px] sm:text-xs">
+                    <Activity size={14} />
                     <span>Pixel & Terrain Inspector</span>
                   </div>
-                  <span className="text-[10px] text-emerald-400 font-mono font-semibold">
+                  <span className="text-[9px] sm:text-[10px] text-emerald-400 font-mono font-semibold">
                     EPSG:4326 • WGS84
                   </span>
                 </div>
-                <div className="grid grid-cols-2 gap-2.5 text-[11px]">
+                <div className="grid grid-cols-2 gap-2 sm:gap-2.5 text-[10px] sm:text-[11px]">
                   <div>
-                    <span className="text-slate-400 block text-[9px] uppercase font-semibold">
+                    <span className="text-slate-400 block text-[8px] sm:text-[9px] uppercase font-semibold">
                       {t.hero.elevation}
                     </span>
-                    <span className="font-mono font-bold text-white text-sm">
+                    <span className="font-mono font-bold text-white text-xs sm:text-sm">
                       {t.hero.elevationVal}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[9px] uppercase font-semibold">
+                    <span className="text-slate-400 block text-[8px] sm:text-[9px] uppercase font-semibold">
                       {t.hero.slope}
                     </span>
-                    <span className="font-mono font-bold text-amber-400 text-sm">
+                    <span className="font-mono font-bold text-amber-400 text-xs sm:text-sm">
                       {t.hero.slopeVal}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[9px] uppercase font-semibold">
+                    <span className="text-slate-400 block text-[8px] sm:text-[9px] uppercase font-semibold">
                       {t.hero.lithology}
                     </span>
-                    <span className="font-semibold text-slate-200 truncate block">
+                    <span className="font-semibold text-slate-200 truncate block text-[10px] sm:text-[11px]">
                       {t.hero.lithologyVal}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[9px] uppercase font-semibold">
+                    <span className="text-slate-400 block text-[8px] sm:text-[9px] uppercase font-semibold">
                       {t.hero.spectral}
                     </span>
-                    <span className="font-mono font-bold text-emerald-400 block">
+                    <span className="font-mono font-bold text-emerald-400 block text-[10px] sm:text-[11px]">
                       {t.hero.spectralVal}
                     </span>
                   </div>
@@ -1184,20 +1184,20 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
               </div>
 
               {/* Overlay HUD 2: Morphometric A-B Transect Pill */}
-              <div className="relative z-10 self-end flex items-center gap-3 bg-slate-950/90 backdrop-blur-md px-4 py-2.5 rounded-xl border border-slate-700/80 shadow-2xl text-xs text-slate-100">
+              <div className="relative z-10 self-start sm:self-end flex items-center gap-2 sm:gap-3 bg-slate-950/90 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl border border-slate-700/80 shadow-2xl text-[11px] sm:text-xs text-slate-100 max-w-full overflow-hidden">
                 <div className="flex items-center gap-2">
-                  <Ruler size={16} className="text-indigo-400" />
+                  <Ruler size={14} className="text-indigo-400 shrink-0" />
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-semibold">
+                    <span className="text-[9px] sm:text-[10px] text-slate-400 block font-semibold">
                       {lang === "pt" ? "Corte Topográfico A-B" : "A-B Elevation Transect"}
                     </span>
-                    <span className="font-mono font-bold text-sky-400 text-sm">
+                    <span className="font-mono font-bold text-sky-400 text-xs sm:text-sm">
                       ΔH: 1.840 m • 18.4 km
                     </span>
                   </div>
                 </div>
-                <div className="h-6 w-px bg-slate-800" />
-                <div className="text-[10px] text-slate-300">
+                <div className="h-5 sm:h-6 w-px bg-slate-800 shrink-0" />
+                <div className="text-[9px] sm:text-[10px] text-slate-300">
                   <span>{lang === "pt" ? "Resolução:" : "Resolution:"} <strong>30 m (GLO-30)</strong></span>
                   <span className="block text-emerald-400 font-mono font-semibold">
                     {t.hero.alterationVal}
@@ -1912,7 +1912,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
           </div>
 
           {/* Category Filter Pills */}
-          <div className="flex justify-center gap-2 overflow-x-auto pb-4 mb-8 scrollbar-none">
+          <div className="flex justify-start sm:justify-center gap-2 overflow-x-auto pb-4 mb-8 no-scrollbar px-2 sm:px-0">
             {[
               { id: "soil", label: t.remoteSection.tabMinerals, icon: <Layers size={14} /> },
               { id: "vegetation", label: t.remoteSection.tabVegetation, icon: <Sprout size={14} /> },

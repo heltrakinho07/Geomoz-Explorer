@@ -52,6 +52,7 @@ import {
   PAGE_H,
 } from "@/lib/pdf-export";
 import jsPDF from "jspdf";
+import { encodeSharePayload } from "@/lib/share-payload";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -240,6 +241,8 @@ export default function HidroGeoMoz({
 
   // Layout
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileRightPanelOpen, setMobileRightPanelOpen] = useState(false);
   const [basemap, setBasemap] = useState<BasemapType>("terrain");
 
   // Mode — "delineate" (D8/DEM) is the robust primary method; HydroBASINS may be
@@ -451,6 +454,7 @@ export default function HidroGeoMoz({
     if (fullData.province) setProvince(fullData.province);
     if (fullData.district) setDistrict(fullData.district);
     setSavedModalOpen(false);
+    setMobileRightPanelOpen(true);
 
     if (mapRef.current && fullData.watershedData?.geojson) {
       try {
@@ -551,20 +555,39 @@ export default function HidroGeoMoz({
         localStorage.setItem("geomoz_last_hidro_share", JSON.stringify(payload.data));
       } catch {}
 
-      const res = await apiFetch("/geomoz-api/share", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      // Self-contained snapshot embedded in URL hash (exact same logic as the standalone HTML file)
+      const encoded = await encodeSharePayload({
+        title: payload.title,
+        basinReport,
+        watershedData,
+        watershedDrainageTile: watershedDrainageTile || watershedData?.tileUrl || null,
+        wsStats: basinStats,
+        pourPoint,
+        province,
+        district,
+        aoi,
       });
 
-      if (!res.ok) {
-        throw new Error(await res.text());
+      let shareId = Date.now().toString(36);
+      try {
+        const res = await apiFetch("/geomoz-api/share", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.shareId) shareId = json.shareId;
+        }
+      } catch (backendErr) {
+        console.warn("Backend share save optional fallback:", backendErr);
       }
-      const json = await res.json();
-      const fullUrl = `${window.location.origin}/view/hidro?id=${json.shareId}`;
+
+      // The URL includes both id and the self-contained #data hash so it NEVER expires
+      const fullUrl = `${window.location.origin}/view/hidro?id=${shareId}#data=${encoded}`;
       setShareUrl(fullUrl);
       try {
-        localStorage.setItem(`geomoz_share_${json.shareId}`, JSON.stringify(payload.data));
+        localStorage.setItem(`geomoz_share_${shareId}`, JSON.stringify(payload.data));
       } catch {}
     } catch (err: any) {
       toast({
@@ -634,6 +657,7 @@ export default function HidroGeoMoz({
   // Basin click
   async function onBasinClick(feat: GeoJSON.Feature) {
     setSelectedFeat(feat); setBasinStats(null); setLoadingStats(true);
+    setMobileRightPanelOpen(true);
     try {
       const r = await apiFetch("/geomoz-api/gee/basin-stats", { method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -714,6 +738,7 @@ export default function HidroGeoMoz({
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
       const wd: WatershedResult = await r.json();
       setWatershedData(wd);
+      setMobileRightPanelOpen(true);
       setLoadingWS(false);   // show the basin immediately; stats load separately
       const basinGeom = wd.geojson?.features?.[0]?.geometry ?? wd.geojson;
       // Auto-fetch drainage network clipped to the delineated basin
@@ -783,6 +808,7 @@ export default function HidroGeoMoz({
       source: "polygon",
     };
     setWatershedData(wd);
+    setMobileRightPanelOpen(true);
     setLoadingWS(false);
 
     // 1. Auto-fetch drainage network clipped to this polygon (HydroSHEDS + FreeFlowingRivers)
@@ -1376,32 +1402,55 @@ export default function HidroGeoMoz({
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="flex-1 flex overflow-hidden bg-slate-50">
+    <div className="flex-1 flex overflow-hidden bg-slate-50 relative">
 
-      {/* ── Sidebar Toggle (always visible) ─────────────────────────────── */}
+      {/* Mobile backdrop for Left Sidebar */}
+      {mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[650] lg:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
+      {/* ── Desktop Sidebar Toggle ─────────────────────────────── */}
       <button
         onClick={() => setSidebarOpen(o => !o)}
-        className="z-[700] absolute left-0 top-1/2 -translate-y-1/2 w-5 h-16 bg-white dark:bg-slate-900 border border-l-0 border-slate-200 dark:border-slate-700 rounded-r-lg flex items-center justify-center shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-        style={{ left: sidebarOpen ? "17rem" : 0 }}
+        className="hidden lg:flex z-[550] absolute top-1/2 -translate-y-1/2 w-5 h-16 bg-white dark:bg-slate-900 border border-l-0 border-slate-200 dark:border-slate-700 rounded-r-lg items-center justify-center shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
+        style={{ left: sidebarOpen ? "272px" : 0 }}
         title={sidebarOpen ? "Recolher" : "Expandir"}
       >
         {sidebarOpen ? <ChevronLeft size={12} className="text-slate-400" /> : <ChevronRight size={12} className="text-slate-400" />}
       </button>
 
       {/* ── Left Sidebar ─────────────────────────────────────────────────── */}
-      <div className={`flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0 transition-all duration-200 ${sidebarOpen ? "w-68" : "w-0 overflow-hidden"}`}
-        style={{ width: sidebarOpen ? "272px" : "0px" }}>
+      <div
+        className={`fixed lg:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-2xl lg:shadow-none w-72 max-w-[85vw] ${
+          mobileSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        } ${
+          sidebarOpen ? "lg:w-[272px] overflow-y-auto" : "lg:w-0 overflow-hidden lg:border-r-0"
+        }`}
+      >
 
         {/* Header */}
         <div className="px-4 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center shadow-sm shrink-0">
-              <Droplets size={15} className="text-white" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center shadow-sm shrink-0">
+                <Droplets size={15} className="text-white" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Bacias Hidrográficas</h2>
+                <p className="text-[10px] text-slate-400">HydroSHEDS · GEE · DEM GLO-30</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Bacias Hidrográficas</h2>
-              <p className="text-[10px] text-slate-400">HydroSHEDS · GEE · DEM GLO-30</p>
-            </div>
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(false)}
+              className="lg:hidden p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
+              title="Fechar menu"
+            >
+              <X size={18} />
+            </button>
           </div>
           {geeStatus && (
             <div className={`mt-2 flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-lg ${geeStatus.connected ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300" : "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300"}`}>
@@ -1602,6 +1651,28 @@ export default function HidroGeoMoz({
 
       {/* ── Map ──────────────────────────────────────────────────────────── */}
       <div className={`flex-1 relative overflow-hidden ${mode === "delineate" && delineateMethod === "point" && !drawingEnabled ? "cursor-crosshair" : ""}`} ref={mapContainerRef}>
+        {/* Mobile floating sidebar toggle */}
+        <button
+          type="button"
+          onClick={() => setMobileSidebarOpen(true)}
+          className="lg:hidden absolute top-3 left-3 z-[600] flex items-center gap-1.5 px-3 py-1.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl shadow-md border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+        >
+          <Droplets size={13} className="text-blue-600 dark:text-cyan-400" />
+          Bacias & Filtros
+        </button>
+
+        {/* Mobile floating button to open Right Analysis Panel if content available */}
+        {hasRightContent && !mobileRightPanelOpen && (
+          <button
+            type="button"
+            onClick={() => setMobileRightPanelOpen(true)}
+            className="lg:hidden absolute bottom-5 right-4 z-[600] flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-full shadow-lg text-xs font-bold transition-transform active:scale-95"
+          >
+            <BarChart2 size={14} />
+            Ver Relatório
+          </button>
+        )}
+
         <BasemapSwitcher
           current={basemap}
           onChange={setBasemap}
@@ -1769,24 +1840,46 @@ export default function HidroGeoMoz({
         )}
       </div>
 
+      {/* Mobile backdrop for Right Panel */}
+      {hasRightContent && mobileRightPanelOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[750] lg:hidden"
+          onClick={() => setMobileRightPanelOpen(false)}
+        />
+      )}
+
       {/* ── Right Panel ──────────────────────────────────────────────────── */}
       {hasRightContent && (
-        <div className="w-80 flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0">
+        <div
+          className={`fixed lg:relative inset-y-0 right-0 z-[800] w-80 max-w-[90vw] flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0 shadow-2xl lg:shadow-none transition-transform duration-300 ${
+            mobileRightPanelOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0"
+          }`}
+        >
 
           {/* ── DELINEATE mode right panel ───────────────────────────────── */}
           {mode === "delineate" && (
             <>
               {/* Watershed header */}
-              <div className="px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-800">
-                <div className="flex items-center gap-2 mb-1">
-                  <ArrowDownCircle size={15} className="text-blue-600 dark:text-blue-400" />
-                  <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Bacia Delimitada</span>
-                </div>
-                {pourPoint && (
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                    {pourPoint[0].toFixed(4)}° / {pourPoint[1].toFixed(4)}°
+              <div className="px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <ArrowDownCircle size={15} className="text-blue-600 dark:text-blue-400" />
+                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Bacia Delimitada</span>
                   </div>
-                )}
+                  {pourPoint && (
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                      {pourPoint[0].toFixed(4)}° / {pourPoint[1].toFixed(4)}°
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMobileRightPanelOpen(false)}
+                  className="lg:hidden p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
+                  title="Fechar painel"
+                >
+                  <X size={18} />
+                </button>
               </div>
 
               {/* Loading watershed */}
@@ -2091,14 +2184,24 @@ export default function HidroGeoMoz({
           {/* ── EXPLORE mode right panel ─────────────────────────────────── */}
           {mode === "explore" && (
             <>
-              <div className="px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-800">
-                <div className="flex items-center gap-2">
-                  <BarChart2 size={14} className="text-blue-500" />
-                  <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                    {selectedFeat ? `Bacia ${selectedFeat.properties?.HYBAS_ID ?? "—"}` : "Análise da Área"}
-                  </span>
+              <div className="px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <BarChart2 size={14} className="text-blue-500" />
+                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      {selectedFeat ? `Bacia ${selectedFeat.properties?.HYBAS_ID ?? "—"}` : "Análise da Área"}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{province ?? "Moçambique"}{district ? ` / ${district}` : ""}</p>
                 </div>
-                <p className="text-[10px] text-slate-400 mt-0.5">{province ?? "Moçambique"}{district ? ` / ${district}` : ""}</p>
+                <button
+                  type="button"
+                  onClick={() => setMobileRightPanelOpen(false)}
+                  className="lg:hidden p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
+                  title="Fechar painel"
+                >
+                  <X size={18} />
+                </button>
               </div>
 
               <div className="flex-1 p-4 space-y-5 overflow-y-auto">
