@@ -383,16 +383,6 @@ export default function MapView({
             </div>
           )}
 
-          {/* Real-time Hover Pixel Inspector HUD */}
-          <PixelInspectorHUD
-            coords={coords}
-            elevation={coordsElevation}
-            geology={null}
-            admin={hoveredAdmin}
-            viewMode="2d"
-            className="absolute bottom-6 right-3 sm:right-4 z-[600]"
-          />
-
           {/* Google Maps Bottom-Left Layer Controller */}
           <BasemapSwitcher
             current={basemap}

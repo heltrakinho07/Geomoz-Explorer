@@ -1073,30 +1073,6 @@ export default function MapLibre3DView({
         </div>
       )}
 
-      {/* Real-time Hover Pixel Inspector HUD */}
-      <PixelInspectorHUD
-        coords={coords}
-        elevation={coords?.ele}
-        slope={slope}
-        slopeClass={slopeClass}
-        geology={hoveredGeology}
-        admin={hoveredAdmin}
-        analysis={
-          activeAnalysis
-            ? {
-                ...activeAnalysis,
-                value: hoveredAnalysisValue ?? activeAnalysis.value,
-                classLabel:
-                  hoveredAnalysisValue !== null && typeof hoveredAnalysisValue === "number" && activeAnalysis.label
-                    ? classifySpectralIndex(activeAnalysis.label, hoveredAnalysisValue) || activeAnalysis.classLabel
-                    : activeAnalysis.classLabel,
-              }
-            : null
-        }
-        viewMode="3d"
-        className="absolute bottom-6 right-4 z-[600]"
-      />
-
       {/* Topographic Profile 3D Viewer Panel */}
       {showProfileTool && (
         <Profile3DViewer

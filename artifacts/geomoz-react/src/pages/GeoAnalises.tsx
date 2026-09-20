@@ -4840,15 +4840,6 @@ export default function GeoAnalises({
             />
           </MapContainer>
 
-          {/* Real-time Hover Pixel Inspector HUD in 2D mode */}
-          <PixelInspectorHUD
-            coords={coords2D}
-            elevation={elevation2D}
-            admin={province ? { province, district: district ?? undefined } : null}
-            analysis={activeAnalysisContext}
-            viewMode="2d"
-            className="absolute bottom-6 right-3 sm:right-4 z-[600]"
-          />
           {/* RasterVisPanel — floating visualization controls */}
           {geeReady && geeTile && activeTab !== "s2" && (
             <>
