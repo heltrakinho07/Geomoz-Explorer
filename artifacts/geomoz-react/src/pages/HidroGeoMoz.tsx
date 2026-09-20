@@ -20,7 +20,7 @@ import {
   TrendingUp, Wind, Waves, Zap, FileText, BarChart2,
   Globe, MapPin, Crosshair, GitBranch, ChevronLeft, ChevronRight,
   Mountain, Ruler, Gauge, ArrowDownCircle, FileDown, PenTool,
-  Share2, Copy, Check, ExternalLink, Compass, X,
+  Share2, Copy, Check, ExternalLink, Compass, X, ShieldCheck,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer,
