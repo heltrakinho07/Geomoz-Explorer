@@ -3610,7 +3610,7 @@ export default function GeoAnalises({
            ════════════════════════════════════════════════════════════════════ */
         <div className="flex-1 flex flex-col overflow-y-auto bg-slate-50 dark:bg-slate-950">
           {/* Catalog Top Bar */}
-          <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0 shadow-xs">
+          <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-4 flex items-center justify-between gap-4 shrink-0 shadow-xs">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-sm text-white">
                 <Satellite size={20} />
@@ -3623,21 +3623,6 @@ export default function GeoAnalises({
                   Sensoriamento remoto com Google Earth Engine, DEM Copernicus 30m e renderização 3D
                 </p>
               </div>
-            </div>
-
-            <div className="flex items-center flex-wrap gap-2.5">
-              <div className="w-52 sm:w-64">
-                <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
-              </div>
-              {geeLoading
-                ? <span className="text-xs text-slate-400 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Verificando GEE…</span>
-                : <GeeStatusBadge status={geeStatus} loading={geeLoading} />}
-              {!geeStatus?.connected && (
-                <button onClick={() => setGeeCredsOpen(true)}
-                  className="text-xs bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 px-3 py-1.5 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors font-medium">
-                  Ligar GEE
-                </button>
-              )}
             </div>
           </div>
 
