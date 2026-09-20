@@ -27,6 +27,7 @@ const GOOGLE_LYRS: Record<BasemapType, string> = {
   satellite: "s",
   terrain: "p",
   roadmap: "m",
+  cesium: "s",
 };
 
 export function getGoogleTileUrls(type: BasemapType): string[] {

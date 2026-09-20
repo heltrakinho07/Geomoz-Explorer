@@ -48,7 +48,7 @@ export default function SpatialSqlModal({
   onApplyFilterToMap,
   aoiPolygon,
 }: SpatialSqlModalProps) {
-  const { data: geologyData } = useGeologyGeoJSON();
+  const { data: geologyData } = useGeologyGeoJSON(null, null, "code2006", open);
   const { data: provincesData } = useProvincesGeoJSON();
 
   const [query, setQuery] = useState(PRESET_QUERIES[0].sql);

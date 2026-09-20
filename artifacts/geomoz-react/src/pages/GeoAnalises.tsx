@@ -2860,6 +2860,7 @@ export default function GeoAnalises({
   const [elevation2D, setElevation2D] = useState<number | null>(null);
   const [hoveredProxyValue, setHoveredProxyValue] = useState<number | null>(null);
   const [geeStatus, setGeeStatus]     = useState<GeeStatus | null>(null);
+  const [geeLoading, setGeeLoading]   = useState(false);
   const [geeTile, setGeeTile]         = useState<GeeResult | null>(null);
   const [geeStartDate, setGeeStartDate] = useState("2023-01-01");
   const [geeEndDate, setGeeEndDate]     = useState(() => new Date().toISOString().split("T")[0]);

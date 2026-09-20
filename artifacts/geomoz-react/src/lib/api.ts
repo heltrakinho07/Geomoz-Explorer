@@ -40,6 +40,8 @@ export async function apiFetch(inputUrlOrPath: string, options?: RequestInit): P
       const userTokenKey = uid && uid !== "guest_user" ? `geomoz_gee_user_${uid}_token` : null;
       const userTokenTsKey = uid && uid !== "guest_user" ? `geomoz_gee_user_${uid}_token_ts` : null;
 
+      const geeProject = (userProjectKey ? localStorage.getItem(userProjectKey) : null)
+        || localStorage.getItem("geomoz_gee_project");
       const geeToken = (userTokenKey ? localStorage.getItem(userTokenKey) : null)
         || localStorage.getItem("geomoz_gee_oauth_token");
       const geeTokenTs = (userTokenTsKey ? localStorage.getItem(userTokenTsKey) : null)
