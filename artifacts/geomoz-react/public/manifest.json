@@ -1,0 +1,89 @@
+{
+  "name": "GeoMoz Explorer 3D — Inteligência Geoespacial",
+  "short_name": "GeoMoz 3D",
+  "description": "Plataforma analítica de inteligência geoespacial planetária, deteção remota multiespectral por satélite (Sentinel-2, Landsat), modelação de relevo 3D Copernicus DEM 30m e hidrogeologia preditiva.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#020617",
+  "theme_color": "#0284c7",
+  "lang": "pt",
+  "categories": [
+    "geospatial",
+    "navigation",
+    "productivity",
+    "utilities",
+    "education"
+  ],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Hidrografia & Bacias",
+      "short_name": "Bacias",
+      "description": "Delimitação automática HydroSHEDS, morfometria e CN",
+      "url": "/hidrografia",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Explorador 3D & Relevo",
+      "short_name": "Relevo 3D",
+      "description": "Copernicus DEM 30m e mapas mundiais em 3D",
+      "url": "/app",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "GeoAnálises Sentinel-2",
+      "short_name": "Satélite",
+      "description": "NDVI, SAVI, BSI, NDWI e deteção remota multiespectral",
+      "url": "/analises",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Geoperigos & Radar SAR",
+      "short_name": "Geoperigos",
+      "description": "Mapeamento de inundações SAR e risco de erosão",
+      "url": "/geoperigos",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Água Subterrânea (AHP)",
+      "short_name": "Aquíferos",
+      "description": "Potencial aquífero multicritério e zonas de recarga",
+      "url": "/agua-subterranea",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

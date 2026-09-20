@@ -8,6 +8,7 @@ import HidroWebGisViewer from "@/pages/HidroWebGisViewer";
 import { AuthProvider } from "@/hooks/useAuth";
 import { GeeAuthProvider } from "@/hooks/useGeeAuth";
 import { ProjectProvider } from "@/context/ProjectContext";
+import PwaInstallPrompt from "@/components/PwaInstallPrompt";
 
 
 interface ErrorBoundaryProps {
@@ -129,6 +130,7 @@ export default function App() {
               </Switch>
             </ErrorBoundary>
             <Toaster />
+            <PwaInstallPrompt />
           </ProjectProvider>
         </QueryClientProvider>
       </GeeAuthProvider>

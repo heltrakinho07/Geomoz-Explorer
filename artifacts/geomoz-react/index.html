@@ -2,17 +2,39 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5, viewport-fit=cover" />
     <title>GeoMoz Explorer 3D — Inteligência Geoespacial Planetária</title>
     <meta name="description" content="Plataforma analítica avançada de inteligência geoespacial, deteção remota multiespectral por satélite (Sentinel-2, Landsat), modelação de relevo 3D Copernicus DEM 30m e hidrogeologia preditiva." />
     <meta name="robots" content="index, follow" />
+
+    <!-- PWA & Mobile Web App Manifest & Capabilities -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="alternate" type="application/manifest+json" href="/manifest.json" />
+    <meta name="theme-color" content="#0284c7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="GeoMoz 3D" />
+    <meta name="application-name" content="GeoMoz Explorer 3D" />
+    <meta name="msapplication-TileColor" content="#0284c7" />
+    <meta name="msapplication-tap-highlight" content="no" />
+
+    <!-- Favicons & App Icons -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/favicon.png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+    <!-- Open Graph & Social Cards -->
     <meta property="og:title" content="GeoMoz Explorer 3D — Inteligência Geoespacial Planetária" />
     <meta property="og:description" content="Plataforma analítica avançada de inteligência geoespacial, deteção remota multiespectral por satélite (Sentinel-2, Landsat), modelação de relevo 3D Copernicus DEM 30m e hidrogeologia preditiva." />
     <meta property="og:type" content="website" />
+    <meta property="og:image" content="/opengraph.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="GeoMoz Explorer 3D" />
     <meta name="twitter:description" content="Inteligência geoespacial planetária, deteção remota e modelação 3D de terreno de alta resolução." />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="twitter:image" content="/opengraph.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">

@@ -45,9 +45,12 @@ import {
   Map as MapIcon,
   User,
   SlidersHorizontal,
+  Download,
+  Smartphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { usePwa } from "@/lib/pwa";
 import AuthModal, { type AuthMode } from "@/components/AuthModal";
 
 interface LandingPageProps {
@@ -64,6 +67,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
   const [authMode, setAuthMode] = useState<AuthMode>(initialAuthMode || "login");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSheet, setMobileSheet] = useState<"none" | "modules" | "account" | "menu">("none");
+  const { canInstall, isStandalone, promptInstall, isIos } = usePwa();
 
   // Default theme is LIGHT (primary executive mode), secondary DARK
   const [theme, setTheme] = useState<Theme>(() => {
@@ -804,6 +808,19 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
             >
               {isDark ? <Sun size={16} /> : <Moon size={16} />}
             </button>
+
+            {/* PWA Install Button in Desktop Navbar */}
+            {!isStandalone && canInstall && (
+              <button
+                type="button"
+                onClick={promptInstall}
+                title={lang === "pt" ? "Instalar GeoMoz Explorer no Computador / Telemóvel" : "Install GeoMoz Explorer App"}
+                className="hidden sm:flex h-9 px-2.5 rounded-xl border border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 text-xs font-bold items-center gap-1.5 hover:bg-sky-100 dark:hover:bg-sky-900/60 transition-all shadow-xs cursor-pointer"
+              >
+                <Download size={14} className="text-sky-500" />
+                <span>{lang === "pt" ? "Instalar App" : "Install App"}</span>
+              </button>
+            )}
 
             {/* Auth / Account Buttons */}
             {user ? (
@@ -2789,6 +2806,35 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                     <span className="text-[10px] text-slate-400 uppercase">{lang}</span>
                   </button>
                 </div>
+
+                {/* PWA Install Button in Mobile Menu */}
+                {!isStandalone && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (canInstall) {
+                        await promptInstall();
+                        setMobileSheet("none");
+                      } else {
+                        setMobileSheet("none");
+                        alert(
+                          isIos
+                            ? "Para instalar no iPhone/iPad: toque em Partilhar no Safari e selecione 'Adicionar ao Ecrã Principal'."
+                            : "Abra as opções do navegador e selecione 'Instalar Aplicação' ou 'Adicionar ao Ecrã Principal'."
+                        );
+                      }
+                    }}
+                    className="w-full flex items-center justify-between p-3 rounded-xl border border-sky-300 dark:border-sky-800 bg-sky-50/80 dark:bg-sky-950/40 text-xs font-bold text-sky-700 dark:text-sky-300 transition-all shadow-xs active:scale-[0.98]"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Download size={15} className="text-sky-500" />
+                      <span>{lang === "pt" ? "Instalar Aplicação (PWA)" : "Install App (PWA)"}</span>
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-sky-500/20 text-sky-600 dark:text-sky-400 font-extrabold">
+                      PWA
+                    </span>
+                  </button>
+                )}
 
                 {/* Navigation Links */}
                 <div>

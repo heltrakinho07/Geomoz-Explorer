@@ -24,11 +24,13 @@ import {
   Sun,
   Moon,
   X,
+  Download,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
 import { useGeeAuth } from "@/hooks/useGeeAuth";
 import { useProject } from "@/context/ProjectContext";
+import { usePwa } from "@/lib/pwa";
 import type { ProjectCategory } from "@/types/project";
 
 // Backward compatibility export
@@ -76,6 +78,7 @@ export default function Sidebar({
   const { user, signOut } = useAuth();
   const { geeConnected, geeProject } = useGeeAuth();
   const { activeProject, activeRuns } = useProject();
+  const { canInstall, isStandalone, promptInstall } = usePwa();
 
   // Dark mode theme state synchronized with landing page & localStorage
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -318,6 +321,21 @@ export default function Sidebar({
               </span>
             )}
           </button>
+
+          {/* PWA Install button */}
+          {!isStandalone && canInstall && (
+            <button
+              type="button"
+              onClick={promptInstall}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border border-sky-300 dark:border-sky-800 text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 dark:hover:bg-sky-900/60 transition-all cursor-pointer shadow-xs ${
+                collapsed ? "w-full justify-center px-0 mt-1" : ""
+              }`}
+              title="Instalar GeoMoz Explorer como Aplicação"
+            >
+              <Download size={15} className="shrink-0 text-sky-500" />
+              {!collapsed && <span>Instalar App</span>}
+            </button>
+          )}
 
           {/* Settings button */}
           <button
