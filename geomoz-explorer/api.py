@@ -2383,3 +2383,92 @@ async def get_shared_analysis(share_id: str):
         logger.error("Failed to read shared analysis: %s", exc)
         raise HTTPException(500, f"Falha ao carregar análise partilhada: {exc}")
 
+
+# ── Saved Analyses (Permanent Projects & History) ─────────────────────────────
+
+SAVED_ANALYSES_DIR = os.path.join(os.path.dirname(__file__), "data", "saved_analyses")
+os.makedirs(SAVED_ANALYSES_DIR, exist_ok=True)
+
+class SaveAnalysisRequest(BaseModel):
+    id: Optional[str] = None
+    title: str
+    type: str = "hidro"
+    data: dict
+    metadata: Optional[dict] = None
+
+@app.post("/geomoz-api/analyses/save")
+async def save_analysis(req: SaveAnalysisRequest):
+    """
+    Save an analysis snapshot permanently on the server.
+    Enables reloading the analysis anytime without re-running GEE.
+    """
+    import secrets
+    analysis_id = req.id or secrets.token_hex(6)
+    file_path = os.path.join(SAVED_ANALYSES_DIR, f"{analysis_id}.json")
+    payload = {
+        "id": analysis_id,
+        "title": req.title,
+        "type": req.type,
+        "saved_at": time.time(),
+        "data": req.data,
+        "metadata": req.metadata or {},
+    }
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+    except Exception as exc:
+        logger.error("Failed to save analysis: %s", exc)
+        raise HTTPException(500, f"Falha ao guardar análise: {exc}")
+    return {"id": analysis_id, "title": req.title, "saved_at": payload["saved_at"]}
+
+@app.get("/geomoz-api/analyses")
+async def list_saved_analyses():
+    """List all saved analyses with summaries (no heavy geojson in list)."""
+    analyses = []
+    if not os.path.exists(SAVED_ANALYSES_DIR):
+        return []
+    for fname in os.listdir(SAVED_ANALYSES_DIR):
+        if fname.endswith(".json"):
+            fpath = os.path.join(SAVED_ANALYSES_DIR, fname)
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    item = json.load(f)
+                    analyses.append({
+                        "id": item.get("id") or fname[:-5],
+                        "title": item.get("title") or "Análise de Bacia",
+                        "type": item.get("type", "hidro"),
+                        "saved_at": item.get("saved_at", 0),
+                        "metadata": item.get("metadata", {}),
+                    })
+            except Exception:
+                pass
+    analyses.sort(key=lambda x: x.get("saved_at", 0), reverse=True)
+    return analyses
+
+@app.get("/geomoz-api/analyses/{analysis_id}")
+async def get_saved_analysis(analysis_id: str):
+    """Retrieve full saved analysis by ID."""
+    import re
+    if not re.match(r"^[a-zA-Z0-9_-]{4,64}$", analysis_id):
+        raise HTTPException(400, "Identificador inválido.")
+    fpath = os.path.join(SAVED_ANALYSES_DIR, f"{analysis_id}.json")
+    if not os.path.exists(fpath):
+        raise HTTPException(404, "Análise não encontrada.")
+    try:
+        with open(fpath, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as exc:
+        raise HTTPException(500, f"Falha ao ler análise: {exc}")
+
+@app.delete("/geomoz-api/analyses/{analysis_id}")
+async def delete_saved_analysis(analysis_id: str):
+    """Delete a saved analysis by ID."""
+    fpath = os.path.join(SAVED_ANALYSES_DIR, f"{analysis_id}.json")
+    if os.path.exists(fpath):
+        try:
+            os.remove(fpath)
+            return {"deleted": True, "id": analysis_id}
+        except Exception as exc:
+            raise HTTPException(500, f"Falha ao eliminar análise: {exc}")
+    raise HTTPException(404, "Análise não encontrada.")
+

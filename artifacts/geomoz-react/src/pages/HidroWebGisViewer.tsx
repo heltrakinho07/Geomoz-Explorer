@@ -37,7 +37,9 @@ import {
   MapPin,
   GitBranch,
   X,
+  FileCode,
 } from "lucide-react";
+import { downloadStandaloneBasinHtml } from "@/lib/standalone-html-export";
 import {
   BarChart,
   Bar,
@@ -213,19 +215,41 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       return;
     }
 
+    // 1. Instant recovery from local cache if this share was opened or created here
+    let hasLocalCache = false;
+    try {
+      const cachedById = localStorage.getItem(`geomoz_share_${id}`);
+      if (cachedById) {
+        const parsed = JSON.parse(cachedById);
+        setSharedData(parsed);
+        setLoading(false);
+        hasLocalCache = true;
+      }
+    } catch {}
+
+    // 2. Fetch from server to sync / load if first time
     async function fetchShare() {
-      setLoading(true);
+      if (!hasLocalCache) setLoading(true);
       setError(null);
       try {
         const res = await fetch(apiUrl(`/geomoz-api/share/${id}`));
         if (!res.ok) {
-          throw new Error("A análise solicitada não foi encontrada ou o link expirou.");
+          if (!hasLocalCache) {
+            throw new Error("A análise solicitada não foi encontrada ou o link expirou.");
+          }
+          return;
         }
         const json = await res.json();
         const data: SharedData = json.data;
         setSharedData(data);
+        try {
+          localStorage.setItem(`geomoz_share_${id}`, JSON.stringify(data));
+          localStorage.setItem("geomoz_last_hidro_share", JSON.stringify(data));
+        } catch {}
       } catch (err: any) {
-        setError(err.message || "Erro ao carregar os dados partilhados.");
+        if (!hasLocalCache) {
+          setError(err.message || "Erro ao carregar os dados partilhados.");
+        }
       } finally {
         setLoading(false);
       }
@@ -803,6 +827,22 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
             <span>{copied ? "Link Copiado!" : "Copiar Link"}</span>
           </button>
 
+          {/* Export HTML Button */}
+          <button
+            onClick={() => downloadStandaloneBasinHtml({
+              title: `Bacia Hidrográfica — ${totalArea.toLocaleString("pt-PT")} km²`,
+              basinReport: report,
+              watershedData: wsData,
+              wsStats,
+              pourPoint: PP,
+            })}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-xs font-medium transition-all shadow-sm"
+            title="Descarregar ficheiro HTML autónomo que abre em qualquer computador offline"
+          >
+            <FileCode size={13} />
+            <span className="hidden sm:inline">Exportar HTML</span>
+          </button>
+
           {/* Export PDF Button */}
           <button
             onClick={() => setExportModalOpen(true)}
@@ -1164,13 +1204,26 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                 </div>
               )}
 
-              {/* Botão Exportar PDF no Sidebar */}
-              <div className="pt-2">
+              {/* Botões Exportar PDF e HTML no Sidebar */}
+              <div className="pt-2 space-y-2">
                 <button
                   onClick={() => setExportModalOpen(true)}
                   className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-semibold rounded-2xl transition-all shadow-lg shadow-blue-600/25"
                 >
                   <FileDown size={14} /> Descarregar Relatório PDF (Estilo QGIS)
+                </button>
+                <button
+                  onClick={() => downloadStandaloneBasinHtml({
+                    title: `Bacia Hidrográfica — ${totalArea.toLocaleString("pt-PT")} km²`,
+                    basinReport: report,
+                    watershedData: wsData,
+                    wsStats,
+                    pourPoint: PP,
+                  })}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-xs font-semibold rounded-2xl transition-all shadow-sm"
+                  title="Descarregar ficheiro HTML autónomo que abre em qualquer computador offline"
+                >
+                  <FileCode size={14} /> Exportar WebGIS em HTML (Offline)
                 </button>
               </div>
             </div>

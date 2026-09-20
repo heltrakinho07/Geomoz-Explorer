@@ -21,7 +21,9 @@ import {
   Globe, MapPin, Crosshair, GitBranch, ChevronLeft, ChevronRight,
   Mountain, Ruler, Gauge, ArrowDownCircle, FileDown, PenTool,
   Share2, Copy, Check, ExternalLink, Compass, X, ShieldCheck,
+  BookmarkCheck, Bookmark, FolderOpen, Save, FileCode, Trash2,
 } from "lucide-react";
+import { downloadStandaloneBasinHtml } from "@/lib/standalone-html-export";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer,
 } from "recharts";
@@ -286,6 +288,192 @@ export default function HidroGeoMoz({
   const [error,         setError]         = useState<string | null>(null);
   const [drawingEnabled, setDrawingEnabled] = useState(false);
 
+  // Saved analyses state (Zero GEE Permanent Archive)
+  const [savedModalOpen, setSavedModalOpen] = useState(false);
+  const [savedAnalyses, setSavedAnalyses] = useState<any[]>(() => {
+    try {
+      const local = localStorage.getItem("geomoz_saved_analyses");
+      return local ? JSON.parse(local) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loadingSaved, setLoadingSaved] = useState(false);
+
+  // Sync saved analyses from server on mount
+  useEffect(() => {
+    apiFetch("/geomoz-api/analyses")
+      .then((r) => r.json())
+      .then((serverItems) => {
+        if (Array.isArray(serverItems)) {
+          setSavedAnalyses((prev) => {
+            const merged = [...prev];
+            serverItems.forEach((s) => {
+              if (!merged.some((m) => m.id === s.id)) {
+                merged.push(s);
+              }
+            });
+            try {
+              localStorage.setItem("geomoz_saved_analyses", JSON.stringify(merged));
+            } catch {}
+            return merged;
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  async function handleSaveAnalysis() {
+    if (!watershedData && !basinReport) {
+      toast({
+        variant: "destructive",
+        title: "Nenhuma bacia ativa",
+        description: "Delimite ou analise uma bacia antes de guardar.",
+      });
+      return;
+    }
+    const area = basinReport?.morphometry?.areaKm2 || watershedData?.areaKm2 || 0;
+    const defaultTitle = `Bacia Hidrográfica — ${province ?? "Moçambique"}${district ? ` / ${district}` : ""} (${area.toLocaleString("pt-PT")} km²)`;
+    const title = window.prompt("Nome para guardar esta análise no arquivo permanente:", defaultTitle);
+    if (title === null) return;
+    const chosenTitle = title.trim() || defaultTitle;
+
+    const id = "basin_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 6);
+    const item = {
+      id,
+      title: chosenTitle,
+      saved_at: Date.now(),
+      data: {
+        basinReport,
+        wsStats,
+        watershedData,
+        watershedDrainageTile,
+        pourPoint,
+        province,
+        district,
+        aoi,
+      },
+      metadata: {
+        areaKm2: area,
+        date: new Date().toISOString(),
+        province,
+        district,
+      },
+    };
+
+    const updated = [item, ...savedAnalyses.filter((a) => a.id !== id)];
+    setSavedAnalyses(updated);
+    try {
+      localStorage.setItem("geomoz_saved_analyses", JSON.stringify(updated));
+    } catch {}
+
+    try {
+      await apiFetch("/geomoz-api/analyses/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          title: chosenTitle,
+          type: "hidro",
+          data: item.data,
+          metadata: item.metadata,
+        }),
+      });
+    } catch {}
+
+    toast({
+      title: "Análise guardada com sucesso!",
+      description: "Esta bacia ficou arquivada de forma permanente. Poderá reabri-la instantaneamente sem recorrer ao GEE.",
+    });
+  }
+
+  async function handleLoadSavedAnalysis(item: any) {
+    let fullData = item.data;
+    if (!fullData) {
+      setLoadingSaved(true);
+      try {
+        const res = await apiFetch(`/geomoz-api/analyses/${item.id}`);
+        if (res.ok) {
+          const json = await res.json();
+          fullData = json.data;
+        }
+      } catch {}
+      setLoadingSaved(false);
+    }
+    if (!fullData) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao carregar",
+        description: "Não foi possível carregar os dados desta análise.",
+      });
+      return;
+    }
+
+    setMode("delineate");
+    setWatershedData(fullData.watershedData || null);
+    setBasinReport(fullData.basinReport || null);
+    setWsStats(fullData.wsStats || null);
+    setPourPoint(fullData.pourPoint || null);
+    if (fullData.watershedDrainageTile) {
+      setWatershedDrainageTile(fullData.watershedDrainageTile);
+    }
+    if (fullData.province) setProvince(fullData.province);
+    if (fullData.district) setDistrict(fullData.district);
+    setSavedModalOpen(false);
+
+    if (mapRef.current && fullData.watershedData?.geojson) {
+      try {
+        const b = computeGeoJsonBounds(fullData.watershedData.geojson);
+        mapRef.current.fitBounds([
+          [b.south, b.west],
+          [b.north, b.east],
+        ]);
+      } catch {}
+    }
+
+    toast({
+      title: "Análise carregada do arquivo!",
+      description: `«${item.title}» restaurada com sucesso. Zero chamadas ao GEE.`,
+    });
+  }
+
+  async function handleDeleteSavedAnalysis(id: string) {
+    const updated = savedAnalyses.filter((a) => a.id !== id);
+    setSavedAnalyses(updated);
+    try {
+      localStorage.setItem("geomoz_saved_analyses", JSON.stringify(updated));
+    } catch {}
+    try {
+      await apiFetch(`/geomoz-api/analyses/${id}`, { method: "DELETE" });
+    } catch {}
+    toast({ title: "Análise eliminada do arquivo" });
+  }
+
+  function handleExportStandaloneHtml() {
+    if (!watershedData && !basinReport) {
+      toast({
+        variant: "destructive",
+        title: "Nenhuma bacia ativa",
+        description: "Delimite uma bacia antes de exportar o HTML.",
+      });
+      return;
+    }
+    const area = basinReport?.morphometry?.areaKm2 || watershedData?.areaKm2 || 0;
+    downloadStandaloneBasinHtml({
+      title: `Bacia Hidrográfica — ${province ?? "Moçambique"}${district ? ` / ${district}` : ""} (${area.toLocaleString("pt-PT")} km²)`,
+      basinReport,
+      watershedData,
+      wsStats,
+      pourPoint,
+      province,
+      district,
+    });
+    toast({
+      title: "WebGIS HTML descarregado!",
+      description: "Ficheiro HTML autónomo gerado. Pode ser aberto em qualquer computador offline sem precisar de servidor.",
+    });
+  }
+
   // WebGIS Share state
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
@@ -344,6 +532,9 @@ export default function HidroGeoMoz({
       const json = await res.json();
       const fullUrl = `${window.location.origin}/view/hidro?id=${json.shareId}`;
       setShareUrl(fullUrl);
+      try {
+        localStorage.setItem(`geomoz_share_${json.shareId}`, JSON.stringify(payload.data));
+      } catch {}
     } catch (err: any) {
       toast({
         variant: "destructive",
@@ -1190,7 +1381,7 @@ export default function HidroGeoMoz({
         </div>
 
         {/* Mode toggle */}
-        <div className="p-3 border-b border-slate-100 dark:border-slate-800">
+        <div className="p-3 border-b border-slate-100 dark:border-slate-800 space-y-2">
           <div className="grid grid-cols-2 gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
             {([["delineate","Delimitar",Crosshair],["explore","Explorar",Layers]] as const).map(([m, label, Icon]) => (
               <button key={m} onClick={() => { setMode(m); setError(null); }}
@@ -1199,6 +1390,20 @@ export default function HidroGeoMoz({
               </button>
             ))}
           </div>
+
+          <button
+            type="button"
+            onClick={() => setSavedModalOpen(true)}
+            className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs font-semibold transition-all shadow-sm group"
+          >
+            <span className="flex items-center gap-1.5">
+              <FolderOpen size={13} className="text-blue-500 group-hover:text-blue-600" />
+              <span>Análises Guardadas</span>
+            </span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-cyan-300 font-mono font-bold">
+              {savedAnalyses.length}
+            </span>
+          </button>
         </div>
 
         {/* Área de estudo — AOI global */}
@@ -1788,15 +1993,34 @@ export default function HidroGeoMoz({
                           </button>
                         </div>
 
-                        {/* WebGIS Share & PDF Download */}
+                        {/* WebGIS Share, Save & PDF Download */}
                         <div className="pt-1 space-y-2">
                           <button
                             type="button"
-                            onClick={handleShareWebGis}
-                            className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-blue-700 dark:text-cyan-300 border border-blue-200 dark:border-slate-700 text-xs font-semibold rounded-xl transition-all shadow-sm"
+                            onClick={handleSaveAnalysis}
+                            className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-emerald-600/20"
                           >
-                            <Share2 size={13} className="text-cyan-500" /> Partilhar Análise (WebGIS)
+                            <BookmarkCheck size={14} /> Guardar no Arquivo Permanente
                           </button>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={handleShareWebGis}
+                              className="flex items-center justify-center gap-1.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-blue-700 dark:text-cyan-300 border border-blue-200 dark:border-slate-700 text-xs font-semibold rounded-xl transition-all shadow-sm"
+                            >
+                              <Share2 size={12} className="text-cyan-500" /> Partilhar Link
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleExportStandaloneHtml}
+                              className="flex items-center justify-center gap-1.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-blue-700 dark:text-cyan-300 border border-blue-200 dark:border-slate-700 text-xs font-semibold rounded-xl transition-all shadow-sm"
+                              title="Exportar como ficheiro HTML autónomo que abre em qualquer computador offline"
+                            >
+                              <Globe size={12} className="text-blue-500" /> Exportar HTML
+                            </button>
+                          </div>
+
                           <button
                             type="button"
                             onClick={() => setPdfExportModalOpen(true)}
@@ -1805,7 +2029,7 @@ export default function HidroGeoMoz({
                             <FileDown size={13} /> Exportar Relatório PDF (QGIS)
                           </button>
                           <p className="text-[10px] text-slate-400 leading-relaxed">
-                            Partilhe via link interactivo de leitura ou exporte o mapa com rosa dos ventos, escala e legenda estilo QGIS.
+                            Guarde permanentemente, partilhe via WebGIS, descarregue em HTML autónomo ou exporte em PDF estilo QGIS.
                           </p>
                         </div>
                       </div>
@@ -2149,6 +2373,115 @@ export default function HidroGeoMoz({
                     <FileDown size={14} /> Gerar PDF A4
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal de Análises Guardadas (Arquivo Permanente) ──────────────── */}
+      {savedModalOpen && (
+        <div className="fixed inset-0 z-[1000] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl text-slate-800 dark:text-slate-100 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-blue-600/15 text-blue-600 dark:text-cyan-400 flex items-center justify-center">
+                  <FolderOpen size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">Arquivo Permanente de Análises</h3>
+                  <p className="text-[11px] text-slate-400">Bacias guardadas para consulta instantânea sem recorrer ao GEE</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSavedModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-xs p-1"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="my-4 overflow-y-auto flex-1 space-y-2.5 pr-1 text-xs">
+              {savedAnalyses.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 space-y-2">
+                  <Bookmark size={32} className="mx-auto text-slate-300 dark:text-slate-700 opacity-60" />
+                  <p className="font-semibold text-slate-600 dark:text-slate-300">Nenhuma análise guardada ainda</p>
+                  <p className="text-[11px] max-w-xs mx-auto text-slate-400">
+                    Delimite uma bacia e clique em <strong>"Guardar no Arquivo Permanente"</strong> para preservá-la aqui para sempre.
+                  </p>
+                </div>
+              ) : (
+                savedAnalyses.map((item) => {
+                  const area = item.metadata?.areaKm2 || item.data?.basinReport?.morphometry?.areaKm2 || 0;
+                  const date = item.saved_at
+                    ? new Date(item.saved_at).toLocaleDateString("pt-PT", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+                    : "—";
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 hover:border-blue-400 dark:hover:border-blue-500 transition-all space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h4 className="font-bold text-slate-900 dark:text-white text-xs">{item.title}</h4>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            Guardada em {date} · {area > 0 ? `${area.toLocaleString("pt-PT")} km²` : "Área Delimitada"}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSavedAnalysis(item.id)}
+                          className="text-slate-400 hover:text-red-500 p-1 rounded-lg transition-colors"
+                          title="Eliminar do arquivo"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleLoadSavedAnalysis(item)}
+                          disabled={loadingSaved}
+                          className="flex-1 py-1.5 px-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-[11px] flex items-center justify-center gap-1 transition-all shadow-sm"
+                        >
+                          <Crosshair size={11} /> Carregar no Mapa
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (item.data) {
+                              downloadStandaloneBasinHtml({
+                                title: item.title,
+                                basinReport: item.data.basinReport,
+                                watershedData: item.data.watershedData,
+                                wsStats: item.data.wsStats,
+                                pourPoint: item.data.pourPoint,
+                                province: item.data.province,
+                                district: item.data.district,
+                              });
+                            }
+                          }}
+                          className="py-1.5 px-2.5 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-medium text-[11px] flex items-center gap-1 transition-all"
+                          title="Descarregar ficheiro HTML autónomo offline"
+                        >
+                          <FileCode size={11} /> HTML
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => setSavedModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-all"
+              >
+                Fechar
               </button>
             </div>
           </div>
