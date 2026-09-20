@@ -19,7 +19,7 @@ import {
   AlertTriangle, CheckCircle2, Info, Activity, Layers,
   TrendingUp, Wind, Waves, Zap, FileText, BarChart2,
   Globe, MapPin, Crosshair, GitBranch, ChevronLeft, ChevronRight,
-  Mountain, Ruler, Gauge, ArrowDownCircle, FileDown,
+  Mountain, Ruler, Gauge, ArrowDownCircle, FileDown, PenTool,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer,
@@ -85,6 +85,27 @@ interface BasinReport {
 }
 
 type Mode = "explore" | "delineate";
+type DelineateMethod = "point" | "polygon";
+
+function getGeometryCenter(geom: any): [number, number] {
+  try {
+    let coords: number[][] = [];
+    if (geom.type === "Polygon") {
+      coords = geom.coordinates[0];
+    } else if (geom.type === "MultiPolygon") {
+      coords = geom.coordinates[0][0];
+    }
+    if (coords && coords.length > 0) {
+      const lats = coords.map((c: number[]) => c[1]);
+      const lngs = coords.map((c: number[]) => c[0]);
+      return [
+        (Math.min(...lats) + Math.max(...lats)) / 2,
+        (Math.min(...lngs) + Math.max(...lngs)) / 2,
+      ];
+    }
+  } catch {}
+  return [-18.665695, 35.529562];
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -192,6 +213,7 @@ export default function HidroGeoMoz({
   const [showDrainage,  setShowDrainage]  = useState(true);
 
   // Delineate
+  const [delineateMethod, setDelineateMethod] = useState<DelineateMethod>("point");
   const [pourPoint,     setPourPoint]     = useState<[number, number] | null>(null);
   const [watershedData, setWatershedData] = useState<WatershedResult | null>(null);
   const [maxIter]                         = useState(60);   // D8 fallback only
@@ -342,9 +364,9 @@ export default function HidroGeoMoz({
     }
   }, [watershedDrainThresh]);
 
-  // Watershed delineation
+  // Watershed delineation by point (Pour Point)
   async function onMapClick(lat: number, lng: number) {
-    if (mode !== "delineate") return;
+    if (mode !== "delineate" || drawingEnabled || delineateMethod !== "point") return;
     setError(null); setPourPoint([lat, lng]); setWatershedData(null); setWsStats(null);
     setWatershedDrainageTile(null);
     setBasinReport(null); setReportLayer("none"); setLoadingWS(true);
@@ -390,6 +412,83 @@ export default function HidroGeoMoz({
     }
     finally { clearTimeout(timer); setLoadingWS(false); }
   }
+
+  // Delineate by Polygon / AOI (Recorte exato pela área de estudo)
+  const delineateByPolygon = useCallback(async (geometry: any, label?: string) => {
+    if (!geometry) return;
+    setError(null);
+    setLoadingWS(true);
+    setWatershedData(null);
+    setWsStats(null);
+    setBasinReport(null);
+    setReportLayer("none");
+    setWatershedDrainageTile(null);
+
+    const ok = await checkGEE();
+    if (!ok) {
+      setLoadingWS(false);
+      return;
+    }
+
+    const center = getGeometryCenter(geometry);
+    setPourPoint(center);
+
+    const wd: WatershedResult = {
+      tileUrl: "",
+      geojson: {
+        type: "FeatureCollection",
+        features: [{
+          type: "Feature",
+          geometry: geometry,
+          properties: {
+            name: label || aoi.label || "Área de Estudo Delimitada",
+            source: "polygon",
+          },
+        }],
+      },
+      pourPoint: center,
+      areaKm2: 0,
+      source: "polygon",
+    };
+    setWatershedData(wd);
+    setLoadingWS(false);
+
+    // 1. Auto-fetch drainage network clipped to this polygon (HydroSHEDS + FreeFlowingRivers)
+    loadWatershedDrainage(geometry, watershedDrainThresh);
+
+    // 2. Fetch sub-basins that intersect this polygon
+    try {
+      apiFetch("/geomoz-api/gee/basins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ geometry, level: basinLevel }),
+      }).then(async (r) => {
+        if (r.ok) {
+          const bd = await r.json();
+          setBasinsData(bd);
+        }
+      }).catch(() => {});
+    } catch {}
+
+    // 3. Auto-stats for polygon
+    setLoadingWsSt(true);
+    try {
+      const sr = await apiFetch("/geomoz-api/gee/basin-stats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ geometry }),
+      });
+      if (sr.ok) {
+        const stats: BasinStats = await sr.json();
+        setWsStats(stats);
+        setWatershedData((prev) => prev ? { ...prev, areaKm2: stats.areaKm2 } : prev);
+      }
+    } catch (e) {
+      console.error("Erro ao calcular estatísticas da área:", e);
+    } finally {
+      setLoadingWsSt(false);
+    }
+  }, [aoi.label, basinLevel, checkGEE, loadWatershedDrainage, watershedDrainThresh]);
 
   // Generate the full hydro-environmental report for the delineated basin
   async function runBasinReport() {
@@ -854,21 +953,92 @@ export default function HidroGeoMoz({
         {/* Delineate config */}
         {mode === "delineate" && (
           <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
-            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-xl p-3 text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
-              <MapPin size={12} className="mt-0.5 shrink-0 text-blue-500" />
-              <span>Clique no mapa: devolve a <strong>sub-bacia HydroBASINS</strong> que contém o ponto (limite real, instantâneo).</span>
+            {/* Delineation Method Selector */}
+            <div className="grid grid-cols-2 gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 mb-2">
+              <button
+                type="button"
+                onClick={() => setDelineateMethod("point")}
+                className={`flex items-center justify-center gap-1 text-[11px] font-medium py-1.5 rounded-lg transition-all ${
+                  delineateMethod === "point"
+                    ? "bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-sm font-semibold"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                }`}
+              >
+                <Crosshair size={11} /> Ponto (Exutório)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDelineateMethod("polygon");
+                  if (aoi.geometry) {
+                    delineateByPolygon(aoi.geometry, aoi.label);
+                  }
+                }}
+                className={`flex items-center justify-center gap-1 text-[11px] font-medium py-1.5 rounded-lg transition-all ${
+                  delineateMethod === "polygon"
+                    ? "bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-sm font-semibold"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                }`}
+              >
+                <PenTool size={11} /> Por Polígono / AOI
+              </button>
             </div>
-            <div>
-              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Detalhe — <strong className="text-slate-700 dark:text-slate-200">nível {level}</strong></label>
-              <input type="range" min={6} max={12} step={1} value={level} onChange={e => setLevel(+e.target.value)} className="w-full accent-blue-500" />
-              <div className="flex justify-between text-[10px] text-slate-400"><span>Grande (6)</span><span>Pequena (12)</span></div>
-            </div>
-            {pourPoint && (
-              <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 text-[11px] font-mono text-slate-600 dark:text-slate-300 space-y-0.5">
-                <div className="text-[10px] font-semibold text-slate-400 not-italic mb-1">Ponto seleccionado</div>
-                <div>Lat {pourPoint[0].toFixed(5)} · Lon {pourPoint[1].toFixed(5)}</div>
-                {watershedData && <div className="text-blue-700 dark:text-blue-400 font-bold not-italic">{watershedData.areaKm2.toLocaleString("pt-PT")} km²</div>}
-              </div>
+
+            {delineateMethod === "point" ? (
+              <>
+                <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-xl p-3 text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
+                  <MapPin size={12} className="mt-0.5 shrink-0 text-blue-500" />
+                  <span>Clique num rio ou ponto no mapa para traçar a sub-bacia a montante (HydroBASINS/D8).</span>
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Detalhe — <strong className="text-slate-700 dark:text-slate-200">nível {level}</strong></label>
+                  <input type="range" min={6} max={12} step={1} value={level} onChange={e => setLevel(+e.target.value)} className="w-full accent-blue-500" />
+                  <div className="flex justify-between text-[10px] text-slate-400"><span>Grande (6)</span><span>Pequena (12)</span></div>
+                </div>
+                {pourPoint && (
+                  <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 text-[11px] font-mono text-slate-600 dark:text-slate-300 space-y-0.5">
+                    <div className="text-[10px] font-semibold text-slate-400 not-italic mb-1">Ponto seleccionado</div>
+                    <div>Lat {pourPoint[0].toFixed(5)} · Lon {pourPoint[1].toFixed(5)}</div>
+                    {watershedData && <div className="text-blue-700 dark:text-blue-400 font-bold not-italic">{watershedData.areaKm2.toLocaleString("pt-PT")} km²</div>}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-xl p-3 text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
+                  <Info size={12} className="mt-0.5 shrink-0 text-blue-500" />
+                  <span>Delimita e recorta as <strong>bacias e linhas de água</strong> estritamente aos limites do seu polígono ou área de estudo.</span>
+                </div>
+
+                <div className="space-y-2">
+                  {aoi.geometry ? (
+                    <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 text-[11px] space-y-2">
+                      <div className="text-slate-500 dark:text-slate-400 text-[10px]">Polígono / AOI ativa:</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 truncate">{aoi.label || "Área Personalizada"}</div>
+                      <button
+                        type="button"
+                        onClick={() => delineateByPolygon(aoi.geometry, aoi.label)}
+                        disabled={loadingWS}
+                        className="w-full flex items-center justify-center gap-1.5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm"
+                      >
+                        {loadingWS ? <><Loader2 size={11} className="animate-spin" /> A recortar bacia…</> : <><Play size={11} /> Delimitar & Recortar por esta Área</>}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 text-center py-2">
+                      Nenhum polígono ativo. Desenhe um polígono ou carregue um arquivo vetorial.
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setDrawingEnabled(true)}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold rounded-xl transition-colors"
+                  >
+                    <PenTool size={11} /> {drawingEnabled ? "A desenhar no mapa…" : "Desenhar Novo Polígono"}
+                  </button>
+                </div>
+              </>
             )}
           </div>
         )}
@@ -907,7 +1077,7 @@ export default function HidroGeoMoz({
       </div>
 
       {/* ── Map ──────────────────────────────────────────────────────────── */}
-      <div className={`flex-1 relative overflow-hidden ${mode === "delineate" ? "cursor-crosshair" : ""}`} ref={mapContainerRef}>
+      <div className={`flex-1 relative overflow-hidden ${mode === "delineate" && delineateMethod === "point" && !drawingEnabled ? "cursor-crosshair" : ""}`} ref={mapContainerRef}>
         <BasemapSwitcher
           current={basemap}
           onChange={setBasemap}
@@ -918,7 +1088,7 @@ export default function HidroGeoMoz({
               <ZoomControl position="topright" />
               <MapTools />
               <ScaleControl position="bottomright" imperial={false} />
-              <MapClickHandler onMapClick={onMapClick} active={mode === "delineate"} />
+              <MapClickHandler onMapClick={onMapClick} active={mode === "delineate" && delineateMethod === "point" && !drawingEnabled} />
 
               <TileLayer
                 key={basemap}
@@ -996,7 +1166,15 @@ export default function HidroGeoMoz({
                 enabled={drawingEnabled}
                 hasDrawnAOI={aoi.source === "draw"}
                 onClearAOI={() => onAOIChange(GLOBAL_AOI)}
-                onDrawComplete={(geom, label) => { setDrawingEnabled(false); onAOIChange(customAOI(geom, label, "draw")); }}
+                onDrawComplete={(geom, label) => {
+                  setDrawingEnabled(false);
+                  const newAoi = customAOI(geom, label, "draw");
+                  onAOIChange(newAoi);
+                  if (mode === "delineate") {
+                    setDelineateMethod("polygon");
+                    delineateByPolygon(geom, label);
+                  }
+                }}
                 onCancel={() => setDrawingEnabled(false)}
               />
             </MapContainer>
@@ -1040,7 +1218,7 @@ export default function HidroGeoMoz({
         </div>
 
         {/* Top banner (delineate mode) */}
-        {mode === "delineate" && !pourPoint && !loadingWS && (
+        {mode === "delineate" && delineateMethod === "point" && !drawingEnabled && !pourPoint && !loadingWS && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[500] bg-blue-700/90 backdrop-blur text-white rounded-full px-4 py-2 text-xs font-medium flex items-center gap-2 shadow-lg pointer-events-none">
             <Crosshair size={13} /> Clique no mapa para definir o ponto de saída da bacia
           </div>
@@ -1103,7 +1281,13 @@ export default function HidroGeoMoz({
                     <div className="text-xs opacity-75 mb-1">Área Total da Bacia</div>
                     <div className="text-3xl font-bold">{watershedData.areaKm2.toLocaleString("pt-PT")}</div>
                     <div className="text-xs opacity-75">km²</div>
-                    <div className="mt-2 text-xs opacity-70">{watershedData.source === "hydrobasins" ? `HydroBASINS · nível ${watershedData.level ?? level}` : "D8 · HydroSHEDS"}</div>
+                    <div className="mt-2 text-xs opacity-70">
+                      {watershedData.source === "hydrobasins"
+                        ? `HydroBASINS · nível ${watershedData.level ?? level}`
+                        : watershedData.source === "polygon"
+                        ? "Delimitação por Polígono / Área de Estudo"
+                        : "D8 · HydroSHEDS"}
+                    </div>
                   </div>
 
                   {/* Linhas de Água da Bacia Delimitada */}
@@ -1331,9 +1515,11 @@ export default function HidroGeoMoz({
                   </div>
 
                   {/* Note */}
-                  <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
-                    <Info size={12} className="mt-0.5 shrink-0" />
-                    Sub-bacia HydroBASINS (limite oficial WWF/HydroSHEDS). Para análise definitiva, recomenda-se validação de campo.
+                  <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-xl p-3 text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
+                    <Info size={12} className="mt-0.5 shrink-0 text-blue-500" />
+                    {watershedData.source === "polygon"
+                      ? "Métricas, rede de drenagem e bacias recortadas estritamente aos limites da sua área de estudo."
+                      : "Sub-bacia HydroBASINS (limite oficial WWF/HydroSHEDS). Para análise definitiva, recomenda-se validação de campo."}
                   </div>
                 </div>
               )}

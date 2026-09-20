@@ -2775,12 +2775,19 @@ def compute_basin_report(basin_geometry: dict) -> dict:
 
 
 def compute_drainage_tile(region_geojson: Optional[dict], threshold: int = 500) -> dict:
-    """HydroSHEDS 15-arc-second flow accumulation thresholded → drainage network."""
+    """HydroSHEDS flow accumulation + FreeFlowingRivers vector lines clipped to region."""
     import ee
     region  = _to_ee_region(region_geojson)
     acc     = ee.Image("WWF/HydroSHEDS/15ACC").select("b1")
-    rivers  = acc.gte(threshold).selfMask().clip(region)
-    vis     = rivers.visualize(palette=["1565c0"])
+    acc_rivers = acc.gte(threshold).selfMask()
+    try:
+        vec_rivers = _build_rivers_raster(region).selfMask()
+        combined = acc_rivers.unmask(0).max(vec_rivers.unmask(0)).selfMask().clip(region)
+    except Exception as exc:
+        logger.warning("FreeFlowingRivers overlay in drainage failed: %s", exc)
+        combined = acc_rivers.clip(region)
+
+    vis     = combined.visualize(palette=["0284c7"])
     tile_url = vis.getMapId()["tile_fetcher"].url_format
     return {"tileUrl": tile_url, "threshold": threshold}
 
