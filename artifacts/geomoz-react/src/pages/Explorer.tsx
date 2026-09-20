@@ -369,8 +369,8 @@ export default function Explorer() {
       case "GeoAnálises":
         return {
           icon: <Satellite size={18} className="text-indigo-500 shrink-0" />,
-          title: "GeoAnálises Espectrais",
-          subtitle: "Índices Biofísicos Sentinel-2 & Landsat",
+          title: "Catálogo de GeoAnálises",
+          subtitle: "Sensoriamento Remoto Sentinel-2, Landsat & DEM 30m",
         };
       case "Bacias Hidrográficas":
         return {

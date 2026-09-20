@@ -3609,22 +3609,6 @@ export default function GeoAnalises({
            CATALOG VIEW (Cards Persuasivos e Modernos)
            ════════════════════════════════════════════════════════════════════ */
         <div className="flex-1 flex flex-col overflow-y-auto bg-slate-50 dark:bg-slate-950">
-          {/* Catalog Top Bar */}
-          <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-4 flex items-center justify-between gap-4 shrink-0 shadow-xs">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-sm text-white">
-                <Satellite size={20} />
-              </div>
-              <div>
-                <h1 className="text-base font-bold text-slate-900 dark:text-slate-100 leading-tight">
-                  Catálogo de GeoAnálises Especializadas
-                </h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Sensoriamento remoto com Google Earth Engine, DEM Copernicus 30m e renderização 3D
-                </p>
-              </div>
-            </div>
-          </div>
 
           {/* Catalog Content */}
           <div className="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6">
