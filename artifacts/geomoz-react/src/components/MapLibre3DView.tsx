@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { AlertTriangle, MapPin } from "lucide-react";
 
 import {
   createMapLibreStyle,
@@ -1008,7 +1009,7 @@ export default function MapLibre3DView({
     return (
       <div className={`flex flex-col items-center justify-center w-full h-full bg-slate-900 text-white p-6 text-center ${className}`}>
         <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3">
-          <span className="text-xl">⚠️</span>
+          <AlertTriangle size={24} />
         </div>
         <h3 className="text-base font-bold text-slate-100 mb-1">Visualização 3D Indisponível</h3>
         <p className="text-xs text-slate-400 max-w-sm">
@@ -1065,10 +1066,11 @@ export default function MapLibre3DView({
       {/* Prompt banner when profile tool is active */}
       {showProfileTool && profileModeActive && profilePoints.length < 2 && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[600] bg-rose-500 text-white shadow-xl rounded-full px-5 py-2 text-xs font-semibold flex items-center gap-2 animate-bounce pointer-events-none">
+          <MapPin size={14} />
           <span>
             {profilePoints.length === 0
-              ? "🎯 Clique no terreno para marcar o ponto de partida (Ponto A)"
-              : "🏁 Agora clique para marcar o ponto de chegada (Ponto B)"}
+              ? "Clique no terreno para marcar o ponto de partida (Ponto A)"
+              : "Agora clique para marcar o ponto de chegada (Ponto B)"}
           </span>
         </div>
       )}

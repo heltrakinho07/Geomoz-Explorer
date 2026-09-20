@@ -251,8 +251,9 @@ export default function CountrySelectModal({
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-          <span>
-            💡 Dica: Ao selecionar um país, o terreno 3D e o modelo GEE focam automaticamente nas suas coordenadas.
+          <span className="flex items-center gap-1.5">
+            <Sparkles size={13} className="text-amber-500 shrink-0" />
+            Dica: Ao selecionar um país, o terreno 3D e o modelo GEE focam automaticamente nas suas coordenadas.
           </span>
           <button
             type="button"

@@ -53,7 +53,7 @@ export const SOLAR_PRESETS: SolarPreset[] = [
     label: "Amanhecer",
     timeString: "06:30",
     hour: 6.5,
-    icon: "🌅",
+    icon: "sunrise",
     description: "Luz suave matinal, tons rosados e sombras longas a este",
   },
   {
@@ -61,7 +61,7 @@ export const SOLAR_PRESETS: SolarPreset[] = [
     label: "Meio-Dia",
     timeString: "12:00",
     hour: 12.0,
-    icon: "☀️",
+    icon: "sun",
     description: "Sol zenital brilhante, contraste máximo e sombras mínimas",
   },
   {
@@ -69,7 +69,7 @@ export const SOLAR_PRESETS: SolarPreset[] = [
     label: "Golden Hour",
     timeString: "17:15",
     hour: 17.25,
-    icon: "✨",
+    icon: "sparkles",
     description: "Tons dourados quentes que destacam vertentes e relevo escarpado",
   },
   {
@@ -77,7 +77,7 @@ export const SOLAR_PRESETS: SolarPreset[] = [
     label: "Pôr do Sol",
     timeString: "18:45",
     hour: 18.75,
-    icon: "🌇",
+    icon: "sunset",
     description: "Céu crepuscular rubro-violeta e relevo acentuado a poente",
   },
   {
@@ -85,7 +85,7 @@ export const SOLAR_PRESETS: SolarPreset[] = [
     label: "Luar / Noite",
     timeString: "22:00",
     hour: 22.0,
-    icon: "🌙",
+    icon: "moon",
     description: "Iluminação lunar fria e sombras etéreas no terreno",
   },
 ];

@@ -1014,8 +1014,8 @@ function AboutTab() {
           <div className="space-y-2">
             {roadmap.map((item, i) => (
               <div key={i} className="flex items-start gap-2.5 p-2.5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-lg">
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${item.done ? "bg-emerald-100 dark:bg-emerald-950/40" : "bg-slate-100 dark:bg-slate-800"}`}>
-                  <span className={`text-xs ${item.done ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}`}>{item.done ? "✓" : "○"}</span>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${item.done ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400" : "bg-slate-100 dark:bg-slate-800 text-slate-400"}`}>
+                  {item.done ? <Check size={12} /> : <div className="w-1.5 h-1.5 rounded-full bg-slate-400" />}
                 </div>
                 <span className={`text-sm leading-relaxed ${item.done ? "text-slate-700 dark:text-slate-200" : "text-slate-400"}`}>{item.item}</span>
               </div>

@@ -20,7 +20,7 @@ import {
   TrendingUp, Wind, Waves, Zap, FileText, BarChart2,
   Globe, MapPin, Crosshair, GitBranch, ChevronLeft, ChevronRight,
   Mountain, Ruler, Gauge, ArrowDownCircle, FileDown, PenTool,
-  Share2, Copy, Check, ExternalLink, Compass,
+  Share2, Copy, Check, ExternalLink, Compass, X,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer,
@@ -37,6 +37,7 @@ import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
 import {
+  renderBasinMapToDataUrl,
   fetchMapImage,
   captureMapImage,
   addPDFFooter,
@@ -772,8 +773,8 @@ export default function HidroGeoMoz({
       doc.setFontSize(7.5);
       doc.setFont("helvetica", "bold");
       doc.text("Classe", MARGIN + 4, y + 5);
-      doc.text("km²", W - MARGIN - 24, y + 5, { align: "center" });
-      doc.text("%", W - MARGIN, y + 5, { align: "right" });
+      doc.text("Área (km²)", W - MARGIN - 34, y + 5, { align: "right" });
+      doc.text("Proporção", W - MARGIN, y + 5, { align: "right" });
       y += 7;
 
       lcItems.forEach((lc, i) => {
@@ -799,10 +800,10 @@ export default function HidroGeoMoz({
         doc.text(name, MARGIN + 13, y + 4.5);
         doc.setTextColor(100, 116, 139);
         doc.setFontSize(7);
-        doc.text(lc.areaKm2.toLocaleString("pt-PT", { maximumFractionDigits: 1 }), W - MARGIN - 24, y + 4.5, { align: "center" });
-        const barW = Math.max((lc.pct / maxPct) * 16, 0.5);
+        doc.text(lc.areaKm2.toLocaleString("pt-PT", { maximumFractionDigits: 1 }), W - MARGIN - 34, y + 4.5, { align: "right" });
+        const barW = Math.max((lc.pct / maxPct) * 14, 0.5);
         doc.setFillColor(2, 132, 199);
-        doc.rect(W - MARGIN - 22, y + 2, barW, 2.5, "F");
+        doc.rect(W - MARGIN - 26, y + 2.5, barW, 2, "F");
         doc.setTextColor(2, 132, 199);
         doc.setFont("helvetica", "bold");
         doc.text(`${lc.pct}%`, W - MARGIN, y + 4.5, { align: "right" });
@@ -860,12 +861,12 @@ export default function HidroGeoMoz({
       doc.setFontSize(9.5);
       doc.setFont("helvetica", "bold");
       const cnStr = cn != null ? `${cn.toFixed(1)}` : "—";
-      doc.text(cnStr, MARGIN + CONTENT_W / 2, y + 10, { align: "center" });
-      doc.setFontSize(7);
+      doc.text(`CN Médio da Bacia: ${cnStr}`, MARGIN, y + 9.5);
+      doc.setFontSize(6.5);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(100, 116, 139);
-      doc.text("CN médio · menor = infiltração favorável · maior = escoamento rápido", MARGIN, y + 10);
-      y += 15;
+      doc.text("Classificação SCS: menor = infiltração favorável · maior = escoamento superficial rápido", MARGIN, y + 14);
+      y += 18;
 
       // ── RISK INDICES ──
       if (wsStats && (y + 26 < H - 16)) {
@@ -929,35 +930,49 @@ export default function HidroGeoMoz({
         doc.setFont("helvetica", "normal");
         doc.text("Coordenadas WGS 84 · EPSG:4326", mapX + mapW - 4, startY + 5.5, { align: "right" });
 
-        // Map image: fetch from Cartopy or fallback to map capture
+        // Map image: Client-side Canvas rendering (CORS-safe, 100% reliable)
         try {
-          const legendPayload = legendType === "lulc"
-            ? report.landcover.slice(0, 8).map(c => ({ label: c.label, color: c.color }))
-            : [
-                { label: "CN < 50 (Infiltração Alta)", color: "#1a9850" },
-                { label: "CN 50-75 (Moderado)", color: "#fee08b" },
-                { label: "CN > 75 (Escoamento Alto)", color: "#d73027" },
-              ];
-
-          const imgData = await fetchMapImage(b, {
-            tileUrl,
-            overlayGeojson: wsData?.geojson as any,
-            overlayLabel: "Bacia Delimitada",
-            legendItems: legendPayload,
-            title: mapSubtitle,
-            dpi: 200,
-            widthMm: mapW,
-            heightMm: mapH,
+          const imgData = await renderBasinMapToDataUrl({
+            bounds: b,
+            geojson: wsData?.geojson,
+            rasterTileUrl: tileUrl,
+            drainageTileUrl: null,
+            pourPoint: pourPoint,
+            widthPx: 1400,
+            heightPx: 950,
           });
-          doc.addImage(imgData, "PNG", mapX, mapY + 6, mapW, mapH);
-        } catch (err) {
-          console.warn("Cartopy map API failed, fallback to map container capture:", err);
-          if (mapContainerRef.current) {
-            try {
-              const canvasData = await captureMapImage(mapContainerRef.current);
-              doc.addImage(canvasData, "JPEG", mapX, mapY + 6, mapW, mapH);
-            } catch (cErr) {
-              console.warn("Capture fallback error:", cErr);
+          doc.addImage(imgData, "JPEG", mapX, mapY + 6, mapW, mapH);
+        } catch (canvasErr) {
+          console.warn("renderBasinMapToDataUrl failed, trying fetchMapImage fallback:", canvasErr);
+          try {
+            const legendPayload = legendType === "lulc"
+              ? report.landcover.slice(0, 8).map(c => ({ label: c.label, color: c.color }))
+              : [
+                  { label: "CN < 50 (Infiltração Alta)", color: "#1a9850" },
+                  { label: "CN 50-75 (Moderado)", color: "#fee08b" },
+                  { label: "CN > 75 (Escoamento Alto)", color: "#d73027" },
+                ];
+
+            const imgData = await fetchMapImage(b, {
+              tileUrl,
+              overlayGeojson: wsData?.geojson as any,
+              overlayLabel: "Bacia Delimitada",
+              legendItems: legendPayload,
+              title: mapSubtitle,
+              dpi: 200,
+              widthMm: mapW,
+              heightMm: mapH,
+            });
+            doc.addImage(imgData, "PNG", mapX, mapY + 6, mapW, mapH);
+          } catch (err) {
+            console.warn("Cartopy map API failed, fallback to map container capture:", err);
+            if (mapContainerRef.current) {
+              try {
+                const canvasData = await captureMapImage(mapContainerRef.current);
+                doc.addImage(canvasData, "JPEG", mapX, mapY + 6, mapW, mapH);
+              } catch (cErr) {
+                console.warn("Capture fallback error:", cErr);
+              }
             }
           }
         }
@@ -1968,7 +1983,7 @@ export default function HidroGeoMoz({
                 onClick={() => setShareModalOpen(false)}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-xs p-1"
               >
-                ✕
+                <X size={14} />
               </button>
             </div>
 
@@ -2057,7 +2072,7 @@ export default function HidroGeoMoz({
                 onClick={() => setPdfExportModalOpen(false)}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-xs p-1"
               >
-                ✕
+                <X size={14} />
               </button>
             </div>
 
@@ -2103,10 +2118,10 @@ export default function HidroGeoMoz({
               <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3 text-[11px] text-slate-600 dark:text-slate-400 space-y-1 mt-3">
                 <div className="font-semibold text-slate-700 dark:text-slate-300">Elementos Cartográficos Incluídos:</div>
                 <div className="flex flex-wrap gap-2 text-[10px] text-cyan-600 dark:text-cyan-300 pt-1">
-                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60">🧭 Rosa dos Ventos</span>
-                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60">📏 Barra de Escala Gráfica</span>
-                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60">🌐 Graticule Lat/Lon</span>
-                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60">📋 Legenda Temática</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Compass size={11} /> Rosa dos Ventos</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Ruler size={11} /> Barra de Escala Gráfica</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Globe size={11} /> Graticule Lat/Lon</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><FileText size={11} /> Legenda Temática</span>
                 </div>
               </div>
             </div>

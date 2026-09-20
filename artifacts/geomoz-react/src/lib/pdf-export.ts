@@ -59,16 +59,16 @@ export function createPDFContext(title: string): PDFContext {
 /** Draw the standard page footer. */
 export function addPDFFooter(ctx: PDFContext) {
   const { doc, pageNum, date } = ctx;
-  doc.setFillColor(241, 245, 249);
+  doc.setFillColor(248, 250, 252);
   doc.rect(0, PAGE_H - FOOTER_H, PAGE_W, FOOTER_H, "F");
   doc.setDrawColor(226, 232, 240);
   doc.line(0, PAGE_H - FOOTER_H, PAGE_W, PAGE_H - FOOTER_H);
-  doc.setTextColor(148, 163, 184);
+  doc.setTextColor(100, 116, 139);
   doc.setFontSize(7.5);
   doc.setFont("helvetica", "normal");
-  doc.text("GeoMoz Explorer · geomoz library · Dados: GEE · DEM Copernicus GLO-30", MARGIN, PAGE_H - 4);
-  doc.text(date, PAGE_W / 2, PAGE_H - 4, { align: "center" });
-  doc.text(`Pág. ${pageNum}`, PAGE_W - MARGIN, PAGE_H - 4, { align: "right" });
+  doc.text(`GeoMoz Explorer · ${date}`, MARGIN, PAGE_H - 4.5);
+  doc.text("Dados: GEE · HydroSHEDS · ESA WorldCover 10m", PAGE_W / 2, PAGE_H - 4.5, { align: "center" });
+  doc.text(`Pág. ${pageNum}`, PAGE_W - MARGIN, PAGE_H - 4.5, { align: "right" });
 }
 
 /** Start a new page and return the new Y position. */
@@ -239,16 +239,201 @@ export function drawProgressBar(
   ctx.y += 8;
 }
 
+// ── Client-side Canvas Map Renderer (CORS-safe, 100% reliable) ─────────────
+
+export interface RenderBasinMapOptions {
+  bounds: { south: number; north: number; west: number; east: number };
+  geojson?: any;
+  rasterTileUrl?: string | null;
+  drainageTileUrl?: string | null;
+  pourPoint?: [number, number] | null;
+  widthPx?: number;
+  heightPx?: number;
+}
+
+/**
+ * Render a basin map with CartoDB Voyager basemap, GEE raster tiles,
+ * drainage network, and GeoJSON boundary onto an HTML5 Canvas, returning
+ * a JPEG base64 data URL that never taints the canvas.
+ */
+export async function renderBasinMapToDataUrl(options: RenderBasinMapOptions): Promise<string> {
+  const width = options.widthPx ?? 1200;
+  const height = options.heightPx ?? 750;
+  const bounds = options.bounds;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Could not create 2D canvas context");
+
+  // Topographic background
+  ctx.fillStyle = "#e2e8f0";
+  ctx.fillRect(0, 0, width, height);
+
+  // Web Mercator projections
+  const lngToPixelX = (lng: number, z: number) => ((lng + 180) / 360) * Math.pow(2, z) * 256;
+  const latToPixelY = (lat: number, z: number) => {
+    const r = Math.min(Math.max(lat, -85.05112878), 85.05112878);
+    const rad = (r * Math.PI) / 180;
+    return ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * Math.pow(2, z) * 256;
+  };
+
+  // Best zoom
+  let zoom = 6;
+  for (let z = 16; z >= 3; z--) {
+    const xSpan = Math.abs(lngToPixelX(bounds.east, z) - lngToPixelX(bounds.west, z));
+    const ySpan = Math.abs(latToPixelY(bounds.south, z) - latToPixelY(bounds.north, z));
+    if (xSpan <= width * 0.85 && ySpan <= height * 0.85) {
+      zoom = z;
+      break;
+    }
+  }
+
+  const centerPxX = (lngToPixelX(bounds.west, zoom) + lngToPixelX(bounds.east, zoom)) / 2;
+  const centerPxY = (latToPixelY(bounds.north, zoom) + latToPixelY(bounds.south, zoom)) / 2;
+  const originX = centerPxX - width / 2;
+  const originY = centerPxY - height / 2;
+
+  const minTx = Math.floor(originX / 256);
+  const maxTx = Math.floor((originX + width) / 256);
+  const minTy = Math.floor(originY / 256);
+  const maxTy = Math.floor((originY + height) / 256);
+
+  const loadImage = (url: string): Promise<HTMLImageElement | null> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      const timer = setTimeout(() => {
+        img.src = "";
+        resolve(null);
+      }, 5000);
+      img.onload = () => {
+        clearTimeout(timer);
+        resolve(img);
+      };
+      img.onerror = () => {
+        clearTimeout(timer);
+        resolve(null);
+      };
+      img.src = url;
+    });
+  };
+
+  const tilePromises: Promise<void>[] = [];
+
+  for (let tx = minTx; tx <= maxTx; tx++) {
+    for (let ty = minTy; ty <= maxTy; ty++) {
+      const drawX = tx * 256 - originX;
+      const drawY = ty * 256 - originY;
+      // CartoDB Voyager basemap
+      const basemapUrl = `https://a.basemaps.cartocdn.com/rastertiles/voyager/${zoom}/${tx}/${ty}.png`;
+      tilePromises.push(
+        (async () => {
+          const bImg = await loadImage(basemapUrl);
+          if (bImg) {
+            ctx.drawImage(bImg, drawX, drawY, 256, 256);
+          }
+          // Raster overlay (GEE ESA WorldCover or SCS CN)
+          if (options.rasterTileUrl) {
+            const rUrl = options.rasterTileUrl
+              .replace("{z}", String(zoom))
+              .replace("{x}", String(tx))
+              .replace("{y}", String(ty));
+            const rImg = await loadImage(rUrl);
+            if (rImg) {
+              ctx.save();
+              ctx.globalAlpha = 0.72;
+              ctx.drawImage(rImg, drawX, drawY, 256, 256);
+              ctx.restore();
+            }
+          }
+          // Drainage lines overlay
+          if (options.drainageTileUrl) {
+            const dUrl = options.drainageTileUrl
+              .replace("{z}", String(zoom))
+              .replace("{x}", String(tx))
+              .replace("{y}", String(ty));
+            const dImg = await loadImage(dUrl);
+            if (dImg) {
+              ctx.save();
+              ctx.globalAlpha = 0.88;
+              ctx.drawImage(dImg, drawX, drawY, 256, 256);
+              ctx.restore();
+            }
+          }
+        })()
+      );
+    }
+  }
+
+  await Promise.all(tilePromises);
+
+  // Draw GeoJSON Basin Boundary
+  if (options.geojson) {
+    ctx.save();
+    ctx.beginPath();
+    const drawCoords = (rings: number[][]) => {
+      rings.forEach((pt, i) => {
+        const px = lngToPixelX(pt[0], zoom) - originX;
+        const py = latToPixelY(pt[1], zoom) - originY;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+      ctx.closePath();
+    };
+
+    const traverse = (geom: any) => {
+      if (!geom) return;
+      if (geom.type === "Polygon") {
+        geom.coordinates.forEach(drawCoords);
+      } else if (geom.type === "MultiPolygon") {
+        geom.coordinates.forEach((poly: any) => poly.forEach(drawCoords));
+      }
+    };
+
+    if (options.geojson.features) {
+      options.geojson.features.forEach((f: any) => traverse(f.geometry));
+    } else if (options.geojson.geometry) {
+      traverse(options.geojson.geometry);
+    } else if (options.geojson.coordinates) {
+      traverse(options.geojson);
+    }
+
+    ctx.fillStyle = "rgba(2, 132, 199, 0.15)";
+    ctx.fill();
+    ctx.strokeStyle = "#0284c7";
+    ctx.lineWidth = 3.5;
+    ctx.lineJoin = "round";
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Draw Pour Point
+  if (options.pourPoint) {
+    const ppx = lngToPixelX(options.pourPoint[1], zoom) - originX;
+    const ppy = latToPixelY(options.pourPoint[0], zoom) - originY;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(ppx, ppy, 8, 0, 2 * Math.PI);
+    ctx.fillStyle = "#ef4444";
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#ffffff";
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  return canvas.toDataURL("image/jpeg", 0.92);
+}
+
 // ── Map capture (html2canvas) — Legacy approach ────────────────────────────
 
 /**
  * Capture a Leaflet map container element as a JPEG image suitable for PDF.
  * Returns a base64 data URL. The caller must ensure the element exists.
  *
- * @deprecated Use ``fetchMapImage()`` instead — it calls the backend Cartopy
- *             endpoint for higher quality, proper cartographic elements
- *             (north arrow, coordinate grid, scale bar) and avoids browser
- *             rendering limitations.
+ * @deprecated Use ``renderBasinMapToDataUrl()`` instead for reliable CORS-safe rendering.
  */
 export async function captureMapImage(mapElement: HTMLElement): Promise<string> {
   const canvas = await html2canvas(mapElement, {
@@ -438,7 +623,6 @@ export function drawCoordinateGrid(
     : maxSpan > 0.2 ? 0.1
     : 0.05;
 
-  doc.setDrawColor(203, 213, 225);
   doc.setFontSize(5.5);
   doc.setFont("helvetica", "normal");
 
@@ -456,14 +640,24 @@ export function drawCoordinateGrid(
     return `${deg}°${dir}`;
   };
 
-  // Horizontal grid lines (latitude)
+  // Horizontal grid lines & ticks (latitude)
   const latStart = Math.ceil(south / step) * step;
   for (let lat = latStart; lat <= north; lat += step) {
     const frac = (lat - south) / (north - south);
     const ly = mapY + mapH - frac * mapH;
     if (ly < mapY || ly > mapY + mapH) continue;
-    doc.setDrawColor(203, 213, 225);
-    doc.line(mapX, ly, mapX + mapW, ly);
+
+    // Subtle inner grid line
+    doc.setDrawColor(241, 245, 249);
+    doc.setLineWidth(0.2);
+    doc.line(mapX + 2.5, ly, mapX + mapW - 2.5, ly);
+
+    // Sharp outer border tick marks (QGIS style)
+    doc.setDrawColor(30, 41, 59);
+    doc.setLineWidth(0.4);
+    doc.line(mapX, ly, mapX + 2.5, ly);
+    doc.line(mapX + mapW - 2.5, ly, mapX + mapW, ly);
+
     // Label
     const label = formatCoord(lat, "N", "S");
     doc.setTextColor(100, 116, 139);
@@ -471,14 +665,24 @@ export function drawCoordinateGrid(
     doc.text(label, mapX + mapW + 2, ly + 1.5);
   }
 
-  // Vertical grid lines (longitude)
+  // Vertical grid lines & ticks (longitude)
   const lonStart = Math.ceil(west / step) * step;
   for (let lon = lonStart; lon <= east; lon += step) {
     const frac = (lon - west) / (east - west);
     const lx = mapX + frac * mapW;
     if (lx < mapX || lx > mapX + mapW) continue;
-    doc.setDrawColor(203, 213, 225);
-    doc.line(lx, mapY, lx, mapY + mapH);
+
+    // Subtle inner grid line
+    doc.setDrawColor(241, 245, 249);
+    doc.setLineWidth(0.2);
+    doc.line(lx, mapY + 2.5, lx, mapY + mapH - 2.5);
+
+    // Sharp outer border tick marks (QGIS style)
+    doc.setDrawColor(30, 41, 59);
+    doc.setLineWidth(0.4);
+    doc.line(lx, mapY, lx, mapY + 2.5);
+    doc.line(lx, mapY + mapH - 2.5, lx, mapY + mapH);
+
     // Label
     const label = formatCoord(lon, "E", "W");
     doc.setTextColor(100, 116, 139);
@@ -494,13 +698,14 @@ export function drawGraphicScaleBar(
   doc: jsPDF,
   x: number,
   y: number,
-  widthMm: number = 32,
+  widthMm: number = 36,
   distanceKm: number = 20,
 ) {
-  // Background pill/card
+  // Background card
   doc.setFillColor(255, 255, 255);
   doc.setDrawColor(203, 213, 225);
-  doc.roundedRect(x - 2, y - 4, widthMm + 8, 12, 1.5, 1.5, "FD");
+  doc.setLineWidth(0.3);
+  doc.roundedRect(x - 3, y - 5, widthMm + 10, 14, 2, 2, "FD");
 
   const segW = widthMm / 2;
   const barH = 2.5;
@@ -510,21 +715,21 @@ export function drawGraphicScaleBar(
   doc.rect(x, y, segW, barH, "F");
 
   // Segment 2 (White)
-  doc.setFillColor(241, 245, 249);
+  doc.setFillColor(248, 250, 252);
   doc.setDrawColor(15, 23, 42);
   doc.rect(x + segW, y, segW, barH, "FD");
 
   // Labels
   doc.setTextColor(51, 65, 85);
-  doc.setFontSize(5);
+  doc.setFontSize(5.5);
   doc.setFont("helvetica", "bold");
-  doc.text("0", x, y - 1, { align: "center" });
-  doc.text(`${Math.round(distanceKm / 2)}`, x + segW, y - 1, { align: "center" });
-  doc.text(`${Math.round(distanceKm)} km`, x + widthMm, y - 1, { align: "center" });
+  doc.text("0", x, y - 1.5, { align: "center" });
+  doc.text(`${Math.round(distanceKm / 2)}`, x + segW, y - 1.5, { align: "center" });
+  doc.text(`${Math.round(distanceKm)} km`, x + widthMm, y - 1.5, { align: "center" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(4.5);
   doc.setTextColor(100, 116, 139);
-  doc.text("Escala Gráfica", x + widthMm / 2, y + barH + 3.5, { align: "center" });
+  doc.text("Escala Gráfica", x + widthMm / 2, y + barH + 3.8, { align: "center" });
 }
 
 // ── Cover page ────────────────────────────────────────────────────────────────

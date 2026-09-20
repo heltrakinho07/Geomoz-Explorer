@@ -23,9 +23,9 @@ type ActiveTab = "upload" | "draw" | null;
  * ZoneSelect — Enterprise-grade Area of Interest (AOI) Selector.
  *
  * Professional GIS workflow:
- *   1. 🌍 Globo 3D (Mundo) — Initial planetary globe view
- *   2. 📤 Upload de Geometria — GeoJSON, KML, GPX with instant auto-centering
- *   3. ✏️ Desenhar Polígono — Interactive polygon drawing directly on the globe/map
+ *   1. Globo 3D (Mundo) — Initial planetary globe view
+ *   2. Upload de Geometria — GeoJSON, KML, GPX with instant auto-centering
+ *   3. Desenhar Poligono — Interactive polygon drawing directly on the globe/map
  */
 export default function ZoneSelect({
   aoi,

@@ -9,6 +9,11 @@ import {
   ChevronDown,
   Sparkles,
   Sun,
+  Sunrise,
+  Sunset,
+  Moon,
+  Lightbulb,
+  X,
 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -337,7 +342,7 @@ export default function TerrainControls({
               onClick={() => setShowSettings(false)}
               className="text-slate-400 hover:text-slate-600 text-sm font-bold"
             >
-              ✕
+              <X size={14} />
             </button>
           </div>
 
@@ -418,8 +423,9 @@ export default function TerrainControls({
           </div>
 
           <div className="text-[10px] text-slate-400 bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg border border-slate-100 dark:border-slate-800 leading-relaxed">
-            <p>
-              💡 <strong>Dica de Navegação 3D:</strong>
+            <p className="flex items-center gap-1 font-semibold text-slate-600 dark:text-slate-300">
+              <Lightbulb size={12} className="text-amber-500 shrink-0" />
+              <span>Dica de Navegação 3D:</span>
             </p>
             <p>• Segure o botão direito do rato ou <kbd>Ctrl</kbd> para rodar e inclinar.</p>
             <p>• Roda do rato para zoom.</p>
@@ -433,42 +439,41 @@ export default function TerrainControls({
           <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-1.5 font-semibold text-purple-700 dark:text-purple-300">
               <Sparkles size={14} />
-              <span>Explorar Relevo Mundial</span>
+              <span>Pontos Notáveis de Moçambique</span>
             </div>
             <button
               type="button"
               onClick={() => setShowPresets(false)}
               className="text-slate-400 hover:text-slate-600 text-sm font-bold"
             >
-              ✕
+              <X size={14} />
             </button>
           </div>
 
-          <p className="text-[11px] text-slate-500 leading-tight">
-            Voe instantaneamente para pontos icónicos do relevo planetário em 3D:
-          </p>
-
-          <div className="flex flex-col gap-1 max-h-56 overflow-y-auto pr-1">
-            {GLOBAL_LANDMARKS.map((preset) => (
+          <div className="flex flex-col gap-1 max-h-60 overflow-y-auto pr-1">
+            {GLOBAL_LANDMARKS.map((lm) => (
               <button
-                key={preset.name}
+                key={lm.name}
                 type="button"
                 onClick={() => {
-                  onFlyToPreset(preset);
+                  onFlyToPreset?.(lm);
                   setShowPresets(false);
                 }}
-                className="text-left p-2 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950/40 border border-transparent hover:border-purple-200 transition-all flex flex-col group"
+                className="text-left p-2 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950/40 border border-transparent hover:border-purple-200 dark:hover:border-purple-800/50 transition-all flex flex-col gap-0.5 group"
               >
                 <div className="flex justify-between items-center">
-                  <span className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-purple-700">
-                    {preset.name}
+                  <span className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-purple-700 dark:group-hover:text-purple-300">
+                    {lm.name}
                   </span>
-                  <span className="text-[9px] text-purple-600 bg-purple-100 dark:bg-purple-900/60 px-1.5 py-0.2 rounded">
-                    3D
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {lm.pitch}° / {lm.bearing}°
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-500 line-clamp-1">
-                  {preset.region}
+                <span className="text-[10px] text-purple-600 dark:text-purple-400 font-medium">
+                  {lm.region}
+                </span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
+                  {lm.description}
                 </span>
               </button>
             ))}
@@ -489,7 +494,7 @@ export default function TerrainControls({
               onClick={() => setShowSolar(false)}
               className="text-slate-400 hover:text-slate-600 text-sm font-bold"
             >
-              ✕
+              <X size={14} />
             </button>
           </div>
 
@@ -499,19 +504,29 @@ export default function TerrainControls({
             <div className="grid grid-cols-5 gap-1">
               {SOLAR_PRESETS.map((preset) => {
                 const isActive = solarState?.presetKey === preset.id;
+                const renderPresetIcon = () => {
+                  switch (preset.id) {
+                    case "dawn": return <Sunrise size={14} />;
+                    case "noon": return <Sun size={14} />;
+                    case "golden": return <Sparkles size={14} />;
+                    case "dusk": return <Sunset size={14} />;
+                    case "night": return <Moon size={14} />;
+                    default: return <Sun size={14} />;
+                  }
+                };
                 return (
                   <button
                     key={preset.id}
                     type="button"
                     onClick={() => onSelectSolarPreset?.(preset.id)}
                     title={`${preset.label} (${preset.timeString}): ${preset.description}`}
-                    className={`py-1 px-1 rounded-lg border text-center flex flex-col items-center transition-all ${
+                    className={`py-1.5 px-1 rounded-lg border text-center flex flex-col items-center transition-all ${
                       isActive
                         ? "bg-amber-500 text-white border-amber-600 shadow-sm font-bold"
                         : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:bg-amber-50 hover:border-amber-200 text-slate-700 dark:text-slate-200"
                     }`}
                   >
-                    <span className="text-sm">{preset.icon}</span>
+                    <span className="p-0.5">{renderPresetIcon()}</span>
                     <span className="text-[8px] truncate mt-0.5">{preset.label.split(" ")[0]}</span>
                   </button>
                 );
