@@ -53,6 +53,7 @@ import type { AreaOfInterest } from "@/lib/aoi";
 import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
 import RasterVisPanel, { DEFAULT_VIS_PARAMS } from "@/components/RasterVisPanel";
 import type { RasterVisParams } from "@/components/RasterVisPanel";
+import StoryMapModal, { type DynamicAnalysisContext } from "@/components/StoryMapModal";
 import {
   fetchMapImage, createPDFContext, drawCover, addPDFFooter,
   MARGIN, CONTENT_W, addMapImage,
@@ -919,6 +920,7 @@ function GeospatialAnalyticsPanel({
   endDate,
   cloudPct,
   onOpenCompare,
+  onOpenStoryMap,
 }: {
   activeIndex: SpectralIndex;
   province: string | null;
@@ -931,6 +933,7 @@ function GeospatialAnalyticsPanel({
   endDate: string;
   cloudPct: number;
   onOpenCompare?: () => void;
+  onOpenStoryMap?: () => void;
 }) {
   const { activeProject, saveRunToActiveProject } = useProject();
   const { toast } = useToast();
@@ -1165,6 +1168,17 @@ function GeospatialAnalyticsPanel({
                 </>
               )}
             </button>
+
+            {onOpenStoryMap && (
+              <button
+                type="button"
+                onClick={onOpenStoryMap}
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white shadow-xs transition-all cursor-pointer"
+              >
+                <Sparkles size={13} />
+                <span>Apresentação Executiva (StoryMap)</span>
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -2834,6 +2848,7 @@ export default function GeoAnalises({
   const [categoryFilter, setCategoryFilter] = useState("");
 
   const [geeCredsOpen, setGeeCredsOpen] = useState(false);
+  const [storyMapOpen, setStoryMapOpen] = useState(false);
   const [basemap, setBasemap] = useState<BasemapType>("hybrid");
   const { geeConnected, geeProject } = useGeeAuth();
   const { toast } = useToast();
@@ -3500,6 +3515,36 @@ export default function GeoAnalises({
     );
   }, [categoryFilter]);
 
+  const dynamicStoryMapContext = useMemo<DynamicAnalysisContext>(() => {
+    return {
+      analysisId: activeTab,
+      analysisTitle: activeDef?.label || activeIndexLabel,
+      analysisSubtitle: activeDef?.short || activeDef?.group,
+      category: activeCategory?.title || activeDef?.group,
+      province: province,
+      district: district,
+      aoiLabel: aoi?.label || (district ? `${district}, ${province}` : province || "Moçambique"),
+      source: activeDef?.group === "landsat" ? "Landsat-8/9 OLI" : "Sentinel-2 MSI (Copernicus)",
+      dateRange: geeTile?.dateRange || `${geeStartDate} a ${geeEndDate}`,
+      cloudPct: geeCloudPct,
+      formula: activeDef?.formula,
+      bands: activeDef?.bands,
+      interpretation: activeDef?.interpretation,
+      stats: geeTile?.stats ? {
+        min: geeTile.stats.min,
+        max: geeTile.stats.max,
+        mean: geeTile.stats.mean,
+        median: geeTile.stats.median,
+        stdDev: geeTile.stats.stdDev,
+        p10: geeTile.stats.p10,
+        p90: geeTile.stats.p90,
+        p95: geeTile.stats.p95,
+        areaKm2: geeTile.stats.areaKm2,
+        sampleCount: geeTile.stats.sampleCount,
+      } : undefined,
+    };
+  }, [activeTab, activeDef, activeIndexLabel, activeCategory, province, district, aoi, geeTile, geeStartDate, geeEndDate, geeCloudPct]);
+
   // Composite, lineaments, targeting & GEE-only indices require GEE
   const requiresGee = isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || isGeeOnly;
   void requiresGee;
@@ -3554,6 +3599,11 @@ export default function GeoAnalises({
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
       <GeeCredentialsDialog open={geeCredsOpen} onOpenChange={setGeeCredsOpen} />
+      <StoryMapModal
+        open={storyMapOpen}
+        onOpenChange={setStoryMapOpen}
+        context={dynamicStoryMapContext}
+      />
       {selectedCategory === null ? (
         /* ════════════════════════════════════════════════════════════════════
            CATALOG VIEW (Cards Persuasivos e Modernos)
@@ -3771,6 +3821,16 @@ export default function GeoAnalises({
 
             {/* Right Header Actions */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <button
+                onClick={() => setStoryMapOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 text-xs font-semibold shadow-2xs cursor-pointer transition-all"
+                title="Apresentação Executiva (StoryMap)"
+              >
+                <Sparkles size={13} className="text-sky-500" />
+                <span className="hidden sm:inline">Apresentação Executiva</span>
+                <span className="sm:hidden">StoryMap</span>
+              </button>
+
               <button
                 onClick={exportGeoAnalisesPdf}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-medium shadow-2xs cursor-pointer"
@@ -4136,6 +4196,7 @@ export default function GeoAnalises({
                   setCompareActive(true);
                   setCompareMode("temporal_gee");
                 }}
+                onOpenStoryMap={() => setStoryMapOpen(true)}
               />
             </div>
           )}
