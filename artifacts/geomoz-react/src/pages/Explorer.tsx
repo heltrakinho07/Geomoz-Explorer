@@ -327,6 +327,9 @@ export default function Explorer() {
     if (newAOI.source === "mozambique") {
       setProvince(newAOI.province);
       setDistrict(newAOI.district);
+    } else {
+      setProvince(null);
+      setDistrict(null);
     }
   }
 
