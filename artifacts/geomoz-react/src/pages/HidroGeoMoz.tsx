@@ -1576,6 +1576,7 @@ export default function HidroGeoMoz({
           onChange={setBasemap}
           className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
           position="bottom-left"
+          show3dToggle={false}
         />
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} ref={mapRef} zoomControl={false}>
               <ZoomControl position="topright" />

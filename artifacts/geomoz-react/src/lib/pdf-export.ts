@@ -279,12 +279,12 @@ export async function renderBasinMapToDataUrl(options: RenderBasinMapOptions): P
     return ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * Math.pow(2, z) * 256;
   };
 
-  // Best zoom
+  // Best zoom: optimize framing so the basin occupies the optimal focal area
   let zoom = 6;
   for (let z = 16; z >= 3; z--) {
     const xSpan = Math.abs(lngToPixelX(bounds.east, z) - lngToPixelX(bounds.west, z));
     const ySpan = Math.abs(latToPixelY(bounds.south, z) - latToPixelY(bounds.north, z));
-    if (xSpan <= width * 0.85 && ySpan <= height * 0.85) {
+    if (xSpan <= width * 0.90 && ySpan <= height * 0.90) {
       zoom = z;
       break;
     }
@@ -326,11 +326,15 @@ export async function renderBasinMapToDataUrl(options: RenderBasinMapOptions): P
     for (let ty = minTy; ty <= maxTy; ty++) {
       const drawX = tx * 256 - originX;
       const drawY = ty * 256 - originY;
-      // CartoDB Voyager basemap
-      const basemapUrl = `https://a.basemaps.cartocdn.com/rastertiles/voyager/${zoom}/${tx}/${ty}.png`;
+      // OpenStreetMap basemap (100% open, CORS-enabled, zero API key required, no watermark)
+      const basemapUrl = `https://tile.openstreetmap.org/${zoom}/${tx}/${ty}.png`;
+      const fallbackBasemapUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${zoom}/${ty}/${tx}`;
       tilePromises.push(
         (async () => {
-          const bImg = await loadImage(basemapUrl);
+          let bImg = await loadImage(basemapUrl);
+          if (!bImg) {
+            bImg = await loadImage(fallbackBasemapUrl);
+          }
           if (bImg) {
             ctx.drawImage(bImg, drawX, drawY, 256, 256);
           }

@@ -38,7 +38,9 @@ import {
   GitBranch,
   X,
   FileCode,
+  LocateFixed,
 } from "lucide-react";
+import MapTools from "@/components/MapTools";
 import { downloadStandaloneBasinHtml } from "@/lib/standalone-html-export";
 import {
   BarChart,
@@ -563,7 +565,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
             bounds: b,
             geojson: wsData?.geojson,
             rasterTileUrl: tileUrl,
-            drainageTileUrl: null,
+            drainageTileUrl: sharedData?.watershedDrainageTile || wsData?.tileUrl || null,
             pourPoint: PP,
             widthPx: 1400,
             heightPx: 950,
@@ -872,6 +874,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
             onChange={setBasemap}
             className="absolute bottom-6 left-4 z-[600]"
             position="bottom-left"
+            show3dToggle={false}
           />
 
           {/* Floating Layers Quick Bar */}
@@ -915,6 +918,21 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
               <GitBranch size={11} />
               Linhas de Água
             </button>
+
+            <div className="w-[1px] h-4 bg-slate-800 mx-1" />
+
+            <button
+              onClick={() => {
+                if (mapRef.current) {
+                  mapRef.current.locate({ setView: true, maxZoom: 14, enableHighAccuracy: true });
+                }
+              }}
+              title="A minha localização atual (GPS / Onde Estou)"
+              className="flex items-center gap-1 px-2 py-1 rounded-xl font-medium transition-all text-slate-400 hover:text-sky-300 hover:bg-slate-800"
+            >
+              <LocateFixed size={11} className="text-sky-400" />
+              <span>Onde Estou</span>
+            </button>
           </div>
 
           <MapContainer
@@ -925,6 +943,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
             zoomControl={false}
           >
             <ZoomControl position="topright" />
+            <MapTools />
             <ScaleControl position="bottomright" imperial={false} />
 
             <TileLayer
