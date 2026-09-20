@@ -57,11 +57,11 @@ const queryClient = new QueryClient({
 
 function ErrorFallback({ error, resetErrorBoundary }: any) {
   return (
-    <div className="flex h-screen w-screen flex-col items-center justify-center bg-gray-50 p-4 text-center">
-      <div className="rounded-lg bg-white p-8 shadow-xl max-w-md border border-red-100">
+    <div className="flex h-screen w-screen flex-col items-center justify-center bg-gray-50 dark:bg-slate-950 p-4 text-center">
+      <div className="rounded-lg bg-white dark:bg-slate-900 p-8 shadow-xl max-w-md border border-red-100 dark:border-red-900/50">
         <h2 className="text-xl font-bold text-red-600 mb-4">Ups, algo correu mal!</h2>
-        <p className="text-gray-600 mb-4 text-sm">Ocorreu um erro na interface do mapa.</p>
-        <div className="bg-gray-100 p-3 rounded text-left text-xs text-gray-800 mb-6 overflow-auto max-h-32 font-mono">
+        <p className="text-gray-600 dark:text-slate-400 mb-4 text-sm">Ocorreu um erro na interface do mapa.</p>
+        <div className="bg-gray-100 dark:bg-slate-800 p-3 rounded text-left text-xs text-gray-800 dark:text-slate-300 mb-6 overflow-auto max-h-32 font-mono">
           {error.message}
         </div>
         <button

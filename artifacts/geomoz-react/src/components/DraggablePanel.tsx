@@ -73,13 +73,13 @@ export default function DraggablePanel({
   return (
     <div
       className={`pointer-events-auto flex flex-col glass-panel shadow-2xl transition-shadow ${
-        isDocked ? "rounded-none border-l border-slate-200/50" : "rounded-2xl"
+        isDocked ? "rounded-none border-l border-slate-200/50 dark:border-slate-800" : "rounded-2xl"
       } ${className}`}
       style={{ position: "absolute", zIndex: 700, ...style }}
     >
       {/* Header / Drag Handle */}
       <div
-        className={`flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0 ${!isDocked ? "cursor-move" : ""}`}
+        className={`flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0 ${!isDocked ? "cursor-move" : ""}`}
         onMouseDown={(e) => {
           if (isDocked || (e.target as HTMLElement).closest('button')) return;
           setDragging(true);
@@ -88,13 +88,13 @@ export default function DraggablePanel({
       >
         <div className="flex items-center gap-2">
           {icon}
-          <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
+          <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{title}</h2>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {onDockToggle && (
             <button
               onClick={(e) => { e.stopPropagation(); onDockToggle(); }}
-              className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors"
+              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
               title={isDocked ? "Desencaixar (Flutuar)" : "Encaixar à Direita"}
             >
               {isDocked ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
@@ -103,7 +103,7 @@ export default function DraggablePanel({
           {onClose && (
             <button
               onClick={(e) => { e.stopPropagation(); onClose(); }}
-              className="p-1 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded transition-colors"
+              className="p-1 hover:bg-red-50 dark:hover:bg-red-950/40 text-slate-400 hover:text-red-500 rounded transition-colors"
               title="Fechar painel"
             >
               <X size={14} />

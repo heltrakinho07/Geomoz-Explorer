@@ -23,6 +23,8 @@ import {
   FolderKanban,
   FileText,
   Layers,
+  Database,
+  Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -33,6 +35,8 @@ import MapView from "@/components/MapView";
 import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
 import DashboardPanel from "@/components/DashboardPanel";
+import StoryMapModal from "@/components/StoryMapModal";
+import SpatialSqlModal from "@/components/SpatialSqlModal";
 import {
   LazyGeoAnalises,
   LazyHidroGeoMoz,
@@ -156,6 +160,8 @@ export default function Explorer() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [storyMapOpen, setStoryMapOpen] = useState(false);
+  const [spatialSqlOpen, setSpatialSqlOpen] = useState(false);
 
   // Sync AOI and map view when active project changes (keyed on id to prevent circular re-renders)
   const activeProjectId = activeProject?.id;
@@ -630,6 +636,28 @@ export default function Explorer() {
               </button>
             )}
 
+            {/* StoryMap / Presentation Mode Button */}
+            <button
+              type="button"
+              onClick={() => setStoryMapOpen(true)}
+              className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-xs font-bold transition-all shadow-2xs cursor-pointer"
+              title="Iniciar Modo Apresentação Executivo (StoryMap)"
+            >
+              <Sparkles size={13} className="text-indigo-600 dark:text-indigo-400" />
+              <span>Apresentação</span>
+            </button>
+
+            {/* Spatial SQL Console Button */}
+            <button
+              type="button"
+              onClick={() => setSpatialSqlOpen(true)}
+              className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-sky-400 text-xs font-semibold transition-all cursor-pointer"
+              title="Abrir Console Spatial SQL (DuckDB)"
+            >
+              <Database size={13} className="text-sky-500" />
+              <span>Spatial SQL</span>
+            </button>
+
             {/* Active Study Pill */}
             <button
               onClick={() => setProjectModalOpen(true)}
@@ -917,6 +945,31 @@ export default function Explorer() {
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <GeeCredentialsDialog open={geeDialogOpen} onOpenChange={setGeeDialogOpen} />
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
+
+      {/* StoryMap / Presentation Mode Modal */}
+      <StoryMapModal
+        open={storyMapOpen}
+        onOpenChange={setStoryMapOpen}
+        onFlyTo={(lat, lng, zoom) => {
+          if (activeTab !== "Mapa") setActiveTab("Mapa");
+          mapRef.current?.flyTo([lat, lng], zoom, { duration: 1.5 });
+        }}
+      />
+
+      {/* Spatial SQL Console Modal */}
+      <SpatialSqlModal
+        open={spatialSqlOpen}
+        onOpenChange={setSpatialSqlOpen}
+        aoiPolygon={aoi.geometry as any}
+        onApplyFilterToMap={(features) => {
+          setSpatialSqlOpen(false);
+          if (activeTab !== "Mapa") setActiveTab("Mapa");
+          toast({
+            title: "Filtro Spatial SQL Aplicado",
+            description: `${features.length} feições selecionadas e destacadas no mapa.`,
+          });
+        }}
+      />
 
       {/* Project Workspace Modal */}
       <ProjectWorkspaceModal

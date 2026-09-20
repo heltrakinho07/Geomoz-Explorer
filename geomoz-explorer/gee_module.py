@@ -721,62 +721,54 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         return inv_ndvi.multiply(0.40).add(inv_ndmi.multiply(0.35)).add(nddi_n.multiply(0.25)).rename("index")
 
 
-    # ── Coastal & Marine indices ────────────────────────────────────────────
+    # ── Water Extraction & Moisture indices ─────────────────────────────────
 
-    if index == "mangrove_health":
-        # Mangrove health: equal-weight composite of NDVI + NDWI (Gao)
-        # NDVI = (B8-B4)/(B8+B4), NDWI = (B3-B8)/(B3+B8)
-        ndvi_raw = s2.normalizedDifference(["B8", "B4"])
-        ndwi_raw = s2.normalizedDifference(["B3", "B8"])
-        # Normalize each to [0,1] then average
-        ndvi_n = ndvi_raw.subtract(-0.2).divide(1.1).clamp(0, 1)
-        ndwi_n = ndwi_raw.subtract(-0.5).divide(1.0).clamp(0, 1)
-        return ndvi_n.multiply(0.50).add(ndwi_n.multiply(0.50)).rename("index")
+    if index == "awei_nsh":
+        # AWEI_nsh = 4 * (Green - SWIR1) - (0.25 * NIR + 2.75 * SWIR2)
+        # S2: 4 * (B3 - B11) - (0.25 * B8 + 2.75 * B12)
+        b3 = s2.select("B3")
+        b8 = s2.select("B8")
+        b11 = s2.select("B11")
+        b12 = s2.select("B12")
+        return b3.subtract(b11).multiply(4).subtract(
+            b8.multiply(0.25).add(b12.multiply(2.75))
+        ).rename("index")
 
-    if index == "coastal_index":
-        # Coastal Vulnerability Index: combines proximity to coast, elevation,
-        # flat slope, and DEM-derived proxy for vegetation buffer
+    if index == "awei_sh":
+        # AWEI_sh = Blue + 2.5 * Green - 1.5 * (NIR + SWIR1) - 0.25 * SWIR2
+        # S2: B2 + 2.5 * B3 - 1.5 * (B8 + B11) - 0.25 * B12
+        b2 = s2.select("B2")
+        b3 = s2.select("B3")
+        b8 = s2.select("B8")
+        b11 = s2.select("B11")
+        b12 = s2.select("B12")
+        return b2.add(b3.multiply(2.5)).subtract(
+            b8.add(b11).multiply(1.5)
+        ).subtract(b12.multiply(0.25)).rename("index")
+
+    if index == "wri":
+        # WRI = (Green + Red) / (NIR + SWIR1)
+        # S2: (B3 + B4) / (B8 + B11)
+        b3 = s2.select("B3")
+        b4 = s2.select("B4")
+        b8 = s2.select("B8")
+        b11 = s2.select("B11")
+        num = b3.add(b4)
+        den = b8.add(b11).add(0.0001)
+        return num.divide(den).rename("index")
+
+    if index == "wi2015":
+        # WI2015 = 1.7204 + 171 * Green + 3 * Red - 70 * NIR - 45 * SWIR1 - 71 * SWIR2
+        # S2: 1.7204 + 171*B3 + 3*B4 - 70*B8 - 45*B11 - 71*B12
         import ee
-        jrc_water = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
-        coastline = jrc_water.gt(40).selfMask().clip(region)
-        coast_dist = coastline.fastDistanceTransform(1024).sqrt().multiply(30).rename("dist")
-        max_dist = 50000
-        prox_raw = ee.Image(1).subtract(coast_dist.divide(max_dist)).clamp(0, 1)
-        inv_elev = ee.Image(1).subtract(dem.divide(50).clamp(0, 1))
-        slope_n = ee.Terrain.slope(dem).divide(30).clamp(0, 1)
-        inv_slope = ee.Image(1).subtract(slope_n)
-        # Simulated NDVI from DEM (lower in exposed coastal areas)
-        ndvi_proxy = dem.expression(
-            "1 - (e / 100)", {"e": dem}
-        ).clamp(0, 1).rename("ndvi_proxy")
-        inv_ndvi = ee.Image(1).subtract(ndvi_proxy)
-        return prox_raw.multiply(0.35).add(inv_elev.multiply(0.25)).add(inv_slope.multiply(0.25)).add(inv_ndvi.multiply(0.15)).rename("index")
-
-    if index == "coastal_erosion":
-        # JRC Global Surface Water — transition band (1984–2021)
-        # transition: 1 = permanent water, 2 = new permanent, 3 = lost permanent, 0 = land
-        import ee
-        jrc_transition = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("transition")
-        # Reclassify to 4 classes: 0=no change, 1=land gain, 2=land loss, 3=permanent water
-        return jrc_transition.rename("index")
-
-    if index == "tsunami_risk":
-        # Tsunami coastal inundation vulnerability index
-        # Combines: low elevation (strongest weight), proximity to coast,
-        # flat slope (further wave travel), low vegetation (less resistance)
-        import ee
-        jrc_water = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
-        coastline = jrc_water.gt(40).selfMask()
-        coast_dist = coastline.fastDistanceTransform(1024).sqrt().multiply(30).rename("dist")
-        max_dist = 30000
-        prox_raw = ee.Image(1).subtract(coast_dist.divide(max_dist)).clamp(0, 1)
-        inv_elev = ee.Image(1).subtract(dem.divide(30).clamp(0, 1))
-        slope_n = ee.Terrain.slope(dem).divide(20).clamp(0, 1)
-        inv_slope = ee.Image(1).subtract(slope_n)
-        # NDVI vegetation buffer — now available because needs includes s2
-        ndvi_raw = s2.normalizedDifference(["B8", "B4"])
-        inv_ndvi = ee.Image(1).subtract(ndvi_raw.subtract(-0.2).divide(1.1).clamp(0, 1))
-        return inv_elev.multiply(0.35).add(prox_raw.multiply(0.30)).add(inv_slope.multiply(0.20)).add(inv_ndvi.multiply(0.15)).rename("index")
+        b3 = s2.select("B3")
+        b4 = s2.select("B4")
+        b8 = s2.select("B8")
+        b11 = s2.select("B11")
+        b12 = s2.select("B12")
+        return ee.Image(1.7204).add(b3.multiply(171)).add(b4.multiply(3)).subtract(
+            b8.multiply(70)
+        ).subtract(b11.multiply(45)).subtract(b12.multiply(71)).rename("index")
 
 
 
@@ -1670,6 +1662,37 @@ def compute_index_tile(
     map_data = vis_img.getMapId()
     tile_url = map_data["tile_fetcher"].url_format
 
+    stats: dict = {}
+    try:
+        stats_reducer = (
+            ee.Reducer.mean()
+            .combine(ee.Reducer.stdDev(), "", True)
+            .combine(ee.Reducer.percentile([10, 25, 50, 75, 90]), "", True)
+            .combine(ee.Reducer.minMax(), "", True)
+        )
+        raw_stats = idx_img.reduceRegion(
+            reducer=stats_reducer,
+            geometry=region,
+            scale=150,
+            maxPixels=1e9,
+            bestEffort=True,
+            tileScale=4,
+        ).getInfo()
+
+        for k, v in (raw_stats or {}).items():
+            clean_k = k.split("_")[-1] if "_" in k else k
+            if isinstance(v, (int, float)):
+                stats[clean_k] = round(float(v), 4)
+
+        try:
+            area_m2 = region.area(maxError=1000).getInfo()
+            if area_m2:
+                stats["areaKm2"] = round(area_m2 / 1e6, 2)
+        except Exception:
+            pass
+    except Exception as e:
+        logger.warning(f"Failed to compute stats for {index}: {e}")
+
     return {
         "tileUrl":    tile_url,
         "name":       cfg["name"],
@@ -1678,7 +1701,7 @@ def compute_index_tile(
         "group":      cfg["group"],
         "sceneCount": scene_count,
         "dateRange":  f"{start_date} → {end_date}" if cfg["group"] != "terrain" else "Estático (DEM)",
-        "stats":      {},
+        "stats":      stats,
         "classNames": cfg.get("class_names"),
     }
 

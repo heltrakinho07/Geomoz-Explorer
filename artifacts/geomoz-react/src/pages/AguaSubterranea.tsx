@@ -149,45 +149,45 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
 
       {/* ── Sidebar ─────────────────────────────────────────────── */}
       <div
-        className={`fixed md:relative inset-y-0 left-0 z-[700] flex flex-col bg-white border-r border-slate-200 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
+        className={`fixed md:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         } ${
           desktopSidebarOpen ? "md:w-72 overflow-y-auto" : "md:w-0 overflow-hidden md:border-r-0"
         }`}
       >
-        <div className="px-4 pt-4 pb-3 border-b border-slate-100 flex items-center justify-between">
+        <div className="px-4 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center shadow-sm shrink-0">
               <Droplets size={15} className="text-white" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Água Subterrânea</h2>
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Água Subterrânea</h2>
               <p className="text-[10px] text-slate-400">Potencial hídrico · AHP · GEE</p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setSidebarOpen(false)}
-            className="md:hidden p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+            className="md:hidden p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Área de estudo — AOI global */}
-        <div className="p-3 border-b border-slate-100">
+        <div className="p-3 border-b border-slate-100 dark:border-slate-800">
           <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Área de Estudo</h4>
           <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
         </div>
 
         {/* Config */}
-        <div className="p-3 space-y-3 border-b border-slate-100">
-          <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-2.5 text-[11px] text-cyan-800 flex items-start gap-2">
+        <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="bg-cyan-50 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-800/50 rounded-xl p-2.5 text-[11px] text-cyan-800 dark:text-cyan-300 flex items-start gap-2">
             <Info size={12} className="mt-0.5 shrink-0 text-cyan-500" />
             <span>Combina 6 fatores hidrogeológicos por pesos AHP. Zonas verdes = maior potencial de água subterrânea.</span>
           </div>
           <div>
-            <label className="text-[10px] text-slate-500 mb-1 block">Ano (chuva) — <strong className="text-slate-700">{year}</strong></label>
+            <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Ano (chuva) — <strong className="text-slate-700 dark:text-slate-200">{year}</strong></label>
             <input type="range" min={2018} max={2024} step={1} value={year} onChange={e => setYear(+e.target.value)} className="w-full accent-cyan-500" />
             <div className="flex justify-between text-[10px] text-slate-400"><span>2018</span><span>2024</span></div>
           </div>
@@ -199,20 +199,20 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
 
         {/* Weights */}
         {result && (
-          <div className="p-3 border-b border-slate-100">
+          <div className="p-3 border-b border-slate-100 dark:border-slate-800">
             <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1"><Scale size={10} /> Pesos AHP</h4>
             <div className="space-y-1">
               {result.weights.map(w => (
                 <div key={w.key} className="flex items-center justify-between text-[11px]">
-                  <span className="text-slate-600">{w.label}</span>
-                  <span className="font-mono text-slate-800">{(w.weight * 100).toFixed(0)}%</span>
+                  <span className="text-slate-600 dark:text-slate-300">{w.label}</span>
+                  <span className="font-mono text-slate-800 dark:text-slate-200">{(w.weight * 100).toFixed(0)}%</span>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {error && <div className="m-3 bg-red-50 border border-red-200 rounded-xl p-2.5 text-[11px] text-red-700">{error}</div>}
+        {error && <div className="m-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl p-2.5 text-[11px] text-red-700 dark:text-red-300">{error}</div>}
       </div>
 
       {/* Desktop collapse toggle button */}
@@ -221,7 +221,7 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
         onClick={() => setDesktopSidebarOpen(v => !v)}
         style={{ left: desktopSidebarOpen ? "18rem" : "0px" }}
         title={desktopSidebarOpen ? "Recolher painel" : "Expandir painel"}
-        className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 backdrop-blur-md border border-l-0 border-slate-200 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 transition-all duration-200 text-slate-500 hover:text-slate-800"
+        className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-l-0 border-slate-200 dark:border-slate-700 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
       >
         {desktopSidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
       </button>
@@ -232,9 +232,9 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
         <button
           type="button"
           onClick={() => setSidebarOpen(v => !v)}
-          className="md:hidden absolute top-3 left-3 z-[600] flex items-center gap-1.5 px-3 py-1.5 bg-white/95 backdrop-blur-md rounded-xl shadow-md border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          className="md:hidden absolute top-3 left-3 z-[600] flex items-center gap-1.5 px-3 py-1.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl shadow-md border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
         >
-          <SlidersHorizontal size={13} className="text-cyan-600" />
+          <SlidersHorizontal size={13} className="text-cyan-600 dark:text-cyan-400" />
           Filtros
         </button>
 
@@ -274,21 +274,21 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
         />
 
         {loading && (
-          <div className="absolute inset-0 z-[600] bg-white/55 backdrop-blur-sm flex items-center justify-center">
-            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 px-7 py-5 flex items-center gap-3 max-w-xs">
+          <div className="absolute inset-0 z-[600] bg-white/55 dark:bg-slate-950/70 backdrop-blur-sm flex items-center justify-center">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 px-7 py-5 flex items-center gap-3 max-w-xs">
               <Loader2 size={20} className="text-cyan-500 animate-spin shrink-0" />
-              <span className="text-sm text-slate-700 font-medium">A calcular potencial hídrico (AHP, 6 fatores)… pode levar ~1 min.</span>
+              <span className="text-sm text-slate-700 dark:text-slate-200 font-medium">A calcular potencial hídrico (AHP, 6 fatores)… pode levar ~1 min.</span>
             </div>
           </div>
         )}
 
         {result && (
-          <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-cyan-100 p-3 text-[11px] min-w-[150px]">
-            <div className="font-semibold text-cyan-800 mb-2 flex items-center gap-1"><Droplets size={11} /> Potencial hídrico</div>
+          <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-cyan-100 dark:border-cyan-900/40 p-3 text-[11px] min-w-[150px]">
+            <div className="font-semibold text-cyan-800 dark:text-cyan-300 mb-2 flex items-center gap-1"><Droplets size={11} /> Potencial hídrico</div>
             {result.classes.map(c => (
               <div key={c.id} className="flex items-center gap-1.5 mb-1">
                 <span className="inline-block w-4 h-3 rounded" style={{ background: c.color }} />
-                <span className="text-slate-600">{c.label}</span>
+                <span className="text-slate-600 dark:text-slate-300">{c.label}</span>
               </div>
             ))}
           </div>
@@ -297,26 +297,26 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
 
       {/* ── Right panel ─────────────────────────────────────────── */}
       {result && (
-        <div className="w-80 flex flex-col bg-white border-l border-slate-200 overflow-y-auto shrink-0">
+        <div className="w-80 flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0">
           <div className="p-4 space-y-4">
-            <div className="flex items-center gap-2"><Droplets size={15} className="text-cyan-600" /><span className="text-sm font-semibold text-slate-900">Potencial de Água Subterrânea</span></div>
+            <div className="flex items-center gap-2"><Droplets size={15} className="text-cyan-600 dark:text-cyan-400" /><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Potencial de Água Subterrânea</span></div>
             <div className="space-y-1.5">
               {result.classes.map(c => {
                 const pct = (c.areaKm2 / total) * 100;
                 return (
                   <div key={c.id}>
-                    <div className="flex justify-between text-[11px] text-slate-600 mb-0.5">
+                    <div className="flex justify-between text-[11px] text-slate-600 dark:text-slate-300 mb-0.5">
                       <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded" style={{ background: c.color }} />{c.label}</span>
-                      <span className="font-medium text-slate-800">{c.areaKm2.toLocaleString("pt-PT")} km² · {pct.toFixed(0)}%</span>
+                      <span className="font-medium text-slate-800 dark:text-slate-200">{c.areaKm2.toLocaleString("pt-PT")} km² · {pct.toFixed(0)}%</span>
                     </div>
-                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                       <div className="h-full rounded-full" style={{ width: `${pct}%`, background: c.color }} />
                     </div>
                   </div>
                 );
               })}
             </div>
-            <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-3 text-[11px] text-cyan-800 flex items-start gap-2">
+            <div className="bg-cyan-50 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-800/50 rounded-xl p-3 text-[11px] text-cyan-800 dark:text-cyan-300 flex items-start gap-2">
               <Info size={12} className="mt-0.5 shrink-0" /> Modelo AHP de favorabilidade (indicativo). A litologia pode ser adicionada como 7º fator. Confirmar com furos de teste.
             </div>
             <button onClick={exportGroundwaterPdf}

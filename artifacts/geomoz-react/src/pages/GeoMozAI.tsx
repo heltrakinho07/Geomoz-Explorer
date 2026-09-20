@@ -352,9 +352,9 @@ function AlphaEarthTab() {
   return (
     <div className="flex flex-1 overflow-hidden">
       {/* Controls sidebar */}
-      <div className="w-72 bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto">
+      <div className="w-72 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 overflow-y-auto">
         {/* Mode selector */}
-        <div className="p-4 border-b border-slate-100">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800">
           <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
             <Satellite size={12} className="inline mr-1" /> Modo de Análise
           </h4>
@@ -371,8 +371,8 @@ function AlphaEarthTab() {
                 onClick={() => setMode(opt.id)}
                 className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
                   mode === opt.id
-                    ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
-                    : "bg-slate-50 border border-slate-100 text-slate-600 hover:bg-slate-100"
+                    ? "bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-300"
+                    : "bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
                 }`}
               >
                 {opt.icon}
@@ -383,7 +383,7 @@ function AlphaEarthTab() {
         </div>
 
         {/* Parameters */}
-        <div className="p-4 border-b border-slate-100 space-y-3">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 space-y-3">
           <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
             <Settings2 size={12} className="inline mr-1" /> Parâmetros
           </h4>
@@ -391,7 +391,7 @@ function AlphaEarthTab() {
           <div>
             <label className="text-xs text-slate-500 mb-1 block">Província</label>
             <select value={province} onChange={e => { setProvince(e.target.value); setDistrict(""); fetchDistricts(e.target.value); }}
-              className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200 outline-none">
+              className="w-full text-xs border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 bg-white dark:bg-slate-800 dark:text-slate-100 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200 outline-none">
               <option value="">Moçambique (completo)</option>
               {provinceNames.map(n => <option key={n} value={n}>{n}</option>)}
             </select>
@@ -400,7 +400,7 @@ function AlphaEarthTab() {
           <div>
             <label className="text-xs text-slate-500 mb-1 block">Distrito</label>
             <select value={district} onChange={e => setDistrict(e.target.value)} disabled={!province}
-              className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200 outline-none disabled:bg-slate-50 disabled:text-slate-400">
+              className="w-full text-xs border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 bg-white dark:bg-slate-800 dark:text-slate-100 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200 outline-none disabled:bg-slate-50 dark:disabled:bg-slate-900 disabled:text-slate-400">
               <option value="">Todos</option>
               {districtNames.map(n => <option key={n} value={n}>{n}</option>)}
             </select>
@@ -408,15 +408,15 @@ function AlphaEarthTab() {
 
           <div>
             <label className="text-xs text-slate-500 mb-1 flex items-center gap-1">
-              <Calendar size={11} /> Ano — <strong className="text-slate-700">{mode === "change" ? `${yearBefore} → ${year}` : year}</strong>
+              <Calendar size={11} /> Ano — <strong className="text-slate-700 dark:text-slate-200">{mode === "change" ? `${yearBefore} → ${year}` : year}</strong>
             </label>
             {mode === "change" ? (
               <div className="flex gap-2">
                 <input type="number" min={2017} max={2024} value={yearBefore} onChange={e => setYearBefore(Number(e.target.value))}
-                  className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-center" />
+                  className="w-full text-xs border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-center" />
                 <span className="text-xs text-slate-400 self-center">→</span>
                 <input type="number" min={2017} max={2024} value={year} onChange={e => setYear(Number(e.target.value))}
-                  className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-center" />
+                  className="w-full text-xs border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-center" />
               </div>
             ) : (
               <input type="range" min={2017} max={2024} value={year} onChange={e => setYear(Number(e.target.value))}
@@ -427,7 +427,7 @@ function AlphaEarthTab() {
           {mode === "cluster" && (
             <div>
               <label className="text-xs text-slate-500 mb-1 block">
-                N° de clusters — <strong className="text-slate-700">{nClusters}</strong>
+                N° de clusters — <strong className="text-slate-700 dark:text-slate-200">{nClusters}</strong>
               </label>
               <input type="range" min={3} max={15} value={nClusters} onChange={e => setNClusters(Number(e.target.value))}
                 className="w-full accent-emerald-500" />
@@ -437,7 +437,7 @@ function AlphaEarthTab() {
 
         {/* ── Training controls (classify mode) ─────────────────────────────── */}
         {mode === "classify" && (
-          <div className="border-b border-slate-100">
+          <div className="border-b border-slate-100 dark:border-slate-800">
             <div className="p-4">
               <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
                 <Layers size={12} /> Amostras de Treino
@@ -456,15 +456,15 @@ function AlphaEarthTab() {
 
               {/* Pending draw — class assignment form */}
               {showClassForm && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
-                  <div className="text-[10px] font-semibold text-amber-700">Atribuir Classe ao Polígono</div>
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-lg p-3 space-y-2">
+                  <div className="text-[10px] font-semibold text-amber-700 dark:text-amber-300">Atribuir Classe ao Polígono</div>
                   <div className="flex flex-wrap gap-1">
                     {CLASS_PRESETS.slice(0, 5).map(p => (
                       <button key={p.id} onClick={() => setNewClassId(p.id)}
                         className={`px-2 py-1 text-[10px] rounded-md border transition-colors ${
                           newClassId === p.id
-                            ? "border-amber-500 bg-amber-100 text-amber-800 font-semibold"
-                            : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                            ? "border-amber-500 bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200 font-semibold"
+                            : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
                         }`}>
                         {p.name}
                       </button>
@@ -476,7 +476,7 @@ function AlphaEarthTab() {
                       <Check size={11} className="inline mr-1" /> Confirmar
                     </button>
                     <button onClick={() => { setPendingDraw(null); setShowClassForm(false); }}
-                      className="py-1.5 px-3 text-[10px] text-red-600 hover:bg-red-50 rounded-md transition-colors">
+                      className="py-1.5 px-3 text-[10px] text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-md transition-colors">
                       <X size={11} />
                     </button>
                   </div>
@@ -487,7 +487,7 @@ function AlphaEarthTab() {
               {trainingSamples.length > 0 && (
                 <div className="mt-3 space-y-1.5 max-h-36 overflow-y-auto">
                   {trainingSamples.map(s => (
-                    <div key={s.id} className="flex items-center gap-2 p-1.5 bg-slate-50 rounded-lg text-[10px]">
+                    <div key={s.id} className="flex items-center gap-2 p-1.5 bg-slate-50 dark:bg-slate-800/60 rounded-lg text-[10px]">
                       <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color }} />
                       <span className="text-slate-600 flex-1 truncate">{s.className}</span>
                       <span className="text-slate-400">#{s.classId}</span>
@@ -597,8 +597,8 @@ function AlphaEarthTab() {
         )}
 
         {/* Info box */}
-        <div className="mt-auto p-4 border-t border-slate-100">
-          <div className="bg-sky-50 border border-sky-100 rounded-xl p-3 text-xs text-sky-700 leading-relaxed">
+        <div className="mt-auto p-4 border-t border-slate-100 dark:border-slate-800">
+          <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/50 rounded-xl p-3 text-xs text-sky-700 dark:text-sky-300 leading-relaxed">
             <strong className="block mb-1"><BrainCircuit size={12} className="inline mr-1" /> AlphaEarth Foundations</strong>
             Modelo fundacional Google DeepMind. Cada pixel de 10 m é representado
             por um vector de 64 dimensões que codifica as condições de superfície.
@@ -614,9 +614,9 @@ function AlphaEarthTab() {
       <div className="flex-1 relative overflow-hidden">
         {!activeTileUrl && !loading && trainingSamples.length === 0 && (
           <div className="absolute inset-0 z-[300] flex items-center justify-center pointer-events-none">
-            <div className="bg-white/95 border border-slate-200 rounded-2xl px-6 py-5 shadow-lg text-center max-w-xs">
-              <Satellite size={24} className="text-slate-200 mx-auto mb-2" />
-              <p className="text-sm text-slate-600">
+            <div className="bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 rounded-2xl px-6 py-5 shadow-lg text-center max-w-xs">
+              <Satellite size={24} className="text-slate-200 dark:text-slate-700 mx-auto mb-2" />
+              <p className="text-sm text-slate-600 dark:text-slate-300">
                 {mode === "classify"
                   ? "Desenhe polígonos no mapa, atribua classes, e clique <strong>Executar Classificação</strong>."
                   : "Seleccione um modo e clique <strong>Executar Análise</strong> para processar os embeddings AlphaEarth no GEE."
@@ -626,10 +626,10 @@ function AlphaEarthTab() {
           </div>
         )}
         {loading && (
-          <div className="absolute inset-0 z-[300] flex items-center justify-center bg-white/50">
-            <div className="bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-lg text-center">
+          <div className="absolute inset-0 z-[300] flex items-center justify-center bg-white/50 dark:bg-slate-950/70 backdrop-blur-xs">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-6 py-5 shadow-lg text-center">
               <Loader2 size={24} className="text-emerald-500 animate-spin mx-auto mb-2" />
-              <p className="text-sm text-slate-600">A processar no Google Earth Engine…</p>
+              <p className="text-sm text-slate-600 dark:text-slate-200">A processar no Google Earth Engine…</p>
               <p className="text-xs text-slate-400 mt-1">Random Forest sobre 64 bandas de embedding</p>
             </div>
           </div>
@@ -772,16 +772,16 @@ function ClusteringTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[] }
 
   return (
     <div className="flex flex-1 overflow-hidden">
-      <div className="w-72 bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto">
-        <div className="p-4 border-b border-slate-100">
+      <div className="w-72 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 overflow-y-auto">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800">
           <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Parâmetros K-Means</h4>
           <div className="space-y-3">
             <div>
-              <label className="text-xs text-slate-500 mb-1 block">Número de clusters (K) — <strong className="text-slate-700">{k}</strong></label>
+              <label className="text-xs text-slate-500 mb-1 block">Número de clusters (K) — <strong className="text-slate-700 dark:text-slate-200">{k}</strong></label>
               <input type="range" min={2} max={Math.min(summaryItems.length, 6)} value={k} onChange={e => setK(Number(e.target.value))} className="w-full accent-sky-500" />
               <div className="flex justify-between text-xs text-slate-400"><span>2</span><span>{Math.min(summaryItems.length, 6)}</span></div>
             </div>
-            <div className="bg-slate-50 rounded-lg p-3 text-xs text-slate-500 space-y-1">
+            <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-3 text-xs text-slate-500 dark:text-slate-400 space-y-1">
               <div><strong>Features usadas (vector litológico):</strong></div>
               <div>· Frações das 6 famílias de rocha</div>
               <div>· Log-escala da área (peso reduzido)</div>
@@ -789,7 +789,7 @@ function ClusteringTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[] }
             </div>
           </div>
           <button onClick={runClustering} disabled={running}
-            className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 bg-sky-500 hover:bg-sky-600 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-sky-200">
+            className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 bg-sky-500 hover:bg-sky-600 disabled:bg-slate-300 dark:disabled:bg-slate-800 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-sky-200">
             {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
             {running ? "A executar…" : "Executar Clustering"}
           </button>
@@ -798,18 +798,18 @@ function ClusteringTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[] }
           <div className="p-4">
             <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Métricas do Modelo</h4>
             <div className="space-y-2">
-              <div className="flex justify-between text-sm"><span className="text-slate-500">Inércia</span><span className="font-semibold text-slate-800">{result.inertia.toFixed(2)}</span></div>
-              <div className="flex justify-between text-sm"><span className="text-slate-500">Silhueta</span><span className={`font-semibold ${result.silhouette > 0.5 ? "text-emerald-600" : result.silhouette > 0.25 ? "text-amber-600" : "text-slate-600"}`}>{result.silhouette.toFixed(3)}</span></div>
-              <div className="flex justify-between text-sm"><span className="text-slate-500">Iterações</span><span className="font-semibold text-slate-800">{result.iterations}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-slate-500">Inércia</span><span className="font-semibold text-slate-800 dark:text-slate-200">{result.inertia.toFixed(2)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-slate-500">Silhueta</span><span className={`font-semibold ${result.silhouette > 0.5 ? "text-emerald-600 dark:text-emerald-400" : result.silhouette > 0.25 ? "text-amber-600 dark:text-amber-400" : "text-slate-600 dark:text-slate-400"}`}>{result.silhouette.toFixed(3)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-slate-500">Iterações</span><span className="font-semibold text-slate-800 dark:text-slate-200">{result.iterations}</span></div>
             </div>
             <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-4 mb-2">Clusters</h4>
             <div className="space-y-2">
               {clusterStats.map(cs => (
-                <div key={cs.cluster} className="flex items-start gap-2 p-2 bg-slate-50 rounded-lg">
+                <div key={cs.cluster} className="flex items-start gap-2 p-2 bg-slate-50 dark:bg-slate-800/60 rounded-lg">
                   <div className="w-3 h-3 rounded-full shrink-0 mt-0.5" style={{ background: CLUSTER_COLORS[cs.cluster] }} />
                   <div className="text-xs">
-                    <div className="font-semibold text-slate-700">Cluster {cs.cluster + 1}</div>
-                    <div className="text-slate-500">{cs.provinces.join(", ")}</div>
+                    <div className="font-semibold text-slate-700 dark:text-slate-200">Cluster {cs.cluster + 1}</div>
+                    <div className="text-slate-500 dark:text-slate-400">{cs.provinces.join(", ")}</div>
                     <div className="text-slate-400 mt-0.5">Área média: {cs.avgArea.toLocaleString()} km²</div>
                   </div>
                 </div>
@@ -821,9 +821,9 @@ function ClusteringTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[] }
       <div className="flex-1 relative overflow-hidden">
         {!result && (
           <div className="absolute inset-0 z-[300] flex items-center justify-center pointer-events-none">
-            <div className="bg-white/95 border border-slate-200 rounded-2xl px-6 py-5 shadow-lg text-center max-w-xs">
-              <GitBranch size={24} className="text-slate-200 mx-auto mb-2" />
-              <p className="text-sm text-slate-600">Configure os parâmetros e clique <strong>Executar Clustering</strong> para agrupar as províncias por similaridade geológica.</p>
+            <div className="bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 rounded-2xl px-6 py-5 shadow-lg text-center max-w-xs">
+              <GitBranch size={24} className="text-slate-200 dark:text-slate-700 mx-auto mb-2" />
+              <p className="text-sm text-slate-600 dark:text-slate-300">Configure os parâmetros e clique <strong>Executar Clustering</strong> para agrupar as províncias por similaridade geológica.</p>
             </div>
           </div>
         )}
@@ -877,16 +877,16 @@ function FavorabilityTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[]
 
   return (
     <div className="flex flex-1 overflow-hidden">
-      <div className="w-80 bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto">
-        <div className="p-4 border-b border-slate-100 shrink-0">
+      <div className="w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 overflow-y-auto">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
           <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Tipo de Mineral</h4>
           <div className="space-y-1.5">
             {MINERAL_OPTIONS.map(opt => (
-              <label key={opt.value} className={`flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer transition-colors ${mineral === opt.value ? "bg-sky-50 border border-sky-200" : "hover:bg-slate-50 border border-transparent"}`}>
+              <label key={opt.value} className={`flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer transition-colors ${mineral === opt.value ? "bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800/60" : "hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent"}`}>
                 <input type="radio" name="mineral" value={opt.value} checked={mineral === opt.value} onChange={() => setMineral(opt.value)} className="sr-only" />
                 <span className="text-base">{opt.icon}</span>
                 <div className="min-w-0">
-                  <div className={`text-sm font-medium ${mineral === opt.value ? "text-sky-700" : "text-slate-700"}`}>{opt.label}</div>
+                  <div className={`text-sm font-medium ${mineral === opt.value ? "text-sky-700 dark:text-sky-300" : "text-slate-700 dark:text-slate-200"}`}>{opt.label}</div>
                   <div className="text-xs text-slate-400 truncate">{opt.desc}</div>
                 </div>
               </label>
@@ -897,13 +897,13 @@ function FavorabilityTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[]
           <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Ranking de Províncias</h4>
           <div className="space-y-2">
             {results.map((r, i) => (
-              <div key={r.province} className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+              <div key={r.province} className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-100 dark:border-slate-700">
                 <div className="flex items-center gap-2 mb-1.5">
                   <span className="text-xs font-bold text-slate-400 w-4">{i + 1}</span>
-                  <span className="text-sm font-semibold text-slate-800 flex-1 truncate">{r.province}</span>
+                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex-1 truncate">{r.province}</span>
                   <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-md ${classColor[r.classification]}`}>{r.classification}</span>
                 </div>
-                <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
+                <div className="h-2 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                   <div className="h-full rounded-full transition-all" style={{ width: `${(r.score / maxScore) * 100}%`, background: FAVORABILITY_GRADIENT(r.score) }} />
                 </div>
                 <div className="flex justify-between text-xs text-slate-400 mt-0.5">
@@ -916,8 +916,8 @@ function FavorabilityTab({ summaryItems }: { summaryItems: ProvinceSummaryItem[]
         </div>
       </div>
       <div className="flex-1 relative overflow-hidden">
-        <div className="absolute bottom-8 left-4 z-[500] bg-white/95 border border-slate-200 rounded-xl shadow-lg p-3 w-52 pointer-events-none">
-          <div className="text-xs font-semibold text-slate-700 mb-1.5">Favorabilidade — {MINERAL_OPTIONS.find(m => m.value === mineral)?.label}</div>
+        <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg p-3 w-52 pointer-events-none">
+          <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1.5">Favorabilidade — {MINERAL_OPTIONS.find(m => m.value === mineral)?.label}</div>
           <div className="h-3 w-full rounded" style={{ background: `linear-gradient(to right, ${Array.from({ length: 8 }, (_, i) => FAVORABILITY_GRADIENT(i / 7)).join(", ")})` }} />
           <div className="flex justify-between text-xs text-slate-400 mt-1"><span>Muito Baixa</span><span>Alta</span></div>
         </div>
@@ -961,11 +961,11 @@ function PCATab({ summaryItems }: { summaryItems: ProvinceSummaryItem[] }) {
   const toSvgY = (v: number) => H - PAD - ((v - minY) / (maxY - minY + 0.0001)) * (H - PAD * 2);
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
+    <div className="flex-1 overflow-y-auto p-6 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-3xl mx-auto">
-        <h3 className="text-lg font-bold text-slate-900 mb-1">Análise de Componentes Principais (PCA 2D)</h3>
-        <p className="text-sm text-slate-500 mb-4">PC1 explica <strong>{explained[0]}%</strong> · PC2 explica <strong>{explained[1]}%</strong> da variância total.</p>
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-1">Análise de Componentes Principais (PCA 2D)</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">PC1 explica <strong>{explained[0]}%</strong> · PC2 explica <strong>{explained[1]}%</strong> da variância total.</p>
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
           <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="w-full">
             {Array.from({ length: 5 }, (_, i) => (<line key={`hg${i}`} x1={PAD} y1={PAD + i * (H - PAD * 2) / 4} x2={W - PAD} y2={PAD + i * (H - PAD * 2) / 4} stroke="#f1f5f9" strokeWidth="1" />))}
             {Array.from({ length: 5 }, (_, i) => (<line key={`vg${i}`} x1={PAD + i * (W - PAD * 2) / 4} y1={PAD} x2={PAD + i * (W - PAD * 2) / 4} y2={H - PAD} stroke="#f1f5f9" strokeWidth="1" />))}
@@ -975,7 +975,7 @@ function PCATab({ summaryItems }: { summaryItems: ProvinceSummaryItem[] }) {
             <text x={12} y={H / 2} textAnchor="middle" fontSize="11" fill="#94a3b8" transform={`rotate(-90,12,${H / 2})`}>PC2 ({explained[1]}%)</text>
             {summaryItems.map((p, i) => {
               const cx = toSvgX(projected[i][0]), cy = toSvgY(projected[i][1]);
-              return (<g key={p.province}><circle cx={cx} cy={cy} r={8} fill={CLUSTER_COLORS[i % CLUSTER_COLORS.length]} opacity={0.85} /><text x={cx} y={cy - 11} textAnchor="middle" fontSize="9" fill="#475569" fontWeight="600">{p.province.length > 10 ? p.province.slice(0, 9) + "…" : p.province}</text></g>);
+              return (<g key={p.province}><circle cx={cx} cy={cy} r={8} fill={CLUSTER_COLORS[i % CLUSTER_COLORS.length]} opacity={0.85} /><text x={cx} y={cy - 11} textAnchor="middle" fontSize="9" fill="#94a3b8" fontWeight="600">{p.province.length > 10 ? p.province.slice(0, 9) + "…" : p.province}</text></g>);
             })}
           </svg>
         </div>
@@ -1000,24 +1000,24 @@ function AboutTab() {
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto p-8 bg-slate-50">
+    <div className="flex-1 overflow-y-auto p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-2xl mx-auto space-y-8">
         <div>
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-purple-700 rounded-xl flex items-center justify-center"><BrainCircuit size={20} className="text-white" /></div>
-            <div><h2 className="text-xl font-bold text-slate-900">GeoMoz AI Engine</h2><p className="text-sm text-slate-500">Módulo de inteligência artificial geológica</p></div>
+            <div><h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">GeoMoz AI Engine</h2><p className="text-sm text-slate-500 dark:text-slate-400">Módulo de inteligência artificial geológica</p></div>
           </div>
-          <p className="text-sm text-slate-600 leading-relaxed">O GeoMoz AI Engine aplica algoritmos de aprendizagem automática directamente sobre dados geológicos de Moçambique e os embeddings do AlphaEarth Foundations.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">O GeoMoz AI Engine aplica algoritmos de aprendizagem automática directamente sobre dados geológicos de Moçambique e os embeddings do AlphaEarth Foundations.</p>
         </div>
         <div>
-          <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2"><TrendingUp size={14} className="text-sky-500" /> Roadmap de IA</h3>
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2"><TrendingUp size={14} className="text-sky-500" /> Roadmap de IA</h3>
           <div className="space-y-2">
             {roadmap.map((item, i) => (
-              <div key={i} className="flex items-start gap-2.5 p-2.5 bg-white border border-slate-100 rounded-lg">
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${item.done ? "bg-emerald-100" : "bg-slate-100"}`}>
-                  <span className={`text-xs ${item.done ? "text-emerald-600" : "text-slate-400"}`}>{item.done ? "✓" : "○"}</span>
+              <div key={i} className="flex items-start gap-2.5 p-2.5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-lg">
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${item.done ? "bg-emerald-100 dark:bg-emerald-950/40" : "bg-slate-100 dark:bg-slate-800"}`}>
+                  <span className={`text-xs ${item.done ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}`}>{item.done ? "✓" : "○"}</span>
                 </div>
-                <span className={`text-sm leading-relaxed ${item.done ? "text-slate-700" : "text-slate-400"}`}>{item.item}</span>
+                <span className={`text-sm leading-relaxed ${item.done ? "text-slate-700 dark:text-slate-200" : "text-slate-400"}`}>{item.item}</span>
               </div>
             ))}
           </div>
@@ -1046,22 +1046,22 @@ export default function GeoMozAI() {
   const showLoadGate = activeTab !== "about" && activeTab !== "alphaearth" && activeTab !== "agent";
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
-      <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between shrink-0">
+    <div className="flex-1 flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-5 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center shadow-sm"><BrainCircuit size={17} className="text-white" /></div>
-          <div><h2 className="font-semibold text-slate-900 text-sm leading-tight">GeoMoz AI — Motor de Inteligência Artificial</h2><p className="text-xs text-slate-400">K-Means · PCA · AlphaEarth Foundations</p></div>
+          <div><h2 className="font-semibold text-slate-900 dark:text-slate-100 text-sm leading-tight">GeoMoz AI — Motor de Inteligência Artificial</h2><p className="text-xs text-slate-400">K-Means · PCA · AlphaEarth Foundations</p></div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs bg-violet-50 text-violet-600 border border-violet-200 px-2 py-0.5 rounded-full font-medium">β — Em desenvolvimento activo</span>
-          {summaryItems.length > 0 && <span className="text-xs bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-0.5 rounded-full">{summaryItems.length} províncias carregadas</span>}
+          <span className="text-xs bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-800 px-2 py-0.5 rounded-full font-medium">β — Em desenvolvimento activo</span>
+          {summaryItems.length > 0 && <span className="text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-full">{summaryItems.length} províncias carregadas</span>}
         </div>
       </div>
 
-      <div className="bg-white border-b border-slate-200 px-4 flex items-center gap-1 shrink-0">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 flex items-center gap-1 shrink-0">
         {tabs.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === tab.id ? "border-violet-500 text-violet-600" : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"}`}>
+            className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === tab.id ? "border-violet-500 text-violet-600 dark:text-violet-400" : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-700"}`}>
             {tab.icon} {tab.label}
           </button>
         ))}
@@ -1073,23 +1073,23 @@ export default function GeoMozAI() {
         <AlphaEarthTab />
       ) : showLoadGate && !loadEnabled ? (
         <div className="flex-1 flex items-center justify-center">
-          <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-sm text-center shadow-sm">
-            <div className="w-14 h-14 bg-violet-50 rounded-2xl flex items-center justify-center mx-auto mb-4"><BrainCircuit size={26} className="text-violet-500" /></div>
-            <h3 className="font-bold text-slate-900 mb-2">Carregar Dados de Províncias</h3>
-            <p className="text-sm text-slate-500 mb-4 leading-relaxed">O módulo AI precisa dos dados territoriais de todas as províncias para análise. A primeira execução pode demorar 15–30 s.</p>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 max-w-sm text-center shadow-sm">
+            <div className="w-14 h-14 bg-violet-50 dark:bg-violet-950/40 rounded-2xl flex items-center justify-center mx-auto mb-4"><BrainCircuit size={26} className="text-violet-500 dark:text-violet-400" /></div>
+            <h3 className="font-bold text-slate-900 dark:text-slate-100 mb-2">Carregar Dados de Províncias</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">O módulo AI precisa dos dados territoriais de todas as províncias para análise. A primeira execução pode demorar 15–30 s.</p>
             <button onClick={() => setLoadEnabled(true)} className="w-full py-2.5 bg-violet-500 hover:bg-violet-600 text-white font-semibold text-sm rounded-xl transition-colors shadow-sm shadow-violet-200"><Star size={14} className="inline mr-2" />Iniciar Análise AI</button>
           </div>
         </div>
       ) : isLoading && showLoadGate ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-4">
           <Loader2 size={26} className="text-violet-500 animate-spin" />
-          <p className="font-semibold text-slate-700">A processar dados territoriais…</p>
+          <p className="font-semibold text-slate-700 dark:text-slate-200">A processar dados territoriais…</p>
         </div>
       ) : error && showLoadGate ? (
         <div className="flex-1 flex items-center justify-center">
-          <div className="bg-red-50 border border-red-200 rounded-xl p-6 max-w-sm text-center">
-            <p className="text-sm text-red-700">Erro ao carregar dados. Verifique que a API Python está activa.</p>
-            <button onClick={() => setLoadEnabled(false)} className="mt-3 text-xs text-red-500 hover:text-red-700">Tentar novamente</button>
+          <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl p-6 max-w-sm text-center">
+            <p className="text-sm text-red-700 dark:text-red-300">Erro ao carregar dados. Verifique que a API Python está activa.</p>
+            <button onClick={() => setLoadEnabled(false)} className="mt-3 text-xs text-red-500 dark:text-red-400 hover:text-red-700">Tentar novamente</button>
           </div>
         </div>
       ) : (

@@ -42,10 +42,10 @@ export const DEFAULT_COMPARE_PRESETS: ComparePreset[] = [
     id: "default_recent",
     title: "2023 ⟼ Recente (Padrão)",
     description: "Comparação padrão da análise GEE entre 2023 e a data recente",
-    leftStart: "2023-01-01",
+    leftStart: "2023-11-01",
     leftEnd: "2023-12-31",
     rightStart: "2024-01-01",
-    rightEnd: "2024-12-31",
+    rightEnd: new Date().toISOString().split("T")[0],
     leftId: "2023",
     rightId: "2024",
   },
@@ -139,11 +139,11 @@ export default function SplitScreenCompare({
   activeAnalysisId,
   compareMode = "temporal_gee",
   onCompareModeChange,
-  startDateLeft = "2023-01-01",
+  startDateLeft = "2023-11-01",
   endDateLeft = "2023-12-31",
   onDatesLeftChange,
   startDateRight = "2024-01-01",
-  endDateRight = "2024-12-31",
+  endDateRight = new Date().toISOString().split("T")[0],
   onDatesRightChange,
   isProcessingGee = false,
   onProcessGee,
@@ -307,7 +307,7 @@ export default function SplitScreenCompare({
                   className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none cursor-pointer"
                 >
                   {options.map((opt) => (
-                    <option key={opt.id} value={opt.id} className="text-slate-800 bg-white">
+                    <option key={opt.id} value={opt.id} className="text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800">
                       {opt.label}
                     </option>
                   ))}
@@ -324,7 +324,7 @@ export default function SplitScreenCompare({
                   className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none cursor-pointer"
                 >
                   {options.map((opt) => (
-                    <option key={opt.id} value={opt.id} className="text-slate-800 bg-white">
+                    <option key={opt.id} value={opt.id} className="text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800">
                       {opt.label}
                     </option>
                   ))}

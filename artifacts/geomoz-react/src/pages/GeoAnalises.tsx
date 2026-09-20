@@ -17,7 +17,7 @@ import {
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
-  FolderPlus, FolderKanban, Satellite, BarChart2, Layers, Info, ChevronDown,
+  FolderPlus, FolderKanban, Satellite, BarChart2, Layers, Info, ChevronDown, ChevronUp,
   Cpu, FlaskConical, CloudSun, Droplets, Flame,
   CheckCircle2, XCircle, Loader2, Play, RefreshCw,
   ExternalLink, ShieldCheck,
@@ -369,27 +369,37 @@ const INDEX_DEFS: IndexDef[] = [
     interpretation: "Índice composto de risco de incêndio. Combina baixa vegetação verde (NDVI baixo), baixa humidade (NDMI baixo) e stress hídrico (NDDI alto). Ideal para alerta precoce.",
     lowLabel: "Risco baixo", highLabel: "Risco alto" },
 
-  // ── Coastal & Marine indices ─────────────────────────────────────────
-  { id: "mangrove_health", label: "Mangal", short: "Mangal", icon: <Sprout size={13} />, group: "coastal",
-    formula: "0.50×NDVI + 0.50×NDWI — composto Sentinel-2",
-    bands: "NIR (B8) · Vermelho (B4) · Verde (B3)",
-    interpretation: "Saúde dos mangais — combina NDVI (vigor vegetativo) e NDWI (conteúdo de água). Monitoria de mangais na costa moçambicana (Zambeze, Bons Sinais, Save, Maputo).",
-    lowLabel: "Mangal degradado", highLabel: "Mangal saudável" },
-  { id: "coastal_index", label: "Índice Costeiro", short: "Costeiro", icon: <Waves size={13} />, group: "coastal",
-    formula: "CVI: 0.35×costa_prox + 0.25×(1−elev) + 0.25×declive + 0.15×(1−NDVI)",
-    bands: "DEM Copernicus · proximidade costa · sentinel-2 NDVI",
-    interpretation: "Índice de Exposição Costeira — distância à costa, baixa elevação, declive suave e baixa vegetação aumentam a vulnerabilidade costeira.",
-    lowLabel: "Baixa exposição", highLabel: "Alta exposição" },
-  { id: "coastal_erosion", label: "Erosão Costeira", short: "Erosão", icon: <TrendingDown size={13} />, group: "coastal",
-    formula: "JRC GSW v1.4 — transição 1984–2021",
-    bands: "JRC Global Surface Water — transition",
-    interpretation: "Erosão costeira detectada por JRC Global Surface Water. Áreas em vermelho = perda de terra por erosão costeira. Amarelo = acreção/progradação.",
-    lowLabel: "Estável", highLabel: "Erosão" },
-  { id: "tsunami_risk", label: "Tsunami", short: "Tsunami", icon: <BarChart2 size={13} />, group: "coastal",
-    formula: "0.35×(1−elev_norm) + 0.30×costa_prox + 0.20×declive + 0.15×(1−NDVI)",
-    bands: "DEM Copernicus · dist. costa · declive · NDVI",
-    interpretation: "Risco de inundação por tsunami/inundação costeira. Combina baixa elevação, proximidade ao mar, terreno plano e falta de vegetação tampão.",
-    lowLabel: "Risco baixo", highLabel: "Risco alto" },
+  // ── Water & Moisture indices ─────────────────────────────────────────
+  { id: "ndwi", label: "NDWI", short: "NDWI", icon: <Droplets size={13} />, group: "water",
+    formula: "NDWI = (B3 − B8) / (B3 + B8)",
+    bands: "Verde (B3) · NIR (B8)",
+    interpretation: "Índice de Diferença Normalizada de Água (McFeeters, 1996). Delineia corpos de água abertos e elimina feições de solo e vegetação terrestre. Valores > 0 indicam lâmina de água.",
+    lowLabel: "Solo / vegetação", highLabel: "Água aberta" },
+  { id: "mndwi", label: "MNDWI", short: "MNDWI", icon: <Waves size={13} />, group: "water",
+    formula: "MNDWI = (B3 − B11) / (B3 + B11)",
+    bands: "Verde (B3) · SWIR1 (B11)",
+    interpretation: "NDWI Modificado (Xu, 2006). Substitui NIR por SWIR1, suprimindo com maior eficácia ruídos de solo exposto e áreas urbanas/construídas. Ideal para albufeiras e rios em zonas povoadas.",
+    lowLabel: "Solo / urbano", highLabel: "Corpo de água" },
+  { id: "awei_nsh", label: "AWEI (s/ Sombra)", short: "AWEI nsh", icon: <Droplets size={13} />, group: "water",
+    formula: "4×(B3 − B11) − (0.25×B8 + 2.75×B12)",
+    bands: "Verde (B3) · NIR (B8) · SWIR1 (B11) · SWIR2 (B12)",
+    interpretation: "Automated Water Extraction Index sem sombra (Feyisa et al., 2014). Otimizado para extração estável e precisa de corpos de água em áreas abertas e planas sem relevo acidentado. Valores > 0 indicam água.",
+    lowLabel: "Superfície seca", highLabel: "Água" },
+  { id: "awei_sh", label: "AWEI (c/ Sombra)", short: "AWEI sh", icon: <Waves size={13} />, group: "water",
+    formula: "B2 + 2.5×B3 − 1.5×(B8 + B11) − 0.25×B12",
+    bands: "Azul (B2) · Verde (B3) · NIR (B8) · SWIR1 (B11) · SWIR2 (B12)",
+    interpretation: "Automated Water Extraction Index com supressão de sombras (Feyisa et al., 2014). Desenvolvido especificamente para remover confusão entre corpos de água e sombras de nuvens, edifícios ou montanhas. Valores > 0 indicam água.",
+    lowLabel: "Sombra / solo", highLabel: "Água pura" },
+  { id: "wri", label: "WRI", short: "WRI", icon: <Activity size={13} />, group: "water",
+    formula: "WRI = (B3 + B4) / (B8 + B11)",
+    bands: "Verde (B3) · Vermelho (B4) · NIR (B8) · SWIR1 (B11)",
+    interpretation: "Water Ratio Index (Shen & Li, 2010). Razão espectral onde comprimentos de onda visíveis são contrastados com infravermelho. Valores > 1.0 delimitam corpos hídricos superficiais.",
+    lowLabel: "Terra firme (<1.0)", highLabel: "Água (>1.0)" },
+  { id: "wi2015", label: "WI2015", short: "WI2015", icon: <TrendingUp size={13} />, group: "water",
+    formula: "1.7204 + 171×B3 + 3×B4 − 70×B8 − 45×B11 − 71×B12",
+    bands: "Verde (B3) · Vermelho (B4) · NIR (B8) · SWIR1 (B11) · SWIR2 (B12)",
+    interpretation: "Water Index 2015 (Fisher et al., 2016). Modelo empírico multiespectral calibrado com coeficientes de regressão de alta precisão para classificação fiável de corpos de água.",
+    lowLabel: "Não-água", highLabel: "Água detectada" },
 
   // ── Climate & Disasters indices ──────────────────────────────────────
   { id: "precipitation", label: "Precipitação", short: "CHIRPS", icon: <Droplets size={13} />, group: "climate",
@@ -574,27 +584,6 @@ function IndexLegendView({
     );
   }
 
-  if (activeTab === "coastal_erosion") {
-    const classes = [
-      { name: "Terreno Estável (sem alteração)", color: "#1a9850" },
-      { name: "Ganho de Terra / Progradação", color: "#fee08b" },
-      { name: "Perda de Terra / Erosão Costeira", color: "#e53935" },
-      { name: "Água Permanente (JRC GSW)", color: "#0064c8" },
-    ];
-    return (
-      <div className="space-y-1 text-xs">
-        <div className="text-[10px] text-slate-500 font-semibold mb-1">Transição Linha de Costa (1984–2021)</div>
-        <div className="space-y-1">
-          {classes.map((c, i) => (
-            <div key={i} className="flex items-center gap-1.5 py-0.5">
-              <span className="inline-block w-3 h-3 rounded shrink-0" style={{ background: c.color }} />
-              <span className="text-slate-700 dark:text-slate-300 truncate text-[11px]">{c.name}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   if (activeTab === "landcover") {
     const classes = [
@@ -916,41 +905,44 @@ function GeeErrorAlert({
 
 // ── GEE Analysis Panel ─────────────────────────────────────────────────────────
 
-function GeeAnalysisPanel({
-  activeIndex, province, district, geometry, geeStatus, onTileReady, onOpenCompare,
+// ── Geospatial Analytics Dashboard Panel ──────────────────────────────────────────
+
+function GeospatialAnalyticsPanel({
+  activeIndex,
+  province,
+  district,
+  geometry,
+  geeStatus,
+  result,
+  isCalculating,
+  startDate,
+  endDate,
+  cloudPct,
+  onOpenCompare,
 }: {
   activeIndex: SpectralIndex;
   province: string | null;
   district: string | null;
   geometry?: Record<string, unknown> | null;
   geeStatus: GeeStatus;
-  onTileReady: (result: GeeResult | null) => void;
+  result: GeeResult | null;
+  isCalculating?: boolean;
+  startDate: string;
+  endDate: string;
+  cloudPct: number;
   onOpenCompare?: () => void;
 }) {
-  const { connectGee } = useGeeAuth();
-  const [startDate, setStartDate] = useState("2023-01-01");
-  const [endDate, setEndDate]     = useState("2023-12-31");
-  const [cloudPct, setCloudPct]   = useState(30);
-  const [running, setRunning]     = useState(false);
-  const [error, setError]         = useState<string | null>(null);
-  const [result, setResult]       = useState<GeeResult | null>(null);
-
   const { activeProject, saveRunToActiveProject } = useProject();
   const { toast } = useToast();
   const [savingRun, setSavingRun] = useState(false);
   const [runSaved, setRunSaved]   = useState(false);
-
-  // Sync project period when active project changes
-  useEffect(() => {
-    if (activeProject?.period) {
-      if (activeProject.period.startDate) setStartDate(activeProject.period.startDate);
-      if (activeProject.period.endDate) setEndDate(activeProject.period.endDate);
-    }
-  }, [activeProject]);
+  const [methodologyOpen, setMethodologyOpen] = useState(false);
 
   useEffect(() => {
     setRunSaved(false);
   }, [activeIndex, result]);
+
+  const def = INDEX_DEFS.find(d => d.id === activeIndex)!;
 
   async function handleSaveRunToProject() {
     if (!activeProject) {
@@ -976,9 +968,9 @@ function GeeAnalysisPanel({
           end: endDate,
         },
         metrics: {
-          min: result.stats.p10,
-          max: result.stats.p90,
-          mean: result.stats.p50,
+          min: result.stats.p10 ?? result.stats.min,
+          max: result.stats.p90 ?? result.stats.max,
+          mean: result.stats.mean ?? result.stats.p50,
           cloudCoverPercentage: cloudPct,
         },
         tileUrl: result.tileUrl,
@@ -1000,139 +992,136 @@ function GeeAnalysisPanel({
     }
   }
 
-  const def = INDEX_DEFS.find(d => d.id === activeIndex)!;
-
-  async function runAnalysis() {
-    setRunning(true);
-    setError(null);
-    onTileReady(null);
-    try {
-      const res = await apiFetch("/geomoz-api/gee/index", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          index:      activeIndex,
-          province:   province || null,
-          district:   district || null,
-          geometry:   geometry ?? null,
-          start_date: startDate,
-          end_date:   endDate,
-          cloud_pct:  cloudPct,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail ?? "Erro GEE desconhecido");
-      }
-      const data: GeeResult = await res.json();
-      setResult(data);
-      onTileReady(data);
-    } catch (e) {
-      setError(String(e instanceof Error ? e.message : e));
-    } finally {
-      setRunning(false);
-    }
-  }
-
-  const statLabels: Record<string, string> = {
-    p10: "P10", p25: "P25", p50: "Mediana", p75: "P75", p90: "P90",
-  };
+  const stats = result?.stats || {};
+  const hasStats = Object.keys(stats).length > 0;
 
   return (
     <div className="space-y-4">
-      {/* Parameters */}
-      <div>
-        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">Parâmetros GEE</h4>
-        <div className="space-y-2.5">
-          <div>
-            <label className="text-xs text-slate-500 mb-1 block">Data início</label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500" />
-          </div>
-          <div>
-            <label className="text-xs text-slate-500 mb-1 block">Data fim</label>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500" />
-          </div>
-          <div>
-            <label className="text-xs text-slate-500 mb-1 block">
-              Cobertura de nuvens máx — <strong className="text-slate-700">{cloudPct}%</strong>
-            </label>
-            <input type="range" min={5} max={80} value={cloudPct} onChange={e => setCloudPct(Number(e.target.value))}
-              className="w-full accent-sky-500" />
-          </div>
-          <div>
-            <label className="text-xs text-slate-500 mb-1 block">Área de análise (clipping)</label>
-            <div className="text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 flex items-center gap-1.5">
-              <MapPin size={12} className="text-sky-500" />
-              {district
-                ? <span>{district} <span className="text-slate-400">·</span> {province}</span>
-                : province
-                  ? <span>{province} <span className="text-slate-400">(toda a província)</span></span>
-                  : <span className="text-slate-500">Moçambique (toda)</span>}
-            </div>
-          </div>
+      {/* Header with Title and Sensor Resolution */}
+      <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
+            {def.short}
+          </span>
+          <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">{def.label}</span>
         </div>
+        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+          {def.group === "spectral" ? "Sentinel-2 · 10–20 m" : def.group === "landsat" ? "Landsat 8 · 30 m" : def.group === "terrain" ? "Copernicus DEM · 30 m" : "Multi-sensor"}
+        </p>
       </div>
 
-      {/* Run button */}
-      <button
-        onClick={runAnalysis}
-        disabled={running}
-        className="w-full flex items-center justify-center gap-2 py-2.5 bg-sky-500 hover:bg-sky-600 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-sky-200"
-      >
-        {running
-          ? <><Loader2 size={14} className="animate-spin" /> A processar no GEE…</>
-          : <><Play size={14} /> Calcular {def.short} com Sentinel-2</>}
-      </button>
-
-      {onOpenCompare && (
-        <button
-          type="button"
-          onClick={onOpenCompare}
-          className="w-full flex items-center justify-center gap-2 py-2 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold rounded-xl transition-all shadow-xs"
-          title="Comparar este índice entre o período padrão 2023 e o período recente"
-        >
-          <Columns2 size={13} />
-          <span>Comparar {def.short} (2023 ⟷ Recente)</span>
-        </button>
-      )}
-
-      {running && (
-        <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-xs text-sky-700 leading-relaxed">
-          <Loader2 size={12} className="inline animate-spin mr-1.5" />
-          O GEE está a carregar cenas Sentinel-2, aplicar máscara de nuvens e calcular o índice. Tipicamente 5–20 s.
+      {/* Loading state banner */}
+      {isCalculating && (
+        <div className="bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 rounded-xl p-3 text-xs text-sky-700 dark:text-sky-300 leading-relaxed flex items-center gap-2">
+          <Loader2 size={16} className="animate-spin text-sky-600 shrink-0" />
+          <span>O GEE está a processar a composição multitemporal e a extrair as estatísticas zonais (5–20 s)…</span>
         </div>
       )}
 
-      {/* Error */}
-      {error && (
-        <GeeErrorAlert
-          error={error}
-          onReconnect={async () => {
-            await connectGee();
-            setError(null);
-          }}
-        />
+      {/* Status banner when result is available */}
+      {result && !isCalculating && (
+        <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-1.5 font-semibold text-emerald-800 dark:text-emerald-300 text-xs">
+              <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" />
+              <span>Processamento GEE Concluído</span>
+            </div>
+            <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 px-1.5 py-0.5 rounded font-mono">
+              24h Ativo
+            </span>
+          </div>
+          <div className="text-[11px] text-emerald-700 dark:text-emerald-400 space-y-0.5">
+            <div><strong>{result.sceneCount}</strong> cenas Sentinel-2 calibradas</div>
+            <div>Período: <strong>{result.dateRange}</strong></div>
+          </div>
+        </div>
       )}
 
-      {/* Result */}
-      {result && !running && (
-        <div className="space-y-3">
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-            <div className="flex items-center justify-between mb-1.5">
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 size={13} className="text-emerald-600" />
-                <span className="text-xs font-semibold text-emerald-700">Análise GEE completa</span>
+      {/* Quantitative Analytics Dashboard Cards */}
+      <div>
+        <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+          <span>Métricas Geoestatísticas</span>
+          {result && <span className="text-[10px] text-sky-600 dark:text-sky-400 font-normal">Recorte Zonal</span>}
+        </h4>
+
+        {hasStats ? (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">Área Recortada</div>
+              <div className="text-sm font-bold text-slate-800 dark:text-slate-100 font-mono mt-0.5 truncate">
+                {stats.areaKm2 ? `${stats.areaKm2.toLocaleString()} km²` : district ? `${district}` : province ? `${province}` : "Moçambique"}
               </div>
             </div>
-            <div className="text-xs text-emerald-700 space-y-0.5">
-              <div>{result.sceneCount} cenas Sentinel-2 usadas</div>
-              <div>Período: {result.dateRange}</div>
+
+            <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">Média (μ)</div>
+              <div className="text-sm font-bold text-slate-800 dark:text-slate-100 font-mono mt-0.5">
+                {stats.mean != null ? stats.mean.toFixed(3) : "—"}
+              </div>
+            </div>
+
+            <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">Mediana (P50)</div>
+              <div className="text-sm font-bold text-slate-800 dark:text-slate-100 font-mono mt-0.5">
+                {stats.p50 != null ? stats.p50.toFixed(3) : "—"}
+              </div>
+            </div>
+
+            <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">Desvio Padrão (σ)</div>
+              <div className="text-sm font-bold text-slate-800 dark:text-slate-100 font-mono mt-0.5">
+                {stats.stdDev != null ? stats.stdDev.toFixed(3) : "—"}
+              </div>
+            </div>
+
+            <div className="col-span-2 bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
+              <div className="flex justify-between items-center text-[10px] text-slate-400 font-semibold mb-1">
+                <span>Distribuição Percentil (P10 → P90)</span>
+                <span className="font-mono text-slate-600 dark:text-slate-300">
+                  {stats.p10 != null && stats.p90 != null ? `[${stats.p10.toFixed(2)}, ${stats.p90.toFixed(2)}]` : "—"}
+                </span>
+              </div>
+              {/* Distribution visual bar */}
+              <div className="relative h-2 w-full rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                <div
+                  className="absolute inset-y-0 bg-gradient-to-r from-sky-400 via-emerald-400 to-indigo-500 rounded-full"
+                  style={{ left: "10%", right: "10%" }}
+                />
+              </div>
+              <div className="flex justify-between text-[9px] text-slate-400 mt-1 font-mono">
+                <span>P10: {stats.p10 != null ? stats.p10.toFixed(2) : "—"}</span>
+                <span>P25: {stats.p25 != null ? stats.p25.toFixed(2) : "—"}</span>
+                <span>P75: {stats.p75 != null ? stats.p75.toFixed(2) : "—"}</span>
+                <span>P90: {stats.p90 != null ? stats.p90.toFixed(2) : "—"}</span>
+              </div>
             </div>
           </div>
+        ) : (
+          <div className="bg-slate-50 dark:bg-slate-800/50 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-3 text-center">
+            <BarChart2 size={24} className="mx-auto text-slate-400 mb-1.5" />
+            <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">Aguardando cálculo zonal</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Clique em <strong>Calcular {def.short}</strong> na barra lateral esquerda para gerar as métricas geoestatísticas.
+            </p>
+          </div>
+        )}
+      </div>
 
-          {/* Save to Project Workspace Action */}
+      {/* Action Buttons: Compare & Save to Project */}
+      <div className="space-y-2 pt-1">
+        {onOpenCompare && (
+          <button
+            type="button"
+            onClick={onOpenCompare}
+            className="w-full flex items-center justify-center gap-2 py-2 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+            title="Comparar este índice entre o período padrão 2023 e o período recente"
+          >
+            <Columns2 size={13} />
+            <span>Comparar {def.short} (2023 ⟷ Recente)</span>
+          </button>
+        )}
+
+        {result && (
           <div className="bg-sky-50/80 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 rounded-xl p-3 space-y-2">
             <div className="flex items-center justify-between text-xs">
               <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200 truncate">
@@ -1151,7 +1140,7 @@ function GeeAnalysisPanel({
               type="button"
               onClick={handleSaveRunToProject}
               disabled={savingRun || runSaved || !activeProject}
-              className={`w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all ${
+              className={`w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 runSaved
                   ? "bg-emerald-600 text-white"
                   : activeProject
@@ -1177,29 +1166,56 @@ function GeeAnalysisPanel({
               )}
             </button>
           </div>
+        )}
+      </div>
 
-          {Object.keys(result.stats).length > 0 && (
-            <div>
-              <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Estatísticas do índice</h5>
-              <div className="grid grid-cols-2 gap-1.5">
-                {Object.entries(result.stats).map(([k, v]) => (
-                  <div key={k} className="bg-slate-50 rounded-lg p-2 text-center">
-                    <div className="text-xs text-slate-400">{statLabels[k] ?? k}</div>
-                    <div className="text-sm font-bold text-slate-800 font-mono">
-                      {typeof v === "number" ? v.toFixed(3) : String(v ?? "—")}
-                    </div>
-                  </div>
-                ))}
-              </div>
+      {/* Escala / Legenda do Índice */}
+      <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+          Escala Espectral
+        </h4>
+        <ColormapLegend index={activeIndex} />
+      </div>
 
-            </div>
-          )}
-
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
-            <strong>Nota:</strong> O tile GEE é válido ~24 h. Clique novamente em "Calcular" para refrescar.
+      {/* Collapsible Methodology, Geoscientific Interpretation & Formula */}
+      <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setMethodologyOpen(v => !v)}
+          className="w-full flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-800/70 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-1.5">
+            <Info size={13} className="text-sky-500" />
+            <span>Interpretação Geocientífica & Fórmula</span>
           </div>
-        </div>
-      )}
+          {methodologyOpen ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
+        </button>
+
+        {methodologyOpen && (
+          <div className="p-3 space-y-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 text-xs">
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                Interpretação Geocientífica
+              </span>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                {def.interpretation}
+              </p>
+            </div>
+
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                Fórmula Matemática
+              </span>
+              <code className="block bg-slate-900 text-emerald-300 text-xs rounded-lg p-2.5 font-mono leading-relaxed overflow-x-auto">
+                {def.formula}
+              </code>
+              <p className="text-[11px] text-slate-400 mt-1.5">
+                <span className="font-semibold text-slate-500 dark:text-slate-400">Bandas: </span>{def.bands}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1292,13 +1308,13 @@ function LineamentsPanel({
   return (
     <div className="space-y-4">
       <div>
-        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
+        <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2.5">
           Parâmetros Estruturais
         </h4>
         <div className="space-y-2.5">
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">
-              Suavização DEM — <strong className="text-slate-700">{smoothM} m</strong>
+            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
+              Suavização DEM — <strong className="text-slate-700 dark:text-slate-200">{smoothM} m</strong>
             </label>
             <input type="range" min={10} max={120} step={10} value={smoothM}
               onChange={e => setSmoothM(Number(e.target.value))}
@@ -1308,16 +1324,16 @@ function LineamentsPanel({
             </p>
           </div>
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">
-              Raio densidade — <strong className="text-slate-700">{radiusM} m</strong>
+            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
+              Raio densidade — <strong className="text-slate-700 dark:text-slate-200">{radiusM} m</strong>
             </label>
             <input type="range" min={250} max={2500} step={250} value={radiusM}
               onChange={e => setRadiusM(Number(e.target.value))}
               className="w-full accent-fuchsia-500" />
           </div>
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Área (clipping)</label>
-            <div className="text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 flex items-center gap-1.5">
+            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Área (clipping)</label>
+            <div className="text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
               <MapPin size={12} className="text-fuchsia-500" />
               {district
                 ? <span>{district} <span className="text-slate-400">·</span> {province}</span>
@@ -1330,40 +1346,40 @@ function LineamentsPanel({
       </div>
 
       <button onClick={run} disabled={running}
-        className="w-full flex items-center justify-center gap-2 py-2.5 bg-fuchsia-600 hover:bg-fuchsia-700 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-fuchsia-200">
+        className="w-full flex items-center justify-center gap-2 py-2.5 bg-fuchsia-600 hover:bg-fuchsia-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-fuchsia-200 cursor-pointer">
         {running
           ? <><Loader2 size={14} className="animate-spin" /> A detectar estruturas…</>
           : <><Activity size={14} /> Detectar Lineamentos</>}
       </button>
 
       {running && (
-        <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-xl p-3 text-xs text-fuchsia-700 leading-relaxed">
+        <div className="bg-fuchsia-50 dark:bg-fuchsia-950/40 border border-fuchsia-200 dark:border-fuchsia-800 rounded-xl p-3 text-xs text-fuchsia-700 dark:text-fuchsia-300 leading-relaxed">
           <Loader2 size={12} className="inline animate-spin mr-1.5" />
           Hillshade multi-azimute + Canny + Sobel. Tipicamente 15–40 s.
         </div>
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl p-3 text-xs text-red-700 dark:text-red-300">
           <strong>Erro:</strong> {error}
         </div>
       )}
 
       {result && !running && (
         <div className="space-y-3">
-          <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-xl p-3">
+          <div className="bg-fuchsia-50 dark:bg-fuchsia-950/40 border border-fuchsia-200 dark:border-fuchsia-800 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1.5">
-              <CheckCircle2 size={13} className="text-fuchsia-600" />
-              <span className="text-xs font-semibold text-fuchsia-700">Lineamentos detectados</span>
+              <CheckCircle2 size={13} className="text-fuchsia-600 dark:text-fuchsia-400" />
+              <span className="text-xs font-semibold text-fuchsia-700 dark:text-fuchsia-300">Lineamentos detectados</span>
             </div>
             <div className="grid grid-cols-2 gap-1.5 mt-2">
-              <div className="bg-white/70 rounded-lg p-2 text-center">
-                <div className="text-[10px] text-slate-500 uppercase">Orientação</div>
-                <div className="text-sm font-bold text-fuchsia-700">{dominantOrientation(result.rose)}</div>
+              <div className="bg-white/70 dark:bg-slate-800/80 rounded-lg p-2 text-center">
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">Orientação</div>
+                <div className="text-sm font-bold text-fuchsia-700 dark:text-fuchsia-400">{dominantOrientation(result.rose)}</div>
               </div>
-              <div className="bg-white/70 rounded-lg p-2 text-center">
-                <div className="text-[10px] text-slate-500 uppercase">Densidade média</div>
-                <div className="text-sm font-bold text-fuchsia-700">
+              <div className="bg-white/70 dark:bg-slate-800/80 rounded-lg p-2 text-center">
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">Densidade média</div>
+                <div className="text-sm font-bold text-fuchsia-700 dark:text-fuchsia-400">
                   {result.meanDensity != null ? result.meanDensity.toFixed(3) : "—"}
                 </div>
               </div>
@@ -1371,10 +1387,10 @@ function LineamentsPanel({
           </div>
 
           <div>
-            <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+            <h5 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
               <Compass size={12} /> Rosa de Direcções
             </h5>
-            <div className="bg-white border border-slate-200 rounded-xl p-2">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2">
               <RoseDiagram rose={result.rose} />
               <p className="text-[10px] text-center text-slate-400 mt-1">
                 {result.sampleCount.toLocaleString()} pixels amostrados
@@ -1431,8 +1447,8 @@ function TargetingPanel({
 }) {
   const [presets, setPresets]   = useState<MineralPreset[]>([]);
   const [mineral, setMineral]   = useState("gold");
-  const [startDate, setStart]   = useState("2023-01-01");
-  const [endDate, setEnd]       = useState("2023-12-31");
+  const [startDate, setStart]   = useState("2023-11-01");
+  const [endDate, setEnd]       = useState(() => new Date().toISOString().split("T")[0]);
   const [cloudPct, setCloudPct] = useState(30);
   const [threshold, setTh]      = useState(0.7);
   const [running, setRunning]   = useState(false);
@@ -1520,41 +1536,41 @@ function TargetingPanel({
         </h4>
         <div className="space-y-2.5">
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Mineral</label>
+            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Mineral</label>
             <div className="relative">
               <select value={mineral} onChange={e => setMineral(e.target.value)}
-                className="w-full appearance-none text-sm bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500">
-                {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                className="w-full appearance-none text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-3 pr-8 py-2 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                {presets.map(p => <option key={p.id} value={p.id} className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">{p.name}</option>)}
               </select>
               <ChevronDown className="absolute right-2.5 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
             </div>
           </div>
           {current && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-[11px] text-amber-800 leading-relaxed">
+            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg p-2.5 text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
               {current.description}
             </div>
           )}
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Data início</label>
+            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Data início</label>
             <input type="date" value={startDate} onChange={e => setStart(e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+              className="w-full text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
           </div>
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Data fim</label>
+            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Data fim</label>
             <input type="date" value={endDate} onChange={e => setEnd(e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+              className="w-full text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
           </div>
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">
-              Nuvens máx — <strong className="text-slate-700">{cloudPct}%</strong>
+            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
+              Nuvens máx — <strong className="text-slate-700 dark:text-slate-200">{cloudPct}%</strong>
             </label>
             <input type="range" min={5} max={80} value={cloudPct}
               onChange={e => setCloudPct(Number(e.target.value))}
               className="w-full accent-amber-500" />
           </div>
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">
-              Limiar favorável — <strong className="text-slate-700">{Math.round(threshold * 100)}</strong>
+            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
+              Limiar favorável — <strong className="text-slate-700 dark:text-slate-200">{Math.round(threshold * 100)}</strong>
             </label>
             <input type="range" min={0.4} max={0.9} step={0.05} value={threshold}
               onChange={e => setTh(Number(e.target.value))}
@@ -1564,8 +1580,8 @@ function TargetingPanel({
             </p>
           </div>
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Área (clipping)</label>
-            <div className="text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 flex items-center gap-1.5">
+            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Área (clipping)</label>
+            <div className="text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
               <MapPin size={12} className="text-amber-500" />
               {district
                 ? <span>{district} <span className="text-slate-400">·</span> {province}</span>
@@ -1579,7 +1595,7 @@ function TargetingPanel({
 
       {current && (
         <div>
-          <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+          <h5 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
             Pesos do modelo
           </h5>
           <div className="space-y-1">
@@ -1587,13 +1603,13 @@ function TargetingPanel({
               const inv = current.invert.includes(k);
               return (
                 <div key={k} className="flex items-center gap-2 text-xs">
-                  <span className="w-24 text-slate-600 truncate">
+                  <span className="w-24 text-slate-600 dark:text-slate-300 truncate">
                     {inv && <span className="text-rose-500 mr-0.5">¬</span>}{k}
                   </span>
-                  <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">
+                  <div className="flex-1 bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
                     <div className="h-full bg-amber-500" style={{ width: `${v * 100}%` }} />
                   </div>
-                  <span className="font-mono text-slate-500 w-9 text-right">{(v * 100).toFixed(0)}%</span>
+                  <span className="font-mono text-slate-500 dark:text-slate-400 w-9 text-right">{(v * 100).toFixed(0)}%</span>
                 </div>
               );
             })}
@@ -1602,31 +1618,31 @@ function TargetingPanel({
       )}
 
       <button onClick={run} disabled={running || !mineral}
-        className="w-full flex items-center justify-center gap-2 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-amber-200">
+        className="w-full flex items-center justify-center gap-2 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-amber-200 cursor-pointer">
         {running
           ? <><Loader2 size={14} className="animate-spin" /> A calcular favorabilidade…</>
           : <><Target size={14} /> Calcular Potencial Mineral</>}
       </button>
 
       {running && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 leading-relaxed">
+        <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
           <Loader2 size={12} className="inline animate-spin mr-1.5" />
           A combinar Sentinel-2 + DEM + lineamentos. Pode demorar 30–60 s.
         </div>
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl p-3 text-xs text-red-700 dark:text-red-300">
           <strong>Erro:</strong> {error}
         </div>
       )}
 
       {result && !running && (
         <div className="space-y-3">
-          <div className="bg-white border border-amber-200 rounded-xl p-3">
+          <div className="bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900/60 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1.5">
               <Gem size={13} className="text-amber-600" />
-              <span className="text-xs font-semibold text-amber-700">{result.mineralName}</span>
+              <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">{result.mineralName}</span>
             </div>
             <FavorabilityGauge score={(result.stats.meanScore ?? 0) * 100} />
             <p className="text-[10px] text-center text-slate-400 -mt-2">
@@ -1635,50 +1651,50 @@ function TargetingPanel({
           </div>
 
           <div className="grid grid-cols-3 gap-1.5">
-            <div className="bg-slate-50 rounded-lg p-2 text-center">
+            <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-2 text-center">
               <div className="text-[10px] text-slate-400 uppercase">P90</div>
-              <div className="text-sm font-bold text-slate-800">
+              <div className="text-sm font-bold text-slate-800 dark:text-slate-100">
                 {result.stats.p90 != null ? (result.stats.p90 * 100).toFixed(0) : "—"}
               </div>
             </div>
-            <div className="bg-slate-50 rounded-lg p-2 text-center">
+            <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-2 text-center">
               <div className="text-[10px] text-slate-400 uppercase">P95</div>
-              <div className="text-sm font-bold text-slate-800">
+              <div className="text-sm font-bold text-slate-800 dark:text-slate-100">
                 {result.stats.p95 != null ? (result.stats.p95 * 100).toFixed(0) : "—"}
               </div>
             </div>
-            <div className="bg-slate-50 rounded-lg p-2 text-center">
+            <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-2 text-center">
               <div className="text-[10px] text-slate-400 uppercase">P99</div>
-              <div className="text-sm font-bold text-slate-800">
+              <div className="text-sm font-bold text-slate-800 dark:text-slate-100">
                 {result.stats.p99 != null ? (result.stats.p99 * 100).toFixed(0) : "—"}
               </div>
             </div>
           </div>
 
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-            <div className="text-[10px] text-amber-700 uppercase tracking-wider">
+          <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
+            <div className="text-[10px] text-amber-700 dark:text-amber-300 uppercase tracking-wider">
               Área favorável (score ≥ {Math.round(result.scoreThreshold * 100)})
             </div>
-            <div className="text-xl font-bold text-amber-800 mt-0.5">
+            <div className="text-xl font-bold text-amber-800 dark:text-amber-200 mt-0.5">
               {result.stats.favorableKm2 != null
                 ? `${result.stats.favorableKm2.toFixed(1)} km²`
                 : "—"}
             </div>
-            <div className="text-[10px] text-amber-600 mt-1 font-mono break-all">
+            <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-mono break-all">
               {result.formula}
             </div>
           </div>
 
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-[10px] text-slate-500 leading-relaxed">
-            <strong className="text-slate-700">Aviso:</strong> Targeting heurístico — combina
+          <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
+            <strong className="text-slate-700 dark:text-slate-200">Aviso:</strong> Targeting heurístico — combina
             sensoriamento remoto + DEM. Resultado é indicativo e não substitui
             campanhas geofísicas / amostragem geoquímica.
           </div>
 
           {/* Spatial overlap report */}
-          <div className="border-t border-slate-100 pt-3">
+          <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
             <button onClick={runOverlap} disabled={overlapRunning}
-              className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-indigo-200">
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-indigo-200 cursor-pointer">
               {overlapRunning
                 ? <><Loader2 size={14} className="animate-spin" /> A cruzar com camadas admin…</>
                 : <><Layers size={14} /> Cruzamento Espacial (relatório)</>}
@@ -1690,14 +1706,14 @@ function TargetingPanel({
           </div>
 
           {overlapRunning && (
-            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-xs text-indigo-700 leading-relaxed">
+            <div className="bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl p-3 text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">
               <Loader2 size={12} className="inline animate-spin mr-1.5" />
               A vetorizar zonas favoráveis (300 m) e a intersectar com as camadas administrativas. 30–90 s.
             </div>
           )}
 
           {overlapError && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+            <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl p-3 text-xs text-red-700 dark:text-red-300">
               <strong>Erro:</strong> {overlapError}
             </div>
           )}
@@ -1705,48 +1721,48 @@ function TargetingPanel({
           {overlapRes && !overlapRunning && (
             <div className="space-y-2.5">
               <div className="grid grid-cols-2 gap-1.5">
-                <div className="bg-indigo-50 rounded-lg p-2 text-center">
-                  <div className="text-[10px] text-indigo-500 uppercase">Zonas</div>
-                  <div className="text-sm font-bold text-indigo-800">{overlapRes.report.zoneCount}</div>
+                <div className="bg-indigo-50 dark:bg-indigo-950/40 rounded-lg p-2 text-center">
+                  <div className="text-[10px] text-indigo-500 dark:text-indigo-400 uppercase">Zonas</div>
+                  <div className="text-sm font-bold text-indigo-800 dark:text-indigo-200">{overlapRes.report.zoneCount}</div>
                 </div>
-                <div className="bg-indigo-50 rounded-lg p-2 text-center">
-                  <div className="text-[10px] text-indigo-500 uppercase">Área favorável</div>
-                  <div className="text-sm font-bold text-indigo-800">
+                <div className="bg-indigo-50 dark:bg-indigo-950/40 rounded-lg p-2 text-center">
+                  <div className="text-[10px] text-indigo-500 dark:text-indigo-400 uppercase">Área favorável</div>
+                  <div className="text-sm font-bold text-indigo-800 dark:text-indigo-200">
                     {overlapRes.report.totalFavorableKm2.toLocaleString("pt-PT", { maximumFractionDigits: 1 })} km²
                   </div>
                 </div>
-                <div className="bg-slate-50 rounded-lg p-2 text-center">
+                <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-2 text-center">
                   <div className="text-[10px] text-slate-400 uppercase">Aldeias dentro</div>
-                  <div className="text-sm font-bold text-slate-800">{overlapRes.report.villageCount}</div>
+                  <div className="text-sm font-bold text-slate-800 dark:text-slate-100">{overlapRes.report.villageCount}</div>
                 </div>
-                <div className="bg-slate-50 rounded-lg p-2 text-center">
+                <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-2 text-center">
                   <div className="text-[10px] text-slate-400 uppercase">Postos admin</div>
-                  <div className="text-sm font-bold text-slate-800">{overlapRes.report.adminPostCount}</div>
+                  <div className="text-sm font-bold text-slate-800 dark:text-slate-100">{overlapRes.report.adminPostCount}</div>
                 </div>
               </div>
 
               {overlapRes.report.districts.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <h5 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                    <h5 className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Área favorável por distrito
                     </h5>
                     <button onClick={downloadOverlapCsv}
-                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium">
+                      className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium cursor-pointer">
                       ⇩ CSV
                     </button>
                   </div>
                   <div className="max-h-44 overflow-y-auto space-y-1 pr-0.5">
                     {overlapRes.report.districts.map((d, i) => (
                       <div key={i} className="flex items-center gap-2 text-[11px]">
-                        <span className="flex-1 text-slate-700 truncate" title={`${d.district} · ${d.province ?? ""}`}>
+                        <span className="flex-1 text-slate-700 dark:text-slate-200 truncate" title={`${d.district} · ${d.province ?? ""}`}>
                           {d.district}
                           {d.province && <span className="text-slate-400"> · {d.province}</span>}
                         </span>
-                        <div className="w-14 bg-slate-100 h-1.5 rounded-full overflow-hidden shrink-0">
+                        <div className="w-14 bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden shrink-0">
                           <div className="h-full bg-indigo-500" style={{ width: `${Math.min(100, d.pct)}%` }} />
                         </div>
-                        <span className="font-mono text-slate-500 w-16 text-right shrink-0">
+                        <span className="font-mono text-slate-500 dark:text-slate-400 w-16 text-right shrink-0">
                           {d.areaKm2.toLocaleString("pt-PT", { maximumFractionDigits: 1 })} km²
                         </span>
                       </div>
@@ -1757,13 +1773,13 @@ function TargetingPanel({
 
               {overlapRes.report.villages.length > 0 && (
                 <div>
-                  <h5 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                  <h5 className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
                     Aldeias nas zonas favoráveis {overlapRes.report.villageCount > overlapRes.report.villages.length
                       ? `(primeiras ${overlapRes.report.villages.length} de ${overlapRes.report.villageCount})` : ""}
                   </h5>
                   <div className="max-h-28 overflow-y-auto flex flex-wrap gap-1">
                     {overlapRes.report.villages.map((v, i) => (
-                      <span key={i} className="text-[10px] bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">
+                      <span key={i} className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full px-2 py-0.5">
                         {v.name}
                       </span>
                     ))}
@@ -1772,7 +1788,7 @@ function TargetingPanel({
               )}
 
               {overlapRes.report.notes.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-[10px] text-amber-700 space-y-0.5">
+                <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg p-2 text-[10px] text-amber-700 dark:text-amber-300 space-y-0.5">
                   {overlapRes.report.notes.map((n, i) => <div key={i}>{n}</div>)}
                 </div>
               )}
@@ -1834,11 +1850,11 @@ function SpiNdviPanel({
         </h4>
         <div className="space-y-2.5">
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Ano de análise</label>
+            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Ano de análise</label>
             <div className="relative">
               <select value={year} onChange={e => setYear(Number(e.target.value))}
-                className="w-full appearance-none text-sm bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500">
-                {years.map(y => <option key={y} value={y}>{y}</option>)}
+                className="w-full appearance-none text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-3 pr-8 py-2 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                {years.map(y => <option key={y} value={y} className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">{y}</option>)}
               </select>
               <ChevronDown className="absolute right-2.5 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
             </div>
@@ -1847,57 +1863,57 @@ function SpiNdviPanel({
             </p>
           </div>
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">
-              Amostras para o scatter — <strong className="text-slate-700">{samples}</strong>
+            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
+              Amostras para o scatter — <strong className="text-slate-700 dark:text-slate-200">{samples}</strong>
             </label>
             <input type="range" min={100} max={1000} step={50} value={samples}
               onChange={e => setSamples(Number(e.target.value))}
               className="w-full accent-orange-500" />
           </div>
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Área (clipping)</label>
-            <div className="text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 flex items-center gap-1.5">
+            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Área (clipping)</label>
+            <div className="text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
               <MapPin size={12} className="text-orange-500" />
               {district
                 ? <span>{district} <span className="text-slate-400">·</span> {province}</span>
                 : province
                   ? <span>{province} <span className="text-slate-400">(toda a província)</span></span>
-                  : <span className="text-slate-500">Moçambique (toda)</span>}
+                  : <span className="text-slate-500 dark:text-slate-400">Moçambique (toda)</span>}
             </div>
           </div>
         </div>
       </div>
 
       <button onClick={run} disabled={running}
-        className="w-full flex items-center justify-center gap-2 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-orange-200">
+        className="w-full flex items-center justify-center gap-2 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-orange-200 cursor-pointer">
         {running
           ? <><Loader2 size={14} className="animate-spin" /> A calcular SPI × NDVI…</>
           : <><Droplets size={14} /> Calcular SPI × NDVI</>}
       </button>
 
       {running && (
-        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-xs text-orange-700 leading-relaxed">
+        <div className="bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-900/60 rounded-xl p-3 text-xs text-orange-700 dark:text-orange-300 leading-relaxed">
           <Loader2 size={12} className="inline animate-spin mr-1.5" />
           A somar precipitação CHIRPS de {year - 2001 + 1} anos, calcular anomalia e amostrar NDVI MODIS. Tipicamente 15–40 s.
         </div>
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl p-3 text-xs text-red-700 dark:text-red-300">
           <strong>Erro:</strong> {error}
         </div>
       )}
 
       {result && !running && (
         <div className="space-y-3">
-          <div className="bg-white border border-orange-200 rounded-xl p-3">
+          <div className="bg-white dark:bg-slate-900 border border-orange-200 dark:border-orange-900/60 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1.5">
               <Droplets size={13} className="text-orange-600" />
-              <span className="text-xs font-semibold text-orange-700">{result.name}</span>
+              <span className="text-xs font-semibold text-orange-700 dark:text-orange-300">{result.name}</span>
             </div>
             <div className="text-center py-1">
               <div className="text-[10px] text-slate-400 uppercase tracking-wider">Correlação Pearson (SPI vs NDVI)</div>
-              <div className={`text-3xl font-bold ${r != null && Math.abs(r) >= 0.5 ? "text-orange-700" : "text-slate-700"}`}>
+              <div className={`text-3xl font-bold ${r != null && Math.abs(r) >= 0.5 ? "text-orange-700 dark:text-orange-400" : "text-slate-700 dark:text-slate-200"}`}>
                 {r != null ? r.toFixed(2) : "—"}
               </div>
               <div className="text-[10px] text-slate-400">
@@ -1911,36 +1927,36 @@ function SpiNdviPanel({
           </div>
 
           <div className="grid grid-cols-2 gap-1.5">
-            <div className="bg-slate-50 rounded-lg p-2 text-center">
+            <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-2 text-center">
               <div className="text-[10px] text-slate-400 uppercase">SPI médio</div>
-              <div className="text-sm font-bold text-slate-800">
+              <div className="text-sm font-bold text-slate-800 dark:text-slate-100">
                 {result.stats.meanSpi != null ? result.stats.meanSpi.toFixed(2) : "—"}
               </div>
             </div>
-            <div className="bg-slate-50 rounded-lg p-2 text-center">
+            <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-2 text-center">
               <div className="text-[10px] text-slate-400 uppercase">NDVI médio</div>
-              <div className="text-sm font-bold text-slate-800">
+              <div className="text-sm font-bold text-slate-800 dark:text-slate-100">
                 {result.stats.meanNdvi != null ? result.stats.meanNdvi.toFixed(2) : "—"}
               </div>
             </div>
           </div>
 
-          <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
-            <div className="text-[10px] text-orange-700 uppercase tracking-wider">
+          <div className="bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-900/60 rounded-xl p-3">
+            <div className="text-[10px] text-orange-700 dark:text-orange-300 uppercase tracking-wider">
               Área em seca (SPI &lt; −1)
             </div>
-            <div className="text-xl font-bold text-orange-800 mt-0.5">
+            <div className="text-xl font-bold text-orange-800 dark:text-orange-200 mt-0.5">
               {result.stats.droughtPct != null ? `${result.stats.droughtPct}%` : "—"}
               {result.stats.droughtKm2 != null && (
-                <span className="text-xs font-normal text-orange-600 ml-1.5">
+                <span className="text-xs font-normal text-orange-600 dark:text-orange-400 ml-1.5">
                   ({result.stats.droughtKm2.toLocaleString("pt-PT", { maximumFractionDigits: 0 })} km²)
                 </span>
               )}
             </div>
           </div>
 
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-[10px] text-slate-500 leading-relaxed">
-            <strong className="text-slate-700">Interpretação:</strong> SPI &lt; −1 indica seca
+          <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
+            <strong className="text-slate-700 dark:text-slate-200">Interpretação:</strong> SPI &lt; −1 indica seca
             meteorológica; correlação positiva SPI–NDVI sugere vegetação dependente da chuva
             (stress hídrico em anos secos). Correlação nula sugere vegetação com acesso a
             água subterrânea / irrigação.
@@ -2102,7 +2118,7 @@ function ProfilePanel({
         <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
           Perfil Topográfico
         </h4>
-        <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-xs text-sky-800 leading-relaxed">
+        <div className="bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-900/50 rounded-xl p-3 text-xs text-sky-800 dark:text-sky-300 leading-relaxed">
           <strong>Como usar:</strong> Clique no mapa para colocar pontos A → B (ou mais).
           Cada clique adiciona um ponto. Mínimo 2.
         </div>
@@ -2115,23 +2131,23 @@ function ProfilePanel({
           </h5>
           {points.length > 0 && (
             <button onClick={onReset}
-              className="text-xs text-slate-500 hover:text-rose-600 flex items-center gap-1">
+              className="text-xs text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 flex items-center gap-1 cursor-pointer">
               <X size={11} /> Limpar
             </button>
           )}
         </div>
         {points.length === 0 ? (
-          <div className="text-xs text-slate-400 italic px-3 py-4 bg-slate-50 border border-dashed border-slate-200 rounded-lg text-center">
+          <div className="text-xs text-slate-400 italic px-3 py-4 bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700 rounded-lg text-center">
             Clique no mapa para começar
           </div>
         ) : (
           <div className="space-y-1">
             {points.map((p, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs bg-slate-50 rounded-lg px-2 py-1.5">
+              <div key={i} className="flex items-center gap-2 text-xs bg-slate-50 dark:bg-slate-800/60 rounded-lg px-2 py-1.5">
                 <span className="w-5 h-5 rounded-full bg-sky-500 text-white flex items-center justify-center font-bold text-[10px]">
                   {String.fromCharCode(65 + i)}
                 </span>
-                <span className="font-mono text-slate-600">
+                <span className="font-mono text-slate-600 dark:text-slate-300">
                   {p[1].toFixed(3)}, {p[0].toFixed(3)}
                 </span>
               </div>
@@ -2141,8 +2157,8 @@ function ProfilePanel({
       </div>
 
       <div>
-        <label className="text-xs text-slate-500 mb-1 block">
-          Amostragem — <strong className="text-slate-700">{samples} pontos</strong>
+        <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
+          Amostragem — <strong className="text-slate-700 dark:text-slate-200">{samples} pontos</strong>
         </label>
         <input type="range" min={50} max={500} step={50} value={samples}
           onChange={e => onSamplesChange(Number(e.target.value))}
@@ -2153,21 +2169,21 @@ function ProfilePanel({
       </div>
 
       <button onClick={onRun} disabled={running || points.length < 2}
-        className="w-full flex items-center justify-center gap-2 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-sky-200">
+        className="w-full flex items-center justify-center gap-2 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-sky-200 cursor-pointer">
         {running
           ? <><Loader2 size={14} className="animate-spin" /> A amostrar DEM…</>
           : <><Route size={14} /> Calcular Perfil</>}
       </button>
 
       {running && (
-        <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-xs text-sky-700">
+        <div className="bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-900/50 rounded-xl p-3 text-xs text-sky-700 dark:text-sky-300">
           <Loader2 size={12} className="inline animate-spin mr-1.5" />
           A amostrar elevações no DEM Copernicus GLO-30. ~5–15 s.
         </div>
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-xl p-3 text-xs text-red-700 dark:text-red-300">
           <strong>Erro:</strong> {error}
         </div>
       )}
@@ -2175,41 +2191,41 @@ function ProfilePanel({
       {result && !running && (
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-1.5">
-            <div className="bg-slate-50 rounded-lg p-2 text-center">
+            <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-2 text-center">
               <div className="text-[10px] text-slate-400 uppercase">Distância</div>
-              <div className="text-sm font-bold text-slate-800">
+              <div className="text-sm font-bold text-slate-800 dark:text-slate-100">
                 {(result.stats.totalDistanceM / 1000).toFixed(2)} km
               </div>
             </div>
-            <div className="bg-slate-50 rounded-lg p-2 text-center">
+            <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-2 text-center">
               <div className="text-[10px] text-slate-400 uppercase">Amplitude</div>
-              <div className="text-sm font-bold text-slate-800">
+              <div className="text-sm font-bold text-slate-800 dark:text-slate-100">
                 {(result.stats.maxElevM - result.stats.minElevM).toFixed(0)} m
               </div>
             </div>
-            <div className="bg-emerald-50 rounded-lg p-2 text-center">
-              <div className="text-[10px] text-emerald-600 uppercase flex items-center justify-center gap-1">
+            <div className="bg-emerald-50 dark:bg-emerald-950/40 rounded-lg p-2 text-center">
+              <div className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase flex items-center justify-center gap-1">
                 <TrendingUp size={9} /> Subida
               </div>
-              <div className="text-sm font-bold text-emerald-700">
+              <div className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
                 +{result.stats.gainM.toFixed(0)} m
               </div>
             </div>
-            <div className="bg-rose-50 rounded-lg p-2 text-center">
-              <div className="text-[10px] text-rose-600 uppercase flex items-center justify-center gap-1">
+            <div className="bg-rose-50 dark:bg-rose-950/40 rounded-lg p-2 text-center">
+              <div className="text-[10px] text-rose-600 dark:text-rose-400 uppercase flex items-center justify-center gap-1">
                 <TrendingDown size={9} /> Descida
               </div>
-              <div className="text-sm font-bold text-rose-700">
+              <div className="text-sm font-bold text-rose-700 dark:text-rose-300">
                 −{result.stats.lossM.toFixed(0)} m
               </div>
             </div>
-            <div className="bg-slate-50 rounded-lg p-2 text-center">
+            <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-2 text-center">
               <div className="text-[10px] text-slate-400 uppercase">Mín</div>
-              <div className="text-sm font-bold text-slate-800">{result.stats.minElevM.toFixed(0)} m</div>
+              <div className="text-sm font-bold text-slate-800 dark:text-slate-100">{result.stats.minElevM.toFixed(0)} m</div>
             </div>
-            <div className="bg-slate-50 rounded-lg p-2 text-center">
+            <div className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-2 text-center">
               <div className="text-[10px] text-slate-400 uppercase">Máx</div>
-              <div className="text-sm font-bold text-slate-800">{result.stats.maxElevM.toFixed(0)} m</div>
+              <div className="text-sm font-bold text-slate-800 dark:text-slate-100">{result.stats.maxElevM.toFixed(0)} m</div>
             </div>
           </div>
         </div>
@@ -2266,16 +2282,16 @@ function ContoursPanel({
         </h4>
         <div className="space-y-2.5">
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">
+            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
               Equidistância
             </label>
             <div className="grid grid-cols-4 gap-1">
               {CONTOUR_INTERVALS.map(v => (
                 <button key={v} onClick={() => setIntervalM(v)}
-                  className={`text-xs py-1.5 rounded-md border transition-colors ${
+                  className={`text-xs py-1.5 rounded-md border transition-colors cursor-pointer ${
                     intervalM === v
                       ? "bg-amber-600 text-white border-amber-600 font-semibold"
-                      : "bg-white text-slate-600 border-slate-200 hover:border-amber-400"
+                      : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-400 dark:hover:border-amber-500"
                   }`}>
                   {v} m
                 </button>
@@ -2286,70 +2302,70 @@ function ContoursPanel({
             </p>
           </div>
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">
+            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
               Linhas-mestras (índice) — a cada{" "}
-              <strong className="text-slate-700">{indexEvery}×</strong> ({intervalM * indexEvery} m)
+              <strong className="text-slate-700 dark:text-slate-200">{indexEvery}×</strong> ({intervalM * indexEvery} m)
             </label>
             <input type="range" min={2} max={10} value={indexEvery}
               onChange={e => setIndexEvery(Number(e.target.value))}
               className="w-full accent-amber-500" />
           </div>
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Área (clipping)</label>
-            <div className="text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 flex items-center gap-1.5">
+            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Área (clipping)</label>
+            <div className="text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
               <MapPin size={12} className="text-amber-500" />
               {district
                 ? <span>{district} <span className="text-slate-400">·</span> {province}</span>
                 : province
                   ? <span>{province} <span className="text-slate-400">(toda a província)</span></span>
-                  : <span className="text-slate-500">Moçambique (toda)</span>}
+                  : <span className="text-slate-500 dark:text-slate-400">Moçambique (toda)</span>}
             </div>
           </div>
         </div>
       </div>
 
       <button onClick={run} disabled={running}
-        className="w-full flex items-center justify-center gap-2 py-2.5 bg-amber-700 hover:bg-amber-800 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-amber-200">
+        className="w-full flex items-center justify-center gap-2 py-2.5 bg-amber-700 hover:bg-amber-800 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-amber-200 cursor-pointer">
         {running
           ? <><Loader2 size={14} className="animate-spin" /> A gerar curvas…</>
           : <><Waves size={14} /> Gerar Curvas de Nível</>}
       </button>
 
       {running && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+        <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
           <Loader2 size={12} className="inline animate-spin mr-1.5" />
           A processar DEM e gerar tiles. ~10–20 s.
         </div>
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-xl p-3 text-xs text-red-700 dark:text-red-300">
           <strong>Erro:</strong> {error}
         </div>
       )}
 
       {result && !running && (
         <div className="space-y-2">
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+          <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
-              <CheckCircle2 size={13} className="text-amber-600" />
-              <span className="text-xs font-semibold text-amber-700">
+              <CheckCircle2 size={13} className="text-amber-600 dark:text-amber-400" />
+              <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">
                 {result.intervals.length} curvas geradas
               </span>
             </div>
-            <div className="text-xs text-amber-700">
+            <div className="text-xs text-amber-700 dark:text-amber-300">
               Elevação na região: {result.minElevM?.toFixed(0) ?? "—"} m →{" "}
               {result.maxElevM?.toFixed(0) ?? "—"} m
             </div>
           </div>
-          <div className="bg-white border border-slate-200 rounded-xl p-2.5">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5">
             <div className="flex items-center gap-2 text-xs mb-1.5">
               <span className="inline-block w-6 h-0.5 bg-[#8b5a2b]" />
-              <span className="text-slate-600">Curva ({result.intervalM} m)</span>
+              <span className="text-slate-600 dark:text-slate-300">Curva ({result.intervalM} m)</span>
             </div>
             <div className="flex items-center gap-2 text-xs">
-              <span className="inline-block w-6 h-[2px] bg-[#3a1c0c]" />
-              <span className="text-slate-600">Linha-mestra ({result.indexIntervalM} m)</span>
+              <span className="inline-block w-6 h-[2px] bg-[#3a1c0c] dark:bg-[#d97706]" />
+              <span className="text-slate-600 dark:text-slate-300">Linha-mestra ({result.indexIntervalM} m)</span>
             </div>
           </div>
         </div>
@@ -2402,51 +2418,51 @@ function LandCoverPanel({
         <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
           Cobertura do Solo
         </h4>
-        <div className="bg-lime-50 border border-lime-200 rounded-xl p-3 text-xs text-lime-800 leading-relaxed">
+        <div className="bg-lime-50 dark:bg-lime-950/40 border border-lime-200 dark:border-lime-900/50 rounded-xl p-3 text-xs text-lime-800 dark:text-lime-300 leading-relaxed">
           Classificação <strong>ESA WorldCover 2021</strong> a 10 m — 11 classes
           de uso e cobertura do solo (florestas, agricultura, água, mangais…).
         </div>
         <div className="mt-2.5">
-          <label className="text-xs text-slate-500 mb-1 block">Área (clipping)</label>
-          <div className="text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 flex items-center gap-1.5">
+          <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Área (clipping)</label>
+          <div className="text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
             <MapPin size={12} className="text-lime-600" />
             {district
               ? <span>{district} <span className="text-slate-400">·</span> {province}</span>
               : province
                 ? <span>{province} <span className="text-slate-400">(toda a província)</span></span>
-                : <span className="text-slate-500">Moçambique (toda)</span>}
+                : <span className="text-slate-500 dark:text-slate-400">Moçambique (toda)</span>}
           </div>
         </div>
       </div>
 
       <button onClick={run} disabled={running}
-        className="w-full flex items-center justify-center gap-2 py-2.5 bg-lime-600 hover:bg-lime-700 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-lime-200">
+        className="w-full flex items-center justify-center gap-2 py-2.5 bg-lime-600 hover:bg-lime-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-lime-200 cursor-pointer">
         {running
           ? <><Loader2 size={14} className="animate-spin" /> A classificar cobertura…</>
           : <><Sprout size={14} /> Calcular Cobertura do Solo</>}
       </button>
 
       {running && (
-        <div className="bg-lime-50 border border-lime-200 rounded-xl p-3 text-xs text-lime-700 leading-relaxed">
+        <div className="bg-lime-50 dark:bg-lime-950/40 border border-lime-200 dark:border-lime-900/50 rounded-xl p-3 text-xs text-lime-700 dark:text-lime-300 leading-relaxed">
           <Loader2 size={12} className="inline animate-spin mr-1.5" />
           A computar áreas por classe a partir do ESA WorldCover (10 m). ~5–20 s.
         </div>
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-xl p-3 text-xs text-red-700 dark:text-red-300">
           <strong>Erro:</strong> {error}
         </div>
       )}
 
       {result && !running && (
         <div className="space-y-3">
-          <div className="bg-lime-50 border border-lime-200 rounded-xl p-3">
+          <div className="bg-lime-50 dark:bg-lime-950/40 border border-lime-200 dark:border-lime-900/50 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
-              <CheckCircle2 size={13} className="text-lime-600" />
-              <span className="text-xs font-semibold text-lime-700">Cobertura calculada</span>
+              <CheckCircle2 size={13} className="text-lime-600 dark:text-lime-400" />
+              <span className="text-xs font-semibold text-lime-700 dark:text-lime-300">Cobertura calculada</span>
             </div>
-            <div className="text-xs text-lime-700">
+            <div className="text-xs text-lime-700 dark:text-lime-300">
               Área total: <strong>{result.totalKm2.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²</strong>
               {" · "}{ranked.length} classes presentes
             </div>
@@ -2454,7 +2470,7 @@ function LandCoverPanel({
 
           {/* Complete area analysis (ranked, only classes > 0) */}
           <div>
-            <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+            <h5 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
               Análise de Área (km² · %)
             </h5>
             <div className="space-y-1.5">
@@ -2462,11 +2478,11 @@ function LandCoverPanel({
                 <div key={c.code} className="text-xs">
                   <div className="flex items-center gap-2">
                     <span className="inline-block w-3 h-3 rounded shrink-0" style={{ background: c.color }} />
-                    <span className="flex-1 truncate text-slate-700">{c.label}</span>
+                    <span className="flex-1 truncate text-slate-700 dark:text-slate-200">{c.label}</span>
                     <span className="text-slate-400 font-mono">{c.areaKm2.toLocaleString(undefined, { maximumFractionDigits: 1 })} km²</span>
-                    <span className="w-11 text-right font-semibold text-lime-700">{c.pct.toFixed(1)}%</span>
+                    <span className="w-11 text-right font-semibold text-lime-700 dark:text-lime-400">{c.pct.toFixed(1)}%</span>
                   </div>
-                  <div className="ml-5 mt-0.5 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                  <div className="ml-5 mt-0.5 bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
                     <div className="h-full rounded-full" style={{ width: `${(c.pct / maxPct) * 100}%`, background: c.color }} />
                   </div>
                 </div>
@@ -2475,13 +2491,13 @@ function LandCoverPanel({
           </div>
 
           {/* Full legend (official order, all 11 classes) */}
-          <div className="pt-2 border-t border-slate-100">
-            <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+            <h5 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
               Legenda (ESA WorldCover)
             </h5>
             <div className="grid grid-cols-1 gap-0.5">
               {result.classes.map(c => (
-                <div key={c.code} className="flex items-center gap-2 text-[11px] text-slate-600">
+                <div key={c.code} className="flex items-center gap-2 text-[11px] text-slate-600 dark:text-slate-300">
                   <span className="inline-block w-3 h-3 rounded shrink-0" style={{ background: c.color }} />
                   <span className="truncate">{c.label}</span>
                 </div>
@@ -2595,7 +2611,7 @@ function TopoClassesPanel({
         <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
           Classes Topográficas (Personalizadas)
         </h4>
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 leading-relaxed">
+        <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 rounded-xl p-3 text-xs text-emerald-800 dark:text-emerald-300 leading-relaxed">
           Defina os <strong>limites de elevação (m)</strong>. {breaks.length} limite(s) → {n} classe(s).
           Cada classe tem cor e nome editáveis.
         </div>
@@ -2610,18 +2626,18 @@ function TopoClassesPanel({
             hi == null ? `≥ ${lo} m` :
             `${lo}–${hi} m`;
           return (
-            <div key={i} className="flex items-center gap-2 bg-slate-50 rounded-lg px-2 py-1.5">
+            <div key={i} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-2 py-1.5">
               <input
                 type="color"
                 value={c.color}
                 onChange={e => setColor(i, e.target.value)}
-                className="w-7 h-7 rounded cursor-pointer border border-slate-200 shrink-0"
+                className="w-7 h-7 rounded cursor-pointer border border-slate-200 dark:border-slate-700 shrink-0"
               />
               <input
                 type="text"
                 value={c.label}
                 onChange={e => setLabel(i, e.target.value)}
-                className="flex-1 text-xs bg-white border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-w-0"
+                className="flex-1 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-w-0"
               />
               <span className="text-[10px] font-mono text-slate-400 w-16 text-right shrink-0">{rangeLabel}</span>
             </div>
@@ -2630,7 +2646,7 @@ function TopoClassesPanel({
       </div>
 
       <div>
-        <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Limites (m)</h5>
+        <h5 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Limites (m)</h5>
         <div className="grid grid-cols-4 gap-1.5">
           {breaks.map((b, i) => (
             <input
@@ -2638,23 +2654,23 @@ function TopoClassesPanel({
               type="number"
               value={b}
               onChange={e => setBreakAt(i, Number(e.target.value))}
-              className="text-xs bg-white border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             />
           ))}
         </div>
         <div className="flex gap-1.5 mt-2">
           <button onClick={addClass}
-            className="flex-1 text-xs py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded">
+            className="flex-1 text-xs py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 dark:text-emerald-300 dark:border-emerald-800 rounded cursor-pointer">
             + Adicionar classe
           </button>
           <button onClick={removeLast} disabled={breaks.length <= 1}
-            className="flex-1 text-xs py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 text-slate-700 border border-slate-200 rounded">
+            className="flex-1 text-xs py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 dark:border-slate-700 rounded cursor-pointer">
             − Remover última
           </button>
         </div>
       </div>
 
-      <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-600">
+      <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-600 dark:text-slate-300">
         <input type="checkbox" checked={waterOn} onChange={e => setWaterOn(e.target.checked)}
           className="accent-emerald-500" />
         <span className="inline-block w-3 h-3 rounded" style={{ background: waterColor }} />
@@ -2662,33 +2678,33 @@ function TopoClassesPanel({
       </label>
 
       {!breaksSorted && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[11px] text-amber-700">
+        <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-xl p-2.5 text-[11px] text-amber-700 dark:text-amber-300">
           <AlertTriangle size={11} className="inline mr-1" /> Os limites têm de ser estritamente crescentes (cada um maior que o anterior).
         </div>
       )}
 
       <button onClick={run} disabled={running || !breaksSorted}
-        className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-emerald-200">
+        className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-emerald-200 cursor-pointer">
         {running
           ? <><Loader2 size={14} className="animate-spin" /> A classificar DEM…</>
           : <><Play size={14} /> Aplicar Classes</>}
       </button>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-xl p-3 text-xs text-red-700 dark:text-red-300">
           <strong>Erro:</strong> {error}
         </div>
       )}
 
       {result && !running && (
-        <div className="space-y-1.5 pt-2 border-t border-slate-100">
+        <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
           <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Distribuição (km² · %)</div>
           {result.labels.map((lbl, i) => (
             <div key={i} className="flex items-center gap-2 text-xs">
               <span className="inline-block w-3 h-3 rounded shrink-0" style={{ background: result.colors[i] }} />
-              <span className="flex-1 truncate text-slate-700">{lbl}</span>
+              <span className="flex-1 truncate text-slate-700 dark:text-slate-200">{lbl}</span>
               <span className="text-slate-400 font-mono">{result.areasKm2[i].toFixed(1)} km²</span>
-              <span className="w-10 text-right font-semibold text-emerald-700">{result.areasPct[i].toFixed(1)}%</span>
+              <span className="w-10 text-right font-semibold text-emerald-700 dark:text-emerald-400">{result.areasPct[i].toFixed(1)}%</span>
             </div>
           ))}
         </div>
@@ -2740,16 +2756,16 @@ export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
   },
   {
     id: "water",
-    title: "Recursos Hídricos & Zonas Costeiras",
-    subtitle: "SWIR / NIR · Detecção Espectral de Humidade",
-    badge: "SWIR · Humidade",
+    title: "Recursos Hídricos & Índices de Água",
+    subtitle: "SWIR / NIR · Detecção Espectral e Supressão de Sombras",
+    badge: "SWIR · Água & Humidade",
     badgeColor: "bg-cyan-100 text-cyan-800 border-cyan-200",
     icon: Droplets,
     gradient: "from-cyan-500 to-blue-600",
-    description: "Mapeamento da lâmina de água superficial, teor de humidade em folhas e copas (NDMI), ecossistemas de mangais e vulnerabilidade costeira.",
-    highlights: ["NDMI (Humidade Foliar)", "NDDI (Stress Hídrico)", "Saúde dos Mangais", "Índice de Exposição Costeira"],
-    defaultTab: "ndmi",
-    tabIds: ["ndmi", "nddi", "mangrove_health", "coastal_index", "coastal_erosion", "tsunami_risk"],
+    description: "Mapeamento rigoroso da lâmina de água superficial, extração de corpos hídricos com supressão de sombras (AWEI), índices normalizados (NDWI, MNDWI), razão espectral (WRI), modelo empírico WI2015 e humidade foliar (NDMI).",
+    highlights: ["NDWI (McFeeters)", "MNDWI (Xu)", "AWEI (Sem/Com Sombra)", "WRI (Razão Água)", "WI2015 (Fisher)", "NDMI (Humidade)"],
+    defaultTab: "ndwi",
+    tabIds: ["ndwi", "mndwi", "ndmi", "nddi", "awei_nsh", "awei_sh", "wri", "wi2015"],
   },
   {
     id: "fire",
@@ -2829,10 +2845,10 @@ export default function GeoAnalises({
   const [compareLeftYear, setCompareLeftYear] = useState("2023");
   const [compareRightYear, setCompareRightYear] = useState("2024");
   const [compareMode, setCompareMode] = useState<CompareMode>("temporal_gee");
-  const [compareStartDateLeft, setCompareStartDateLeft] = useState("2023-01-01");
+  const [compareStartDateLeft, setCompareStartDateLeft] = useState("2023-11-01");
   const [compareEndDateLeft, setCompareEndDateLeft] = useState("2023-12-31");
   const [compareStartDateRight, setCompareStartDateRight] = useState("2024-01-01");
-  const [compareEndDateRight, setCompareEndDateRight] = useState("2024-12-31");
+  const [compareEndDateRight, setCompareEndDateRight] = useState(() => new Date().toISOString().split("T")[0]);
   const safeCompareLeftYear = String(Math.min(Math.max(parseInt(compareStartDateLeft.slice(0, 4) || compareLeftYear) || 2023, 2016), 2024));
   const safeCompareRightYear = String(Math.min(Math.max(parseInt(compareStartDateRight.slice(0, 4) || compareRightYear) || 2024, 2016), 2024));
   const [geeTileLeft, setGeeTileLeft] = useState<string | null>(null);
@@ -2844,8 +2860,18 @@ export default function GeoAnalises({
   const [elevation2D, setElevation2D] = useState<number | null>(null);
   const [hoveredProxyValue, setHoveredProxyValue] = useState<number | null>(null);
   const [geeStatus, setGeeStatus]     = useState<GeeStatus | null>(null);
-  const [geeLoading, setGeeLoading]   = useState(false);
   const [geeTile, setGeeTile]         = useState<GeeResult | null>(null);
+  const [geeStartDate, setGeeStartDate] = useState("2023-01-01");
+  const [geeEndDate, setGeeEndDate]     = useState(() => new Date().toISOString().split("T")[0]);
+  const [geeCloudPct, setGeeCloudPct]   = useState(30);
+
+  // Sanitize activeTab against removed coastal indices
+  useEffect(() => {
+    const invalidTabs = ["mangrove_health", "coastal_index", "coastal_erosion", "tsunami_risk"];
+    if (invalidTabs.includes(activeTab as string)) {
+      setActiveTab("ndwi");
+    }
+  }, [activeTab]);
   const [lineamentsTile, setLineamentsTile] = useState<LineamentsResult | null>(null);
   const [targetingTile, setTargetingTile]   = useState<TargetingResult | null>(null);
   const [contoursTile, setContoursTile]     = useState<ContoursResult | null>(null);
@@ -3215,9 +3241,9 @@ export default function GeoAnalises({
             province: province || null,
             district: district || null,
             geometry: apiParams.geometry ?? null,
-            start_date: "2023-01-01",
-            end_date: "2023-12-31",
-            cloud_pct: 30,
+            start_date: geeStartDate,
+            end_date: geeEndDate,
+            cloud_pct: geeCloudPct,
           }),
         });
         if (!res.ok) {
@@ -3430,8 +3456,8 @@ export default function GeoAnalises({
       ]},
     { name: "Incêndios & Desflorestação", badge: "Multi-sensor",          badgeColor: "bg-red-100 text-red-700",
       tabs: INDEX_DEFS.filter(d => d.group === "fire").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Zonas Costeiras & Marinhas",  badge: "Multi-sensor",          badgeColor: "bg-cyan-100 text-cyan-700",
-      tabs: INDEX_DEFS.filter(d => d.group === "coastal").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
+    { name: "Recursos Hídricos & Índices de Água",  badge: "Sentinel-2 · SWIR/NIR", badgeColor: "bg-cyan-100 text-cyan-700",
+      tabs: INDEX_DEFS.filter(d => d.group === "water").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
     { name: "Clima & Desastres",          badge: "Multi-sensor",          badgeColor: "bg-violet-100 text-violet-700",
       tabs: INDEX_DEFS.filter(d => d.group === "climate").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
     { name: "Urbano & Infraestruturas",    badge: "Multi-sensor",          badgeColor: "bg-stone-100 text-stone-700",
@@ -3531,18 +3557,18 @@ export default function GeoAnalises({
         /* ════════════════════════════════════════════════════════════════════
            CATALOG VIEW (Cards Persuasivos e Modernos)
            ════════════════════════════════════════════════════════════════════ */
-        <div className="flex-1 flex flex-col overflow-y-auto bg-slate-50">
+        <div className="flex-1 flex flex-col overflow-y-auto bg-slate-50 dark:bg-slate-950">
           {/* Catalog Top Bar */}
-          <div className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0 shadow-xs">
+          <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0 shadow-xs">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-sm text-white">
                 <Satellite size={20} />
               </div>
               <div>
-                <h1 className="text-base font-bold text-slate-900 leading-tight">
+                <h1 className="text-base font-bold text-slate-900 dark:text-slate-100 leading-tight">
                   Catálogo de GeoAnálises Especializadas
                 </h1>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Sensoriamento remoto com Google Earth Engine, DEM Copernicus 30m e renderização 3D
                 </p>
               </div>
@@ -3557,7 +3583,7 @@ export default function GeoAnalises({
                 : <GeeStatusBadge status={geeStatus} loading={geeLoading} />}
               {!geeStatus?.connected && (
                 <button onClick={() => setGeeCredsOpen(true)}
-                  className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-xl hover:bg-amber-100 transition-colors font-medium">
+                  className="text-xs bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 px-3 py-1.5 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors font-medium">
                   Ligar GEE
                 </button>
               )}
@@ -3645,7 +3671,7 @@ export default function GeoAnalises({
                         setShowS2(true);
                       }
                     }}
-                    className="group bg-white rounded-2xl border border-slate-200 hover:border-sky-400 hover:shadow-xl transition-all duration-200 p-5 flex flex-col justify-between cursor-pointer hover:-translate-y-0.5"
+                    className="group bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-sky-400 dark:hover:border-sky-500 hover:shadow-xl transition-all duration-200 p-5 flex flex-col justify-between cursor-pointer hover:-translate-y-0.5"
                   >
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-3.5">
@@ -3657,27 +3683,27 @@ export default function GeoAnalises({
                         </span>
                       </div>
 
-                      <h3 className="text-sm font-bold text-slate-900 group-hover:text-sky-600 transition-colors">
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
                         {cat.title}
                       </h3>
                       <p className="text-[11px] text-slate-400 font-medium mb-2.5">
                         {cat.subtitle}
                       </p>
 
-                      <p className="text-xs text-slate-600 leading-relaxed mb-4 line-clamp-3">
+                      <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-4 line-clamp-3">
                         {cat.description}
                       </p>
 
                       <div className="flex flex-wrap gap-1.5 mb-4">
                         {cat.highlights.map((h, i) => (
-                          <span key={i} className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium">
+                          <span key={i} className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-md font-medium">
                             {h}
                           </span>
                         ))}
                       </div>
                     </div>
 
-                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-sky-600 group-hover:text-sky-700">
+                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold text-sky-600 dark:text-sky-400 group-hover:text-sky-700 dark:group-hover:text-sky-300">
                       <span>Abrir Análise Especializada</span>
                       <span className="group-hover:translate-x-1 transition-transform">→</span>
                     </div>
@@ -3693,25 +3719,25 @@ export default function GeoAnalises({
            ════════════════════════════════════════════════════════════════════ */
         <div className="flex-1 flex flex-col overflow-hidden relative">
           {/* Workspace Top Header Bar */}
-          <div className="bg-white border-b border-slate-200 px-4 py-2 flex items-center justify-between gap-2 shrink-0 z-[550]">
+          <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-2 flex items-center justify-between gap-2 shrink-0 z-[550]">
             <div className="flex items-center gap-3 min-w-0">
               <button
                 onClick={() => setSelectedCategory(null)}
-                className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-sky-700 bg-slate-100 hover:bg-sky-50 border border-slate-200 hover:border-sky-200 px-3 py-1.5 rounded-xl transition-all shrink-0 shadow-2xs"
+                className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-sky-700 dark:hover:text-sky-400 bg-slate-100 dark:bg-slate-800 hover:bg-sky-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 hover:border-sky-200 dark:hover:border-sky-600 px-3 py-1.5 rounded-xl transition-all shrink-0 shadow-2xs cursor-pointer"
                 title="Voltar ao catálogo de especialidades"
               >
                 <ArrowLeft size={13} />
                 <span>Voltar ao Catálogo</span>
               </button>
 
-              <div className="h-5 w-px bg-slate-200 shrink-0" />
+              <div className="h-5 w-px bg-slate-200 dark:bg-slate-700 shrink-0" />
 
               <div className="flex items-center gap-2 min-w-0">
                 <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${activeCategory.gradient} flex items-center justify-center text-white shrink-0 shadow-2xs`}>
                   <activeCategory.icon size={14} />
                 </div>
                 <div className="min-w-0 hidden lg:block">
-                  <h2 className="text-xs font-bold text-slate-800 truncate leading-tight">{activeCategory.title}</h2>
+                  <h2 className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate leading-tight">{activeCategory.title}</h2>
                   <span className="text-[10px] text-slate-400 truncate block">{activeCategory.badge}</span>
                 </div>
               </div>
@@ -3729,10 +3755,10 @@ export default function GeoAnalises({
                   <button
                     key={tabId}
                     onClick={() => setActiveTab(tabId)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all shrink-0 ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all shrink-0 cursor-pointer ${
                       isActive
                         ? "bg-sky-500 text-white shadow-xs font-semibold"
-                        : "bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium"
+                        : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium"
                     }`}
                   >
                     {icon}
@@ -3746,7 +3772,7 @@ export default function GeoAnalises({
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <button
                 onClick={exportGeoAnalisesPdf}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium shadow-2xs"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-medium shadow-2xs cursor-pointer"
                 title="Exportar Relatório PDF"
               >
                 <FileDown size={13} />
@@ -3763,22 +3789,72 @@ export default function GeoAnalises({
               onClick={() => setDesktopSidebarOpen(v => !v)}
               style={{ left: desktopSidebarOpen ? "18rem" : "0px" }}
               title={desktopSidebarOpen ? "Recolher painel lateral" : "Expandir painel lateral"}
-              className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 backdrop-blur-md border border-l-0 border-slate-200 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 transition-all duration-200 text-slate-500 hover:text-slate-800"
+              className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-l-0 border-slate-200 dark:border-slate-800 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 cursor-pointer"
             >
               {desktopSidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
             </button>
 
             {/* Controls sidebar */}
-            <div className={`bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto transition-all duration-200 ${desktopSidebarOpen ? "w-72" : "w-0 overflow-hidden border-r-0"}`}>
-              {/* Area filter — AOI global */}
-              <div className="p-4 border-b border-slate-100">
-                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Área de Estudo</h4>
-                <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
+            <div className={`bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 overflow-y-auto transition-all duration-200 ${desktopSidebarOpen ? "w-72" : "w-0 overflow-hidden border-r-0"}`}>
+              {/* Area filter — AOI global & Parâmetros GEE */}
+              <div className="p-4 border-b border-slate-100 dark:border-slate-800 space-y-3">
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Área de Estudo</h4>
+                  <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
+                </div>
+
+                {/* Parâmetros Temporais & GEE definidos logo na Área de Estudo */}
+                <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h5 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Parâmetros GEE
+                    </h5>
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
+                      S-2 / L8
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">Data início</label>
+                      <input
+                        type="date"
+                        value={geeStartDate}
+                        onChange={e => setGeeStartDate(e.target.value)}
+                        className="w-full text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">Data fim</label>
+                      <input
+                        type="date"
+                        value={geeEndDate}
+                        onChange={e => setGeeEndDate(e.target.value)}
+                        className="w-full text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 mb-1">
+                      <span>Cobertura de nuvens máx:</span>
+                      <strong className="text-slate-700 dark:text-slate-200">{geeCloudPct}%</strong>
+                    </div>
+                    <input
+                      type="range"
+                      min={5}
+                      max={80}
+                      value={geeCloudPct}
+                      onChange={e => setGeeCloudPct(Number(e.target.value))}
+                      className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Category subtabs list */}
-              <div className="p-3 border-b border-slate-100">
-                <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+              <div className="p-3 border-b border-slate-100 dark:border-slate-800">
+                <h4 className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider mb-2">
                   Índices da Categoria
                 </h4>
                 <div className="space-y-1">
@@ -3791,10 +3867,10 @@ export default function GeoAnalises({
                       <button
                         key={tabId}
                         onClick={() => setActiveTab(tabId)}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs text-left transition-colors ${
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs text-left transition-colors cursor-pointer ${
                           isActive
-                            ? "bg-sky-50 text-sky-700 font-semibold border border-sky-200"
-                            : "text-slate-600 hover:bg-slate-50"
+                            ? "bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 font-semibold border border-sky-200 dark:border-sky-800"
+                            : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60"
                         }`}
                       >
                         <div className="flex items-center gap-2 truncate">
@@ -3809,11 +3885,11 @@ export default function GeoAnalises({
               </div>
 
               {/* GEE status / real vs proxy switch */}
-              <div className="p-3 border-b border-slate-100 flex items-center justify-between text-xs">
+              <div className="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-slate-700 font-semibold">Modo GEE</span>
+                  <span className="text-slate-700 dark:text-slate-300 font-semibold">Modo GEE</span>
                   <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                    geeReady ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"
+                    geeReady ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                   }`}>
                     {geeReady ? "Ativo" : "Proxy"}
                   </span>
@@ -3822,7 +3898,7 @@ export default function GeoAnalises({
                   <span className="text-slate-400 text-[11px]">{useGEE ? "Real" : "Proxy"}</span>
                   <button
                     onClick={() => { setUseGEE(v => !v); setGeeTile(null); }}
-                    className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors cursor-pointer ${useGEE ? "bg-sky-500" : "bg-slate-300"}`}
+                    className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors cursor-pointer ${useGEE ? "bg-sky-500" : "bg-slate-300 dark:bg-slate-700"}`}
                     title={useGEE ? "Mudar para modo proxy" : "Mudar para modo GEE real"}
                   >
                     <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${useGEE ? "translate-x-4" : "translate-x-0.5"}`} />
@@ -3831,12 +3907,12 @@ export default function GeoAnalises({
               </div>
 
               {/* Botão Calcular Índice no Sidebar */}
-              <div className="p-3 border-b border-slate-100 space-y-2 bg-slate-50/50">
+              <div className="p-3 border-b border-slate-100 dark:border-slate-800 space-y-2 bg-slate-50/50 dark:bg-slate-800/30">
                 <button
                   type="button"
                   onClick={handleCalculateActiveIndex}
                   disabled={isCalculatingActiveIndex}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 disabled:from-slate-300 disabled:to-slate-400 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-sky-500/20 active:scale-[0.98] cursor-pointer"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 disabled:from-slate-300 dark:disabled:from-slate-700 disabled:to-slate-400 dark:disabled:to-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-sky-500/20 active:scale-[0.98] cursor-pointer"
                 >
                   {isCalculatingActiveIndex ? (
                     <>
@@ -3846,7 +3922,7 @@ export default function GeoAnalises({
                   ) : (
                     <>
                       <Play size={14} className="fill-white" />
-                      <span>Calcular {activeIndexLabel}</span>
+                      <span>Calcular {activeIndexLabel} com Sentinel-2</span>
                     </>
                   )}
                 </button>
@@ -3869,9 +3945,9 @@ export default function GeoAnalises({
               </div>
 
               {/* Legenda do Índice Selecionado na Sidebar */}
-              <div className="p-3 border-b border-slate-100 space-y-2">
+              <div className="p-3 border-b border-slate-100 dark:border-slate-800 space-y-2">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  <h4 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Legenda
                   </h4>
                   <span className="text-[9px] text-slate-400 truncate max-w-[120px]">
@@ -3902,20 +3978,20 @@ export default function GeoAnalises({
             defaultWidth={360}
             className="right-4"
           >
-            <div className="flex flex-col w-full bg-white/50 space-y-4 pb-4">
+            <div className="flex flex-col w-full bg-white/50 dark:bg-slate-900/50 space-y-4 pb-4">
           {/* Lineaments Panel */}
           {isLineaments && (
-            <div className="p-4 border-b border-slate-100">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800">
               {!geeStatus?.connected ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
                   <strong>GEE necessário.</strong> Detecção estrutural requer DEM via Google Earth Engine.
                 </div>
               ) : (
                 <>
                   <LineamentsPanel province={province} district={district} geometry={apiParams.geometry} onResult={setLineamentsTile} />
                   {lineamentsTile && (
-                    <div className="mt-3 pt-3 border-t border-slate-100">
-                      <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-600">
+                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-600 dark:text-slate-300">
                         <input type="checkbox" checked={showEdges}
                           onChange={e => setShowEdges(e.target.checked)}
                           className="accent-fuchsia-500" />
@@ -3930,9 +4006,9 @@ export default function GeoAnalises({
 
           {/* Profile Panel */}
           {isProfile && (
-            <div className="p-4 border-b border-slate-100">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800">
               {!geeStatus?.connected ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
                   <strong>GEE necessário.</strong> Amostragem do DEM requer Google Earth Engine.
                 </div>
               ) : (
@@ -3952,9 +4028,9 @@ export default function GeoAnalises({
 
           {/* Custom Topo Classes Panel */}
           {isTopoCustom && (
-            <div className="p-4 border-b border-slate-100">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800">
               {!geeStatus?.connected ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
                   <strong>GEE necessário.</strong> Classificação topográfica usa o DEM Copernicus via Google Earth Engine.
                 </div>
               ) : (
@@ -3965,9 +4041,9 @@ export default function GeoAnalises({
 
           {/* Contours Panel */}
           {isContours && (
-            <div className="p-4 border-b border-slate-100">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800">
               {!geeStatus?.connected ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
                   <strong>GEE necessário.</strong> Curvas de nível requerem DEM via Google Earth Engine.
                 </div>
               ) : (
@@ -3978,9 +4054,9 @@ export default function GeoAnalises({
 
           {/* Targeting Panel */}
           {isTargeting && (
-            <div className="p-4 border-b border-slate-100">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800">
               {!geeStatus?.connected ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
                   <strong>GEE necessário.</strong> Targeting requer Sentinel-2 + DEM via GEE.
                 </div>
               ) : (
@@ -3991,30 +4067,30 @@ export default function GeoAnalises({
 
           {/* SPI × NDVI Panel */}
           {isSpiNdvi && (
-            <div className="p-4 border-b border-slate-100">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800">
               {!geeStatus?.connected ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
                   <strong>GEE necessário.</strong> SPI×NDVI usa CHIRPS + MODIS via Google Earth Engine.
                 </div>
               ) : (
                 <>
                   <SpiNdviPanel province={province} district={district} geometry={apiParams.geometry} onResult={r => { setSpiNdviResult(r); setShowSpiChart(true); }} />
                   {spiNdviResult && (
-                    <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
+                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
                       <h5 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Camada no mapa</h5>
                       <div className="flex gap-1.5">
                         {(["spi", "ndvi"] as const).map(m => (
                           <button key={m} onClick={() => setSpiLayerMode(m)}
                             className={`flex-1 text-xs py-1.5 rounded-lg border transition-colors ${
                               spiLayerMode === m
-                                ? "bg-orange-50 border-orange-300 text-orange-700 font-semibold"
-                                : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
+                                ? "bg-orange-50 dark:bg-orange-950/40 border-orange-300 dark:border-orange-800 text-orange-700 dark:text-orange-300 font-semibold"
+                                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
                             }`}>
                             {m === "spi" ? "SPI (seca)" : "NDVI (vegetação)"}
                           </button>
                         ))}
                       </div>
-                      <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-600 pt-1">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-600 dark:text-slate-300 pt-1">
                         <input type="checkbox" checked={showSpiChart}
                           onChange={e => setShowSpiChart(e.target.checked)}
                           className="accent-orange-500" />
@@ -4029,9 +4105,9 @@ export default function GeoAnalises({
 
           {/* Land Cover Panel */}
           {isLandCover && (
-            <div className="p-4 border-b border-slate-100">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800">
               {!geeStatus?.connected ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
                   <strong>GEE necessário.</strong> Cobertura do solo usa o ESA WorldCover via Google Earth Engine.
                 </div>
               ) : (
@@ -4041,15 +4117,20 @@ export default function GeoAnalises({
           )}
 
           {/* GEE Analysis Panel (real mode, single index) */}
+          {/* GEE Geospatial Analytics Dashboard Panel (real mode, single index) */}
           {!isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !isTopoCustom && geeReady && activeTab !== "s2" && activeDef && (
-            <div className="p-4 border-b border-slate-100">
-              <GeeAnalysisPanel
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800">
+              <GeospatialAnalyticsPanel
                 activeIndex={activeTab as SpectralIndex}
                 province={province}
                 district={district}
                 geometry={apiParams.geometry}
                 geeStatus={geeStatus!}
-                onTileReady={setGeeTile}
+                result={geeTile}
+                isCalculating={isCalculatingActiveIndex}
+                startDate={geeStartDate}
+                endDate={geeEndDate}
+                cloudPct={geeCloudPct}
                 onOpenCompare={() => {
                   setCompareActive(true);
                   setCompareMode("temporal_gee");
@@ -4060,8 +4141,8 @@ export default function GeoAnalises({
 
           {/* GEE-only warning when proxy is forced */}
           {!isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !isTopoCustom && !geeReady && isGeeOnly && activeDef && (
-            <div className="p-4 border-b border-slate-100">
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
                 <strong>Índice apenas GEE.</strong> {activeDef.short} requer dados raster reais (DEM / Landsat). Active GEE no topo para calcular.
               </div>
             </div>
@@ -4069,7 +4150,7 @@ export default function GeoAnalises({
 
           {/* Proxy mode controls (only spectral indices have meaningful proxy) */}
           {!isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !isTopoCustom && !geeReady && activeTab !== "s2" && !isGeeOnly && (
-            <div className="p-4 border-b border-slate-100">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800">
               <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Opacidade</h4>
               <input type="range" min={0.1} max={1} step={0.05} value={visParams.opacity}
                 onChange={e => setVisParams(prev => ({...prev, opacity: Number(e.target.value)}))} className="w-full accent-sky-500" />
@@ -4079,14 +4160,14 @@ export default function GeoAnalises({
 
           {/* Sentinel-2 cloudless controls */}
           {activeTab === "s2" && (
-            <div className="p-4 border-b border-slate-100 space-y-3">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 space-y-3">
               <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Sentinel-2 Cloudless (EOX)</h4>
               <div>
                 <label className="text-xs text-slate-500 mb-1 block">Ano do mosaico</label>
                 <div className="relative">
-                  <select className="w-full appearance-none text-sm bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  <select className="w-full appearance-none text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-3 pr-8 py-2 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500"
                     value={selectedYear} onChange={e => setSelectedYear(e.target.value)}>
-                    {["2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016"].map(y => <option key={y}>{y}</option>)}
+                    {["2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016"].map(y => <option key={y} className="dark:bg-slate-800">{y}</option>)}
                   </select>
                   <ChevronDown className="absolute right-2.5 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
                 </div>
@@ -4112,8 +4193,8 @@ export default function GeoAnalises({
             </div>
           )}
 
-          {/* Index info — geocientific legend card */}
-          {!isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && activeDef && activeTab !== "s2" && (() => {
+          {/* Index info — geocientific legend card (proxy mode fallback) */}
+          {!geeReady && !isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && activeDef && activeTab !== "s2" && (() => {
             const activeGroup = tabGroups.find(g => g.tabs.some(t => t.id === activeTab));
             return (
               <div className="p-4 flex-1 space-y-4">
@@ -4291,15 +4372,15 @@ export default function GeoAnalises({
         <div className="flex-1 relative overflow-hidden" ref={mapContainerRef}>
           {/* Loading indicators */}
           {isFetching && activeTab !== "s2" && !geeReady && (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[600] bg-white border border-slate-200 shadow-md rounded-full px-4 py-1.5 text-xs font-medium text-slate-600 flex items-center gap-2 pointer-events-none">
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[600] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-md rounded-full px-4 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 flex items-center gap-2 pointer-events-none">
               <Cpu size={13} className="text-sky-500 animate-spin" /> A computar índice proxy…
             </div>
           )}
           {!province && activeTab !== "s2" && !geeReady && (
             <div className="absolute inset-0 z-[300] flex items-center justify-center pointer-events-none">
-              <div className="bg-white/95 border border-sky-200 rounded-2xl px-6 py-4 shadow-lg text-center max-w-xs">
+              <div className="bg-white/95 dark:bg-slate-900/95 border border-sky-200 dark:border-sky-800/60 rounded-2xl px-6 py-4 shadow-lg text-center max-w-xs">
                 <Layers size={22} className="text-sky-300 mx-auto mb-2" />
-                <p className="text-sm text-slate-600">Selecione uma <strong>província</strong> para calcular o índice espectral proxy.</p>
+                <p className="text-sm text-slate-600 dark:text-slate-300">Selecione uma <strong>província</strong> para calcular o índice espectral proxy.</p>
               </div>
             </div>
           )}
@@ -4368,12 +4449,13 @@ export default function GeoAnalises({
             />
           )}
 
-          {/* Basemap Switcher (Google Maps) */}
+          {/* Basemap Switcher (Google Maps / Cesium) */}
           <BasemapSwitcher
             current={basemap}
             onChange={setBasemap}
-            className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
-            position="bottom-left"
+            className="absolute bottom-16 sm:bottom-6 right-4 z-[600]"
+            position="bottom-right"
+            show3dToggle={false}
           />
 
           <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }}>
@@ -4711,7 +4793,7 @@ export default function GeoAnalises({
               {/* Toggle button */}
               <button
                 onClick={() => setVisPanelOpen(v => !v)}
-                className="absolute top-4 left-4 z-[700] bg-white/95 backdrop-blur border border-slate-200 rounded-xl shadow-lg px-3 py-2 text-xs font-medium text-slate-700 hover:text-sky-600 hover:border-sky-400 transition-colors flex items-center gap-1.5 pointer-events-auto"
+                className="absolute top-4 left-4 z-[700] bg-white/95 dark:bg-slate-900/95 backdrop-blur border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:text-sky-600 hover:border-sky-400 dark:hover:text-sky-400 dark:hover:border-sky-500 transition-colors flex items-center gap-1.5 pointer-events-auto cursor-pointer"
                 title="Ajustar visualização"
               >
                 <Sliders size={14} />
@@ -4733,8 +4815,8 @@ export default function GeoAnalises({
 
           {/* Map overlay legend — proxy mode */}
           {activeTab !== "s2" && !geeReady && !isGeeOnly && activeDef && (
-            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-slate-200 p-3 w-52 pointer-events-none">
-              <div className="text-xs font-semibold text-slate-700 mb-1.5">{activeDef.label} (Proxy)</div>
+            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 p-3 w-52 pointer-events-none">
+              <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1.5">{activeDef.label} (Proxy)</div>
               <div className="h-3 w-full rounded" style={{
                 background: `linear-gradient(to right, ${Array.from({ length: 8 }, (_, i) => applyColormap(i / 7, activeDef.id as SpectralIndex)).join(", ")})`,
               }} />
@@ -4746,13 +4828,13 @@ export default function GeoAnalises({
           )}
           {/* Lineaments result badge */}
           {isLineaments && lineamentsTile && (
-            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-fuchsia-200 p-3 w-64 pointer-events-none">
+            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-fuchsia-200 dark:border-fuchsia-900/50 p-3 w-64 pointer-events-none">
               <div className="flex items-center gap-1.5 mb-1">
                 <Activity size={12} className="text-fuchsia-500" />
-                <div className="text-xs font-semibold text-fuchsia-700">Lineamentos (DEM)</div>
+                <div className="text-xs font-semibold text-fuchsia-700 dark:text-fuchsia-400">Lineamentos (DEM)</div>
               </div>
-              <div className="text-xs text-slate-500">
-                Orientação dominante: <strong className="text-fuchsia-700">{dominantOrientation(lineamentsTile.rose)}</strong>
+              <div className="text-xs text-slate-500 dark:text-slate-300">
+                Orientação dominante: <strong className="text-fuchsia-700 dark:text-fuchsia-400">{dominantOrientation(lineamentsTile.rose)}</strong>
               </div>
               <div className="text-xs text-slate-400">
                 {lineamentsTile.sampleCount.toLocaleString()} pixels · densidade média {(lineamentsTile.meanDensity ?? 0).toFixed(3)}
@@ -4762,12 +4844,12 @@ export default function GeoAnalises({
 
           {/* Contours result badge */}
           {isContours && contoursTile && (
-            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-amber-200 p-3 w-64 pointer-events-none">
+            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-amber-200 dark:border-amber-900/50 p-3 w-64 pointer-events-none">
               <div className="flex items-center gap-1.5 mb-1">
-                <Waves size={12} className="text-amber-700" />
-                <div className="text-xs font-semibold text-amber-800">Curvas de Nível ({contoursTile.intervalM} m)</div>
+                <Waves size={12} className="text-amber-700 dark:text-amber-400" />
+                <div className="text-xs font-semibold text-amber-800 dark:text-amber-300">Curvas de Nível ({contoursTile.intervalM} m)</div>
               </div>
-              <div className="text-xs text-slate-500">
+              <div className="text-xs text-slate-500 dark:text-slate-300">
                 Elevação: {contoursTile.minElevM?.toFixed(0) ?? "—"} m → {contoursTile.maxElevM?.toFixed(0) ?? "—"} m
               </div>
               <div className="text-xs text-slate-400">
@@ -4778,18 +4860,18 @@ export default function GeoAnalises({
 
           {/* Profile chart overlay */}
           {isProfile && profileResult && (
-            <div className="absolute bottom-8 left-4 right-4 z-[500] bg-white/97 backdrop-blur rounded-xl shadow-lg border border-sky-200 px-4 pt-3 pb-1"
+            <div className="absolute bottom-8 left-4 right-4 z-[500] bg-white/97 dark:bg-slate-900/97 backdrop-blur rounded-xl shadow-lg border border-sky-200 dark:border-sky-900/50 px-4 pt-3 pb-1"
                  style={{ height: 200 }}>
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1.5">
-                  <Route size={12} className="text-sky-600" />
-                  <div className="text-xs font-semibold text-sky-800">
+                  <Route size={12} className="text-sky-600 dark:text-sky-400" />
+                  <div className="text-xs font-semibold text-sky-800 dark:text-sky-300">
                     Perfil Topográfico — {(profileResult.stats.totalDistanceM / 1000).toFixed(2)} km ·{" "}
                     Δ {(profileResult.stats.maxElevM - profileResult.stats.minElevM).toFixed(0)} m
                   </div>
                 </div>
                 <button onClick={() => { setProfileResult(null); setProfilePoints([]); }}
-                  className="text-xs text-slate-400 hover:text-rose-600 flex items-center gap-1">
+                  className="text-xs text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 flex items-center gap-1 cursor-pointer">
                   <X size={11} /> fechar
                 </button>
               </div>
@@ -4801,18 +4883,18 @@ export default function GeoAnalises({
 
           {/* SPI × NDVI scatter overlay */}
           {isSpiNdvi && spiNdviResult && showSpiChart && spiNdviResult.pairs.length > 0 && (
-            <div className="absolute bottom-8 left-4 z-[500] bg-white/97 backdrop-blur rounded-xl shadow-lg border border-orange-200 px-4 pt-3 pb-1"
+            <div className="absolute bottom-8 left-4 z-[500] bg-white/97 dark:bg-slate-900/97 backdrop-blur rounded-xl shadow-lg border border-orange-200 dark:border-orange-900/50 px-4 pt-3 pb-1"
                  style={{ height: 230, width: 380 }}>
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1.5">
-                  <Droplets size={12} className="text-orange-600" />
-                  <div className="text-xs font-semibold text-orange-800">
+                  <Droplets size={12} className="text-orange-600 dark:text-orange-400" />
+                  <div className="text-xs font-semibold text-orange-800 dark:text-orange-300">
                     SPI × NDVI {spiNdviResult.year} — r = {spiNdviResult.stats.pearsonR != null ? spiNdviResult.stats.pearsonR.toFixed(2) : "—"}
                     {" · "}{spiNdviResult.stats.sampleCount} amostras
                   </div>
                 </div>
                 <button onClick={() => setShowSpiChart(false)}
-                  className="text-xs text-slate-400 hover:text-rose-600 flex items-center gap-1">
+                  className="text-xs text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 flex items-center gap-1 cursor-pointer">
                   <X size={11} /> fechar
                 </button>
               </div>
@@ -4824,10 +4906,10 @@ export default function GeoAnalises({
 
           {/* SPI × NDVI legend badge (when chart hidden) */}
           {isSpiNdvi && spiNdviResult && !showSpiChart && (
-            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-orange-200 p-3 w-60">
+            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-orange-200 dark:border-orange-900/50 p-3 w-60">
               <div className="flex items-center gap-1.5 mb-1">
-                <Droplets size={12} className="text-orange-600" />
-                <div className="text-xs font-semibold text-orange-700">
+                <Droplets size={12} className="text-orange-600 dark:text-orange-400" />
+                <div className="text-xs font-semibold text-orange-700 dark:text-orange-300">
                   {spiLayerMode === "spi" ? `SPI ${spiNdviResult.year}` : `NDVI ${spiNdviResult.year}`}
                 </div>
               </div>
@@ -4838,7 +4920,7 @@ export default function GeoAnalises({
                 {spiLayerMode === "spi" ? <><span>−2 seca</span><span>+2 húmido</span></> : <><span>0</span><span>0.9</span></>}
               </div>
               <button onClick={() => setShowSpiChart(true)}
-                className="mt-1.5 text-[10px] text-orange-600 hover:text-orange-800 font-medium">
+                className="mt-1.5 text-[10px] text-orange-600 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-300 font-medium cursor-pointer">
                 ↺ reabrir gráfico
               </button>
             </div>
@@ -4846,17 +4928,17 @@ export default function GeoAnalises({
 
           {/* Custom Topo Classes legend */}
           {isTopoCustom && topoClassesTile && (
-            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-emerald-200 p-3 w-64 pointer-events-none">
+            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-emerald-200 dark:border-emerald-900/50 p-3 w-64 pointer-events-none">
               <div className="flex items-center gap-1.5 mb-1.5">
-                <Sliders size={12} className="text-emerald-600" />
-                <div className="text-xs font-semibold text-emerald-800">Classes Topográficas</div>
+                <Sliders size={12} className="text-emerald-600 dark:text-emerald-400" />
+                <div className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">Classes Topográficas</div>
               </div>
               <div className="space-y-0.5">
                 {topoClassesTile.labels.map((lbl, i) => (
                   <div key={i} className="flex items-center gap-1.5 text-[10px]">
                     <span className="inline-block w-2.5 h-2.5 rounded shrink-0"
                       style={{ background: topoClassesTile.colors[i] }} />
-                    <span className="truncate flex-1 text-slate-700">{lbl}</span>
+                    <span className="truncate flex-1 text-slate-700 dark:text-slate-200">{lbl}</span>
                     <span className="text-slate-400 font-mono">{topoClassesTile.areasPct[i].toFixed(1)}%</span>
                   </div>
                 ))}
@@ -4866,14 +4948,14 @@ export default function GeoAnalises({
 
           {/* Targeting result badge */}
           {isTargeting && targetingTile && (
-            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-amber-200 p-3 w-64 pointer-events-none">
+            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-amber-200 dark:border-amber-900/50 p-3 w-64 pointer-events-none">
               <div className="flex items-center gap-1.5 mb-1">
                 <Gem size={12} className="text-amber-500" />
-                <div className="text-xs font-semibold text-amber-700">Potencial: {targetingTile.mineralName}</div>
+                <div className="text-xs font-semibold text-amber-700 dark:text-amber-400">Potencial: {targetingTile.mineralName}</div>
               </div>
-              <div className="text-xs text-slate-500">
-                Score médio: <strong className="text-amber-700">{((targetingTile.stats.meanScore ?? 0) * 100).toFixed(0)}/100</strong>
-                {" · "}P95: <strong className="text-amber-700">{((targetingTile.stats.p95 ?? 0) * 100).toFixed(0)}</strong>
+              <div className="text-xs text-slate-500 dark:text-slate-300">
+                Score médio: <strong className="text-amber-700 dark:text-amber-400">{((targetingTile.stats.meanScore ?? 0) * 100).toFixed(0)}/100</strong>
+                {" · "}P95: <strong className="text-amber-700 dark:text-amber-400">{((targetingTile.stats.p95 ?? 0) * 100).toFixed(0)}</strong>
               </div>
               <div className="text-xs text-slate-400">
                 Área favorável: {targetingTile.stats.favorableKm2 != null
@@ -4881,7 +4963,7 @@ export default function GeoAnalises({
                   : "—"}
               </div>
               {/* On-map legend: what the score raster means */}
-              <div className="mt-2 pt-2 border-t border-amber-100">
+              <div className="mt-2 pt-2 border-t border-amber-100 dark:border-amber-900/40">
                 <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Favorabilidade (0–100)</div>
                 <div className="h-2 rounded-full" style={{ background: "linear-gradient(to right,#0d47a1,#7b1fa2,#e53935,#fdd835,#fffde7)" }} />
                 <div className="flex justify-between text-[9px] text-slate-400 mt-0.5"><span>0 · baixa</span><span>alta · 100</span></div>
@@ -4891,19 +4973,19 @@ export default function GeoAnalises({
 
           {/* GEE result badge */}
           {activeTab !== "s2" && !isLineaments && !isTargeting && geeTile && geeReady && (
-            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-emerald-200 p-3 w-64 pointer-events-none">
+            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-emerald-200 dark:border-emerald-900/50 p-3 w-64 pointer-events-none">
               <div className="flex items-center gap-1.5 mb-1">
                 <CheckCircle2 size={12} className="text-emerald-500" />
-                <div className="text-xs font-semibold text-emerald-700">GEE Real</div>
+                <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">GEE Real</div>
               </div>
-              <div className="text-xs text-slate-500">{geeTile.name.split("—")[0].trim()}</div>
+              <div className="text-xs text-slate-500 dark:text-slate-300">{geeTile.name.split("—")[0].trim()}</div>
               {geeTile.sceneCount > 0 && (
                 <div className="text-xs text-slate-400">{geeTile.sceneCount} cenas · {geeTile.dateRange}</div>
               )}
               {isTopoClass && (
-                <div className="mt-2 pt-2 border-t border-slate-100 grid grid-cols-2 gap-x-2 gap-y-0.5">
+                <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-x-2 gap-y-0.5">
                   {["#1a9850","#66bd63","#fee08b","#fdae61","#a50026","#3690c0"].map((c, i) => (
-                    <div key={i} className="flex items-center gap-1 text-[10px] text-slate-600">
+                    <div key={i} className="flex items-center gap-1 text-[10px] text-slate-600 dark:text-slate-300">
                       <span className="inline-block w-2.5 h-2.5 rounded shrink-0" style={{ background: c }} />
                       <span className="truncate">{TERRAIN_CLASS_NAMES[i]}</span>
                     </div>
@@ -4911,7 +4993,7 @@ export default function GeoAnalises({
                 </div>
               )}
               {!isTopoClass && activeDef && (
-                <div className="mt-2 pt-2 border-t border-slate-100">
+                <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                   <div
                     className="h-2.5 w-full rounded"
                     style={{
@@ -4932,7 +5014,7 @@ export default function GeoAnalises({
       </div>
 
       {/* Status bar */}
-      <div className="shrink-0 bg-white border-t border-slate-200 px-4 py-2 flex items-center gap-4 text-xs text-slate-400">
+      <div className="shrink-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-4 py-2 flex items-center gap-4 text-xs text-slate-400">
         <span>
           {activeTab === "s2"
             ? `Sentinel-2 cloudless ${selectedYear} — EOX IT Services (CC BY 4.0)`

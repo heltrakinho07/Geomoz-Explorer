@@ -190,18 +190,18 @@ export default function MapDraw({ enabled, onDrawComplete, onCancel, hasDrawnAOI
       {!drawing && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1 bg-white rounded-xl shadow-lg border border-slate-200 p-1"
+          className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1 bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 p-1"
         >
           {!hasDrawnAOI ? (
             <>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-500 rounded-lg">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 rounded-lg">
                 <Pen size={13} />
                 Clique no mapa para adicionar vértices
               </div>
-              <div className="h-4 w-px bg-slate-200" />
+              <div className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
               <button
                 onClick={onCancel}
-                className="px-2.5 py-1.5 text-xs text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1"
+                className="px-2.5 py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors flex items-center gap-1"
               >
                 <EyeOff size={12} />
                 Fechar
@@ -210,13 +210,13 @@ export default function MapDraw({ enabled, onDrawComplete, onCancel, hasDrawnAOI
           ) : (
             <>
               <div className="flex items-center gap-1.5 px-2 py-1">
-                <MapPin size={13} className="text-emerald-600" />
-                <span className="text-[11px] font-medium text-emerald-700 whitespace-nowrap">Área desenhada ativa</span>
+                <MapPin size={13} className="text-emerald-600 dark:text-emerald-400" />
+                <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300 whitespace-nowrap">Área desenhada ativa</span>
               </div>
-              <div className="h-4 w-px bg-slate-200" />
+              <div className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
               <button
                 onClick={() => { onClearAOI?.(); startDraw(); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-fuchsia-700 hover:bg-fuchsia-50 rounded-lg transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-fuchsia-700 dark:text-fuchsia-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-950/40 rounded-lg transition-colors"
                 title="Substituir por nova área desenhada"
               >
                 <Pen size={13} />
@@ -224,7 +224,7 @@ export default function MapDraw({ enabled, onDrawComplete, onCancel, hasDrawnAOI
               </button>
               <button
                 onClick={() => { onClearAOI?.(); onCancel(); }}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors"
                 title="Remover área desenhada"
               >
                 <Trash2 size={12} />
@@ -237,14 +237,14 @@ export default function MapDraw({ enabled, onDrawComplete, onCancel, hasDrawnAOI
 
       {/* Drawing toolbar — active drawing state */}
       {drawing && (
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1 bg-white rounded-xl shadow-lg border border-fuchsia-200 p-1.5">
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1 bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-fuchsia-200 dark:border-fuchsia-800 p-1.5">
           <div className="flex items-center gap-0.5 mr-1">
             {(["polygon", "rectangle", "line"] as const).map(m => (
               <button
                 key={m}
                 onClick={() => setMode(m)}
                 className={`px-2 py-1 text-[10px] rounded-md transition-colors ${
-                  mode === m ? "bg-fuchsia-100 text-fuchsia-700 font-medium" : "text-slate-500 hover:bg-slate-50"
+                  mode === m ? "bg-fuchsia-100 dark:bg-fuchsia-950/50 text-fuchsia-700 dark:text-fuchsia-300 font-medium" : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
                 }`}
               >
                 {m === "polygon" ? "Polígono" : m === "rectangle" ? "Rectângulo" : "Linha"}
@@ -252,7 +252,7 @@ export default function MapDraw({ enabled, onDrawComplete, onCancel, hasDrawnAOI
             ))}
           </div>
 
-          <div className="h-5 w-px bg-slate-200" />
+          <div className="h-5 w-px bg-slate-200 dark:bg-slate-700" />
 
           <span className="text-[10px] text-slate-400 px-1.5 font-medium">
             {points.length} {points.length === 1 ? "ponto" : "pts"}
@@ -261,19 +261,19 @@ export default function MapDraw({ enabled, onDrawComplete, onCancel, hasDrawnAOI
           {points.length > 0 && (
             <button
               onClick={undoLast}
-              className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+              className="p-1.5 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors"
               title="Desfazer último ponto"
             >
               <Trash2 size={13} />
             </button>
           )}
 
-          <div className="h-5 w-px bg-slate-200" />
+          <div className="h-5 w-px bg-slate-200 dark:bg-slate-700" />
 
           <button
             onClick={finishDraw}
             disabled={mode === "line" ? points.length < 2 : points.length < 3}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-fuchsia-600 hover:bg-fuchsia-700 disabled:bg-slate-300 disabled:text-slate-500 rounded-lg transition-colors shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-fuchsia-600 hover:bg-fuchsia-700 disabled:bg-slate-300 dark:disabled:bg-slate-800 disabled:text-slate-500 rounded-lg transition-colors shadow-sm"
           >
             <Check size={12} />
             Concluir
@@ -281,7 +281,7 @@ export default function MapDraw({ enabled, onDrawComplete, onCancel, hasDrawnAOI
 
           <button
             onClick={cancelDraw}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 hover:text-white bg-red-50 hover:bg-red-500 border border-red-200 hover:border-red-500 rounded-lg transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:text-white bg-red-50 dark:bg-red-950/40 hover:bg-red-500 dark:hover:bg-red-600 border border-red-200 dark:border-red-900/60 hover:border-red-500 rounded-lg transition-all"
           >
             <X size={12} />
             Cancelar

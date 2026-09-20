@@ -91,10 +91,29 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
     }
   }, [initialAuthMode]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, [theme]);
+
   const toggleTheme = () => {
     const next = theme === "light" ? "dark" : "light";
     setTheme(next);
     localStorage.setItem("geomoz_theme", next);
+    if (typeof window !== "undefined") {
+      if (next === "dark") {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
+      window.dispatchEvent(
+        new CustomEvent("geomoz_theme_changed", { detail: next })
+      );
+    }
   };
 
   const toggleLang = () => {

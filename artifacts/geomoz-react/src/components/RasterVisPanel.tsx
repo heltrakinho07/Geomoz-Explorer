@@ -92,7 +92,7 @@ function BandSelect({
         <select
           value={value}
           onChange={e => onChange(e.target.value)}
-          className="w-full appearance-none text-xs bg-white border border-slate-200 rounded-md pl-2 pr-6 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+          className="w-full appearance-none text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md pl-2 pr-6 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
         >
           <option value="">—</option>
           {options.map(b => (
@@ -124,7 +124,7 @@ function RangeInput({
         value={value}
         step={step}
         onChange={e => onChange(Number(e.target.value))}
-        className="flex-1 text-xs bg-white border border-slate-200 rounded-md px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono"
+        className="flex-1 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono"
       />
     </div>
   );
@@ -233,14 +233,14 @@ export default function RasterVisPanel({
         className="pointer-events-auto w-72 max-h-full overflow-y-auto glass-panel rounded-2xl flex flex-col"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
           <div className="flex items-center gap-2">
             <Sliders size={14} className="text-sky-600" />
-            <span className="text-sm font-semibold text-slate-800">Visualização</span>
+            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Visualização</span>
           </div>
           <button
             onClick={onClose}
-            className="w-6 h-6 flex items-center justify-center rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+            className="w-6 h-6 flex items-center justify-center rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             title="Fechar"
           >
             <X size={14} />
@@ -258,7 +258,7 @@ export default function RasterVisPanel({
                 className={`flex-1 text-xs py-1.5 rounded-lg border transition-colors font-medium ${
                   mode === "grayscale"
                     ? "bg-sky-500 text-white border-sky-500"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-sky-400"
+                    : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-sky-400"
                 }`}
               >
                 1 Band (Grayscale)
@@ -268,7 +268,7 @@ export default function RasterVisPanel({
                 className={`flex-1 text-xs py-1.5 rounded-lg border transition-colors font-medium ${
                   mode === "rgb"
                     ? "bg-sky-500 text-white border-sky-500"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-sky-400"
+                    : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-sky-400"
                 }`}
               >
                 3 Bands (RGB)
@@ -318,7 +318,7 @@ export default function RasterVisPanel({
               <select
                 value={stretch}
                 onChange={e => setStretch(Number(e.target.value))}
-                className="w-full appearance-none text-xs bg-white border border-slate-200 rounded-md pl-2 pr-6 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="w-full appearance-none text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md pl-2 pr-6 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500"
               >
                 {STRETCH_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -352,11 +352,11 @@ export default function RasterVisPanel({
         </div>
 
         {/* Footer — action buttons */}
-        <div className="shrink-0 border-t border-slate-100 p-3 space-y-1.5">
+        <div className="shrink-0 border-t border-slate-100 dark:border-slate-800 p-3 space-y-1.5">
           <button
             onClick={handleApply}
             disabled={applying}
-            className="w-full flex items-center justify-center gap-2 py-2 bg-sky-500 hover:bg-sky-600 disabled:bg-slate-300 text-white text-xs font-semibold rounded-lg transition-colors"
+            className="w-full flex items-center justify-center gap-2 py-2 bg-sky-500 hover:bg-sky-600 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
           >
             {applying ? (
               <>
@@ -374,13 +374,13 @@ export default function RasterVisPanel({
             <button
               onClick={handleImport}
               disabled={applying}
-              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 border border-slate-200 hover:border-sky-400 text-slate-600 hover:text-sky-600 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-sky-400 text-slate-600 dark:text-slate-300 hover:text-sky-600 dark:hover:text-sky-400 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
             >
               <Download size={12} /> Import
             </button>
             <button
               onClick={onClose}
-              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 border border-slate-200 hover:border-red-400 text-slate-600 hover:text-red-600 text-xs font-medium rounded-lg transition-colors"
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-red-400 text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 text-xs font-medium rounded-lg transition-colors cursor-pointer"
             >
               <X size={12} /> Close
             </button>

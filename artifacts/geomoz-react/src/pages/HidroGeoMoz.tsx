@@ -113,10 +113,10 @@ function RiskBar({ label, value, icon: Icon, invert = false }: {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex justify-between mb-0.5">
-          <span className="text-[11px] text-slate-500">{label}</span>
+          <span className="text-[11px] text-slate-500 dark:text-slate-400">{label}</span>
           <span className="text-[11px] font-bold" style={{ color }}>{riskLabel(eff)} · {value.toFixed(0)}</span>
         </div>
-        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
           <div className="h-full rounded-full" style={{ width: `${value}%`, background: color }} />
         </div>
       </div>
@@ -126,9 +126,9 @@ function RiskBar({ label, value, icon: Icon, invert = false }: {
 
 function StatRow({ label, value, unit = "" }: { label: string; value: React.ReactNode; unit?: string }) {
   return (
-    <div className="flex items-center justify-between py-1.5 border-b border-slate-50 last:border-0">
-      <span className="text-[11px] text-slate-500">{label}</span>
-      <span className="text-[11px] font-semibold text-slate-800 font-mono">
+    <div className="flex items-center justify-between py-1.5 border-b border-slate-50 dark:border-slate-800 last:border-0">
+      <span className="text-[11px] text-slate-500 dark:text-slate-400">{label}</span>
+      <span className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 font-mono">
         {value}<span className="text-slate-400 font-normal ml-0.5">{unit}</span>
       </span>
     </div>
@@ -741,7 +741,7 @@ export default function HidroGeoMoz({
       {/* ── Sidebar Toggle (always visible) ─────────────────────────────── */}
       <button
         onClick={() => setSidebarOpen(o => !o)}
-        className="z-[700] absolute left-0 top-1/2 -translate-y-1/2 w-5 h-16 bg-white border border-l-0 border-slate-200 rounded-r-lg flex items-center justify-center shadow-sm hover:bg-slate-50 transition-colors"
+        className="z-[700] absolute left-0 top-1/2 -translate-y-1/2 w-5 h-16 bg-white dark:bg-slate-900 border border-l-0 border-slate-200 dark:border-slate-700 rounded-r-lg flex items-center justify-center shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
         style={{ left: sidebarOpen ? "17rem" : 0 }}
         title={sidebarOpen ? "Recolher" : "Expandir"}
       >
@@ -749,22 +749,22 @@ export default function HidroGeoMoz({
       </button>
 
       {/* ── Left Sidebar ─────────────────────────────────────────────────── */}
-      <div className={`flex flex-col bg-white border-r border-slate-200 overflow-y-auto shrink-0 transition-all duration-200 ${sidebarOpen ? "w-68" : "w-0 overflow-hidden"}`}
+      <div className={`flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0 transition-all duration-200 ${sidebarOpen ? "w-68" : "w-0 overflow-hidden"}`}
         style={{ width: sidebarOpen ? "272px" : "0px" }}>
 
         {/* Header */}
-        <div className="px-4 pt-4 pb-3 border-b border-slate-100">
+        <div className="px-4 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center shadow-sm shrink-0">
               <Droplets size={15} className="text-white" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Bacias Hidrográficas</h2>
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Bacias Hidrográficas</h2>
               <p className="text-[10px] text-slate-400">HydroSHEDS · GEE · DEM GLO-30</p>
             </div>
           </div>
           {geeStatus && (
-            <div className={`mt-2 flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-lg ${geeStatus.connected ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+            <div className={`mt-2 flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-lg ${geeStatus.connected ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300" : "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300"}`}>
               {geeStatus.connected ? <CheckCircle2 size={10} /> : <AlertTriangle size={10} />}
               {geeStatus.connected ? "GEE conectado" : "GEE offline"}
             </div>
@@ -772,11 +772,11 @@ export default function HidroGeoMoz({
         </div>
 
         {/* Mode toggle */}
-        <div className="p-3 border-b border-slate-100">
-          <div className="grid grid-cols-2 gap-1 bg-slate-100 rounded-xl p-1">
+        <div className="p-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="grid grid-cols-2 gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
             {([["delineate","Delimitar",Crosshair],["explore","Explorar",Layers]] as const).map(([m, label, Icon]) => (
               <button key={m} onClick={() => { setMode(m); setError(null); }}
-                className={`flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-lg transition-all ${mode === m ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+                className={`flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-lg transition-all ${mode === m ? "bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}>
                 <Icon size={11} /> {label}
               </button>
             ))}
@@ -784,37 +784,37 @@ export default function HidroGeoMoz({
         </div>
 
         {/* Área de estudo — AOI global */}
-        <div className="p-3 border-b border-slate-100">
+        <div className="p-3 border-b border-slate-100 dark:border-slate-800">
           <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Área de Estudo</h4>
           <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
         </div>
 
         {/* Explore config */}
         {mode === "explore" && (
-          <div className="p-3 space-y-3 border-b border-slate-100">
+          <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
             <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Configuração</h4>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[11px] text-amber-700 flex items-start gap-2">
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-2.5 text-[11px] text-amber-700 dark:text-amber-300 flex items-start gap-2">
               <Info size={12} className="mt-0.5 shrink-0 text-amber-500" />
               <span>As bacias pré-definidas (HydroBASINS) podem não estar disponíveis neste projeto. Se nada aparecer, use <strong>Delimitar</strong> para delinear por DEM.</span>
             </div>
             <div>
-              <label className="text-[10px] text-slate-500 mb-1 block">HydroBASINS — <strong className="text-slate-700">Nível {basinLevel}</strong></label>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">HydroBASINS — <strong className="text-slate-700 dark:text-slate-200">Nível {basinLevel}</strong></label>
               <input type="range" min={5} max={8} step={1} value={basinLevel} onChange={e => setBasinLevel(+e.target.value)} className="w-full accent-blue-500" />
               <div className="flex justify-between text-[10px] text-slate-400"><span>Grandes (5)</span><span>Detalhe (8)</span></div>
             </div>
             <div className="flex items-center justify-between">
-              <label className="text-[10px] text-slate-500">Rede de Drenagem</label>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400">Rede de Drenagem</label>
               <input type="checkbox" checked={showDrainage} onChange={e => setShowDrainage(e.target.checked)} className="accent-blue-500" />
             </div>
             {showDrainage && (
               <div>
-                <label className="text-[10px] text-slate-500 mb-1 block">Limiar acumulação</label>
+                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Limiar acumulação</label>
                 <input type="range" min={100} max={2000} step={100} value={drainThresh} onChange={e => setDrainThresh(+e.target.value)} className="w-full accent-cyan-500" />
                 <div className="flex justify-between text-[10px] text-slate-400"><span>Cabeceiras</span><span>Rios principales</span></div>
               </div>
             )}
             <button onClick={loadBasins} disabled={loadingBasins}
-              className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm">
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-slate-800 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm">
               {loadingBasins ? <><Loader2 size={12} className="animate-spin" /> A carregar…</> : <><Play size={12} /> Carregar Bacias</>}
             </button>
           </div>
@@ -822,28 +822,28 @@ export default function HidroGeoMoz({
 
         {/* Delineate config */}
         {mode === "delineate" && (
-          <div className="p-3 space-y-3 border-b border-slate-100">
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-[11px] text-blue-800 flex items-start gap-2">
+          <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-xl p-3 text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
               <MapPin size={12} className="mt-0.5 shrink-0 text-blue-500" />
               <span>Clique no mapa: devolve a <strong>sub-bacia HydroBASINS</strong> que contém o ponto (limite real, instantâneo).</span>
             </div>
             <div>
-              <label className="text-[10px] text-slate-500 mb-1 block">Detalhe — <strong className="text-slate-700">nível {level}</strong></label>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Detalhe — <strong className="text-slate-700 dark:text-slate-200">nível {level}</strong></label>
               <input type="range" min={6} max={12} step={1} value={level} onChange={e => setLevel(+e.target.value)} className="w-full accent-blue-500" />
               <div className="flex justify-between text-[10px] text-slate-400"><span>Grande (6)</span><span>Pequena (12)</span></div>
             </div>
             {pourPoint && (
-              <div className="bg-slate-50 rounded-xl p-2.5 text-[11px] font-mono text-slate-600 space-y-0.5">
+              <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 text-[11px] font-mono text-slate-600 dark:text-slate-300 space-y-0.5">
                 <div className="text-[10px] font-semibold text-slate-400 not-italic mb-1">Ponto seleccionado</div>
                 <div>Lat {pourPoint[0].toFixed(5)} · Lon {pourPoint[1].toFixed(5)}</div>
-                {watershedData && <div className="text-blue-700 font-bold not-italic">{watershedData.areaKm2.toLocaleString("pt-PT")} km²</div>}
+                {watershedData && <div className="text-blue-700 dark:text-blue-400 font-bold not-italic">{watershedData.areaKm2.toLocaleString("pt-PT")} km²</div>}
               </div>
             )}
           </div>
         )}
 
         {/* River network */}
-        <div className="p-3 space-y-2.5 border-b border-slate-100">
+        <div className="p-3 space-y-2.5 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center justify-between">
             <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1"><GitBranch size={10} /> Linhas de Água</h4>
             {riverNet && <input type="checkbox" checked={showRiverNet} onChange={e => setShowRiverNet(e.target.checked)} className="accent-blue-500" />}
@@ -851,25 +851,25 @@ export default function HidroGeoMoz({
           {riverNet && showRiverNet && (
             <div className="flex items-center gap-1.5">
               <input type="checkbox" checked={showAllOrders} onChange={e => setShowAllOrders(e.target.checked)} className="accent-cyan-500" />
-              <span className="text-[10px] text-slate-600">Todas as ordens</span>
+              <span className="text-[10px] text-slate-600 dark:text-slate-300">Todas as ordens</span>
             </div>
           )}
           <button onClick={loadRiverNetwork} disabled={loadingRN}
-            className="w-full flex items-center justify-center gap-1.5 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-300 text-white text-xs font-semibold rounded-xl transition-colors">
+            className="w-full flex items-center justify-center gap-1.5 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-300 dark:disabled:bg-slate-800 text-white text-xs font-semibold rounded-xl transition-colors">
             {loadingRN ? <><Loader2 size={11} className="animate-spin" /> A gerar…</> : <><RefreshCw size={11} /> {riverNet ? "Atualizar" : "Gerar Linhas de Água"}</>}
           </button>
         </div>
 
         {/* Error */}
         {error && (
-          <div className="m-3 bg-red-50 border border-red-200 rounded-xl p-2.5 text-[11px] text-red-700 flex items-start gap-1.5">
+          <div className="m-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl p-2.5 text-[11px] text-red-700 dark:text-red-300 flex items-start gap-1.5">
             <AlertTriangle size={11} className="mt-0.5 shrink-0" />{error}
           </div>
         )}
 
         {/* Hint */}
         {mode === "explore" && !selectedFeat && basinsData?.source === "hydrobasins" && (
-          <div className="m-3 bg-blue-50 border border-blue-100 rounded-xl p-2.5 text-[11px] text-blue-700 flex items-start gap-1.5">
+          <div className="m-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 rounded-xl p-2.5 text-[11px] text-blue-700 dark:text-blue-300 flex items-start gap-1.5">
             <Info size={11} className="mt-0.5 shrink-0" />Clique numa bacia no mapa para ver estatísticas detalhadas no painel direito.
           </div>
         )}
@@ -965,32 +965,32 @@ export default function HidroGeoMoz({
             </MapContainer>
 
         {/* Legend */}
-        <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-blue-100 p-3 pointer-events-none text-[11px] min-w-[130px]">
+        <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-blue-100 dark:border-blue-900/40 p-3 pointer-events-none text-[11px] min-w-[130px]">
           {mode === "explore" ? (
             <>
-              <div className="font-semibold text-blue-800 mb-2 flex items-center gap-1"><Droplets size={11} /> HydroBASINS</div>
-              <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-5 h-1.5 rounded border border-blue-500 bg-blue-500/10" /><span className="text-slate-600">Bacia</span></div>
-              <div className="flex items-center gap-1.5"><span className="inline-block w-5 h-1.5 rounded border border-amber-400 bg-amber-400/25" /><span className="text-slate-600">Seleccionada</span></div>
+              <div className="font-semibold text-blue-800 dark:text-blue-300 mb-2 flex items-center gap-1"><Droplets size={11} /> HydroBASINS</div>
+              <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-5 h-1.5 rounded border border-blue-500 bg-blue-500/10" /><span className="text-slate-600 dark:text-slate-300">Bacia</span></div>
+              <div className="flex items-center gap-1.5"><span className="inline-block w-5 h-1.5 rounded border border-amber-400 bg-amber-400/25" /><span className="text-slate-600 dark:text-slate-300">Seleccionada</span></div>
             </>
           ) : (
             <>
-              <div className="font-semibold text-blue-800 mb-2 flex items-center gap-1"><Crosshair size={11} /> Sub-bacia</div>
-              <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow-sm" /><span className="text-slate-600">Ponto clicado</span></div>
-              <div className="flex items-center gap-1.5"><span className="inline-block w-5 h-1.5 rounded border-2 border-blue-800 bg-blue-600/20" /><span className="text-slate-600">Bacia delimitada</span></div>
+              <div className="font-semibold text-blue-800 dark:text-blue-300 mb-2 flex items-center gap-1"><Crosshair size={11} /> Sub-bacia</div>
+              <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow-sm" /><span className="text-slate-600 dark:text-slate-300">Ponto clicado</span></div>
+              <div className="flex items-center gap-1.5"><span className="inline-block w-5 h-1.5 rounded border-2 border-blue-800 bg-blue-600/20" /><span className="text-slate-600 dark:text-slate-300">Bacia delimitada</span></div>
             </>
           )}
           {showRiverNet && riverNet && (
-            <div className="mt-2 pt-2 border-t border-slate-100">
-              <div className="font-semibold text-cyan-800 mb-1 flex items-center gap-1"><GitBranch size={10} /> Linhas de Água</div>
+            <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="font-semibold text-cyan-800 dark:text-cyan-300 mb-1 flex items-center gap-1"><GitBranch size={10} /> Linhas de Água</div>
               {showAllOrders ? (
                 ["#a8d5f7","#5badf5","#1a73e8","#0d47a1","#002171"].map((c, i) => (
                   <div key={i} className="flex items-center gap-1.5 mb-0.5">
                     <span className="inline-block w-5 h-1 rounded" style={{ background: c }} />
-                    <span className="text-slate-500 text-[10px]">{["Cabeceiras","Pequenos","Médios","Grandes","Principais"][i]}</span>
+                    <span className="text-slate-500 dark:text-slate-400 text-[10px]">{["Cabeceiras","Pequenos","Médios","Grandes","Principais"][i]}</span>
                   </div>
                 ))
               ) : (
-                <div className="flex items-center gap-1.5"><span className="inline-block w-5 h-1 rounded bg-[#002171]" /><span className="text-slate-500">Rios principais</span></div>
+                <div className="flex items-center gap-1.5"><span className="inline-block w-5 h-1 rounded bg-[#002171]" /><span className="text-slate-500 dark:text-slate-400">Rios principais</span></div>
               )}
             </div>
           )}
@@ -1003,17 +1003,17 @@ export default function HidroGeoMoz({
           </div>
         )}
         {mode === "explore" && basinsData?.source === "hydrobasins" && (
-          <div className="absolute top-4 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-sm border border-blue-100 px-3 py-1.5 text-[11px] text-blue-700 flex items-center gap-1.5 pointer-events-none">
+          <div className="absolute top-4 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-sm border border-blue-100 dark:border-blue-900/40 px-3 py-1.5 text-[11px] text-blue-700 dark:text-blue-300 flex items-center gap-1.5 pointer-events-none">
             <Layers size={11} />{basinsData.count} bacias · Nível {basinsData.level}
           </div>
         )}
 
         {/* Loading overlay */}
         {(loadingBasins || loadingWS || loadingRN) && (
-          <div className="absolute inset-0 z-[600] bg-white/55 backdrop-blur-sm flex items-center justify-center">
-            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 px-7 py-5 flex items-center gap-3">
+          <div className="absolute inset-0 z-[600] bg-white/55 dark:bg-slate-950/70 backdrop-blur-sm flex items-center justify-center">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 px-7 py-5 flex items-center gap-3">
               <Loader2 size={20} className="text-blue-500 animate-spin" />
-              <span className="text-sm text-slate-700 font-medium">
+              <span className="text-sm text-slate-700 dark:text-slate-200 font-medium">
                 {loadingBasins ? "A carregar bacias HydroBASINS…"
                   : loadingWS ? "A delinear sub-bacia (HydroBASINS)…"
                   : "A gerar rede de linhas de água…"}
@@ -1025,19 +1025,19 @@ export default function HidroGeoMoz({
 
       {/* ── Right Panel ──────────────────────────────────────────────────── */}
       {hasRightContent && (
-        <div className="w-80 flex flex-col bg-white border-l border-slate-200 overflow-y-auto shrink-0">
+        <div className="w-80 flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0">
 
           {/* ── DELINEATE mode right panel ───────────────────────────────── */}
           {mode === "delineate" && (
             <>
               {/* Watershed header */}
-              <div className="px-5 pt-5 pb-3 border-b border-slate-100">
+              <div className="px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2 mb-1">
-                  <ArrowDownCircle size={15} className="text-blue-600" />
-                  <span className="text-sm font-semibold text-slate-900">Bacia Delimitada</span>
+                  <ArrowDownCircle size={15} className="text-blue-600 dark:text-blue-400" />
+                  <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Bacia Delimitada</span>
                 </div>
                 {pourPoint && (
-                  <div className="text-[11px] text-slate-500 font-mono">
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                     {pourPoint[0].toFixed(4)}° / {pourPoint[1].toFixed(4)}°
                   </div>
                 )}
@@ -1065,7 +1065,7 @@ export default function HidroGeoMoz({
 
                   {/* Stats loading (separate from basin delineation) */}
                   {loadingWsSt && (
-                    <div className="flex items-center gap-2 text-[11px] text-slate-400 bg-slate-50 rounded-xl p-3">
+                    <div className="flex items-center gap-2 text-[11px] text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3">
                       <Loader2 size={13} className="animate-spin text-blue-400" /> A calcular estatísticas GEE (declive, NDVI, chuva)…
                     </div>
                   )}
@@ -1075,7 +1075,7 @@ export default function HidroGeoMoz({
                     <>
                       <div>
                         <SectionHeader title="Morfometria" icon={Mountain} />
-                        <div className="bg-slate-50 rounded-xl p-3 space-y-0">
+                        <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-0">
                           <StatRow label="Elev. mínima" value={wsStats.elevMinM.toFixed(0)} unit=" m" />
                           <StatRow label="Elev. média" value={wsStats.elevMeanM.toFixed(0)} unit=" m" />
                           <StatRow label="Elev. máxima" value={wsStats.elevMaxM.toFixed(0)} unit=" m" />
@@ -1085,7 +1085,7 @@ export default function HidroGeoMoz({
 
                       <div>
                         <SectionHeader title="Vegetação & Clima" icon={Activity} />
-                        <div className="bg-slate-50 rounded-xl p-3 space-y-0">
+                        <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-0">
                           <StatRow label="NDVI médio" value={wsStats.ndviMean != null ? wsStats.ndviMean.toFixed(3) : "—"} />
                           <StatRow label="NDWI médio" value={wsStats.ndwiMean != null ? wsStats.ndwiMean.toFixed(3) : "—"} />
                           <StatRow label="Precipitação" value={wsStats.precipMmYr.toFixed(0)} unit=" mm/ano" />
@@ -1115,13 +1115,13 @@ export default function HidroGeoMoz({
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => exportGeoJSON(watershedData.geojson, `watershed_${pourPoint?.[0].toFixed(3)}_${pourPoint?.[1].toFixed(3)}`)}
-                        className="flex items-center justify-center gap-1.5 py-2.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-xs font-semibold rounded-xl transition-colors">
+                        className="flex items-center justify-center gap-1.5 py-2.5 bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-800/50 text-blue-700 dark:text-blue-300 text-xs font-semibold rounded-xl transition-colors">
                         <FileText size={12} /> GeoJSON
                       </button>
                       {wsStats && (
                         <button
                           onClick={() => exportCSV(wsStats, `watershed_${pourPoint?.[0].toFixed(3)}`)}
-                          className="flex items-center justify-center gap-1.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors">
+                          className="flex items-center justify-center gap-1.5 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl transition-colors">
                           <Download size={12} /> CSV Stats
                         </button>
                       )}
@@ -1150,9 +1150,9 @@ export default function HidroGeoMoz({
                             ["Compacidade", `${basinReport.morphometry.compactness}`],
                             ["Fator forma", `${basinReport.morphometry.formFactor}`],
                           ] as const).map(([k, v]) => (
-                            <div key={k} className="bg-slate-50 rounded-lg p-2 text-center">
+                            <div key={k} className="bg-slate-50 dark:bg-slate-800/60 rounded-lg p-2 text-center">
                               <div className="text-[9px] text-slate-400 uppercase tracking-wide leading-tight">{k}</div>
-                              <div className="text-xs font-bold text-slate-700">{v}</div>
+                              <div className="text-xs font-bold text-slate-700 dark:text-slate-200">{v}</div>
                             </div>
                           ))}
                         </div>
@@ -1163,13 +1163,13 @@ export default function HidroGeoMoz({
                             {basinReport.landcover.slice(0, 6).map(c => (
                               <div key={c.code} className="flex items-center gap-2 text-[11px]">
                                 <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: c.color }} />
-                                <span className="text-slate-600 flex-1 truncate">{c.label}</span>
+                                <span className="text-slate-600 dark:text-slate-300 flex-1 truncate">{c.label}</span>
                                 <span className="text-slate-400 font-mono">{c.pct}%</span>
                               </div>
                             ))}
                           </div>
                           <button onClick={() => setReportLayer(l => l === "lulc" ? "none" : "lulc")}
-                            className={`mt-1.5 w-full text-[10px] py-1 rounded-lg border transition-colors ${reportLayer === "lulc" ? "bg-lime-100 border-lime-300 text-lime-700" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
+                            className={`mt-1.5 w-full text-[10px] py-1 rounded-lg border transition-colors ${reportLayer === "lulc" ? "bg-lime-100 dark:bg-lime-950/40 border-lime-300 dark:border-lime-800 text-lime-700 dark:text-lime-300" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
                             {reportLayer === "lulc" ? "Ocultar no mapa" : "Ver no mapa"}
                           </button>
                         </div>
@@ -1187,15 +1187,15 @@ export default function HidroGeoMoz({
                           </ResponsiveContainer>
                         </div>
 
-                        <div className="bg-slate-50 rounded-xl p-2.5">
+                        <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5">
                           <div className="flex items-center justify-between">
-                            <div className="text-[11px] text-slate-600">Escoamento — CN médio</div>
-                            <div className="text-sm font-bold text-slate-800">{basinReport.runoff.cnMean ?? "—"}</div>
+                            <div className="text-[11px] text-slate-600 dark:text-slate-300">Escoamento — CN médio</div>
+                            <div className="text-sm font-bold text-slate-800 dark:text-slate-200">{basinReport.runoff.cnMean ?? "—"}</div>
                           </div>
                           <div className="h-2 rounded-full mt-1.5" style={{ background: "linear-gradient(to right,#1a9850,#fee08b,#d73027)" }} />
                           <div className="flex justify-between text-[9px] text-slate-400 mt-0.5"><span>40 · infiltra</span><span>escoa · 100</span></div>
                           <button onClick={() => setReportLayer(l => l === "cn" ? "none" : "cn")}
-                            className={`mt-1.5 w-full text-[10px] py-1 rounded-lg border transition-colors ${reportLayer === "cn" ? "bg-red-100 border-red-300 text-red-700" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
+                            className={`mt-1.5 w-full text-[10px] py-1 rounded-lg border transition-colors ${reportLayer === "cn" ? "bg-red-100 dark:bg-red-950/40 border-red-300 dark:border-red-800 text-red-700 dark:text-red-300" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
                             {reportLayer === "cn" ? "Ocultar no mapa" : "Ver mapa de escoamento"}
                           </button>
                         </div>
@@ -1215,7 +1215,7 @@ export default function HidroGeoMoz({
                   </div>
 
                   {/* Note */}
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-800 flex items-start gap-2">
+                  <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
                     <Info size={12} className="mt-0.5 shrink-0" />
                     Sub-bacia HydroBASINS (limite oficial WWF/HydroSHEDS). Para análise definitiva, recomenda-se validação de campo.
                   </div>
@@ -1235,10 +1235,10 @@ export default function HidroGeoMoz({
           {/* ── EXPLORE mode right panel ─────────────────────────────────── */}
           {mode === "explore" && (
             <>
-              <div className="px-5 pt-5 pb-3 border-b border-slate-100">
+              <div className="px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2">
                   <BarChart2 size={14} className="text-blue-500" />
-                  <span className="text-sm font-semibold text-slate-900">
+                  <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                     {selectedFeat ? `Bacia ${selectedFeat.properties?.HYBAS_ID ?? "—"}` : "Análise da Área"}
                   </span>
                 </div>
@@ -1264,7 +1264,7 @@ export default function HidroGeoMoz({
                           <div className="text-2xl font-bold">{basinStats.areaKm2.toLocaleString("pt-PT")}</div>
                           <div className="text-xs opacity-75">km²  ·  Perím. {basinStats.perimeterKm.toFixed(0)} km</div>
                         </div>
-                        <div className="bg-slate-50 rounded-xl p-3 space-y-0 mb-3">
+                        <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-0 mb-3">
                           <StatRow label="Elev. mínima" value={basinStats.elevMinM.toFixed(0)} unit=" m" />
                           <StatRow label="Elev. média" value={basinStats.elevMeanM.toFixed(0)} unit=" m" />
                           <StatRow label="Elev. máxima" value={basinStats.elevMaxM.toFixed(0)} unit=" m" />
@@ -1286,19 +1286,19 @@ export default function HidroGeoMoz({
                           <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1"><Download size={10} /> Exportar</div>
                           <div className="grid grid-cols-2 gap-2">
                             <button onClick={() => exportCSV(basinStats, `bacia_${selectedFeat?.properties?.HYBAS_ID ?? "sel"}`)}
-                              className="flex items-center justify-center gap-1.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors">
+                              className="flex items-center justify-center gap-1.5 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl transition-colors">
                               <Download size={11} /> CSV Stats
                             </button>
                             {selectedFeat && (
                               <button onClick={() => exportGeoJSON(selectedFeat as GeoJSON.Feature, `bacia_${selectedFeat.properties?.HYBAS_ID ?? "sel"}`)}
-                                className="flex items-center justify-center gap-1.5 py-2.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-xs font-semibold rounded-xl transition-colors">
+                                className="flex items-center justify-center gap-1.5 py-2.5 bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-800/50 text-blue-700 dark:text-blue-300 text-xs font-semibold rounded-xl transition-colors">
                                 <FileText size={11} /> GeoJSON
                               </button>
                             )}
                           </div>
                         </div>
 
-                        <div className="border-t border-slate-100 pt-4" />
+                        <div className="border-t border-slate-100 dark:border-slate-800 pt-4" />
                       </>
                     )}
                   </div>
@@ -1323,21 +1323,21 @@ export default function HidroGeoMoz({
                 {statsData && (
                   <div>
                     <SectionHeader title="Unidades Geológicas" icon={Layers} />
-                    <div className="bg-slate-50 rounded-xl overflow-hidden">
+                    <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl overflow-hidden">
                       <table className="w-full text-[10px]">
                         <thead>
-                          <tr className="bg-slate-100">
-                            <th className="text-left p-2 text-slate-500 font-medium">Litologia</th>
-                            <th className="text-right p-2 text-slate-500 font-medium">km²</th>
-                            <th className="text-right p-2 text-slate-500 font-medium">%</th>
+                          <tr className="bg-slate-100 dark:bg-slate-800">
+                            <th className="text-left p-2 text-slate-500 dark:text-slate-400 font-medium">Litologia</th>
+                            <th className="text-right p-2 text-slate-500 dark:text-slate-400 font-medium">km²</th>
+                            <th className="text-right p-2 text-slate-500 dark:text-slate-400 font-medium">%</th>
                           </tr>
                         </thead>
                         <tbody>
                           {statsData.lithologies.slice(0, 8).map((l, i) => (
-                            <tr key={i} className="border-t border-slate-100">
-                              <td className="p-2 text-slate-700 truncate max-w-[110px]" title={l.name}>{l.name}</td>
-                              <td className="p-2 text-right text-slate-600 font-mono">{l.areaKm2.toFixed(0)}</td>
-                              <td className="p-2 text-right text-slate-600 font-mono">{l.percent.toFixed(1)}%</td>
+                            <tr key={i} className="border-t border-slate-100 dark:border-slate-700">
+                              <td className="p-2 text-slate-700 dark:text-slate-200 truncate max-w-[110px]" title={l.name}>{l.name}</td>
+                              <td className="p-2 text-right text-slate-600 dark:text-slate-300 font-mono">{l.areaKm2.toFixed(0)}</td>
+                              <td className="p-2 text-right text-slate-600 dark:text-slate-300 font-mono">{l.percent.toFixed(1)}%</td>
                             </tr>
                           ))}
                         </tbody>
@@ -1345,7 +1345,7 @@ export default function HidroGeoMoz({
                     </div>
                     {statsData.dominant && (
                       <div className="text-[10px] text-slate-400 mt-1.5 flex items-center gap-1">
-                        <Info size={9} /> Dominante: <strong className="text-slate-600 ml-0.5">{statsData.dominant}</strong>
+                        <Info size={9} /> Dominante: <strong className="text-slate-600 dark:text-slate-300 ml-0.5">{statsData.dominant}</strong>
                       </div>
                     )}
                   </div>
@@ -1354,7 +1354,7 @@ export default function HidroGeoMoz({
                 {/* Empty state */}
                 {!selectedFeat && !statsData && (
                   <div className="flex flex-col items-center justify-center gap-2 py-12 text-slate-400">
-                    <Globe size={24} className="text-slate-300" />
+                    <Globe size={24} className="text-slate-300 dark:text-slate-600" />
                     <span className="text-sm text-center">Selecione uma área ou carregue as bacias para ver análise geocientífica.</span>
                   </div>
                 )}

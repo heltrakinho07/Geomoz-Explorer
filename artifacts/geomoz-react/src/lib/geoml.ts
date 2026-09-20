@@ -193,8 +193,8 @@ export type SpectralIndex =
   | "crop_health" | "drought_severity"
   // Fire & Deforestation indices
   | "nbr" | "dnbr" | "burn_severity" | "forest_loss" | "burned_area" | "fire_risk"
-  // Coastal & Marine indices
-  | "mangrove_health" | "coastal_index" | "coastal_erosion" | "tsunami_risk"
+  // Water & Moisture indices
+  | "ndwi" | "mndwi" | "awei_nsh" | "awei_sh" | "wri" | "wi2015"
   // Climate & Disasters indices
   | "precipitation" | "temperature_lst" | "cyclone_tracks" | "cyclone_risk"
   // Urban & Infrastructure indices
@@ -290,11 +290,13 @@ export function computeSpectralValue(
     case "forest_loss":  return computeSpectralValue(legend, era, period, "fe_oxide") * 0.3 + noise * 0.5;
     case "burned_area":  return computeSpectralValue(legend, era, period, "bare_soil") * 0.6 + noise;
     case "fire_risk":    return 1 - computeSpectralValue(legend, era, period, "ndvi") * 0.5 + noise * 0.3;
-    // Coastal & Marine indices
-    case "mangrove_health": return computeSpectralValue(legend, era, period, "ndvi") * 0.6 + noise * 0.3;
-    case "coastal_index":  return computeSpectralValue(legend, era, period, "bare_soil") * 0.4 + noise;
-    case "coastal_erosion": return 0.3 + noise * 0.2;
-    case "tsunami_risk":   return computeSpectralValue(legend, era, period, "bare_soil") * 0.3 + noise * 0.3;
+    // Water & Moisture indices
+    case "ndwi":     return 0.4 + noise * 0.3;
+    case "mndwi":    return 0.4 + noise * 0.3;
+    case "awei_nsh": return 0.35 + noise * 0.3;
+    case "awei_sh":  return 0.35 + noise * 0.3;
+    case "wri":      return 0.5 + noise * 0.2;
+    case "wi2015":   return 0.4 + noise * 0.3;
     // Climate & Disasters indices
     case "precipitation": return computeSpectralValue(legend, era, period, "ndvi") * 0.4 + noise * 0.2;
     case "temperature_lst": return 0.6 + noise * 0.2;
@@ -333,8 +335,8 @@ export const GEE_ONLY_INDICES: SpectralIndex[] = [
   "crop_health", "drought_severity",
   // Fire & Deforestation — all require GEE
   "nbr", "dnbr", "burn_severity", "forest_loss", "burned_area", "fire_risk",
-  // Coastal & Marine — all require GEE
-  "mangrove_health", "coastal_index", "coastal_erosion", "tsunami_risk",
+  // Water & Moisture — all require GEE
+  "ndwi", "mndwi", "awei_nsh", "awei_sh", "wri", "wi2015",
   // Climate & Disasters — all require GEE
   "precipitation", "temperature_lst", "cyclone_tracks", "cyclone_risk",
   // Urban & Infrastructure — all require GEE
@@ -379,10 +381,12 @@ export function applyColormap(t: number, index: SpectralIndex): string {
     forest_loss: [[255,255,255],[254,229,217],[252,174,145],[251,106,74],[222,45,38],[165,15,21]],
     burned_area: [[255,255,204],[255,237,160],[254,217,118],[254,178,76],[253,141,60],[252,78,42],[227,26,28],[177,0,38]],
     fire_risk:   [[0,104,55],[26,152,80],[217,239,139],[254,224,139],[252,141,89],[215,48,39],[127,0,0]],
-    mangrove_health: [[215,48,39],[252,141,89],[254,224,139],[217,239,139],[145,207,96],[26,152,80],[0,104,55]],
-    coastal_index: [[0,104,55],[145,207,96],[254,224,139],[252,141,89],[215,48,39],[127,0,0]],
-    coastal_erosion: [[0,100,0],[255,255,204],[255,102,0],[0,0,255]],
-    tsunami_risk: [[0,104,55],[26,152,80],[217,239,139],[254,224,139],[252,141,89],[215,48,39],[127,0,0]],
+    ndwi:        [[139,69,19],[255,255,255],[0,255,255],[0,0,255],[0,0,139]],
+    mndwi:       [[127,39,4],[255,255,255],[158,202,225],[66,146,198],[8,81,156],[8,48,107]],
+    awei_nsh:    [[127,39,4],[254,227,145],[224,243,248],[103,169,207],[2,129,138],[1,70,54]],
+    awei_sh:     [[127,39,4],[254,227,145],[224,243,248],[103,169,207],[2,129,138],[1,70,54]],
+    wri:         [[140,81,10],[216,179,101],[246,232,195],[199,234,229],[90,180,172],[1,102,94]],
+    wi2015:      [[140,81,10],[223,194,125],[246,232,195],[128,205,193],[1,133,113],[0,60,48]],
     precipitation: [[255,255,204],[199,233,180],[127,205,187],[65,182,196],[29,145,192],[34,94,168],[12,44,132]],
     temperature_lst: [[49,54,149],[69,117,180],[116,173,209],[171,217,233],[254,224,144],[253,174,97],[244,109,67],[215,48,39],[165,0,38]],
     cyclone_tracks: [[255,255,255],[255,255,178],[254,204,92],[253,141,60],[240,59,32],[189,0,38]],

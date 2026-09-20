@@ -1,4 +1,4 @@
-export type BasemapType = "hybrid" | "terrain" | "satellite" | "roadmap";
+export type BasemapType = "hybrid" | "terrain" | "satellite" | "roadmap" | "cesium";
 
 export interface BasemapLayerConfig {
   id: BasemapType;
@@ -46,6 +46,15 @@ export const GOOGLE_BASEMAPS: Record<BasemapType, BasemapLayerConfig> = {
     subdomains: "0123",
     maxZoom: 20,
     attribution: "&copy; Google Maps",
+  },
+  cesium: {
+    id: "cesium",
+    label: "Cesium World Imagery",
+    icon: "Globe",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    subdomains: "",
+    maxZoom: 19,
+    attribution: "&copy; Cesium Ion &copy; Esri World Imagery",
   },
 };
 

@@ -9,7 +9,8 @@ interface BasemapSwitcherProps {
   viewMode?: "2d" | "3d";
   onViewModeChange?: (mode: "2d" | "3d") => void;
   className?: string;
-  position?: "bottom-left" | "top-right";
+  position?: "bottom-left" | "top-right" | "bottom-right";
+  show3dToggle?: boolean;
 }
 
 interface MapTypeOption {
@@ -49,6 +50,13 @@ const MAP_TYPE_OPTIONS: MapTypeOption[] = [
     previewBg: "bg-indigo-950 border-indigo-800 text-white",
     icon: <Satellite size={20} className="text-indigo-400" />,
   },
+  {
+    id: "cesium",
+    label: "Cesium World",
+    sublabel: "Globo Cesium / Sentinel-2",
+    previewBg: "bg-cyan-950 border-cyan-800 text-white",
+    icon: <Globe size={20} className="text-cyan-400" />,
+  },
 ];
 
 export default function BasemapSwitcher({
@@ -58,6 +66,7 @@ export default function BasemapSwitcher({
   onViewModeChange,
   className = "",
   position = "bottom-left",
+  show3dToggle = true,
 }: BasemapSwitcherProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -132,47 +141,49 @@ export default function BasemapSwitcher({
       </button>
 
       {/* Direct 1-Click 2D / 3D Mode Toggle (Google Maps style) */}
-      <button
-        type="button"
-        onClick={() => handleToggleViewMode(activeViewMode !== "3d")}
-        title={
-          activeViewMode === "3d"
-            ? "Alternar para 2D Plano"
-            : "Alternar para 3D & Relevo (Copernicus DEM 30m)"
-        }
-        className={`group relative flex flex-col items-center justify-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-xl border-2 p-1 transition-all active:scale-95 focus:outline-none ${
-          activeViewMode === "3d"
-            ? "border-sky-500 bg-sky-50/80 dark:bg-sky-950/50 ring-2 ring-sky-400/40"
-            : "border-white/80 dark:border-slate-800 hover:border-sky-400"
-        }`}
-      >
-        <div
-          className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden relative shadow-inner flex flex-col items-center justify-center border transition-all ${
+      {show3dToggle && (
+        <button
+          type="button"
+          onClick={() => handleToggleViewMode(activeViewMode !== "3d")}
+          title={
             activeViewMode === "3d"
-              ? "bg-gradient-to-br from-sky-600 to-indigo-600 text-white border-sky-400 shadow-md"
-              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700"
+              ? "Alternar para 2D Plano"
+              : "Alternar para 3D & Relevo (Copernicus DEM 30m)"
+          }
+          className={`group relative flex flex-col items-center justify-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-xl border-2 p-1 transition-all active:scale-95 focus:outline-none ${
+            activeViewMode === "3d"
+              ? "border-sky-500 bg-sky-50/80 dark:bg-sky-950/50 ring-2 ring-sky-400/40"
+              : "border-white/80 dark:border-slate-800 hover:border-sky-400"
           }`}
         >
-          {activeViewMode === "3d" ? (
-            <>
-              <Globe size={18} className="drop-shadow-xs" />
-              <span className="text-[8px] font-black uppercase tracking-wider mt-0.5">3D</span>
-            </>
-          ) : (
-            <>
-              <Mountain size={18} className="text-slate-600 dark:text-slate-300" />
-              <span className="text-[8px] font-bold uppercase tracking-wider mt-0.5">2D</span>
-            </>
-          )}
-        </div>
-        <span
-          className={`text-[10px] font-bold mt-1 px-1 ${
-            activeViewMode === "3d" ? "text-sky-600 dark:text-sky-400" : "text-slate-700 dark:text-slate-200"
-          }`}
-        >
-          {activeViewMode === "3d" ? "3D Ativo" : "2D Plano"}
-        </span>
-      </button>
+          <div
+            className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden relative shadow-inner flex flex-col items-center justify-center border transition-all ${
+              activeViewMode === "3d"
+                ? "bg-gradient-to-br from-sky-600 to-indigo-600 text-white border-sky-400 shadow-md"
+                : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700"
+            }`}
+          >
+            {activeViewMode === "3d" ? (
+              <>
+                <Globe size={18} className="drop-shadow-xs" />
+                <span className="text-[8px] font-black uppercase tracking-wider mt-0.5">3D</span>
+              </>
+            ) : (
+              <>
+                <Mountain size={18} className="text-slate-600 dark:text-slate-300" />
+                <span className="text-[8px] font-bold uppercase tracking-wider mt-0.5">2D</span>
+              </>
+            )}
+          </div>
+          <span
+            className={`text-[10px] font-bold mt-1 px-1 ${
+              activeViewMode === "3d" ? "text-sky-600 dark:text-sky-400" : "text-slate-700 dark:text-slate-200"
+            }`}
+          >
+            {activeViewMode === "3d" ? "3D Ativo" : "2D Plano"}
+          </span>
+        </button>
+      )}
 
       {/* Google Maps-style Expanded Layer Drawer / Card */}
       {open && (
@@ -180,6 +191,8 @@ export default function BasemapSwitcher({
           className={`absolute ${
             position === "bottom-left"
               ? "bottom-full left-0 mb-2 sm:mb-3"
+              : position === "bottom-right"
+              ? "bottom-full right-0 mb-2 sm:mb-3"
               : "top-full right-0 mt-2"
           } z-[750] w-[290px] sm:w-[320px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-2xl p-3 sm:p-4 text-slate-800 dark:text-slate-100 animate-in fade-in zoom-in-95 duration-150`}
         >
@@ -187,7 +200,7 @@ export default function BasemapSwitcher({
           <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-2 font-bold text-xs sm:text-sm">
               <Layers size={16} className="text-sky-600" />
-              <span>Tipo de Mapa (Google Maps)</span>
+              <span>Tipo de Mapa (Google Maps / Cesium)</span>
             </div>
             <button
               type="button"
@@ -235,33 +248,35 @@ export default function BasemapSwitcher({
           </div>
 
           {/* 3D Globe / Terrain Toggle Section */}
-          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-2">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              Detalhes do mapa
-            </div>
-
-            <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-                  <Globe size={16} />
-                </div>
-                <div>
-                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                    Globo 3D & Relevo
-                  </div>
-                  <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                    Copernicus DEM 30m / SRTM
-                  </div>
-                </div>
+          {show3dToggle && (
+            <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-2">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Detalhes do mapa
               </div>
 
-              <Switch
-                checked={activeViewMode === "3d"}
-                onCheckedChange={handleToggleViewMode}
-                className="data-[state=checked]:bg-sky-600"
-              />
+              <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                    <Globe size={16} />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                      Globo 3D & Relevo
+                    </div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Copernicus DEM 30m / SRTM
+                    </div>
+                  </div>
+                </div>
+
+                <Switch
+                  checked={activeViewMode === "3d"}
+                  onCheckedChange={handleToggleViewMode}
+                  className="data-[state=checked]:bg-sky-600"
+                />
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>

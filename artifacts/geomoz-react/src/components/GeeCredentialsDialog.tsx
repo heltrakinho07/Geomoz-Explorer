@@ -40,7 +40,7 @@ export default function GeeCredentialsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md p-0 overflow-hidden bg-white shadow-2xl border border-slate-200">
+      <DialogContent className="max-w-md p-0 overflow-hidden bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800">
         <DialogHeader className="px-6 py-5 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white">
           <div className="flex items-center gap-2.5 mb-1.5">
             <div className="w-8 h-8 rounded-lg bg-sky-500/20 border border-sky-400/30 flex items-center justify-center text-sky-400">
@@ -58,7 +58,7 @@ export default function GeeCredentialsDialog({
         <div className="p-6 space-y-5">
           {/* Error Message */}
           {error && (
-            <div className="flex items-start gap-2.5 p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+            <div className="flex items-start gap-2.5 p-3.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl text-xs text-red-700 dark:text-red-300">
               <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <strong className="block font-semibold">Falha na ligação:</strong>
@@ -70,31 +70,31 @@ export default function GeeCredentialsDialog({
           {/* Connected State */}
           {geeConnected ? (
             <div className="space-y-4">
-              <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-2xl flex items-center gap-3">
+              <div className="p-4 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-2xl flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
-                  <CheckCircle2 size={22} className="text-emerald-600" />
+                  <CheckCircle2 size={22} className="text-emerald-600 dark:text-emerald-400" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-semibold text-emerald-900">Earth Engine Ligado</h4>
-                  <p className="text-xs text-emerald-700 truncate max-w-[240px]">
+                  <h4 className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Earth Engine Ligado</h4>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300 truncate max-w-[240px]">
                     {user?.email || "Quota & Projeto Ativos"}
                   </p>
                 </div>
               </div>
 
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-600 space-y-1.5">
-                <div className="flex items-center gap-2 font-medium text-slate-700">
-                  <Layers size={14} className="text-indigo-600" />
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 text-xs text-slate-600 dark:text-slate-300 space-y-1.5">
+                <div className="flex items-center gap-2 font-medium text-slate-700 dark:text-slate-200">
+                  <Layers size={14} className="text-indigo-600 dark:text-indigo-400" />
                   <span>Capacidades desbloqueadas:</span>
                 </div>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Curvas de nível, detecção de lineamentos, índices espectrais Sentinel-2 & Landsat em tempo real via GEE.
                 </p>
               </div>
 
               <Button
                 variant="outline"
-                className="w-full text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200 text-xs py-2 h-auto"
+                className="w-full text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-700 dark:hover:text-red-300 border-red-200 dark:border-red-900/50 text-xs py-2 h-auto"
                 onClick={disconnectGee}
                 disabled={loading}
               >
@@ -105,7 +105,7 @@ export default function GeeCredentialsDialog({
           ) : (
             /* Not Connected State */
             <div className="space-y-4">
-              <div className="bg-sky-50/70 border border-sky-100 rounded-xl p-4 text-xs text-sky-900 space-y-2">
+              <div className="bg-sky-50/70 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/50 rounded-xl p-4 text-xs text-sky-900 dark:text-sky-200 space-y-2">
                 <p className="leading-relaxed">
                   Para aceder a análises completas, inicie sessão com a sua <strong>conta Google que tenha acesso ao Google Earth Engine</strong>.
                 </p>
@@ -113,7 +113,7 @@ export default function GeeCredentialsDialog({
                   href="https://code.earthengine.google.com"
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-sky-700 font-semibold hover:underline text-[11px]"
+                  className="inline-flex items-center gap-1 text-sky-700 dark:text-sky-400 font-semibold hover:underline text-[11px]"
                 >
                   Abrir GEE Code Editor para verificar conta <ExternalLink size={10} />
                 </a>
@@ -121,7 +121,7 @@ export default function GeeCredentialsDialog({
 
               {/* Optional Project ID Input */}
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-slate-600">
+                <label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
                   GCP Project ID (opcional):
                 </label>
                 <input
@@ -129,7 +129,7 @@ export default function GeeCredentialsDialog({
                   placeholder="ex: ee-meu-projeto ou deixe em branco"
                   value={projectInput}
                   onChange={(e) => setProjectInput(e.target.value)}
-                  className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                  className="w-full text-xs px-3 py-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
                 />
               </div>
 

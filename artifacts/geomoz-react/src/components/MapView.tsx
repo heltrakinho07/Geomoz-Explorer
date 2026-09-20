@@ -128,7 +128,7 @@ function CoordTracker({
 function NorthArrow() {
   return (
     <div className="absolute z-[500] pointer-events-none" style={{ top: 80, right: 10 }} title="Norte geográfico">
-      <div className="bg-white rounded-full shadow-md border border-slate-200 w-10 h-10 flex items-center justify-center">
+      <div className="bg-white dark:bg-slate-900 rounded-full shadow-md border border-slate-200 dark:border-slate-700 w-10 h-10 flex items-center justify-center">
         <svg viewBox="0 0 32 32" width="28" height="28">
           <polygon points="16,3 19,15 16,13 13,15" fill="#0ea5e9" />
           <polygon points="16,29 19,17 16,19 13,17" fill="#94a3b8" />
@@ -375,7 +375,7 @@ export default function MapView({
       ) : (
         <>
           {!province && (
-            <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[600] bg-white/95 backdrop-blur-sm border border-sky-200 shadow-lg rounded-xl px-5 py-3 text-sm text-slate-700 flex items-center gap-2.5 pointer-events-none max-w-xs text-center">
+            <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[600] bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border border-sky-200 dark:border-sky-800/60 shadow-lg rounded-xl px-5 py-3 text-sm text-slate-700 dark:text-slate-200 flex items-center gap-2.5 pointer-events-none max-w-xs text-center">
               <svg className="w-4 h-4 text-sky-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>

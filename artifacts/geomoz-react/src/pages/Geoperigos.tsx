@@ -208,37 +208,37 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
 
       {/* ── Sidebar ─────────────────────────────────────────────── */}
       <div
-        className={`fixed md:relative inset-y-0 left-0 z-[700] flex flex-col bg-white border-r border-slate-200 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
+        className={`fixed md:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         } ${
           desktopSidebarOpen ? "md:w-72 overflow-y-auto" : "md:w-0 overflow-hidden md:border-r-0"
         }`}
       >
-        <div className="px-4 pt-4 pb-3 border-b border-slate-100 flex items-center justify-between">
+        <div className="px-4 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-rose-500 to-orange-600 flex items-center justify-center shadow-sm shrink-0">
               <AlertTriangle size={15} className="text-white" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Geoperigos</h2>
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Geoperigos</h2>
               <p className="text-[10px] text-slate-400">Cheias SAR · Erosão RUSLE · GEE</p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setSidebarOpen(false)}
-            className="md:hidden p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+            className="md:hidden p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Tool toggle */}
-        <div className="p-3 border-b border-slate-100">
-          <div className="grid grid-cols-2 gap-1 bg-slate-100 rounded-xl p-1">
+        <div className="p-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="grid grid-cols-2 gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
             {([["flood", "Cheias", Waves], ["erosion", "Erosão", Mountain]] as const).map(([t, label, Icon]) => (
               <button key={t} onClick={() => { setTool(t); setError(null); }}
-                className={`flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-lg transition-all ${tool === t ? "bg-white text-rose-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+                className={`flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-lg transition-all ${tool === t ? "bg-white dark:bg-slate-700 text-rose-700 dark:text-rose-400 shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}>
                 <Icon size={11} /> {label}
               </button>
             ))}
@@ -246,24 +246,24 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
         </div>
 
         {/* Área de estudo — AOI global */}
-        <div className="p-3 border-b border-slate-100">
+        <div className="p-3 border-b border-slate-100 dark:border-slate-800">
           <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Área de Estudo</h4>
           <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
         </div>
 
         {/* Flood config */}
         {tool === "flood" && (
-          <div className="p-3 space-y-3 border-b border-slate-100">
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-2.5 text-[11px] text-blue-800 flex items-start gap-2">
+          <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-xl p-2.5 text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
               <Info size={12} className="mt-0.5 shrink-0 text-blue-500" />
               <span>Radar Sentinel-1 vê <strong>através das nuvens</strong>. Compara o evento com os 60 dias anteriores para isolar a água nova.</span>
             </div>
             <div>
-              <label className="text-[10px] text-slate-500 mb-1 block">Eventos conhecidos</label>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Eventos conhecidos</label>
               <div className="grid grid-cols-2 gap-1">
                 {FLOOD_PRESETS.map(p => (
                   <button key={p.label} onClick={() => { setEventStart(p.start); setEventEnd(p.end); onProvinceChange(p.prov); onDistrictChange(null); }}
-                    className="text-[10px] py-1 px-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-rose-50 hover:border-rose-200 transition-colors">
+                    className="text-[10px] py-1 px-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-200 dark:hover:border-rose-800 transition-colors">
                     {p.label}
                   </button>
                 ))}
@@ -271,17 +271,17 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[10px] text-slate-500 mb-1 block flex items-center gap-1"><Calendar size={9} /> Início</label>
+                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> Início</label>
                 <input type="date" value={eventStart} onChange={e => setEventStart(e.target.value)}
-                  className="w-full text-xs bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500" />
+                  className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500" />
               </div>
               <div>
-                <label className="text-[10px] text-slate-500 mb-1 block flex items-center gap-1"><Calendar size={9} /> Fim</label>
+                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> Fim</label>
                 <input type="date" value={eventEnd} onChange={e => setEventEnd(e.target.value)}
-                  className="w-full text-xs bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500" />
+                  className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500" />
               </div>
             </div>
-            <label className="flex items-center justify-between text-[11px] text-slate-600">
+            <label className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-300">
               Mostrar água permanente <input type="checkbox" checked={showPerm} onChange={e => setShowPerm(e.target.checked)} className="accent-blue-600" />
             </label>
             <button onClick={runFlood} disabled={loading}
@@ -293,13 +293,13 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
 
         {/* Erosion config */}
         {tool === "erosion" && (
-          <div className="p-3 space-y-3 border-b border-slate-100">
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[11px] text-amber-800 flex items-start gap-2">
+          <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-2.5 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
               <Info size={12} className="mt-0.5 shrink-0 text-amber-500" />
               <span>RUSLE: <strong>A = R·K·LS·C·P</strong> — chuva (CHIRPS) × solo × declive (DEM) × cobertura (NDVI). Resultado em t/ha/ano.</span>
             </div>
             <div>
-              <label className="text-[10px] text-slate-500 mb-1 block">Ano — <strong className="text-slate-700">{year}</strong></label>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Ano — <strong className="text-slate-700 dark:text-slate-200">{year}</strong></label>
               <input type="range" min={2018} max={2024} step={1} value={year} onChange={e => setYear(+e.target.value)} className="w-full accent-amber-500" />
               <div className="flex justify-between text-[10px] text-slate-400"><span>2018</span><span>2024</span></div>
             </div>
@@ -311,7 +311,7 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
         )}
 
         {error && (
-          <div className="m-3 bg-red-50 border border-red-200 rounded-xl p-2.5 text-[11px] text-red-700">{error}</div>
+          <div className="m-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl p-2.5 text-[11px] text-red-700 dark:text-red-300">{error}</div>
         )}
       </div>
 
@@ -321,7 +321,7 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
         onClick={() => setDesktopSidebarOpen(v => !v)}
         style={{ left: desktopSidebarOpen ? "18rem" : "0px" }}
         title={desktopSidebarOpen ? "Recolher painel" : "Expandir painel"}
-        className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 backdrop-blur-md border border-l-0 border-slate-200 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 transition-all duration-200 text-slate-500 hover:text-slate-800"
+        className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-l-0 border-slate-200 dark:border-slate-700 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
       >
         {desktopSidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
       </button>
@@ -332,9 +332,9 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
         <button
           type="button"
           onClick={() => setSidebarOpen(v => !v)}
-          className="md:hidden absolute top-3 left-3 z-[600] flex items-center gap-1.5 px-3 py-1.5 bg-white/95 backdrop-blur-md rounded-xl shadow-md border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          className="md:hidden absolute top-3 left-3 z-[600] flex items-center gap-1.5 px-3 py-1.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl shadow-md border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
         >
-          <SlidersHorizontal size={13} className="text-rose-600" />
+          <SlidersHorizontal size={13} className="text-rose-600 dark:text-rose-400" />
           Filtros
         </button>
 
@@ -383,10 +383,10 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
 
         {/* Loading overlay */}
         {loading && (
-          <div className="absolute inset-0 z-[600] bg-white/55 backdrop-blur-sm flex items-center justify-center">
-            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 px-7 py-5 flex items-center gap-3 max-w-xs">
+          <div className="absolute inset-0 z-[600] bg-white/55 dark:bg-slate-950/70 backdrop-blur-sm flex items-center justify-center">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 px-7 py-5 flex items-center gap-3 max-w-xs">
               <Loader2 size={20} className="text-rose-500 animate-spin shrink-0" />
-              <span className="text-sm text-slate-700 font-medium">
+              <span className="text-sm text-slate-700 dark:text-slate-200 font-medium">
                 {tool === "flood" ? "A processar radar Sentinel-1… (pode levar ~1 min)" : "A calcular RUSLE… (pode levar ~1–2 min)"}
               </span>
             </div>
@@ -395,43 +395,43 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
 
         {/* Legend */}
         {tool === "erosion" && erosion && (
-          <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-amber-100 p-3 text-[11px] min-w-[150px]">
-            <div className="font-semibold text-amber-800 mb-2 flex items-center gap-1"><Mountain size={11} /> Erosão (t/ha/ano)</div>
+          <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-amber-100 dark:border-amber-900/40 p-3 text-[11px] min-w-[150px]">
+            <div className="font-semibold text-amber-800 dark:text-amber-300 mb-2 flex items-center gap-1"><Mountain size={11} /> Erosão (t/ha/ano)</div>
             {erosion.classes.map(c => (
               <div key={c.id} className="flex items-center gap-1.5 mb-1">
                 <span className="inline-block w-4 h-3 rounded" style={{ background: c.color }} />
-                <span className="text-slate-600">{c.label}</span>
+                <span className="text-slate-600 dark:text-slate-300">{c.label}</span>
               </div>
             ))}
           </div>
         )}
         {tool === "flood" && flood && (
-          <div className="absolute bottom-8 left-4 z-[500] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-rose-100 p-3 text-[11px] min-w-[140px]">
-            <div className="font-semibold text-rose-800 mb-2 flex items-center gap-1"><Waves size={11} /> Cheia</div>
-            <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-4 h-3 rounded bg-[#d50000]" /><span className="text-slate-600">Inundação</span></div>
-            {showPerm && <div className="flex items-center gap-1.5"><span className="inline-block w-4 h-3 rounded bg-[#1565c0]" /><span className="text-slate-600">Água permanente</span></div>}
+          <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-rose-100 dark:border-rose-900/40 p-3 text-[11px] min-w-[140px]">
+            <div className="font-semibold text-rose-800 dark:text-rose-300 mb-2 flex items-center gap-1"><Waves size={11} /> Cheia</div>
+            <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-4 h-3 rounded bg-[#d50000]" /><span className="text-slate-600 dark:text-slate-300">Inundação</span></div>
+            {showPerm && <div className="flex items-center gap-1.5"><span className="inline-block w-4 h-3 rounded bg-[#1565c0]" /><span className="text-slate-600 dark:text-slate-300">Água permanente</span></div>}
           </div>
         )}
       </div>
 
       {/* ── Right panel ─────────────────────────────────────────── */}
       {((tool === "flood" && flood) || (tool === "erosion" && erosion)) && (
-        <div className="w-80 flex flex-col bg-white border-l border-slate-200 overflow-y-auto shrink-0">
+        <div className="w-80 flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0">
           {tool === "flood" && flood && (
             <div className="p-4 space-y-4">
-              <div className="flex items-center gap-2"><Waves size={15} className="text-rose-600" /><span className="text-sm font-semibold text-slate-900">Extensão da Cheia</span></div>
+              <div className="flex items-center gap-2"><Waves size={15} className="text-rose-600 dark:text-rose-400" /><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Extensão da Cheia</span></div>
               <div className="bg-gradient-to-r from-rose-600 to-orange-600 rounded-2xl p-4 text-white">
                 <div className="text-xs opacity-75 mb-1">Área inundada</div>
                 <div className="text-3xl font-bold">{flood.areaKm2.toLocaleString("pt-PT")}</div>
                 <div className="text-xs opacity-75">km²</div>
               </div>
-              <div className="bg-slate-50 rounded-xl p-3 space-y-1.5 text-[12px] text-slate-600">
-                <div className="flex justify-between"><span>Período</span><span className="font-medium text-slate-800">{flood.eventStart} → {flood.eventEnd}</span></div>
-                <div className="flex justify-between"><span>Cenas evento</span><span className="font-medium text-slate-800">{flood.scenesEvent}</span></div>
-                <div className="flex justify-between"><span>Cenas base</span><span className="font-medium text-slate-800">{flood.scenesBaseline}</span></div>
+              <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-1.5 text-[12px] text-slate-600 dark:text-slate-300">
+                <div className="flex justify-between"><span>Período</span><span className="font-medium text-slate-800 dark:text-slate-200">{flood.eventStart} → {flood.eventEnd}</span></div>
+                <div className="flex justify-between"><span>Cenas evento</span><span className="font-medium text-slate-800 dark:text-slate-200">{flood.scenesEvent}</span></div>
+                <div className="flex justify-between"><span>Cenas base</span><span className="font-medium text-slate-800 dark:text-slate-200">{flood.scenesBaseline}</span></div>
               </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-[11px] text-blue-800 flex items-start gap-2">
-                <CheckCircle2 size={12} className="mt-0.5 shrink-0" /> Deteção por radar (UN-SPIDER). Validar com dados de campo / ótico quando disponível.
+              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-xl p-3 text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
+                <CheckCircle2 size={12} className="mt-0.5 shrink-0 text-blue-500" /> Deteção por radar (UN-SPIDER). Validar com dados de campo / ótico quando disponível.
               </div>
               <button onClick={exportGeoperigosPdf}
                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-700 hover:to-orange-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm">
@@ -441,7 +441,7 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
           )}
           {tool === "erosion" && erosion && (
             <div className="p-4 space-y-4">
-              <div className="flex items-center gap-2"><Mountain size={15} className="text-amber-600" /><span className="text-sm font-semibold text-slate-900">Risco de Erosão (RUSLE)</span></div>
+              <div className="flex items-center gap-2"><Mountain size={15} className="text-amber-600 dark:text-amber-400" /><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Risco de Erosão (RUSLE)</span></div>
               {erosion.meanTPerHa != null && (
                 <div className="bg-gradient-to-r from-amber-600 to-orange-600 rounded-2xl p-4 text-white">
                   <div className="text-xs opacity-75 mb-1">Perda de solo média · {erosion.year}</div>
@@ -454,19 +454,19 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
                   const pct = (c.areaKm2 / erosionTotal) * 100;
                   return (
                     <div key={c.id}>
-                      <div className="flex justify-between text-[11px] text-slate-600 mb-0.5">
+                      <div className="flex justify-between text-[11px] text-slate-600 dark:text-slate-300 mb-0.5">
                         <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded" style={{ background: c.color }} />{c.label}</span>
-                        <span className="font-medium text-slate-800">{c.areaKm2.toLocaleString("pt-PT")} km²</span>
+                        <span className="font-medium text-slate-800 dark:text-slate-200">{c.areaKm2.toLocaleString("pt-PT")} km²</span>
                       </div>
-                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: c.color }} />
                       </div>
                     </div>
                   );
                 })}
               </div>
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-800 flex items-start gap-2">
-                <Info size={12} className="mt-0.5 shrink-0" /> K (solo) usa constante moderada; refinável com SoilGrids. Modelo de suscetibilidade, não medição.
+              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                <Info size={12} className="mt-0.5 shrink-0 text-amber-500" /> K (solo) usa constante moderada; refinável com SoilGrids. Modelo de suscetibilidade, não medição.
               </div>
               <button onClick={exportGeoperigosPdf}
                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm">
