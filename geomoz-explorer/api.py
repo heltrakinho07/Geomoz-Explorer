@@ -2317,3 +2317,69 @@ async def gee_map_image(req: GEEMapImageRequest, uid: str = Depends(require_gee_
     except Exception as exc:
         logger.error("Map-image generation failed: %s", exc, exc_info=True)
         raise HTTPException(500, f"Geração de mapa falhou: {exc}")
+
+
+# ── Shared Analyses (WebGIS Read-Only Links) ──────────────────────────────────
+
+class ShareAnalysisRequest(BaseModel):
+    type: str = "hidro"
+    title: Optional[str] = "Análise de Bacia Hidrográfica"
+    data: dict
+    metadata: Optional[dict] = None
+
+SHARED_ANALYSES_DIR = os.path.join(os.path.dirname(__file__), "data", "shared_analyses")
+os.makedirs(SHARED_ANALYSES_DIR, exist_ok=True)
+
+@app.post("/geomoz-api/share")
+async def create_share_link(req: ShareAnalysisRequest):
+    """
+    Store an analysis snapshot and generate a unique read-only share ID.
+    Enables sharing WebGIS basin reports without mutation or authentication.
+    """
+    import secrets
+    share_id = secrets.token_hex(4)
+    file_path = os.path.join(SHARED_ANALYSES_DIR, f"{share_id}.json")
+
+    payload = {
+        "shareId": share_id,
+        "type": req.type,
+        "title": req.title,
+        "created_at": time.time(),
+        "data": req.data,
+        "metadata": req.metadata or {},
+    }
+
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+    except Exception as exc:
+        logger.error("Failed to save shared analysis: %s", exc)
+        raise HTTPException(500, f"Falha ao guardar análise partilhada: {exc}")
+
+    return {
+        "shareId": share_id,
+        "url": f"/view/hidro?id={share_id}",
+        "fullPath": f"/share/hidro/{share_id}",
+    }
+
+@app.get("/geomoz-api/share/{share_id}")
+async def get_shared_analysis(share_id: str):
+    """
+    Fetch a shared analysis snapshot by ID (read-only, public).
+    """
+    import re
+    if not re.match(r"^[a-zA-Z0-9_-]{4,32}$", share_id):
+        raise HTTPException(400, "Identificador de partilha inválido.")
+
+    file_path = os.path.join(SHARED_ANALYSES_DIR, f"{share_id}.json")
+    if not os.path.exists(file_path):
+        raise HTTPException(404, "Análise partilhada não encontrada ou expirada.")
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data
+    except Exception as exc:
+        logger.error("Failed to read shared analysis: %s", exc)
+        raise HTTPException(500, f"Falha ao carregar análise partilhada: {exc}")
+

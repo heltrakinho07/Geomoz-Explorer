@@ -20,6 +20,7 @@ import {
   TrendingUp, Wind, Waves, Zap, FileText, BarChart2,
   Globe, MapPin, Crosshair, GitBranch, ChevronLeft, ChevronRight,
   Mountain, Ruler, Gauge, ArrowDownCircle, FileDown, PenTool,
+  Share2, Copy, Check, ExternalLink, Compass,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer,
@@ -37,7 +38,15 @@ import type { AreaOfInterest } from "@/lib/aoi";
 import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
 import {
   fetchMapImage,
+  captureMapImage,
   addPDFFooter,
+  drawCoordinateGrid,
+  drawNorthArrow,
+  drawGraphicScaleBar,
+  MARGIN,
+  CONTENT_W,
+  PAGE_W,
+  PAGE_H,
 } from "@/lib/pdf-export";
 import jsPDF from "jspdf";
 
@@ -105,6 +114,37 @@ function getGeometryCenter(geom: any): [number, number] {
     }
   } catch {}
   return [-18.665695, 35.529562];
+}
+
+function computeGeoJsonBounds(geojson: any): { south: number; north: number; west: number; east: number } {
+  let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+  function traverse(coords: any) {
+    if (typeof coords[0] === "number" && typeof coords[1] === "number") {
+      const lng = coords[0], lat = coords[1];
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+    } else if (Array.isArray(coords)) {
+      coords.forEach(traverse);
+    }
+  }
+  if (geojson?.features) {
+    geojson.features.forEach((f: any) => traverse(f.geometry?.coordinates));
+  } else if (geojson?.coordinates) {
+    traverse(geojson.coordinates);
+  }
+  if (minLat >= maxLat || minLng >= maxLng) {
+    return { south: -26.9, north: -10.4, west: 30.2, east: 41.0 };
+  }
+  const padLat = Math.max((maxLat - minLat) * 0.1, 0.05);
+  const padLng = Math.max((maxLng - minLng) * 0.1, 0.05);
+  return {
+    south: Math.max(-90, minLat - padLat),
+    north: Math.min(90, maxLat + padLat),
+    west: Math.max(-180, minLng - padLng),
+    east: Math.min(180, maxLng + padLng),
+  };
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -244,6 +284,75 @@ export default function HidroGeoMoz({
   const [loadingStats,  setLoadingStats]  = useState(false);
   const [error,         setError]         = useState<string | null>(null);
   const [drawingEnabled, setDrawingEnabled] = useState(false);
+
+  // WebGIS Share state
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
+  const [shareCopied, setShareCopied] = useState(false);
+
+  // PDF Export modal state
+  const [pdfExportModalOpen, setPdfExportModalOpen] = useState(false);
+  const [pdfExportType, setPdfExportType] = useState<"both" | "lulc" | "cn">("both");
+  const [exportingPdf, setExportingPdf] = useState(false);
+
+  async function handleShareWebGis() {
+    if (!basinReport && !watershedData) {
+      toast({
+        variant: "destructive",
+        title: "Nenhuma bacia ativa",
+        description: "Delimite uma bacia ou gere o relatório antes de partilhar.",
+      });
+      return;
+    }
+    setShareLoading(true);
+    setShareModalOpen(true);
+    try {
+      const payload = {
+        type: "hidro",
+        title: `Bacia Hidrográfica — ${province ?? "Moçambique"}${district ? ` / ${district}` : ""}`,
+        data: {
+          basinReport,
+          wsStats,
+          watershedData,
+          watershedDrainageTile,
+          pourPoint,
+          province,
+          district,
+          aoi,
+        },
+        metadata: {
+          areaKm2: basinReport?.morphometry?.areaKm2 || watershedData?.areaKm2 || 0,
+          date: new Date().toISOString(),
+        },
+      };
+
+      try {
+        localStorage.setItem("geomoz_last_hidro_share", JSON.stringify(payload.data));
+      } catch {}
+
+      const res = await apiFetch("/geomoz-api/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      const json = await res.json();
+      const fullUrl = `${window.location.origin}/view/hidro?id=${json.shareId}`;
+      setShareUrl(fullUrl);
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao gerar link de partilha",
+        description: err.message || String(err),
+      });
+    } finally {
+      setShareLoading(false);
+    }
+  }
 
   // GeoMoz data
   const { data: statsData       } = useStats(province, district);
@@ -516,321 +625,485 @@ export default function HidroGeoMoz({
   }
 
   // ── PDF Report ────────────────────────────────────────────────────────────
-  async function generateBasinReportPdf() {
+  // ── PDF Report (Estilo QGIS) ──────────────────────────────────────────────
+  async function generateBasinReportPdf(type: "both" | "lulc" | "cn" = pdfExportType) {
     const report = basinReport;
     const wsData = watershedData;
     if (!report || !wsData) return;
-    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-
-    // Map — fetch from backend Cartopy API with watershed overlay
+    setExportingPdf(true);
     try {
-      // Legend: land-cover classes from basin report + static entry for the boundary overlay
-      const legendItems = [
-        ...report.landcover.slice(0, 10).map(c => ({ label: c.label, color: c.color })),
-        { label: "Bacia delimitada", color: "#1565c0" },
-      ];
-      const imgData = await fetchMapImage(
-        { south: -26.9, north: -10.4, west: 30.2, east: 41 },
-        {
-          tileUrl: wsData?.tileUrl,
-          overlayGeojson: wsData?.geojson as any,
-          overlayLabel: "Bacia delimitada",
-          legendItems,
-          title: `Bacia — ${(wsData?.areaKm2 ?? 0).toLocaleString("pt-PT")} km²`,
-          dpi: 200,
-        },
-      );
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const W = doc.internal.pageSize.getWidth();
-      const MARGIN = 14;
-      const CONTENT_W = W - MARGIN * 2;
-      doc.addImage(imgData, "PNG", MARGIN, 52, CONTENT_W, 100);
-    } catch (e) {
-      console.warn("Map fetch failed in basin PDF:", e);
-    }
-    const W = doc.internal.pageSize.getWidth();
-    const H = doc.internal.pageSize.getHeight();
-    const MARGIN = 14;
-    const CONTENT_W = W - MARGIN * 2;
-    const PP = pourPoint ?? [0, 0];
-    const date = new Date().toLocaleDateString("pt-PT", { day: "2-digit", month: "long", year: "numeric" });
-    let pageNum = 1;
+      const H = doc.internal.pageSize.getHeight();
+      const PP = pourPoint ?? [0, 0];
+      const date = new Date().toLocaleDateString("pt-PT", { day: "2-digit", month: "long", year: "numeric" });
+      let pageNum = 1;
 
-    function newPage_() {
-      addPDFFooter({ doc, pageNum, date, y: 0, title: "" });
-      doc.addPage();
-      pageNum++;
-      doc.setFillColor(14, 165, 233);
-      doc.rect(0, 0, W, 10, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "bold");
-      doc.text("GeoMoz Explorer — Relatório de Bacia", MARGIN, 7);
-      doc.text(`Área: ${wsData!.areaKm2.toLocaleString("pt-PT")} km²`, W - MARGIN, 7, { align: "right" });
-      return 18;
-    }
+      const totalArea = report.morphometry.areaKm2 || wsData.areaKm2 || 0;
 
-    function sectionLabel(label: string, y: number): number {
-      doc.setFillColor(248, 250, 252);
-      doc.rect(MARGIN, y, CONTENT_W, 7, "F");
-      doc.setDrawColor(226, 232, 240);
-      doc.line(MARGIN, y, MARGIN + CONTENT_W, y);
-      doc.line(MARGIN, y + 7, MARGIN + CONTENT_W, y + 7);
-      doc.setFillColor(14, 165, 233);
-      doc.rect(MARGIN, y, 3, 7, "F");
-      doc.setTextColor(71, 85, 105);
-      doc.setFontSize(8.5);
-      doc.setFont("helvetica", "bold");
-      doc.text(label.toUpperCase(), MARGIN + 6, y + 5);
-      return y + 11;
-    }
-
-    // ── PAGE 1: COVER ──
-    doc.setFillColor(14, 165, 233);
-    doc.rect(0, 0, W, 35, "F");
-    doc.setFillColor(2, 132, 199);
-    doc.rect(0, 31, W, 4, "F");
-
-    doc.setFillColor(255, 255, 255);
-    doc.circle(MARGIN + 8, 17, 8, "F");
-    doc.setFillColor(14, 165, 233);
-    doc.circle(MARGIN + 8, 17, 5.5, "F");
-    doc.setFillColor(255, 255, 255);
-    doc.circle(MARGIN + 8, 17, 2, "F");
-
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(18);
-    doc.setFont("helvetica", "bold");
-    doc.text("GeoMoz Explorer", MARGIN + 20, 15);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text("Relatório Hidro-Ambiental de Bacia", MARGIN + 20, 23);
-
-    // Area + date right
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text(`Área: ${wsData.areaKm2.toLocaleString("pt-PT")} km²`, W - MARGIN, 14, { align: "right" });
-    doc.setFontSize(8.5);
-    doc.setFont("helvetica", "normal");
-    doc.text(date, W - MARGIN, 22, { align: "right" });
-
-    // Info strip
-    doc.setFillColor(240, 249, 255);
-    doc.rect(0, 35, W, 10, "F");
-    doc.setTextColor(3, 105, 161);
-    doc.setFontSize(8.5);
-    doc.setFont("helvetica", "normal");
-    const infoParts = [
-      `Ponto: ${PP[0].toFixed(4)}°, ${PP[1].toFixed(4)}°`,
-      `Fonte: ${wsData.source === "hydrobasins" ? `HydroBASINS (nível ${wsData.level ?? "—"})` : "D8 · HydroSHEDS"}`,
-    ];
-    doc.text(infoParts.join("   ·   "), MARGIN, 42);
-
-    let y = 52;
-
-    // ── MORPHOMETRY CARDS ──
-    y = sectionLabel("Morfometria da Bacia", y);
-    const m = report.morphometry;
-    const cards = [
-      { label: "Área", val: `${m.areaKm2.toLocaleString("pt-PT")}`, unit: "km²" },
-      { label: "Perímetro", val: `${m.perimeterKm.toFixed(0)}`, unit: "km" },
-      { label: "Elev. mín.", val: `${m.elevMinM.toFixed(0)}`, unit: "m" },
-      { label: "Elev. média", val: `${m.elevMeanM.toFixed(0)}`, unit: "m" },
-      { label: "Elev. máx.", val: `${m.elevMaxM.toFixed(0)}`, unit: "m" },
-      { label: "Relevo", val: `${m.reliefM.toFixed(0)}`, unit: "m" },
-      { label: "Declive méd.", val: `${m.slopeMeanDeg.toFixed(1)}`, unit: "°" },
-      { label: "Declive máx.", val: `${m.slopeMaxDeg.toFixed(1)}`, unit: "°" },
-      { label: "Dens. dren.", val: `${m.drainageDensity}`, unit: "km⁻¹" },
-      { label: "Compacidade", val: `${m.compactness}`, unit: "" },
-      { label: "Fator forma", val: `${m.formFactor}`, unit: "" },
-    ];
-    const cCols = 4;
-    const cW = (CONTENT_W - (cCols - 1) * 2.5) / cCols;
-    const cH = 14;
-    cards.forEach((c, i) => {
-      const cx = MARGIN + (i % cCols) * (cW + 2.5);
-      const cy = y + Math.floor(i / cCols) * (cH + 2.5);
-      doc.setFillColor(248, 250, 252);
-      doc.roundedRect(cx, cy, cW, cH, 2, 2, "F");
-      doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(cx, cy, cW, cH, 2, 2, "S");
-      doc.setTextColor(100, 116, 139);
-      doc.setFontSize(7);
-      doc.setFont("helvetica", "normal");
-      doc.text(c.label, cx + 4, cy + 5);
-      doc.setTextColor(15, 23, 42);
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
-      doc.text(c.val, cx + 4, cy + 12);
-      if (c.unit) {
-        doc.setTextColor(148, 163, 184);
-        doc.setFontSize(6.5);
-        doc.setFont("helvetica", "normal");
-        doc.text(c.unit, cx + cW - 4, cy + 12, { align: "right" });
-      }
-    });
-    const cardRows = Math.ceil(cards.length / cCols);
-    y += cardRows * (cH + 2.5) + 4;
-
-    // ── LAND COVER ──
-    if (y + 30 > H - 16) { y = newPage_(); }
-    y = sectionLabel("Uso e Cobertura do Solo (ESA WorldCover 2021)", y);
-    const lcItems = report.landcover.filter(lc => lc.areaKm2 > 0).slice(0, 10);
-    const maxPct = lcItems[0]?.pct ?? 1;
-
-    // Header row
-    doc.setFillColor(226, 232, 240);
-    doc.rect(MARGIN, y, CONTENT_W, 7, "F");
-    doc.setTextColor(71, 85, 105);
-    doc.setFontSize(7.5);
-    doc.setFont("helvetica", "bold");
-    doc.text("Classe", MARGIN + 4, y + 5);
-    doc.text("km²", W - MARGIN - 24, y + 5, { align: "center" });
-    doc.text("%", W - MARGIN, y + 5, { align: "right" });
-    y += 7;
-
-    lcItems.forEach((lc, i) => {
-      if (y > H - 18) { y = newPage_(); }
-      const rowH = 6.5;
-      if (i % 2 === 0) {
-        doc.setFillColor(250, 252, 255);
-        doc.rect(MARGIN, y, CONTENT_W, rowH, "F");
-      }
-      // Color swatch
-      try {
-        const hc = lc.color.replace("#", "");
-        const r = parseInt(hc.substring(0, 2), 16);
-        const g = parseInt(hc.substring(2, 4), 16);
-        const b = parseInt(hc.substring(4, 6), 16);
-        if (!isNaN(r)) {
-          doc.setFillColor(r, g, b);
-          doc.roundedRect(MARGIN + 2.5, y + 1, 6, 4.5, 0.8, 0.8, "F");
-        }
-      } catch { /* ignore */ }
-      doc.setTextColor(30, 41, 59);
-      doc.setFontSize(7.5);
-      doc.setFont("helvetica", "normal");
-      const name = lc.label.length > 40 ? lc.label.slice(0, 38) + "…" : lc.label;
-      doc.text(name, MARGIN + 14, y + 4.5);
-      doc.setTextColor(100, 116, 139);
-      doc.setFontSize(7);
-      doc.text(lc.areaKm2.toLocaleString("pt-PT", { maximumFractionDigits: 1 }), W - MARGIN - 24, y + 4.5, { align: "center" });
-      // Bar
-      const barW = Math.max((lc.pct / maxPct) * 16, 0.5);
-      doc.setFillColor(14, 165, 233);
-      doc.rect(W - MARGIN - 22, y + 2, barW, 2.5, "F");
-      doc.setTextColor(14, 165, 233);
-      doc.setFont("helvetica", "bold");
-      doc.text(`${lc.pct}%`, W - MARGIN, y + 4.5, { align: "right" });
-      doc.setFont("helvetica", "normal");
-      y += rowH;
-    });
-    y += 4;
-
-    // ── MONTHLY PRECIPITATION ──
-    if (y + 70 > H - 16) { y = newPage_(); }
-    y = sectionLabel(`Precipitação Mensal · ${report.precipAnnualMm.toLocaleString("pt-PT")} mm/ano`, y);
-    const months = "JanFevMarAbrMaiJunJulAgoSetOutNovDez".match(/.{3}/g) || [];
-    const barH = 36;
-    const barArea = CONTENT_W - 4;
-    const barGap = 1.5;
-    const barW2 = Math.max(3, (barArea - months.length * barGap) / months.length);
-    const maxMm = Math.max(...report.precipMonthly, 1);
-    const py = y;
-
-    // Y axis reference lines
-    for (let pct = 0; pct <= 1; pct += 0.25) {
-      const ay = py + barH * (1 - pct);
-      doc.setDrawColor(226, 232, 240);
-      doc.line(MARGIN, ay, MARGIN + CONTENT_W, ay);
-      doc.setTextColor(148, 163, 184);
-      doc.setFontSize(6);
-      doc.setFont("helvetica", "normal");
-      doc.text(`${Math.round(maxMm * pct)}`, MARGIN + 1, ay - 1);
-    }
-
-    report.precipMonthly.forEach((mm, i) => {
-      const bx = MARGIN + 2 + i * (barW2 + barGap);
-      const bh = (mm / maxMm) * barH;
-      doc.setFillColor(59, 130, 246);
-      doc.rect(bx, py + barH - bh, barW2, bh, "F");
-      doc.setTextColor(71, 85, 105);
-      doc.setFontSize(6);
-      doc.setFont("helvetica", "bold");
-      doc.text(months[i], bx + barW2 / 2, py + barH + 3.5, { align: "center" });
-      // Small value label on top of bar
-      doc.setTextColor(100, 116, 139);
-      doc.setFontSize(5.5);
-      doc.setFont("helvetica", "normal");
-      doc.text(`${Math.round(mm)}`, bx + barW2 / 2, py + barH - bh - 1.5, { align: "center" });
-    });
-    y += barH + 10;
-
-    // ── RUNOFF / CN ──
-    if (y + 24 > H - 16) { y = newPage_(); }
-    y = sectionLabel("Escoamento Superficial (SCS Curve Number)", y);
-    const cn = report.runoff.cnMean;
-    // CN gauge bar
-    doc.setFillColor(26, 152, 80);
-    doc.rect(MARGIN, y, CONTENT_W * 0.33, 6, "F");
-    doc.setFillColor(254, 224, 139);
-    doc.rect(MARGIN + CONTENT_W * 0.33, y, CONTENT_W * 0.34, 6, "F");
-    doc.setFillColor(215, 48, 39);
-    doc.rect(MARGIN + CONTENT_W * 0.67, y, CONTENT_W * 0.33, 6, "F");
-
-    doc.setTextColor(15, 23, 42);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    const cnStr = cn != null ? `${cn.toFixed(1)}` : "—";
-    doc.text(cnStr, MARGIN + CONTENT_W / 2, y + 4.5 + 6, { align: "center" });
-    doc.setFontSize(7);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(100, 116, 139);
-    doc.text("CN médio · menor = infiltra · maior = escoa", MARGIN, y + 6 + 7);
-
-    // CN note
-    doc.setTextColor(100, 116, 139);
-    doc.setFontSize(7.5);
-    doc.setFont("helvetica", "italic");
-    doc.text(report.runoff.note, MARGIN, y + 6 + 14);
-    y += 6 + 18;
-
-    // ── RISK INDICES ──
-    if (wsStats && (y + 30 < H - 16)) {
-      y = sectionLabel("Índices de Risco", y);
-      const riskItems = [
-        { label: "Erosão", val: wsStats.erosionRisk, color: [245, 158, 11] as const },
-        { label: "Cheia / Inundação", val: wsStats.floodRisk, color: [239, 68, 68] as const },
-        { label: "Pot. Hidrogeológico", val: wsStats.hydroPotential, color: [16, 185, 129] as const },
-      ];
-      riskItems.forEach((ri) => {
-        const [r, g, b] = ri.color;
-        doc.setFillColor(r, g, b, 0.08);
-        doc.roundedRect(MARGIN, y, CONTENT_W, 9, 2, 2, "F");
-        doc.setDrawColor(r, g, b, 0.3);
-        doc.roundedRect(MARGIN, y, CONTENT_W, 9, 2, 2, "S");
-        doc.setTextColor(71, 85, 105);
+      const newPage_ = (pageTitle: string = "Relatório de Bacia") => {
+        addPDFFooter({ doc, pageNum, date, y: 0, title: "" });
+        doc.addPage();
+        pageNum++;
+        doc.setFillColor(15, 23, 42); // Navy 900
+        doc.rect(0, 0, W, 10, "F");
+        doc.setFillColor(2, 132, 199); // Sky 600
+        doc.rect(0, 9, W, 1, "F");
+        doc.setTextColor(255, 255, 255);
         doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
-        doc.text(ri.label, MARGIN + 4, y + 6.5);
-        // Bar background
-        doc.setFillColor(226, 232, 240);
-        doc.roundedRect(MARGIN + 60, y + 2.5, 60, 4, 1.5, 1.5, "F");
-        // Bar fill
-        const bw = Math.max((Math.min(ri.val, 100) / 100) * 60, 2);
-        doc.setFillColor(r, g, b);
-        doc.roundedRect(MARGIN + 60, y + 2.5, bw, 4, 1.5, 1.5, "F");
-        // Value
-        doc.setTextColor(r, g, b);
         doc.setFont("helvetica", "bold");
-        doc.text(`${ri.val.toFixed(0)}/100`, W - MARGIN - 4, y + 6.5, { align: "right" });
-        doc.setFont("helvetica", "normal");
-        y += 11.5;
-      });
-    }
+        doc.text("GeoMoz Explorer — " + pageTitle, MARGIN, 6.5);
+        doc.text(`Área: ${totalArea.toLocaleString("pt-PT")} km²`, W - MARGIN, 6.5, { align: "right" });
+        return 18;
+      };
 
-    // ── FOOTER ──
-    addPDFFooter({ doc, pageNum, date, y: 0, title: "" });
-    doc.save(`GeoMoz_Relatorio_Bacia_${PP[0].toFixed(3)}_${PP[1].toFixed(3)}_${new Date().toISOString().slice(0, 10)}.pdf`);
+      function sectionLabel(label: string, y: number): number {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(MARGIN, y, CONTENT_W, 7, "F");
+        doc.setDrawColor(226, 232, 240);
+        doc.line(MARGIN, y, MARGIN + CONTENT_W, y);
+        doc.line(MARGIN, y + 7, MARGIN + CONTENT_W, y + 7);
+        doc.setFillColor(2, 132, 199);
+        doc.rect(MARGIN, y, 3, 7, "F");
+        doc.setTextColor(71, 85, 105);
+        doc.setFontSize(8.5);
+        doc.setFont("helvetica", "bold");
+        doc.text(label.toUpperCase(), MARGIN + 6, y + 5);
+        return y + 11;
+      }
+
+      // ── PAGE 1: COVER & RELATÓRIO TÉCNICO ──
+      doc.setFillColor(15, 23, 42); // Dark Navy #0f172a
+      doc.rect(0, 0, W, 35, "F");
+      doc.setFillColor(2, 132, 199); // Sky blue #0284c7
+      doc.rect(0, 31, W, 4, "F");
+
+      doc.setFillColor(255, 255, 255);
+      doc.circle(MARGIN + 8, 17, 8, "F");
+      doc.setFillColor(2, 132, 199);
+      doc.circle(MARGIN + 8, 17, 5.5, "F");
+      doc.setFillColor(255, 255, 255);
+      doc.circle(MARGIN + 8, 17, 2, "F");
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(18);
+      doc.setFont("helvetica", "bold");
+      doc.text("GeoMoz Explorer", MARGIN + 20, 15);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text("Relatório Hidro-Ambiental de Bacia", MARGIN + 20, 23);
+
+      // Area + date right (Fixed 0 km² bug)
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Área: ${totalArea.toLocaleString("pt-PT")} km²`, W - MARGIN, 14, { align: "right" });
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "normal");
+      doc.text(date, W - MARGIN, 22, { align: "right" });
+
+      // Info strip
+      doc.setFillColor(240, 249, 255);
+      doc.rect(0, 35, W, 10, "F");
+      doc.setTextColor(3, 105, 161);
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "normal");
+      const infoParts = [
+        `Ponto: ${PP[0].toFixed(4)}°, ${PP[1].toFixed(4)}°`,
+        `Fonte: ${wsData.source === "hydrobasins" ? `HydroBASINS (nível ${wsData.level ?? "—"})` : wsData.source === "polygon" ? "Delimitação por Polígono / AOI" : "D8 · HydroSHEDS"}`,
+        `Datum: WGS 84 (EPSG:4326)`,
+      ];
+      doc.text(infoParts.join("   ·   "), MARGIN, 42);
+
+      let y = 52;
+
+      // ── MORPHOMETRY CARDS ──
+      y = sectionLabel("Morfometria da Bacia", y);
+      const m = report.morphometry;
+      const cards = [
+        { label: "Área", val: `${totalArea.toLocaleString("pt-PT")}`, unit: "km²" },
+        { label: "Perímetro", val: `${m.perimeterKm.toFixed(0)}`, unit: "km" },
+        { label: "Elev. mín.", val: `${m.elevMinM.toFixed(0)}`, unit: "m" },
+        { label: "Elev. média", val: `${m.elevMeanM.toFixed(0)}`, unit: "m" },
+        { label: "Elev. máx.", val: `${m.elevMaxM.toFixed(0)}`, unit: "m" },
+        { label: "Relevo", val: `${m.reliefM.toFixed(0)}`, unit: "m" },
+        { label: "Declive méd.", val: `${m.slopeMeanDeg.toFixed(1)}`, unit: "°" },
+        { label: "Declive máx.", val: `${m.slopeMaxDeg.toFixed(1)}`, unit: "°" },
+        { label: "Dens. dren.", val: `${m.drainageDensity}`, unit: "km/km²" }, // Fixed km {¹ bug
+        { label: "Compacidade", val: `${m.compactness}`, unit: "" },
+        { label: "Fator forma", val: `${m.formFactor}`, unit: "" },
+      ];
+      const cCols = 4;
+      const cW = (CONTENT_W - (cCols - 1) * 2.5) / cCols;
+      const cH = 14;
+      cards.forEach((c, i) => {
+        const cx = MARGIN + (i % cCols) * (cW + 2.5);
+        const cy = y + Math.floor(i / cCols) * (cH + 2.5);
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(cx, cy, cW, cH, 2, 2, "F");
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(cx, cy, cW, cH, 2, 2, "S");
+        doc.setTextColor(100, 116, 139);
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+        doc.text(c.label, cx + 4, cy + 5);
+        doc.setTextColor(15, 23, 42);
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.text(c.val, cx + 4, cy + 12);
+        if (c.unit) {
+          doc.setTextColor(148, 163, 184);
+          doc.setFontSize(6.5);
+          doc.setFont("helvetica", "normal");
+          doc.text(c.unit, cx + cW - 4, cy + 12, { align: "right" });
+        }
+      });
+      const cardRows = Math.ceil(cards.length / cCols);
+      y += cardRows * (cH + 2.5) + 4;
+
+      // ── LAND COVER ──
+      y = sectionLabel("Uso e Cobertura do Solo (ESA WorldCover 2021)", y);
+      const lcItems = report.landcover.filter(lc => lc.areaKm2 > 0).slice(0, 8);
+      const maxPct = lcItems[0]?.pct ?? 1;
+
+      // Header row
+      doc.setFillColor(226, 232, 240);
+      doc.rect(MARGIN, y, CONTENT_W, 7, "F");
+      doc.setTextColor(71, 85, 105);
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "bold");
+      doc.text("Classe", MARGIN + 4, y + 5);
+      doc.text("km²", W - MARGIN - 24, y + 5, { align: "center" });
+      doc.text("%", W - MARGIN, y + 5, { align: "right" });
+      y += 7;
+
+      lcItems.forEach((lc, i) => {
+        const rowH = 6.2;
+        if (i % 2 === 0) {
+          doc.setFillColor(250, 252, 255);
+          doc.rect(MARGIN, y, CONTENT_W, rowH, "F");
+        }
+        try {
+          const hc = lc.color.replace("#", "");
+          const r = parseInt(hc.substring(0, 2), 16);
+          const g = parseInt(hc.substring(2, 4), 16);
+          const b = parseInt(hc.substring(4, 6), 16);
+          if (!isNaN(r)) {
+            doc.setFillColor(r, g, b);
+            doc.roundedRect(MARGIN + 2.5, y + 1, 5.5, 4.2, 0.8, 0.8, "F");
+          }
+        } catch {}
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(7.5);
+        doc.setFont("helvetica", "normal");
+        const name = lc.label.length > 38 ? lc.label.slice(0, 36) + "…" : lc.label;
+        doc.text(name, MARGIN + 13, y + 4.5);
+        doc.setTextColor(100, 116, 139);
+        doc.setFontSize(7);
+        doc.text(lc.areaKm2.toLocaleString("pt-PT", { maximumFractionDigits: 1 }), W - MARGIN - 24, y + 4.5, { align: "center" });
+        const barW = Math.max((lc.pct / maxPct) * 16, 0.5);
+        doc.setFillColor(2, 132, 199);
+        doc.rect(W - MARGIN - 22, y + 2, barW, 2.5, "F");
+        doc.setTextColor(2, 132, 199);
+        doc.setFont("helvetica", "bold");
+        doc.text(`${lc.pct}%`, W - MARGIN, y + 4.5, { align: "right" });
+        doc.setFont("helvetica", "normal");
+        y += rowH;
+      });
+      y += 4;
+
+      // ── MONTHLY PRECIPITATION ──
+      y = sectionLabel(`Precipitação Mensal · ${report.precipAnnualMm.toLocaleString("pt-PT")} mm/ano`, y);
+      const months = "JanFevMarAbrMaiJunJulAgoSetOutNovDez".match(/.{3}/g) || [];
+      const barH = 32;
+      const barArea = CONTENT_W - 4;
+      const barGap = 1.5;
+      const barW2 = Math.max(3, (barArea - months.length * barGap) / months.length);
+      const maxMm = Math.max(...report.precipMonthly, 1);
+      const py = y;
+
+      for (let pct = 0; pct <= 1; pct += 0.25) {
+        const ay = py + barH * (1 - pct);
+        doc.setDrawColor(226, 232, 240);
+        doc.line(MARGIN, ay, MARGIN + CONTENT_W, ay);
+        doc.setTextColor(148, 163, 184);
+        doc.setFontSize(6);
+        doc.text(`${Math.round(maxMm * pct)}`, MARGIN + 1, ay - 1);
+      }
+
+      report.precipMonthly.forEach((mm, i) => {
+        const bx = MARGIN + 2 + i * (barW2 + barGap);
+        const bh = (mm / maxMm) * barH;
+        doc.setFillColor(59, 130, 246);
+        doc.rect(bx, py + barH - bh, barW2, bh, "F");
+        doc.setTextColor(71, 85, 105);
+        doc.setFontSize(6);
+        doc.setFont("helvetica", "bold");
+        doc.text(months[i], bx + barW2 / 2, py + barH + 3.5, { align: "center" });
+        doc.setTextColor(100, 116, 139);
+        doc.setFontSize(5.5);
+        doc.setFont("helvetica", "normal");
+        doc.text(`${Math.round(mm)}`, bx + barW2 / 2, py + barH - bh - 1.5, { align: "center" });
+      });
+      y += barH + 9;
+
+      // ── RUNOFF / CN ──
+      y = sectionLabel("Escoamento Superficial (SCS Curve Number)", y);
+      const cn = report.runoff.cnMean;
+      doc.setFillColor(26, 152, 80);
+      doc.rect(MARGIN, y, CONTENT_W * 0.33, 5.5, "F");
+      doc.setFillColor(254, 224, 139);
+      doc.rect(MARGIN + CONTENT_W * 0.33, y, CONTENT_W * 0.34, 5.5, "F");
+      doc.setFillColor(215, 48, 39);
+      doc.rect(MARGIN + CONTENT_W * 0.67, y, CONTENT_W * 0.33, 5.5, "F");
+
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(9.5);
+      doc.setFont("helvetica", "bold");
+      const cnStr = cn != null ? `${cn.toFixed(1)}` : "—";
+      doc.text(cnStr, MARGIN + CONTENT_W / 2, y + 10, { align: "center" });
+      doc.setFontSize(7);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(100, 116, 139);
+      doc.text("CN médio · menor = infiltração favorável · maior = escoamento rápido", MARGIN, y + 10);
+      y += 15;
+
+      // ── RISK INDICES ──
+      if (wsStats && (y + 26 < H - 16)) {
+        y = sectionLabel("Índices de Risco", y);
+        const riskItems = [
+          { label: "Erosão", val: wsStats.erosionRisk, color: [245, 158, 11] as const },
+          { label: "Cheia / Inundação", val: wsStats.floodRisk, color: [239, 68, 68] as const },
+          { label: "Pot. Hidrogeológico", val: wsStats.hydroPotential, color: [16, 185, 129] as const },
+        ];
+        riskItems.forEach((ri) => {
+          const [r, g, b] = ri.color;
+          doc.setFillColor(r, g, b, 0.08);
+          doc.roundedRect(MARGIN, y, CONTENT_W, 8.5, 2, 2, "F");
+          doc.setDrawColor(r, g, b, 0.3);
+          doc.roundedRect(MARGIN, y, CONTENT_W, 8.5, 2, 2, "S");
+          doc.setTextColor(71, 85, 105);
+          doc.setFontSize(7.5);
+          doc.setFont("helvetica", "normal");
+          doc.text(ri.label, MARGIN + 4, y + 6);
+          doc.setFillColor(226, 232, 240);
+          doc.roundedRect(MARGIN + 60, y + 2.5, 60, 3.5, 1.5, 1.5, "F");
+          const bw = Math.max((Math.min(ri.val, 100) / 100) * 60, 2);
+          doc.setFillColor(r, g, b);
+          doc.roundedRect(MARGIN + 60, y + 2.5, bw, 3.5, 1.5, 1.5, "F");
+          doc.setTextColor(r, g, b);
+          doc.setFont("helvetica", "bold");
+          doc.text(`${ri.val.toFixed(0)}/100`, W - MARGIN - 4, y + 6, { align: "right" });
+          doc.setFont("helvetica", "normal");
+          y += 10.5;
+        });
+      }
+
+      addPDFFooter({ doc, pageNum, date, y: 0, title: "" });
+
+      // ── QGIS CARTOGRAPHIC MAP PAGES ──
+      const drawQgisMapPage = async (
+        pageTitle: string,
+        mapSubtitle: string,
+        tileUrl: string | undefined,
+        legendType: "lulc" | "cn",
+      ) => {
+        const startY = newPage_(pageTitle);
+        const mapX = MARGIN;
+        const mapY = startY + 4;
+        const mapW = CONTENT_W;
+        const mapH = 170;
+
+        const b = computeGeoJsonBounds(wsData?.geojson);
+
+        // Header inside page
+        doc.setFillColor(248, 250, 252);
+        doc.rect(mapX, startY, mapW, 8, "F");
+        doc.setDrawColor(203, 213, 225);
+        doc.rect(mapX, startY, mapW, 8, "S");
+        doc.setTextColor(15, 23, 42);
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.text(mapSubtitle.toUpperCase(), mapX + 4, startY + 5.5);
+        doc.setTextColor(100, 116, 139);
+        doc.setFontSize(7.5);
+        doc.setFont("helvetica", "normal");
+        doc.text("Coordenadas WGS 84 · EPSG:4326", mapX + mapW - 4, startY + 5.5, { align: "right" });
+
+        // Map image: fetch from Cartopy or fallback to map capture
+        try {
+          const legendPayload = legendType === "lulc"
+            ? report.landcover.slice(0, 8).map(c => ({ label: c.label, color: c.color }))
+            : [
+                { label: "CN < 50 (Infiltração Alta)", color: "#1a9850" },
+                { label: "CN 50-75 (Moderado)", color: "#fee08b" },
+                { label: "CN > 75 (Escoamento Alto)", color: "#d73027" },
+              ];
+
+          const imgData = await fetchMapImage(b, {
+            tileUrl,
+            overlayGeojson: wsData?.geojson as any,
+            overlayLabel: "Bacia Delimitada",
+            legendItems: legendPayload,
+            title: mapSubtitle,
+            dpi: 200,
+            widthMm: mapW,
+            heightMm: mapH,
+          });
+          doc.addImage(imgData, "PNG", mapX, mapY + 6, mapW, mapH);
+        } catch (err) {
+          console.warn("Cartopy map API failed, fallback to map container capture:", err);
+          if (mapContainerRef.current) {
+            try {
+              const canvasData = await captureMapImage(mapContainerRef.current);
+              doc.addImage(canvasData, "JPEG", mapX, mapY + 6, mapW, mapH);
+            } catch (cErr) {
+              console.warn("Capture fallback error:", cErr);
+            }
+          }
+        }
+
+        // QGIS Frame Border
+        doc.setDrawColor(30, 41, 59);
+        doc.setLineWidth(0.4);
+        doc.rect(mapX, mapY + 6, mapW, mapH, "S");
+
+        // Graticule ticks (Lat/Lon)
+        drawCoordinateGrid(doc, mapX, mapY + 6, mapW, mapH, b.south, b.north, b.west, b.east);
+
+        // North arrow
+        drawNorthArrow(doc, mapX + mapW - 6, mapY + 12, 8);
+
+        // Scale bar
+        const approxDistKm = Math.max(10, Math.round((b.east - b.west) * 111 * Math.cos((b.south + b.north) * Math.PI / 360) * 0.3));
+        drawGraphicScaleBar(doc, mapX + 8, mapY + mapH - 12, 34, approxDistKm);
+
+        // Embedded Legend Panel
+        const legX = mapX + 6;
+        const legY = mapY + 12;
+        const legW = 68;
+        const legH = legendType === "lulc" ? 72 : 48;
+
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(203, 213, 225);
+        doc.roundedRect(legX, legY, legW, legH, 2, 2, "FD");
+
+        doc.setFillColor(15, 23, 42);
+        doc.roundedRect(legX, legY, legW, 6, 2, 2, "F");
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(6.5);
+        doc.setFont("helvetica", "bold");
+        doc.text(legendType === "lulc" ? "LEGENDA — USO DO SOLO" : "LEGENDA — ESCOAMENTO (CN)", legX + 4, legY + 4.2);
+
+        let ly = legY + 9;
+
+        if (legendType === "lulc") {
+          report.landcover.slice(0, 7).forEach(lc => {
+            try {
+              const hc = lc.color.replace("#", "");
+              const r = parseInt(hc.substring(0, 2), 16);
+              const g = parseInt(hc.substring(2, 4), 16);
+              const b = parseInt(hc.substring(4, 6), 16);
+              doc.setFillColor(r, g, b);
+              doc.rect(legX + 4, ly, 4, 3.2, "F");
+            } catch {}
+            doc.setDrawColor(148, 163, 184);
+            doc.rect(legX + 4, ly, 4, 3.2, "S");
+            doc.setTextColor(51, 65, 85);
+            doc.setFontSize(6);
+            doc.setFont("helvetica", "normal");
+            const lbl = lc.label.length > 20 ? lc.label.slice(0, 18) + "…" : lc.label;
+            doc.text(`${lbl} (${lc.pct}%)`, legX + 11, ly + 2.5);
+            ly += 4.8;
+          });
+        } else {
+          const cnLegend = [
+            { label: "CN < 50 · Alta Infiltração", color: [26, 152, 80] },
+            { label: "CN 50–75 · Escoamento Médio", color: [254, 224, 139] },
+            { label: "CN > 75 · Alto Escoamento", color: [215, 48, 39] },
+          ];
+          cnLegend.forEach(ci => {
+            doc.setFillColor(ci.color[0], ci.color[1], ci.color[2]);
+            doc.rect(legX + 4, ly, 4, 3.2, "F");
+            doc.setDrawColor(148, 163, 184);
+            doc.rect(legX + 4, ly, 4, 3.2, "S");
+            doc.setTextColor(51, 65, 85);
+            doc.setFontSize(6);
+            doc.setFont("helvetica", "normal");
+            doc.text(ci.label, legX + 11, ly + 2.5);
+            ly += 5.2;
+          });
+          doc.setTextColor(15, 23, 42);
+          doc.setFontSize(6.5);
+          doc.setFont("helvetica", "bold");
+          doc.text(`CN Médio da Bacia: ${report.runoff.cnMean ?? "—"}`, legX + 4, ly + 2);
+          ly += 5.2;
+        }
+
+        doc.setDrawColor(2, 132, 199);
+        doc.setLineWidth(0.7);
+        doc.line(legX + 4, ly + 1.5, legX + 8, ly + 1.5);
+        doc.setTextColor(51, 65, 85);
+        doc.setFontSize(6);
+        doc.setFont("helvetica", "normal");
+        doc.text("Rede de Drenagem / Linhas de Água", legX + 11, ly + 2);
+        ly += 4.8;
+
+        doc.setDrawColor(13, 71, 161);
+        doc.setLineWidth(0.6);
+        doc.setFillColor(21, 101, 192, 0.2);
+        doc.rect(legX + 4, ly, 4, 3, "FD");
+        doc.text("Limite da Bacia Hidrográfica", legX + 11, ly + 2.2);
+
+        // Metadata block
+        const metaY = mapY + mapH + 8;
+        doc.setFillColor(248, 250, 252);
+        doc.rect(mapX, metaY, mapW, 14, "F");
+        doc.setDrawColor(226, 232, 240);
+        doc.rect(mapX, metaY, mapW, 14, "S");
+
+        doc.setTextColor(71, 85, 105);
+        doc.setFontSize(6.5);
+        doc.setFont("helvetica", "bold");
+        doc.text("METADADOS CARTOGRÁFICOS:", mapX + 3, metaY + 4.5);
+        doc.setFont("helvetica", "normal");
+        doc.text(
+          "Sistema de Coordenadas: WGS 84 (EPSG:4326) · Projeção Geográfica Decimal\n" +
+          "Fontes de Dados: ESA WorldCover (10m), HydroSHEDS / WWF, Copernicus DEM (GLO-30), CHIRPS Climatology\n" +
+          "Elaborado por: GeoMoz Explorer · HidroGeoMoz",
+          mapX + 3,
+          metaY + 8,
+        );
+
+        addPDFFooter({ doc, pageNum, date, y: 0, title: "" });
+      };
+
+      if (type === "lulc" || type === "both") {
+        await drawQgisMapPage(
+          "Mapa 1: Uso do Solo & Linhas de Água",
+          "Uso e Cobertura do Solo (ESA WorldCover 10m) & Rede Hidrográfica",
+          report.landcoverTile,
+          "lulc",
+        );
+      }
+
+      if (type === "cn" || type === "both") {
+        await drawQgisMapPage(
+          "Mapa 2: Escoamento Superficial (CN)",
+          "Escoamento Superficial (SCS Curve Number) & Rede Hidrográfica",
+          report.runoff.cnTile,
+          "cn",
+        );
+      }
+
+      const fileDate = new Date().toISOString().slice(0, 10);
+      doc.save(`GeoMoz_QGIS_Bacia_${PP[0].toFixed(3)}_${PP[1].toFixed(3)}_${fileDate}.pdf`);
+      setPdfExportModalOpen(false);
+    } catch (e: any) {
+      console.error("PDF export failed:", e);
+      toast({ variant: "destructive", title: "Erro na exportação", description: e.message || String(e) });
+    } finally {
+      setExportingPdf(false);
+    }
   }
 
   // Exports
@@ -1500,14 +1773,24 @@ export default function HidroGeoMoz({
                           </button>
                         </div>
 
-                        {/* PDF Download */}
-                        <div className="pt-1">
-                          <button onClick={generateBasinReportPdf}
-                            className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm">
-                            <FileDown size={13} /> Descarregar Relatório PDF
+                        {/* WebGIS Share & PDF Download */}
+                        <div className="pt-1 space-y-2">
+                          <button
+                            type="button"
+                            onClick={handleShareWebGis}
+                            className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-blue-700 dark:text-cyan-300 border border-blue-200 dark:border-slate-700 text-xs font-semibold rounded-xl transition-all shadow-sm"
+                          >
+                            <Share2 size={13} className="text-cyan-500" /> Partilhar Análise (WebGIS)
                           </button>
-                          <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-                            PDF A4 profissional com morfometria, cobertura do solo, precipitação mensal, CN e índices de risco.
+                          <button
+                            type="button"
+                            onClick={() => setPdfExportModalOpen(true)}
+                            className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm"
+                          >
+                            <FileDown size={13} /> Exportar Relatório PDF (QGIS)
+                          </button>
+                          <p className="text-[10px] text-slate-400 leading-relaxed">
+                            Partilhe via link interactivo de leitura ou exporte o mapa com rosa dos ventos, escala e legenda estilo QGIS.
                           </p>
                         </div>
                       </div>
@@ -1663,6 +1946,197 @@ export default function HidroGeoMoz({
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* ── Modal de Partilha WebGIS ────────────────────────────────────── */}
+      {shareModalOpen && (
+        <div className="fixed inset-0 z-[1000] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl text-slate-800 dark:text-slate-100 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-blue-600/15 text-blue-600 dark:text-cyan-400 flex items-center justify-center">
+                  <Share2 size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">Partilhar Análise (WebGIS)</h3>
+                  <p className="text-[11px] text-slate-400">Link público interativo de visualização (Apenas Leitura)</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShareModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-xs p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="my-4 space-y-3">
+              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 rounded-2xl p-3 text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
+                <ShieldCheck size={14} className="mt-0.5 shrink-0 text-blue-500" />
+                <span>
+                  Este link permite que qualquer utilizador visualize o mapa interativo da bacia, consulte métricas e faça o download do PDF.
+                  <strong> Não permite processamentos adicionais nem consome quota do seu GEE.</strong>
+                </span>
+              </div>
+
+              {shareLoading ? (
+                <div className="flex flex-col items-center justify-center py-6 gap-2 text-slate-400">
+                  <Loader2 size={24} className="animate-spin text-cyan-500" />
+                  <span className="text-xs">A gerar link WebGIS...</span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                    Link de Visualização:
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={shareUrl}
+                      className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-slate-700 dark:text-slate-200 select-all focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(shareUrl);
+                        setShareCopied(true);
+                        setTimeout(() => setShareCopied(false), 2500);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-all shadow-sm shrink-0"
+                    >
+                      {shareCopied ? <Check size={13} className="text-emerald-300" /> : <Copy size={13} />}
+                      <span>{shareCopied ? "Copiado!" : "Copiar"}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShareModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-all"
+              >
+                Fechar
+              </button>
+              {shareUrl && (
+                <a
+                  href={shareUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-md shadow-blue-600/20"
+                >
+                  <ExternalLink size={13} /> Abrir Visualizador
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal de Exportação PDF QGIS ─────────────────────────────────── */}
+      {pdfExportModalOpen && (
+        <div className="fixed inset-0 z-[1000] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl text-slate-800 dark:text-slate-100 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-blue-600/15 text-blue-600 dark:text-cyan-400 flex items-center justify-center">
+                  <FileDown size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">Exportação Cartográfica (Estilo QGIS)</h3>
+                  <p className="text-[11px] text-slate-400">Selecione os mapas e elementos a incluir no PDF</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPdfExportModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-xs p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="my-4 space-y-2.5 text-xs">
+              <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+                Composição do Relatório PDF:
+              </label>
+
+              {[
+                {
+                  id: "both",
+                  title: "Relatório Completo (Ambos os Mapas)",
+                  desc: "Pág 1: Métricas & Clima · Pág 2: Uso do Solo (10m) · Pág 3: Escoamento (CN)",
+                },
+                {
+                  id: "lulc",
+                  title: "Mapa de Uso e Cobertura do Solo",
+                  desc: "Layout cartográfico com ESA WorldCover 10m, rede hidrográfica e legenda de classes.",
+                },
+                {
+                  id: "cn",
+                  title: "Mapa de Escoamento Superficial (CN)",
+                  desc: "Layout cartográfico com Curve Number SCS, rede hidrográfica e zonas de infiltração.",
+                },
+              ].map(opt => (
+                <div
+                  key={opt.id}
+                  onClick={() => setPdfExportType(opt.id as any)}
+                  className={`p-3 rounded-2xl border cursor-pointer transition-all ${
+                    pdfExportType === opt.id
+                      ? "bg-blue-50 dark:bg-blue-600/15 border-blue-500 text-blue-900 dark:text-white shadow-sm"
+                      : "bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/60 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-semibold">
+                    <span>{opt.title}</span>
+                    {pdfExportType === opt.id && <Check size={14} className="text-blue-500 dark:text-blue-400" />}
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{opt.desc}</p>
+                </div>
+              ))}
+
+              <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3 text-[11px] text-slate-600 dark:text-slate-400 space-y-1 mt-3">
+                <div className="font-semibold text-slate-700 dark:text-slate-300">Elementos Cartográficos Incluídos:</div>
+                <div className="flex flex-wrap gap-2 text-[10px] text-cyan-600 dark:text-cyan-300 pt-1">
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60">🧭 Rosa dos Ventos</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60">📏 Barra de Escala Gráfica</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60">🌐 Graticule Lat/Lon</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60">📋 Legenda Temática</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setPdfExportModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => generateBasinReportPdf(pdfExportType)}
+                disabled={exportingPdf}
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 disabled:opacity-60 text-white text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-600/25"
+              >
+                {exportingPdf ? (
+                  <>
+                    <Loader2 size={13} className="animate-spin" /> A gerar PDF QGIS…
+                  </>
+                ) : (
+                  <>
+                    <FileDown size={14} /> Gerar PDF A4
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

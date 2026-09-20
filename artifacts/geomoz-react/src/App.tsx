@@ -4,6 +4,7 @@ import { Switch, Route } from "wouter";
 import { Toaster } from "@/components/ui/toaster";
 import LandingPage from "@/pages/LandingPage";
 import Explorer from "@/pages/Explorer";
+import HidroWebGisViewer from "@/pages/HidroWebGisViewer";
 import { AuthProvider } from "@/hooks/useAuth";
 import { GeeAuthProvider } from "@/hooks/useGeeAuth";
 import { ProjectProvider } from "@/context/ProjectContext";
@@ -110,6 +111,8 @@ export default function App() {
                 <Route path="/">{() => <LandingPage />}</Route>
                 <Route path="/login">{() => <LandingPage initialAuthMode="login" />}</Route>
                 <Route path="/register">{() => <LandingPage initialAuthMode="register" />}</Route>
+                <Route path="/view/hidro">{() => <HidroWebGisViewer />}</Route>
+                <Route path="/share/hidro/:id">{(params) => <HidroWebGisViewer id={params.id} />}</Route>
                 <Route path="/app">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/explorer">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/mapa">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>

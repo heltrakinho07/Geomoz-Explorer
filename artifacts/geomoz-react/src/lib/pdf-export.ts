@@ -421,42 +421,110 @@ export function drawCoordinateGrid(
   north: number,
   west: number,
   east: number,
-  gridStep: number = 2,
+  gridStep?: number,
 ) {
-  if (Math.abs(north - south) < 0.01 || Math.abs(east - west) < 0.01) return;
+  if (Math.abs(north - south) < 0.001 || Math.abs(east - west) < 0.001) return;
 
-  doc.setDrawColor(148, 163, 184);
-  doc.setFillColor(148, 163, 184);
+  const latSpan = north - south;
+  const lonSpan = east - west;
+  const maxSpan = Math.max(latSpan, lonSpan);
+
+  const step = gridStep && gridStep > 0
+    ? gridStep
+    : maxSpan > 8 ? 2
+    : maxSpan > 4 ? 1
+    : maxSpan > 1.5 ? 0.5
+    : maxSpan > 0.6 ? 0.2
+    : maxSpan > 0.2 ? 0.1
+    : 0.05;
+
+  doc.setDrawColor(203, 213, 225);
   doc.setFontSize(5.5);
   doc.setFont("helvetica", "normal");
 
+  const formatCoord = (val: number, pos: string, neg: string) => {
+    const dir = val >= 0 ? pos : neg;
+    const absVal = Math.abs(val);
+    const deg = Math.floor(absVal);
+    const min = Math.round((absVal - deg) * 60);
+    if (step < 0.2 && min > 0) {
+      return `${deg}°${min < 10 ? "0" : ""}${min}'${dir}`;
+    }
+    if (step < 1 && min > 0) {
+      return `${absVal.toFixed(1)}°${dir}`;
+    }
+    return `${deg}°${dir}`;
+  };
+
   // Horizontal grid lines (latitude)
-  const latStart = Math.ceil(south / gridStep) * gridStep;
-  for (let lat = latStart; lat <= north; lat += gridStep) {
+  const latStart = Math.ceil(south / step) * step;
+  for (let lat = latStart; lat <= north; lat += step) {
     const frac = (lat - south) / (north - south);
     const ly = mapY + mapH - frac * mapH;
+    if (ly < mapY || ly > mapY + mapH) continue;
     doc.setDrawColor(203, 213, 225);
     doc.line(mapX, ly, mapX + mapW, ly);
     // Label
-    const label = `${Math.abs(lat).toFixed(0)}°${lat >= 0 ? "S" : "N"}`;
+    const label = formatCoord(lat, "N", "S");
     doc.setTextColor(100, 116, 139);
-    doc.text(label, mapX - 3, ly + 1.5, { align: "right" });
+    doc.text(label, mapX - 2, ly + 1.5, { align: "right" });
     doc.text(label, mapX + mapW + 2, ly + 1.5);
   }
 
   // Vertical grid lines (longitude)
-  const lonStart = Math.ceil(west / gridStep) * gridStep;
-  for (let lon = lonStart; lon <= east; lon += gridStep) {
+  const lonStart = Math.ceil(west / step) * step;
+  for (let lon = lonStart; lon <= east; lon += step) {
     const frac = (lon - west) / (east - west);
     const lx = mapX + frac * mapW;
+    if (lx < mapX || lx > mapX + mapW) continue;
     doc.setDrawColor(203, 213, 225);
     doc.line(lx, mapY, lx, mapY + mapH);
     // Label
-    const label = `${Math.abs(lon).toFixed(0)}°${lon >= 0 ? "E" : "W"}`;
+    const label = formatCoord(lon, "E", "W");
     doc.setTextColor(100, 116, 139);
     doc.text(label, lx, mapY - 2, { align: "center" });
     doc.text(label, lx, mapY + mapH + 4, { align: "center" });
   }
+}
+
+/**
+ * Draw a QGIS-style graphic scale bar.
+ */
+export function drawGraphicScaleBar(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  widthMm: number = 32,
+  distanceKm: number = 20,
+) {
+  // Background pill/card
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(203, 213, 225);
+  doc.roundedRect(x - 2, y - 4, widthMm + 8, 12, 1.5, 1.5, "FD");
+
+  const segW = widthMm / 2;
+  const barH = 2.5;
+
+  // Segment 1 (Black/Blue)
+  doc.setFillColor(15, 23, 42);
+  doc.rect(x, y, segW, barH, "F");
+
+  // Segment 2 (White)
+  doc.setFillColor(241, 245, 249);
+  doc.setDrawColor(15, 23, 42);
+  doc.rect(x + segW, y, segW, barH, "FD");
+
+  // Labels
+  doc.setTextColor(51, 65, 85);
+  doc.setFontSize(5);
+  doc.setFont("helvetica", "bold");
+  doc.text("0", x, y - 1, { align: "center" });
+  doc.text(`${Math.round(distanceKm / 2)}`, x + segW, y - 1, { align: "center" });
+  doc.text(`${Math.round(distanceKm)} km`, x + widthMm, y - 1, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(4.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Escala Gráfica", x + widthMm / 2, y + barH + 3.5, { align: "center" });
 }
 
 // ── Cover page ────────────────────────────────────────────────────────────────
