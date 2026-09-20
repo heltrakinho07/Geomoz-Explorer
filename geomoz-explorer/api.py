@@ -2400,14 +2400,30 @@ class SaveAnalysisRequest(BaseModel):
 async def save_analysis(req: SaveAnalysisRequest):
     """
     Save an analysis snapshot permanently on the server.
-    Enables reloading the analysis anytime without re-running GEE.
+    Prevents duplicate or overlapping studies with the same name.
     """
     import secrets
-    analysis_id = req.id or secrets.token_hex(6)
+    title_clean = req.title.strip()
+    existing_id = None
+
+    if os.path.exists(SAVED_ANALYSES_DIR):
+        for fname in os.listdir(SAVED_ANALYSES_DIR):
+            if fname.endswith(".json"):
+                fpath = os.path.join(SAVED_ANALYSES_DIR, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        existing_item = json.load(f)
+                        if existing_item.get("title", "").strip().lower() == title_clean.lower():
+                            existing_id = existing_item.get("id") or fname[:-5]
+                            break
+                except Exception:
+                    pass
+
+    analysis_id = existing_id or req.id or secrets.token_hex(6)
     file_path = os.path.join(SAVED_ANALYSES_DIR, f"{analysis_id}.json")
     payload = {
         "id": analysis_id,
-        "title": req.title,
+        "title": title_clean,
         "type": req.type,
         "saved_at": time.time(),
         "data": req.data,
@@ -2419,7 +2435,7 @@ async def save_analysis(req: SaveAnalysisRequest):
     except Exception as exc:
         logger.error("Failed to save analysis: %s", exc)
         raise HTTPException(500, f"Falha ao guardar análise: {exc}")
-    return {"id": analysis_id, "title": req.title, "saved_at": payload["saved_at"]}
+    return {"id": analysis_id, "title": title_clean, "saved_at": payload["saved_at"]}
 
 @app.get("/geomoz-api/analyses")
 async def list_saved_analyses():

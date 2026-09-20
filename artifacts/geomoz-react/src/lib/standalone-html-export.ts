@@ -682,16 +682,21 @@ export function generateStandaloneBasinHtml(options: ExportStandaloneHtmlOptions
   <!-- ── Header ────────────────────────────────────────── -->
   <header>
     <div class="brand">
-      <div class="brand-logo">GZ</div>
+      <div class="brand-logo" title="GeoMoz Explorer">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+          <path d="M2 12h20"/>
+        </svg>
+      </div>
       <div>
         <div class="brand-title">
-          <span>${title}</span>
-          <span class="badge">EPSG:4326</span>
-          ${province ? `<span class="badge">${province}</span>` : ""}
-          ${district ? `<span class="badge">${district}</span>` : ""}
+          <span>GeoMoz <span style="color: #38bdf8;">Explorer</span></span>
+          <span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border-color: rgba(14, 165, 233, 0.3);">WebGIS</span>
+          <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border-color: rgba(16, 185, 129, 0.3);">Apenas Leitura</span>
         </div>
         <div class="brand-subtitle">
-          <span>Relatório WebGIS Autónomo</span>
+          <span>${title}</span>
           <span>·</span>
           <span>${dateStr}</span>
           <span>·</span>
@@ -1035,15 +1040,23 @@ export function generateStandaloneBasinHtml(options: ExportStandaloneHtmlOptions
     L.control.zoom({ position: "topright" }).addTo(map);
     L.control.scale({ imperial: false, position: "bottomright" }).addTo(map);
 
-    // Free Open Basemaps (ZERO API KEYS REQUIRED, NO WATERMARK)
-    const osm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 19
+    // Free Open Basemaps (ZERO API KEYS REQUIRED, NO OSM 403 BLOCK, NO WATERMARK)
+    const googleRoadmap = L.tileLayer("https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}", {
+      subdomains: "0123",
+      attribution: '&copy; Google Maps',
+      maxZoom: 20
     }).addTo(map);
 
-    const esriSat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-      attribution: '&copy; Esri, Earthstar Geographics',
-      maxZoom: 19
+    const googleHybrid = L.tileLayer("https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}", {
+      subdomains: "0123",
+      attribution: '&copy; Google Maps',
+      maxZoom: 20
+    });
+
+    const googleTerrain = L.tileLayer("https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}", {
+      subdomains: "0123",
+      attribution: '&copy; Google Maps',
+      maxZoom: 20
     });
 
     const esriTopo = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}", {
@@ -1051,10 +1064,17 @@ export function generateStandaloneBasinHtml(options: ExportStandaloneHtmlOptions
       maxZoom: 19
     });
 
+    const esriSat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      attribution: '&copy; Esri, Earthstar Geographics',
+      maxZoom: 19
+    });
+
     L.control.layers({
-      "OpenStreetMap (Padrão)": osm,
-      "Satélite (Esri World Imagery)": esriSat,
-      "Relevo / Topo (Esri)": esriTopo
+      "Google Estradas (Padrão)": googleRoadmap,
+      "Google Híbrido": googleHybrid,
+      "Google Relevo": googleTerrain,
+      "Esri Relevo Topográfico": esriTopo,
+      "Esri Satélite (Óptico)": esriSat
     }, null, { position: "topright" }).addTo(map);
 
     // Layer references

@@ -338,7 +338,28 @@ export default function HidroGeoMoz({
     if (title === null) return;
     const chosenTitle = title.trim() || defaultTitle;
 
-    const id = "basin_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 6);
+    // Verificar se já existe um estudo guardado com o mesmo nome para evitar sobreposições
+    const existing = savedAnalyses.find(
+      (a) => a.title?.trim().toLowerCase() === chosenTitle.toLowerCase()
+    );
+
+    if (existing) {
+      const confirmReplace = window.confirm(
+        `Já existe um estudo guardado com o nome "${existing.title}".\n\nNão são permitidas sobreposições de estudos com o mesmo nome no sistema.\n\n• Clique em [OK] para ATUALIZAR / SUBSTITUIR o estudo existente.\n• Clique em [Cancelar] para escolher um nome exclusivo.`
+      );
+      if (!confirmReplace) {
+        toast({
+          title: "Gravação cancelada",
+          description: "Por favor, indique um nome exclusivo para evitar sobreposições de estudos.",
+        });
+        return;
+      }
+    }
+
+    const id = existing
+      ? existing.id
+      : "basin_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 6);
+
     const item = {
       id,
       title: chosenTitle,
@@ -382,8 +403,10 @@ export default function HidroGeoMoz({
     } catch {}
 
     toast({
-      title: "Análise guardada com sucesso!",
-      description: "Esta bacia ficou arquivada de forma permanente. Poderá reabri-la instantaneamente sem recorrer ao GEE.",
+      title: existing ? "Estudo atualizado com sucesso!" : "Análise guardada com sucesso!",
+      description: existing
+        ? `O estudo "${chosenTitle}" foi atualizado sem duplicados nem sobreposições.`
+        : "Esta bacia ficou arquivada de forma permanente. Poderá reabri-la instantaneamente sem recorrer ao GEE.",
     });
   }
 
@@ -409,6 +432,12 @@ export default function HidroGeoMoz({
       return;
     }
 
+    // Limpar quaisquer camadas, feições ou redes anteriores para evitar sobreposições
+    setSelectedFeat(null);
+    setBasinStats(null);
+    setRiverNet(null);
+    setDrainageTile(null);
+
     setMode("delineate");
     setWatershedData(fullData.watershedData || null);
     setBasinReport(fullData.basinReport || null);
@@ -416,6 +445,8 @@ export default function HidroGeoMoz({
     setPourPoint(fullData.pourPoint || null);
     if (fullData.watershedDrainageTile) {
       setWatershedDrainageTile(fullData.watershedDrainageTile);
+    } else {
+      setWatershedDrainageTile(null);
     }
     if (fullData.province) setProvince(fullData.province);
     if (fullData.district) setDistrict(fullData.district);

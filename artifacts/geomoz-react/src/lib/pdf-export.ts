@@ -326,9 +326,9 @@ export async function renderBasinMapToDataUrl(options: RenderBasinMapOptions): P
     for (let ty = minTy; ty <= maxTy; ty++) {
       const drawX = tx * 256 - originX;
       const drawY = ty * 256 - originY;
-      // OpenStreetMap basemap (100% open, CORS-enabled, zero API key required, no watermark)
-      const basemapUrl = `https://tile.openstreetmap.org/${zoom}/${tx}/${ty}.png`;
-      const fallbackBasemapUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${zoom}/${ty}/${tx}`;
+      // Esri World Topo Map (100% open, CORS-enabled, zero API key required, no 403 block)
+      const basemapUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${zoom}/${ty}/${tx}`;
+      const fallbackBasemapUrl = `https://mt0.google.com/vt/lyrs=m&x=${tx}&y=${ty}&z=${zoom}`;
       tilePromises.push(
         (async () => {
           let bImg = await loadImage(basemapUrl);
