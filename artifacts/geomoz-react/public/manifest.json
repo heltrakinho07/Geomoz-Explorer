@@ -1,6 +1,6 @@
 {
-  "name": "GeoMoz Explorer 3D — Inteligência Geoespacial",
-  "short_name": "GeoMoz 3D",
+  "name": "GeoMoz Explorer",
+  "short_name": "GeoMoz Explorer",
   "description": "Plataforma analítica de inteligência geoespacial planetária, deteção remota multiespectral por satélite (Sentinel-2, Landsat), modelação de relevo 3D Copernicus DEM 30m e hidrogeologia preditiva.",
   "start_url": "/",
   "scope": "/",

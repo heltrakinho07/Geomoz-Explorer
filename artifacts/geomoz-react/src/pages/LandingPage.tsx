@@ -849,10 +849,9 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                 <Button
                   size="sm"
                   onClick={handleLaunchApp}
-                  className="bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-semibold px-3.5 h-9 rounded-xl shadow-md shadow-sky-600/20"
+                  className="hidden sm:inline-flex bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-semibold px-3.5 h-9 rounded-xl shadow-md shadow-sky-600/20"
                 >
-                  <span className="hidden sm:inline">{t.nav.launch}</span>
-                  <span className="sm:hidden">3D</span>
+                  <span>{t.nav.launch}</span>
                   <ArrowRight size={14} className="ml-1" />
                 </Button>
 
@@ -901,26 +900,13 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                 <Button
                   size="sm"
                   onClick={handleLaunchApp}
-                  className="bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-bold px-3.5 h-9 rounded-xl shadow-md shadow-sky-600/25"
+                  className="hidden md:inline-flex bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-bold px-3.5 h-9 rounded-xl shadow-md shadow-sky-600/25"
                 >
                   <span>{lang === "pt" ? "Explorar" : "Explore"}</span>
                   <ArrowRight size={14} className="ml-1" />
                 </Button>
               </div>
             )}
-
-            {/* Mobile Menu Toggle Button */}
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className={`lg:hidden w-9 h-9 rounded-xl border flex items-center justify-center transition-colors ${
-                isDark
-                  ? "bg-slate-900 border-slate-800 text-slate-300"
-                  : "bg-white border-slate-200 text-slate-700 shadow-sm"
-              }`}
-            >
-              {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
-            </button>
           </div>
         </div>
 
@@ -2477,46 +2463,38 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
       </footer>
 
       {/* ── Mobile Floating App Dock (Menu Flutuante Mobile) ───────────────── */}
-      <div className="md:hidden fixed bottom-3 inset-x-3 sm:inset-x-6 z-40">
+      <div className="md:hidden fixed bottom-3 inset-x-4 sm:inset-x-8 z-40 flex justify-center">
         <div
-          className={`backdrop-blur-xl border shadow-2xl rounded-2xl p-1.5 flex items-center justify-around transition-colors ${
+          className={`max-w-xs w-full backdrop-blur-xl border shadow-2xl rounded-2xl p-1.5 flex items-center justify-around transition-colors ${
             isDark
               ? "bg-slate-900/90 border-slate-800/90 shadow-black/40"
               : "bg-white/90 border-slate-200/90 shadow-slate-900/10"
           }`}
         >
-          {/* Explorar 3D */}
-          <button
-            type="button"
-            onClick={handleLaunchApp}
-            className="flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 text-white font-bold text-[10px] shadow-md shadow-sky-600/25 active:scale-95 transition-all"
-          >
-            <Globe size={18} />
-            <span>Explorar 3D</span>
-          </button>
-
           {/* Módulos / Páginas */}
           <button
             type="button"
             onClick={() => setMobileSheet(mobileSheet === "modules" ? "none" : "modules")}
-            className={`flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-semibold transition-all ${
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
               mobileSheet === "modules"
                 ? "bg-sky-500/15 text-sky-600 dark:text-sky-400"
-                : "text-slate-600 dark:text-slate-300 hover:text-sky-600 dark:hover:text-sky-400"
+                : "text-slate-700 dark:text-slate-200 hover:text-sky-600 dark:hover:text-sky-400"
             }`}
           >
-            <Layers size={18} />
-            <span>{lang === "pt" ? "Páginas" : "Pages"}</span>
+            <Layers size={17} className="text-sky-500" />
+            <span>{lang === "pt" ? "Páginas & Módulos" : "Pages & Modules"}</span>
           </button>
+
+          <div className="w-px h-6 bg-slate-200 dark:bg-slate-800 shrink-0" />
 
           {/* Entrar / Perfil */}
           <button
             type="button"
             onClick={() => setMobileSheet(mobileSheet === "account" ? "none" : "account")}
-            className={`flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-semibold transition-all ${
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
               mobileSheet === "account"
                 ? "bg-sky-500/15 text-sky-600 dark:text-sky-400"
-                : "text-slate-600 dark:text-slate-300 hover:text-sky-600 dark:hover:text-sky-400"
+                : "text-slate-700 dark:text-slate-200 hover:text-sky-600 dark:hover:text-sky-400"
             }`}
           >
             {user ? (
@@ -2528,23 +2506,9 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                 </div>
               )
             ) : (
-              <LogIn size={18} />
+              <LogIn size={17} className="text-sky-500" />
             )}
             <span>{user ? (lang === "pt" ? "Conta" : "Account") : (lang === "pt" ? "Entrar" : "Login")}</span>
-          </button>
-
-          {/* Menu / Mais */}
-          <button
-            type="button"
-            onClick={() => setMobileSheet(mobileSheet === "menu" ? "none" : "menu")}
-            className={`flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-semibold transition-all ${
-              mobileSheet === "menu"
-                ? "bg-sky-500/15 text-sky-600 dark:text-sky-400"
-                : "text-slate-600 dark:text-slate-300 hover:text-sky-600 dark:hover:text-sky-400"
-            }`}
-          >
-            <Menu size={18} />
-            <span>Menu</span>
           </button>
         </div>
       </div>

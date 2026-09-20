@@ -1,14 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <defs>
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="borderGrad" x1="0%" y1="100%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#0284c7" />
-      <stop offset="50%" stop-color="#0369a1" />
-      <stop offset="100%" stop-color="#4338ca" />
+      <stop offset="50%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#6366f1" />
     </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#0284c7" flood-opacity="0.2" />
+    </filter>
   </defs>
-  <rect width="512" height="512" rx="120" fill="url(#bgGrad)" />
-  <circle cx="256" cy="256" r="150" fill="none" stroke="#ffffff" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" />
-  <ellipse cx="256" cy="256" rx="72" ry="150" fill="none" stroke="#ffffff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />
-  <line x1="106" y1="256" x2="406" y2="256" stroke="#ffffff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />
-  <circle cx="395" cy="130" r="24" fill="#38bdf8" stroke="#ffffff" stroke-width="7" />
+  <!-- White Squircle with Gradient Border -->
+  <rect x="36" y="36" width="440" height="440" rx="115" fill="#ffffff" stroke="url(#borderGrad)" stroke-width="22" filter="url(#shadow)" />
+  <!-- Blue Globe in Center -->
+  <circle cx="256" cy="256" r="124" stroke="#0284c7" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" />
+  <ellipse cx="256" cy="256" rx="58" ry="124" stroke="#0284c7" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" />
+  <line x1="132" y1="256" x2="380" y2="256" stroke="#0284c7" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" />
 </svg>
