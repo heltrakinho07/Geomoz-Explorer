@@ -947,29 +947,33 @@ export default function Explorer() {
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
 
       {/* StoryMap / Presentation Mode Modal */}
-      <StoryMapModal
-        open={storyMapOpen}
-        onOpenChange={setStoryMapOpen}
-        onFlyTo={(lat, lng, zoom) => {
-          if (activeTab !== "Mapa") setActiveTab("Mapa");
-          mapRef.current?.flyTo([lat, lng], zoom, { duration: 1.5 });
-        }}
-      />
+      {storyMapOpen && (
+        <StoryMapModal
+          open={storyMapOpen}
+          onOpenChange={setStoryMapOpen}
+          onFlyTo={(lat, lng, zoom) => {
+            if (activeTab !== "Mapa") setActiveTab("Mapa");
+            mapRef.current?.flyTo([lat, lng], zoom, { duration: 1.5 });
+          }}
+        />
+      )}
 
       {/* Spatial SQL Console Modal */}
-      <SpatialSqlModal
-        open={spatialSqlOpen}
-        onOpenChange={setSpatialSqlOpen}
-        aoiPolygon={aoi.geometry as any}
-        onApplyFilterToMap={(features) => {
-          setSpatialSqlOpen(false);
-          if (activeTab !== "Mapa") setActiveTab("Mapa");
-          toast({
-            title: "Filtro Spatial SQL Aplicado",
-            description: `${features.length} feições selecionadas e destacadas no mapa.`,
-          });
-        }}
-      />
+      {spatialSqlOpen && (
+        <SpatialSqlModal
+          open={spatialSqlOpen}
+          onOpenChange={setSpatialSqlOpen}
+          aoiPolygon={aoi.geometry as any}
+          onApplyFilterToMap={(features) => {
+            setSpatialSqlOpen(false);
+            if (activeTab !== "Mapa") setActiveTab("Mapa");
+            toast({
+              title: "Filtro Spatial SQL Aplicado",
+              description: `${features.length} feições selecionadas e destacadas no mapa.`,
+            });
+          }}
+        />
+      )}
 
       {/* Project Workspace Modal */}
       <ProjectWorkspaceModal

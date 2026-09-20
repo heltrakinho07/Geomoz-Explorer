@@ -135,21 +135,22 @@ export default function StoryMapModal({
     setCurrentIndex(prev => (prev - 1 + slides.length) % slides.length);
   }, [slides.length]);
 
-  // Sync map camera on slide change
+  // Sync map camera on slide change (only when modal is actively open)
   useEffect(() => {
+    if (!open) return;
     if (activeSlide && onFlyTo) {
       onFlyTo(activeSlide.center[0], activeSlide.center[1], activeSlide.zoom, activeSlide.pitch);
     }
-  }, [activeSlide, onFlyTo]);
+  }, [open, activeSlide, onFlyTo]);
 
-  // Auto-play presentation timer
+  // Auto-play presentation timer (only when playing and modal is open)
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isPlaying || !open) return;
     const timer = setInterval(() => {
       handleNext();
     }, 8000);
     return () => clearInterval(timer);
-  }, [isPlaying, handleNext]);
+  }, [isPlaying, open, handleNext]);
 
   // Keyboard navigation (Arrow keys, Space, Esc)
   useEffect(() => {
