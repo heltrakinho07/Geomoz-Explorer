@@ -200,6 +200,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
 
   // Mobile drawer state
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState<boolean>(false);
+  const [metricTab, setMetricTab] = useState<"geral" | "morfometria" | "lulc" | "hidro">("geral");
 
   // Link copy feedback
   const [copied, setCopied] = useState<boolean>(false);
@@ -911,169 +912,240 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           </div>
         </div>
 
-        <div className="p-4 space-y-5 flex-1">
-          {/* Morfometria */}
-          <div>
-            <div className="flex items-center gap-1.5 mb-2.5">
-              <Mountain size={13} className="text-blue-500 dark:text-blue-400" />
-              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Morfometria da Bacia</span>
-            </div>
-            <div className="grid grid-cols-3 gap-1.5">
-              {[
-                ["Perímetro", `${report.morphometry.perimeterKm.toFixed(0)} km`],
-                ["Relevo", `${report.morphometry.reliefM.toFixed(0)} m`],
-                ["Declive méd.", `${report.morphometry.slopeMeanDeg.toFixed(1)}°`],
-                ["Elev. mín.", `${report.morphometry.elevMinM.toFixed(0)} m`],
-                ["Elev. média", `${report.morphometry.elevMeanM.toFixed(0)} m`],
-                ["Elev. máx.", `${report.morphometry.elevMaxM.toFixed(0)} m`],
-                ["Dens. dren.", `${report.morphometry.drainageDensity} km/km²`],
-                ["Compacidade", `${report.morphometry.compactness}`],
-                ["Fator forma", `${report.morphometry.formFactor}`],
-              ].map(([k, v]) => (
-                <div key={k} className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-2 text-center">
-                  <div className="text-[9px] text-slate-500 dark:text-slate-400 uppercase tracking-wide leading-tight mb-0.5">{k}</div>
-                  <div className="text-xs font-bold text-slate-900 dark:text-slate-100">{v}</div>
-                </div>
-              ))}
-            </div>
+        {/* Segmented Metric Tabs (Guias organizadas) */}
+        <div className="px-4 pt-3 pb-1">
+          <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-center">
+            <button
+              type="button"
+              onClick={() => setMetricTab("geral")}
+              className={`py-1.5 px-1 text-[10px] font-bold rounded-lg transition-all truncate ${
+                metricTab === "geral"
+                  ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-cyan-300 shadow-xs"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+            >
+              Geral
+            </button>
+            <button
+              type="button"
+              onClick={() => setMetricTab("morfometria")}
+              className={`py-1.5 px-1 text-[10px] font-bold rounded-lg transition-all truncate ${
+                metricTab === "morfometria"
+                  ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-cyan-300 shadow-xs"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+            >
+              Morfometria
+            </button>
+            <button
+              type="button"
+              onClick={() => setMetricTab("lulc")}
+              className={`py-1.5 px-1 text-[10px] font-bold rounded-lg transition-all truncate ${
+                metricTab === "lulc"
+                  ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-cyan-300 shadow-xs"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+            >
+              Uso Solo
+            </button>
+            <button
+              type="button"
+              onClick={() => setMetricTab("hidro")}
+              className={`py-1.5 px-1 text-[10px] font-bold rounded-lg transition-all truncate ${
+                metricTab === "hidro"
+                  ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-cyan-300 shadow-xs"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+            >
+              Chuva & CN
+            </button>
           </div>
+        </div>
 
-          {/* Uso e Cobertura do Solo */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5">
-                <Activity size={13} className="text-lime-500 dark:text-lime-400" />
-                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Uso do Solo (ESA 10m)</span>
-              </div>
-              <button
-                onClick={() => setActiveLayer(l => l === "lulc" ? "none" : "lulc")}
-                className="text-[10px] text-sky-600 dark:text-cyan-400 hover:underline font-medium"
-              >
-                {activeLayer === "lulc" ? "Ocultar" : "Ver no mapa"}
-              </button>
-            </div>
-            <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-3 space-y-1.5">
-              {report.landcover.slice(0, 6).map(c => (
-                <div key={c.code} className="flex items-center gap-2 text-xs">
-                  <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: c.color }} />
-                  <span className="text-slate-700 dark:text-slate-300 flex-1 truncate">{c.label}</span>
-                  <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">{c.pct}%</span>
-                  <span className="text-slate-400 dark:text-slate-500 text-[10px] w-14 text-right">{c.areaKm2.toFixed(0)} km²</span>
+        <div className="p-4 space-y-4 flex-1 overflow-y-auto">
+          {/* ── TAB 1: GERAL & EXPORTAÇÕES ── */}
+          {metricTab === "geral" && (
+            <div className="space-y-4">
+              {/* Índices de Risco (se existirem) */}
+              {wsStats && (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Gauge size={13} className="text-red-500 dark:text-red-400" />
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Índices de Risco & Potencial</span>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3 space-y-2.5">
+                    {[
+                      { label: "Risco de Erosão", val: wsStats.erosionRisk, icon: Wind, color: "#f59e0b" },
+                      { label: "Risco de Cheia", val: wsStats.floodRisk, icon: Waves, color: "#ef4444" },
+                      { label: "Pot. Hidrogeológico", val: wsStats.hydroPotential, icon: Zap, color: "#10b981" },
+                    ].map(r => (
+                      <div key={r.label} className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                            <r.icon size={11} style={{ color: r.color }} /> {r.label}
+                          </span>
+                          <span className="font-bold font-mono" style={{ color: r.color }}>{r.val.toFixed(0)}/100</span>
+                        </div>
+                        <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${r.val}%`, background: r.color }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
+              )}
 
-          {/* Precipitação Mensal (CHIRPS) */}
-          <div>
-            <div className="flex items-center gap-1.5 mb-2">
-              <Droplets size={13} className="text-blue-500 dark:text-blue-400" />
-              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                Chuva Mensal · {report.precipAnnualMm.toLocaleString("pt-PT")} mm/ano
-              </span>
-            </div>
-            <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-2.5">
-              <ResponsiveContainer width="100%" height={100}>
-                <BarChart
-                  data={report.precipMonthly.map((v, i) => ({ m: "JFMAMJJASOND"[i], mm: v }))}
-                  margin={{ top: 4, right: 4, left: -24, bottom: 0 }}
+              {/* Botões Exportar PDF e HTML no Sidebar */}
+              <div className="space-y-2">
+                <button
+                  onClick={() => setExportModalOpen(true)}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-semibold rounded-2xl transition-all shadow-lg shadow-blue-600/25"
                 >
-                  <XAxis dataKey="m" tick={{ fontSize: 9, fill: theme === "dark" ? "#94a3b8" : "#64748b" }} interval={0} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 9, fill: theme === "dark" ? "#94a3b8" : "#64748b" }} axisLine={false} tickLine={false} width={28} />
-                  <Tooltip
-                    contentStyle={{
-                      background: theme === "dark" ? "#0f172a" : "#ffffff",
-                      borderColor: theme === "dark" ? "#334155" : "#cbd5e1",
-                      color: theme === "dark" ? "#f8fafc" : "#0f172a",
-                      borderRadius: "8px",
-                      fontSize: "11px",
-                    }}
-                    formatter={(v: number) => [`${v} mm`, "Precipitação"]}
-                  />
-                  <Bar dataKey="mm" fill="#0284c7" radius={[2, 2, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+                  <FileDown size={14} /> Descarregar Relatório PDF (Estilo QGIS)
+                </button>
+                <button
+                  onClick={() => downloadStandaloneBasinHtml({
+                    title: `Bacia Hidrográfica — ${totalArea.toLocaleString("pt-PT")} km²`,
+                    basinReport: report,
+                    watershedData: wsData,
+                    wsStats,
+                    pourPoint: PP,
+                  })}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-cyan-700 dark:text-cyan-300 border border-slate-200 dark:border-slate-700 text-xs font-semibold rounded-2xl transition-all shadow-sm"
+                  title="Descarregar ficheiro HTML autónomo que abre em qualquer computador offline"
+                >
+                  <FileCode size={14} /> Exportar WebGIS em HTML (Offline)
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Escoamento Superficial (SCS CN) */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5">
-                <Waves size={13} className="text-amber-500 dark:text-amber-400" />
-                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Escoamento (Curve Number)</span>
+          {/* ── TAB 2: MORFOMETRIA ── */}
+          {metricTab === "morfometria" && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Mountain size={13} className="text-blue-500 dark:text-blue-400" />
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Parâmetros Morfométricos</span>
               </div>
-              <button
-                onClick={() => setActiveLayer(l => l === "cn" ? "none" : "cn")}
-                className="text-[10px] text-sky-600 dark:text-cyan-400 hover:underline font-medium"
-              >
-                {activeLayer === "cn" ? "Ocultar" : "Ver no mapa"}
-              </button>
-            </div>
-            <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-700 dark:text-slate-300">CN Médio da Bacia</span>
-                <span className="text-base font-bold text-slate-900 dark:text-white font-mono">{report.runoff.cnMean ?? "—"}</span>
-              </div>
-              <div className="h-2 rounded-full mt-2" style={{ background: "linear-gradient(to right,#1a9850,#fee08b,#d73027)" }} />
-              <div className="flex justify-between text-[9px] text-slate-500 dark:text-slate-400 mt-1">
-                <span>40 · Alta infiltração</span>
-                <span>Escoamento rápido · 100</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Índices de Risco (se existirem) */}
-          {wsStats && (
-            <div>
-              <div className="flex items-center gap-1.5 mb-2">
-                <Gauge size={13} className="text-red-500 dark:text-red-400" />
-                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Índices de Risco</span>
-              </div>
-              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-3 space-y-2.5">
+              <div className="grid grid-cols-3 gap-1.5">
                 {[
-                  { label: "Risco de Erosão", val: wsStats.erosionRisk, icon: Wind, color: "#f59e0b" },
-                  { label: "Risco de Cheia", val: wsStats.floodRisk, icon: Waves, color: "#ef4444" },
-                  { label: "Pot. Hidrogeológico", val: wsStats.hydroPotential, icon: Zap, color: "#10b981" },
-                ].map(r => (
-                  <div key={r.label} className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                        <r.icon size={11} style={{ color: r.color }} /> {r.label}
-                      </span>
-                      <span className="font-bold font-mono" style={{ color: r.color }}>{r.val.toFixed(0)}/100</span>
-                    </div>
-                    <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${r.val}%`, background: r.color }} />
-                    </div>
+                  ["Perímetro", `${report.morphometry.perimeterKm.toFixed(0)} km`],
+                  ["Relevo", `${report.morphometry.reliefM.toFixed(0)} m`],
+                  ["Declive méd.", `${report.morphometry.slopeMeanDeg.toFixed(1)}°`],
+                  ["Elev. mín.", `${report.morphometry.elevMinM.toFixed(0)} m`],
+                  ["Elev. média", `${report.morphometry.elevMeanM.toFixed(0)} m`],
+                  ["Elev. máx.", `${report.morphometry.elevMaxM.toFixed(0)} m`],
+                  ["Dens. dren.", `${report.morphometry.drainageDensity} km/km²`],
+                  ["Compacidade", `${report.morphometry.compactness}`],
+                  ["Fator forma", `${report.morphometry.formFactor}`],
+                ].map(([k, v]) => (
+                  <div key={k} className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-2 text-center">
+                    <div className="text-[9px] text-slate-500 dark:text-slate-400 uppercase tracking-wide leading-tight mb-0.5">{k}</div>
+                    <div className="text-xs font-bold text-slate-900 dark:text-slate-100">{v}</div>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Botões Exportar PDF e HTML no Sidebar */}
-          <div className="pt-2 space-y-2">
-            <button
-              onClick={() => setExportModalOpen(true)}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-semibold rounded-2xl transition-all shadow-lg shadow-blue-600/25"
-            >
-              <FileDown size={14} /> Descarregar Relatório PDF (Estilo QGIS)
-            </button>
-            <button
-              onClick={() => downloadStandaloneBasinHtml({
-                title: `Bacia Hidrográfica — ${totalArea.toLocaleString("pt-PT")} km²`,
-                basinReport: report,
-                watershedData: wsData,
-                wsStats,
-                pourPoint: PP,
-              })}
-              className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-cyan-700 dark:text-cyan-300 border border-slate-200 dark:border-slate-700 text-xs font-semibold rounded-2xl transition-all shadow-sm"
-              title="Descarregar ficheiro HTML autónomo que abre em qualquer computador offline"
-            >
-              <FileCode size={14} /> Exportar WebGIS em HTML (Offline)
-            </button>
-          </div>
+          {/* ── TAB 3: USO DO SOLO (LULC) ── */}
+          {metricTab === "lulc" && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Activity size={13} className="text-lime-500 dark:text-lime-400" />
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Uso do Solo (ESA 10m)</span>
+                </div>
+                <button
+                  onClick={() => setActiveLayer(l => l === "lulc" ? "none" : "lulc")}
+                  className="text-[10px] text-sky-600 dark:text-cyan-400 hover:underline font-bold"
+                >
+                  {activeLayer === "lulc" ? "Ocultar" : "Ver no mapa"}
+                </button>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3 space-y-2">
+                {report.landcover.slice(0, 8).map(c => (
+                  <div key={c.code} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-700 dark:text-slate-300 flex items-center gap-1.5 truncate">
+                        <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: c.color }} />
+                        {c.label}
+                      </span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-slate-100">{c.pct}%</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${c.pct}%`, background: c.color }} />
+                    </div>
+                    <div className="text-[9px] text-slate-400 text-right">{c.areaKm2.toFixed(1)} km²</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── TAB 4: CHUVA & CN ── */}
+          {metricTab === "hidro" && (
+            <div className="space-y-4">
+              {/* Escoamento Superficial (SCS CN) */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <Waves size={13} className="text-amber-500 dark:text-amber-400" />
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Escoamento (Curve Number)</span>
+                  </div>
+                  <button
+                    onClick={() => setActiveLayer(l => l === "cn" ? "none" : "cn")}
+                    className="text-[10px] text-sky-600 dark:text-cyan-400 hover:underline font-bold"
+                  >
+                    {activeLayer === "cn" ? "Ocultar" : "Ver no mapa"}
+                  </button>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-700 dark:text-slate-300">CN Médio da Bacia</span>
+                    <span className="text-base font-bold text-slate-900 dark:text-white font-mono">{report.runoff.cnMean ?? "—"}</span>
+                  </div>
+                  <div className="h-2 rounded-full mt-2" style={{ background: "linear-gradient(to right,#1a9850,#fee08b,#d73027)" }} />
+                  <div className="flex justify-between text-[9px] text-slate-500 dark:text-slate-400 mt-1">
+                    <span>40 · Alta infiltração</span>
+                    <span>Escoamento rápido · 100</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Precipitação Mensal (CHIRPS) */}
+              <div>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Droplets size={13} className="text-blue-500 dark:text-blue-400" />
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Chuva Mensal · {report.precipAnnualMm.toLocaleString("pt-PT")} mm/ano
+                  </span>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-2.5">
+                  <ResponsiveContainer width="100%" height={110}>
+                    <BarChart
+                      data={report.precipMonthly.map((v, i) => ({ m: "JFMAMJJASOND"[i], mm: v }))}
+                      margin={{ top: 4, right: 4, left: -24, bottom: 0 }}
+                    >
+                      <XAxis dataKey="m" tick={{ fontSize: 9, fill: theme === "dark" ? "#94a3b8" : "#64748b" }} interval={0} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 9, fill: theme === "dark" ? "#94a3b8" : "#64748b" }} axisLine={false} tickLine={false} width={28} />
+                      <Tooltip
+                        contentStyle={{
+                          background: theme === "dark" ? "#0f172a" : "#ffffff",
+                          borderColor: theme === "dark" ? "#334155" : "#cbd5e1",
+                          color: theme === "dark" ? "#f8fafc" : "#0f172a",
+                          borderRadius: "8px",
+                          fontSize: "11px",
+                        }}
+                        formatter={(v: number) => [`${v} mm`, "Precipitação"]}
+                      />
+                      <Bar dataKey="mm" fill="#0284c7" radius={[2, 2, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </>
     );

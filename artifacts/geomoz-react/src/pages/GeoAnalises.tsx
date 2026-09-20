@@ -3813,6 +3813,14 @@ export default function GeoAnalises({
 
           {/* Main workspace content */}
           <div className="flex flex-1 overflow-hidden relative">
+            {/* Mobile backdrop */}
+            {sidebarOpen && (
+              <div
+                className="fixed inset-0 bg-black/40 backdrop-blur-xs z-[650] md:hidden"
+                onClick={() => setSidebarOpen(false)}
+              />
+            )}
+
             {/* Desktop Sidebar Toggle Button */}
             <button
               type="button"
@@ -3825,7 +3833,28 @@ export default function GeoAnalises({
             </button>
 
             {/* Controls sidebar */}
-            <div className={`bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 overflow-y-auto transition-all duration-200 ${desktopSidebarOpen ? "w-72" : "w-0 overflow-hidden border-r-0"}`}>
+            <div
+              className={`fixed md:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
+                sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+              } ${
+                desktopSidebarOpen ? "md:w-72 overflow-y-auto" : "md:w-0 overflow-hidden md:border-r-0"
+              }`}
+            >
+              {/* Mobile Header with Close Button */}
+              <div className="md:hidden px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                  <SlidersHorizontal size={14} className="text-sky-500" />
+                  Filtros & Parâmetros
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSidebarOpen(false)}
+                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
               {/* Area filter — AOI global & Parâmetros GEE */}
               <div className="p-4 border-b border-slate-100 dark:border-slate-800 space-y-3">
                 <div>
@@ -4479,6 +4508,16 @@ export default function GeoAnalises({
               onClose={() => setCompareActive(false)}
             />
           )}
+
+          {/* Mobile floating sidebar toggle */}
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(v => !v)}
+            className="md:hidden absolute top-3 left-3 z-[600] flex items-center gap-1.5 px-3 py-1.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl shadow-md border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+          >
+            <SlidersHorizontal size={13} className="text-sky-600 dark:text-sky-400" />
+            Filtros
+          </button>
 
           {/* Basemap Switcher (Google Maps / Cesium) */}
           <BasemapSwitcher

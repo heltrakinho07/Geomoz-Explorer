@@ -43,6 +43,8 @@ import {
   FileText,
   ZoomIn,
   Map as MapIcon,
+  User,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
@@ -61,6 +63,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
   const [authModalOpen, setAuthModalOpen] = useState(Boolean(initialAuthMode));
   const [authMode, setAuthMode] = useState<AuthMode>(initialAuthMode || "login");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileSheet, setMobileSheet] = useState<"none" | "modules" | "account" | "menu">("none");
 
   // Default theme is LIGHT (primary executive mode), secondary DARK
   const [theme, setTheme] = useState<Theme>(() => {
@@ -669,7 +672,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
 
   return (
     <div
-      className={`min-h-screen font-sans antialiased selection:bg-sky-500 selection:text-white transition-colors duration-300 ${
+      className={`min-h-screen font-sans antialiased selection:bg-sky-500 selection:text-white transition-colors duration-300 pb-24 md:pb-0 ${
         isDark ? "bg-slate-950 text-slate-100 dark" : "bg-slate-50 text-slate-900"
       }`}
     >
@@ -2455,6 +2458,368 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
           </div>
         </div>
       </footer>
+
+      {/* ── Mobile Floating App Dock (Menu Flutuante Mobile) ───────────────── */}
+      <div className="md:hidden fixed bottom-3 inset-x-3 sm:inset-x-6 z-40">
+        <div
+          className={`backdrop-blur-xl border shadow-2xl rounded-2xl p-1.5 flex items-center justify-around transition-colors ${
+            isDark
+              ? "bg-slate-900/90 border-slate-800/90 shadow-black/40"
+              : "bg-white/90 border-slate-200/90 shadow-slate-900/10"
+          }`}
+        >
+          {/* Explorar 3D */}
+          <button
+            type="button"
+            onClick={handleLaunchApp}
+            className="flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 text-white font-bold text-[10px] shadow-md shadow-sky-600/25 active:scale-95 transition-all"
+          >
+            <Globe size={18} />
+            <span>Explorar 3D</span>
+          </button>
+
+          {/* Módulos / Páginas */}
+          <button
+            type="button"
+            onClick={() => setMobileSheet(mobileSheet === "modules" ? "none" : "modules")}
+            className={`flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-semibold transition-all ${
+              mobileSheet === "modules"
+                ? "bg-sky-500/15 text-sky-600 dark:text-sky-400"
+                : "text-slate-600 dark:text-slate-300 hover:text-sky-600 dark:hover:text-sky-400"
+            }`}
+          >
+            <Layers size={18} />
+            <span>{lang === "pt" ? "Páginas" : "Pages"}</span>
+          </button>
+
+          {/* Entrar / Perfil */}
+          <button
+            type="button"
+            onClick={() => setMobileSheet(mobileSheet === "account" ? "none" : "account")}
+            className={`flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-semibold transition-all ${
+              mobileSheet === "account"
+                ? "bg-sky-500/15 text-sky-600 dark:text-sky-400"
+                : "text-slate-600 dark:text-slate-300 hover:text-sky-600 dark:hover:text-sky-400"
+            }`}
+          >
+            {user ? (
+              user.photoURL ? (
+                <img src={user.photoURL} alt="User" className="w-[18px] h-[18px] rounded-full object-cover" />
+              ) : (
+                <div className="w-[18px] h-[18px] rounded-full bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold text-[9px] flex items-center justify-center">
+                  {user.email?.slice(0, 2).toUpperCase() || "U"}
+                </div>
+              )
+            ) : (
+              <LogIn size={18} />
+            )}
+            <span>{user ? (lang === "pt" ? "Conta" : "Account") : (lang === "pt" ? "Entrar" : "Login")}</span>
+          </button>
+
+          {/* Menu / Mais */}
+          <button
+            type="button"
+            onClick={() => setMobileSheet(mobileSheet === "menu" ? "none" : "menu")}
+            className={`flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-xl text-[10px] font-semibold transition-all ${
+              mobileSheet === "menu"
+                ? "bg-sky-500/15 text-sky-600 dark:text-sky-400"
+                : "text-slate-600 dark:text-slate-300 hover:text-sky-600 dark:hover:text-sky-400"
+            }`}
+          >
+            <Menu size={18} />
+            <span>Menu</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Slide-up Bottom Sheets on Mobile ──────────────────────────────── */}
+      {mobileSheet !== "none" && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs md:hidden animate-in fade-in duration-200"
+            onClick={() => setMobileSheet("none")}
+          />
+
+          {/* Sheet Body */}
+          <div
+            className={`fixed bottom-20 inset-x-3 sm:inset-x-6 z-50 md:hidden max-h-[82vh] overflow-y-auto rounded-3xl border shadow-2xl p-5 animate-in slide-in-from-bottom-5 duration-200 ${
+              isDark
+                ? "bg-slate-900/95 border-slate-800 backdrop-blur-2xl text-slate-100"
+                : "bg-white/95 border-slate-200 backdrop-blur-2xl text-slate-900"
+            }`}
+          >
+            {/* Grabber Handle */}
+            <div className="w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-4" />
+
+            {/* Sheet 1: Módulos & Páginas */}
+            {mobileSheet === "modules" && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+                  <div>
+                    <h3 className="text-sm font-bold flex items-center gap-2">
+                      <Layers size={16} className="text-sky-500" />
+                      {lang === "pt" ? "Módulos & Páginas Geoespaciais" : "Geospatial Modules & Pages"}
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {lang === "pt" ? "Selecione uma ferramenta especializada" : "Select a specialized tool"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMobileSheet("none")}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {[
+                    {
+                      title: "Hidrografia & Bacias",
+                      desc: "Delimitação HydroSHEDS, morfometria, LULC e CN",
+                      icon: Droplets,
+                      color: "from-cyan-500 to-blue-600",
+                      path: "/hidrografia",
+                    },
+                    {
+                      title: "Explorador 3D & Relevo",
+                      desc: "Copernicus DEM 30m, mapas mundiais e perfis topográficos",
+                      icon: Mountain,
+                      color: "from-indigo-500 to-purple-600",
+                      path: "/app",
+                    },
+                    {
+                      title: "GeoAnálises Sentinel-2",
+                      desc: "NDVI, SAVI, BSI, NDWI e deteção remota multiespectral",
+                      icon: Satellite,
+                      color: "from-emerald-500 to-teal-600",
+                      path: "/analises",
+                    },
+                    {
+                      title: "Geoperigos & Radar SAR",
+                      desc: "Mapeamento de inundações SAR e erosão RUSLE",
+                      icon: AlertTriangle,
+                      color: "from-rose-500 to-amber-600",
+                      path: "/geoperigos",
+                    },
+                    {
+                      title: "Água Subterrânea (AHP)",
+                      desc: "Potencial aquífero multicritério e zonas de recarga",
+                      icon: Droplet,
+                      color: "from-sky-500 to-cyan-600",
+                      path: "/agua-subterranea",
+                    },
+                    {
+                      title: "Dossiê & Relatórios",
+                      desc: "Relatórios executivos e estatísticas de Moçambique",
+                      icon: FileText,
+                      color: "from-purple-500 to-indigo-600",
+                      path: "/dashboard",
+                    },
+                  ].map((mod, idx) => {
+                    const Icon = mod.icon;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setMobileSheet("none");
+                          if (!user) {
+                            openAuth("register");
+                          } else {
+                            setLocation(mod.path);
+                          }
+                        }}
+                        className="flex items-center gap-3 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850 hover:bg-sky-50 dark:hover:bg-slate-800 text-left transition-all active:scale-[0.98]"
+                      >
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-tr ${mod.color} flex items-center justify-center text-white shrink-0 shadow-sm`}>
+                          <Icon size={18} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{mod.title}</div>
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-1">{mod.desc}</div>
+                        </div>
+                        <ChevronRight size={14} className="text-slate-400 shrink-0" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Sheet 2: Conta & Sessão */}
+            {mobileSheet === "account" && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+                  <h3 className="text-sm font-bold flex items-center gap-2">
+                    <User size={16} className="text-sky-500" />
+                    {user ? (lang === "pt" ? "A Minha Conta" : "My Account") : (lang === "pt" ? "Acesso à Plataforma" : "Platform Access")}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setMobileSheet("none")}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {user ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+                      {user.photoURL ? (
+                        <img src={user.photoURL} alt="Avatar" className="w-11 h-11 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-11 h-11 rounded-full bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold text-sm flex items-center justify-center">
+                          {user.email?.slice(0, 2).toUpperCase() || "U"}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold truncate">{user.displayName || user.email?.split("@")[0]}</div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{user.email}</div>
+                        <div className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9px] font-bold">
+                          <CheckCircle2 size={10} />
+                          <span>{lang === "pt" ? "Sessão Ativa" : "Active Session"}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <Button
+                      onClick={() => {
+                        setMobileSheet("none");
+                        handleLaunchApp();
+                      }}
+                      className="w-full bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-bold text-xs h-11 rounded-xl shadow-md shadow-sky-600/20"
+                    >
+                      <span>{lang === "pt" ? "Abrir Plataforma Geoespacial" : "Open Geospatial Platform"}</span>
+                      <ArrowRight size={14} className="ml-1" />
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setMobileSheet("none");
+                        signOut();
+                      }}
+                      className="w-full text-xs font-semibold h-10 rounded-xl text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-900/50"
+                    >
+                      <LogOut size={14} className="mr-1.5" />
+                      <span>{lang === "pt" ? "Terminar Sessão" : "Sign Out"}</span>
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                      {lang === "pt"
+                        ? "Inicie sessão ou crie a sua conta gratuita para desbloquear todas as ferramentas científicas, análises de satélite e modelos 3D."
+                        : "Sign in or create your free account to unlock all scientific tools, satellite analyses, and 3D models."}
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-2.5 pt-1">
+                      <Button
+                        onClick={() => {
+                          setMobileSheet("none");
+                          openAuth("login");
+                        }}
+                        className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs h-11 rounded-xl shadow-md"
+                      >
+                        <LogIn size={14} className="mr-1.5" />
+                        <span>{lang === "pt" ? "Iniciar Sessão" : "Sign In"}</span>
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setMobileSheet("none");
+                          openAuth("register");
+                        }}
+                        className="font-bold text-xs h-11 rounded-xl border-slate-300 dark:border-slate-700"
+                      >
+                        <UserPlus size={14} className="mr-1.5 text-sky-500" />
+                        <span>{lang === "pt" ? "Criar Conta" : "Register"}</span>
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Sheet 3: Menu, Configurações & Navegação */}
+            {mobileSheet === "menu" && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+                  <h3 className="text-sm font-bold flex items-center gap-2">
+                    <Menu size={16} className="text-sky-500" />
+                    {lang === "pt" ? "Configurações & Navegação" : "Settings & Navigation"}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setMobileSheet("none")}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Quick Preferences: Theme & Lang */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={toggleTheme}
+                    className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-xs font-semibold"
+                  >
+                    <span className="flex items-center gap-2">
+                      {isDark ? <Moon size={15} className="text-amber-400" /> : <Sun size={15} className="text-amber-500" />}
+                      <span>{isDark ? "Modo Escuro" : "Modo Claro"}</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400">{isDark ? "Dark" : "Light"}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={toggleLang}
+                    className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-xs font-semibold"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Languages size={15} className="text-sky-500" />
+                      <span className="uppercase">{lang === "pt" ? "Português" : "English"}</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 uppercase">{lang}</span>
+                  </button>
+                </div>
+
+                {/* Navigation Links */}
+                <div>
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    {lang === "pt" ? "Secções da Página" : "Page Sections"}
+                  </h4>
+                  <div className="space-y-1">
+                    {[
+                      { href: "#recursos", label: t.nav.recursos },
+                      { href: "#relevo-3d", label: t.nav.relevo3d },
+                      { href: "#detecao-remota", label: t.nav.detecaoRemota },
+                      { href: "#hidrogeologia", label: t.nav.hidrogeologia },
+                      { href: "#casos-de-uso", label: t.nav.casosDeUso },
+                    ].map((link, idx) => (
+                      <a
+                        key={idx}
+                        href={link.href}
+                        onClick={() => setMobileSheet("none")}
+                        className="flex items-center justify-between px-3 py-2 rounded-xl hover:bg-sky-500/10 hover:text-sky-600 text-xs font-medium transition-colors"
+                      >
+                        <span>{link.label}</span>
+                        <ChevronRight size={13} className="text-slate-400" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* ── 11. Authentication Modal ───────────────────────────────────────────── */}
       <AuthModal
