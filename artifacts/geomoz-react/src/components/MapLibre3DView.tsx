@@ -750,6 +750,23 @@ export default function MapLibre3DView({
         if (aoi.bounds) {
           const [[s, w], [n, e]] = aoi.bounds;
           bbox = [w, s, e, n];
+        } else if ((aoi.geometry as any)?.coordinates) {
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          const scanCoords = (coords: any) => {
+            if (typeof coords[0] === "number") {
+              const [x, y] = coords;
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            } else if (Array.isArray(coords)) {
+              coords.forEach(scanCoords);
+            }
+          };
+          scanCoords((aoi.geometry as any).coordinates);
+          if (isFinite(minX)) {
+            bbox = [minX, minY, maxX, maxY];
+          }
         }
       } else if (province && provinceGeoJSON?.features) {
         const found = provinceGeoJSON.features.find((f: any) => {
@@ -842,6 +859,20 @@ export default function MapLibre3DView({
       map.once("styledata", updateStudyArea);
     }
   }, [province, aoi, provinceGeoJSON]);
+
+  // Event listener to fly directly to AOI from external triggers
+  useEffect(() => {
+    const handleFlyToAOI = () => {
+      const map = mapInstanceRef.current;
+      if (!map) return;
+      if (aoi?.bounds) {
+        const [[s, w], [n, e]] = aoi.bounds;
+        map.fitBounds([[w, s], [e, n]], { padding: 80, pitch: 45, duration: 1500, maxZoom: 14 });
+      }
+    };
+    window.addEventListener("geomoz_fly_to_aoi", handleFlyToAOI);
+    return () => window.removeEventListener("geomoz_fly_to_aoi", handleFlyToAOI);
+  }, [aoi]);
 
   // Handle Profile click interaction
   useEffect(() => {
