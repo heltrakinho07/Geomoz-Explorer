@@ -1579,6 +1579,37 @@ async def gee_basin_report(req: GEEBasinStatsRequest, uid: str = Depends(require
         raise HTTPException(500, f"GEE basin-report failed: {exc}")
 
 
+@app.post("/geomoz-api/gee/refresh-basin-tiles")
+async def gee_refresh_basin_tiles(req: GEEBasinStatsRequest, request: Request):
+    """Regenerate active GEE tile URLs for an existing basin polygon.
+    Only creates visualization map IDs (<1s, zero reductions).
+    Publicly accessible so shared links and saved analyses can refresh expired tiles.
+    """
+    import asyncio
+    from gee_module import refresh_basin_tiles, _init_gee
+
+    # Ensure GEE initialized (uses server fallback if no user auth header present)
+    try:
+        auth_header = request.headers.get("Authorization", "")
+        uid = _extract_uid_from_header(auth_header)
+        gee_project = request.headers.get("X-GEE-Project", "").strip() or None
+        gee_token = request.headers.get("X-GEE-Token", "").strip() or None
+        _init_gee(uid=uid or "default", project=gee_project, token=gee_token)
+    except Exception:
+        pass
+
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor, lambda: refresh_basin_tiles(req.geometry)
+        )
+        return result
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"Falha ao atualizar camadas da bacia: {exc}")
+
+
 @app.post("/geomoz-api/gee/drainage")
 async def gee_drainage(req: GEEDrainageRequest, uid: str = Depends(require_gee_auth)):
     """HydroSHEDS drainage network tile for the selected region."""

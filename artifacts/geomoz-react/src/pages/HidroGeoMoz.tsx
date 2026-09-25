@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  MapContainer, TileLayer, GeoJSON, ScaleControl, ZoomControl,
+  MapContainer, TileLayer, WMSTileLayer, GeoJSON, ScaleControl, ZoomControl,
   CircleMarker, useMapEvents,
 } from "react-leaflet";
 import type { Map as LMap, Layer } from "leaflet";
@@ -276,6 +276,8 @@ export default function HidroGeoMoz({
   const [basinReport,   setBasinReport]   = useState<BasinReport | null>(null);
   const [loadingReport, setLoadingReport] = useState(false);
   const [reportLayer,   setReportLayer]   = useState<"none" | "lulc" | "cn">("none");
+  const [useWmsLulc,    setUseWmsLulc]    = useState(false);
+  const [refreshingTiles, setRefreshingTiles] = useState(false);
 
   // River network
   const [riverNet,      setRiverNet]      = useState<RiverNetResult | null>(null);
@@ -455,6 +457,41 @@ export default function HidroGeoMoz({
     if (fullData.district) setDistrict(fullData.district);
     setSavedModalOpen(false);
     setMobileRightPanelOpen(true);
+    setReportLayer("lulc");
+    setDelineateTab("lulc");
+    setUseWmsLulc(false);
+
+    // Refresh active GEE tile URLs in background to guarantee tiles are alive
+    if (fullData.watershedData?.geojson) {
+      setRefreshingTiles(true);
+      apiFetch("/geomoz-api/gee/refresh-basin-tiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ geometry: fullData.watershedData.geojson }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((fresh) => {
+          if (fresh) {
+            setBasinReport((prev: any) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                landcoverTile: fresh.landcoverTile || prev.landcoverTile,
+                runoff: {
+                  ...prev.runoff,
+                  cnTile: fresh.cnTile || prev.runoff?.cnTile,
+                },
+              };
+            });
+            if (fresh.drainageTile) {
+              setWatershedDrainageTile(fresh.drainageTile);
+            }
+            setUseWmsLulc(false);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setRefreshingTiles(false));
+    }
 
     if (mapRef.current && fullData.watershedData?.geojson) {
       try {
@@ -468,7 +505,7 @@ export default function HidroGeoMoz({
 
     toast({
       title: "Análise carregada do arquivo!",
-      description: `«${item.title}» restaurada com sucesso. Zero chamadas ao GEE.`,
+      description: `«${item.title}» restaurada com sucesso. Camada de uso do solo ativada no mapa.`,
     });
   }
 
@@ -1758,11 +1795,37 @@ export default function HidroGeoMoz({
 
               {/* Basin report overlays (toggleable): land cover / SCS-CN runoff */}
               {basinReport && reportLayer === "lulc" && (
-                <TileLayer crossOrigin="anonymous" key={`rep-lulc-${basinReport.landcoverTile}`} url={basinReport.landcoverTile}
-                  attribution="GEE · ESA WorldCover 2021" opacity={0.75} maxZoom={18} />
+                useWmsLulc || !basinReport.landcoverTile ? (
+                  <WMSTileLayer
+                    url="https://ows.digitalearth.africa/wms"
+                    params={{
+                      layers: "esa_worldcover_2021",
+                      format: "image/png",
+                      transparent: true,
+                      version: "1.1.1",
+                      attribution: "ESA WorldCover 10m · Digital Earth Africa",
+                    } as any}
+                    opacity={0.78}
+                    zIndex={400}
+                  />
+                ) : (
+                  <TileLayer
+                    crossOrigin="anonymous"
+                    key={`rep-lulc-${basinReport.landcoverTile}`}
+                    url={basinReport.landcoverTile}
+                    attribution="GEE · ESA WorldCover 2021"
+                    opacity={0.75}
+                    maxZoom={18}
+                    eventHandlers={{
+                      tileerror: () => {
+                        setUseWmsLulc(true);
+                      },
+                    }}
+                  />
+                )
               )}
               {basinReport && reportLayer === "cn" && (
-                <TileLayer crossOrigin="anonymous" key={`rep-cn-${basinReport.runoff.cnTile}`} url={basinReport.runoff.cnTile}
+                <TileLayer crossOrigin="anonymous" key={`rep-cn-${basinReport.runoff?.cnTile}`} url={basinReport.runoff?.cnTile}
                   attribution="GEE · SCS Curve Number" opacity={0.7} maxZoom={18} />
               )}
 
@@ -2089,7 +2152,30 @@ export default function HidroGeoMoz({
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
                             <SectionHeader title="Classes de Uso (ESA 10m)" icon={Activity} />
-                            <button onClick={() => setReportLayer(l => l === "lulc" ? "none" : "lulc")}
+                            <button
+                              onClick={() => {
+                                setReportLayer((l) => {
+                                  const next = l === "lulc" ? "none" : "lulc";
+                                  if (next === "lulc" && watershedData?.geojson) {
+                                    if (!basinReport.landcoverTile) {
+                                      apiFetch("/geomoz-api/gee/refresh-basin-tiles", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ geometry: watershedData.geojson }),
+                                      })
+                                        .then((r) => (r.ok ? r.json() : null))
+                                        .then((fresh) => {
+                                          if (fresh?.landcoverTile) {
+                                            setBasinReport((prev: any) => (prev ? { ...prev, landcoverTile: fresh.landcoverTile } : prev));
+                                            setUseWmsLulc(false);
+                                          }
+                                        })
+                                        .catch(() => {});
+                                    }
+                                  }
+                                  return next;
+                                });
+                              }}
                               className={`text-[10px] px-2.5 py-1 rounded-lg border font-semibold transition-colors ${reportLayer === "lulc" ? "bg-lime-100 dark:bg-lime-950/40 border-lime-300 dark:border-lime-800 text-lime-700 dark:text-lime-300" : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
                               {reportLayer === "lulc" ? "Ocultar Camada" : "Ver no Mapa"}
                             </button>

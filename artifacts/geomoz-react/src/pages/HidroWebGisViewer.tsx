@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   MapContainer,
   TileLayer,
+  WMSTileLayer,
   GeoJSON,
   CircleMarker,
   ZoomControl,
@@ -189,6 +190,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const [basemap, setBasemap] = useState<BasemapType>("terrain");
   const [activeLayer, setActiveLayer] = useState<"none" | "lulc" | "cn">("lulc");
+  const [useWmsLulc, setUseWmsLulc] = useState<boolean>(false);
   const [showDrainage, setShowDrainage] = useState<boolean>(true);
   const [showBasinPolygon, setShowBasinPolygon] = useState<boolean>(true);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
@@ -366,10 +368,59 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
     } catch {}
   }, [sharedData]);
 
-  const report = sharedData?.basinReport;
-  const wsData = sharedData?.watershedData;
-  const wsStats = sharedData?.wsStats;
-  const PP = sharedData?.pourPoint;
+  const report = sharedData?.basinReport || (sharedData as any)?.data?.basinReport;
+  const wsData = sharedData?.watershedData || (sharedData as any)?.data?.watershedData;
+  const wsStats = sharedData?.wsStats || (sharedData as any)?.data?.wsStats;
+  const PP = sharedData?.pourPoint || (sharedData as any)?.data?.pourPoint;
+
+  // Auto-refresh active GEE tile URLs in background so shared rasters render without expiration
+  useEffect(() => {
+    if (!sharedData) return;
+    const geom = (sharedData.watershedData || (sharedData as any).data?.watershedData)?.geojson;
+    if (geom) {
+      fetch(apiUrl("/geomoz-api/gee/refresh-basin-tiles"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ geometry: geom }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((fresh) => {
+          if (fresh) {
+            setSharedData((prev: any) => {
+              if (!prev) return prev;
+              const isNested = Boolean(prev.data?.basinReport);
+              const targetReport = isNested ? prev.data.basinReport : prev.basinReport;
+              if (!targetReport) return prev;
+              const updatedReport = {
+                ...targetReport,
+                landcoverTile: fresh.landcoverTile || targetReport.landcoverTile,
+                runoff: {
+                  ...targetReport.runoff,
+                  cnTile: fresh.cnTile || targetReport.runoff?.cnTile,
+                },
+              };
+              if (isNested) {
+                return {
+                  ...prev,
+                  data: {
+                    ...prev.data,
+                    basinReport: updatedReport,
+                    watershedDrainageTile: fresh.drainageTile || prev.data.watershedDrainageTile,
+                  },
+                };
+              }
+              return {
+                ...prev,
+                basinReport: updatedReport,
+                watershedDrainageTile: fresh.drainageTile || prev.watershedDrainageTile,
+              };
+            });
+            setUseWmsLulc(false);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [sharedData?.title]);
 
   const totalArea = report?.morphometry?.areaKm2 || wsData?.areaKm2 || 0;
 
@@ -1362,15 +1413,33 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
             )}
 
             {/* ESA WorldCover Tile Layer */}
-            {activeLayer === "lulc" && report?.landcoverTile && (
-              <TileLayer
-                crossOrigin="anonymous"
-                key={`lulc-${report.landcoverTile}`}
-                url={report.landcoverTile}
-                attribution="GEE · ESA WorldCover 2021"
-                opacity={0.78}
-                maxZoom={18}
-              />
+            {activeLayer === "lulc" && (
+              useWmsLulc || !report?.landcoverTile ? (
+                <WMSTileLayer
+                  url="https://ows.digitalearth.africa/wms"
+                  params={{
+                    layers: "esa_worldcover_2021",
+                    format: "image/png",
+                    transparent: true,
+                    version: "1.1.1",
+                    attribution: "ESA WorldCover 10m · Digital Earth Africa",
+                  } as any}
+                  opacity={0.8}
+                  zIndex={400}
+                />
+              ) : (
+                <TileLayer
+                  crossOrigin="anonymous"
+                  key={`lulc-${report.landcoverTile}`}
+                  url={report.landcoverTile}
+                  attribution="GEE · ESA WorldCover 2021"
+                  opacity={0.78}
+                  maxZoom={18}
+                  eventHandlers={{
+                    tileerror: () => setUseWmsLulc(true),
+                  }}
+                />
+              )
             )}
 
             {/* SCS CN Runoff Tile Layer */}

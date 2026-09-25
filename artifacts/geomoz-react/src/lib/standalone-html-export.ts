@@ -1160,13 +1160,34 @@ export function generateStandaloneBasinHtml(options: ExportStandaloneHtmlOptions
       }).addTo(map);
     }
 
-    // Prepare LULC Tile Layer (ESA WorldCover)
+    // Prepare LULC Tile Layer (ESA WorldCover 10m)
+    function createLulcWms() {
+      return L.tileLayer.wms("https://ows.digitalearth.africa/wms", {
+        layers: "esa_worldcover_2021",
+        format: "image/png",
+        transparent: true,
+        version: "1.1.1",
+        attribution: "ESA WorldCover 10m · Digital Earth Africa"
+      });
+    }
+
     if (landcoverTileUrl) {
       lulcLayer = L.tileLayer(landcoverTileUrl, {
         opacity: 0.78,
         maxZoom: 18,
         attribution: "GEE · ESA WorldCover 10m"
       });
+      lulcLayer.on("tileerror", function() {
+        if (!lulcLayer._wmsFallback) {
+          lulcLayer._wmsFallback = true;
+          var wasOn = map.hasLayer(lulcLayer);
+          if (wasOn) map.removeLayer(lulcLayer);
+          lulcLayer = createLulcWms();
+          if (wasOn) lulcLayer.addTo(map);
+        }
+      });
+    } else {
+      lulcLayer = createLulcWms();
     }
 
     // Prepare CN Tile Layer (SCS Curve Number)

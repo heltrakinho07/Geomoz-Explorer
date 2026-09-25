@@ -2774,6 +2774,45 @@ def compute_basin_report(basin_geometry: dict) -> dict:
     }
 
 
+def refresh_basin_tiles(region_geojson: Optional[dict]) -> dict:
+    """Fast regeneration of active GEE tile URLs for an existing basin polygon.
+    Only creates visualization map IDs (0 reductions, <1s response).
+    """
+    import ee
+    region = _to_ee_region(region_geojson)
+
+    # 1. ESA WorldCover (10m) clipped to basin
+    codes = [c for c, _, _ in ESA_WORLDCOVER]
+    colors = [col for _, _, col in ESA_WORLDCOVER]
+    lc = ee.ImageCollection("ESA/WorldCover/v200").first().select("Map").clip(region)
+    lc_vis = lc.remap(codes, list(range(1, len(codes) + 1))).visualize(
+        min=1, max=len(codes), palette=colors
+    )
+    landcover_tile = lc_vis.getMapId()["tile_fetcher"].url_format
+
+    # 2. SCS Curve Number runoff potential
+    cn = lc.remap(list(ESA_CN.keys()), list(ESA_CN.values())).rename("cn")
+    cn_tile = cn.visualize(
+        min=40, max=100, palette=["1a9850", "fee08b", "d73027"]
+    ).getMapId()["tile_fetcher"].url_format
+
+    # 3. HydroSHEDS drainage network
+    acc = ee.Image("WWF/HydroSHEDS/15ACC").select("b1")
+    acc_rivers = acc.gte(500).selfMask()
+    try:
+        vec_rivers = _build_rivers_raster(region).selfMask()
+        combined = acc_rivers.unmask(0).max(vec_rivers.unmask(0)).selfMask().clip(region)
+    except Exception:
+        combined = acc_rivers.clip(region)
+    drain_tile = combined.visualize(palette=["0284c7"]).getMapId()["tile_fetcher"].url_format
+
+    return {
+        "landcoverTile": landcover_tile,
+        "cnTile": cn_tile,
+        "drainageTile": drain_tile,
+    }
+
+
 def compute_drainage_tile(region_geojson: Optional[dict], threshold: int = 500) -> dict:
     """HydroSHEDS flow accumulation + FreeFlowingRivers vector lines clipped to region."""
     import ee
