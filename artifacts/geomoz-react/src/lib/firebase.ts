@@ -3,10 +3,11 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const getAuthDomain = () => {
-  if (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN) {
-    return import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
+  const envDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
+  // Override any legacy or default firebaseapp.com domain with the custom branded domain
+  if (envDomain && envDomain !== "geoprocessamento-426809.firebaseapp.com") {
+    return envDomain;
   }
-  // Branded OAuth domain: displays "Continuar para geomoz.geolithica.com" instead of firebaseapp.com
   return "geomoz.geolithica.com";
 };
 
