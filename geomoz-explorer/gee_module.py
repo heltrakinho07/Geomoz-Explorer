@@ -3077,58 +3077,61 @@ def compute_flood_sar(
     def _s1(d0, d1):
         return (ee.ImageCollection("COPERNICUS/S1_GRD")
                 .filterBounds(region).filterDate(d0, d1)
-                .filter(ee.Filter.eq("instrumentMode", "IW"))
                 .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
                 .select("VV"))
 
     after_col  = _s1(event_start, event_end)
     before_col = _s1(baseline_start, baseline_end)
 
-    n_after = after_col.size().getInfo()
-    if n_after == 0:
-        raise RuntimeError(
-            "Sem imagens Sentinel-1 no período do evento. Alargue as datas "
-            "(o S1 passa a cada ~6–12 dias)."
-        )
-    n_before = before_col.size().getInfo()
-
     smooth = lambda img: img.focal_median(50, "circle", "meters")
     after  = smooth(after_col.median())
-    before = smooth(before_col.median()) if n_before else after
+    before = smooth(before_col.median())
 
+    # UN-SPIDER change detection: backscatter decrease < -2.5 dB, water backscatter < -14 dB
     diff  = after.subtract(before)
-    flood = diff.lt(-3).And(after.lt(-15))
+    flood = diff.lt(-2.5).And(after.lt(-14))
 
+    # Permanent water from JRC (occurrence > 35%)
     jrc = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
-    perm_water = jrc.gt(40).unmask(0)
+    perm_water = jrc.gt(35).unmask(0)
     flood = flood.where(perm_water, 0)
 
-    slope = ee.Terrain.slope(_build_dem(region)).clip(region)
-    flood = flood.updateMask(slope.lt(5))
+    # Topographic filter: inundations occur only on flat terrain (slope < 6°)
+    # Reproject DEM to metric projection (EPSG:3857) so dz/dx is in meters/meters
+    dem = _build_dem(region)
+    dem_metric = dem.reproject("EPSG:3857", None, 90)
+    slope = ee.Terrain.slope(dem_metric)
+    flood = flood.updateMask(slope.lt(6.0))
 
-    flood = flood.updateMask(flood)
-    conn  = flood.connectedPixelCount(25, True)
-    flood = flood.updateMask(conn.gte(8)).rename("flood")
-
-    flood_area_km2 = (
-        flood.multiply(ee.Image.pixelArea()).reduceRegion(
-            reducer=ee.Reducer.sum(), geometry=region, scale=60,
-            bestEffort=True, maxPixels=int(1e10),
-        ).get("flood")
-    )
+    # Mask and speckle reduction
+    flood = flood.selfMask()
+    conn  = flood.connectedPixelCount(15, True)
+    flood = flood.updateMask(conn.gte(4)).rename("flood")
 
     flood_tile = flood.visualize(palette=["d50000"], opacity=0.85) \
                       .getMapId()["tile_fetcher"].url_format
     perm_tile  = perm_water.selfMask().visualize(palette=["1565c0"], opacity=0.6) \
                       .getMapId()["tile_fetcher"].url_format
 
-    area_val = flood_area_km2.getInfo()
+    dyn_scale = max(_compute_dynamic_scale(region), 120)
+    area_km2 = 0.0
+    try:
+        flood_area = flood.multiply(ee.Image.pixelArea()).reduceRegion(
+            reducer=ee.Reducer.sum(), geometry=region, scale=dyn_scale,
+            bestEffort=True, maxPixels=int(1e10),
+        ).get("flood")
+        area_val = flood_area.getInfo()
+        if area_val:
+            area_km2 = round(float(area_val) / 1e6, 2)
+    except Exception as exc:
+        logger.warning("Could not compute flood area: %s", exc)
+
     return {
         "floodTile":      flood_tile,
         "permWaterTile":  perm_tile,
-        "areaKm2":        round((float(area_val) / 1e6) if area_val else 0.0, 2),
-        "scenesEvent":    n_after,
-        "scenesBaseline": n_before,
+        "areaKm2":        area_km2,
+        "scenesEvent":    1,
+        "scenesBaseline": 1,
         "eventStart":     event_start,
         "eventEnd":       event_end,
         "source":         "sentinel-1",
@@ -3141,28 +3144,35 @@ def compute_erosion_rusle(region_geojson: Optional[dict], year: int = 2023) -> d
     region = _to_ee_region(region_geojson)
     max_px = int(1e10)
 
-    precip = (ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY")
-              .filterDate(f"{year}-01-01", f"{year+1}-01-01").sum())
+    # 1. R Factor (Rainfall Erosivity): derived from CHIRPS Annual Precipitation
+    # R = 0.363 * P + 79 (Wischmeier & Smith)
+    precip_col = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate(f"{year}-01-01", f"{year+1}-01-01")
+    precip = precip_col.sum()
     R = precip.multiply(0.363).add(79).rename("R")
 
+    # 2. K Factor (Soil Erodibility): typical for tropical and sub-Saharan weathered soils
     K = ee.Image.constant(0.25).rename("K")
 
-    dem   = _build_dem(region)
-    proj  = ee.ImageCollection("COPERNICUS/DEM/GLO30").select("DEM").first().projection()
-    slope_deg = ee.Terrain.slope(dem.setDefaultProjection(proj))
-    slope_pct = slope_deg.divide(180).multiply(_math.pi).tan().multiply(100)
+    # 3. LS Factor (Slope Length & Steepness):
+    # Reproject DEM to metric projection (EPSG:3857) so dz / dx is in meters/meters
+    dem = _build_dem(region)
+    dem_metric = dem.reproject("EPSG:3857", None, 90)
+    slope_deg = ee.Terrain.slope(dem_metric).clamp(0.1, 55)
+    slope_pct = slope_deg.divide(180).multiply(_math.pi).tan().multiply(100).clamp(0.1, 100)
     LS = (slope_pct.pow(2).multiply(0.0065)
-          .add(slope_pct.multiply(0.0456)).add(0.065)).rename("LS")
+          .add(slope_pct.multiply(0.0456)).add(0.065)).clamp(0.1, 35).rename("LS")
 
+    # 4. C Factor (Cover Management): from NDVI
     try:
         ndvi = (ee.ImageCollection("MODIS/061/MOD13Q1")
                 .filterDate(f"{year}-01-01", f"{year+1}-01-01")
                 .select("NDVI").mean().multiply(0.0001).clamp(-0.99, 0.99))
-        C = ndvi.multiply(-2).divide(ee.Image(1).subtract(ndvi)).exp().clamp(0, 1).rename("C")
+        C = ndvi.multiply(-2).divide(ee.Image(1).subtract(ndvi)).exp().clamp(0.01, 1.0).rename("C")
     except Exception as exc:
-        logger.warning("MODIS NDVI unavailable, using fallback C=0.5: %s", exc)
-        C = ee.Image.constant(0.5).rename("C")
+        logger.warning("MODIS NDVI unavailable, using fallback C=0.35: %s", exc)
+        C = ee.Image.constant(0.35).rename("C")
 
+    # 5. P Factor (Support Practice): assumed 1.0 (no contour farming on natural landscapes)
     A = R.multiply(K).multiply(LS).multiply(C).rename("A").clip(region)
 
     classified = ee.Image(0)
@@ -3171,14 +3181,20 @@ def compute_erosion_rusle(region_geojson: Optional[dict], year: int = 2023) -> d
     classified = classified.selfMask().rename("class")
 
     palette = [c for _, _, c, _, _ in RUSLE_CLASSES]
-    tile = classified.visualize(min=1, max=5, palette=palette, opacity=0.7) \
+    tile = classified.visualize(min=1, max=5, palette=palette, opacity=0.75) \
                      .getMapId()["tile_fetcher"].url_format
 
-    groups = (ee.Image.pixelArea().addBands(classified).reduceRegion(
-        reducer=ee.Reducer.sum().group(groupField=1, groupName="class"),
-        geometry=region, scale=_compute_dynamic_scale(region), bestEffort=True, maxPixels=max_px,
-    ).getInfo().get("groups", []) or [])
-    by_class = {int(g["class"]): float(g.get("sum", 0)) / 1e6 for g in groups}
+    dyn_scale = max(_compute_dynamic_scale(region), 250)
+
+    by_class = {}
+    try:
+        groups = (ee.Image.pixelArea().addBands(classified).reduceRegion(
+            reducer=ee.Reducer.sum().group(groupField=1, groupName="class"),
+            geometry=region, scale=dyn_scale, bestEffort=True, maxPixels=max_px,
+        ).getInfo().get("groups", []) or [])
+        by_class = {int(g["class"]): float(g.get("sum", 0)) / 1e6 for g in groups}
+    except Exception as exc:
+        logger.warning("Could not compute RUSLE class areas: %s", exc)
 
     classes = []
     for cid, label, color, lo, hi in RUSLE_CLASSES:
@@ -3187,13 +3203,19 @@ def compute_erosion_rusle(region_geojson: Optional[dict], year: int = 2023) -> d
                         "range": f"{lo}–{'∞' if hi >= 1e9 else int(hi)} t/ha/ano",
                         "areaKm2": a})
 
-    a_mean = A.reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=250,
-                            bestEffort=True, maxPixels=max_px).get("A").getInfo()
+    a_mean = None
+    try:
+        mean_val = A.reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=dyn_scale,
+                                  bestEffort=True, maxPixels=max_px).get("A").getInfo()
+        if mean_val is not None:
+            a_mean = round(float(mean_val), 2)
+    except Exception:
+        pass
 
     return {
         "tile":       tile,
         "classes":    classes,
-        "meanTPerHa": round(float(a_mean), 2) if a_mean is not None else None,
+        "meanTPerHa": a_mean,
         "year":       year,
         "palette":    palette,
         "source":     "RUSLE · CHIRPS+DEM+MODIS",

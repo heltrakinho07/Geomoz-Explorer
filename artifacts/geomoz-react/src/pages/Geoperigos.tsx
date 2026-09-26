@@ -23,7 +23,9 @@ import BasemapSwitcher from "@/components/BasemapSwitcher";
 import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
-import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
+import { aoiToAPI, customAOI, GLOBAL_AOI, mozambiqueAOI } from "@/lib/aoi";
+import { useGeeAuth } from "@/hooks/useGeeAuth";
+import GeeCredentialsDialog from "@/components/GeeCredentialsDialog";
 import {
   createPDFContext, drawCover, sectionTitle, addPDFFooter, MARGIN, CONTENT_W,
   drawStatCards, drawTable, addMapImage, fetchMapImage,
@@ -60,6 +62,8 @@ interface Props {
 export default function Geoperigos({ aoi, province, district, viewMode = "2d", onViewModeChange, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
   const { toast } = useToast();
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  const { isGeeConnected, loading: geeAuthLoading } = useGeeAuth();
+  const [geeDialogOpen, setGeeDialogOpen] = useState(false);
   const [tool, setTool] = useState<Tool>("flood");
   const [basemap, setBasemap] = useState<BasemapType>("terrain");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -80,42 +84,91 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
   const [drawingEnabled, setDrawingEnabled] = useState(false);
 
   const runFlood = useCallback(async () => {
+    if (!isGeeConnected) {
+      setGeeDialogOpen(true);
+      toast({
+        title: "Google Earth Engine necessário",
+        description: "Conecte a sua conta GEE para processar imagens Sentinel-1.",
+      });
+      return;
+    }
     setLoading(true); setError(null); setFlood(null);
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 180_000);
     try {
+      const aoiPayload = aoiToAPI(aoi);
+      const prov = province || aoiPayload.province;
+      const dist = district || aoiPayload.district;
       const r = await apiFetch("/geomoz-api/gee/flood", {
         method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
-        body: JSON.stringify({ ...aoiToAPI(aoi), event_start: eventStart, event_end: eventEnd }),
+        body: JSON.stringify({
+          province: prov,
+          district: dist,
+          geometry: aoiPayload.geometry,
+          event_start: eventStart,
+          event_end: eventEnd,
+        }),
       });
-      if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
-      setFlood(await r.json());
+      if (!r.ok) {
+        const errJson = await r.json().catch(() => ({}));
+        throw new Error(errJson.detail ?? r.statusText);
+      }
+      const data = await r.json();
+      setFlood(data);
+      toast({
+        title: "Mapeamento de cheia concluído!",
+        description: `Área inundada identificada: ${data.areaKm2} km² (Sentinel-1 SAR).`,
+      });
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === "AbortError";
       const msg = aborted ? "A análise de radar demorou demasiado. Reduza a área (escolha uma província)." : String(e instanceof Error ? e.message : e);
       setError(msg);
       toast({ variant: "destructive", title: "Erro nas cheias", description: msg });
     } finally { clearTimeout(timer); setLoading(false); }
-  }, [province, district, eventStart, eventEnd]);
+  }, [aoi, province, district, eventStart, eventEnd, isGeeConnected]);
 
   const runErosion = useCallback(async () => {
+    if (!isGeeConnected) {
+      setGeeDialogOpen(true);
+      toast({
+        title: "Google Earth Engine necessário",
+        description: "Conecte a sua conta GEE para calcular o modelo RUSLE.",
+      });
+      return;
+    }
     setLoading(true); setError(null); setErosion(null);
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 240_000);
     try {
+      const aoiPayload = aoiToAPI(aoi);
+      const prov = province || aoiPayload.province;
+      const dist = district || aoiPayload.district;
       const r = await apiFetch("/geomoz-api/gee/erosion", {
         method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
-        body: JSON.stringify({ ...aoiToAPI(aoi), year }),
+        body: JSON.stringify({
+          province: prov,
+          district: dist,
+          geometry: aoiPayload.geometry,
+          year,
+        }),
       });
-      if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
-      setErosion(await r.json());
+      if (!r.ok) {
+        const errJson = await r.json().catch(() => ({}));
+        throw new Error(errJson.detail ?? r.statusText);
+      }
+      const data = await r.json();
+      setErosion(data);
+      toast({
+        title: "Cálculo RUSLE concluído!",
+        description: `Perda média estimada: ${data.meanTPerHa ?? "—"} t/ha/ano (ano ${year}).`,
+      });
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === "AbortError";
       const msg = aborted ? "O cálculo RUSLE demorou demasiado. Escolha uma província em vez de todo o país." : String(e instanceof Error ? e.message : e);
       setError(msg);
       toast({ variant: "destructive", title: "Erro na erosão", description: msg });
     } finally { clearTimeout(timer); setLoading(false); }
-  }, [province, district, year]);
+  }, [aoi, province, district, year, isGeeConnected]);
 
   const erosionTotal = erosion ? erosion.classes.reduce((s, c) => s + c.areaKm2, 0) || 1 : 1;
 
@@ -220,7 +273,22 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
               <AlertTriangle size={15} className="text-white" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Geoperigos</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Geoperigos</h2>
+                <button
+                  type="button"
+                  onClick={() => setGeeDialogOpen(true)}
+                  className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium flex items-center gap-1 border transition-colors cursor-pointer ${
+                    isGeeConnected
+                      ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
+                      : "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100"
+                  }`}
+                  title={isGeeConnected ? "Conta GEE conectada" : "Clique para conectar Google Earth Engine"}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${isGeeConnected ? "bg-emerald-500" : "bg-amber-500"}`} />
+                  {isGeeConnected ? "GEE Ativo" : "Conectar GEE"}
+                </button>
+              </div>
               <p className="text-[10px] text-slate-400">Cheias SAR · Erosão RUSLE · GEE</p>
             </div>
           </div>
@@ -245,6 +313,25 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
           </div>
         </div>
 
+        {!isGeeConnected && (
+          <div className="m-3 p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-[11px] text-amber-800 dark:text-amber-300 space-y-1.5">
+            <div className="font-semibold flex items-center gap-1">
+              <AlertTriangle size={13} className="text-amber-600" />
+              <span>Google Earth Engine Necessário</span>
+            </div>
+            <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-relaxed">
+              O radar Sentinel-1 e os rasters RUSLE requerem autenticação GEE ativa para processamento.
+            </p>
+            <button
+              type="button"
+              onClick={() => setGeeDialogOpen(true)}
+              className="w-full py-1.5 px-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+            >
+              Conectar Google Earth Engine
+            </button>
+          </div>
+        )}
+
         {/* Área de estudo — AOI global */}
         <div className="p-3 border-b border-slate-100 dark:border-slate-800">
           <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Área de Estudo</h4>
@@ -262,8 +349,14 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
               <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Eventos conhecidos</label>
               <div className="grid grid-cols-2 gap-1">
                 {FLOOD_PRESETS.map(p => (
-                  <button key={p.label} onClick={() => { setEventStart(p.start); setEventEnd(p.end); onProvinceChange(p.prov); onDistrictChange(null); }}
-                    className="text-[10px] py-1 px-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-200 dark:hover:border-rose-800 transition-colors">
+                  <button key={p.label} onClick={() => {
+                    setEventStart(p.start);
+                    setEventEnd(p.end);
+                    onProvinceChange(p.prov);
+                    onDistrictChange(null);
+                    onAOIChange(mozambiqueAOI(p.prov, null));
+                  }}
+                    className="text-[10px] py-1 px-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-200 dark:hover:border-rose-800 transition-colors cursor-pointer">
                     {p.label}
                   </button>
                 ))}
@@ -506,6 +599,9 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
           )}
         </div>
       )}
+
+      {/* GEE Credentials Dialog */}
+      <GeeCredentialsDialog open={geeDialogOpen} onOpenChange={setGeeDialogOpen} />
     </div>
   );
 }

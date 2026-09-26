@@ -73,4 +73,5 @@ build-*/
 dist-*/
 google-cloud-sdk/
 *.tar.gz
+geolibre-ref/
 
