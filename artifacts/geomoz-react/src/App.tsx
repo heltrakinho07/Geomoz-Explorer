@@ -122,6 +122,7 @@ export default function App() {
                 <Route path="/hidrografia">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/agua-subterranea">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/geoperigos">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+                <Route path="/geoprocessamento">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/geomoz-ai">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/dashboard">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/exportar">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>

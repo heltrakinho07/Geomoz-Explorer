@@ -25,6 +25,7 @@ import {
   Moon,
   X,
   Download,
+  Cpu,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
@@ -62,6 +63,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "Bacias Hidrográficas", label: "Bacias Hidrográficas", icon: <Droplets size={20} /> },
   { id: "Água Subterrânea", label: "Água Subterrânea", icon: <Droplet size={20} /> },
   { id: "Geoperigos", label: "Geoperigos", icon: <AlertTriangle size={20} /> },
+  { id: "GeoProcessamento", label: "GeoProcessamento", icon: <Cpu size={20} /> },
   { id: "GeoMoz AI", label: "GeoMoz AI Agent", icon: <BrainCircuit size={20} /> },
   { id: "Exportar", label: "Dossiê & Exportar", icon: <FileText size={20} /> },
 ];

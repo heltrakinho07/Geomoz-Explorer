@@ -19,6 +19,7 @@ import {
   Menu,
   FileText,
   Layers,
+  Cpu,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -34,6 +35,7 @@ import {
   LazyGeoperigos,
   LazyAguaSubterranea,
   LazyGeoMozAI,
+  LazyGeoProcessamento,
 } from "@/lib/lazy-pages";
 import { apiFetch } from "@/lib/api";
 import SettingsDialog from "@/components/SettingsDialog";
@@ -62,6 +64,7 @@ type Tab =
   | "Bacias Hidrográficas"
   | "Água Subterrânea"
   | "Geoperigos"
+  | "GeoProcessamento"
   | "GeoMoz AI"
   | "Exportar";
 
@@ -99,6 +102,9 @@ export default function Explorer() {
     if (path.includes("perigo") || hash.includes("perigo") || tabParam?.includes("perigo")) {
       return "Geoperigos";
     }
+    if (path.includes("process") || hash.includes("process") || tabParam?.includes("process")) {
+      return "GeoProcessamento";
+    }
     if (path.includes("ai") || hash.includes("ai") || tabParam?.includes("ai")) {
       return "GeoMoz AI";
     }
@@ -124,6 +130,7 @@ export default function Explorer() {
         "Bacias Hidrográficas": "hidrografia",
         "Água Subterrânea": "agua-subterranea",
         Geoperigos: "geoperigos",
+        GeoProcessamento: "geoprocessamento",
         "GeoMoz AI": "geomoz-ai",
         Exportar: "exportar",
       };
@@ -389,6 +396,12 @@ export default function Explorer() {
           icon: <AlertTriangle size={18} className="text-amber-500 shrink-0" />,
           title: "Geoperigos & Riscos",
           subtitle: "Deteção SAR de Cheias & Erosão",
+        };
+      case "GeoProcessamento":
+        return {
+          icon: <Cpu size={18} className="text-indigo-500 shrink-0" />,
+          title: "GeoProcessamento Avançado",
+          subtitle: "WASM In-Browser, Cortina Temporal & Spatial SQL",
         };
       case "GeoMoz AI":
         return {
@@ -758,6 +771,24 @@ export default function Explorer() {
           {activeTab === "Geoperigos" && (
             <Suspense fallback={<LoadingSkeleton label="Geoperigos" />}>
               <LazyGeoperigos
+                aoi={aoi}
+                province={province}
+                district={district}
+                onProvinceChange={(p) => {
+                  setProvince(p);
+                  setDistrict(null);
+                }}
+                onDistrictChange={setDistrict}
+                onAOIChange={handleAOIChange}
+                viewMode={globalViewMode}
+                onViewModeChange={handleGlobalViewModeChange}
+              />
+            </Suspense>
+          )}
+
+          {activeTab === "GeoProcessamento" && (
+            <Suspense fallback={<LoadingSkeleton label="GeoProcessamento" />}>
+              <LazyGeoProcessamento
                 aoi={aoi}
                 province={province}
                 district={district}
