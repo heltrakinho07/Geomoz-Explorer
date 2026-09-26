@@ -3908,6 +3908,27 @@ export default function GeoAnalises({
                       className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
                     />
                   </div>
+
+                  {/* Botão Recalcular Análise com o período selecionado */}
+                  <button
+                    type="button"
+                    onClick={handleCalculateActiveIndex}
+                    disabled={isCalculatingActiveIndex}
+                    className="w-full mt-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 dark:hover:bg-sky-900/80 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+                    title={`Recalcular análise para o período ${geeStartDate} a ${geeEndDate}`}
+                  >
+                    {isCalculatingActiveIndex ? (
+                      <>
+                        <Loader2 size={13} className="animate-spin" />
+                        <span>A recalcular período...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw size={13} />
+                        <span>Recalcular Análise ({geeStartDate} a {geeEndDate})</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
 
@@ -3977,6 +3998,11 @@ export default function GeoAnalises({
                     <>
                       <Loader2 size={14} className="animate-spin" />
                       <span>A processar no GEE...</span>
+                    </>
+                  ) : hasActiveResult ? (
+                    <>
+                      <RefreshCw size={14} />
+                      <span>Recalcular {activeIndexLabel} com Sentinel-2</span>
                     </>
                   ) : (
                     <>

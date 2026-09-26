@@ -95,6 +95,9 @@ interface BasinReport {
   precipMonthly: number[];
   precipAnnualMm: number;
   runoff: { cnMean: number | null; cnTile: string; note: string };
+  startYear?: number;
+  endYear?: number;
+  period?: string;
 }
 
 type Mode = "explore" | "delineate";
@@ -278,6 +281,8 @@ export default function HidroGeoMoz({
   const [reportLayer,   setReportLayer]   = useState<"none" | "lulc" | "cn">("none");
   const [useWmsLulc,    setUseWmsLulc]    = useState(false);
   const [refreshingTiles, setRefreshingTiles] = useState(false);
+  const [basinStartYear, setBasinStartYear] = useState(2019);
+  const [basinEndYear,   setBasinEndYear]   = useState(2024);
 
   // River network
   const [riverNet,      setRiverNet]      = useState<RiverNetResult | null>(null);
@@ -446,6 +451,8 @@ export default function HidroGeoMoz({
     setMode("delineate");
     setWatershedData(fullData.watershedData || null);
     setBasinReport(fullData.basinReport || null);
+    if (fullData.basinReport?.startYear) setBasinStartYear(fullData.basinReport.startYear);
+    if (fullData.basinReport?.endYear) setBasinEndYear(fullData.basinReport.endYear);
     setWsStats(fullData.wsStats || null);
     setPourPoint(fullData.pourPoint || null);
     if (fullData.watershedDrainageTile) {
@@ -899,16 +906,46 @@ export default function HidroGeoMoz({
   }, [aoi.label, basinLevel, checkGEE, loadWatershedDrainage, watershedDrainThresh]);
 
   // Generate the full hydro-environmental report for the delineated basin
-  async function runBasinReport() {
-    const geom = watershedData?.geojson?.features?.[0]?.geometry;
-    if (!geom) return;
+  async function runBasinReport(customStartYear?: number, customEndYear?: number) {
+    let geom: any = watershedData?.geojson?.features?.[0]?.geometry;
+    if (!geom) {
+      if ((watershedData?.geojson as any)?.type === "Polygon" || (watershedData?.geojson as any)?.type === "MultiPolygon") {
+        geom = watershedData.geojson;
+      } else if ((watershedData?.geojson as any)?.geometry) {
+        geom = (watershedData.geojson as any).geometry;
+      }
+    }
+    if (!geom) {
+      toast({
+        variant: "destructive",
+        title: "Bacia não encontrada",
+        description: "Delimite uma bacia hidrográfica antes de calcular o relatório.",
+      });
+      return;
+    }
+
+    const sy = customStartYear ?? basinStartYear;
+    const ey = customEndYear ?? basinEndYear;
+
     setLoadingReport(true); setError(null);
     try {
-      const r = await apiFetch("/geomoz-api/gee/basin-report", { method: "POST",
+      const r = await apiFetch("/geomoz-api/gee/basin-report", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ geometry: geom }) });
+        body: JSON.stringify({
+          geometry: geom,
+          start_year: sy,
+          end_year: ey,
+        }),
+      });
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
-      setBasinReport(await r.json());
+      const data = await r.json();
+      setBasinReport(data);
+      setUseWmsLulc(false);
+      toast({
+        title: "Relatório gerado com sucesso!",
+        description: `Dados de morfometria, uso do solo e CHIRPS (${sy}–${ey}) atualizados.`,
+      });
     } catch (e) {
       const errorMsg = String(e instanceof Error ? e.message : e);
       setError(errorMsg);
@@ -2197,13 +2234,31 @@ export default function HidroGeoMoz({
                               </div>
                             ))}
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => runBasinReport(basinStartYear, basinEndYear)}
+                            disabled={loadingReport}
+                            className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold transition-colors cursor-pointer border border-slate-200 dark:border-slate-700 shadow-xs"
+                          >
+                            {loadingReport ? (
+                              <>
+                                <Loader2 size={13} className="animate-spin" />
+                                <span>A recalcular uso do solo...</span>
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw size={13} />
+                                <span>Recalcular Uso do Solo</span>
+                              </>
+                            )}
+                          </button>
                         </div>
                       ) : (
                         <div className="py-8 text-center space-y-2">
                           <Activity size={24} className="mx-auto text-slate-300 dark:text-slate-600" />
                           <p className="text-xs text-slate-500">Relatório de uso do solo ainda não calculado.</p>
-                          <button onClick={runBasinReport} disabled={loadingReport}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition-all shadow-sm">
+                          <button onClick={() => runBasinReport(basinStartYear, basinEndYear)} disabled={loadingReport}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition-all shadow-sm cursor-pointer">
                             {loadingReport ? "A calcular…" : "Calcular Uso do Solo"}
                           </button>
                         </div>
@@ -2214,10 +2269,65 @@ export default function HidroGeoMoz({
                   {/* ── TAB 3: HIDROLOGIA & CHUVA (CN & CHIRPS) ─────────────── */}
                   {delineateTab === "hidro" && (
                     <div className="space-y-4">
+                      {/* Seletor de Período & Botão Recalcular */}
+                      <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-3 border border-slate-100 dark:border-slate-800 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                            Período de Análise (CHIRPS)
+                          </span>
+                          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                            {basinStartYear} a {basinEndYear}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">Ano início</label>
+                            <input
+                              type="number"
+                              min={1981}
+                              max={basinEndYear}
+                              value={basinStartYear}
+                              onChange={(e) => setBasinStartYear(Math.min(Number(e.target.value), basinEndYear))}
+                              className="w-full text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">Ano fim</label>
+                            <input
+                              type="number"
+                              min={basinStartYear}
+                              max={new Date().getFullYear()}
+                              value={basinEndYear}
+                              onChange={(e) => setBasinEndYear(Math.max(Number(e.target.value), basinStartYear))}
+                              className="w-full text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => runBasinReport(basinStartYear, basinEndYear)}
+                          disabled={loadingReport || !watershedData}
+                          className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm cursor-pointer"
+                        >
+                          {loadingReport ? (
+                            <>
+                              <Loader2 size={13} className="animate-spin" />
+                              <span>A recalcular período...</span>
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw size={13} />
+                              <span>Recalcular Análise ({basinStartYear} a {basinEndYear})</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
                       {basinReport?.precipMonthly && (
                         <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-3 border border-slate-100 dark:border-slate-800">
                           <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                            Chuva mensal · {basinReport.precipAnnualMm.toLocaleString("pt-PT")} mm/ano
+                            Chuva mensal · {basinReport.precipAnnualMm.toLocaleString("pt-PT")} mm/ano ({basinReport.startYear ?? basinStartYear}–{basinReport.endYear ?? basinEndYear})
                           </div>
                           <ResponsiveContainer width="100%" height={110}>
                             <BarChart data={basinReport.precipMonthly.map((v, i) => ({ m: "JFMAMJJASOND"[i], mm: v }))}
@@ -2262,14 +2372,64 @@ export default function HidroGeoMoz({
                   {/* ── TAB 4: AÇÕES & EXPORTAÇÕES ─────────────────────────── */}
                   {delineateTab === "acoes" && (
                     <div className="space-y-3">
-                      {!basinReport && (
-                        <button onClick={runBasinReport} disabled={loadingReport}
-                          className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-60 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm">
-                          {loadingReport
-                            ? <><Loader2 size={12} className="animate-spin" /> A processar no GEE… (~10 s)</>
-                            : <><BarChart2 size={12} /> Gerar Relatório Completo</>}
+                      <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-3 border border-slate-100 dark:border-slate-800 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                            Período de Análise Climatológica
+                          </span>
+                          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                            {basinStartYear} a {basinEndYear}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">Ano início</label>
+                            <input
+                              type="number"
+                              min={1981}
+                              max={basinEndYear}
+                              value={basinStartYear}
+                              onChange={(e) => setBasinStartYear(Math.min(Number(e.target.value), basinEndYear))}
+                              className="w-full text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">Ano fim</label>
+                            <input
+                              type="number"
+                              min={basinStartYear}
+                              max={new Date().getFullYear()}
+                              value={basinEndYear}
+                              onChange={(e) => setBasinEndYear(Math.max(Number(e.target.value), basinStartYear))}
+                              className="w-full text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => runBasinReport(basinStartYear, basinEndYear)}
+                          disabled={loadingReport || !watershedData}
+                          className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-60 text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-blue-500/20 cursor-pointer"
+                        >
+                          {loadingReport ? (
+                            <>
+                              <Loader2 size={13} className="animate-spin" />
+                              <span>A processar no GEE... (~10 s)</span>
+                            </>
+                          ) : basinReport ? (
+                            <>
+                              <RefreshCw size={13} />
+                              <span>Recalcular Análise Completa</span>
+                            </>
+                          ) : (
+                            <>
+                              <BarChart2 size={13} />
+                              <span>Gerar Relatório Completo</span>
+                            </>
+                          )}
                         </button>
-                      )}
+                      </div>
 
                       <button
                         type="button"

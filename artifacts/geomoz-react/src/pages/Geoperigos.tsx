@@ -12,7 +12,7 @@ import "leaflet/dist/leaflet.css";
 import {
   AlertTriangle, Waves, Mountain, Loader2, Play, ChevronDown, Info,
   CheckCircle2, Calendar, Droplets, Layers, FileDown, SlidersHorizontal, X,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiUrl, apiFetch } from "@/lib/api";
@@ -285,8 +285,23 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
               Mostrar água permanente <input type="checkbox" checked={showPerm} onChange={e => setShowPerm(e.target.checked)} className="accent-blue-600" />
             </label>
             <button onClick={runFlood} disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors">
-              {loading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Mapear cheia
+              className="w-full flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors cursor-pointer">
+              {loading ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>A processar radar Sentinel-1...</span>
+                </>
+              ) : flood ? (
+                <>
+                  <RefreshCw size={14} />
+                  <span>Recalcular Cheia</span>
+                </>
+              ) : (
+                <>
+                  <Play size={14} />
+                  <span>Mapear cheia</span>
+                </>
+              )}
             </button>
           </div>
         )}
@@ -304,8 +319,23 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
               <div className="flex justify-between text-[10px] text-slate-400"><span>2018</span><span>2024</span></div>
             </div>
             <button onClick={runErosion} disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors">
-              {loading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Calcular erosão
+              className="w-full flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors cursor-pointer">
+              {loading ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>A calcular RUSLE...</span>
+                </>
+              ) : erosion ? (
+                <>
+                  <RefreshCw size={14} />
+                  <span>Recalcular Erosão ({year})</span>
+                </>
+              ) : (
+                <>
+                  <Play size={14} />
+                  <span>Calcular erosão</span>
+                </>
+              )}
             </button>
           </div>
         )}

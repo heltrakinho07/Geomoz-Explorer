@@ -2659,11 +2659,13 @@ def compute_basin_stats(basin_geometry: dict) -> dict:
     }
 
 
-def compute_basin_report(basin_geometry: dict) -> dict:
+def compute_basin_report(basin_geometry: dict, start_year: int = 2019, end_year: int = 2024) -> dict:
     """Full hydro-environmental basin report: morphometry + land cover + CHIRPS
     monthly rainfall + SCS-CN runoff potential.
 
     basin_geometry : GeoJSON geometry dict (Polygon / MultiPolygon).
+    start_year     : Initial year for CHIRPS precipitation climatology (default 2019).
+    end_year       : Final year for CHIRPS precipitation climatology (default 2024).
     """
     import ee
 
@@ -2723,9 +2725,11 @@ def compute_basin_report(basin_geometry: dict) -> dict:
                               "areaKm2": round(a, 2), "pct": round(a / lc_total * 100, 2)})
     landcover.sort(key=lambda c: c["areaKm2"], reverse=True)
 
-    # Monthly precipitation (CHIRPS 2019–2023)
-    years = 5
-    chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate("2019-01-01", "2024-01-01")
+    # Monthly precipitation (CHIRPS with custom date range)
+    sy = max(1981, min(2025, int(start_year or 2019)))
+    ey = max(sy + 1, min(2025, int(end_year or 2024)))
+    years = max(1, ey - sy)
+    chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate(f"{sy}-01-01", f"{ey}-01-01")
 
     def _monthly(m):
         m = ee.Number(m)
@@ -2766,6 +2770,9 @@ def compute_basin_report(basin_geometry: dict) -> dict:
         "landcoverTile":  landcover_tile,
         "precipMonthly":  precip_monthly,
         "precipAnnualMm": precip_annual,
+        "startYear":      sy,
+        "endYear":        ey,
+        "period":         f"{sy}–{ey}",
         "runoff": {
             "cnMean":   round(float(cn_mean), 1) if cn_mean is not None else None,
             "cnTile":   cn_tile,

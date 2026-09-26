@@ -1513,7 +1513,9 @@ class GEEBasinsRequest(BaseModel):
 
 
 class GEEBasinStatsRequest(BaseModel):
-    geometry: dict  # GeoJSON geometry dict (Polygon / MultiPolygon)
+    geometry:   dict                 # GeoJSON geometry dict (Polygon / MultiPolygon)
+    start_year: Optional[int] = 2019 # Climatology start year
+    end_year:   Optional[int] = 2024 # Climatology end year
 
 
 class GEEDrainageRequest(BaseModel):
@@ -1569,8 +1571,10 @@ async def gee_basin_report(req: GEEBasinStatsRequest, uid: str = Depends(require
 
     loop = asyncio.get_event_loop()
     try:
+        sy = req.start_year if req.start_year is not None else 2019
+        ey = req.end_year if req.end_year is not None else 2024
         result = await loop.run_in_executor(
-            _thread_pool_executor, lambda: compute_basin_report(req.geometry)
+            _thread_pool_executor, lambda: compute_basin_report(req.geometry, sy, ey)
         )
         return result
     except RuntimeError as exc:
