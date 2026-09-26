@@ -1,5 +1,5 @@
 // GeoMoz Explorer 3D — Production Progressive Web App (PWA) Service Worker
-const CACHE_VERSION = "geomoz-v1.0.1";
+const CACHE_VERSION = "geomoz-v1.0.2";
 const CACHE_SHELL = `geomoz-shell-${CACHE_VERSION}`;
 const CACHE_STATIC = `geomoz-static-${CACHE_VERSION}`;
 const CACHE_TILES = `geomoz-tiles-${CACHE_VERSION}`;

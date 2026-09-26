@@ -1,14 +1,26 @@
 /**
- * GeoProcessamento — Módulo de Geoprocessamento Client-Side & Formatos Cloud-Native
- * Inspirado na arquitetura do GeoLibre:
- * 1. Geoprocessamento 100% no Navegador (WebAssembly / Algoritmos Locais)
- * 2. Espelho Comparativo / Cortina Temporal (Split & Swipe Comparator)
- * 3. Suporte Nativo a Formatos Cloud-Native (PMTiles, COG e GeoParquet)
- * 4. Motor DuckDB-WASM Spatial (Consultas SQL Espaciais no Cliente)
+ * GeoProcessamento — Caixa de Ferramentas de Geoprocessamento Client-Side
+ * Inspirado diretamente na arquitetura do GeoLibre:
+ * - Geoprocessamento 100% no navegador (Turf.js / WASM) sobre DADOS PRÓPRIOS DO UTILIZADOR
+ * - Carregamento de ficheiros locais (GeoJSON, CSV com coordenadas, KML) e geometrias desenhadas
+ * - Ferramentas vetoriais completas: Buffer, Centróides, Convex Hull, Bounding Box, Dissolve,
+ *   Simplify, Clip/Intersect, Difference, Points-in-Polygon, Cálculo de Área/Comprimento
+ * - Cortina Temporal (Split/Swipe) para comparação lado a lado
+ * - SQL Espacial (DuckDB-style) sobre as camadas do utilizador
+ * - Tabela de atributos interativa e exportação direta para GeoJSON e CSV
  */
 
 import React, { useState, useRef, useMemo, useCallback } from "react";
-import { MapContainer, TileLayer, GeoJSON, ScaleControl, ZoomControl, Marker, Popup, useMap } from "react-leaflet";
+import {
+  MapContainer,
+  TileLayer,
+  GeoJSON as LeafletGeoJSON,
+  ScaleControl,
+  ZoomControl,
+  Marker,
+  Popup,
+  useMap,
+} from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import {
@@ -17,31 +29,25 @@ import {
   Columns2,
   Database,
   Play,
-  CheckCircle2,
-  AlertTriangle,
-  RefreshCw,
-  FileDown,
-  Search,
-  Sparkles,
-  Waves,
-  Mountain,
+  Upload,
+  Download,
+  Trash2,
+  Eye,
+  EyeOff,
   SlidersHorizontal,
   X,
   ChevronLeft,
   ChevronRight,
-  Download,
-  Info,
+  FileCode,
   Table,
-  Sliders,
-  Droplets,
-  Share2,
-  Code,
-  MapPin,
-  ExternalLink,
-  ShieldCheck,
-  Eye,
-  EyeOff,
+  CheckCircle2,
+  AlertTriangle,
+  FileDown,
+  Info,
   Maximize2,
+  RefreshCw,
+  FolderOpen,
+  Plus,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import AreaSelect from "@/components/AreaSelect";
@@ -52,25 +58,21 @@ import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { GLOBAL_AOI, customAOI } from "@/lib/aoi";
 import {
-  generateSyntheticDem,
-  computeSlopeAspect,
-  computeHillshade,
-  computeD8Hydrology,
-  computeTWI,
-  computeSARThreshold,
-  computeVectorBuffer,
-  computeConvexHull,
-  ProcessingResult,
+  GEOPROCESSING_TOOLS_CATALOG,
+  ToolDefinition,
+  GeoprocessingStats,
+  parseUserUploadedFile,
+  runVectorBuffer,
+  runVectorCentroids,
+  runVectorConvexHull,
+  runVectorBBox,
+  runVectorDissolve,
+  runVectorSimplify,
+  runVectorExplode,
+  runVectorMetrics,
+  runVectorIntersect,
+  runVectorPointsInPolygon,
 } from "@/lib/wasm-geoprocessing";
-import {
-  CLOUD_NATIVE_CATALOG,
-  PREDEFINED_SQL_QUERIES,
-  MOZAMBIQUE_HIGHWAYS,
-  MOZAMBIQUE_FACILITIES,
-  MOZAMBIQUE_CONSERVATION_AREAS,
-  MOZAMBIQUE_BASINS,
-  CloudNativeDataset,
-} from "@/lib/mozambique-spatial-catalog";
 import { executeSpatialQuery, exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-loader";
 import {
   createPDFContext,
@@ -79,13 +81,38 @@ import {
   addPDFFooter,
   drawStatCards,
   drawTable,
-  fetchMapImage,
-  addMapImage,
   MARGIN,
   CONTENT_W,
 } from "@/lib/pdf-export";
+import type { FeatureCollection, Feature } from "geojson";
 
-type SubModule = "wasm_processing" | "swipe_compare" | "cloud_native" | "spatial_sql";
+// Helper component to fit map bounds to a feature collection
+function FitToLayer({ fc }: { fc?: FeatureCollection }) {
+  const map = useMap();
+  React.useEffect(() => {
+    if (!fc || fc.features.length === 0) return;
+    try {
+      const geoLayer = L.geoJSON(fc);
+      const bounds = geoLayer.getBounds();
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+      }
+    } catch {}
+  }, [fc, map]);
+  return null;
+}
+
+export interface UserLayer {
+  id: string;
+  name: string;
+  geojson: FeatureCollection;
+  featureCount: number;
+  geometryType: string;
+  fields: string[];
+  color: string;
+  visible: boolean;
+  isResult?: boolean;
+}
 
 interface Props {
   aoi: AreaOfInterest;
@@ -98,20 +125,16 @@ interface Props {
   onAOIChange: (aoi: AreaOfInterest) => void;
 }
 
-// Marker icon for spatial points
-const facilityIcon = L.divIcon({
-  className: "custom-point-marker",
-  html: `<div style="background-color: #0284c7; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 6px rgba(0,0,0,0.4);"></div>`,
-  iconSize: [12, 12],
-  iconAnchor: [6, 6],
-});
-
-const highRiskIcon = L.divIcon({
-  className: "custom-point-marker-risk",
-  html: `<div style="background-color: #ef4444; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 8px rgba(239,68,68,0.8); animation: pulse 2s infinite;"></div>`,
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
-});
+const LAYER_PALETTE = [
+  "#2563eb", // blue
+  "#16a34a", // green
+  "#dc2626", // red
+  "#9333ea", // purple
+  "#ea580c", // orange
+  "#0891b2", // cyan
+  "#d97706", // amber
+  "#db2777", // pink
+];
 
 export default function GeoProcessamento({
   aoi,
@@ -125,124 +148,319 @@ export default function GeoProcessamento({
 }: Props) {
   const { toast } = useToast();
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Layout & active sub-module
-  const [activeSubModule, setActiveSubModule] = useState<SubModule>("wasm_processing");
+  // Layout states
+  const [activeSubTab, setActiveSubTab] = useState<"tools" | "layers" | "swipe" | "sql">("tools");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [basemap, setBasemap] = useState<BasemapType>("hybrid");
   const [drawingEnabled, setDrawingEnabled] = useState(false);
 
-  // 1. WASM Geoprocessing states
-  const [selectedTool, setSelectedTool] = useState<string>("hydro_d8");
-  const [bufferRadius, setBufferRadius] = useState<number>(2500);
-  const [sarThresholdDb, setSarThresholdDb] = useState<number>(-16);
-  const [hillshadeAzimuth, setHillshadeAzimuth] = useState<number>(315);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processingResult, setProcessingResult] = useState<ProcessingResult | null>(null);
+  // User layers state
+  const [layers, setLayers] = useState<UserLayer[]>([]);
+  const [selectedLayerId, setSelectedLayerId] = useState<string>("");
+  const [secondLayerId, setSecondLayerId] = useState<string>("");
 
-  // 2. Swipe & Split-Screen states
+  // Toolbox state
+  const [selectedToolId, setSelectedToolId] = useState<string>("vector_buffer");
+  const [toolParams, setToolParams] = useState<Record<string, any>>({
+    distance: 1000,
+    units: "meters",
+    dissolve: false,
+    tolerance: 0.005,
+    highQuality: true,
+  });
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [lastStats, setLastStats] = useState<GeoprocessingStats | null>(null);
+
+  // Table view state
+  const [tableLayerId, setTableLayerId] = useState<string | null>(null);
+
+  // Swipe & Split state
   const [swipePercent, setSwipePercent] = useState<number>(50);
-  const [leftLayer, setLeftLayer] = useState<string>("satellite");
-  const [rightLayer, setRightLayer] = useState<string>("sar_flood");
   const isDraggingRef = useRef(false);
 
-  // 3. Cloud-Native Catalog states
-  const [selectedDatasetId, setSelectedDatasetId] = useState<string>("ds_facilities_parquet");
-  const [activeCatalogLayers, setActiveCatalogLayers] = useState<Record<string, boolean>>({
-    ds_facilities_parquet: true,
-    ds_roads_pmtiles: false,
-    ds_conservation_pmtiles: false,
-    ds_basins_geojson: false,
-  });
+  // Spatial SQL state
+  const [sqlQuery, setSqlQuery] = useState<string>("");
+  const [sqlResult, setSqlResult] = useState<QueryResult | null>(null);
 
-  // 4. Spatial SQL Engine states
-  const [sqlQuery, setSqlQuery] = useState<string>(PREDEFINED_SQL_QUERIES[0].sql);
-  const [sqlDatasetId, setSqlDatasetId] = useState<string>(PREDEFINED_SQL_QUERIES[0].datasetId);
-  const [sqlResult, setSqlResult] = useState<QueryResult | null>(() =>
-    executeSpatialQuery(MOZAMBIQUE_FACILITIES.features, PREDEFINED_SQL_QUERIES[0].sql)
+  // Selected tool definition
+  const currentTool = useMemo(
+    () => GEOPROCESSING_TOOLS_CATALOG.find((t) => t.id === selectedToolId) || GEOPROCESSING_TOOLS_CATALOG[0],
+    [selectedToolId]
   );
 
-  // Generate synthetic DEM bounded to current active AOI or central Mozambique
-  const demGrid = useMemo(() => {
-    return generateSyntheticDem([[-20.2, 34.0], [-19.4, 35.2]], 70, 50);
-  }, []);
+  // Active layer object
+  const activeLayer = useMemo(() => layers.find((l) => l.id === selectedLayerId), [layers, selectedLayerId]);
+  const secondaryLayer = useMemo(() => layers.find((l) => l.id === secondLayerId), [layers, secondLayerId]);
 
-  // ── Run WASM / Client-Side Tool ──────────────────────────────────────────
-  const runWasmTool = useCallback(() => {
-    setIsProcessing(true);
-    setTimeout(() => {
-      let res: ProcessingResult | null = null;
+  // Update default SQL query when layers change
+  React.useEffect(() => {
+    if (layers.length > 0 && !sqlQuery) {
+      setSqlQuery(`SELECT * FROM ${layers[0].name.toLowerCase().replace(/[^a-z0-9_]/g, "_")} LIMIT 50`);
+    }
+  }, [layers, sqlQuery]);
+
+  // Synchronize drawn AOI as a layer if present
+  React.useEffect(() => {
+    if (aoi && aoi.source === "draw" && aoi.geometry) {
+      const drawnId = "drawn_aoi_layer";
+      const fc: FeatureCollection = {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            properties: { nome: aoi.label || "Área Desenhada" },
+            geometry: aoi.geometry,
+          },
+        ],
+      };
+
+      setLayers((prev) => {
+        const filtered = prev.filter((l) => l.id !== drawnId);
+        return [
+          {
+            id: drawnId,
+            name: aoi.label || "Área Desenhada",
+            geojson: fc,
+            featureCount: 1,
+            geometryType: aoi.geometry.type,
+            fields: ["nome"],
+            color: "#e11d48",
+            visible: true,
+          },
+          ...filtered,
+        ];
+      });
+
+      if (!selectedLayerId) setSelectedLayerId(drawnId);
+    }
+  }, [aoi]);
+
+  // ── Handle User File Upload ───────────────────────────────────────────────
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       try {
-        switch (selectedTool) {
-          case "hydro_d8":
-            res = computeD8Hydrology(demGrid, 40);
-            break;
-          case "hydro_twi":
-            res = computeTWI(demGrid);
-            break;
-          case "terrain_slope":
-            res = computeSlopeAspect(demGrid, "slope_deg");
-            break;
-          case "terrain_aspect":
-            res = computeSlopeAspect(demGrid, "aspect");
-            break;
-          case "terrain_hillshade":
-            res = computeHillshade(demGrid, hillshadeAzimuth, 45);
-            break;
-          case "spectral_sar":
-            res = computeSARThreshold(demGrid.bounds, sarThresholdDb);
-            break;
-          case "vector_buffer":
-            res = computeVectorBuffer(MOZAMBIQUE_FACILITIES.features, bufferRadius);
-            break;
-          case "vector_hull":
-            res = computeConvexHull(MOZAMBIQUE_FACILITIES.features);
-            break;
-          default:
-            res = computeD8Hydrology(demGrid, 40);
-        }
-        setProcessingResult(res);
+        const parsed = await parseUserUploadedFile(file);
+        const newLayer: UserLayer = {
+          id: `layer_${Date.now()}_${i}`,
+          name: parsed.name,
+          geojson: parsed.geojson,
+          featureCount: parsed.featureCount,
+          geometryType: parsed.geometryType,
+          fields: parsed.fields,
+          color: LAYER_PALETTE[layers.length % LAYER_PALETTE.length],
+          visible: true,
+        };
+
+        setLayers((prev) => [newLayer, ...prev]);
+        setSelectedLayerId(newLayer.id);
+
         toast({
-          title: "Geoprocessamento Concluído",
-          description: `${res.toolName} executado em ${res.stats.executionTimeMs}ms via WebAssembly local.`,
+          title: "Ficheiro Carregado com Sucesso",
+          description: `${parsed.name}: ${parsed.featureCount} elementos (${parsed.geometryType}) prontos para geoprocessamento.`,
         });
       } catch (err: any) {
         toast({
-          title: "Erro no Geoprocessamento",
-          description: err.message || "Falha na execução do algoritmo no navegador.",
+          title: "Erro ao Carregar Ficheiro",
+          description: err.message || "Falha na leitura do ficheiro geoespacial.",
+          variant: "destructive",
+        });
+      }
+    }
+
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  // ── Execute Real Geoprocessing Tool ───────────────────────────────────────
+  const handleRunTool = useCallback(() => {
+    if (!activeLayer) {
+      toast({
+        title: "Selecione uma Camada de Entrada",
+        description: "Carregue um ficheiro GeoJSON/CSV ou selecione uma camada ativa.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (currentTool.requiresSecondLayer && !secondaryLayer) {
+      toast({
+        title: "Segunda Camada Necessária",
+        description: "Esta operação requer uma camada de sobreposição/corte.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsExecuting(true);
+    setTimeout(() => {
+      try {
+        let outputFc: FeatureCollection;
+        let stats: GeoprocessingStats;
+
+        switch (selectedToolId) {
+          case "vector_buffer": {
+            const res = runVectorBuffer(
+              activeLayer.geojson,
+              Number(toolParams.distance || 1000),
+              toolParams.units || "meters",
+              Boolean(toolParams.dissolve)
+            );
+            outputFc = res.result;
+            stats = res.stats;
+            break;
+          }
+          case "vector_centroids": {
+            const res = runVectorCentroids(activeLayer.geojson);
+            outputFc = res.result;
+            stats = res.stats;
+            break;
+          }
+          case "vector_convexhull": {
+            const res = runVectorConvexHull(activeLayer.geojson);
+            outputFc = res.result;
+            stats = res.stats;
+            break;
+          }
+          case "vector_bbox": {
+            const res = runVectorBBox(activeLayer.geojson);
+            outputFc = res.result;
+            stats = res.stats;
+            break;
+          }
+          case "vector_dissolve": {
+            const res = runVectorDissolve(activeLayer.geojson, toolParams.propertyName);
+            outputFc = res.result;
+            stats = res.stats;
+            break;
+          }
+          case "vector_simplify": {
+            const res = runVectorSimplify(
+              activeLayer.geojson,
+              Number(toolParams.tolerance || 0.005),
+              Boolean(toolParams.highQuality ?? true)
+            );
+            outputFc = res.result;
+            stats = res.stats;
+            break;
+          }
+          case "vector_explode": {
+            const res = runVectorExplode(activeLayer.geojson);
+            outputFc = res.result;
+            stats = res.stats;
+            break;
+          }
+          case "vector_calc_metrics": {
+            const res = runVectorMetrics(activeLayer.geojson);
+            outputFc = res.result;
+            stats = res.stats;
+            break;
+          }
+          case "vector_intersect": {
+            const res = runVectorIntersect(activeLayer.geojson, secondaryLayer!.geojson);
+            outputFc = res.result;
+            stats = res.stats;
+            break;
+          }
+          case "vector_points_in_poly": {
+            const res = runVectorPointsInPolygon(activeLayer.geojson, secondaryLayer!.geojson);
+            outputFc = res.result;
+            stats = res.stats;
+            break;
+          }
+          default: {
+            const res = runVectorCentroids(activeLayer.geojson);
+            outputFc = res.result;
+            stats = res.stats;
+          }
+        }
+
+        setLastStats(stats);
+
+        // Add result as an active user layer
+        const resultLayerId = `result_${Date.now()}`;
+        const resultLayer: UserLayer = {
+          id: resultLayerId,
+          name: `${currentTool.name} (${activeLayer.name})`,
+          geojson: outputFc,
+          featureCount: outputFc.features.length,
+          geometryType: stats.geometryType,
+          fields: outputFc.features[0]?.properties ? Object.keys(outputFc.features[0].properties) : [],
+          color: LAYER_PALETTE[(layers.length + 1) % LAYER_PALETTE.length],
+          visible: true,
+          isResult: true,
+        };
+
+        setLayers((prev) => [resultLayer, ...prev]);
+        setSelectedLayerId(resultLayerId);
+
+        toast({
+          title: "Geoprocessamento Concluído",
+          description: stats.summary,
+        });
+      } catch (err: any) {
+        toast({
+          title: "Falha na Execução do Algoritmo",
+          description: err.message || "Ocorreu um erro no processamento das geometrias.",
           variant: "destructive",
         });
       } finally {
-        setIsProcessing(false);
+        setIsExecuting(false);
       }
-    }, 40);
-  }, [selectedTool, demGrid, hillshadeAzimuth, sarThresholdDb, bufferRadius, toast]);
+    }, 30);
+  }, [activeLayer, secondaryLayer, currentTool, selectedToolId, toolParams, layers, toast]);
 
-  // ── Execute Spatial SQL ──────────────────────────────────────────────────
+  // ── Run Spatial SQL on User Layer ─────────────────────────────────────────
   const handleExecuteSql = useCallback(() => {
-    try {
-      let targetFeatures: GeoJSON.Feature[] = MOZAMBIQUE_FACILITIES.features;
-      if (sqlDatasetId === "ds_roads_pmtiles") targetFeatures = MOZAMBIQUE_HIGHWAYS.features;
-      if (sqlDatasetId === "ds_conservation_pmtiles") targetFeatures = MOZAMBIQUE_CONSERVATION_AREAS.features;
-      if (sqlDatasetId === "ds_basins_geojson") targetFeatures = MOZAMBIQUE_BASINS.features;
+    if (!activeLayer) {
+      toast({
+        title: "Selecione uma Camada",
+        description: "Selecione a camada de entrada para consultar via SQL.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-      const res = executeSpatialQuery(targetFeatures, sqlQuery);
+    try {
+      const res = executeSpatialQuery(activeLayer.geojson.features, sqlQuery);
       setSqlResult(res);
+
+      if (res.features && res.features.length > 0) {
+        const sqlLayerId = `sql_result_${Date.now()}`;
+        const newLayer: UserLayer = {
+          id: sqlLayerId,
+          name: `SQL: ${activeLayer.name} (${res.rows.length})`,
+          geojson: { type: "FeatureCollection", features: res.features },
+          featureCount: res.features.length,
+          geometryType: res.features[0]?.geometry?.type || "Point",
+          fields: res.columns,
+          color: "#9333ea",
+          visible: true,
+          isResult: true,
+        };
+        setLayers((prev) => [newLayer, ...prev]);
+        setSelectedLayerId(sqlLayerId);
+      }
+
       toast({
         title: "Consulta SQL Executada",
-        description: `${res.rows.length} registos encontrados em ${res.executionTimeMs}ms (DuckDB-WASM compatível).`,
+        description: `${res.rows.length} registos retornados em ${res.executionTimeMs}ms.`,
       });
     } catch (err: any) {
       toast({
         title: "Erro na Consulta SQL",
-        description: err.message || "Sintaxe SQL inválida.",
+        description: err.message || "Erro de sintaxe SQL.",
         variant: "destructive",
       });
     }
-  }, [sqlDatasetId, sqlQuery, toast]);
+  }, [activeLayer, sqlQuery, toast]);
 
-  // ── Swipe divider drag handler ───────────────────────────────────────────
+  // ── Swipe Drag Handler ───────────────────────────────────────────────────
   const handleMouseDown = useCallback(() => {
     isDraggingRef.current = true;
     const onMouseMove = (e: MouseEvent) => {
@@ -262,67 +480,76 @@ export default function GeoProcessamento({
   }, []);
 
   // ── Export PDF Report ────────────────────────────────────────────────────
-  const exportReport = async () => {
+  const exportPdfReport = () => {
     const ctx = createPDFContext();
     drawCover(
       ctx,
-      "Dossiê de Geoprocessamento Client-Side & Formatos Cloud-Native",
-      `Módulo GeoProcessamento — ${province ?? "Moçambique"} · ${activeSubModule.toUpperCase()}`,
+      "Dossiê Técnico de Geoprocessamento Client-Side",
+      `Estudo Geoespacial Integrado — ${province ?? "Moçambique"} · Dados do Utilizador`,
       [
-        { label: "Província", value: province ?? "Nacional" },
-        { label: "Distrito", value: district ?? "Todos" },
-        { label: "Motor", value: "WebAssembly + DuckDB-WASM" },
-        { label: "Execução", value: "Cliente (In-Browser)" },
+        { label: "Área de Estudo", value: province ?? "Nacional / Personalizada" },
+        { label: "Camadas do Utilizador", value: `${layers.length}` },
+        { label: "Motor", value: "Turf.js & WebAssembly GIS" },
+        { label: "Privacidade", value: "Processado 100% no Cliente" },
       ]
     );
 
-    sectionTitle(ctx, "Resumo Executivo do Geoprocessamento");
+    sectionTitle(ctx, "Resumo das Operações de Geoprocessamento");
     ctx.doc.setFontSize(8.5);
     ctx.doc.setTextColor(71, 85, 105);
     ctx.doc.text(
-      "Este relatório consolida análises espaciais calculadas localmente na memória do navegador utilizando arquitetura",
+      "As operações espaciais foram executadas inteiramente na máquina local do utilizador através de algoritmos",
       MARGIN,
       ctx.y
     );
     ctx.y += 4;
     ctx.doc.text(
-      "inspirada no GeoLibre: algoritmos WebAssembly sem dependência de servidor e consultas espaciais ultrarrápidas.",
+      "topológicos de precisão geodésica, garantindo integridade de dados e conformidade sem dependência de servidores.",
       MARGIN,
       ctx.y
     );
     ctx.y += 8;
 
-    if (processingResult) {
-      sectionTitle(ctx, `Resultado: ${processingResult.toolName}`);
+    if (lastStats) {
+      sectionTitle(ctx, "Estatísticas da Última Operação");
       drawStatCards(ctx, [
-        { label: "Tempo de Execução", value: `${processingResult.stats.executionTimeMs} ms`, color: [14, 165, 233] },
-        { label: "Células / Feições", value: `${processingResult.stats.cellCount.toLocaleString("pt-PT")}`, color: [34, 197, 94] },
-        { label: "Área de Cobertura", value: `${processingResult.stats.areaKm2} km²`, color: [234, 88, 12] },
-        { label: "Valor Médio", value: `${processingResult.stats.mean}`, color: [168, 85, 247] },
+        { label: "Tempo de Execução", value: `${lastStats.executionTimeMs} ms`, color: [14, 165, 233] },
+        { label: "Feições de Entrada", value: `${lastStats.inputFeatureCount}`, color: [100, 116, 139] },
+        { label: "Feições Geradas", value: `${lastStats.outputFeatureCount}`, color: [34, 197, 94] },
+        { label: "Área Total", value: `${lastStats.totalAreaKm2 ?? "—"} km²`, color: [234, 88, 12] },
       ]);
     }
 
-    if (sqlResult) {
-      sectionTitle(ctx, "Resultados da Consulta SQL Espacial");
-      const headers = sqlResult.columns.slice(0, 4);
-      const rows = sqlResult.rows.slice(0, 8).map((r) => ({
-        cells: headers.map((h) => String(r[h] ?? "—")),
-      }));
+    if (layers.length > 0) {
+      sectionTitle(ctx, "Catálogo de Camadas do Projeto");
       drawTable(
         ctx,
-        headers,
-        rows,
-        headers.map(() => CONTENT_W / headers.length)
+        ["Nome da Camada", "Tipo", "Feições", "Origem"],
+        layers.map((l) => ({
+          cells: [l.name, l.geometryType, String(l.featureCount), l.isResult ? "Resultado de Análise" : "Carregado pelo Utilizador"],
+          color: l.color,
+        })),
+        [CONTENT_W * 0.4, CONTENT_W * 0.2, CONTENT_W * 0.15, CONTENT_W * 0.25]
       );
     }
 
     addPDFFooter(ctx);
-    ctx.doc.save(`GeoMoz_GeoProcessamento_${new Date().toISOString().slice(0, 10)}.pdf`);
-    toast({ title: "Relatório Exportado", description: "PDF gerado com sucesso." });
+    ctx.doc.save(`GeoMoz_Geoprocessamento_${new Date().toISOString().slice(0, 10)}.pdf`);
+    toast({ title: "Relatório Exportado", description: "PDF técnico gerado com sucesso." });
   };
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-slate-50 relative">
+    <div className="flex-1 flex overflow-hidden bg-slate-50 dark:bg-slate-950 relative">
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".geojson,.json,.csv,.kml"
+        className="hidden"
+        onChange={handleFileUpload}
+      />
+
       {/* Mobile backdrop */}
       {sidebarOpen && (
         <div
@@ -331,26 +558,26 @@ export default function GeoProcessamento({
         />
       )}
 
-      {/* ── Sidebar ──────────────────────────────────────────────────────── */}
+      {/* ── Sidebar: Tool & Layer Manager ─────────────────────────────────── */}
       <div
-        className={`fixed md:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
+        className={`fixed md:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-        } ${desktopSidebarOpen ? "md:w-80 overflow-y-auto" : "md:w-0 overflow-hidden md:border-r-0"}`}
+        } ${desktopSidebarOpen ? "md:w-84 overflow-y-auto" : "md:w-0 overflow-hidden md:border-r-0"}`}
       >
         {/* Header */}
         <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-sky-600 flex items-center justify-center shadow-xs shrink-0 text-white">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-sky-600 flex items-center justify-center shadow-xs text-white shrink-0">
               <Cpu size={16} />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
                 <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">GeoProcessamento</h2>
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
-                  WASM 100%
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                  Dados do Utilizador
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400">WhiteboxTools · PMTiles · Spatial SQL</p>
+              <p className="text-[10px] text-slate-400">Turf.js · WebAssembly · Spatial SQL</p>
             </div>
           </div>
           <button
@@ -362,287 +589,370 @@ export default function GeoProcessamento({
           </button>
         </div>
 
-        {/* 4 Main Sub-Module Tabs */}
-        <div className="p-2.5 border-b border-slate-100 dark:border-slate-800">
-          <div className="grid grid-cols-2 gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl">
+        {/* Sub-tab navigation */}
+        <div className="p-2 border-b border-slate-100 dark:border-slate-800">
+          <div className="grid grid-cols-4 gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-[11px] font-medium">
             <button
-              onClick={() => setActiveSubModule("wasm_processing")}
-              className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-medium transition-all ${
-                activeSubModule === "wasm_processing"
-                  ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs"
+              onClick={() => setActiveSubTab("tools")}
+              className={`py-1.5 rounded-lg transition-all ${
+                activeSubTab === "tools"
+                  ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs"
                   : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
               }`}
             >
-              <Cpu size={12} />
-              <span>WASM GIS</span>
+              Ferramentas
             </button>
             <button
-              onClick={() => setActiveSubModule("swipe_compare")}
-              className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-medium transition-all ${
-                activeSubModule === "swipe_compare"
-                  ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs"
+              onClick={() => setActiveSubTab("layers")}
+              className={`py-1.5 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                activeSubTab === "layers"
+                  ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs"
                   : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
               }`}
             >
-              <Columns2 size={12} />
-              <span>Cortina Swipe</span>
+              Camadas ({layers.length})
             </button>
             <button
-              onClick={() => setActiveSubModule("cloud_native")}
-              className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-medium transition-all ${
-                activeSubModule === "cloud_native"
-                  ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs"
+              onClick={() => setActiveSubTab("swipe")}
+              className={`py-1.5 rounded-lg transition-all ${
+                activeSubTab === "swipe"
+                  ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs"
                   : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
               }`}
             >
-              <Layers size={12} />
-              <span>PMTiles / COG</span>
+              Cortina
             </button>
             <button
-              onClick={() => setActiveSubModule("spatial_sql")}
-              className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-medium transition-all ${
-                activeSubModule === "spatial_sql"
-                  ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs"
+              onClick={() => setActiveSubTab("sql")}
+              className={`py-1.5 rounded-lg transition-all ${
+                activeSubTab === "sql"
+                  ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs"
                   : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
               }`}
             >
-              <Database size={12} />
-              <span>Spatial SQL</span>
+              Spatial SQL
             </button>
           </div>
         </div>
 
-        {/* ── Sub-Module 1: WASM & Análise Local ─────────────────────────── */}
-        {activeSubModule === "wasm_processing" && (
+        {/* ── Tab 1: Geoprocessing Tools ──────────────────────────────────── */}
+        {activeSubTab === "tools" && (
           <div className="p-3 space-y-3.5 flex-1">
-            <div className="bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 rounded-xl p-2.5 text-[11px] text-indigo-900 dark:text-indigo-300 flex items-start gap-2">
-              <Info size={13} className="shrink-0 text-indigo-500 mt-0.5" />
-              <span>
-                Processamento raster e vetorial executado <strong>100% na memória do navegador</strong> via WebAssembly, sem servidor e com dados preservados localmente.
-              </span>
-            </div>
-
-            <div>
-              <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">
-                Ferramenta de Geoprocessamento
-              </label>
-              <select
-                value={selectedTool}
-                onChange={(e) => setSelectedTool(e.target.value)}
-                className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
-              >
-                <optgroup label="Hidrologia & Relevo">
-                  <option value="hydro_d8">Acumulação de Fluxo & Talvegue (D8)</option>
-                  <option value="hydro_twi">Índice Topográfico de Humidade (TWI)</option>
-                  <option value="terrain_slope">Declive Topográfico (Graus)</option>
-                  <option value="terrain_aspect">Orientação de Encostas (Aspect)</option>
-                  <option value="terrain_hillshade">Sombreamento Analítico (Hillshade)</option>
-                </optgroup>
-                <optgroup label="Sensoriamento Remoto & Radar">
-                  <option value="spectral_sar">Segmentação de Água por Radar SAR (-16 dB)</option>
-                </optgroup>
-                <optgroup label="Análise Vetorial">
-                  <option value="vector_buffer">Buffer Geodésico em Pontos Críticos</option>
-                  <option value="vector_hull">Envelope Convexo (Convex Hull)</option>
-                </optgroup>
-              </select>
-            </div>
-
-            {/* Dynamic tool parameters */}
-            {selectedTool === "vector_buffer" && (
-              <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1.5">
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-600 dark:text-slate-300">Raio do Buffer:</span>
-                  <span className="font-semibold text-indigo-600 dark:text-indigo-400">{bufferRadius / 1000} km</span>
+            {/* Upload prompt if no layers */}
+            {layers.length === 0 ? (
+              <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl p-5 text-center space-y-3 bg-slate-50/50 dark:bg-slate-800/20">
+                <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 mx-auto flex items-center justify-center">
+                  <Upload size={18} />
                 </div>
-                <input
-                  type="range"
-                  min={500}
-                  max={10000}
-                  step={500}
-                  value={bufferRadius}
-                  onChange={(e) => setBufferRadius(+e.target.value)}
-                  className="w-full accent-indigo-600"
-                />
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Carregue os Seus Ficheiros Geoespaciais
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    Suporta GeoJSON (.geojson), CSV com coordenadas lat/lon, ou KML (.kml).
+                  </p>
+                </div>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                >
+                  Selecionar Ficheiro Local
+                </button>
               </div>
-            )}
-
-            {selectedTool === "spectral_sar" && (
-              <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1.5">
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-600 dark:text-slate-300">Limiar Retroespalhamento:</span>
-                  <span className="font-semibold text-indigo-600 dark:text-indigo-400">{sarThresholdDb} dB</span>
-                </div>
-                <input
-                  type="range"
-                  min={-24}
-                  max={-10}
-                  step={1}
-                  value={sarThresholdDb}
-                  onChange={(e) => setSarThresholdDb(+e.target.value)}
-                  className="w-full accent-indigo-600"
-                />
-              </div>
-            )}
-
-            {selectedTool === "terrain_hillshade" && (
-              <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1.5">
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-600 dark:text-slate-300">Azimute Solar:</span>
-                  <span className="font-semibold text-indigo-600 dark:text-indigo-400">{hillshadeAzimuth}°</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={360}
-                  step={15}
-                  value={hillshadeAzimuth}
-                  onChange={(e) => setHillshadeAzimuth(+e.target.value)}
-                  className="w-full accent-indigo-600"
-                />
-              </div>
-            )}
-
-            <button
-              onClick={runWasmTool}
-              disabled={isProcessing}
-              className="w-full py-2.5 px-3 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer disabled:opacity-50"
-            >
-              {isProcessing ? (
-                <>
-                  <RefreshCw size={14} className="animate-spin" />
-                  <span>A processar no cliente...</span>
-                </>
-              ) : (
-                <>
-                  <Play size={14} />
-                  <span>Executar Algoritmo WASM</span>
-                </>
-              )}
-            </button>
-
-            {/* Results card */}
-            {processingResult && (
-              <div className="bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    {processingResult.toolName}
-                  </span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-semibold">
-                    {processingResult.stats.executionTimeMs} ms
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                  {processingResult.stats.summary}
-                </p>
-                <div className="grid grid-cols-2 gap-1.5 pt-1 text-[10px]">
-                  <div className="bg-white dark:bg-slate-900 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                    <span className="text-slate-400 block">Área Coberta</span>
-                    <span className="font-semibold text-slate-700 dark:text-slate-200">
-                      {processingResult.stats.areaKm2} km²
-                    </span>
+            ) : (
+              <div className="space-y-3">
+                {/* Layer Selector */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                      Camada de Entrada (Input Layer)
+                    </label>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+                    >
+                      <Plus size={10} /> Adicionar Ficheiro
+                    </button>
                   </div>
-                  <div className="bg-white dark:bg-slate-900 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                    <span className="text-slate-400 block">Células / Pontos</span>
-                    <span className="font-semibold text-slate-700 dark:text-slate-200">
-                      {processingResult.stats.cellCount.toLocaleString("pt-PT")}
-                    </span>
-                  </div>
-                </div>
-                {processingResult.vector && (
-                  <button
-                    onClick={() => exportToGeoJson(processingResult.vector!.features, `${processingResult.toolId}.geojson`)}
-                    className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-700 dark:text-slate-200 text-[11px] font-medium rounded-lg transition-colors cursor-pointer"
+                  <select
+                    value={selectedLayerId}
+                    onChange={(e) => setSelectedLayerId(e.target.value)}
+                    className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
                   >
-                    <Download size={12} /> Descarregar GeoJSON Gerado
-                  </button>
+                    {layers.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.name} ({l.featureCount} {l.geometryType})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Secondary Layer Selector (for Overlay tools) */}
+                {currentTool.requiresSecondLayer && (
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                      Camada de Corte / Máscara (Overlay Layer)
+                    </label>
+                    <select
+                      value={secondLayerId}
+                      onChange={(e) => setSecondLayerId(e.target.value)}
+                      className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    >
+                      <option value="">Selecione a segunda camada...</option>
+                      {layers
+                        .filter((l) => l.id !== selectedLayerId)
+                        .map((l) => (
+                          <option key={l.id} value={l.id}>
+                            {l.name} ({l.featureCount} {l.geometryType})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Tool Selector */}
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                    Ferramenta de Análise
+                  </label>
+                  <select
+                    value={selectedToolId}
+                    onChange={(e) => setSelectedToolId(e.target.value)}
+                    className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                  >
+                    <optgroup label="Geometria Vetorial">
+                      <option value="vector_buffer">Buffer (Zona de Amortecimento)</option>
+                      <option value="vector_centroids">Calcular Centróides</option>
+                      <option value="vector_convexhull">Envelope Convexo (Convex Hull)</option>
+                      <option value="vector_bbox">Caixa Envolvente (Bounding Box)</option>
+                      <option value="vector_dissolve">Dissolver Polígonos</option>
+                      <option value="vector_simplify">Simplificar Geometria</option>
+                      <option value="vector_explode">Extrair Vértices Individuais</option>
+                    </optgroup>
+                    <optgroup label="Sobreposição & Operações Espaciais">
+                      <option value="vector_intersect">Interseção Espacial (Clip / Intersect)</option>
+                      <option value="vector_points_in_poly">Pontos em Polígonos</option>
+                    </optgroup>
+                    <optgroup label="Atributos & Métricas">
+                      <option value="vector_calc_metrics">Calcular Área & Perímetro Geodésico</option>
+                    </optgroup>
+                  </select>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                    {currentTool.description}
+                  </p>
+                </div>
+
+                {/* Tool Parameters */}
+                {currentTool.parameters.length > 0 && (
+                  <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider block">
+                      Parâmetros da Operação
+                    </span>
+                    {currentTool.parameters.map((p) => (
+                      <div key={p.name} className="space-y-1">
+                        <div className="flex justify-between text-xs text-slate-700 dark:text-slate-300">
+                          <span>{p.label}</span>
+                          {p.type === "number" && (
+                            <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                              {toolParams[p.name] ?? p.default}
+                            </span>
+                          )}
+                        </div>
+                        {p.type === "number" && (
+                          <input
+                            type="range"
+                            min={p.min ?? 0}
+                            max={p.max ?? 100}
+                            step={p.step ?? 1}
+                            value={toolParams[p.name] ?? p.default}
+                            onChange={(e) => setToolParams((prev) => ({ ...prev, [p.name]: +e.target.value }))}
+                            className="w-full accent-indigo-600"
+                          />
+                        )}
+                        {p.type === "select" && (
+                          <select
+                            value={toolParams[p.name] ?? p.default}
+                            onChange={(e) => setToolParams((prev) => ({ ...prev, [p.name]: e.target.value }))}
+                            className="w-full text-xs bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg p-1.5"
+                          >
+                            {p.options?.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {p.type === "boolean" && (
+                          <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={toolParams[p.name] ?? p.default}
+                              onChange={(e) => setToolParams((prev) => ({ ...prev, [p.name]: e.target.checked }))}
+                              className="accent-indigo-600 rounded"
+                            />
+                            <span>Ativar</span>
+                          </label>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Run Button */}
+                <button
+                  onClick={handleRunTool}
+                  disabled={isExecuting || !activeLayer}
+                  className="w-full py-2.5 px-3 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isExecuting ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      <span>A processar geometrias...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play size={14} />
+                      <span>Executar {currentTool.name}</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Execution Stats Card */}
+                {lastStats && (
+                  <div className="bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-xl p-3 text-[11px] space-y-1.5">
+                    <div className="flex items-center justify-between font-bold text-emerald-900 dark:text-emerald-200">
+                      <span className="flex items-center gap-1.5">
+                        <CheckCircle2 size={13} className="text-emerald-600" />
+                        <span>Resultado Gerado com Sucesso</span>
+                      </span>
+                      <span>{lastStats.executionTimeMs} ms</span>
+                    </div>
+                    <p className="text-emerald-800 dark:text-emerald-300 leading-relaxed">{lastStats.summary}</p>
+                    <div className="grid grid-cols-2 gap-1.5 pt-1 text-[10px]">
+                      <div className="bg-white dark:bg-slate-900 p-1.5 rounded-lg border border-emerald-100 dark:border-emerald-900/50">
+                        <span className="text-slate-400 block">Feições Criadas</span>
+                        <span className="font-bold text-slate-700 dark:text-slate-200">
+                          {lastStats.outputFeatureCount}
+                        </span>
+                      </div>
+                      <div className="bg-white dark:bg-slate-900 p-1.5 rounded-lg border border-emerald-100 dark:border-emerald-900/50">
+                        <span className="text-slate-400 block">Tipo Geométrico</span>
+                        <span className="font-bold text-slate-700 dark:text-slate-200">{lastStats.geometryType}</span>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
           </div>
         )}
 
-        {/* ── Sub-Module 2: Cortina Temporal & Swipe ─────────────────────── */}
-        {activeSubModule === "swipe_compare" && (
-          <div className="p-3 space-y-3.5 flex-1">
+        {/* ── Tab 2: User Layers Manager ─────────────────────────────────── */}
+        {activeSubTab === "layers" && (
+          <div className="p-3 space-y-3 flex-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                Camadas no Projeto ({layers.length})
+              </span>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="py-1 px-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <Upload size={11} /> Importar Ficheiro
+              </button>
+            </div>
+
+            {layers.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-400 border border-slate-200 dark:border-slate-800 rounded-xl">
+                Nenhuma camada carregada ainda.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {layers.map((l) => (
+                  <div
+                    key={l.id}
+                    className={`p-2.5 rounded-xl border transition-all ${
+                      selectedLayerId === l.id
+                        ? "bg-indigo-50/40 dark:bg-indigo-950/20 border-indigo-300 dark:border-indigo-700 shadow-xs"
+                        : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-3 h-3 rounded-full shrink-0" style={{ background: l.color }} />
+                        <span
+                          onClick={() => setSelectedLayerId(l.id)}
+                          className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate cursor-pointer hover:text-indigo-600"
+                        >
+                          {l.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() =>
+                            setLayers((prev) =>
+                              prev.map((item) => (item.id === l.id ? { ...item, visible: !item.visible } : item))
+                            )
+                          }
+                          className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+                          title={l.visible ? "Ocultar camada" : "Mostrar camada"}
+                        >
+                          {l.visible ? <Eye size={13} /> : <EyeOff size={13} />}
+                        </button>
+                        <button
+                          onClick={() => setTableLayerId(l.id)}
+                          className="p-1 text-slate-400 hover:text-indigo-600 cursor-pointer"
+                          title="Ver tabela de atributos"
+                        >
+                          <Table size={13} />
+                        </button>
+                        <button
+                          onClick={() => exportToGeoJson(l.geojson.features, `${l.name}.geojson`)}
+                          className="p-1 text-slate-400 hover:text-emerald-600 cursor-pointer"
+                          title="Exportar GeoJSON"
+                        >
+                          <Download size={13} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setLayers((prev) => prev.filter((item) => item.id !== l.id));
+                            if (selectedLayerId === l.id) setSelectedLayerId(layers[0]?.id || "");
+                          }}
+                          className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"
+                          title="Remover camada"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                      <span>{l.featureCount} elementos</span>
+                      <span>·</span>
+                      <span>{l.geometryType}</span>
+                      {l.isResult && (
+                        <span className="px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-600 font-semibold">
+                          Resultado
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Tab 3: Cortina Swipe ────────────────────────────────────────── */}
+        {activeSubTab === "swipe" && (
+          <div className="p-3 space-y-3 flex-1">
             <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/40 rounded-xl p-2.5 text-[11px] text-sky-900 dark:text-sky-300 flex items-start gap-2">
               <Columns2 size={13} className="shrink-0 text-sky-500 mt-0.5" />
               <span>
-                Divisão de ecrã sincronizada para comparar imagens de satélite antes e depois de ciclones, cheias ou expansão territorial.
+                Compare camadas do utilizador ou imagens de satélite antes e depois de intervenções territoriais.
               </span>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                Presets de Mudança Histórica (MZ)
-              </label>
-              <div className="grid grid-cols-1 gap-1.5">
-                {[
-                  {
-                    title: "Ciclone Idai (Beira / Búzi)",
-                    desc: "Pré-evento Ótico vs. Radar SAR Cheia",
-                    left: "satellite",
-                    right: "sar_flood",
-                  },
-                  {
-                    title: "Ciclone Freddy (Quelimane)",
-                    desc: "Saturação de Solo vs. Inundação",
-                    left: "satellite",
-                    right: "hydro_twi",
-                  },
-                  {
-                    title: "Erosão & Topografia",
-                    desc: "Modelo MDE vs. Risco RUSLE",
-                    left: "terrain",
-                    right: "rusle",
-                  },
-                ].map((p, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      setLeftLayer(p.left);
-                      setRightLayer(p.right);
-                      setSwipePercent(50);
-                    }}
-                    className="p-2 text-left bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 rounded-xl transition-all cursor-pointer group"
-                  >
-                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
-                      {p.title}
-                    </div>
-                    <div className="text-[10px] text-slate-400">{p.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <div>
-                <label className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">Camada Esquerda</label>
-                <select
-                  value={leftLayer}
-                  onChange={(e) => setLeftLayer(e.target.value)}
-                  className="w-full text-[11px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5"
-                >
-                  <option value="satellite">Satélite Google</option>
-                  <option value="terrain">Relevo Topográfico</option>
-                  <option value="roadmap">Mapa Rodoviário</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">Camada Direita</label>
-                <select
-                  value={rightLayer}
-                  onChange={(e) => setRightLayer(e.target.value)}
-                  className="w-full text-[11px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5"
-                >
-                  <option value="sar_flood">Radar SAR Cheia</option>
-                  <option value="hydro_twi">Humidade TWI</option>
-                  <option value="rusle">Erosão RUSLE</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1.5">
+            <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
               <div className="flex justify-between text-xs">
                 <span className="text-slate-600 dark:text-slate-300">Posição da Cortina:</span>
                 <span className="font-semibold text-sky-600 dark:text-sky-400">{swipePercent}%</span>
@@ -670,92 +980,28 @@ export default function GeoProcessamento({
           </div>
         )}
 
-        {/* ── Sub-Module 3: Formatos Cloud-Native ─────────────────────────── */}
-        {activeSubModule === "cloud_native" && (
-          <div className="p-3 space-y-3 flex-1">
-            <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40 rounded-xl p-2.5 text-[11px] text-emerald-900 dark:text-emerald-300 flex items-start gap-2">
-              <Layers size={13} className="shrink-0 text-emerald-500 mt-0.5" />
-              <span>
-                Streaming direto de pirâmides vetoriais e rasters (PMTiles, COG, GeoParquet) via requisições HTTP Range, sem renderizador no servidor.
-              </span>
-            </div>
-
-            <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-              Catálogo de Dados Abertos (MZ)
-            </label>
-
-            <div className="space-y-2">
-              {CLOUD_NATIVE_CATALOG.map((ds) => {
-                const isActive = activeCatalogLayers[ds.id];
-                return (
-                  <div
-                    key={ds.id}
-                    className={`p-2.5 rounded-xl border transition-all ${
-                      isActive
-                        ? "bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800"
-                        : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">{ds.title}</span>
-                      <button
-                        onClick={() =>
-                          setActiveCatalogLayers((prev) => ({ ...prev, [ds.id]: !prev[ds.id] }))
-                        }
-                        className={`p-1 rounded-lg transition-colors cursor-pointer ${
-                          isActive
-                            ? "bg-emerald-600 text-white"
-                            : "bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-slate-800"
-                        }`}
-                        title={isActive ? "Ocultar camada" : "Visualizar camada no mapa"}
-                      >
-                        {isActive ? <Eye size={12} /> : <EyeOff size={12} />}
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-2 mb-1.5">
-                      {ds.description}
-                    </p>
-                    <div className="flex items-center gap-2 text-[9px] text-slate-400 font-mono">
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 font-bold text-slate-600 dark:text-slate-300">
-                        {ds.format}
-                      </span>
-                      <span>{ds.sizeMb} MB</span>
-                      <span>{ds.featureCount} elementos</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* ── Sub-Module 4: Spatial SQL Engine ───────────────────────────── */}
-        {activeSubModule === "spatial_sql" && (
+        {/* ── Tab 4: Spatial SQL Engine ───────────────────────────────────── */}
+        {activeSubTab === "sql" && (
           <div className="p-3 space-y-3 flex-1">
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40 rounded-xl p-2.5 text-[11px] text-amber-900 dark:text-amber-300 flex items-start gap-2">
               <Database size={13} className="shrink-0 text-amber-500 mt-0.5" />
               <span>
-                Motor DuckDB-WASM Spatial no cliente. Execute consultas SQL com filtros geométricos e agrupamentos espaciais em milissegundos.
+                Execute consultas SQL com filtros espaciais diretamente sobre qualquer camada carregada pelo utilizador.
               </span>
             </div>
 
             <div>
               <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                Consultas Pré-Configuradas
+                Camada Alvo
               </label>
               <select
-                onChange={(e) => {
-                  const q = PREDEFINED_SQL_QUERIES.find((item) => item.id === e.target.value);
-                  if (q) {
-                    setSqlQuery(q.sql);
-                    setSqlDatasetId(q.datasetId);
-                  }
-                }}
-                className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium"
+                value={selectedLayerId}
+                onChange={(e) => setSelectedLayerId(e.target.value)}
+                className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium"
               >
-                {PREDEFINED_SQL_QUERIES.map((q) => (
-                  <option key={q.id} value={q.id}>
-                    {q.title}
+                {layers.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
                   </option>
                 ))}
               </select>
@@ -763,7 +1009,7 @@ export default function GeoProcessamento({
 
             <div>
               <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                Editor SQL Espacial
+                Consulta SQL
               </label>
               <textarea
                 value={sqlQuery}
@@ -813,22 +1059,12 @@ export default function GeoProcessamento({
                     </tbody>
                   </table>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => exportToCsv(sqlResult.rows, "consulta_espacial.csv")}
-                    className="flex-1 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-medium transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                  >
-                    <Download size={11} /> Exportar CSV
-                  </button>
-                  {sqlResult.features && sqlResult.features.length > 0 && (
-                    <button
-                      onClick={() => exportToGeoJson(sqlResult.features!, "consulta_espacial.geojson")}
-                      className="flex-1 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-medium transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                    >
-                      <Download size={11} /> Exportar GeoJSON
-                    </button>
-                  )}
-                </div>
+                <button
+                  onClick={() => exportToCsv(sqlResult.rows, "resultado_sql.csv")}
+                  className="w-full py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-medium transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <Download size={11} /> Exportar CSV
+                </button>
               </div>
             )}
           </div>
@@ -837,7 +1073,7 @@ export default function GeoProcessamento({
         {/* Footer: Export PDF */}
         <div className="p-3 border-t border-slate-100 dark:border-slate-800">
           <button
-            onClick={exportReport}
+            onClick={exportPdfReport}
             className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl transition-colors shadow-xs cursor-pointer"
           >
             <FileDown size={14} />
@@ -846,19 +1082,19 @@ export default function GeoProcessamento({
         </div>
       </div>
 
-      {/* Desktop collapse toggle button */}
+      {/* Desktop collapse toggle */}
       <button
         type="button"
         onClick={() => setDesktopSidebarOpen((v) => !v)}
-        style={{ left: desktopSidebarOpen ? "20rem" : "0px" }}
+        style={{ left: desktopSidebarOpen ? "21rem" : "0px" }}
         title={desktopSidebarOpen ? "Recolher painel" : "Expandir painel"}
         className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-l-0 border-slate-200 dark:border-slate-700 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
       >
         {desktopSidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
       </button>
 
-      {/* ── Main Map View ─────────────────────────────────────────────────── */}
-      <div className="flex-1 relative" ref={mapContainerRef}>
+      {/* ── Map Canvas ────────────────────────────────────────────────────── */}
+      <div className="flex-1 relative flex flex-col" ref={mapContainerRef}>
         {/* Mobile floating sidebar toggle */}
         <button
           type="button"
@@ -900,103 +1136,52 @@ export default function GeoProcessamento({
             accent="#4f46e5"
           />
 
-          {/* 1. Render WASM Hydrology Streams or Vectors */}
-          {activeSubModule === "wasm_processing" && processingResult?.vector && (
-            <GeoJSON
-              key={`wasm-vec-${processingResult.toolId}-${processingResult.stats.cellCount}`}
-              data={processingResult.vector}
-              style={() => ({
-                color: processingResult.colorRamp.maxColor,
-                weight: 2.5,
-                opacity: 0.85,
-                fillColor: processingResult.colorRamp.minColor,
-                fillOpacity: 0.35,
-              })}
-            />
-          )}
+          {/* Auto-zoom to active layer */}
+          {activeLayer && <FitToLayer fc={activeLayer.geojson} />}
 
-          {/* 2. Render Active Cloud-Native Catalog Layers */}
-          {activeCatalogLayers.ds_roads_pmtiles && (
-            <GeoJSON
-              key="catalog-roads"
-              data={MOZAMBIQUE_HIGHWAYS}
-              style={(f) => ({
-                color: f?.properties?.tipo === "Autoestrada" ? "#f97316" : "#2563eb",
-                weight: 3.5,
-                opacity: 0.9,
-              })}
-              onEachFeature={(f, layer) => {
-                layer.bindPopup(
-                  `<strong>${f.properties.codigo}</strong><br/>${f.properties.nome}<br/>Trecho: ${f.properties.troco}`
-                );
-              }}
-            />
-          )}
-
-          {activeCatalogLayers.ds_conservation_pmtiles && (
-            <GeoJSON
-              key="catalog-conservation"
-              data={MOZAMBIQUE_CONSERVATION_AREAS}
-              style={() => ({
-                color: "#16a34a",
-                weight: 2,
-                fillColor: "#22c55e",
-                fillOpacity: 0.25,
-              })}
-              onEachFeature={(f, layer) => {
-                layer.bindPopup(
-                  `<strong>${f.properties.nome}</strong><br/>Categoria: ${f.properties.categoria}<br/>Área: ${f.properties.area_km2} km²`
-                );
-              }}
-            />
-          )}
-
-          {activeCatalogLayers.ds_basins_geojson && (
-            <GeoJSON
-              key="catalog-basins"
-              data={MOZAMBIQUE_BASINS}
-              style={() => ({
-                color: "#0284c7",
-                weight: 2,
-                fillColor: "#38bdf8",
-                fillOpacity: 0.2,
-                dashArray: "4 4",
-              })}
-              onEachFeature={(f, layer) => {
-                layer.bindPopup(
-                  `<strong>${f.properties.nome}</strong><br/>Jurisdição: ${f.properties.ara}<br/>Vazão: ${f.properties.vazao_media_m3s} m³/s`
-                );
-              }}
-            />
-          )}
-
-          {/* Render Facilities Points */}
-          {activeCatalogLayers.ds_facilities_parquet &&
-            MOZAMBIQUE_FACILITIES.features.map((f, i) => {
-              const coords = f.geometry.coordinates as [number, number];
-              const isHighRisk = f.properties?.risco_cheia === "Alto" || f.properties?.risco_cheia === "Crítico";
-              return (
-                <Marker
-                  key={`fac-${i}`}
-                  position={[coords[1], coords[0]]}
-                  icon={isHighRisk ? highRiskIcon : facilityIcon}
-                >
-                  <Popup>
-                    <div className="text-xs space-y-1">
-                      <div className="font-bold text-slate-800">{f.properties?.nome}</div>
-                      <div>Tipo: {f.properties?.tipo}</div>
-                      <div>Província: {f.properties?.provincia} ({f.properties?.distrito})</div>
-                      <div>
-                        Risco de Cheia:{" "}
-                        <span className={isHighRisk ? "text-red-600 font-bold" : "text-emerald-600"}>
-                          {f.properties?.risco_cheia}
-                        </span>
+          {/* Render User Layers */}
+          {layers.map(
+            (layer) =>
+              layer.visible && (
+                <LeafletGeoJSON
+                  key={`${layer.id}_${layer.featureCount}`}
+                  data={layer.geojson}
+                  style={() => ({
+                    color: layer.color,
+                    weight: 2.5,
+                    opacity: 0.9,
+                    fillColor: layer.color,
+                    fillOpacity: 0.35,
+                  })}
+                  pointToLayer={(feature, latlng) =>
+                    L.circleMarker(latlng, {
+                      radius: 6,
+                      fillColor: layer.color,
+                      color: "#ffffff",
+                      weight: 1.5,
+                      opacity: 1,
+                      fillOpacity: 0.85,
+                    })
+                  }
+                  onEachFeature={(feature, leafletLayer) => {
+                    const props = feature.properties || {};
+                    const entries = Object.entries(props).filter(([k]) => !k.startsWith("_"));
+                    const html = `
+                    <div style="font-size: 11px; max-width: 240px; font-family: sans-serif;">
+                      <div style="font-weight: bold; color: ${layer.color}; margin-bottom: 4px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">
+                        ${layer.name}
                       </div>
+                      ${entries
+                        .slice(0, 6)
+                        .map(([k, v]) => `<div><strong>${k}:</strong> ${v}</div>`)
+                        .join("")}
                     </div>
-                  </Popup>
-                </Marker>
-              );
-            })}
+                  `;
+                    leafletLayer.bindPopup(html);
+                  }}
+                />
+              )
+          )}
 
           <MapTools />
           <MapDraw
@@ -1012,7 +1197,7 @@ export default function GeoProcessamento({
         </MapContainer>
 
         {/* ── Swipe Vertical Divider ──────────────────────────────────────── */}
-        {activeSubModule === "swipe_compare" && (
+        {activeSubTab === "swipe" && (
           <div
             className="absolute top-0 bottom-0 z-[600] w-1 bg-white cursor-ew-resize select-none pointer-events-auto shadow-2xl flex items-center justify-center"
             style={{ left: `${swipePercent}%` }}
@@ -1020,13 +1205,6 @@ export default function GeoProcessamento({
           >
             <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-900 border-2 border-indigo-600 shadow-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 cursor-ew-resize">
               <Columns2 size={16} />
-            </div>
-            {/* Left / Right floating labels */}
-            <div className="absolute top-4 -left-32 px-2.5 py-1 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-lg shadow-md border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-              {leftLayer} (Antes)
-            </div>
-            <div className="absolute top-4 left-4 px-2.5 py-1 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-lg shadow-md border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-              {rightLayer} (Depois)
             </div>
           </div>
         )}
@@ -1038,24 +1216,53 @@ export default function GeoProcessamento({
           position="bottom-left"
         />
 
-        {/* Tool Legend HUD */}
-        {activeSubModule === "wasm_processing" && processingResult && (
-          <div className="absolute bottom-6 right-4 z-[600] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 p-2.5 text-xs max-w-xs">
-            <div className="font-semibold text-slate-800 dark:text-slate-200 mb-1">
-              {processingResult.toolName}
+        {/* ── Attribute Table Drawer ──────────────────────────────────────── */}
+        {tableLayerId && (
+          <div className="absolute bottom-0 left-0 right-0 z-[650] max-h-60 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col">
+            <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Table size={14} className="text-indigo-600" />
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  Tabela de Atributos — {layers.find((l) => l.id === tableLayerId)?.name}
+                </span>
+              </div>
+              <button
+                onClick={() => setTableLayerId(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X size={15} />
+              </button>
             </div>
-            <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
-              <span
-                className="w-3 h-3 rounded"
-                style={{ background: processingResult.colorRamp.minColor }}
-              />
-              <span>{processingResult.colorRamp.labels[0]}</span>
-              <span className="mx-1">→</span>
-              <span
-                className="w-3 h-3 rounded"
-                style={{ background: processingResult.colorRamp.maxColor }}
-              />
-              <span>{processingResult.colorRamp.labels[processingResult.colorRamp.labels.length - 1]}</span>
+            <div className="flex-1 overflow-auto p-2">
+              {(() => {
+                const layer = layers.find((l) => l.id === tableLayerId);
+                if (!layer || layer.geojson.features.length === 0) return null;
+                const fields = layer.fields;
+                return (
+                  <table className="w-full text-left text-[11px]">
+                    <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 sticky top-0">
+                      <tr>
+                        {fields.map((f) => (
+                          <th key={f} className="p-1.5 font-semibold">
+                            {f}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {layer.geojson.features.slice(0, 100).map((feat, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                          {fields.map((f) => (
+                            <td key={f} className="p-1.5 text-slate-700 dark:text-slate-300">
+                              {String(feat.properties?.[f] ?? "—")}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                );
+              })()}
             </div>
           </div>
         )}

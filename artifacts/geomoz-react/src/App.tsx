@@ -58,19 +58,39 @@ const queryClient = new QueryClient({
 });
 
 function ErrorFallback({ error, resetErrorBoundary }: any) {
+  const isChunkError =
+    error?.message?.includes("dynamically imported module") ||
+    error?.message?.includes("Loading chunk") ||
+    error?.message?.includes("Importing a module script failed");
+
   return (
     <div className="flex h-screen w-screen flex-col items-center justify-center bg-gray-50 dark:bg-slate-950 p-4 text-center">
       <div className="rounded-lg bg-white dark:bg-slate-900 p-8 shadow-xl max-w-md border border-red-100 dark:border-red-900/50">
-        <h2 className="text-xl font-bold text-red-600 mb-4">Ups, algo correu mal!</h2>
-        <p className="text-gray-600 dark:text-slate-400 mb-4 text-sm">Ocorreu um erro na interface do mapa.</p>
+        <h2 className="text-xl font-bold text-sky-600 dark:text-sky-400 mb-2">
+          {isChunkError ? "Nova Versão Disponível" : "Ups, algo correu mal!"}
+        </h2>
+        <p className="text-gray-600 dark:text-slate-400 mb-4 text-sm">
+          {isChunkError
+            ? "Uma nova versão dos módulos foi publicada. Recarregue a página para carregar os ficheiros mais recentes."
+            : "Ocorreu um erro na interface do mapa."}
+        </p>
         <div className="bg-gray-100 dark:bg-slate-800 p-3 rounded text-left text-xs text-gray-800 dark:text-slate-300 mb-6 overflow-auto max-h-32 font-mono">
           {error.message}
         </div>
         <button
-          onClick={resetErrorBoundary}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition-colors"
+          onClick={() => {
+            if (isChunkError && typeof window !== "undefined") {
+              if ("caches" in window) {
+                caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))));
+              }
+              window.location.reload();
+            } else {
+              resetErrorBoundary();
+            }
+          }}
+          className="bg-sky-600 hover:bg-sky-700 text-white font-medium py-2 px-5 rounded-xl transition-colors text-xs font-semibold cursor-pointer shadow-md"
         >
-          Tentar novamente
+          {isChunkError ? "Recarregar Atualização" : "Tentar novamente"}
         </button>
       </div>
     </div>
