@@ -118,17 +118,6 @@ const MODULE_LAUNCHERS: ModuleLauncher[] = [
     tag: "Sentinel-1 SAR",
   },
   {
-    id: "geoprocessamento",
-    tab: "GeoProcessamento",
-    title: "GeoProcessamento WASM & Nuvem",
-    description: "Geoprocessamento in-browser, cortina temporal swipe, formatos PMTiles/COG e motor Spatial SQL.",
-    icon: <Cpu size={22} />,
-    colorClass: "text-indigo-500",
-    badgeBgClass: "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400",
-    accentBorder: "hover:border-indigo-500/40",
-    tag: "WASM & DuckDB",
-  },
-  {
     id: "geomoz_ai",
     tab: "GeoMoz AI",
     title: "GeoMoz AI Agent",

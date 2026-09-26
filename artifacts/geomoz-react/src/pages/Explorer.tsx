@@ -102,9 +102,6 @@ export default function Explorer() {
     if (path.includes("perigo") || hash.includes("perigo") || tabParam?.includes("perigo")) {
       return "Geoperigos";
     }
-    if (path.includes("process") || hash.includes("process") || tabParam?.includes("process")) {
-      return "GeoProcessamento";
-    }
     if (path.includes("ai") || hash.includes("ai") || tabParam?.includes("ai")) {
       return "GeoMoz AI";
     }
