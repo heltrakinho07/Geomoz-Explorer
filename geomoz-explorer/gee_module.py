@@ -3222,6 +3222,105 @@ def compute_erosion_rusle(region_geojson: Optional[dict], year: int = 2023) -> d
     }
 
 
+def compute_wildfire_firms(
+    region_geojson: Optional[dict],
+    start_date: str,
+    end_date: str,
+    min_confidence: int = 50,
+) -> dict:
+    """Active fire detection and thermal anomalies from NASA FIRMS (MODIS & VIIRS)."""
+    import ee
+    region = _to_ee_region(region_geojson)
+    max_px = int(1e10)
+
+    firms_col = (
+        ee.ImageCollection("FIRMS")
+        .filterBounds(region)
+        .filterDate(start_date, end_date)
+    )
+
+    # Filter by confidence threshold
+    filtered = firms_col.filter(ee.Filter.gte("confidence", min_confidence))
+
+    # Mosaic of maximum brightness temperature (band T21, in Kelvin)
+    t21_max = filtered.select("T21").max().clip(region)
+    conf_max = filtered.select("confidence").max().clip(region)
+
+    # Palette for thermal anomalies: Yellow -> Orange -> Red -> Dark Red
+    palette = ["fff000", "ff8000", "ff0000", "7a0000"]
+    tile = t21_max.visualize(
+        min=305, max=390,
+        palette=palette,
+        opacity=0.88
+    ).getMapId()["tile_fetcher"].url_format
+
+    dyn_scale = max(_compute_dynamic_scale(region), 375)
+    hotspot_count = 0
+    t21_mean_c = None
+    hotspot_points = []
+
+    try:
+        count_img = filtered.select("confidence").count().clip(region)
+        cnt = count_img.reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=region,
+            scale=dyn_scale,
+            bestEffort=True,
+            maxPixels=max_px,
+        ).get("confidence").getInfo()
+        if cnt is not None:
+            hotspot_count = int(cnt)
+    except Exception as exc:
+        logger.warning("Could not compute hotspot count: %s", exc)
+
+    try:
+        t_val = t21_max.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region,
+            scale=dyn_scale,
+            bestEffort=True,
+            maxPixels=max_px,
+        ).get("T21").getInfo()
+        if t_val is not None:
+            t21_mean_c = round(float(t_val) - 273.15, 1)
+    except Exception as exc:
+        logger.warning("Could not compute mean fire temperature: %s", exc)
+
+    try:
+        fire_mask = t21_max.mask().selfMask()
+        samples = t21_max.addBands(conf_max).sample(
+            region=region,
+            scale=dyn_scale,
+            numPixels=60,
+            geometries=True
+        ).getInfo()
+        for feat in samples.get("features", []):
+            coords = feat.get("geometry", {}).get("coordinates", [])
+            props = feat.get("properties", {})
+            if coords and len(coords) >= 2:
+                tk = props.get("T21")
+                hotspot_points.append({
+                    "lat": coords[1],
+                    "lon": coords[0],
+                    "tempCelsius": round(float(tk) - 273.15, 1) if tk else None,
+                    "confidence": int(props.get("confidence", min_confidence)),
+                })
+    except Exception as exc:
+        logger.warning("Could not sample hotspot coordinates: %s", exc)
+
+    return {
+        "tile": tile,
+        "hotspotCount": hotspot_count,
+        "meanTempCelsius": t21_mean_c,
+        "startDate": start_date,
+        "endDate": end_date,
+        "minConfidence": min_confidence,
+        "hotspotPoints": hotspot_points,
+        "palette": palette,
+        "source": "NASA FIRMS (MODIS/VIIRS 375m)",
+    }
+
+
 # ── Potencial de Água Subterrânea (AHP) ──
 
 def compute_groundwater_ahp(region_geojson: Optional[dict], year: int = 2023) -> dict:

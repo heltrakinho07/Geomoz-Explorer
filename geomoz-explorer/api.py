@@ -1767,6 +1767,49 @@ async def gee_erosion(req: GEEErosionRequest, uid: str = Depends(require_gee_aut
         raise HTTPException(500, f"GEE erosion failed: {exc}")
 
 
+class GEEWildfireRequest(BaseModel):
+    province:       Optional[str] = None
+    district:       Optional[str] = None
+    geometry:       Optional[dict] = None
+    start_date:     str
+    end_date:       str
+    min_confidence: int = 50
+
+    @field_validator('start_date', 'end_date')
+    @classmethod
+    def validate_date_format(cls, v):
+        if v is None:
+            return v
+        try:
+            from datetime import datetime
+            datetime.strptime(v, '%Y-%m-%d')
+        except ValueError:
+            raise ValueError('Date must be in YYYY-MM-DD format')
+        return v
+
+
+@app.post("/geomoz-api/gee/wildfire")
+async def gee_wildfire(req: GEEWildfireRequest, uid: str = Depends(require_gee_auth)):
+    """NASA FIRMS active fire detection (thermal anomalies) from MODIS and VIIRS."""
+    import asyncio
+    from gee_module import compute_wildfire_firms
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    loop   = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_wildfire_firms(
+                region, req.start_date, req.end_date, req.min_confidence
+            ),
+        )
+        return result
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE wildfire failed: {exc}")
+
+
 class GEEGroundwaterRequest(BaseModel):
     province: Optional[str] = None
     district: Optional[str] = None

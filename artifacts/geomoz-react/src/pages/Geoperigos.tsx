@@ -7,12 +7,12 @@
  */
 
 import { useState, useCallback, useRef } from "react";
-import { MapContainer, TileLayer, ScaleControl, ZoomControl } from "react-leaflet";
+import { MapContainer, TileLayer, ScaleControl, ZoomControl, CircleMarker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
-  AlertTriangle, Waves, Mountain, Loader2, Play, ChevronDown, Info,
+  AlertTriangle, Waves, Mountain, Flame, Loader2, Play, ChevronDown, Info,
   CheckCircle2, Calendar, Droplets, Layers, FileDown, SlidersHorizontal, X,
-  ChevronLeft, ChevronRight, RefreshCw,
+  ChevronLeft, ChevronRight, RefreshCw, Thermometer,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiUrl, apiFetch } from "@/lib/api";
@@ -31,7 +31,7 @@ import {
   drawStatCards, drawTable, addMapImage, fetchMapImage,
 } from "@/lib/pdf-export";
 
-type Tool = "flood" | "erosion";
+type Tool = "flood" | "erosion" | "wildfire";
 
 interface FloodResult {
   floodTile: string; permWaterTile: string; areaKm2: number;
@@ -40,12 +40,38 @@ interface FloodResult {
 interface ErosionClass { id: number; label: string; color: string; range: string; areaKm2: number }
 interface ErosionResult { tile: string; classes: ErosionClass[]; meanTPerHa: number | null; year: number }
 
+interface WildfireHotspot {
+  lat: number;
+  lon: number;
+  tempCelsius: number | null;
+  confidence: number;
+}
+
+interface WildfireResult {
+  tile: string;
+  hotspotCount: number;
+  meanTempCelsius: number | null;
+  startDate: string;
+  endDate: string;
+  minConfidence: number;
+  hotspotPoints?: WildfireHotspot[];
+  source: string;
+}
+
 // Known cyclone events (quick presets for flood mapping).
 const FLOOD_PRESETS = [
   { label: "Idai (mar 2019)",     start: "2019-03-15", end: "2019-03-25", prov: "Sofala" },
   { label: "Kenneth (abr 2019)",  start: "2019-04-25", end: "2019-05-03", prov: "Cabo Delgado" },
   { label: "Eloise (jan 2021)",   start: "2021-01-22", end: "2021-01-30", prov: "Sofala" },
   { label: "Freddy (mar 2023)",   start: "2023-03-11", end: "2023-03-20", prov: "Zambézia" },
+];
+
+// Fire season presets for Mozambique
+const WILDFIRE_PRESETS = [
+  { label: "Niassa & Cabo Delgado (2024)", start: "2024-08-01", end: "2024-10-31", prov: "Niassa" },
+  { label: "Zambézia & Sofala (2024)",     start: "2024-07-01", end: "2024-11-15", prov: "Zambézia" },
+  { label: "Tete & Manica (2024)",         start: "2024-08-15", end: "2024-11-01", prov: "Tete" },
+  { label: "Temporada Seca 2023",          start: "2023-08-01", end: "2023-11-30", prov: null },
 ];
 
 interface Props {
@@ -78,6 +104,12 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
   // Erosion params
   const [year, setYear] = useState(2023);
   const [erosion, setErosion] = useState<ErosionResult | null>(null);
+
+  // Wildfire params (NASA FIRMS)
+  const [wildfireStart, setWildfireStart] = useState("2024-08-01");
+  const [wildfireEnd,   setWildfireEnd]   = useState("2024-10-31");
+  const [minConfidence, setMinConfidence] = useState(50);
+  const [wildfire, setWildfire] = useState<WildfireResult | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
@@ -170,29 +202,75 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
     } finally { clearTimeout(timer); setLoading(false); }
   }, [aoi, province, district, year, isGeeConnected]);
 
+  const runWildfire = useCallback(async () => {
+    if (!isGeeConnected) {
+      setGeeDialogOpen(true);
+      toast({
+        title: "Google Earth Engine necessário",
+        description: "Conecte a sua conta GEE para consultar os focos de calor da NASA FIRMS.",
+      });
+      return;
+    }
+    setLoading(true); setError(null); setWildfire(null);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 180_000);
+    try {
+      const aoiPayload = aoiToAPI(aoi);
+      const prov = province || aoiPayload.province;
+      const dist = district || aoiPayload.district;
+      const r = await apiFetch("/geomoz-api/gee/wildfire", {
+        method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
+        body: JSON.stringify({
+          province: prov,
+          district: dist,
+          geometry: aoiPayload.geometry,
+          start_date: wildfireStart,
+          end_date: wildfireEnd,
+          min_confidence: minConfidence,
+        }),
+      });
+      if (!r.ok) {
+        const errJson = await r.json().catch(() => ({}));
+        throw new Error(errJson.detail ?? r.statusText);
+      }
+      const data = await r.json();
+      setWildfire(data);
+      toast({
+        title: "Deteção de focos de queimada concluída!",
+        description: `Identificados ${data.hotspotCount.toLocaleString("pt-PT")} focos de calor ativos (NASA FIRMS).`,
+      });
+    } catch (e) {
+      const aborted = e instanceof DOMException && e.name === "AbortError";
+      const msg = aborted ? "A consulta de focos demorou demasiado. Reduza o intervalo de datas ou selecione uma província." : String(e instanceof Error ? e.message : e);
+      setError(msg);
+      toast({ variant: "destructive", title: "Erro nos focos de calor", description: msg });
+    } finally { clearTimeout(timer); setLoading(false); }
+  }, [aoi, province, district, wildfireStart, wildfireEnd, minConfidence, isGeeConnected]);
+
   const erosionTotal = erosion ? erosion.classes.reduce((s, c) => s + c.areaKm2, 0) || 1 : 1;
 
   // ── PDF Export ──────────────────────────────────────────────────────────────
   async function exportGeoperigosPdf() {
     if (!mapContainerRef.current) return;
+    const toolTitle = tool === "flood" ? "Cheias SAR" : tool === "erosion" ? "Erosão RUSLE" : "Queimadas FIRMS";
     const ctx = createPDFContext(
-      `${tool === "flood" ? "Cheias SAR" : "Erosão RUSLE"} — ${province ?? "Moçambique"}`,
+      `${toolTitle} — ${province ?? "Moçambique"}`,
     );
-    drawCover(ctx, `Relatório de Geoperigos — ${tool === "flood" ? "Cheias (Sentinel-1)" : "Erosão (RUSLE)"}`, [
-      `Ferramenta: ${tool === "flood" ? "Cheias" : "Erosão"}`,
+    drawCover(ctx, `Relatório de Geoperigos — ${tool === "flood" ? "Cheias (Sentinel-1)" : tool === "erosion" ? "Erosão (RUSLE)" : "Focos de Calor (NASA FIRMS)"}`, [
+      `Ferramenta: ${toolTitle}`,
       `${province ? `Província: ${province}` : "Área: Moçambique"}`,
       ctx.date,
     ]);
 
     // Map — fetch from backend Cartopy API with analysis tile overlay
-    const analysisTile = tool === "flood" ? flood?.floodTile : erosion?.tile;
+    const analysisTile = tool === "flood" ? flood?.floodTile : tool === "erosion" ? erosion?.tile : wildfire?.tile;
     const legendItems = tool === "erosion" ? erosion?.classes?.map(c => ({ label: c.label, color: c.color })) : undefined;
     try {
       const imgData = await fetchMapImage(
         { south: -26.9, north: -10.4, west: 30.2, east: 41 },
         { tileUrl: analysisTile,
           legendItems,
-          title: `${tool === "flood" ? "Cheias SAR" : "Erosão RUSLE"} — ${province ?? "Moçambique"}`,
+          title: `${toolTitle} — ${province ?? "Moçambique"}`,
           dpi: 200 },
       );
       addMapImage(ctx, imgData, 100);
@@ -243,6 +321,25 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
         })),
         [CONTENT_W * 0.28, CONTENT_W * 0.24, CONTENT_W * 0.14, CONTENT_W * 0.34],
       );
+    }
+
+    if (tool === "wildfire" && wildfire) {
+      sectionTitle(ctx, "Deteção de Focos de Calor e Incêndios (NASA FIRMS)");
+      drawStatCards(ctx, [
+        { label: "Total de Focos", value: `${wildfire.hotspotCount.toLocaleString("pt-PT")}`, color: [225, 29, 72] },
+        { label: "Temp. Média", value: wildfire.meanTempCelsius != null ? `${wildfire.meanTempCelsius} °C` : "—", color: [249, 115, 22] },
+        { label: "Confiança", value: `≥ ${wildfire.minConfidence}%`, color: [245, 158, 11] },
+        { label: "Período", value: `${wildfire.startDate}→${wildfire.endDate}`, color: [14, 165, 233] },
+      ]);
+      sectionTitle(ctx, "Metodologia & Sensores");
+      ctx.doc.setFontSize(7.5);
+      ctx.doc.setTextColor(100, 116, 139);
+      ctx.doc.text("Deteção de fogo ativo e anomalias térmicas de superfície baseada no sistema NASA FIRMS,", MARGIN, ctx.y);
+      ctx.y += 4;
+      ctx.doc.text("utilizando o canal infravermelho médio (3.9–4.0 µm, canal T21) dos sensores VIIRS e MODIS.", MARGIN, ctx.y);
+      ctx.y += 4;
+      ctx.doc.text("Os pontos representam frentes de queima ativa ou fontes pontuais com forte contraste radiativo.", MARGIN, ctx.y);
+      ctx.y += 8;
     }
 
     addPDFFooter(ctx);
@@ -303,11 +400,11 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
 
         {/* Tool toggle */}
         <div className="p-3 border-b border-slate-100 dark:border-slate-800">
-          <div className="grid grid-cols-2 gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
-            {([["flood", "Cheias", Waves], ["erosion", "Erosão", Mountain]] as const).map(([t, label, Icon]) => (
+          <div className="grid grid-cols-3 gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
+            {([["flood", "Cheias", Waves], ["erosion", "Erosão", Mountain], ["wildfire", "Queimadas", Flame]] as const).map(([t, label, Icon]) => (
               <button key={t} onClick={() => { setTool(t); setError(null); }}
-                className={`flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-lg transition-all ${tool === t ? "bg-white dark:bg-slate-700 text-rose-700 dark:text-rose-400 shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}>
-                <Icon size={11} /> {label}
+                className={`flex items-center justify-center gap-1 text-[11px] font-medium py-2 rounded-lg transition-all ${tool === t ? "bg-white dark:bg-slate-700 text-rose-700 dark:text-rose-400 shadow-sm font-semibold" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}>
+                <Icon size={12} /> {label}
               </button>
             ))}
           </div>
@@ -433,6 +530,102 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
           </div>
         )}
 
+        {/* Wildfire config (NASA FIRMS) */}
+        {tool === "wildfire" && (
+          <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-2.5 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
+              <Info size={12} className="mt-0.5 shrink-0 text-amber-500" />
+              <span>NASA FIRMS: Deteção de anomalias térmicas e focos de calor ativos via satélites <strong>VIIRS (375m)</strong> e <strong>MODIS (1km)</strong>.</span>
+            </div>
+
+            <div>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Temporadas e Regiões Críticas</label>
+              <div className="grid grid-cols-2 gap-1">
+                {WILDFIRE_PRESETS.map(p => (
+                  <button
+                    key={p.label}
+                    onClick={() => {
+                      setWildfireStart(p.start);
+                      setWildfireEnd(p.end);
+                      if (p.prov) {
+                        onProvinceChange(p.prov);
+                        onDistrictChange(null);
+                        onAOIChange(mozambiqueAOI(p.prov, null));
+                      }
+                    }}
+                    className="text-[10px] py-1 px-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 hover:border-amber-200 dark:hover:border-amber-800 transition-colors cursor-pointer text-left truncate"
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1">
+                  <Calendar size={9} /> Início
+                </label>
+                <input
+                  type="date"
+                  value={wildfireStart}
+                  onChange={e => setWildfireStart(e.target.value)}
+                  className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1">
+                  <Calendar size={9} /> Fim
+                </label>
+                <input
+                  type="date"
+                  value={wildfireEnd}
+                  onChange={e => setWildfireEnd(e.target.value)}
+                  className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">
+                Filtro de Confiança — <strong className="text-slate-700 dark:text-slate-200">{minConfidence}%</strong>
+              </label>
+              <select
+                value={minConfidence}
+                onChange={e => setMinConfidence(+e.target.value)}
+                className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              >
+                <option value={30}>Baixa (&gt; 30%) — Todos os focos</option>
+                <option value={50}>Nominal (&gt; 50%) — Recomendado</option>
+                <option value={80}>Alta (&gt; 80%) — Incêndios confirmados</option>
+              </select>
+            </div>
+
+            <button
+              onClick={runWildfire}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-amber-600 to-red-600 hover:from-amber-700 hover:to-red-700 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors cursor-pointer shadow-sm"
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>A consultar FIRMS...</span>
+                </>
+              ) : wildfire ? (
+                <>
+                  <RefreshCw size={14} />
+                  <span>Recalcular Queimadas</span>
+                </>
+              ) : (
+                <>
+                  <Flame size={14} />
+                  <span>Mapear Focos de Queimadas</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
         {error && (
           <div className="m-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl p-2.5 text-[11px] text-red-700 dark:text-red-300">{error}</div>
         )}
@@ -487,6 +680,33 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
           {tool === "erosion" && erosion && (
             <TileLayer crossOrigin="anonymous" key={`ero-${erosion.tile}`} url={erosion.tile} opacity={0.75} maxZoom={18} />
           )}
+          {tool === "wildfire" && wildfire && (
+            <TileLayer crossOrigin="anonymous" key={`fire-${wildfire.tile}`} url={wildfire.tile} opacity={0.88} maxZoom={18} />
+          )}
+          {tool === "wildfire" && wildfire?.hotspotPoints?.map((pt, idx) => (
+            <CircleMarker
+              key={`fire-pt-${idx}`}
+              center={[pt.lat, pt.lon]}
+              radius={5}
+              pathOptions={{
+                color: "#7a0000",
+                fillColor: pt.tempCelsius && pt.tempCelsius > 75 ? "#ff0000" : "#ff8000",
+                fillOpacity: 0.9,
+                weight: 1.5,
+              }}
+            >
+              <Popup>
+                <div className="p-1 text-xs space-y-1">
+                  <div className="font-bold text-red-600 flex items-center gap-1">
+                    <Flame size={12} /> Foco de Calor (FIRMS)
+                  </div>
+                  <div>Temperatura: <strong>{pt.tempCelsius != null ? `${pt.tempCelsius} °C` : "—"}</strong></div>
+                  <div>Confiança: <strong>{pt.confidence}%</strong></div>
+                  <div className="text-[10px] text-slate-400">Coords: {pt.lat.toFixed(4)}, {pt.lon.toFixed(4)}</div>
+                </div>
+              </Popup>
+            </CircleMarker>
+          ))}
           <MapTools />
           <MapDraw
             enabled={drawingEnabled}
@@ -510,7 +730,11 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 px-7 py-5 flex items-center gap-3 max-w-xs">
               <Loader2 size={20} className="text-rose-500 animate-spin shrink-0" />
               <span className="text-sm text-slate-700 dark:text-slate-200 font-medium">
-                {tool === "flood" ? "A processar radar Sentinel-1… (pode levar ~1 min)" : "A calcular RUSLE… (pode levar ~1–2 min)"}
+                {tool === "flood"
+                  ? "A processar radar Sentinel-1… (pode levar ~1 min)"
+                  : tool === "erosion"
+                  ? "A calcular RUSLE… (pode levar ~1–2 min)"
+                  : "A consultar dados NASA FIRMS…"}
               </span>
             </div>
           </div>
@@ -535,10 +759,33 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
             {showPerm && <div className="flex items-center gap-1.5"><span className="inline-block w-4 h-3 rounded bg-[#1565c0]" /><span className="text-slate-600 dark:text-slate-300">Água permanente</span></div>}
           </div>
         )}
+        {tool === "wildfire" && wildfire && (
+          <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-amber-100 dark:border-amber-900/40 p-3 text-[11px] min-w-[170px]">
+            <div className="font-semibold text-amber-800 dark:text-amber-300 mb-2 flex items-center gap-1">
+              <Flame size={12} className="text-red-500" /> Focos de Calor (FIRMS)
+            </div>
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="inline-block w-4 h-3 rounded bg-[#fff000]" />
+              <span className="text-slate-600 dark:text-slate-300">32°C – 52°C (Anomalia Baixa)</span>
+            </div>
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="inline-block w-4 h-3 rounded bg-[#ff8000]" />
+              <span className="text-slate-600 dark:text-slate-300">52°C – 77°C (Fogo Moderado)</span>
+            </div>
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="inline-block w-4 h-3 rounded bg-[#ff0000]" />
+              <span className="text-slate-600 dark:text-slate-300">77°C – 102°C (Incêndio Alto)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block w-4 h-3 rounded bg-[#7a0000]" />
+              <span className="text-slate-600 dark:text-slate-300">&gt; 102°C (Frente Extrema)</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Right panel ─────────────────────────────────────────── */}
-      {((tool === "flood" && flood) || (tool === "erosion" && erosion)) && (
+      {((tool === "flood" && flood) || (tool === "erosion" && erosion) || (tool === "wildfire" && wildfire)) && (
         <div className="w-80 flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0">
           {tool === "flood" && flood && (
             <div className="p-4 space-y-4">
@@ -593,6 +840,49 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
               </div>
               <button onClick={exportGeoperigosPdf}
                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm">
+                <FileDown size={13} /> Exportar Relatório PDF
+              </button>
+            </div>
+          )}
+          {tool === "wildfire" && wildfire && (
+            <div className="p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Flame size={15} className="text-red-600 dark:text-red-400" />
+                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Focos de Queimadas (FIRMS)</span>
+              </div>
+              <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-red-600 rounded-2xl p-4 text-white">
+                <div className="text-xs opacity-75 mb-1">Focos de calor detetados</div>
+                <div className="text-3xl font-bold">{wildfire.hotspotCount.toLocaleString("pt-PT")}</div>
+                <div className="text-xs opacity-75">anomalias térmicas ativas</div>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-2 text-[12px] text-slate-600 dark:text-slate-300">
+                <div className="flex justify-between">
+                  <span>Período analisado</span>
+                  <span className="font-medium text-slate-800 dark:text-slate-200">{wildfire.startDate} → {wildfire.endDate}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Temp. média estimada</span>
+                  <span className="font-medium text-slate-800 dark:text-slate-200">
+                    {wildfire.meanTempCelsius != null ? `${wildfire.meanTempCelsius} °C` : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Filtro de confiança</span>
+                  <span className="font-medium text-slate-800 dark:text-slate-200">≥ {wildfire.minConfidence}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Satélites / Sensores</span>
+                  <span className="font-medium text-slate-800 dark:text-slate-200">VIIRS 375m &amp; MODIS 1km</span>
+                </div>
+              </div>
+              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                <Info size={12} className="mt-0.5 shrink-0 text-amber-500" />
+                NASA FIRMS monitora radiância de corpo negro na banda de 4µm (T21). As anomalias indicam frentes ativas de fogo de biomassa ou atividade industrial térmica.
+              </div>
+              <button
+                onClick={exportGeoperigosPdf}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-amber-600 to-red-600 hover:from-amber-700 hover:to-red-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer"
+              >
                 <FileDown size={13} /> Exportar Relatório PDF
               </button>
             </div>
