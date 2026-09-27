@@ -551,6 +551,27 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         return ferric.multiply(al_oh).rename("index")
     if index == "ndvi_l8":
         return l8.normalizedDifference(["SR_B5", "SR_B4"]).rename("index")
+    if index == "fe_oxide_l8":
+        return l8.select("SR_B4").divide(l8.select("SR_B2")).rename("index")
+    if index == "clay_l8":
+        return l8.select("SR_B6").divide(l8.select("SR_B7")).rename("index")
+    if index == "ferrous_l8":
+        return l8.select("SR_B6").divide(l8.select("SR_B5")).rename("index")
+    if index == "hydrothermal_l8":
+        fe = l8.select("SR_B4").divide(l8.select("SR_B2"))
+        clay = l8.select("SR_B6").divide(l8.select("SR_B7"))
+        return fe.multiply(clay).rename("index")
+    if index == "gossan_l8":
+        fe = l8.select("SR_B4").divide(l8.select("SR_B2"))
+        clay = l8.select("SR_B6").divide(l8.select("SR_B7"))
+        return fe.multiply(clay).rename("index")
+    if index == "carbonate_chlorite_l8":
+        num = l8.select("SR_B5").add(l8.select("SR_B7"))
+        return num.divide(l8.select("SR_B6")).rename("index")
+    if index == "silica_l8":
+        r1 = l8.select("SR_B6").divide(l8.select("SR_B5"))
+        r2 = l8.select("SR_B6").divide(l8.select("SR_B7"))
+        return r1.multiply(r2).rename("index")
     if index == "elevation":
         return dem.rename("index")
     if index == "slope":

@@ -187,6 +187,7 @@ export type SpectralIndex =
   | "ndvi" | "fe_oxide" | "clay" | "hydrothermal" | "bare_soil"
   | "al_oh" | "ferrous" | "gossan"
   | "ndvi_l8"
+  | "fe_oxide_l8" | "clay_l8" | "ferrous_l8" | "hydrothermal_l8" | "gossan_l8" | "carbonate_chlorite_l8" | "silica_l8"
   | "elevation" | "hipsometry" | "slope" | "hillshade" | "topo_class"
   // Agriculture & Drought indices
   | "evi" | "ndmi" | "savi" | "gci" | "nddi" | "msavi"
@@ -269,6 +270,13 @@ export function computeSpectralValue(
     // Terrain indices have no meaningful proxy — return neutral; UI will
     // require GEE mode for these.
     case "ndvi_l8":   return computeSpectralValue(legend, era, period, "ndvi");
+    case "fe_oxide_l8": return computeSpectralValue(legend, era, period, "fe_oxide");
+    case "clay_l8":     return computeSpectralValue(legend, era, period, "clay");
+    case "ferrous_l8":  return computeSpectralValue(legend, era, period, "ferrous");
+    case "hydrothermal_l8": return computeSpectralValue(legend, era, period, "hydrothermal");
+    case "gossan_l8":   return computeSpectralValue(legend, era, period, "gossan");
+    case "carbonate_chlorite_l8": return computeSpectralValue(legend, era, period, "clay") * 0.85 + noise;
+    case "silica_l8":   return computeSpectralValue(legend, era, period, "hydrothermal") * 0.9 + noise;
     case "elevation": return 0.5 + noise;
     case "hipsometry": return 0.5 + noise;
     case "slope":     return 0.3 + noise;

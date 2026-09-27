@@ -65,7 +65,7 @@ type SpectralTab = "s2" | "lineaments" | "targeting"
                   | "profile" | "contours" | "topo_custom" | "landcover"
                   | "spi_ndvi" | SpectralIndex;
 
-type IndexGroup = "spectral" | "landsat" | "terrain" | "agriculture" | "drought" | "fire" | "coastal" | "climate" | "urban" | "health" | "water" | "biophysical";
+type IndexGroup = "spectral" | "landsat" | "terrain" | "agriculture" | "drought" | "fire" | "coastal" | "climate" | "urban" | "health" | "water" | "biophysical" | "minerals";
 
 interface LandCoverClass {
   code: number;
@@ -502,6 +502,43 @@ const INDEX_DEFS: IndexDef[] = [
     bands: "Meta/forest-monitoring — inferência multi-sensor",
     interpretation: "Altura do dossel florestal (m) — modelo global Meta. Mapeia estrutura vertical da vegetação: < 5 m = arbustos/capoeira, 5–15 m = floresta secundária, > 15 m = floresta primária.",
     lowLabel: "Arbustos / baixo", highLabel: "Floresta alta" },
+
+  // ── Geology & Mineral Indices (Landsat-8 SWIR / ASTER / S-2) ───────────
+  { id: "fe_oxide_l8", label: "Óxidos de Ferro L8", short: "Fe-Óxidos", icon: <Gem size={13} />, group: "minerals",
+    formula: "Fe-Oxide = SR_B4 / SR_B2 (Landsat 8)",
+    bands: "Vermelho (SR_B4) · Azul (SR_B2)",
+    interpretation: "Razão espectral de Sabins para detecção de óxidos e hidróxidos de ferro (hematite, goethite, jarosite) associados a zonas de oxidação supergénica e capeamentos lateríticos.",
+    lowLabel: "Sem ferro", highLabel: "Alto Fe-óxido / Gossan" },
+  { id: "clay_l8", label: "Argilas / Al-OH L8", short: "Argilas", icon: <Gem size={13} />, group: "minerals",
+    formula: "Clay = SR_B6 / SR_B7 (Landsat 8)",
+    bands: "SWIR1 (SR_B6) · SWIR2 (SR_B7)",
+    interpretation: "Detecção de argilominerais e minerais com hidroxilo Al-OH (caulinite, ilite, alunite, montmorilonite) característicos de halos de alteração hidrotermal fílica e argílica.",
+    lowLabel: "Sem argilas", highLabel: "Forte alteração argílica" },
+  { id: "ferrous_l8", label: "Minerais Ferrosos L8", short: "Fe²⁺ Silicatos", icon: <Gem size={13} />, group: "minerals",
+    formula: "Ferrous Iron = SR_B6 / SR_B5 (Landsat 8)",
+    bands: "SWIR1 (SR_B6) · NIR (SR_B5)",
+    interpretation: "Identificação de minerais com ferro ferroso (Fe²⁺) em silicatos e carbonatos (clorite, biotite, anfíboles, siderite) típicos de zonas propilíticas e rochas máficas/ultramáficas.",
+    lowLabel: "Baixo ferroso", highLabel: "Rico em silicatos ferrosos" },
+  { id: "hydrothermal_l8", label: "Alteração Hidrotermal", short: "Hidrotermal", icon: <Gem size={13} />, group: "minerals",
+    formula: "(SR_B6 / SR_B7) × (SR_B4 / SR_B2) — Sabins",
+    bands: "SWIR1, SWIR2, Vermelho, Azul",
+    interpretation: "Índice composto de Sabins para alteração hidrotermal. Realça a coincidência espacial de argilas e óxidos de ferro, característica diagnóstica de sistemas epitermais de ouro e pórfiro.",
+    lowLabel: "Rocha fresca", highLabel: "Alteração hidrotermal intensa" },
+  { id: "gossan_l8", label: "Índice de Gossan", short: "Gossan", icon: <Gem size={13} />, group: "minerals",
+    formula: "(SR_B4 / SR_B2) × (SR_B6 / SR_B7)",
+    bands: "Vermelho, Azul, SWIR1, SWIR2",
+    interpretation: "Mapeamento de 'chapéus de ferro' (gossans) formados pela lixiviação e oxidação de corpos de sulfetos maciços (ouro, cobre, zinco). Indicador prioritário de prospecção.",
+    lowLabel: "Sem gossan", highLabel: "Alvo gossanífero" },
+  { id: "carbonate_chlorite_l8", label: "Carbonatos & Clorite", short: "Propilítica", icon: <Gem size={13} />, group: "minerals",
+    formula: "(SR_B5 + SR_B7) / SR_B6 (Landsat 8)",
+    bands: "NIR (SR_B5) · SWIR2 (SR_B7) · SWIR1 (SR_B6)",
+    interpretation: "Mapeamento da zona de alteração propilítica caracterizada por calcite, dolomite, clorite e epídoto na periferia de depósitos minerais.",
+    lowLabel: "Normal", highLabel: "Zona propilítica / carbonatada" },
+  { id: "silica_l8", label: "Silicificação & Quartzo", short: "Silicificação", icon: <Gem size={13} />, group: "minerals",
+    formula: "(SR_B6 / SR_B5) × (SR_B6 / SR_B7)",
+    bands: "SWIR1, NIR, SWIR2 (Landsat 8)",
+    interpretation: "Detecção de zonas de intensa silicificação, veios de quartzo e brechas hidrotermalizadas, frequentemente associadas a mineralizações de ouro e metais base.",
+    lowLabel: "Sem sílica", highLabel: "Alta silicificação" },
 ];
 
 const TERRAIN_CLASS_NAMES = [
@@ -2756,6 +2793,19 @@ export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
     tabIds: ["elevation", "hipsometry", "topo_class", "topo_custom", "profile", "contours"],
   },
   {
+    id: "geology",
+    title: "Geologia Económica & Assinaturas Minerais",
+    subtitle: "Landsat-8 SWIR, ASTER & Sentinel-2",
+    badge: "Exploração Mineral",
+    badgeColor: "bg-amber-100 text-amber-800 border-amber-300 font-bold",
+    icon: Gem,
+    gradient: "from-amber-600 via-orange-600 to-yellow-600",
+    description: "Mapeamento espectral de alteração hidrotermal (Sabins & Crosta), óxidos e hidróxidos de ferro (gossans), argilominerais (caulinite/alunite), zonas de cisalhamento/lineamentos e modelo de favorabilidade mineral multi-critério.",
+    highlights: ["Alteração Hidrotermal (Sabins)", "Óxidos de Ferro (B4/B2)", "Argilas & Hidroxilos (B6/B7)", "Minerais Ferrosos", "Lineamentos Estruturais", "Targeting Mineral AI"],
+    defaultTab: "targeting",
+    tabIds: ["targeting", "lineaments", "fe_oxide_l8", "clay_l8", "ferrous_l8", "hydrothermal_l8", "gossan_l8", "carbonate_chlorite_l8", "silica_l8"],
+  },
+  {
     id: "vegetation",
     title: "Vegetação, Biomassa & Agricultura",
     subtitle: "Sentinel-2 & Landsat 8 · 10–20 m",
@@ -3458,6 +3508,12 @@ export default function GeoAnalises({
         { id: "topo_custom", label: "Classes Custom", icon: <Sliders size={13} /> },
         { id: "profile",     label: "Perfil A→B",     icon: <Route size={13} /> },
         { id: "contours",    label: "Curvas Nível",   icon: <Waves size={13} /> },
+      ]},
+    { name: "Geologia & Minerais", badge: "Landsat-8 SWIR · S-2", badgeColor: "bg-amber-100 text-amber-800 font-semibold",
+      tabs: [
+        { id: "targeting", label: "Targeting AI", icon: <Target size={13} /> },
+        { id: "lineaments", label: "Lineamentos", icon: <Activity size={13} /> },
+        ...INDEX_DEFS.filter(d => d.group === "minerals").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
       ]},
     { name: "Uso & Cobertura",        badge: "ESA WorldCover · 10 m", badgeColor: "bg-lime-100 text-lime-700",
       tabs: [{ id: "landcover", label: "Cobertura do Solo", icon: <Sprout size={13} /> }] },
