@@ -153,12 +153,21 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
         effective_token = token or (token_data.get("access_token") if token_data else None)
         user_refresh_token = token_data.get("refresh_token") if token_data else None
         user_sa_key = token_data.get("service_account_key") if token_data else None
+        allow_server = (
+            os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower()
+            == "true"
+        )
+
         effective_project = (
             project
             or (token_data.get("project") if token_data else None)
-            or os.environ.get("GEE_PROJECT_ID")
-            or "geoprocessamento-426809"
+            or (os.environ.get("GEE_PROJECT_ID") if allow_server else None)
+            or ""
         ).strip()
+        if not effective_project:
+            raise RuntimeError(
+                "Google Cloud Project ID em falta. Configure o seu próprio projeto Earth Engine."
+            )
 
         # If already initialized for this exact user, project and token, reuse session
         if _gee_initialized and _last_initialized_uid == uid and _last_initialized_project == effective_project and _last_initialized_token == effective_token:
@@ -246,7 +255,7 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
         # 3. Try local Earth Engine user credentials (from 'earthengine authenticate')
         home = os.path.expanduser("~")
         has_local_creds = os.path.exists(os.path.join(home, ".config", "earthengine", "credentials"))
-        if has_local_creds:
+        if allow_server and has_local_creds:
             try:
                 import ee
                 ee.Initialize(project=effective_project)
@@ -261,7 +270,6 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
                 logger.debug("Local EE user credentials init failed for project '%s': %s", effective_project, e)
 
         # 4. Fallback to server credentials if allowed and user has not configured custom credentials
-        allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
         sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
         sa_file = os.environ.get("GEE_SERVICE_ACCOUNT_FILE", "").strip() or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
         if not sa_file:
