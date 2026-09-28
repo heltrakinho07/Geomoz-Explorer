@@ -20,6 +20,7 @@ import {
 import { apiUrl, apiFetch } from "@/lib/api";
 import type { Stats } from "@/hooks/useGeoMoz";
 import type { AnalysisJob } from "@/hooks/useAnalysisJob";
+import { useProject } from "@/hooks/useProject";
 
 interface DashboardPanelProps {
   province: string | null;
@@ -132,6 +133,7 @@ function fmt(n: number): string {
 const MZ_AREA = 801_590;
 
 export default function DashboardPanel({ province, district }: DashboardPanelProps) {
+  const { activeProject } = useProject();
   const qc = useQueryClient();
   const [geeStatus, setGeeStatus] = useState<GeeStatus | null>(null);
   const [geeLoading, setGeeLoading] = useState(false);
@@ -165,9 +167,10 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
   );
 
   const { data: jobsData, isLoading: jobsLoading, refetch: refetchJobs } = useQuery<JobListResponse>({
-    queryKey: ["analysis-jobs", "recent"],
+    queryKey: ["analysis-jobs", "recent", activeProject?.id ?? "all"],
     queryFn: async () => {
-      const res = await apiFetch("/geomoz-api/jobs?limit=6");
+      const projectQuery = activeProject?.id ? `&project_id=${encodeURIComponent(activeProject.id)}` : "";
+      const res = await apiFetch(`/geomoz-api/jobs?limit=6${projectQuery}`);
       if (!res.ok) return { jobs: [] };
       return res.json();
     },
@@ -417,7 +420,7 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
                 Análises recentes
               </h3>
               <p className="mt-0.5 text-[11px] text-slate-400">
-                Histórico operacional das análises executadas no GeoMoz.
+                {activeProject ? `Histórico do projecto ${activeProject.name}.` : "Histórico operacional das análises executadas no GeoMoz."}
               </p>
             </div>
             <button
