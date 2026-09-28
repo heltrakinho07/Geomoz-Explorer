@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useProject } from "@/hooks/useProject";
+import { useWorkspaceLayers } from "@/hooks/useWorkspaceLayers";
 
 export type AnalysisJobStatus =
   | "queued"
@@ -45,6 +46,7 @@ async function parseError(res: Response): Promise<string> {
 
 export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
   const { activeProject } = useProject();
+  const { upsertResultLayer } = useWorkspaceLayers();
   const [job, setJob] = useState<AnalysisJob<T> | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -57,6 +59,33 @@ export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
     };
   }, []);
 
+  const registerCompletedLayer = useCallback((completedJob: AnalysisJob<T>) => {
+    if (completedJob.status !== "completed" || !completedJob.result) return;
+
+    const result = completedJob.result as Record<string, unknown>;
+    const tileUrl = typeof result.tileUrl === "string" ? result.tileUrl : null;
+    if (!tileUrl) return;
+
+    const name =
+      typeof result.name === "string" && result.name.trim()
+        ? result.name
+        : completedJob.type.replace(/^gee\./, "").replaceAll(".", " ");
+
+    const source = typeof result.source === "string" ? result.source : null;
+
+    upsertResultLayer({
+      id: `job:${completedJob.id}`,
+      jobId: completedJob.id,
+      name,
+      analysisType: completedJob.type,
+      tileUrl,
+      visible: true,
+      opacity: 0.82,
+      createdAt: completedJob.completed_at || completedJob.updated_at,
+      source,
+    });
+  }, [upsertResultLayer]);
+
   const refresh = useCallback(async (jobId?: string) => {
     const id = jobId || job?.id;
     if (!id) return null;
@@ -67,9 +96,12 @@ export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
     }
 
     const data = (await res.json()) as AnalysisJob<T>;
-    if (mounted.current) setJob(data);
+    if (mounted.current) {
+      setJob(data);
+      registerCompletedLayer(data);
+    }
     return data;
-  }, [job?.id]);
+  }, [job?.id, registerCompletedLayer]);
 
   useEffect(() => {
     if (!job || !ACTIVE_STATUSES.has(job.status)) return;
