@@ -38,15 +38,22 @@ _gee_execution_lock = threading.Lock()
 
 
 @contextmanager
+def gee_execution_lock():
+    """Serialize access to Earth Engine's process-global credential state."""
+    with _gee_execution_lock:
+        yield
+
+
+@contextmanager
 def gee_execution(uid: str | None = None):
-    """Serialize one complete Earth Engine execution context.
+    """Serialize and initialize one complete Earth Engine execution context.
 
     This is a correctness/security boundary for the current in-process
     architecture. It prevents another user from calling ee.Initialize with a
     different credential while the first user's operation is still building or
     evaluating Earth Engine requests.
     """
-    with _gee_execution_lock:
+    with gee_execution_lock():
         _init_gee(uid)
         yield
 
