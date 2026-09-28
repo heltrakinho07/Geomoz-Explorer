@@ -58,6 +58,7 @@ interface JobListResponse {
 const JOB_LABELS: Record<string, string> = {
   "gee.index": "Índice espectral",
   "gee.flood": "Cheias Sentinel-1",
+  "gee.erosion": "Erosão RUSLE",
   "gee.groundwater": "Potencial hídrico AHP",
 };
 
