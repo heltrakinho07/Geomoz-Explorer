@@ -443,11 +443,31 @@ def get_province_summary():
 
 # ── Projects / persistent workspaces ─────────────────────────────────────────
 
+PROJECT_SOLUTION_IDS = {
+    "groundwater",
+    "hazards",
+    "environment",
+    "minerals",
+    "watershed",
+}
+
+
 class ProjectCreateRequest(BaseModel):
     name: str
     description: str = ""
+    solution_id: Optional[str] = None
     aoi: Optional[dict] = None
     map_state: Optional[dict] = None
+
+    @field_validator("solution_id")
+    @classmethod
+    def validate_solution_id(cls, value):
+        if value is None:
+            return value
+        value = value.strip().lower()
+        if value not in PROJECT_SOLUTION_IDS:
+            raise ValueError("Solution Starter GeoMoz desconhecido.")
+        return value
 
     @field_validator("name")
     @classmethod
@@ -491,6 +511,7 @@ async def create_project_endpoint(
         req.description,
         req.aoi,
         req.map_state or {},
+        req.solution_id,
     )
 
 
