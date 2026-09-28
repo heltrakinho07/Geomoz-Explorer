@@ -19,6 +19,7 @@ export interface AnalysisJobError {
 export interface AnalysisJob<T = unknown> {
   id: string;
   type: string;
+  project_id?: string | null;
   status: AnalysisJobStatus;
   stage: string | null;
   progress: number;
