@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 
 JobRunner = Callable[[Callable[[int, str, str], None]], dict[str, Any]]
 
+
+class JobCancelledError(RuntimeError):
+    """Raised cooperatively when a running analysis job is cancelled."""
+
+
 _TERMINAL = {"completed", "failed", "cancelled"}
 _jobs: dict[tuple[str, str], dict[str, Any]] = {}
 _jobs_lock = threading.Lock()
@@ -276,6 +281,10 @@ def submit_job(
         )
 
         def progress(value: int, stage: str, message: str) -> None:
+            current = _load(uid, job_id)
+            if current and current.get("status") == "cancelled":
+                raise JobCancelledError("Análise cancelada pelo utilizador.")
+
             safe_value = max(0, min(int(value), 99))
             update_job(
                 uid,
@@ -288,6 +297,11 @@ def submit_job(
 
         try:
             result = runner(progress)
+
+            current = _load(uid, job_id)
+            if current and current.get("status") == "cancelled":
+                return
+
             update_job(
                 uid,
                 job_id,
@@ -299,6 +313,19 @@ def submit_job(
                 error=None,
                 completed_at=_now(),
             )
+        except JobCancelledError:
+            logger.info("Analysis job %s cancelled (%s)", job_id, job_type)
+            current = _load(uid, job_id)
+            if not current or current.get("status") != "cancelled":
+                update_job(
+                    uid,
+                    job_id,
+                    status="cancelled",
+                    stage="cancelled",
+                    message="Análise cancelada.",
+                    error=None,
+                    completed_at=_now(),
+                )
         except Exception as exc:
             logger.exception("Analysis job %s failed (%s)", job_id, job_type)
             update_job(
@@ -323,6 +350,41 @@ def submit_job(
         _futures[(uid, job_id)] = future
 
     return job
+
+
+
+def cancel_job(uid: str, job_id: str) -> Optional[dict[str, Any]]:
+    """Cancel a queued/running job owned by the current user.
+
+    Python threads cannot be force-killed safely, so cancellation is
+    cooperative: queued futures are cancelled when possible and running jobs
+    stop at the next progress checkpoint. A cancelled job can never be
+    overwritten as completed.
+    """
+    job = _load(uid, job_id)
+    if not job:
+        return None
+
+    if job.get("status") in _TERMINAL:
+        return _public(job)
+
+    key = (uid, job_id)
+    with _jobs_lock:
+        future = _futures.get(key)
+        if future and not future.running():
+            future.cancel()
+
+    job.update({
+        "status": "cancelled",
+        "stage": "cancelled",
+        "message": "Análise cancelada pelo utilizador.",
+        "error": None,
+        "completed_at": _now(),
+        "updated_at": _now(),
+    })
+    _save(uid, job)
+    return _public(job)
+
 
 
 def active_job_count(uid: str | None = None) -> int:
