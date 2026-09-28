@@ -904,6 +904,43 @@ async def create_analysis_job(
 
         return submit_job(uid, req.type, normalized_payload, runner)
 
+    if req.type == "gee.targeting":
+        try:
+            validated = GEETargetingRequest(**req.payload)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
+        )
+
+        def runner(progress):
+            from gee_module import _init_gee, compute_targeting_tile
+
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A preparar Sentinel-2, relevo e critérios do modelo.")
+            progress(45, "processing", "A combinar evidências e calcular favorabilidade mineral.")
+            result = compute_targeting_tile(
+                validated.mineral,
+                region,
+                validated.start_date,
+                validated.end_date,
+                validated.cloud_pct,
+                validated.weights_override,
+                validated.invert_override,
+                validated.score_threshold,
+            )
+            progress(90, "rendering", "A preparar mapa, percentis e área favorável.")
+            result["province"] = validated.province
+            result["district"] = validated.district
+            return result
+
+        return submit_job(uid, req.type, normalized_payload, runner)
+
     if req.type == "gee.erosion":
         try:
             validated = GEEErosionRequest(**req.payload)
