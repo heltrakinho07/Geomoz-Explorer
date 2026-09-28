@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { useProject } from "@/hooks/useProject";
 
 export type AnalysisJobStatus =
   | "queued"
@@ -42,6 +43,7 @@ async function parseError(res: Response): Promise<string> {
 }
 
 export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
+  const { activeProject } = useProject();
   const [job, setJob] = useState<AnalysisJob<T> | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -52,7 +54,7 @@ export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
     return () => {
       mounted.current = false;
     };
-  }, []);
+  }, [activeProject?.id]);
 
   const refresh = useCallback(async (jobId?: string) => {
     const id = jobId || job?.id;
@@ -102,7 +104,7 @@ export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
       const res = await apiFetch("/geomoz-api/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, payload }),
+      body: JSON.stringify({ type, payload, project_id: activeProject?.id ?? null }),
     });
 
       if (!res.ok) {
