@@ -1289,6 +1289,28 @@ async def geomoz_ai_agent(
     except AgentPlannerError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
+    if plan.get("mode") == "plan":
+        from agent_plans import create_plan
+
+        created_plan = create_plan(
+            uid,
+            title=str(plan.get("title") or "Plano GeoMoz"),
+            goal=str(plan.get("goal") or req.message),
+            steps=plan.get("steps") or [],
+            project_id=req.project_id,
+            source_message=req.message,
+        )
+        return {
+            "mode": "plan",
+            "message": (
+                f"Plano criado com {len(created_plan.get('steps') or [])} etapas. "
+                "A execução será feita sequencialmente."
+            ),
+            "plan": created_plan,
+            "model": plan.get("model"),
+            "response_id": plan.get("response_id"),
+        }
+
     if plan.get("mode") != "tool_call":
         return {
             "mode": "message",
@@ -1327,6 +1349,271 @@ async def geomoz_ai_agent(
         "model": plan.get("model"),
         "response_id": plan.get("response_id"),
     }
+
+
+@app.get("/geomoz-api/ai/plans")
+async def list_analysis_plans(
+    project_id: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    uid: str = Depends(require_firebase_auth),
+):
+    """List recent user-owned GeoMoz Agent plans."""
+    from agent_plans import list_plans
+
+    return {"plans": list_plans(uid, project_id=project_id, limit=limit)}
+
+
+@app.get("/geomoz-api/ai/plans/{plan_id}")
+async def get_analysis_plan(
+    plan_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    from agent_plans import get_plan
+
+    plan = get_plan(uid, plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plano GeoMoz não encontrado.")
+    return plan
+
+
+@app.post("/geomoz-api/ai/plans/{plan_id}/advance")
+async def advance_analysis_plan(
+    plan_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Reconcile the current child job and start the next validated step."""
+    from analysis_jobs import get_job
+    from agent_plans import get_plan, update_plan, update_step
+
+    plan = get_plan(uid, plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plano GeoMoz não encontrado.")
+
+    if plan.get("status") in {"completed", "failed", "cancelled"}:
+        return plan
+
+    steps = plan.get("steps") or []
+    if not steps:
+        updated = update_plan(
+            uid,
+            plan_id,
+            status="failed",
+            error={"message": "Plano sem etapas executáveis."},
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+        return updated
+
+    index = int(plan.get("current_step") or 0)
+    index = max(0, min(index, len(steps) - 1))
+    step = steps[index]
+    job_id = step.get("job_id")
+
+    if job_id:
+        child = get_job(uid, job_id)
+        if not child:
+            updated = update_step(
+                uid,
+                plan_id,
+                index,
+                status="failed",
+                message="Job associado à etapa não foi encontrado.",
+                completed_at=datetime.now(timezone.utc).isoformat(),
+            )
+            return update_plan(
+                uid,
+                plan_id,
+                status="failed",
+                error={"message": "Job associado à etapa não foi encontrado."},
+                completed_at=datetime.now(timezone.utc).isoformat(),
+            ) or updated
+
+        child_status = child.get("status")
+        if child_status in {"queued", "processing"}:
+            return update_step(
+                uid,
+                plan_id,
+                index,
+                status=child_status,
+                message=child.get("message") or "Etapa em execução.",
+            )
+
+        if child_status in {"failed", "cancelled"}:
+            error_message = (
+                (child.get("error") or {}).get("message")
+                or child.get("message")
+                or "A etapa não foi concluída."
+            )
+            update_step(
+                uid,
+                plan_id,
+                index,
+                status=child_status,
+                message=error_message,
+                completed_at=child.get("completed_at"),
+            )
+            return update_plan(
+                uid,
+                plan_id,
+                status="failed" if child_status == "failed" else "cancelled",
+                error={"message": error_message, "step": index + 1},
+                completed_at=datetime.now(timezone.utc).isoformat(),
+            )
+
+        if child_status == "completed":
+            update_step(
+                uid,
+                plan_id,
+                index,
+                status="completed",
+                message="Etapa concluída.",
+                completed_at=child.get("completed_at"),
+            )
+            if index >= len(steps) - 1:
+                return update_plan(
+                    uid,
+                    plan_id,
+                    status="completed",
+                    current_step=index,
+                    error=None,
+                    completed_at=datetime.now(timezone.utc).isoformat(),
+                )
+            index += 1
+            plan = update_plan(uid, plan_id, current_step=index) or plan
+            steps = plan.get("steps") or steps
+            step = steps[index]
+
+    # No active child job: start the pending current step through the same
+    # validated tool API used by single-turn Agent requests.
+    try:
+        child = await execute_ai_tool(
+            str(step["tool_id"]),
+            ToolExecuteRequest(
+                parameters=step.get("arguments") or {},
+                project_id=plan.get("project_id"),
+            ),
+            uid,
+        )
+    except HTTPException as exc:
+        message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        update_step(
+            uid,
+            plan_id,
+            index,
+            status="failed",
+            message=message,
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+        return update_plan(
+            uid,
+            plan_id,
+            status="failed",
+            error={"message": message, "step": index + 1},
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    now = datetime.now(timezone.utc).isoformat()
+    update_step(
+        uid,
+        plan_id,
+        index,
+        status=child.get("status") or "queued",
+        job_id=child.get("id"),
+        message=child.get("message") or "Etapa iniciada.",
+        started_at=now,
+    )
+    return update_plan(
+        uid,
+        plan_id,
+        status="running",
+        current_step=index,
+        started_at=plan.get("started_at") or now,
+        error=None,
+        completed_at=None,
+    )
+
+
+@app.post("/geomoz-api/ai/plans/{plan_id}/cancel")
+async def cancel_analysis_plan(
+    plan_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Cancel the plan and its currently active child job when possible."""
+    from analysis_jobs import cancel_job
+    from agent_plans import cancel_plan, get_plan
+
+    plan = get_plan(uid, plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plano GeoMoz não encontrado.")
+
+    steps = plan.get("steps") or []
+    index = int(plan.get("current_step") or 0)
+    if 0 <= index < len(steps):
+        job_id = steps[index].get("job_id")
+        if job_id and steps[index].get("status") in {"queued", "processing"}:
+            cancel_job(uid, job_id)
+
+    return cancel_plan(uid, plan_id)
+
+
+@app.post("/geomoz-api/ai/plans/{plan_id}/retry")
+async def retry_analysis_plan(
+    plan_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Reset the failed/cancelled current step so it can be executed again."""
+    from agent_plans import get_plan, update_plan, update_step
+
+    plan = get_plan(uid, plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plano GeoMoz não encontrado.")
+
+    if plan.get("status") not in {"failed", "cancelled"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Apenas planos falhados ou cancelados podem ser repetidos.",
+        )
+
+    steps = plan.get("steps") or []
+    index = int(plan.get("current_step") or 0)
+    if not 0 <= index < len(steps):
+        raise HTTPException(status_code=409, detail="Etapa actual inválida.")
+
+    update_step(
+        uid,
+        plan_id,
+        index,
+        status="pending",
+        job_id=None,
+        message="Etapa pronta para nova execução.",
+        started_at=None,
+        completed_at=None,
+    )
+
+    # Steps cancelled because the whole plan was cancelled become pending again
+    # only after the current step; already-completed steps remain immutable.
+    refreshed = get_plan(uid, plan_id)
+    if refreshed:
+        tail = refreshed.get("steps") or []
+        for step_index in range(index + 1, len(tail)):
+            if tail[step_index].get("status") == "cancelled":
+                update_step(
+                    uid,
+                    plan_id,
+                    step_index,
+                    status="pending",
+                    job_id=None,
+                    message="Aguardando execução.",
+                    started_at=None,
+                    completed_at=None,
+                )
+
+    return update_plan(
+        uid,
+        plan_id,
+        status="ready",
+        error=None,
+        completed_at=None,
+    )
 
 
 @app.post("/geomoz-api/ai/jobs/{job_id}/explain")
