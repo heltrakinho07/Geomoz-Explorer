@@ -11,6 +11,7 @@ without changing the frontend contract.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
@@ -41,6 +42,92 @@ _executor = ThreadPoolExecutor(
     max_workers=max(1, int(os.getenv("ANALYSIS_JOB_WORKERS", "1"))),
     thread_name_prefix="geomoz-analysis",
 )
+
+
+def _execution_backend() -> str:
+    """Return the configured execution backend.
+
+    Production should use cloud_tasks so analysis CPU is attached to a
+    dedicated worker request instead of a background thread in the public API.
+    Local development keeps the in-process executor for zero-config usage.
+    """
+    value = os.getenv("ANALYSIS_EXECUTION_BACKEND", "local").strip().lower()
+    if value in {"cloud_tasks", "cloud-tasks", "tasks"}:
+        return "cloud_tasks"
+    return "local_executor"
+
+
+def _cloud_tasks_config() -> dict[str, str]:
+    project = (
+        os.getenv("ANALYSIS_TASKS_PROJECT", "").strip()
+        or os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
+        or os.getenv("FIREBASE_PROJECT_ID", "").strip()
+    )
+    location = os.getenv("ANALYSIS_TASKS_LOCATION", "europe-west1").strip()
+    queue = os.getenv("ANALYSIS_TASKS_QUEUE", "geomoz-analysis").strip()
+    worker_url = os.getenv("ANALYSIS_WORKER_URL", "").strip().rstrip("/")
+    service_account = os.getenv("ANALYSIS_TASKS_SERVICE_ACCOUNT", "").strip()
+    audience = os.getenv("ANALYSIS_TASKS_AUDIENCE", "").strip() or worker_url
+
+    missing = [
+        name
+        for name, value in {
+            "project": project,
+            "location": location,
+            "queue": queue,
+            "worker_url": worker_url,
+            "service_account": service_account,
+            "audience": audience,
+        }.items()
+        if not value
+    ]
+    if missing:
+        raise RuntimeError("Cloud Tasks não configurado: " + ", ".join(missing))
+
+    return {
+        "project": project,
+        "location": location,
+        "queue": queue,
+        "worker_url": worker_url,
+        "service_account": service_account,
+        "audience": audience,
+    }
+
+
+def _enqueue_cloud_task(uid: str, job_id: str) -> str:
+    """Enqueue one idempotently named HTTP task for the private worker."""
+    from google.cloud import tasks_v2
+
+    config = _cloud_tasks_config()
+    client = tasks_v2.CloudTasksClient()
+    parent = client.queue_path(config["project"], config["location"], config["queue"])
+    task_name = client.task_path(
+        config["project"], config["location"], config["queue"], f"job-{job_id}"
+    )
+    payload = json.dumps(
+        {"uid": uid, "job_id": job_id}, separators=(",", ":")
+    ).encode("utf-8")
+
+    task = {
+        "name": task_name,
+        "http_request": {
+            "http_method": tasks_v2.HttpMethod.POST,
+            "url": f'{config["worker_url"]}/geomoz-api/internal/analysis/run',
+            "headers": {"Content-Type": "application/json"},
+            "body": payload,
+            "oidc_token": {
+                "service_account_email": config["service_account"],
+                "audience": config["audience"],
+            },
+        },
+    }
+
+    try:
+        client.create_task(request={"parent": parent, "task": task})
+    except Exception as exc:
+        if exc.__class__.__name__ != "AlreadyExists":
+            raise
+    return task_name
 
 
 def _now() -> str:
@@ -87,6 +174,7 @@ def _public(job: dict[str, Any]) -> dict[str, Any]:
         "started_at": job.get("started_at"),
         "completed_at": job.get("completed_at"),
         "execution_mode": job.get("execution_mode", "local_executor"),
+        "attempt": int(job.get("attempt") or 0),
     }
 
 
@@ -132,7 +220,7 @@ def _recover_if_stale(uid: str, job: dict[str, Any]) -> dict[str, Any]:
     Cloud Run may terminate an instance while a local executor is processing.
     Without this guard, the persisted job could remain "processing" forever.
     """
-    if job.get("execution_mode") != "local_executor":
+    if job.get("execution_mode") not in {"local_executor", "cloud_tasks"}:
         return job
     if job.get("status") not in {"queued", "processing"}:
         return job
@@ -177,6 +265,7 @@ def create_job(
     job_type: str,
     payload: dict[str, Any],
     project_id: str | None = None,
+    execution_mode: str | None = None,
 ) -> dict[str, Any]:
     now = _now()
     job = {
@@ -195,7 +284,8 @@ def create_job(
         "updated_at": now,
         "started_at": None,
         "completed_at": None,
-        "execution_mode": "local_executor",
+        "execution_mode": execution_mode or _execution_backend(),
+        "attempt": 0,
     }
     _save(uid, job)
     return _public(job)
@@ -259,95 +349,119 @@ def list_jobs(
     return [_public(j) for j in jobs[:limit]]
 
 
-def submit_job(
+def execute_job(
     uid: str,
-    job_type: str,
-    payload: dict[str, Any],
+    job_id: str,
     runner: JobRunner,
-    project_id: str | None = None,
-) -> dict[str, Any]:
-    job = create_job(uid, job_type, payload, project_id=project_id)
-    job_id = job["id"]
+    *,
+    retry_number: int = 0,
+    max_retries: int = 0,
+) -> Optional[dict[str, Any]]:
+    """Execute one persisted job synchronously."""
+    job = _load(uid, job_id)
+    if not job:
+        return None
 
-    def execute() -> None:
+    if job.get("status") in _TERMINAL:
+        return _public(job)
+
+    attempt = int(job.get("attempt") or 0) + 1
+    update_job(
+        uid,
+        job_id,
+        status="processing",
+        stage="starting",
+        progress=max(5, int(job.get("progress") or 0)),
+        message="A iniciar análise.",
+        started_at=job.get("started_at") or _now(),
+        attempt=attempt,
+        error=None,
+    )
+
+    def progress(value: int, stage: str, message: str) -> None:
+        current = _load(uid, job_id)
+        if current and current.get("status") == "cancelled":
+            raise JobCancelledError("Análise cancelada pelo utilizador.")
+        safe_value = max(0, min(int(value), 99))
         update_job(
             uid,
             job_id,
             status="processing",
-            stage="starting",
-            progress=5,
-            message="A iniciar análise.",
-            started_at=_now(),
+            stage=stage,
+            progress=safe_value,
+            message=message,
         )
 
-        def progress(value: int, stage: str, message: str) -> None:
-            current = _load(uid, job_id)
-            if current and current.get("status") == "cancelled":
-                raise JobCancelledError("Análise cancelada pelo utilizador.")
+    try:
+        from gee_module import gee_execution_lock
+        with gee_execution_lock():
+            result = runner(progress)
 
-            safe_value = max(0, min(int(value), 99))
+        current = _load(uid, job_id)
+        if current and current.get("status") == "cancelled":
+            return _public(current)
+
+        return update_job(
+            uid,
+            job_id,
+            status="completed",
+            stage="completed",
+            progress=100,
+            message="Análise concluída.",
+            result=result,
+            error=None,
+            completed_at=_now(),
+        )
+    except JobCancelledError:
+        logger.info("Analysis job %s cancelled", job_id)
+        current = _load(uid, job_id)
+        if current and current.get("status") == "cancelled":
+            return _public(current)
+        return update_job(
+            uid,
+            job_id,
+            status="cancelled",
+            stage="cancelled",
+            message="Análise cancelada.",
+            error=None,
+            completed_at=_now(),
+        )
+    except Exception as exc:
+        logger.exception("Analysis job %s failed", job_id)
+        error = {
+            "code": "analysis_failed",
+            "message": str(exc),
+            "retryable": True,
+        }
+        if retry_number < max_retries:
             update_job(
                 uid,
                 job_id,
-                status="processing",
-                stage=stage,
-                progress=safe_value,
-                message=message,
+                status="queued",
+                stage="retrying",
+                message="Falha temporária. A análise será repetida automaticamente.",
+                error=error,
             )
+            raise
+        return update_job(
+            uid,
+            job_id,
+            status="failed",
+            stage="failed",
+            message="A análise não pôde ser concluída.",
+            error=error,
+            completed_at=_now(),
+        )
 
+
+def _submit_local_job(
+    uid: str,
+    job_id: str,
+    runner: JobRunner,
+) -> None:
+    def execute() -> None:
         try:
-            from gee_module import gee_execution_lock
-
-            # Analysis workers may be configured above one for future
-            # non-GEE work, but current GIS runners share Earth Engine's
-            # process-global credential state and therefore execute serially.
-            # The runner itself remains responsible for _init_gee(uid).
-            with gee_execution_lock():
-                result = runner(progress)
-
-            current = _load(uid, job_id)
-            if current and current.get("status") == "cancelled":
-                return
-
-            update_job(
-                uid,
-                job_id,
-                status="completed",
-                stage="completed",
-                progress=100,
-                message="Análise concluída.",
-                result=result,
-                error=None,
-                completed_at=_now(),
-            )
-        except JobCancelledError:
-            logger.info("Analysis job %s cancelled (%s)", job_id, job_type)
-            current = _load(uid, job_id)
-            if not current or current.get("status") != "cancelled":
-                update_job(
-                    uid,
-                    job_id,
-                    status="cancelled",
-                    stage="cancelled",
-                    message="Análise cancelada.",
-                    error=None,
-                    completed_at=_now(),
-                )
-        except Exception as exc:
-            logger.exception("Analysis job %s failed (%s)", job_id, job_type)
-            update_job(
-                uid,
-                job_id,
-                status="failed",
-                stage="failed",
-                message="A análise não pôde ser concluída.",
-                error={
-                    "code": "analysis_failed",
-                    "message": str(exc),
-                    "retryable": True,
-                },
-                completed_at=_now(),
-            )
+            execute_job(uid, job_id, runner)
         finally:
             with _jobs_lock:
                 _futures.pop((uid, job_id), None)
@@ -356,8 +470,52 @@ def submit_job(
     with _jobs_lock:
         _futures[(uid, job_id)] = future
 
-    return job
 
+def submit_job(
+    uid: str,
+    job_type: str,
+    payload: dict[str, Any],
+    runner: JobRunner,
+    project_id: str | None = None,
+) -> dict[str, Any]:
+    execution_mode = _execution_backend()
+    job = create_job(
+        uid,
+        job_type,
+        payload,
+        project_id=project_id,
+        execution_mode=execution_mode,
+    )
+    job_id = job["id"]
+
+    if execution_mode == "cloud_tasks":
+        try:
+            task_name = _enqueue_cloud_task(uid, job_id)
+            return update_job(
+                uid,
+                job_id,
+                stage="queued",
+                message="Análise enviada para a fila distribuída.",
+                queue_task=task_name,
+            ) or job
+        except Exception as exc:
+            logger.exception("Could not enqueue analysis job %s", job_id)
+            return update_job(
+                uid,
+                job_id,
+                status="failed",
+                stage="failed",
+                message="Não foi possível colocar a análise na fila.",
+                error={
+                    "code": "queue_unavailable",
+                    "message": str(exc),
+                    "retryable": True,
+                },
+                completed_at=_now(),
+            ) or job
+
+    _submit_local_job(uid, job_id, runner)
+    return job
 
 
 def cancel_job(uid: str, job_id: str) -> Optional[dict[str, Any]]:
@@ -395,14 +553,37 @@ def cancel_job(uid: str, job_id: str) -> Optional[dict[str, Any]]:
 
 
 def active_job_count(uid: str | None = None) -> int:
+    """Count queued/processing jobs, including distributed Cloud Tasks jobs."""
+    if uid is not None:
+        db = _firestore()
+        if db is not None:
+            try:
+                snapshots = (
+                    db.collection("users")
+                    .document(uid)
+                    .collection("analysis_jobs")
+                    .stream()
+                )
+                return sum(
+                    1
+                    for snapshot in snapshots
+                    if (snapshot.to_dict() or {}).get("status")
+                    in {"queued", "processing"}
+                )
+            except Exception as exc:
+                logger.warning("Could not count persisted analysis jobs: %s", exc)
+
     with _jobs_lock:
-        if uid is None:
-            return sum(1 for future in _futures.values() if not future.done())
-        return sum(
-            1
-            for (owner, _), future in _futures.items()
-            if owner == uid and not future.done()
-        )
+        jobs = [
+            job
+            for (owner, _), job in _jobs.items()
+            if uid is None or owner == uid
+        ]
+    return sum(
+        1
+        for job in jobs
+        if job.get("status") in {"queued", "processing"}
+    )
 
 
 def is_terminal(status: str) -> bool:
