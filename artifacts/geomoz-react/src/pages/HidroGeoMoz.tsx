@@ -195,6 +195,7 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
     resetJob: resetWatershedJob,
   } = useAnalysisJob<WatershedResult>();
   const loadingWS = watershedRunning;
+  const displayError = watershedJobError || error;
   const [wsStats,       setWsStats]       = useState<BasinStats | null>(null);
   const [loadingWsSt,   setLoadingWsSt]   = useState(false);
 
@@ -872,6 +873,7 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
                 {watershedData && <div className="text-blue-700 font-bold not-italic">{watershedData.areaKm2.toLocaleString("pt-PT")} km²</div>}
               </div>
             )}
+            <AnalysisJobProgress job={watershedJob} title="GeoMoz Hydro · Delimitação de Bacia" />
           </div>
         )}
 
@@ -894,9 +896,9 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
         </div>
 
         {/* Error */}
-        {error && (
+        {displayError && (
           <div className="m-3 bg-red-50 border border-red-200 rounded-xl p-2.5 text-[11px] text-red-700 flex items-start gap-1.5">
-            <AlertTriangle size={11} className="mt-0.5 shrink-0" />{error}
+            <AlertTriangle size={11} className="mt-0.5 shrink-0" />{displayError}
           </div>
         )}
 
@@ -1036,7 +1038,7 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
               <Loader2 size={20} className="text-blue-500 animate-spin" />
               <span className="text-sm text-slate-700 font-medium">
                 {loadingBasins ? "A carregar bacias HydroBASINS…"
-                  : loadingWS ? "A delinear sub-bacia (HydroBASINS)…"
+                  : loadingWS ? (watershedJob?.message || "A delinear sub-bacia…")
                   : "A gerar rede de linhas de água…"}
               </span>
             </div>
@@ -1068,7 +1070,7 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
               {loadingWS && (
                 <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400 py-10">
                   <Loader2 size={24} className="animate-spin text-blue-400" />
-                  <span className="text-sm text-center px-4">A delinear sub-bacia (HydroBASINS)…</span>
+                  <span className="text-sm text-center px-4">{watershedJob?.message || "A delinear sub-bacia…"}</span>
                 </div>
               )}
 
