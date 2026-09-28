@@ -432,7 +432,7 @@ function flyToResult(result: NominatimResult) {
             </Badge>
           </div>
 
-          <nav className="hidden md:flex items-center gap-0.5">
+          <nav className="hidden 2xl:flex items-center gap-0.5">
             {TABS.map(tab => (
               <button
                 key={tab.id}
@@ -546,11 +546,11 @@ function flyToResult(result: NominatimResult) {
             type="button"
             onClick={() => setCommandOpen(true)}
             title="Abrir GeoMoz Command Center"
-            className="hidden lg:flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50/70 px-2.5 py-1.5 text-[11px] font-semibold text-violet-700 transition hover:border-violet-300 hover:bg-violet-100"
+            className="flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50/70 px-2 py-1.5 text-[11px] font-semibold text-violet-700 transition hover:border-violet-300 hover:bg-violet-100 sm:px-2.5"
           >
             <Sparkles size={12} />
-            <span className="hidden 2xl:inline">Command</span>
-            <kbd className="rounded border border-violet-200 bg-white px-1 py-0.5 font-mono text-[9px] font-medium text-violet-500">
+            <span className="hidden xl:inline">Command</span>
+            <kbd className="hidden rounded border border-violet-200 bg-white px-1 py-0.5 font-mono text-[9px] font-medium text-violet-500 lg:inline">
               Ctrl K
             </kbd>
           </button>
