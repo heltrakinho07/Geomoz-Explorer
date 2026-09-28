@@ -22,10 +22,11 @@ class TestProjectsAPI:
         monkeypatch.setattr(
             projects_store,
             "create_project",
-            lambda uid, name, description="", aoi=None, map_state=None: {
+            lambda uid, name, description="", aoi=None, map_state=None, solution_id=None: {
                 "id": "project-1",
                 "name": name,
                 "description": description,
+                "solution_id": solution_id,
                 "aoi": aoi,
                 "map_state": map_state or {},
                 "created_at": "2026-09-28T00:00:00+00:00",
@@ -38,6 +39,7 @@ class TestProjectsAPI:
             json={
                 "name": "Quelimane Flood Study",
                 "description": "Teste",
+                "solution_id": "hazards",
                 "aoi": {
                     "source": "mozambique",
                     "province": "Zambézia",
@@ -52,6 +54,20 @@ class TestProjectsAPI:
         assert resp.status_code == 201
         assert resp.json()["id"] == "project-1"
         assert resp.json()["name"] == "Quelimane Flood Study"
+        assert resp.json()["solution_id"] == "hazards"
+
+    def test_unknown_solution_starter_is_rejected(
+        self, client: TestClient,
+    ) -> None:
+        resp = client.post(
+            "/geomoz-api/projects",
+            json={
+                "name": "Invalid Starter",
+                "solution_id": "not-a-solution",
+            },
+        )
+
+        assert resp.status_code == 422
 
     def test_list_projects_is_user_scoped(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
