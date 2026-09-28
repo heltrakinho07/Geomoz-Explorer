@@ -122,6 +122,25 @@ export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
     }
   }, [activeProject?.id]);
 
+  const cancel = useCallback(async () => {
+    if (!job?.id || !ACTIVE_STATUSES.has(job.status)) return job;
+
+    setRequestError(null);
+    const res = await apiFetch(`/geomoz-api/jobs/${job.id}/cancel`, {
+      method: "POST",
+    });
+
+    if (!res.ok) {
+      const message = await parseError(res);
+      setRequestError(message);
+      throw new Error(message);
+    }
+
+    const cancelled = (await res.json()) as AnalysisJob<T>;
+    if (mounted.current) setJob(cancelled);
+    return cancelled;
+  }, [job]);
+
   const resetJob = useCallback(() => {
     setJob(null);
     setRequestError(null);
@@ -131,6 +150,7 @@ export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
     job,
     submitJob,
     refresh,
+    cancel,
     resetJob,
     running: submitting || (!!job && ACTIVE_STATUSES.has(job.status)),
     submitting,
