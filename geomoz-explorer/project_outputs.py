@@ -120,7 +120,16 @@ def create_output(
         source_id=source_id,
     )
     if existing:
-        return existing
+        item = {
+            **existing,
+            "owner_id": uid,
+            "title": title.strip()[:180] or existing.get("title") or "GeoMoz Output",
+            "description": description.strip()[:1000],
+            "content": deepcopy(content),
+            "updated_at": _now(),
+        }
+        _save(uid, item)
+        return _public(item)
 
     now = _now()
     item = {
