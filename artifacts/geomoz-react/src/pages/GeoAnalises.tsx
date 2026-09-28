@@ -34,7 +34,9 @@ import {
 
 import { useGeologyGeoJSON } from "@/hooks/useGeoMoz";
 import { useGeeAuth } from "@/hooks/useGeeAuth";
+import { useAnalysisJob } from "@/hooks/useAnalysisJob";
 import GeeCredentialsDialog from "@/components/GeeCredentialsDialog";
+import AnalysisJobProgress from "@/components/AnalysisJobProgress";
 import { computeSpectralValue, applyColormap, SpectralIndex, GEE_ONLY_INDICES } from "@/lib/geoml";
 import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
@@ -659,41 +661,48 @@ function GeeAnalysisPanel({
   const [startDate, setStartDate] = useState("2023-01-01");
   const [endDate, setEndDate]     = useState("2023-12-31");
   const [cloudPct, setCloudPct]   = useState(30);
-  const [running, setRunning]     = useState(false);
-  const [error, setError]         = useState<string | null>(null);
   const [result, setResult]       = useState<GeeResult | null>(null);
+  const deliveredJobRef           = useRef<string | null>(null);
+  const {
+    job,
+    submitJob,
+    running,
+    error,
+    resetJob,
+  } = useAnalysisJob<GeeResult>();
 
   const def = INDEX_DEFS.find(d => d.id === activeIndex)!;
 
+  useEffect(() => {
+    if (
+      job?.status === "completed" &&
+      job.result &&
+      deliveredJobRef.current !== job.id
+    ) {
+      deliveredJobRef.current = job.id;
+      setResult(job.result);
+      onTileReady(job.result);
+    }
+  }, [job, onTileReady]);
+
   async function runAnalysis() {
-    setRunning(true);
-    setError(null);
+    resetJob();
+    deliveredJobRef.current = null;
+    setResult(null);
     onTileReady(null);
+
     try {
-      const res = await apiFetch("/geomoz-api/gee/index", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          index:      activeIndex,
-          province:   province || null,
-          district:   district || null,
-          geometry:   geometry ?? null,
-          start_date: startDate,
-          end_date:   endDate,
-          cloud_pct:  cloudPct,
-        }),
+      await submitJob("gee.index", {
+        index:      activeIndex,
+        province:   province || null,
+        district:   district || null,
+        geometry:   geometry ?? null,
+        start_date: startDate,
+        end_date:   endDate,
+        cloud_pct:  cloudPct,
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail ?? "Erro GEE desconhecido");
-      }
-      const data: GeeResult = await res.json();
-      setResult(data);
-      onTileReady(data);
-    } catch (e) {
-      setError(String(e instanceof Error ? e.message : e));
-    } finally {
-      setRunning(false);
+    } catch {
+      // The hook exposes a user-facing error and keeps the panel reusable.
     }
   }
 
@@ -749,12 +758,10 @@ function GeeAnalysisPanel({
           : <><Play size={14} /> Calcular {def.short} com Sentinel-2</>}
       </button>
 
-      {running && (
-        <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-xs text-sky-700 leading-relaxed">
-          <Loader2 size={12} className="inline animate-spin mr-1.5" />
-          O GEE está a carregar cenas Sentinel-2, aplicar máscara de nuvens e calcular o índice. Tipicamente 5–20 s.
-        </div>
-      )}
+      <AnalysisJobProgress
+        job={job}
+        title={`GeoMoz Analysis · ${def.short}`}
+      />
 
       {/* Error */}
       {error && (
