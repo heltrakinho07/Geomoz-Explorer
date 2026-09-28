@@ -44,7 +44,7 @@ async def require_gee_auth(uid: str = Depends(require_firebase_auth)) -> str:
     from gee_module import _init_gee
     _init_gee(uid)
     return uid
-from pydantic import BaseModel, field_validator, constr
+from pydantic import BaseModel, Field, field_validator, constr
 
 # ── Package imports ────────────────────────────────────────────────────────
 # These modules are siblings of api.py in the geomoz-explorer directory.
@@ -922,7 +922,7 @@ async def gee_disconnect(uid: str = Depends(require_firebase_auth)):
     }
 
 class ToolExecuteRequest(BaseModel):
-    parameters: dict = {}
+    parameters: dict = Field(default_factory=dict)
     project_id: Optional[str] = None
 
 
