@@ -54,7 +54,7 @@ export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
     return () => {
       mounted.current = false;
     };
-  }, [activeProject?.id]);
+  }, []);
 
   const refresh = useCallback(async (jobId?: string) => {
     const id = jobId || job?.id;
@@ -119,7 +119,7 @@ export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
     } finally {
       if (mounted.current) setSubmitting(false);
     }
-  }, []);
+  }, [activeProject?.id]);
 
   const resetJob = useCallback(() => {
     setJob(null);
