@@ -272,13 +272,14 @@ export default function GeoProcessamento({
   React.useEffect(() => {
     if (aoi && aoi.source === "draw" && aoi.geometry) {
       const drawnId = "drawn_aoi_layer";
+      const geometry = aoi.geometry;
       const fc: FeatureCollection = {
         type: "FeatureCollection",
         features: [
           {
             type: "Feature",
             properties: { nome: aoi.label || "Área Desenhada" },
-            geometry: aoi.geometry,
+            geometry,
           },
         ],
       };
@@ -291,7 +292,7 @@ export default function GeoProcessamento({
             name: aoi.label || "Área Desenhada",
             geojson: fc,
             featureCount: 1,
-            geometryType: aoi.geometry.type,
+            geometryType: geometry.type,
             fields: ["nome"],
             color: "#e11d48",
             visible: true,
@@ -580,16 +581,15 @@ export default function GeoProcessamento({
 
   // ── Export PDF Report ────────────────────────────────────────────────────
   const exportPdf = () => {
-    const ctx = createPDFContext();
+    const ctx = createPDFContext("Dossiê Avançado de Geoprocessamento");
     drawCover(
       ctx,
-      "Dossiê Avançado de Geoprocessamento",
       `GeoLibre Processing Engine — ${province ?? "Moçambique"} · Dados Próprios`,
       [
-        { label: "Província", value: province ?? "Nacional" },
-        { label: "Total de Camadas", value: `${layers.length}` },
-        { label: "Operações Realizadas", value: `${history.length}` },
-        { label: "Privacidade & Execução", value: "Turf.js Client-Side (Zero Server Upload)" },
+        `Província: ${province ?? "Nacional"}`,
+        `Camadas: ${layers.length}`,
+        `Operações: ${history.length}`,
+        "Execução: Turf.js Client-Side",
       ]
     );
 
