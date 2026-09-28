@@ -23,5 +23,6 @@ const firebaseConfig = {
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+// GeoMoz platform authentication is deliberately separate from Earth Engine.
+// GEE permission is requested only from the explicit "Ligar Earth Engine" flow.
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope("https://www.googleapis.com/auth/earthengine");
