@@ -56,7 +56,7 @@ O worker usa:
 - `ANALYSIS_EXECUTION_BACKEND=local`
 - `ANALYSIS_TASK_MAX_RETRIES=2`
 
-O deployment cria/actualiza a fila `geomoz-analysis`, publica o mesmo container num serviço worker privado, configura `concurrency=1` e autoriza a identidade runtime a invocar o worker.
+O deployment activa a API Cloud Tasks, cria/actualiza a fila `geomoz-analysis`, publica o mesmo container num serviço worker privado, configura `concurrency=1` e autoriza a identidade runtime a invocar o worker. Se o secret GitHub `GCP_RUNTIME_SERVICE_ACCOUNT` estiver definido, essa service account é usada; caso contrário o workflow usa a Compute Engine default service account do projecto.
 
 ## Segurança
 
