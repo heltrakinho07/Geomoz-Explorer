@@ -311,7 +311,9 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
         )}
 
         {(error || floodJobError) && (
-          <div className="m-3 bg-red-50 border border-red-200 rounded-xl p-2.5 text-[11px] text-red-700">{error}</div>
+          <div className="m-3 bg-red-50 border border-red-200 rounded-xl p-2.5 text-[11px] text-red-700">
+            <AlertTriangle size={12} className="inline mr-1" /> {floodJobError || error}
+          </div>
         )}
       </div>
 
@@ -352,7 +354,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
             <div className="bg-white rounded-2xl shadow-xl border border-slate-200 px-7 py-5 flex items-center gap-3 max-w-xs">
               <Loader2 size={20} className="text-rose-500 animate-spin shrink-0" />
               <span className="text-sm text-slate-700 font-medium">
-                {tool === "flood" ? "A processar radar Sentinel-1… (pode levar ~1 min)" : "A calcular RUSLE… (pode levar ~1–2 min)"}
+                {tool === "flood" ? (floodJob?.message || "A processar radar Sentinel-1…") : "A calcular RUSLE… (pode levar ~1–2 min)"}
               </span>
             </div>
           </div>
