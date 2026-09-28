@@ -12,7 +12,6 @@ import "leaflet/dist/leaflet.css";
 import { Droplets, Loader2, Play, ChevronDown, Info, Scale, FileDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAnalysisJob } from "@/hooks/useAnalysisJob";
-import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import AnalysisJobProgress from "@/components/AnalysisJobProgress";
 import AreaSelect from "@/components/AreaSelect";
