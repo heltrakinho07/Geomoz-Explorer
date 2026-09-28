@@ -301,3 +301,42 @@ def test_index_template_reports_formula_bands_and_period() -> None:
     assert "B8, B4" in html
     assert "2024-01-01" in html
     assert "indicadores biofísicos" in html
+
+
+
+def test_report_renders_compact_study_area_metadata() -> None:
+    from report_renderer import render_output_html
+
+    output = {
+        "id": "study-area-output",
+        "type": "analysis_report",
+        "title": "NDVI Boane",
+        "description": "",
+        "created_at": "2026-09-28T10:00:00+00:00",
+        "content": {
+            "analysis_type": "gee.index",
+            "study_area": {
+                "label": "Distrito de Boane",
+                "kind": "district",
+                "province": "Maputo",
+                "district": "Boane",
+            },
+            "parameters": {"index": "ndvi"},
+            "result": {
+                "name": "NDVI",
+                "formula": "(NIR - RED) / (NIR + RED)",
+                "bands": "B8, B4",
+                "group": "vegetation",
+                "sceneCount": 5,
+                "dateRange": "2026-01-01 → 2026-06-30",
+            },
+            "job": {"completed_at": "2026-07-01T10:00:00+00:00"},
+        },
+    }
+
+    html = render_output_html(output, {"name": "Projecto Boane"})
+
+    assert "Área de estudo" in html
+    assert "Distrito de Boane" in html
+    assert "Boane · Maputo" in html
+    assert "coordinates" not in html.lower()
