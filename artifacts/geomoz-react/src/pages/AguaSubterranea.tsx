@@ -88,6 +88,14 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
   }, [aoi, year, resetJob, submitJob]);
 
   const total = result ? result.classes.reduce((s, c) => s + c.areaKm2, 0) || 1 : 1;
+  const priorityKm2 = result
+    ? result.classes.filter(c => c.id >= 4).reduce((sum, c) => sum + c.areaKm2, 0)
+    : 0;
+  const priorityPct = result ? (priorityKm2 / total) * 100 : 0;
+  const dominantClass = result?.classes.reduce(
+    (best, current) => current.areaKm2 > best.areaKm2 ? current : best,
+    result.classes[0],
+  );
 
   // ── PDF Export ──────────────────────────────────────────────────────────────
   async function exportGroundwaterPdf() {
@@ -146,6 +154,8 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
         { label: "Fatores", value: `${result.weights.length}`, color: [14, 165, 233] },
         { label: "Resolução", value: "~500 m", color: [100, 116, 139] },
         { label: "Área total", value: `${total.toLocaleString("pt-PT", { maximumFractionDigits: 0 })} km²`, color: [16, 185, 129] },
+        { label: "Alta + Muito alta", value: `${priorityKm2.toLocaleString("pt-PT", { maximumFractionDigits: 0 })} km²`, color: [6, 148, 162] },
+        { label: "% prioritária", value: `${priorityPct.toFixed(1)}%`, color: [13, 148, 136] },
       ]);
     }
 
@@ -261,6 +271,31 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
         <div className="w-80 flex flex-col bg-white border-l border-slate-200 overflow-y-auto shrink-0">
           <div className="p-4 space-y-4">
             <div className="flex items-center gap-2"><Droplets size={15} className="text-cyan-600" /><span className="text-sm font-semibold text-slate-900">Potencial de Água Subterrânea</span></div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-cyan-100 bg-cyan-50 p-3">
+                <div className="text-[9px] font-semibold uppercase tracking-wider text-cyan-600">Área prioritária</div>
+                <div className="mt-1 text-lg font-bold text-cyan-900">
+                  {priorityKm2.toLocaleString("pt-PT", { maximumFractionDigits: 0 })} km²
+                </div>
+                <div className="text-[10px] text-cyan-700">Alta + muito alta</div>
+              </div>
+              <div className="rounded-xl border border-teal-100 bg-teal-50 p-3">
+                <div className="text-[9px] font-semibold uppercase tracking-wider text-teal-600">Prioridade da AOI</div>
+                <div className="mt-1 text-lg font-bold text-teal-900">{priorityPct.toFixed(1)}%</div>
+                <div className="text-[10px] text-teal-700">da área analisada</div>
+              </div>
+              <div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Classe dominante</div>
+                <div className="mt-1 flex items-center justify-between gap-3">
+                  <div className="text-sm font-semibold text-slate-800">{dominantClass?.label ?? "—"}</div>
+                  <div className="text-[11px] font-mono text-slate-500">
+                    {dominantClass ? dominantClass.areaKm2.toLocaleString("pt-PT", { maximumFractionDigits: 0 }) : "0"} km²
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-1.5">
               {result.classes.map(c => {
                 const pct = (c.areaKm2 / total) * 100;
