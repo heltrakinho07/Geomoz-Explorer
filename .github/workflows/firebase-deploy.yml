@@ -2,7 +2,7 @@ name: Deploy Frontend to Firebase Hosting
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix/geology-invalid-geometry]
   workflow_dispatch:
 
 
