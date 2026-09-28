@@ -226,6 +226,19 @@ export default function GeoMozAIAgentTab({
 
     setPlanBusy(true);
     try {
+      const currentPlan = plan?.id === planId ? plan : null;
+      const currentStep = currentPlan?.steps[currentPlan.current_step];
+      if (currentStep?.job_id) {
+        try {
+          const jobRes = await apiFetch(`/geomoz-api/jobs/${currentStep.job_id}`);
+          if (jobRes.ok) {
+            adoptJob(await jobRes.json() as AnalysisJob<unknown>);
+          }
+        } catch {
+          // Best effort: plan reconciliation below remains authoritative.
+        }
+      }
+
       const res = await apiFetch(`/geomoz-api/ai/plans/${planId}/advance`, {
         method: "POST",
       });
