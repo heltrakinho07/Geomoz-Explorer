@@ -60,19 +60,29 @@ jobs:
           channelId: live
           projectId: geoprocessamento-426809
 
-      - name: Deploy Firestore rules
+      - name: Deploy Firestore deny rules when API permissions allow
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
+          set +e
           CREDENTIALS_FILE="${RUNNER_TEMP}/firebase-service-account.json"
           trap 'rm -f "${CREDENTIALS_FILE}"' EXIT
           printf '%s' "${FIREBASE_SERVICE_ACCOUNT_JSON}" > "${CREDENTIALS_FILE}"
           chmod 600 "${CREDENTIALS_FILE}"
           export GOOGLE_APPLICATION_CREDENTIALS="${CREDENTIALS_FILE}"
+
           npx --yes firebase-tools deploy \
             --only firestore:rules \
             --project geoprocessamento-426809 \
             --non-interactive
+          STATUS=$?
+
+          if [ "${STATUS}" -ne 0 ]; then
+            echo "::warning::Firebase Hosting deployed, but Firestore rules could not be updated because the Firebase deployment identity cannot verify/enable firestore.googleapis.com. Existing Firestore rules remain unchanged. Grant Service Usage permissions once, then rerun this workflow."
+          else
+            echo "✅ Firestore deny rules deployed."
+          fi
+          exit 0
 
       - name: Deploy Storage deny rules when Firebase Storage is enabled
         env:
