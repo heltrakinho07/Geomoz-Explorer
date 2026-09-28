@@ -44,9 +44,11 @@ async function parseError(res: Response): Promise<string> {
 export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
   const [job, setJob] = useState<AnalysisJob<T> | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const mounted = useRef(true);
 
   useEffect(() => {
+    mounted.current = true;
     return () => {
       mounted.current = false;
     };
@@ -94,22 +96,27 @@ export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
     payload: Record<string, unknown>,
   ) => {
     setRequestError(null);
+    setSubmitting(true);
 
-    const res = await apiFetch("/geomoz-api/jobs", {
+    try {
+      const res = await apiFetch("/geomoz-api/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type, payload }),
     });
 
-    if (!res.ok) {
-      const message = await parseError(res);
-      setRequestError(message);
-      throw new Error(message);
-    }
+      if (!res.ok) {
+        const message = await parseError(res);
+        setRequestError(message);
+        throw new Error(message);
+      }
 
-    const created = (await res.json()) as AnalysisJob<T>;
-    if (mounted.current) setJob(created);
-    return created;
+      const created = (await res.json()) as AnalysisJob<T>;
+      if (mounted.current) setJob(created);
+      return created;
+    } finally {
+      if (mounted.current) setSubmitting(false);
+    }
   }, []);
 
   const resetJob = useCallback(() => {
@@ -122,7 +129,8 @@ export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
     submitJob,
     refresh,
     resetJob,
-    running: !!job && ACTIVE_STATUSES.has(job.status),
+    running: submitting || (!!job && ACTIVE_STATUSES.has(job.status)),
+    submitting,
     completed: job?.status === "completed",
     failed: job?.status === "failed",
     result: job?.result ?? null,
