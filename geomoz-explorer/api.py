@@ -52,61 +52,110 @@ except ImportError:
     firebase_auth = None
 
 def _extract_uid_from_header(auth_header: str) -> Optional[str]:
+    """Return a verified Firebase UID.
+
+    Production never trusts an unsigned JWT payload.  A deliberately insecure
+    decode path is available only for local development when explicitly enabled.
+    """
     if not auth_header or not auth_header.startswith("Bearer "):
         return None
+
     token = auth_header.removeprefix("Bearer ").strip()
     if not token:
         return None
+
     if firebase_auth:
         try:
             decoded = firebase_auth.verify_id_token(token)
-            return decoded.get("uid")
+            uid = decoded.get("uid") or decoded.get("user_id") or decoded.get("sub")
+            return str(uid) if uid else None
         except Exception:
-            pass
+            logger.warning("Firebase token verification failed.")
+            return None
+
+    if os.environ.get("ALLOW_INSECURE_DEV_AUTH", "false").strip().lower() != "true":
+        return None
+
+    # Explicitly opt-in development fallback when firebase-admin is unavailable.
     try:
-        import base64, json
+        import base64
         parts = token.split(".")
-        if len(parts) >= 2:
-            padding = 4 - (len(parts[1]) % 4)
-            payload_b64 = parts[1] + ("=" * padding if padding != 4 else "")
-            payload = json.loads(base64.urlsafe_b64decode(payload_b64.encode()))
-            return payload.get("user_id") or payload.get("sub")
+        if len(parts) < 2:
+            return None
+        padding = 4 - (len(parts[1]) % 4)
+        payload_b64 = parts[1] + ("=" * padding if padding != 4 else "")
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64.encode()))
+        uid = payload.get("user_id") or payload.get("sub")
+        return str(uid) if uid else None
     except Exception:
-        pass
-    return None
+        return None
+
 
 async def require_firebase_auth(request: Request) -> str:
-    auth_header = request.headers.get("Authorization", "")
-    uid = _extract_uid_from_header(auth_header)
+    uid = _extract_uid_from_header(request.headers.get("Authorization", ""))
     if not uid:
-        return "geomoz-user"
+        raise HTTPException(
+            status_code=401,
+            detail="Autenticação GeoMoz obrigatória. Inicie sessão novamente.",
+        )
     return uid
 
-async def require_gee_auth(request: Request) -> str:
-    auth_header = request.headers.get("Authorization", "")
-    uid = _extract_uid_from_header(auth_header)
+
+async def require_gee_auth(
+    request: Request,
+    uid: str = Depends(require_firebase_auth),
+) -> str:
     gee_project = request.headers.get("X-GEE-Project", "").strip() or None
     gee_token = request.headers.get("X-GEE-Token", "").strip() or None
 
     import gee_session_store
-    user_token = gee_session_store.get_token(uid) if uid else None
-    has_sa = bool(os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip())
-    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
-    if not gee_token and not gee_project and not user_token and not allow_server and not has_sa:
+    user_token = gee_session_store.get_token(uid) or {}
+    user_project = str(user_token.get("project") or "").strip() or None
+    has_user_credentials = bool(
+        gee_token
+        or user_token.get("access_token")
+        or user_token.get("refresh_token")
+        or user_token.get("service_account_key")
+    )
+    allow_server = (
+        os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower()
+        == "true"
+    )
+    has_server_sa = bool(os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip())
+
+    effective_project = gee_project or user_project
+    if not effective_project and not (allow_server and has_server_sa):
         raise HTTPException(
             status_code=403,
-            detail="É necessário conectar a sua conta do Google Earth Engine nas opções para utilizar a sua própria cota."
+            detail=(
+                "Defina o seu Google Cloud Project ID antes de usar o Earth Engine. "
+                "O GeoMoz usa a quota do seu próprio projeto (BYO-GEE)."
+            ),
+        )
+
+    if not has_user_credentials and not (allow_server and has_server_sa):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Ligue a sua conta Google Earth Engine para executar esta análise "
+                "com a sua própria quota."
+            ),
         )
 
     from gee_module import _init_gee
     try:
-        _init_gee(uid=uid or "default", project=gee_project, token=gee_token)
-    except RuntimeError as e:
-        err_msg = str(e)
-        if "expirou" in err_msg or "necessary fields" in err_msg or "refresh" in err_msg:
-            raise HTTPException(status_code=401, detail=err_msg)
-        raise HTTPException(status_code=403, detail=err_msg)
-    return uid or "default"
+        _init_gee(uid=uid, project=effective_project, token=gee_token)
+    except RuntimeError as exc:
+        err_msg = str(exc)
+        if (
+            "expirou" in err_msg
+            or "necessary fields" in err_msg
+            or "refresh" in err_msg.lower()
+        ):
+            raise HTTPException(status_code=401, detail=err_msg) from exc
+        raise HTTPException(status_code=403, detail=err_msg) from exc
+
+    return uid
 
 def handle_gee_api_error(exc: Exception, prefix: str = "Cálculo GEE", uid: str = None):
     msg = str(exc)
@@ -589,55 +638,34 @@ class GEEServiceAccountKeyRequest(BaseModel):
 
 
 @app.get("/geomoz-api/gee/config")
-def gee_config():
-    """
-    Return current GEE configuration (with sensitive values masked).
-    Used by the Settings page to show the user what's configured.
-    """
-    from gee_module import _init_gee, gee_status as _gee_status
+def gee_config(uid: str = Depends(require_firebase_auth)):
+    """Return only the authenticated user's non-secret GEE configuration."""
+    import gee_session_store
+    from gee_module import gee_status as _gee_status
 
-    sa_key_raw = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
-    project_id = os.environ.get("GEE_PROJECT_ID", "").strip()
+    user_data = gee_session_store.get_token(uid) or {}
+    project = str(user_data.get("project") or "").strip() or None
+    account = str(user_data.get("account") or "").strip() or None
+    has_user_sa = bool(user_data.get("service_account_key"))
 
-    # Build a masked version of the key for display
-    masked_key = None
-    has_key = bool(sa_key_raw)
-    if has_key:
-        try:
-            key_data = json.loads(sa_key_raw)
-            email = key_data.get("client_email", "")
-            proj = key_data.get("project_id", "")
-            masked_key = {
-                "client_email": email,
-                "project_id": proj or "(n/a)",
-                "key_prefix": sa_key_raw[:40] + "…" if len(sa_key_raw) > 40 else sa_key_raw[:20] + "…",
-                "has_private_key": bool(key_data.get("private_key", "")),
-            }
-        except (json.JSONDecodeError, Exception):
-            masked_key = {"error": "Invalid JSON in GEE_SERVICE_ACCOUNT_KEY"}
-
-    status = _gee_status()
-
+    status = _gee_status(uid=uid, project=project)
     return {
         "status": status,
         "config": {
-            "hasServiceAccountKey": has_key,
-            "maskedServiceAccount": masked_key,
-            "envProjectId": project_id or None,
-            "envProjectSource": "env_var" if project_id else ("key_file" if has_key else None),
-        },
-        "endpoints": {
-            "configure": {
-                "method": "POST",
-                "path": "/geomoz-api/gee/configure",
-                "body": {
-                    "service_account_key": "(optional) JSON string of the service account",
-                    "project_id": "(optional) GCP project ID",
-                },
-            }
+            "project": project,
+            "account": account,
+            "hasUserServiceAccount": has_user_sa,
+            "isPermanent": bool(
+                user_data.get("refresh_token") or user_data.get("service_account_key")
+            ),
+            "serverFallbackEnabled": (
+                os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false")
+                .strip()
+                .lower()
+                == "true"
+            ),
         },
     }
-
 
 def _update_env_file(updates: dict):
     """Safely update key=value pairs in geomoz-explorer/.env."""
@@ -674,17 +702,16 @@ def _update_env_file(updates: dict):
 
 
 @app.post("/geomoz-api/gee/configure")
-def gee_configure(req: GEEServiceAccountKeyRequest, request: Request):
+def gee_configure(
+    req: GEEServiceAccountKeyRequest,
+    uid: str = Depends(require_firebase_auth),
+):
     """
-    Update GEE credentials for the active authenticated user and reinitialize.
-    Accepts service_account_key (JSON string), project_id, and/or account.
-    Persists configuration in gee_session_store (Firestore/memory) per user.
+    Update Earth Engine settings for the authenticated GeoMoz user only.
+    Secrets are persisted server-side by gee_session_store.
     """
     import gee_session_store
     from gee_module import reset_gee, _init_gee, gee_status as _gee_status
-
-    auth_header = request.headers.get("Authorization", "")
-    uid = _extract_uid_from_header(auth_header) or "default"
 
     changed = False
     user_data = gee_session_store.get_token(uid) or {}
@@ -994,31 +1021,61 @@ async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(requ
         }
 
 @app.get("/geomoz-api/gee/status")
-async def gee_status_endpoint(request: Request):
+async def gee_status_endpoint(
+    request: Request,
+    uid: str = Depends(require_firebase_auth),
+):
     import gee_session_store
-    auth_header = request.headers.get("Authorization", "")
-    uid = _extract_uid_from_header(auth_header)
-    gee_project = request.headers.get("X-GEE-Project", "").strip() or None
-    gee_token = request.headers.get("X-GEE-Token", "").strip() or None
-
     from gee_module import gee_status
-    st = gee_status(uid=uid, project=gee_project, token=gee_token)
-    has_sa = bool(os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip())
-    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
-    user_token = gee_session_store.get_token(uid) if uid else None
-
     from gee_presets import INDEX_REGISTRY
+
+    gee_project = request.headers.get("X-GEE-Project", "").strip() or None
+    user_token = gee_session_store.get_token(uid) or {}
+    project = gee_project or str(user_token.get("project") or "").strip() or None
+
+    st = gee_status(uid=uid, project=project)
+    allow_server = (
+        os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower()
+        == "true"
+    )
+
     return {
         "connected": st.get("connected", False),
-        "project": st.get("project") or gee_project,
+        "project": st.get("project") or project,
+        "account": st.get("account") or user_token.get("account"),
         "auth_type": st.get("auth_type"),
         "is_permanent": st.get("is_permanent", False),
         "has_refresh_token": st.get("has_refresh_token", False),
-        "user_connected": bool(gee_token or gee_project or (user_token.get("access_token") if user_token else None) or (user_token.get("refresh_token") if user_token else None)),
-        "server_connected": st.get("auth_type") in ("service_account", "adc") or has_sa,
+        "user_connected": bool(
+            user_token.get("access_token")
+            or user_token.get("refresh_token")
+            or user_token.get("service_account_key")
+        ),
+        "server_connected": bool(
+            allow_server and os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
+        ),
         "allow_server_fallback": allow_server,
         "message": st.get("message"),
-        "indices": list(INDEX_REGISTRY.keys())
+        "indices": list(INDEX_REGISTRY.keys()),
+    }
+
+
+@app.post("/geomoz-api/gee/disconnect")
+async def gee_disconnect_endpoint(uid: str = Depends(require_firebase_auth)):
+    import gee_session_store
+    from gee_module import reset_gee
+
+    gee_session_store.clear_token(uid)
+    reset_gee()
+    return {
+        "connected": False,
+        "project": None,
+        "account": None,
+        "auth_type": None,
+        "is_permanent": False,
+        "has_refresh_token": False,
+        "user_connected": False,
+        "message": "Google Earth Engine desligado desta conta GeoMoz.",
     }
 
 @app.post("/geomoz-api/gee/index")
