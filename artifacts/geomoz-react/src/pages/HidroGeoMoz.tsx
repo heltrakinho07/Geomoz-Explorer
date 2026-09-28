@@ -195,7 +195,6 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
     resetJob: resetWatershedJob,
   } = useAnalysisJob<WatershedResult>();
   const loadingWS = watershedRunning;
-  const displayError = watershedJobError || error;
   const [wsStats,       setWsStats]       = useState<BasinStats | null>(null);
   const [loadingWsSt,   setLoadingWsSt]   = useState(false);
 
@@ -216,6 +215,7 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
   const [loadingBasins, setLoadingBasins] = useState(false);
   const [loadingStats,  setLoadingStats]  = useState(false);
   const [error,         setError]         = useState<string | null>(null);
+  const displayError = watershedJobError || error;
   const [drawingEnabled, setDrawingEnabled] = useState(false);
 
   // GeoMoz data
