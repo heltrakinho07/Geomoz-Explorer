@@ -86,6 +86,22 @@ def _load(uid: str, output_id: str) -> Optional[dict[str, Any]]:
     return None
 
 
+def find_output_by_source(
+    uid: str,
+    *,
+    project_id: str,
+    source_type: str,
+    source_id: str,
+) -> Optional[dict[str, Any]]:
+    for item in list_outputs(uid, project_id=project_id, limit=200):
+        if (
+            item.get("source_type") == source_type
+            and item.get("source_id") == source_id
+        ):
+            return _public(item)
+    return None
+
+
 def create_output(
     uid: str,
     *,
@@ -97,6 +113,15 @@ def create_output(
     content: dict[str, Any],
     description: str = "",
 ) -> dict[str, Any]:
+    existing = find_output_by_source(
+        uid,
+        project_id=project_id,
+        source_type=source_type,
+        source_id=source_id,
+    )
+    if existing:
+        return existing
+
     now = _now()
     item = {
         "id": uuid.uuid4().hex,
