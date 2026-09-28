@@ -108,7 +108,8 @@ import {
   MARGIN,
   CONTENT_W,
 } from "@/lib/pdf-export";
-import type { FeatureCollection, Feature } from "geojson";
+type FeatureCollection = GeoJSON.FeatureCollection;
+type Feature = GeoJSON.Feature;
 
 // Auto fit-bounds component
 function FitToLayer({ fc }: { fc?: FeatureCollection }) {
@@ -272,7 +273,7 @@ export default function GeoProcessamento({
   React.useEffect(() => {
     if (aoi && aoi.source === "draw" && aoi.geometry) {
       const drawnId = "drawn_aoi_layer";
-      const geometry = aoi.geometry;
+      const geometry = aoi.geometry as GeoJSON.Geometry;
       const fc: FeatureCollection = {
         type: "FeatureCollection",
         features: [
