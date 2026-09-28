@@ -57,7 +57,7 @@ export default function Explorer() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [geeDialogOpen, setGeeDialogOpen] = useState(false);
   const { user } = useAuth();
-  const { activeProject } = useProject();
+  const { activeProject, clearActiveProject } = useProject();
   const { resultLayers, setResultLayers } = useWorkspaceLayers();
   const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [finishRequest, setFinishRequest] = useState(0);
@@ -271,6 +271,8 @@ function flyToResult(result: NominatimResult) {
       .catch(error => {
         if (cancelled) return;
         projectWorkspaceReadyRef.current = false;
+        restoredProjectRef.current = null;
+        clearActiveProject();
         console.error("Failed to restore project workspace:", error);
         toast({
           variant: "destructive",
@@ -314,9 +316,15 @@ function flyToResult(result: NominatimResult) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      }).catch(error => {
-        console.error("Project autosave failed:", error);
-      });
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`Autosave do projecto falhou (HTTP ${response.status}).`);
+          }
+        })
+        .catch(error => {
+          console.error("Project autosave failed:", error);
+        });
     }, 1800);
 
     return () => {
