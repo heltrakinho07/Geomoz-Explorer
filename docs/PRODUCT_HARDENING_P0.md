@@ -176,6 +176,41 @@ execução.
 Próximas tools: estatísticas zonais, change detection genérico, buffers,
 intersecções, exportações e relatórios.
 
+
+### AnalysisPlan multi-etapa
+
+**Estado: implementação inicial concluída.**
+
+Pedidos que exigem duas ou mais ferramentas podem ser transformados num plano
+persistente de até seis etapas. O plano não executa código livre: cada etapa
+referencia um `tool_id` do Tool Registry e cria um `AnalysisJob` normal.
+
+Lifecycle:
+
+```text
+ready
+  → step 1 queued / processing / completed
+  → step 2 queued / processing / completed
+  → ...
+  → completed
+```
+
+Regras implementadas:
+
+- a etapa seguinte só inicia após sucesso da anterior;
+- falha de uma etapa bloqueia as seguintes;
+- cancelar o plano cancela também o child job activo;
+- retry reinicia apenas a etapa problemática;
+- plano, propósito, parâmetros, job IDs e timestamps ficam persistidos;
+- resultados concluídos continuam a entrar no Layer Manager;
+- síntese final usa somente os outputs persistidos dos child jobs;
+- Dashboard mostra planos recentes e progresso por projecto.
+
+**Limitação actual:** a reconciliação/avanço do plano ainda é accionada por
+polling do frontend contra o backend. A evolução de produção é mover esta
+orquestração para Cloud Tasks/Pub/Sub + worker/Cloud Run Job para que o plano
+continue a progredir mesmo sem browser aberto.
+
 ## Refatoração recomendada
 
 ### Backend
