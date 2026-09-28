@@ -196,6 +196,28 @@ def _weights_table(weights: Any) -> str:
     )
 
 
+def _study_area_section(content: dict[str, Any]) -> str:
+    area = content.get("study_area") or {}
+    if not isinstance(area, dict) or not any(area.values()):
+        return ""
+
+    location_parts = [
+        str(value)
+        for value in (area.get("district"), area.get("province"))
+        if value
+    ]
+    location = " · ".join(location_parts) if location_parts else "—"
+
+    return _section(
+        "Área de estudo",
+        '<div class="summary-grid">'
+        + _metric("Designação", area.get("label") or "Área de estudo")
+        + _metric("Tipo", area.get("kind") or "project")
+        + _metric("Localização", location)
+        + "</div>",
+    )
+
+
 def _job_identity(content: dict[str, Any]) -> str:
     job = content.get("job") or {}
     return _section(
@@ -235,7 +257,7 @@ def _groundwater_report(content: dict[str, Any]) -> str:
         default=None,
     )
 
-    body = _job_identity(content)
+    body = _job_identity(content) + _study_area_section(content)
     body += _section(
         "Resumo executivo",
         '<div class="summary-grid four">'
@@ -280,7 +302,7 @@ def _flood_report(content: dict[str, Any]) -> str:
     params = content.get("parameters") or {}
     result = content.get("result") or {}
 
-    body = _job_identity(content)
+    body = _job_identity(content) + _study_area_section(content)
     body += _section(
         "Resumo do evento",
         '<div class="summary-grid four">'
@@ -324,7 +346,7 @@ def _targeting_report(content: dict[str, Any]) -> str:
     threshold_pct = threshold * 100 if threshold is not None else None
     weights = result.get("weights") or {}
 
-    body = _job_identity(content)
+    body = _job_identity(content) + _study_area_section(content)
     body += _section(
         "Resumo de favorabilidade",
         '<div class="summary-grid four">'
@@ -387,7 +409,7 @@ def _watershed_report(content: dict[str, Any]) -> str:
         )
     )
 
-    body = _job_identity(content)
+    body = _job_identity(content) + _study_area_section(content)
     body += _section(
         "Resumo da bacia",
         '<div class="summary-grid four">'
@@ -432,7 +454,7 @@ def _erosion_report(content: dict[str, Any]) -> str:
     )
     high_pct = (high_area / total_area * 100) if total_area > 0 else None
 
-    body = _job_identity(content)
+    body = _job_identity(content) + _study_area_section(content)
     body += _section(
         "Resumo de risco de erosão",
         '<div class="summary-grid four">'
@@ -473,7 +495,7 @@ def _index_report(content: dict[str, Any]) -> str:
     result = content.get("result") or {}
     group = str(result.get("group") or "index")
 
-    body = _job_identity(content)
+    body = _job_identity(content) + _study_area_section(content)
     body += _section(
         "Resumo do índice",
         '<div class="summary-grid four">'
@@ -524,6 +546,7 @@ def _generic_analysis_report(content: dict[str, Any]) -> str:
 
     return (
         _job_identity(content)
+        + _study_area_section(content)
         + _section("Parâmetros", _render_mapping(params if isinstance(params, dict) else {}))
         + _section("Resultados", _render_mapping(result if isinstance(result, dict) else {}))
         + _interpretation(content)
@@ -564,7 +587,7 @@ def _plan_report(content: dict[str, Any]) -> str:
     analyses = content.get("analyses") or []
     explanation = content.get("explanation")
 
-    overview = _section(
+    overview = _study_area_section(content) + _section(
         "Objectivo",
         _narrative(plan.get("goal") or "—")
         + '<div class="summary-grid">'
