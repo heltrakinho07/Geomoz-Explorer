@@ -173,29 +173,54 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
         if _gee_initialized and _last_initialized_uid == uid and _last_initialized_project == effective_project and _last_initialized_token == effective_token:
             return
 
-        # 0. Try user's personal permanent OAuth refresh_token (never expires!)
+        # 0. Prefer the user's permanent OAuth refresh token.
         if user_refresh_token:
             try:
                 import ee
+                from google.auth.transport.requests import Request as GoogleAuthRequest
                 from google.oauth2.credentials import Credentials
+
+                if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+                    raise RuntimeError(
+                        "OAuth server credentials are not configured for permanent GEE refresh."
+                    )
+
                 creds = Credentials(
                     token=effective_token,
                     refresh_token=user_refresh_token,
                     token_uri="https://oauth2.googleapis.com/token",
                     client_id=GOOGLE_CLIENT_ID,
                     client_secret=GOOGLE_CLIENT_SECRET,
-                    scopes=['https://www.googleapis.com/auth/earthengine']
+                    scopes=["https://www.googleapis.com/auth/earthengine"],
                 )
+
+                # Refresh explicitly on initialization so a Cloud Run cold start
+                # never reuses an expired access token from persistent storage.
+                creds.refresh(GoogleAuthRequest())
+                effective_token = creds.token
+                gee_session_store.set_token(
+                    uid,
+                    {
+                        "access_token": creds.token,
+                        "expires_at": creds.expiry.isoformat() if creds.expiry else None,
+                    },
+                )
+
                 ee.Initialize(credentials=creds, project=effective_project)
+                ee.Number(1).getInfo()
                 _gee_initialized = True
                 _gee_error = None
                 _last_initialized_project = effective_project
                 _last_initialized_token = effective_token
                 _last_initialized_uid = uid
-                logger.info("GEE initialized PERMANENTLY with user '%s' refresh_token for project: %s", uid, effective_project)
+                logger.info(
+                    "GEE initialized with refreshed OAuth credentials for user '%s', project: %s",
+                    uid,
+                    effective_project,
+                )
                 return
             except Exception as e:
-                logger.warning("Failed to initialize GEE with user '%s' refresh_token: %s", uid, e)
+                logger.warning("Failed to refresh GEE OAuth for user '%s': %s", uid, e)
 
         # 1. Try user's personal OAuth token
         if effective_token:
