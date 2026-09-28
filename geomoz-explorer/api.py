@@ -592,6 +592,218 @@ async def update_project_endpoint(
     return project
 
 
+def _geojson_bounds(geojson: Optional[dict]) -> Optional[dict[str, float]]:
+    """Extract WGS84 bounds from GeoJSON without adding a GIS dependency."""
+    if not isinstance(geojson, dict):
+        return None
+
+    coordinates: list[tuple[float, float]] = []
+
+    def collect(value):
+        if isinstance(value, dict):
+            value_type = value.get("type")
+            if value_type == "FeatureCollection":
+                for feature in value.get("features") or []:
+                    collect(feature)
+            elif value_type == "Feature":
+                collect(value.get("geometry"))
+            elif value_type == "GeometryCollection":
+                for geometry in value.get("geometries") or []:
+                    collect(geometry)
+            else:
+                collect(value.get("coordinates"))
+            return
+
+        if isinstance(value, (list, tuple)):
+            if (
+                len(value) >= 2
+                and isinstance(value[0], (int, float))
+                and isinstance(value[1], (int, float))
+            ):
+                coordinates.append((float(value[0]), float(value[1])))
+                return
+            for item in value:
+                collect(item)
+
+    collect(geojson)
+    if not coordinates:
+        return None
+
+    lons = [item[0] for item in coordinates]
+    lats = [item[1] for item in coordinates]
+    west, east = min(lons), max(lons)
+    south, north = min(lats), max(lats)
+    if west == east or south == north:
+        padding = 0.05
+        west -= padding
+        east += padding
+        south -= padding
+        north += padding
+
+    lon_pad = max((east - west) * 0.04, 0.01)
+    lat_pad = max((north - south) * 0.04, 0.01)
+    return {
+        "south": max(-90.0, south - lat_pad),
+        "north": min(90.0, north + lat_pad),
+        "west": max(-180.0, west - lon_pad),
+        "east": min(180.0, east + lon_pad),
+    }
+
+
+def _project_or_job_bounds(project: dict, job: dict) -> Optional[dict[str, float]]:
+    payload = job.get("payload") or {}
+
+    try:
+        region = _region_geojson(
+            payload.get("province"),
+            payload.get("district"),
+            payload.get("geometry"),
+        )
+        bounds = _geojson_bounds(region)
+        if bounds:
+            return bounds
+    except Exception as exc:
+        logger.info("Could not derive snapshot bounds from job AOI: %s", exc)
+
+    aoi = project.get("aoi") or {}
+    raw_bounds = aoi.get("bounds")
+    if (
+        isinstance(raw_bounds, list)
+        and len(raw_bounds) == 2
+        and all(isinstance(pair, list) and len(pair) >= 2 for pair in raw_bounds)
+    ):
+        try:
+            south, west = float(raw_bounds[0][0]), float(raw_bounds[0][1])
+            north, east = float(raw_bounds[1][0]), float(raw_bounds[1][1])
+            if south < north and west < east:
+                return {
+                    "south": south,
+                    "north": north,
+                    "west": west,
+                    "east": east,
+                }
+        except (TypeError, ValueError):
+            pass
+
+    return _geojson_bounds(aoi.get("geometry"))
+
+
+def _job_snapshot_spec(job: dict) -> dict:
+    result = job.get("result") or {}
+    job_type = job.get("type")
+
+    tile_url = (
+        result.get("tileUrl")
+        or result.get("tile")
+        or result.get("floodTile")
+    )
+    overlay_geojson = None
+    legend_items = None
+
+    if job_type == "gee.groundwater":
+        classes = result.get("classes") or []
+        legend_items = [
+            {
+                "label": str(item.get("label") or item.get("id") or ""),
+                "color": str(item.get("color") or "#94a3b8"),
+            }
+            for item in classes
+            if isinstance(item, dict)
+        ]
+    elif job_type == "gee.flood":
+        legend_items = [
+            {"label": "Área potencialmente inundada", "color": "#d50000"},
+        ]
+    elif job_type == "gee.targeting":
+        legend_items = [
+            {"label": "Baixa favorabilidade", "color": "#313695"},
+            {"label": "Moderada", "color": "#ffffbf"},
+            {"label": "Alta favorabilidade", "color": "#a50026"},
+        ]
+    elif job_type == "gee.watershed":
+        overlay_geojson = result.get("geojson")
+        legend_items = [
+            {"label": "Bacia delimitada", "color": "#0d47a1"},
+        ]
+
+    return {
+        "tile_url": tile_url if isinstance(tile_url, str) else None,
+        "overlay_geojson": overlay_geojson if isinstance(overlay_geojson, dict) else None,
+        "legend_items": legend_items,
+    }
+
+
+async def _persist_output_map_snapshot(
+    uid: str,
+    project: dict,
+    output: dict,
+    job: Optional[dict],
+) -> dict:
+    """Best-effort publication-quality map snapshot for a persistent output."""
+    if not job or job.get("status") != "completed":
+        return output
+
+    from project_assets import output_map_path, storage_status, upload_png
+    from project_outputs import attach_asset
+
+    if not storage_status().get("configured"):
+        return output
+
+    bounds = _project_or_job_bounds(project, job)
+    if not bounds:
+        return output
+
+    spec = _job_snapshot_spec(job)
+    if not spec.get("tile_url") and not spec.get("overlay_geojson"):
+        return output
+
+    try:
+        import asyncio
+        from utils.map_export import render_map_from_gee_result
+
+        loop = asyncio.get_running_loop()
+        png_bytes = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: render_map_from_gee_result(
+                bounds=bounds,
+                tile_url=spec.get("tile_url"),
+                overlay_geojson=spec.get("overlay_geojson"),
+                overlay_label=output.get("title"),
+                legend_items=spec.get("legend_items"),
+                width_mm=182,
+                height_mm=105,
+                dpi=170,
+                title=output.get("title"),
+            ),
+        )
+
+        storage_path = output_map_path(
+            uid,
+            output["project_id"],
+            output["id"],
+        )
+        asset = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: upload_png(storage_path, png_bytes),
+        )
+        if not asset:
+            return output
+
+        asset.update({
+            "kind": "map_snapshot",
+            "bounds": bounds,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        })
+        return attach_asset(uid, output["id"], "map", asset) or output
+    except Exception as exc:
+        logger.warning(
+            "Map snapshot skipped for output=%s: %s",
+            output.get("id"),
+            exc,
+        )
+        return output
+
+
 @app.get("/geomoz-api/projects/{project_id}/outputs")
 async def list_project_outputs_endpoint(
     project_id: str,
@@ -670,6 +882,7 @@ async def create_project_output_from_job(
         source_id=job_id,
         content=content,
     )
+    output = await _persist_output_map_snapshot(uid, project, output, job)
     touch_project(uid, project_id)
     return output
 
@@ -705,9 +918,12 @@ async def create_project_output_from_plan(
         )
 
     analyses = []
+    plan_jobs = []
     for step in plan.get("steps") or []:
         job_id = step.get("job_id")
         job = get_job(uid, job_id) if job_id else None
+        if job:
+            plan_jobs.append(job)
         analyses.append({
             "order": step.get("order"),
             "tool_id": step.get("tool_id"),
@@ -744,6 +960,16 @@ async def create_project_output_from_plan(
         source_id=plan_id,
         content=content,
     )
+    for candidate in reversed(plan_jobs):
+        spec = _job_snapshot_spec(candidate)
+        if spec.get("tile_url") or spec.get("overlay_geojson"):
+            output = await _persist_output_map_snapshot(
+                uid,
+                project,
+                output,
+                candidate,
+            )
+            break
     touch_project(uid, project_id)
     return output
 
