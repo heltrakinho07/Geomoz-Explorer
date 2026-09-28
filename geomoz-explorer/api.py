@@ -827,57 +827,87 @@ async def create_analysis_job(
 ):
     """Create an asynchronous GeoMoz analysis job.
 
-    The job API is intentionally generic. The first migrated workflow is
-    gee.index; additional analysis types will be registered incrementally.
+    Workflows are migrated one-by-one while synchronous endpoints remain
+    available for backwards compatibility.
     """
     from analysis_jobs import submit_job
-
-    if req.type != "gee.index":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Tipo de job ainda não suportado: {req.type}",
-        )
-
-    try:
-        validated = GEEIndexRequest(**req.payload)
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-
     import gee_session_store
+
     if not gee_session_store.get_token(uid):
         raise HTTPException(
             status_code=409,
             detail="Conecte o Google Earth Engine antes de iniciar esta análise.",
         )
 
-    normalized_payload = validated.model_dump()
-    region = _region_geojson(
-        validated.province,
-        validated.district,
-        validated.geometry,
-    )
+    if req.type == "gee.index":
+        try:
+            validated = GEEIndexRequest(**req.payload)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
 
-    def runner(progress):
-        from gee_module import _init_gee, compute_index_tile
-
-        progress(10, "auth", "A validar ligação ao Earth Engine.")
-        _init_gee(uid)
-
-        progress(25, "preparing", "A preparar imagens e área de análise.")
-        result = compute_index_tile(
-            validated.index,
-            region,
-            validated.start_date,
-            validated.end_date,
-            validated.cloud_pct,
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
         )
 
-        progress(90, "rendering", "A preparar mapa e estatísticas.")
-        result["province"] = validated.province
-        result["district"] = validated.district
-        return result
+        def runner(progress):
+            from gee_module import _init_gee, compute_index_tile
 
-    return submit_job(uid, req.type, normalized_payload, runner)
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A preparar imagens e área de análise.")
+            result = compute_index_tile(
+                validated.index,
+                region,
+                validated.start_date,
+                validated.end_date,
+                validated.cloud_pct,
+            )
+            progress(90, "rendering", "A preparar mapa e estatísticas.")
+            result["province"] = validated.province
+            result["district"] = validated.district
+            return result
+
+        return submit_job(uid, req.type, normalized_payload, runner)
+
+    if req.type == "gee.flood":
+        try:
+            validated = GEEFloodRequest(**req.payload)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
+        )
+
+        def runner(progress):
+            from gee_module import _init_gee, compute_flood_sar
+
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A preparar Sentinel-1 e linha de base.")
+            progress(45, "processing", "A detectar mudança SAR e extensão da cheia.")
+            result = compute_flood_sar(
+                region,
+                validated.event_start,
+                validated.event_end,
+                validated.baseline_start,
+                validated.baseline_end,
+            )
+            progress(90, "rendering", "A preparar mapa e métricas de inundação.")
+            return result
+
+        return submit_job(uid, req.type, normalized_payload, runner)
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Tipo de job ainda não suportado: {req.type}",
+    )
 
 
 @app.get("/geomoz-api/jobs")
