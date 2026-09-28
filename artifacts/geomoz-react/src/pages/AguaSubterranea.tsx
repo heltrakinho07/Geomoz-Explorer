@@ -48,6 +48,7 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
     running,
     error,
     cancel: cancelJob,
+    retry: retryJob,
     resetJob,
   } = useAnalysisJob<GwpResult>();
   const [drawingEnabled, setDrawingEnabled] = useState(false);
@@ -202,7 +203,7 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
             className="w-full flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors">
             {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Calcular potencial
           </button>
-          <AnalysisJobProgress job={job} title="GeoMoz Water · Potencial AHP" onCancel={cancelJob} />
+          <AnalysisJobProgress job={job} title="GeoMoz Water · Potencial AHP" onCancel={cancelJob} onRetry={retryJob} />
         </div>
 
         {/* Weights */}
