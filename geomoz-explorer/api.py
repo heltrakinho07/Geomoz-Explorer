@@ -1069,6 +1069,13 @@ async def create_analysis_job(
         except Exception as exc:
             raise HTTPException(status_code=422, detail=str(exc))
 
+        from gee_presets import INDEX_REGISTRY
+        if validated.index not in INDEX_REGISTRY:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Índice GeoMoz desconhecido: {validated.index}",
+            )
+
         normalized_payload = validated.model_dump()
         region = _region_geojson(
             validated.province,
@@ -1165,6 +1172,13 @@ async def create_analysis_job(
             validated = GEETargetingRequest(**req.payload)
         except Exception as exc:
             raise HTTPException(status_code=422, detail=str(exc))
+
+        from gee_presets import MINERAL_PRESETS
+        if validated.mineral not in MINERAL_PRESETS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Preset mineral GeoMoz desconhecido: {validated.mineral}",
+            )
 
         normalized_payload = validated.model_dump()
         region = _region_geojson(
