@@ -1762,16 +1762,285 @@ class AnalysisJobCreateRequest(BaseModel):
     project_id: Optional[str] = None
 
 
+@app.get("/geomoz-api/analysis-engine/status")
+async def analysis_engine_status(
+    uid: str = Depends(require_firebase_auth),
+):
+    """Return non-sensitive execution-engine diagnostics for the current user."""
+    from analysis_jobs import active_job_count, execution_status
+
+    return {
+        **execution_status(),
+        "active_jobs": active_job_count(uid),
+    }
+
+
+def _prepare_analysis_runner(
+    uid: str,
+    job_type: str,
+    payload: dict,
+):
+    """Validate one analysis payload and build its deterministic runner."""
+    if job_type == "gee.index":
+        validated = GEEIndexRequest(**payload)
+        from gee_presets import INDEX_REGISTRY
+
+        if validated.index not in INDEX_REGISTRY:
+            raise ValueError(
+                f"Índice GeoMoz desconhecido: {validated.index}"
+            )
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
+        )
+
+        def runner(progress):
+            from gee_module import _init_gee, compute_index_tile
+
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A preparar imagens e área de análise.")
+            result = compute_index_tile(
+                validated.index,
+                region,
+                validated.start_date,
+                validated.end_date,
+                validated.cloud_pct,
+            )
+            progress(90, "rendering", "A preparar mapa e estatísticas.")
+            result["province"] = validated.province
+            result["district"] = validated.district
+            return result
+
+        return normalized_payload, runner
+
+    if job_type == "gee.flood":
+        validated = GEEFloodRequest(**payload)
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
+        )
+
+        def runner(progress):
+            from gee_module import _init_gee, compute_flood_sar
+
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A preparar Sentinel-1 e linha de base.")
+            progress(45, "processing", "A detectar mudança SAR e extensão da cheia.")
+            result = compute_flood_sar(
+                region,
+                validated.event_start,
+                validated.event_end,
+                validated.baseline_start,
+                validated.baseline_end,
+            )
+            progress(90, "rendering", "A preparar mapa e métricas de inundação.")
+            return result
+
+        return normalized_payload, runner
+
+    if job_type == "gee.watershed":
+        validated = GEEWatershedRequest(**payload)
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
+        )
+
+        def runner(progress):
+            from gee_module import _init_gee, compute_watershed_from_point
+
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A localizar o ponto de saída e dados hidrológicos.")
+            progress(45, "processing", "A delimitar a bacia hidrográfica.")
+            result = compute_watershed_from_point(
+                validated.lat,
+                validated.lon,
+                region,
+                validated.max_iter,
+                validated.level,
+            )
+            progress(90, "rendering", "A preparar limite da bacia e área.")
+            return result
+
+        return normalized_payload, runner
+
+    if job_type == "gee.targeting":
+        validated = GEETargetingRequest(**payload)
+        from gee_presets import MINERAL_PRESETS
+
+        if validated.mineral not in MINERAL_PRESETS:
+            raise ValueError(
+                f"Preset mineral GeoMoz desconhecido: {validated.mineral}"
+            )
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
+        )
+
+        def runner(progress):
+            from gee_module import _init_gee, compute_targeting_tile
+
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A preparar Sentinel-2, relevo e critérios do modelo.")
+            progress(45, "processing", "A combinar evidências e calcular favorabilidade mineral.")
+            result = compute_targeting_tile(
+                validated.mineral,
+                region,
+                validated.start_date,
+                validated.end_date,
+                validated.cloud_pct,
+                validated.weights_override,
+                validated.invert_override,
+                validated.score_threshold,
+            )
+            progress(90, "rendering", "A preparar mapa, percentis e área favorável.")
+            result["province"] = validated.province
+            result["district"] = validated.district
+            return result
+
+        return normalized_payload, runner
+
+    if job_type == "gee.erosion":
+        validated = GEEErosionRequest(**payload)
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
+        )
+
+        def runner(progress):
+            from gee_module import _init_gee, compute_erosion_rusle
+
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A preparar chuva, solo, relevo e cobertura.")
+            progress(45, "processing", "A calcular factores RUSLE e perda de solo.")
+            result = compute_erosion_rusle(region, validated.year)
+            progress(90, "rendering", "A classificar risco e calcular áreas.")
+            return result
+
+        return normalized_payload, runner
+
+    if job_type == "gee.groundwater":
+        validated = GEEGroundwaterRequest(**payload)
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
+        )
+
+        def runner(progress):
+            from gee_module import _init_gee, compute_groundwater_ahp
+
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A preparar os factores hidrogeológicos.")
+            progress(45, "processing", "A calcular a sobreposição ponderada AHP.")
+            result = compute_groundwater_ahp(region, validated.year)
+            progress(90, "rendering", "A classificar potencial e calcular áreas.")
+            return result
+
+        return normalized_payload, runner
+
+    raise ValueError(f"Tipo de job ainda não suportado: {job_type}")
+
+
+class InternalAnalysisRunRequest(BaseModel):
+    uid: str
+    job_id: str
+
+
+@app.post("/geomoz-api/internal/analysis/run")
+def run_internal_analysis_job(
+    req: InternalAnalysisRunRequest,
+    request: Request,
+):
+    """Execute one Cloud Tasks job on the private analysis-worker service."""
+    if os.environ.get("GEOMOZ_SERVICE_ROLE", "api") != "analysis-worker":
+        raise HTTPException(status_code=404, detail="Endpoint não disponível.")
+
+    from analysis_jobs import execute_job, get_job, update_job
+
+    job = get_job(req.uid, req.job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
+
+    if job.get("status") in {"completed", "failed", "cancelled"}:
+        return job
+
+    try:
+        _, runner = _prepare_analysis_runner(
+            req.uid,
+            str(job.get("type") or ""),
+            job.get("payload") or {},
+        )
+    except Exception as exc:
+        logger.exception("Persisted analysis job is invalid: %s", req.job_id)
+        return update_job(
+            req.uid,
+            req.job_id,
+            status="failed",
+            stage="failed",
+            message="O job persistido contém parâmetros inválidos.",
+            error={
+                "code": "invalid_persisted_job",
+                "message": str(exc),
+                "retryable": False,
+            },
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    try:
+        retry_number = max(
+            0,
+            int(request.headers.get("X-CloudTasks-TaskRetryCount", "0")),
+        )
+    except (TypeError, ValueError):
+        retry_number = 0
+    max_retries = max(
+        0,
+        min(int(os.environ.get("ANALYSIS_TASK_MAX_RETRIES", "2")), 10),
+    )
+
+    try:
+        result = execute_job(
+            req.uid,
+            req.job_id,
+            runner,
+            retry_number=retry_number,
+            max_retries=max_retries,
+        )
+    except Exception:
+        # Cloud Tasks retries non-2xx responses according to the queue policy.
+        raise HTTPException(
+            status_code=503,
+            detail="Falha temporária no worker de análise.",
+        )
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
+    return result
+
+
 @app.post("/geomoz-api/jobs", status_code=202)
 async def create_analysis_job(
     req: AnalysisJobCreateRequest,
     uid: str = Depends(require_firebase_auth),
 ):
-    """Create an asynchronous GeoMoz analysis job.
-
-    Workflows are migrated one-by-one while synchronous endpoints remain
-    available for backwards compatibility.
-    """
+    """Validate, persist and dispatch an asynchronous GeoMoz analysis job."""
     from analysis_jobs import active_job_count, submit_job
     import gee_session_store
 
@@ -1805,6 +2074,7 @@ async def create_analysis_job(
 
     if req.project_id:
         from projects_store import get_project
+
         if not get_project(uid, req.project_id):
             raise HTTPException(
                 status_code=404,
@@ -1817,209 +2087,21 @@ async def create_analysis_job(
             detail="Conecte o Google Earth Engine antes de iniciar esta análise.",
         )
 
-    if req.type == "gee.index":
-        try:
-            validated = GEEIndexRequest(**req.payload)
-        except Exception as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
-
-        from gee_presets import INDEX_REGISTRY
-        if validated.index not in INDEX_REGISTRY:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Índice GeoMoz desconhecido: {validated.index}",
-            )
-
-        normalized_payload = validated.model_dump()
-        region = _region_geojson(
-            validated.province,
-            validated.district,
-            validated.geometry,
+    try:
+        normalized_payload, runner = _prepare_analysis_runner(
+            uid,
+            req.type,
+            req.payload,
         )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
-        def runner(progress):
-            from gee_module import _init_gee, compute_index_tile
-
-            progress(10, "auth", "A validar ligação ao Earth Engine.")
-            _init_gee(uid)
-            progress(25, "preparing", "A preparar imagens e área de análise.")
-            result = compute_index_tile(
-                validated.index,
-                region,
-                validated.start_date,
-                validated.end_date,
-                validated.cloud_pct,
-            )
-            progress(90, "rendering", "A preparar mapa e estatísticas.")
-            result["province"] = validated.province
-            result["district"] = validated.district
-            return result
-
-        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
-
-    if req.type == "gee.flood":
-        try:
-            validated = GEEFloodRequest(**req.payload)
-        except Exception as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
-
-        normalized_payload = validated.model_dump()
-        region = _region_geojson(
-            validated.province,
-            validated.district,
-            validated.geometry,
-        )
-
-        def runner(progress):
-            from gee_module import _init_gee, compute_flood_sar
-
-            progress(10, "auth", "A validar ligação ao Earth Engine.")
-            _init_gee(uid)
-            progress(25, "preparing", "A preparar Sentinel-1 e linha de base.")
-            progress(45, "processing", "A detectar mudança SAR e extensão da cheia.")
-            result = compute_flood_sar(
-                region,
-                validated.event_start,
-                validated.event_end,
-                validated.baseline_start,
-                validated.baseline_end,
-            )
-            progress(90, "rendering", "A preparar mapa e métricas de inundação.")
-            return result
-
-        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
-
-    if req.type == "gee.watershed":
-        try:
-            validated = GEEWatershedRequest(**req.payload)
-        except Exception as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
-
-        normalized_payload = validated.model_dump()
-        region = _region_geojson(
-            validated.province,
-            validated.district,
-            validated.geometry,
-        )
-
-        def runner(progress):
-            from gee_module import _init_gee, compute_watershed_from_point
-
-            progress(10, "auth", "A validar ligação ao Earth Engine.")
-            _init_gee(uid)
-            progress(25, "preparing", "A localizar o ponto de saída e dados hidrológicos.")
-            progress(45, "processing", "A delimitar a bacia hidrográfica.")
-            result = compute_watershed_from_point(
-                validated.lat,
-                validated.lon,
-                region,
-                validated.max_iter,
-                validated.level,
-            )
-            progress(90, "rendering", "A preparar limite da bacia e área.")
-            return result
-
-        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
-
-    if req.type == "gee.targeting":
-        try:
-            validated = GEETargetingRequest(**req.payload)
-        except Exception as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
-
-        from gee_presets import MINERAL_PRESETS
-        if validated.mineral not in MINERAL_PRESETS:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Preset mineral GeoMoz desconhecido: {validated.mineral}",
-            )
-
-        normalized_payload = validated.model_dump()
-        region = _region_geojson(
-            validated.province,
-            validated.district,
-            validated.geometry,
-        )
-
-        def runner(progress):
-            from gee_module import _init_gee, compute_targeting_tile
-
-            progress(10, "auth", "A validar ligação ao Earth Engine.")
-            _init_gee(uid)
-            progress(25, "preparing", "A preparar Sentinel-2, relevo e critérios do modelo.")
-            progress(45, "processing", "A combinar evidências e calcular favorabilidade mineral.")
-            result = compute_targeting_tile(
-                validated.mineral,
-                region,
-                validated.start_date,
-                validated.end_date,
-                validated.cloud_pct,
-                validated.weights_override,
-                validated.invert_override,
-                validated.score_threshold,
-            )
-            progress(90, "rendering", "A preparar mapa, percentis e área favorável.")
-            result["province"] = validated.province
-            result["district"] = validated.district
-            return result
-
-        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
-
-    if req.type == "gee.erosion":
-        try:
-            validated = GEEErosionRequest(**req.payload)
-        except Exception as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
-
-        normalized_payload = validated.model_dump()
-        region = _region_geojson(
-            validated.province,
-            validated.district,
-            validated.geometry,
-        )
-
-        def runner(progress):
-            from gee_module import _init_gee, compute_erosion_rusle
-
-            progress(10, "auth", "A validar ligação ao Earth Engine.")
-            _init_gee(uid)
-            progress(25, "preparing", "A preparar chuva, solo, relevo e cobertura.")
-            progress(45, "processing", "A calcular factores RUSLE e perda de solo.")
-            result = compute_erosion_rusle(region, validated.year)
-            progress(90, "rendering", "A classificar risco e calcular áreas.")
-            return result
-
-        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
-
-    if req.type == "gee.groundwater":
-        try:
-            validated = GEEGroundwaterRequest(**req.payload)
-        except Exception as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
-
-        normalized_payload = validated.model_dump()
-        region = _region_geojson(
-            validated.province,
-            validated.district,
-            validated.geometry,
-        )
-
-        def runner(progress):
-            from gee_module import _init_gee, compute_groundwater_ahp
-
-            progress(10, "auth", "A validar ligação ao Earth Engine.")
-            _init_gee(uid)
-            progress(25, "preparing", "A preparar os factores hidrogeológicos.")
-            progress(45, "processing", "A calcular a sobreposição ponderada AHP.")
-            result = compute_groundwater_ahp(region, validated.year)
-            progress(90, "rendering", "A classificar potencial e calcular áreas.")
-            return result
-
-        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
-
-    raise HTTPException(
-        status_code=500,
-        detail="Tipo de job registado sem executor associado.",
+    return submit_job(
+        uid,
+        req.type,
+        normalized_payload,
+        runner,
+        project_id=req.project_id,
     )
 
 
