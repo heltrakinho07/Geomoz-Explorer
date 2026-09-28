@@ -189,3 +189,18 @@ def delete_project(uid: str, project_id: str) -> bool:
             return False
 
     return True
+
+
+def touch_project(uid: str, project_id: str) -> Optional[dict[str, Any]]:
+    """Update project activity time without altering its saved workspace."""
+    existing = get_project(uid, project_id)
+    if not existing:
+        return None
+
+    project = {
+        **existing,
+        "owner_id": uid,
+        "updated_at": _now(),
+    }
+    _save(uid, project)
+    return _public(project)
