@@ -208,13 +208,51 @@ def _study_area_section(content: dict[str, Any]) -> str:
     ]
     location = " · ".join(location_parts) if location_parts else "—"
 
+    center = area.get("center")
+    center_label = "—"
+    if isinstance(center, list) and len(center) == 2:
+        lat = _number(center[0])
+        lon = _number(center[1])
+        if lat is not None and lon is not None:
+            center_label = f"{lat:.5f}, {lon:.5f}"
+
+    bounds = area.get("bounds")
+    extent_html = ""
+    if (
+        isinstance(bounds, list)
+        and len(bounds) == 2
+        and all(isinstance(item, list) and len(item) == 2 for item in bounds)
+    ):
+        sw_lat = _number(bounds[0][0])
+        sw_lon = _number(bounds[0][1])
+        ne_lat = _number(bounds[1][0])
+        ne_lon = _number(bounds[1][1])
+        if None not in (sw_lat, sw_lon, ne_lat, ne_lon):
+            extent_html = (
+                '<div class="extent-card">'
+                '<div class="extent-grid">'
+                '<div><span>NW</span>'
+                f'<strong>{ne_lat:.4f}, {sw_lon:.4f}</strong></div>'
+                '<div><span>NE</span>'
+                f'<strong>{ne_lat:.4f}, {ne_lon:.4f}</strong></div>'
+                '<div><span>SW</span>'
+                f'<strong>{sw_lat:.4f}, {sw_lon:.4f}</strong></div>'
+                '<div><span>SE</span>'
+                f'<strong>{sw_lat:.4f}, {ne_lon:.4f}</strong></div>'
+                '</div>'
+                '<div class="extent-caption">Extensão cartográfica persistida do Project</div>'
+                '</div>'
+            )
+
     return _section(
         "Área de estudo",
-        '<div class="summary-grid">'
+        '<div class="summary-grid four">'
         + _metric("Designação", area.get("label") or "Área de estudo")
         + _metric("Tipo", area.get("kind") or "project")
         + _metric("Localização", location)
-        + "</div>",
+        + _metric("Centro / zoom", f"{center_label} · z{area.get('zoom') or '—'}")
+        + "</div>"
+        + extent_html,
     )
 
 
@@ -730,6 +768,16 @@ def render_output_html(output: dict[str, Any], project: dict[str, Any]) -> str:
   .swatch {{ display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:7px; vertical-align:middle; border:1px solid rgba(15,23,42,.12); }}
   .tags {{ display:flex; flex-wrap:wrap; gap:6px; }}
   .tag {{ border-radius:999px; background:#f1f5f9; padding:5px 8px; font-size:10px; color:#475569; }}
+  .extent-card {{ margin-top:12px; border:1px solid var(--line); border-radius:12px; padding:14px; background:linear-gradient(180deg,#f8fafc,#ffffff); }}
+  .extent-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; min-height:130px; position:relative; }}
+  .extent-grid::before {{ content:""; position:absolute; inset:18px 25%; border-left:1px dashed #cbd5e1; border-right:1px dashed #cbd5e1; }}
+  .extent-grid::after {{ content:""; position:absolute; left:18px; right:18px; top:50%; border-top:1px dashed #cbd5e1; }}
+  .extent-grid div {{ display:flex; flex-direction:column; gap:2px; z-index:1; }}
+  .extent-grid div:nth-child(2), .extent-grid div:nth-child(4) {{ text-align:right; align-items:flex-end; }}
+  .extent-grid div:nth-child(3), .extent-grid div:nth-child(4) {{ justify-content:flex-end; }}
+  .extent-grid span {{ font-size:9px; font-weight:700; color:#94a3b8; letter-spacing:.08em; }}
+  .extent-grid strong {{ font-size:11px; color:#334155; }}
+  .extent-caption {{ margin-top:8px; text-align:center; font-size:9px; color:#94a3b8; text-transform:uppercase; letter-spacing:.08em; }}
   footer {{ padding:16px 44px 24px; color:#94a3b8; font-size:10px; border-top:1px solid var(--line); line-height:1.5; }}
   @media (max-width:700px) {{ .page{{margin:0;border:0;}} header,main,footer{{padding-left:22px;padding-right:22px;}} .summary-grid,.summary-grid.four{{grid-template-columns:1fr 1fr;}} .kv{{grid-template-columns:1fr;gap:3px;}} }}
   @media print {{ body{{background:white;}} .page{{width:100%;margin:0;border:0;box-shadow:none;}} header{{-webkit-print-color-adjust:exact;print-color-adjust:exact;}} .notice,.metric,.swatch{{-webkit-print-color-adjust:exact;print-color-adjust:exact;}} @page{{size:A4;margin:12mm;}} }}
