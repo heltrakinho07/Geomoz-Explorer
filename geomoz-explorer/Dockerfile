@@ -42,6 +42,7 @@ COPY gee_module.py .
 COPY gee_session_store.py .
 COPY gee_presets.py .
 COPY analysis_jobs.py .
+COPY analysis_job_worker.py .
 COPY projects_store.py .
 COPY tool_registry.py .
 COPY ai_agent.py .
