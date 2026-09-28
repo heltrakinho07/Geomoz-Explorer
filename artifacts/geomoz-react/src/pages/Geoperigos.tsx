@@ -258,7 +258,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
         <div className="p-3 border-b border-slate-100">
           <div className="grid grid-cols-2 gap-1 bg-slate-100 rounded-xl p-1">
             {([["flood", "Cheias", Waves], ["erosion", "Erosão", Mountain]] as const).map(([t, label, Icon]) => (
-              <button key={t} onClick={() => { setTool(t); setError(null); }}
+              <button key={t} onClick={() => setTool(t)}
                 className={`flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-lg transition-all ${tool === t ? "bg-white text-rose-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
                 <Icon size={11} /> {label}
               </button>
