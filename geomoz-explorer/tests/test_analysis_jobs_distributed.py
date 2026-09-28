@@ -84,6 +84,33 @@ def test_execute_job_completes_persisted_cloud_job(
     assert analysis_jobs.active_job_count("uid-2") == 0
 
 
+
+def test_execute_job_records_timing_metrics(
+    clean_jobs,
+) -> None:
+    analysis_jobs = clean_jobs
+    job = analysis_jobs.create_job(
+        "uid-timing",
+        "gee.index",
+        {"index": "ndvi"},
+        execution_mode="cloud_tasks",
+    )
+
+    result = analysis_jobs.execute_job(
+        "uid-timing",
+        job["id"],
+        lambda progress: {"ok": True},
+    )
+
+    assert result is not None
+    timings = result["timings"]
+    assert timings["queue_wait_ms"] is not None
+    assert timings["queue_wait_ms"] >= 0
+    assert timings["execution_ms"] is not None
+    assert timings["execution_ms"] >= 0
+    assert timings["total_ms"] is not None
+    assert timings["total_ms"] >= timings["execution_ms"]
+
 def test_execute_job_requeues_retryable_failure(
     clean_jobs,
 ) -> None:
