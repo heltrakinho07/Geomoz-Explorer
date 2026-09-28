@@ -227,3 +227,35 @@ def test_internal_worker_executes_persisted_job(
     assert resp.status_code == 200
     assert resp.json()["status"] == "completed"
     assert captured == {"retry_number": 1, "max_retries": 2}
+
+
+def test_analysis_engine_status_reports_distributed_backend(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import analysis_jobs
+
+    monkeypatch.setenv("ANALYSIS_EXECUTION_BACKEND", "cloud_tasks")
+    monkeypatch.setattr(analysis_jobs, "active_job_count", lambda uid=None: 2)
+    monkeypatch.setattr(
+        analysis_jobs,
+        "_cloud_tasks_config",
+        lambda: {
+            "project": "test-project",
+            "location": "europe-west1",
+            "queue": "geomoz-analysis",
+            "worker_url": "https://worker.run.app",
+            "service_account": "worker@test-project.iam.gserviceaccount.com",
+            "audience": "https://worker.run.app",
+        },
+    )
+
+    resp = client.get("/geomoz-api/analysis-engine/status")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["backend"] == "cloud_tasks"
+    assert data["distributed"] is True
+    assert data["configured"] is True
+    assert data["queue"] == "geomoz-analysis"
+    assert data["active_jobs"] == 2
