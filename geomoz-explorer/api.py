@@ -921,6 +921,73 @@ async def gee_disconnect(uid: str = Depends(require_firebase_auth)):
         "reason": "disconnected_by_user",
     }
 
+class ToolExecuteRequest(BaseModel):
+    parameters: dict = {}
+    project_id: Optional[str] = None
+
+
+@app.get("/geomoz-api/ai/tools")
+async def list_ai_tools(
+    category: Optional[str] = Query(None),
+    uid: str = Depends(require_firebase_auth),
+):
+    """List deterministic GIS tools available to GeoMoz AI."""
+    from tool_registry import list_tools, registry_summary
+
+    return {
+        "tools": list_tools(category=category),
+        "registry": registry_summary(),
+    }
+
+
+@app.get("/geomoz-api/ai/tools/{tool_id}")
+async def get_ai_tool(
+    tool_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Return one registered GeoMoz AI tool definition."""
+    from tool_registry import get_tool
+
+    tool = get_tool(tool_id)
+    if not tool:
+        raise HTTPException(status_code=404, detail="Ferramenta GeoMoz AI não encontrada.")
+    return tool
+
+
+@app.post("/geomoz-api/ai/tools/{tool_id}/execute", status_code=202)
+async def execute_ai_tool(
+    tool_id: str,
+    req: ToolExecuteRequest,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Execute a registered tool through the validated AnalysisJob engine."""
+    from tool_registry import get_tool, resolve_job_type
+
+    tool = get_tool(tool_id)
+    if not tool:
+        raise HTTPException(status_code=404, detail="Ferramenta GeoMoz AI não encontrada.")
+
+    if tool.get("confirmation_required"):
+        raise HTTPException(
+            status_code=409,
+            detail="Esta ferramenta requer confirmação explícita antes da execução.",
+        )
+
+    job_type = resolve_job_type(tool_id)
+    if not job_type:
+        raise HTTPException(
+            status_code=409,
+            detail="A ferramenta ainda não possui executor configurado.",
+        )
+
+    job_request = AnalysisJobCreateRequest(
+        type=job_type,
+        payload=req.parameters,
+        project_id=req.project_id,
+    )
+    return await create_analysis_job(job_request, uid)
+
+
 class AnalysisJobCreateRequest(BaseModel):
     type: str
     payload: dict
