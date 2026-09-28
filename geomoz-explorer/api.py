@@ -1617,6 +1617,42 @@ async def retry_analysis_plan(
     )
 
 
+@app.post("/geomoz-api/ai/plans/{plan_id}/explain")
+async def explain_analysis_plan(
+    plan_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Generate one grounded synthesis from all completed jobs in a plan."""
+    from agent_plans import get_plan
+    from analysis_jobs import get_job
+    from ai_agent import AgentNotConfigured, AgentPlannerError, explain_plan_result
+
+    plan = get_plan(uid, plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plano GeoMoz não encontrado.")
+    if plan.get("status") != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail="O plano precisa estar concluído antes de ser sintetizado.",
+        )
+
+    jobs = []
+    for step in plan.get("steps") or []:
+        job_id = step.get("job_id")
+        if not job_id:
+            continue
+        job = get_job(uid, job_id)
+        if job:
+            jobs.append(job)
+
+    try:
+        return await explain_plan_result(plan, jobs)
+    except AgentNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except AgentPlannerError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @app.post("/geomoz-api/ai/jobs/{job_id}/explain")
 async def explain_analysis_job(
     job_id: str,
