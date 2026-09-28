@@ -7,6 +7,36 @@ from fastapi.testclient import TestClient
 
 
 class TestProjectOutputStore:
+    def test_create_output_is_idempotent_for_same_source(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import project_outputs
+
+        monkeypatch.setattr(project_outputs, "_firestore", lambda: None)
+        project_outputs._outputs.clear()
+
+        first = project_outputs.create_output(
+            "uid-1",
+            project_id="project-1",
+            output_type="analysis_report",
+            title="NDVI",
+            source_type="analysis_job",
+            source_id="job-1",
+            content={"value": 1},
+        )
+        second = project_outputs.create_output(
+            "uid-1",
+            project_id="project-1",
+            output_type="analysis_report",
+            title="NDVI duplicado",
+            source_type="analysis_job",
+            source_id="job-1",
+            content={"value": 2},
+        )
+
+        assert second["id"] == first["id"]
+        assert len(project_outputs.list_outputs("uid-1", project_id="project-1")) == 1
+
     def test_compact_evidence_removes_ephemeral_and_sensitive_fields(self) -> None:
         from project_outputs import compact_evidence
 
