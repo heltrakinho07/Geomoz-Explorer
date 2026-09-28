@@ -45,7 +45,8 @@ def planner_status() -> dict[str, Any]:
 
 def _openai_tools() -> list[dict[str, Any]]:
     """Convert the internal registry to Responses API function tools."""
-    return [
+    registered = list_tools()
+    tools = [
         {
             "type": "function",
             "name": tool["id"],
@@ -55,8 +56,48 @@ def _openai_tools() -> list[dict[str, Any]]:
             # Pydantic remains the authoritative validator after planning.
             "strict": False,
         }
-        for tool in list_tools()
+        for tool in registered
     ]
+
+    tools.append({
+        "type": "function",
+        "name": "create_analysis_plan",
+        "description": (
+            "Cria um plano geoespacial multi-etapa quando o pedido requer duas "
+            "ou mais ferramentas GeoMoz. Use apenas ferramentas registadas e "
+            "ordene as etapas na sequência em que devem ser executadas."
+        ),
+        "parameters": {
+            "type": "object",
+            "required": ["title", "goal", "steps"],
+            "properties": {
+                "title": {"type": "string"},
+                "goal": {"type": "string"},
+                "steps": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 6,
+                    "items": {
+                        "type": "object",
+                        "required": ["tool_id", "purpose", "arguments"],
+                        "properties": {
+                            "tool_id": {
+                                "type": "string",
+                                "enum": [tool["id"] for tool in registered],
+                            },
+                            "purpose": {"type": "string"},
+                            "arguments": {
+                                "type": "object",
+                                "additionalProperties": True,
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        "strict": False,
+    })
+    return tools
 
 
 def _context_text(context: Optional[dict[str, Any]]) -> str:
@@ -103,7 +144,9 @@ def _extract_tool_call(response: dict[str, Any]) -> Optional[dict[str, Any]]:
             continue
 
         name = item.get("name")
-        if not isinstance(name, str) or not get_tool(name):
+        if not isinstance(name, str):
+            raise AgentPlannerError("O planner devolveu uma ferramenta inválida.")
+        if name != "create_analysis_plan" and not get_tool(name):
             raise AgentPlannerError("O planner tentou usar uma ferramenta não autorizada.")
 
         raw_arguments = item.get("arguments") or "{}"
@@ -173,8 +216,11 @@ async def plan_agent_turn(
     instructions = (
         "Você é o GeoMoz Agent, um planner de inteligência geoespacial. "
         "Responda em português claro. Quando o utilizador pedir uma análise "
-        "que corresponde a uma ferramenta disponível, seleccione exactamente "
-        "essa ferramenta e forneça apenas os parâmetros necessários. Use o "
+        "que corresponde a uma única ferramenta disponível, seleccione exactamente "
+        "essa ferramenta e forneça apenas os parâmetros necessários. Quando o "
+        "objectivo exigir duas ou mais análises distintas, use create_analysis_plan "
+        "com no máximo seis etapas, cada uma referenciando uma ferramenta registada. "
+        "Não crie planos artificiais para pedidos que cabem numa única ferramenta. Use o "
         "contexto espacial actual quando for relevante. Se uma ferramenta "
         "exigir datas, coordenadas ou outro parâmetro obrigatório que não esteja "
         "no pedido nem no contexto, faça uma pergunta curta em vez de inventar "
@@ -245,6 +291,47 @@ async def plan_agent_turn(
 
     tool_call = _extract_tool_call(data)
     if tool_call:
+        if tool_call["tool_id"] == "create_analysis_plan":
+            raw = tool_call["arguments"]
+            raw_steps = raw.get("steps") or []
+            if not isinstance(raw_steps, list):
+                raise AgentPlannerError("O planner devolveu etapas inválidas.")
+
+            steps: list[dict[str, Any]] = []
+            for item in raw_steps:
+                if not isinstance(item, dict):
+                    raise AgentPlannerError("O planner devolveu uma etapa inválida.")
+                tool_id = item.get("tool_id")
+                if not isinstance(tool_id, str) or not get_tool(tool_id):
+                    raise AgentPlannerError(
+                        "O plano contém uma ferramenta não autorizada."
+                    )
+                arguments = item.get("arguments") or {}
+                if not isinstance(arguments, dict):
+                    raise AgentPlannerError(
+                        "O plano contém parâmetros inválidos."
+                    )
+                steps.append({
+                    "tool_id": tool_id,
+                    "purpose": str(item.get("purpose") or ""),
+                    "arguments": merge_geo_context(arguments, context),
+                })
+
+            if len(steps) < 2:
+                raise AgentPlannerError(
+                    "Um plano multi-etapa precisa de pelo menos duas ferramentas."
+                )
+
+            return {
+                "mode": "plan",
+                "title": str(raw.get("title") or "Plano GeoMoz"),
+                "goal": str(raw.get("goal") or message),
+                "steps": steps,
+                "call_id": tool_call.get("call_id"),
+                "model": model,
+                "response_id": data.get("id"),
+            }
+
         return {
             "mode": "tool_call",
             "tool_id": tool_call["tool_id"],
@@ -377,4 +464,120 @@ async def explain_job_result(job: dict[str, Any]) -> dict[str, Any]:
         "explanation": text,
         "model": model,
         "response_id": data.get("id"),
+    }
+
+
+
+async def explain_plan_result(
+    plan: dict[str, Any],
+    jobs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Synthesize a completed multi-step plan using only persisted evidence."""
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise AgentNotConfigured(
+            "GeoMoz Agent ainda não está configurado no servidor."
+        )
+
+    if plan.get("status") != "completed":
+        raise AgentPlannerError(
+            "O plano precisa estar concluído antes de gerar a síntese."
+        )
+
+    evidence_jobs = []
+    for job in jobs[:6]:
+        if job.get("status") != "completed":
+            continue
+        evidence_jobs.append({
+            "analysis_type": job.get("type"),
+            "parameters": _compact_for_explanation(job.get("payload") or {}),
+            "result": _compact_for_explanation(job.get("result") or {}),
+            "completed_at": job.get("completed_at"),
+        })
+
+    if not evidence_jobs:
+        raise AgentPlannerError(
+            "O plano não possui resultados concluídos disponíveis para síntese."
+        )
+
+    evidence = {
+        "title": plan.get("title"),
+        "goal": plan.get("goal"),
+        "steps": [
+            {
+                "order": step.get("order"),
+                "tool_id": step.get("tool_id"),
+                "purpose": step.get("purpose"),
+                "status": step.get("status"),
+            }
+            for step in (plan.get("steps") or [])[:6]
+        ],
+        "analyses": evidence_jobs,
+    }
+
+    model = os.environ.get("GEOMOZ_AI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    payload = {
+        "model": model,
+        "instructions": (
+            "Você é um analista geoespacial do GeoMoz. Produza uma síntese "
+            "integrada baseada exclusivamente nas evidências fornecidas. Não "
+            "invente números, relações causais, precisão, recursos existentes "
+            "ou validação de campo. Compare os resultados apenas quando forem "
+            "comparáveis. Destaque convergências e divergências entre as "
+            "análises sem transformar indicadores de favorabilidade ou risco "
+            "em certezas. Responda em português com quatro blocos: Síntese, "
+            "Evidências principais, Implicações e Limitações/Próximos passos."
+        ),
+        "input": [{
+            "role": "user",
+            "content": (
+                "Sintetize este plano GeoMoz com base apenas nesta evidência:\n"
+                + json.dumps(evidence, ensure_ascii=False, default=str)
+            ),
+        }],
+        "store": False,
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=35.0) as client:
+            response = await client.post(
+                OPENAI_RESPONSES_URL,
+                headers=headers,
+                json=payload,
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("GeoMoz plan explanation network error: %s", exc)
+        raise AgentPlannerError(
+            "O serviço de síntese AI está temporariamente indisponível."
+        ) from exc
+
+    if response.status_code >= 400:
+        logger.warning(
+            "GeoMoz plan explanation upstream error status=%s request_id=%s",
+            response.status_code,
+            response.headers.get("x-request-id"),
+        )
+        raise AgentPlannerError(
+            f"O serviço de síntese AI respondeu com HTTP {response.status_code}."
+        )
+
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise AgentPlannerError("A síntese AI devolveu uma resposta inválida.") from exc
+
+    text = _extract_text(data)
+    if not text:
+        raise AgentPlannerError("A síntese AI veio vazia.")
+
+    return {
+        "explanation": text,
+        "model": model,
+        "response_id": data.get("id"),
+        "analyses_used": len(evidence_jobs),
     }

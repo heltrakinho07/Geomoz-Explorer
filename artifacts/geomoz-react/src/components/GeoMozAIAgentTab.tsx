@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import {
   BrainCircuit,
   CheckCircle2,
+  Circle,
   Loader2,
   MapPin,
+  RotateCcw,
   Send,
   Sparkles,
+  Square,
   Wrench,
+  XCircle,
 } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
@@ -40,8 +44,52 @@ interface AgentStatus {
   };
 }
 
+type AnalysisPlanStatus =
+  | "ready"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+type AnalysisPlanStepStatus =
+  | "pending"
+  | "queued"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+interface AnalysisPlanStep {
+  id: string;
+  order: number;
+  tool_id: string;
+  tool_name: string;
+  purpose: string;
+  arguments: Record<string, unknown>;
+  status: AnalysisPlanStepStatus;
+  job_id: string | null;
+  message: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+interface AnalysisPlan {
+  id: string;
+  title: string;
+  goal: string;
+  project_id?: string | null;
+  status: AnalysisPlanStatus;
+  current_step: number;
+  steps: AnalysisPlanStep[];
+  error?: { message?: string; step?: number } | null;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 interface AgentResponse {
-  mode: "message" | "tool_call";
+  mode: "message" | "tool_call" | "plan";
   message: string;
   tool?: {
     id: string;
@@ -50,6 +98,7 @@ interface AgentResponse {
   };
   arguments?: Record<string, unknown>;
   job?: AnalysisJob<unknown>;
+  plan?: AnalysisPlan;
 }
 
 interface ConversationEntry {
@@ -96,6 +145,10 @@ export default function GeoMozAIAgentTab({
   const [requestError, setRequestError] = useState<string | null>(null);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [explaining, setExplaining] = useState(false);
+  const [plan, setPlan] = useState<AnalysisPlan | null>(null);
+  const [planBusy, setPlanBusy] = useState(false);
+  const [planExplanation, setPlanExplanation] = useState<string | null>(null);
+  const [planExplaining, setPlanExplaining] = useState(false);
   const [conversation, setConversation] = useState<ConversationEntry[]>([]);
 
   const spatial = useMemo(() => aoiToAPI(aoi), [aoi]);
@@ -154,9 +207,122 @@ export default function GeoMozAIAgentTab({
     }
   }
 
+  const planActive = plan?.status === "ready" || plan?.status === "running";
+
+  async function syncPlanJob(nextPlan: AnalysisPlan) {
+    const step = nextPlan.steps[nextPlan.current_step];
+    if (!step?.job_id) return;
+
+    try {
+      const res = await apiFetch(`/geomoz-api/jobs/${step.job_id}`);
+      if (!res.ok) return;
+      const child = await res.json() as AnalysisJob<unknown>;
+      adoptJob(child);
+    } catch {
+      // Plan polling remains authoritative; child sync is best-effort UI state.
+    }
+  }
+
+  async function advancePlan(planId = plan?.id) {
+    if (!planId || planBusy) return;
+
+    setPlanBusy(true);
+    try {
+      const currentPlan = plan?.id === planId ? plan : null;
+      const currentStep = currentPlan?.steps[currentPlan.current_step];
+      if (currentStep?.job_id) {
+        try {
+          const jobRes = await apiFetch(`/geomoz-api/jobs/${currentStep.job_id}`);
+          if (jobRes.ok) {
+            adoptJob(await jobRes.json() as AnalysisJob<unknown>);
+          }
+        } catch {
+          // Best effort: plan reconciliation below remains authoritative.
+        }
+      }
+
+      const res = await apiFetch(`/geomoz-api/ai/plans/${planId}/advance`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error(await parseError(res));
+      const nextPlan = await res.json() as AnalysisPlan;
+      setPlan(nextPlan);
+      await syncPlanJob(nextPlan);
+    } catch (err) {
+      setRequestError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPlanBusy(false);
+    }
+  }
+
+  async function cancelPlan() {
+    if (!plan?.id || planBusy) return;
+    setPlanBusy(true);
+    try {
+      const res = await apiFetch(`/geomoz-api/ai/plans/${plan.id}/cancel`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error(await parseError(res));
+      setPlan(await res.json() as AnalysisPlan);
+    } catch (err) {
+      setRequestError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPlanBusy(false);
+    }
+  }
+
+  async function explainPlan() {
+    if (!plan?.id || plan.status !== "completed" || planExplaining) return;
+
+    setPlanExplaining(true);
+    setRequestError(null);
+    try {
+      const res = await apiFetch(`/geomoz-api/ai/plans/${plan.id}/explain`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error(await parseError(res));
+      const data = await res.json() as { explanation: string };
+      setPlanExplanation(data.explanation);
+    } catch (err) {
+      setRequestError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPlanExplaining(false);
+    }
+  }
+
+  async function retryPlan() {
+    if (!plan?.id || planBusy) return;
+    setPlanBusy(true);
+    try {
+      const res = await apiFetch(`/geomoz-api/ai/plans/${plan.id}/retry`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error(await parseError(res));
+      const retried = await res.json() as AnalysisPlan;
+      setPlan(retried);
+      window.setTimeout(() => void advancePlan(retried.id), 0);
+    } catch (err) {
+      setRequestError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPlanBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!planActive || !plan?.id) return;
+
+    const timer = window.setTimeout(() => {
+      void advancePlan(plan.id);
+    }, 1600);
+
+    return () => window.clearTimeout(timer);
+  // plan.updated_at changes after every reconciliation and intentionally drives polling.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan?.id, plan?.updated_at, plan?.status]);
+
   async function sendPrompt(text = prompt) {
     const clean = text.trim();
-    if (!clean || submitting || running) return;
+    if (!clean || submitting || running || planActive) return;
 
     if (!user) {
       setRequestError("Inicie sessão para usar o GeoMoz Agent.");
@@ -165,6 +331,8 @@ export default function GeoMozAIAgentTab({
 
     setPrompt("");
     setRequestError(null);
+    setPlan(null);
+    setPlanExplanation(null);
     setSubmitting(true);
     setConversation(current => [
       ...current,
@@ -209,6 +377,11 @@ export default function GeoMozAIAgentTab({
 
       if (data.job) {
         adoptJob(data.job);
+      }
+
+      if (data.plan) {
+        setPlan(data.plan);
+        window.setTimeout(() => void advancePlan(data.plan?.id), 0);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -301,7 +474,7 @@ export default function GeoMozAIAgentTab({
                   <button
                     key={item}
                     onClick={() => void sendPrompt(item)}
-                    disabled={!status?.agent.configured || submitting || running}
+                    disabled={!status?.agent.configured || submitting || running || planActive}
                     className="rounded-xl border border-slate-200 bg-white p-3 text-left text-xs font-medium leading-relaxed text-slate-600 shadow-sm transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {item}
@@ -334,6 +507,151 @@ export default function GeoMozAIAgentTab({
                 <div className="mr-auto flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500 shadow-sm">
                   <Loader2 size={13} className="animate-spin text-violet-500" />
                   GeoMoz está a planear…
+                </div>
+              )}
+
+              {plan && (
+                <div className="rounded-2xl border border-violet-200 bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Sparkles size={14} className="text-violet-500" />
+                        <div className="truncate text-sm font-bold text-slate-900">
+                          {plan.title}
+                        </div>
+                        <span className={[
+                          "rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase",
+                          plan.status === "completed"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : plan.status === "failed"
+                              ? "bg-red-50 text-red-600"
+                              : plan.status === "cancelled"
+                                ? "bg-slate-100 text-slate-500"
+                                : "bg-violet-50 text-violet-700",
+                        ].join(" ")}>
+                          {plan.status}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                        {plan.goal}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {(plan.status === "failed" || plan.status === "cancelled") && (
+                        <button
+                          type="button"
+                          onClick={() => void retryPlan()}
+                          disabled={planBusy}
+                          className="flex items-center gap-1.5 rounded-lg border border-sky-200 px-2.5 py-1.5 text-[10px] font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-50"
+                        >
+                          <RotateCcw size={10} /> Repetir etapa
+                        </button>
+                      )}
+                      {planActive && (
+                        <button
+                          type="button"
+                          onClick={() => void cancelPlan()}
+                          disabled={planBusy}
+                          className="flex items-center gap-1.5 rounded-lg border border-red-200 px-2.5 py-1.5 text-[10px] font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          <Square size={9} /> Cancelar plano
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    {plan.steps.map((step, index) => {
+                      const current = index === plan.current_step && planActive;
+                      const complete = step.status === "completed";
+                      const failed = step.status === "failed";
+                      const cancelled = step.status === "cancelled";
+                      return (
+                        <div
+                          key={step.id}
+                          className={[
+                            "flex items-start gap-3 rounded-xl border px-3 py-2.5 transition",
+                            current
+                              ? "border-violet-200 bg-violet-50/60"
+                              : "border-slate-100 bg-slate-50/60",
+                          ].join(" ")}
+                        >
+                          <div className="mt-0.5 shrink-0">
+                            {complete ? (
+                              <CheckCircle2 size={15} className="text-emerald-500" />
+                            ) : failed ? (
+                              <XCircle size={15} className="text-red-500" />
+                            ) : cancelled ? (
+                              <XCircle size={15} className="text-slate-400" />
+                            ) : current ? (
+                              <Loader2 size={15} className="animate-spin text-violet-500" />
+                            ) : (
+                              <Circle size={15} className="text-slate-300" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-semibold text-slate-400">
+                                {String(step.order).padStart(2, "0")}
+                              </span>
+                              <span className="truncate text-xs font-semibold text-slate-800">
+                                {step.tool_name}
+                              </span>
+                            </div>
+                            <div className="mt-0.5 text-[10px] leading-relaxed text-slate-500">
+                              {step.purpose || step.message}
+                            </div>
+                            {step.job_id && (
+                              <div className="mt-1 font-mono text-[9px] text-slate-300">
+                                {step.job_id.slice(0, 12)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {plan.error?.message && (
+                    <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[10px] text-red-700">
+                      Etapa {plan.error.step ?? plan.current_step + 1}: {plan.error.message}
+                    </div>
+                  )}
+
+                  {plan.status === "completed" && status?.agent.configured && (
+                    <div className="mt-3 border-t border-slate-100 pt-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-[10px] font-semibold uppercase tracking-wider text-violet-500">
+                            Síntese integrada
+                          </div>
+                          <div className="mt-0.5 text-[10px] text-slate-400">
+                            Combina apenas as evidências reais das etapas concluídas.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void explainPlan()}
+                          disabled={planExplaining}
+                          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-[10px] font-semibold text-white hover:bg-violet-700 disabled:bg-slate-300"
+                        >
+                          {planExplaining ? (
+                            <Loader2 size={11} className="animate-spin" />
+                          ) : (
+                            <Sparkles size={11} />
+                          )}
+                          {planExplanation ? "Actualizar síntese" : "Sintetizar plano"}
+                        </button>
+                      </div>
+
+                      {planExplanation && (
+                        <div className="mt-3 whitespace-pre-wrap rounded-lg bg-violet-50/70 px-3 py-3 text-xs leading-relaxed text-slate-700">
+                          {planExplanation}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -409,7 +727,7 @@ export default function GeoMozAIAgentTab({
             <button
               type="button"
               onClick={() => void sendPrompt()}
-              disabled={!prompt.trim() || submitting || running || !status?.agent.configured}
+              disabled={!prompt.trim() || submitting || running || planActive || !status?.agent.configured}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-slate-300"
               title="Enviar para GeoMoz Agent"
             >
