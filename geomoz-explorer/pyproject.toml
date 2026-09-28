@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["api", "gee_module", "gee_presets"]
+py-modules = ["api", "gee_module", "gee_presets", "gee_session_store", "analysis_jobs"]
 
 [tool.setuptools.packages.find]
 include = ["utils*"]
