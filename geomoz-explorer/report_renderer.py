@@ -563,7 +563,29 @@ def _index_report(content: dict[str, Any]) -> str:
         ),
     )
     stats = result.get("stats")
-    if isinstance(stats, dict) and stats:
+    if not isinstance(stats, dict) or not stats:
+        # Backward compatibility with older persisted index outputs, where
+        # summary statistics were stored directly at the result root.
+        stats = {
+            key: result[key]
+            for key in (
+                "mean",
+                "min",
+                "max",
+                "median",
+                "stdDev",
+                "std_dev",
+                "p05",
+                "p10",
+                "p25",
+                "p75",
+                "p90",
+                "p95",
+                "p99",
+            )
+            if key in result and result[key] is not None
+        }
+    if stats:
         body += _section("Estatísticas", _render_mapping(stats))
 
     body += _section("Parâmetros de execução", _render_mapping(params))
