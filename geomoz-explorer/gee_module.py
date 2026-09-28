@@ -119,43 +119,49 @@ def _build_cache_key_for_request(
 from google.oauth2.credentials import Credentials
 import gee_session_store
 
-def _init_gee(uid: str = None) -> None:
-    """Initialize GEE with the user's token."""
+def _init_gee(uid: Optional[str] = None) -> None:
+    """Initialize Earth Engine for the authenticated GeoMoz user.
+
+    GeoMoz uses a BYO-GEE model: every Earth Engine request must carry the
+    user's OAuth access token and Google Cloud project.  Do not silently fall
+    back to the platform project because that would mix quotas between users.
+    """
     global _gee_initialized, _gee_error
 
     if not uid:
-        raise RuntimeError("uid é obrigatório para ligar ao GEE.")
-        
+        raise RuntimeError("Utilizador autenticado é obrigatório para ligar ao GEE.")
+
     token_data = gee_session_store.get_token(uid)
     if not token_data:
-        raise RuntimeError("Utilizador não tem ligação ao GEE (token em falta).")
-        
+        raise RuntimeError("Earth Engine não está ligado. Volte a ligar a sua conta Google.")
+
+    access_token = str(token_data.get("access_token") or "").strip()
+    project = str(token_data.get("project") or "").strip()
+    if not access_token:
+        raise RuntimeError("Token OAuth do Earth Engine em falta. Volte a ligar a sua conta Google.")
+    if not project:
+        raise RuntimeError("GCP Project ID é obrigatório para usar o Earth Engine no GeoMoz.")
+
     try:
         import ee
-    except ImportError:
-        raise RuntimeError("earthengine-api package not installed.")
+    except ImportError as exc:
+        raise RuntimeError("earthengine-api package not installed.") from exc
 
-    # We initialize EE with the user's token.
-    # Warning: In a multi-threaded async app, this overrides global state!
-    # For MVP, this works if traffic is low or we rely on thread separation (not perfect).
-    with _lock:
-        creds = Credentials(token=token_data["access_token"])
-        ee.Initialize(credentials=creds, project=token_data.get("project"))
-        _gee_initialized = True
-
-
-        try:
-            ee.Initialize(project=project_id)
+    try:
+        # earthengine-api keeps credentials in process-global state.  We at
+        # least serialize initialization so concurrent requests cannot mutate
+        # that state at the same instant.  Full per-user job isolation is a
+        # follow-up architecture task.
+        with _lock:
+            creds = Credentials(token=access_token)
+            ee.Initialize(credentials=creds, project=project)
             _gee_initialized = True
-            return
-        except Exception as exc:
-            _gee_error = (
-                "GEE not configured. "
-                "Set GEE_SERVICE_ACCOUNT_KEY (service account JSON as string) or run "
-                "`earthencine authenticate` and set GEE_PROJECT_ID."
-            )
-            raise RuntimeError(_gee_error)
-
+            _gee_error = None
+    except Exception as exc:
+        _gee_initialized = False
+        _gee_error = f"Falha ao inicializar Earth Engine para o projeto '{project}': {exc}"
+        logger.warning("GEE initialization failed for project=%s: %s", project, exc)
+        raise RuntimeError(_gee_error) from exc
 
 def reset_gee():
     global _gee_initialized, _gee_error
@@ -166,30 +172,41 @@ def reset_gee():
         logger.info("GEE reset: auth cleared + index-image cache cleared (%d entries)", len(_INDEX_IMAGE_CACHE))
 
 
-def gee_status(uid: str = None) -> dict:
-    global _gee_error
-    try:
-        import ee
-        ee.String("ok").getInfo()
-        sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "")
-        auth_type = "oauth2"
-        project = os.environ.get("GEE_PROJECT_ID", "")
-        if not project and sa_key:
-            try:
-                project = json.loads(sa_key).get("project_id", "")
-            except Exception:
-                pass
-        return {
-            "connected": True,
-            "auth_type": auth_type,
-            "project": project,
-            "message": f"GEE conectado ({auth_type})",
-        }
-    except Exception as exc:
+def gee_status(uid: Optional[str] = None) -> dict:
+    """Return a real per-user Earth Engine connection status."""
+    if not uid:
         return {
             "connected": False,
             "auth_type": None,
             "project": None,
+            "message": "Utilizador não autenticado.",
+        }
+
+    token_data = gee_session_store.get_token(uid)
+    project = str((token_data or {}).get("project") or "").strip() or None
+    if not token_data:
+        return {
+            "connected": False,
+            "auth_type": None,
+            "project": None,
+            "message": "Earth Engine não está ligado.",
+        }
+
+    try:
+        _init_gee(uid)
+        import ee
+        ee.String("geomoz-healthcheck").getInfo()
+        return {
+            "connected": True,
+            "auth_type": "oauth2",
+            "project": project,
+            "message": "Earth Engine ligado e validado.",
+        }
+    except Exception as exc:
+        return {
+            "connected": False,
+            "auth_type": "oauth2",
+            "project": project,
             "message": str(exc),
         }
 
