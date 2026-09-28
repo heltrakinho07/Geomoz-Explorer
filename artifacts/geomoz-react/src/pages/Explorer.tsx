@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, Suspense } from "react";
-import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard, BrainCircuit, Pen, FolderKanban } from "lucide-react";
+import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard, BrainCircuit, Pen, FolderKanban, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -20,6 +20,8 @@ import { useWorkspaceLayers } from "@/hooks/useWorkspaceLayers";
 import ZoneSelect from "@/components/ZoneSelect";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { mozambiqueAOI, GLOBAL_AOI, customAOI } from "@/lib/aoi";
+import CommandCenter, { type GeoMozWorkspaceTab } from "@/components/CommandCenter";
+import WelcomeDialog from "@/components/WelcomeDialog";
 
 interface NominatimResult {
   place_id: number;
@@ -29,7 +31,7 @@ interface NominatimResult {
   boundingbox: [string, string, string, string];
 }
 
-type Tab = "Mapa" | "Projetos" | "Análise" | "GeoAnálises" | "Bacias Hidrográficas" | "Água Subterrânea" | "Geoperigos" | "GeoMoz AI" | "Dashboard" | "Exportar";
+type Tab = GeoMozWorkspaceTab;
 
 const TABS: { id: Tab; icon: React.ReactNode; label: string }[] = [
   { id: "Mapa",                 icon: <Globe size={13} />,    label: "Mapa" },
@@ -56,6 +58,8 @@ export default function Explorer() {
   const [mapZoom, setMapZoom] = useState(5);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [geeDialogOpen, setGeeDialogOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
   const { user } = useAuth();
   const { activeProject, clearActiveProject } = useProject();
   const { resultLayers, setResultLayers } = useWorkspaceLayers();
@@ -93,6 +97,50 @@ export default function Explorer() {
 
   function toggleLayer(key: keyof LayerState) {
     setLayers(prev => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  // Global command palette — available from any module.
+  useEffect(() => {
+    function handleShortcut(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandOpen(value => !value);
+      }
+    }
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
+
+  // Objective-first onboarding appears only once per browser, but remains
+  // available later from the Command Center.
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem("geomoz.welcome.v1") !== "seen") {
+        setWelcomeOpen(true);
+      }
+    } catch {
+      // localStorage is a convenience only.
+    }
+  }, []);
+
+  function handleWelcomeOpenChange(open: boolean) {
+    setWelcomeOpen(open);
+    if (!open) {
+      try {
+        window.localStorage.setItem("geomoz.welcome.v1", "seen");
+      } catch {
+        // Ignore storage restrictions.
+      }
+    }
+  }
+
+  function navigateWorkspace(tab: GeoMozWorkspaceTab) {
+    setActiveTab(tab);
+  }
+
+  function startDrawingFromCommand() {
+    setActiveTab("Mapa");
+    setDrawingEnabled(true);
   }
 
   // Close search dropdown on outside click
@@ -494,6 +542,19 @@ function flyToResult(result: NominatimResult) {
             </button>
           )}
 
+          <button
+            type="button"
+            onClick={() => setCommandOpen(true)}
+            title="Abrir GeoMoz Command Center"
+            className="hidden lg:flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50/70 px-2.5 py-1.5 text-[11px] font-semibold text-violet-700 transition hover:border-violet-300 hover:bg-violet-100"
+          >
+            <Sparkles size={12} />
+            <span className="hidden 2xl:inline">Command</span>
+            <kbd className="rounded border border-violet-200 bg-white px-1 py-0.5 font-mono text-[9px] font-medium text-violet-500">
+              Ctrl K
+            </kbd>
+          </button>
+
           {activeProject && (
             <button
               onClick={() => setActiveTab("Projetos")}
@@ -666,6 +727,24 @@ function flyToResult(result: NominatimResult) {
           />
         </div>
       )}
+
+      <CommandCenter
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        onNavigate={navigateWorkspace}
+        onDrawAOI={startDrawingFromCommand}
+        onOpenGee={() => setGeeDialogOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenWelcome={() => setWelcomeOpen(true)}
+        aoiLabel={aoi.label}
+        projectName={activeProject?.name}
+      />
+
+      <WelcomeDialog
+        open={welcomeOpen}
+        onOpenChange={handleWelcomeOpenChange}
+        onNavigate={navigateWorkspace}
+      />
 
       {/* Settings Dialog */}
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
