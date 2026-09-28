@@ -416,6 +416,108 @@ def _watershed_report(content: dict[str, Any]) -> str:
     return body
 
 
+def _erosion_report(content: dict[str, Any]) -> str:
+    params = content.get("parameters") or {}
+    result = content.get("result") or {}
+    classes = [
+        item for item in (result.get("classes") or [])
+        if isinstance(item, dict)
+    ]
+
+    total_area = sum((_number(item.get("areaKm2")) or 0) for item in classes)
+    high_area = sum(
+        (_number(item.get("areaKm2")) or 0)
+        for item in classes
+        if int(item.get("id") or 0) in {4, 5}
+    )
+    high_pct = (high_area / total_area * 100) if total_area > 0 else None
+
+    body = _job_identity(content)
+    body += _section(
+        "Resumo de risco de erosão",
+        '<div class="summary-grid four">'
+        + _metric("Ano", result.get("year") or params.get("year") or "—")
+        + _metric("Perda média", _fmt_number(result.get("meanTPerHa"), 2, " t/ha/ano"))
+        + _metric("Área analisada", _fmt_number(total_area, 1, " km²"))
+        + _metric("Alta + Muito Alta", _fmt_number(high_pct, 1, "%"))
+        + "</div>",
+    )
+    body += _section(
+        "Distribuição das classes",
+        _class_table(classes, include_range=True),
+    )
+    body += _section(
+        "Metodologia",
+        '<p class="method">O GeoMoz aplica a equação RUSLE '
+        '<strong>A = R × K × LS × C × P</strong> para estimar perda potencial '
+        'de solo. Nesta implementação, a erosividade da chuva (R) deriva de '
+        'CHIRPS, a erodibilidade do solo (K) usa um valor de referência constante, '
+        'o factor LS deriva do relevo Copernicus DEM e o factor C é estimado a '
+        'partir de NDVI MODIS. O resultado é classificado em cinco classes de risco.</p>'
+        f'<div class="source">Fonte do modelo: {escape(str(result.get("source") or "RUSLE GeoMoz"))}</div>',
+    )
+    body += _section("Parâmetros de execução", _render_mapping(params))
+    body += _interpretation(content)
+    body += _notice(
+        "RUSLE estima perda potencial média de solo e não substitui medições "
+        "locais. O uso de K constante e a ausência de práticas de conservação "
+        "espacialmente detalhadas podem introduzir incerteza; aplicações de "
+        "engenharia devem calibrar factores com dados locais.",
+        "warning",
+    )
+    return body
+
+
+def _index_report(content: dict[str, Any]) -> str:
+    params = content.get("parameters") or {}
+    result = content.get("result") or {}
+    group = str(result.get("group") or "index")
+
+    body = _job_identity(content)
+    body += _section(
+        "Resumo do índice",
+        '<div class="summary-grid four">'
+        + _metric("Índice", result.get("name") or params.get("index") or "—")
+        + _metric("Grupo", group)
+        + _metric("Cenas", result.get("sceneCount") or 0)
+        + _metric("Período", result.get("dateRange") or "—")
+        + "</div>",
+    )
+    body += _section(
+        "Definição técnica",
+        '<div class="summary-grid">'
+        + _metric("Fórmula", result.get("formula") or "—")
+        + _metric("Bandas", result.get("bands") or "—")
+        + _metric(
+            "Classificação",
+            "Disponível" if result.get("classNames") else "Contínua",
+        )
+        + "</div>"
+        + (
+            _section(
+                "Classes",
+                _render_list(result.get("classNames") or []),
+            )
+            if result.get("classNames")
+            else ""
+        ),
+    )
+    stats = result.get("stats")
+    if isinstance(stats, dict) and stats:
+        body += _section("Estatísticas", _render_mapping(stats))
+
+    body += _section("Parâmetros de execução", _render_mapping(params))
+    body += _interpretation(content)
+    body += _notice(
+        "Índices espectrais e derivados são indicadores biofísicos ou temáticos. "
+        "A interpretação depende do sensor, período, cobertura de nuvens, "
+        "resolução espacial, condições atmosféricas e contexto local. "
+        "Valores semelhantes podem representar processos diferentes.",
+        "warning",
+    )
+    return body
+
+
 def _generic_analysis_report(content: dict[str, Any]) -> str:
     params = content.get("parameters") or {}
     result = content.get("result") or {}
@@ -450,6 +552,10 @@ def _analysis_body(content: dict[str, Any]) -> str:
         return _targeting_report(content)
     if analysis_type == "gee.watershed":
         return _watershed_report(content)
+    if analysis_type == "gee.erosion":
+        return _erosion_report(content)
+    if analysis_type == "gee.index":
+        return _index_report(content)
     return _generic_analysis_report(content)
 
 
@@ -521,7 +627,8 @@ def _report_label(output_type: Any, content: dict[str, Any]) -> str:
         "gee.flood": "Relatório de Inundação Sentinel-1",
         "gee.targeting": "Relatório de Targeting Mineral",
         "gee.watershed": "Relatório de Bacia Hidrográfica",
-        "gee.erosion": "Relatório de Risco de Erosão",
+        "gee.erosion": "Relatório de Risco de Erosão RUSLE",
+        "gee.index": "Relatório de Índice Geoespacial",
     }
     return mapping.get(str(content.get("analysis_type") or ""), "Relatório de Análise")
 
