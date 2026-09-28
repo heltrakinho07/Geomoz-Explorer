@@ -904,6 +904,38 @@ async def create_analysis_job(
 
         return submit_job(uid, req.type, normalized_payload, runner)
 
+    if req.type == "gee.watershed":
+        try:
+            validated = GEEWatershedRequest(**req.payload)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
+        )
+
+        def runner(progress):
+            from gee_module import _init_gee, compute_watershed_from_point
+
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A localizar o ponto de saída e dados hidrológicos.")
+            progress(45, "processing", "A delimitar a bacia hidrográfica.")
+            result = compute_watershed_from_point(
+                validated.lat,
+                validated.lon,
+                region,
+                validated.max_iter,
+                validated.level,
+            )
+            progress(90, "rendering", "A preparar limite da bacia e área.")
+            return result
+
+        return submit_job(uid, req.type, normalized_payload, runner)
+
     if req.type == "gee.targeting":
         try:
             validated = GEETargetingRequest(**req.payload)
