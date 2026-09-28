@@ -263,3 +263,118 @@ async def plan_agent_turn(
         "model": model,
         "response_id": data.get("id"),
     }
+
+
+
+def _compact_for_explanation(value: Any, depth: int = 0) -> Any:
+    """Remove large/render-only data before sending analysis evidence to the LLM."""
+    if depth > 4:
+        return "[conteúdo omitido]"
+
+    if isinstance(value, dict):
+        compact: dict[str, Any] = {}
+        for key, item in value.items():
+            lower = str(key).lower()
+            if any(token in lower for token in (
+                "tileurl", "tile_url", "geojson", "coordinates",
+                "access_token", "token", "training",
+            )):
+                continue
+            compact[str(key)] = _compact_for_explanation(item, depth + 1)
+        return compact
+
+    if isinstance(value, list):
+        return [_compact_for_explanation(item, depth + 1) for item in value[:20]]
+
+    if isinstance(value, str):
+        return value[:1000]
+
+    return value
+
+
+async def explain_job_result(job: dict[str, Any]) -> dict[str, Any]:
+    """Explain a completed analysis using only the persisted job evidence."""
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise AgentNotConfigured(
+            "GeoMoz Agent ainda não está configurado no servidor."
+        )
+
+    if job.get("status") != "completed":
+        raise AgentPlannerError(
+            "A análise precisa estar concluída antes de gerar a explicação."
+        )
+
+    evidence = {
+        "analysis_type": job.get("type"),
+        "parameters": _compact_for_explanation(job.get("payload") or {}),
+        "result": _compact_for_explanation(job.get("result") or {}),
+        "completed_at": job.get("completed_at"),
+    }
+
+    model = os.environ.get("GEOMOZ_AI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    payload = {
+        "model": model,
+        "instructions": (
+            "Você é um analista geoespacial do GeoMoz. Explique exclusivamente "
+            "o que os dados fornecidos suportam. Não invente números, causas, "
+            "locais, precisão ou certeza. Diferencie resultado calculado de "
+            "interpretação. Quando o output for um índice, AHP, RUSLE, targeting "
+            "ou detecção remota, deixe claro que é um indicador/modelo e não "
+            "verdade de campo. Responda em português, de forma concisa, usando "
+            "três blocos: Resultado, Interpretação e Limitações."
+        ),
+        "input": [
+            {
+                "role": "user",
+                "content": (
+                    "Explique este resultado GeoMoz com base apenas nesta evidência:\n"
+                    + json.dumps(evidence, ensure_ascii=False, default=str)
+                ),
+            }
+        ],
+        "store": False,
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=35.0) as client:
+            response = await client.post(
+                OPENAI_RESPONSES_URL,
+                headers=headers,
+                json=payload,
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("GeoMoz explanation network error: %s", exc)
+        raise AgentPlannerError(
+            "O serviço de explicação AI está temporariamente indisponível."
+        ) from exc
+
+    if response.status_code >= 400:
+        logger.warning(
+            "GeoMoz explanation upstream error status=%s request_id=%s",
+            response.status_code,
+            response.headers.get("x-request-id"),
+        )
+        raise AgentPlannerError(
+            f"O serviço de explicação AI respondeu com HTTP {response.status_code}."
+        )
+
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise AgentPlannerError("A explicação AI devolveu uma resposta inválida.") from exc
+
+    text = _extract_text(data)
+    if not text:
+        raise AgentPlannerError("A explicação AI veio vazia.")
+
+    return {
+        "explanation": text,
+        "model": model,
+        "response_id": data.get("id"),
+    }
