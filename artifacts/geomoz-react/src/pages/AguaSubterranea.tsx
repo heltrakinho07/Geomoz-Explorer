@@ -92,10 +92,11 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
     ? result.classes.filter(c => c.id >= 4).reduce((sum, c) => sum + c.areaKm2, 0)
     : 0;
   const priorityPct = result ? (priorityKm2 / total) * 100 : 0;
-  const dominantClass = result?.classes.reduce(
-    (best, current) => current.areaKm2 > best.areaKm2 ? current : best,
-    result.classes[0],
-  );
+  const dominantClass = result && result.classes.length > 0
+    ? result.classes.reduce(
+        (best, current) => current.areaKm2 > best.areaKm2 ? current : best,
+      )
+    : null;
 
   // ── PDF Export ──────────────────────────────────────────────────────────────
   async function exportGroundwaterPdf() {
