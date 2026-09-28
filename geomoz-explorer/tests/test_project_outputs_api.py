@@ -35,6 +35,8 @@ class TestProjectOutputStore:
         )
 
         assert second["id"] == first["id"]
+        assert second["content"]["value"] == 2
+        assert second["title"] == "NDVI duplicado"
         assert len(project_outputs.list_outputs("uid-1", project_id="project-1")) == 1
 
     def test_compact_evidence_removes_ephemeral_and_sensitive_fields(self) -> None:
