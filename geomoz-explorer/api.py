@@ -924,6 +924,7 @@ async def gee_disconnect(uid: str = Depends(require_firebase_auth)):
 class AnalysisJobCreateRequest(BaseModel):
     type: str
     payload: dict
+    project_id: Optional[str] = None
 
 
 @app.post("/geomoz-api/jobs", status_code=202)
@@ -952,6 +953,14 @@ async def create_analysis_job(
             status_code=400,
             detail=f"Tipo de job ainda não suportado: {req.type}",
         )
+
+    if req.project_id:
+        from projects_store import get_project
+        if not get_project(uid, req.project_id):
+            raise HTTPException(
+                status_code=404,
+                detail="Projecto associado ao job não foi encontrado.",
+            )
 
     if not gee_session_store.get_token(uid):
         raise HTTPException(
@@ -990,7 +999,7 @@ async def create_analysis_job(
             result["district"] = validated.district
             return result
 
-        return submit_job(uid, req.type, normalized_payload, runner)
+        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
 
     if req.type == "gee.flood":
         try:
@@ -1022,7 +1031,7 @@ async def create_analysis_job(
             progress(90, "rendering", "A preparar mapa e métricas de inundação.")
             return result
 
-        return submit_job(uid, req.type, normalized_payload, runner)
+        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
 
     if req.type == "gee.watershed":
         try:
@@ -1054,7 +1063,7 @@ async def create_analysis_job(
             progress(90, "rendering", "A preparar limite da bacia e área.")
             return result
 
-        return submit_job(uid, req.type, normalized_payload, runner)
+        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
 
     if req.type == "gee.targeting":
         try:
@@ -1091,7 +1100,7 @@ async def create_analysis_job(
             result["district"] = validated.district
             return result
 
-        return submit_job(uid, req.type, normalized_payload, runner)
+        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
 
     if req.type == "gee.erosion":
         try:
@@ -1117,7 +1126,7 @@ async def create_analysis_job(
             progress(90, "rendering", "A classificar risco e calcular áreas.")
             return result
 
-        return submit_job(uid, req.type, normalized_payload, runner)
+        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
 
     if req.type == "gee.groundwater":
         try:
@@ -1143,7 +1152,7 @@ async def create_analysis_job(
             progress(90, "rendering", "A classificar potencial e calcular áreas.")
             return result
 
-        return submit_job(uid, req.type, normalized_payload, runner)
+        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
 
     raise HTTPException(
         status_code=500,
@@ -1154,11 +1163,15 @@ async def create_analysis_job(
 @app.get("/geomoz-api/jobs")
 async def get_analysis_jobs(
     limit: int = Query(20, ge=1, le=100),
+    project_id: Optional[str] = Query(None),
     uid: str = Depends(require_firebase_auth),
 ):
     """List recent analysis jobs belonging to the current user."""
     from analysis_jobs import list_jobs
-    return {"jobs": list_jobs(uid, limit=limit)}
+    return {
+        "jobs": list_jobs(uid, limit=limit, project_id=project_id),
+        "project_id": project_id,
+    }
 
 
 @app.get("/geomoz-api/jobs/{job_id}")
