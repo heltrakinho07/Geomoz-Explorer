@@ -446,7 +446,7 @@ class ProjectCreateRequest(BaseModel):
     name: str
     description: str = ""
     aoi: Optional[dict] = None
-    map_state: dict = {}
+    map_state: Optional[dict] = None
 
     @field_validator("name")
     @classmethod
@@ -489,7 +489,7 @@ async def create_project_endpoint(
         req.name,
         req.description,
         req.aoi,
-        req.map_state,
+        req.map_state or {},
     )
 
 
