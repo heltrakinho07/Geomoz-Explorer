@@ -43,6 +43,9 @@ class TestProjectOutputStore:
         compact = compact_evidence({
             "mean": 0.42,
             "tileUrl": "https://tiles.example.invalid/x",
+            "tile": "https://tiles.example.invalid/y",
+            "floodTile": "https://tiles.example.invalid/flood",
+            "permWaterTile": "https://tiles.example.invalid/water",
             "access_token": "secret",
             "geojson": {"type": "FeatureCollection"},
             "nested": {
@@ -53,6 +56,9 @@ class TestProjectOutputStore:
 
         assert compact["mean"] == 0.42
         assert "tileUrl" not in compact
+        assert "tile" not in compact
+        assert "floodTile" not in compact
+        assert "permWaterTile" not in compact
         assert "access_token" not in compact
         assert "geojson" not in compact
         assert "coordinates" not in compact["nested"]
