@@ -340,3 +340,45 @@ def test_report_renders_compact_study_area_metadata() -> None:
     assert "Distrito de Boane" in html
     assert "Boane · Maputo" in html
     assert "coordinates" not in html.lower()
+
+
+
+def test_report_renders_extent_frame_when_bounds_available() -> None:
+    from report_renderer import render_output_html
+
+    output = {
+        "id": "extent-output",
+        "type": "analysis_report",
+        "title": "NDVI com extensão",
+        "description": "",
+        "created_at": "2026-09-28T10:00:00+00:00",
+        "content": {
+            "analysis_type": "gee.index",
+            "study_area": {
+                "label": "AOI Teste",
+                "kind": "draw",
+                "province": None,
+                "district": None,
+                "center": [-25.965, 32.583],
+                "zoom": 10,
+                "bounds": [[-26.20, 32.30], [-25.70, 32.90]],
+            },
+            "parameters": {"index": "ndvi"},
+            "result": {
+                "name": "NDVI",
+                "formula": "(NIR - RED) / (NIR + RED)",
+                "bands": "B8, B4",
+                "group": "vegetation",
+                "sceneCount": 4,
+                "dateRange": "2026-01-01 → 2026-02-01",
+            },
+            "job": {"completed_at": "2026-02-02T10:00:00+00:00"},
+        },
+    }
+
+    html = render_output_html(output, {"name": "Projecto AOI"})
+
+    assert "Extensão cartográfica persistida do Project" in html
+    assert "-25.7000, 32.3000" in html
+    assert "-26.2000, 32.9000" in html
+    assert "-25.96500, 32.58300 · z10" in html
