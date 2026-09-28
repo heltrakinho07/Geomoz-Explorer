@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAnalysisJob } from "@/hooks/useAnalysisJob";
-import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import AnalysisJobProgress from "@/components/AnalysisJobProgress";
 import AreaSelect from "@/components/AreaSelect";
@@ -75,10 +74,17 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
   // Erosion params
   const [year, setYear] = useState(2023);
   const [erosion, setErosion] = useState<ErosionResult | null>(null);
+  const deliveredErosionJobRef = useRef<string | null>(null);
+  const {
+    job: erosionJob,
+    submitJob: submitErosionJob,
+    running: erosionRunning,
+    error: erosionJobError,
+    resetJob: resetErosionJob,
+  } = useAnalysisJob<ErosionResult>();
 
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState<string | null>(null);
   const [drawingEnabled, setDrawingEnabled] = useState(false);
+  const activeError = tool === "flood" ? floodJobError : erosionJobError;
 
   useEffect(() => {
     if (
@@ -92,6 +98,17 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
   }, [floodJob]);
 
   useEffect(() => {
+    if (
+      erosionJob?.status === "completed" &&
+      erosionJob.result &&
+      deliveredErosionJobRef.current !== erosionJob.id
+    ) {
+      deliveredErosionJobRef.current = erosionJob.id;
+      setErosion(erosionJob.result);
+    }
+  }, [erosionJob]);
+
+  useEffect(() => {
     if (floodJob?.status === "failed" && floodJob.error?.message) {
       toast({
         variant: "destructive",
@@ -101,8 +118,17 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
     }
   }, [floodJob?.id, floodJob?.status]);
 
+  useEffect(() => {
+    if (erosionJob?.status === "failed" && erosionJob.error?.message) {
+      toast({
+        variant: "destructive",
+        title: "Erro na erosão",
+        description: erosionJob.error.message,
+      });
+    }
+  }, [erosionJob?.id, erosionJob?.status]);
+
   const runFlood = useCallback(async () => {
-    setError(null);
     setFlood(null);
     resetFloodJob();
     deliveredFloodJobRef.current = null;
@@ -119,23 +145,19 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
   }, [aoi, eventStart, eventEnd, resetFloodJob, submitFloodJob]);
 
   const runErosion = useCallback(async () => {
-    setLoading(true); setError(null); setErosion(null);
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 240_000);
+    setErosion(null);
+    resetErosionJob();
+    deliveredErosionJobRef.current = null;
+
     try {
-      const r = await apiFetch("/geomoz-api/gee/erosion", {
-        method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
-        body: JSON.stringify({ ...aoiToAPI(aoi), year }),
+      await submitErosionJob("gee.erosion", {
+        ...aoiToAPI(aoi),
+        year,
       });
-      if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
-      setErosion(await r.json());
-    } catch (e) {
-      const aborted = e instanceof DOMException && e.name === "AbortError";
-      const msg = aborted ? "O cálculo RUSLE demorou demasiado. Escolha uma província em vez de todo o país." : String(e instanceof Error ? e.message : e);
-      setError(msg);
-      toast({ variant: "destructive", title: "Erro na erosão", description: msg });
-    } finally { clearTimeout(timer); setLoading(false); }
-  }, [province, district, year]);
+    } catch {
+      // useAnalysisJob exposes the actionable error in the panel.
+    }
+  }, [aoi, year, resetErosionJob, submitErosionJob]);
 
   const erosionTotal = erosion ? erosion.classes.reduce((s, c) => s + c.areaKm2, 0) || 1 : 1;
 
@@ -303,16 +325,17 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
               <input type="range" min={2018} max={2024} step={1} value={year} onChange={e => setYear(+e.target.value)} className="w-full accent-amber-500" />
               <div className="flex justify-between text-[10px] text-slate-400"><span>2018</span><span>2024</span></div>
             </div>
-            <button onClick={runErosion} disabled={loading}
+            <button onClick={runErosion} disabled={erosionRunning}
               className="w-full flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors">
-              {loading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Calcular erosão
+              {erosionRunning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Calcular erosão
             </button>
+            <AnalysisJobProgress job={erosionJob} title="GeoMoz Hazard · Erosão RUSLE" />
           </div>
         )}
 
-        {(error || floodJobError) && (
+        {activeError && (
           <div className="m-3 bg-red-50 border border-red-200 rounded-xl p-2.5 text-[11px] text-red-700">
-            <AlertTriangle size={12} className="inline mr-1" /> {floodJobError || error}
+            <AlertTriangle size={12} className="inline mr-1" /> {activeError}
           </div>
         )}
       </div>
@@ -349,12 +372,12 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
         </MapContainer>
 
         {/* Loading overlay */}
-        {(loading || floodRunning) && (
+        {(floodRunning || erosionRunning) && (
           <div className="absolute inset-0 z-[600] bg-white/55 backdrop-blur-sm flex items-center justify-center">
             <div className="bg-white rounded-2xl shadow-xl border border-slate-200 px-7 py-5 flex items-center gap-3 max-w-xs">
               <Loader2 size={20} className="text-rose-500 animate-spin shrink-0" />
               <span className="text-sm text-slate-700 font-medium">
-                {tool === "flood" ? (floodJob?.message || "A processar radar Sentinel-1…") : "A calcular RUSLE… (pode levar ~1–2 min)"}
+                {tool === "flood" ? (floodJob?.message || "A processar radar Sentinel-1…") : (erosionJob?.message || "A calcular RUSLE…")}
               </span>
             </div>
           </div>
