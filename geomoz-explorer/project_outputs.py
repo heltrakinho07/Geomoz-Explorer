@@ -173,3 +173,30 @@ def delete_output(uid: str, output_id: str) -> bool:
             logger.warning("Could not delete project output %s: %s", output_id, exc)
             return False
     return True
+
+
+
+def compact_evidence(value: Any, depth: int = 0) -> Any:
+    """Return a durable compact representation suitable for Firestore reports."""
+    if depth > 5:
+        return "[conteúdo omitido]"
+
+    if isinstance(value, dict):
+        compact: dict[str, Any] = {}
+        for key, item in value.items():
+            lower = str(key).lower()
+            if any(token in lower for token in (
+                "tileurl", "tile_url", "access_token", "refresh_token",
+                "token", "credentials", "coordinates", "geojson", "training",
+            )):
+                continue
+            compact[str(key)] = compact_evidence(item, depth + 1)
+        return compact
+
+    if isinstance(value, list):
+        return [compact_evidence(item, depth + 1) for item in value[:50]]
+
+    if isinstance(value, str):
+        return value[:4000]
+
+    return value
