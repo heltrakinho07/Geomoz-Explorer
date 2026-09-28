@@ -316,3 +316,99 @@ class TestAgentPlanAPI:
         assert data["status"] == "ready"
         assert data["steps"][0]["status"] == "pending"
         assert data["steps"][0]["job_id"] is None
+
+
+
+class TestAgentPlanExplanationAPI:
+    def test_explain_completed_plan(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import agent_plans
+        import analysis_jobs
+        import ai_agent
+
+        plan = agent_plans.create_plan(
+            "test-uid-123",
+            title="Plano concluído",
+            goal="Combinar água e erosão",
+            steps=[
+                {
+                    "tool_id": "run_groundwater_ahp",
+                    "purpose": "Água",
+                    "arguments": {"province": "Maputo", "year": 2024},
+                },
+                {
+                    "tool_id": "calculate_erosion_risk",
+                    "purpose": "Erosão",
+                    "arguments": {"province": "Maputo", "year": 2024},
+                },
+            ],
+        )
+        agent_plans.update_step(
+            "test-uid-123", plan["id"], 0,
+            status="completed", job_id="job-water",
+        )
+        agent_plans.update_step(
+            "test-uid-123", plan["id"], 1,
+            status="completed", job_id="job-erosion",
+        )
+        agent_plans.update_plan(
+            "test-uid-123", plan["id"], status="completed",
+            completed_at="2026-09-28T00:05:00+00:00",
+        )
+
+        monkeypatch.setattr(
+            analysis_jobs,
+            "get_job",
+            lambda uid, job_id: {
+                "id": job_id,
+                "type": "gee.groundwater" if job_id == "job-water" else "gee.erosion",
+                "status": "completed",
+                "payload": {"province": "Maputo", "year": 2024},
+                "result": {"stats": {"mean": 0.5}},
+                "completed_at": "2026-09-28T00:04:00+00:00",
+            },
+        )
+
+        async def fake_explain(plan_arg, jobs):
+            assert len(jobs) == 2
+            return {
+                "explanation": "Síntese integrada baseada em duas análises.",
+                "model": "test-model",
+                "response_id": "resp-plan-1",
+                "analyses_used": 2,
+            }
+
+        monkeypatch.setattr(ai_agent, "explain_plan_result", fake_explain)
+
+        resp = client.post(f"/geomoz-api/ai/plans/{plan['id']}/explain")
+
+        assert resp.status_code == 200
+        assert resp.json()["analyses_used"] == 2
+
+    def test_explain_plan_requires_completion(
+        self, client: TestClient,
+    ) -> None:
+        import agent_plans
+
+        plan = agent_plans.create_plan(
+            "test-uid-123",
+            title="Plano activo",
+            goal="Ainda em curso",
+            steps=[
+                {
+                    "tool_id": "run_groundwater_ahp",
+                    "purpose": "Água",
+                    "arguments": {"province": "Maputo", "year": 2024},
+                },
+                {
+                    "tool_id": "calculate_erosion_risk",
+                    "purpose": "Erosão",
+                    "arguments": {"province": "Maputo", "year": 2024},
+                },
+            ],
+        )
+
+        resp = client.post(f"/geomoz-api/ai/plans/{plan['id']}/explain")
+
+        assert resp.status_code == 409
