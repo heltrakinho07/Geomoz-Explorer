@@ -5,7 +5,13 @@
  */
 
 import * as turf from "@turf/turf";
-import type { Feature, FeatureCollection, Geometry, Polygon, MultiPolygon, Point, LineString } from "geojson";
+type Feature = GeoJSON.Feature;
+type FeatureCollection = GeoJSON.FeatureCollection;
+type Geometry = GeoJSON.Geometry;
+type Polygon = GeoJSON.Polygon;
+type MultiPolygon = GeoJSON.MultiPolygon;
+type Point = GeoJSON.Point;
+type LineString = GeoJSON.LineString;
 
 export interface RasterGrid {
   width: number;
@@ -270,7 +276,7 @@ export function runVectorBuffer(
 
   if (dissolve && bufferedFeatures.length > 1) {
     try {
-      const dissolved = turf.dissolve(finalFc);
+      const dissolved = turf.dissolve(finalFc as GeoJSON.FeatureCollection<GeoJSON.Polygon>);
       if (dissolved && dissolved.features.length > 0) {
         finalFc = dissolved;
       }
@@ -393,7 +399,7 @@ export function runVectorDissolve(
   let dissolved: FeatureCollection;
 
   try {
-    dissolved = turf.dissolve(fc, { propertyName: propertyName || undefined });
+    dissolved = turf.dissolve(fc as GeoJSON.FeatureCollection<GeoJSON.Polygon>, { propertyName: propertyName || undefined });
   } catch (err) {
     console.warn("Turf dissolve error:", err);
     dissolved = fc;
@@ -522,7 +528,7 @@ export function runVectorIntersect(
       if (fB.geometry.type !== "Polygon" && fB.geometry.type !== "MultiPolygon") continue;
       try {
         const inter = turf.intersect(
-          turf.featureCollection([fA as Feature<Polygon | MultiPolygon>, fB as Feature<Polygon | MultiPolygon>])
+          turf.featureCollection([fA as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>, fB as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>])
         );
         if (inter) {
           inter.properties = {
@@ -565,7 +571,7 @@ export function runVectorPointsInPolygon(
     for (const pt of pointsFc.features) {
       if (pt.geometry.type === "Point") {
         try {
-          if (turf.booleanPointInPolygon(pt as Feature<Point>, poly as Feature<Polygon | MultiPolygon>)) {
+          if (turf.booleanPointInPolygon(pt as GeoJSON.Feature<GeoJSON.Point>, poly as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>)) {
             count++;
           }
         } catch {}

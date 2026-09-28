@@ -88,7 +88,7 @@ interface Props {
 export default function Geoperigos({ aoi, province, district, viewMode = "2d", onViewModeChange, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
   const { toast } = useToast();
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const { isGeeConnected, loading: geeAuthLoading } = useGeeAuth();
+  const { geeConnected: isGeeConnected, loading: geeAuthLoading } = useGeeAuth();
   const [geeDialogOpen, setGeeDialogOpen] = useState(false);
   const [tool, setTool] = useState<Tool>("flood");
   const [basemap, setBasemap] = useState<BasemapType>("terrain");
