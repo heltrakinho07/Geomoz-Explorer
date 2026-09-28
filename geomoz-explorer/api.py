@@ -930,12 +930,29 @@ class GEECompositeRequest(BaseModel):
 
 class OAuthTokenRequest(BaseModel):
     access_token: str
-    project: Optional[str] = None
+    project: str
+
+    @field_validator("access_token", "project")
+    @classmethod
+    def validate_oauth_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Campo obrigatório.")
+        return value
+
 
 class OAuthCodeRequest(BaseModel):
     code: str
     redirect_uri: Optional[str] = "postmessage"
-    project: Optional[str] = None
+    project: str
+
+    @field_validator("code", "project")
+    @classmethod
+    def validate_code_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Campo obrigatório.")
+        return value
 
 @app.post("/geomoz-api/gee/oauth-token")
 async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_firebase_auth)):
@@ -985,7 +1002,7 @@ async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(requ
 
     access_token = token_response.get("access_token")
     refresh_token = token_response.get("refresh_token")
-    project = req.project or "geoprocessamento-426809"
+    project = req.project.strip()
 
     user_data = gee_session_store.get_token(uid) or {}
     user_data["access_token"] = access_token
