@@ -29,6 +29,7 @@ export default function AnalysisJobProgress({
 
   const failed = job.status === "failed";
   const completed = job.status === "completed";
+  const cancelled = job.status === "cancelled";
   const progress = Math.max(0, Math.min(job.progress || 0, 100));
   const activeAt = STEPS.reduce((latest, step) => progress >= step.at ? step.at : latest, 0);
 
@@ -68,10 +69,12 @@ export default function AnalysisJobProgress({
             <XCircle size={11} />
           ) : completed ? (
             <CheckCircle2 size={11} />
+          ) : cancelled ? (
+            <Circle size={11} />
           ) : (
             <Loader2 size={11} className="animate-spin" />
           )}
-          {failed ? "Falhou" : completed ? "Concluída" : job.status === "cancelled" ? "Cancelada" : `${progress}%`}
+          {failed ? "Falhou" : completed ? "Concluída" : cancelled ? "Cancelada" : `${progress}%`}
           </div>
         </div>
       </div>
@@ -80,7 +83,7 @@ export default function AnalysisJobProgress({
         <div
           className={[
             "h-full rounded-full transition-all duration-500",
-            failed ? "bg-red-500" : completed ? "bg-emerald-500" : "bg-sky-500",
+            failed ? "bg-red-500" : completed ? "bg-emerald-500" : cancelled ? "bg-slate-400" : "bg-sky-500",
           ].join(" ")}
           style={{ width: `${failed ? Math.max(progress, 8) : progress}%` }}
         />
