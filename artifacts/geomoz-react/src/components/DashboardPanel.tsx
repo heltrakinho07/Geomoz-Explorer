@@ -437,7 +437,7 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
                 <Activity size={18} className="mx-auto mb-2 text-slate-300" />
                 <div className="text-xs font-medium text-slate-600">Ainda não há análises registadas</div>
                 <div className="mt-1 text-[11px] text-slate-400">
-                  NDVI, cheias e potencial hídrico já criam jobs persistentes.
+                  Índices, cheias, erosão e potencial hídrico já criam jobs persistentes.
                 </div>
               </div>
             ) : (
