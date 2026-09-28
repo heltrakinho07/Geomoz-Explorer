@@ -425,3 +425,87 @@ class TestAnalysisJobCancellation:
         assert cancelled["status"] == "cancelled"
         assert cancelled["stage"] == "cancelled"
         assert cancelled["completed_at"] is not None
+
+
+class TestAnalysisJobRetry:
+    def test_retry_job_endpoint(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import analysis_jobs
+        import gee_session_store
+
+        previous = {
+            "id": "failed-job-1",
+            "type": "gee.index",
+            "project_id": None,
+            "status": "failed",
+            "stage": "failed",
+            "progress": 45,
+            "message": "falhou",
+            "payload": {"index": "ndvi"},
+            "result": None,
+            "error": {"message": "temporary"},
+            "created_at": "2026-09-28T00:00:00+00:00",
+            "updated_at": "2026-09-28T00:00:05+00:00",
+            "started_at": "2026-09-28T00:00:01+00:00",
+            "completed_at": "2026-09-28T00:00:05+00:00",
+            "execution_mode": "local_executor",
+        }
+        monkeypatch.setattr(analysis_jobs, "get_job", lambda uid, job_id: previous)
+        monkeypatch.setattr(
+            gee_session_store,
+            "get_token",
+            lambda uid: {"access_token": "mock-oauth-token", "project": "test-project"},
+        )
+        monkeypatch.setattr(
+            analysis_jobs,
+            "submit_job",
+            lambda uid, job_type, payload, runner, project_id=None: {
+                **previous,
+                "id": "retry-job-2",
+                "status": "queued",
+                "stage": "queued",
+                "progress": 0,
+                "payload": payload,
+                "error": None,
+                "completed_at": None,
+            },
+        )
+
+        resp = client.post("/geomoz-api/jobs/failed-job-1/retry")
+
+        assert resp.status_code == 202
+        assert resp.json()["id"] == "retry-job-2"
+        assert resp.json()["status"] == "queued"
+        assert resp.json()["payload"]["index"] == "ndvi"
+
+    def test_retry_active_job_returns_409(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import analysis_jobs
+
+        monkeypatch.setattr(
+            analysis_jobs,
+            "get_job",
+            lambda uid, job_id: {
+                "id": job_id,
+                "type": "gee.index",
+                "project_id": None,
+                "status": "processing",
+                "stage": "processing",
+                "progress": 50,
+                "message": "running",
+                "payload": {"index": "ndvi"},
+                "result": None,
+                "error": None,
+                "created_at": "2026-09-28T00:00:00+00:00",
+                "updated_at": "2026-09-28T00:00:02+00:00",
+                "started_at": "2026-09-28T00:00:01+00:00",
+                "completed_at": None,
+                "execution_mode": "local_executor",
+            },
+        )
+
+        resp = client.post("/geomoz-api/jobs/running-job/retry")
+
+        assert resp.status_code == 409
