@@ -28,6 +28,7 @@ _TERMINAL = {"completed", "failed", "cancelled"}
 _jobs: dict[tuple[str, str], dict[str, Any]] = {}
 _jobs_lock = threading.Lock()
 _futures: dict[tuple[str, str], Future] = {}
+_STALE_SECONDS = max(300, int(os.getenv("ANALYSIS_JOB_STALE_SECONDS", "3600")))
 
 # Serialize the first generation of GEE jobs because earthengine-api keeps
 # process-global initialization state. This is conservative by design.
@@ -119,6 +120,52 @@ def _load(uid: str, job_id: str) -> Optional[dict[str, Any]]:
     return None
 
 
+def _recover_if_stale(uid: str, job: dict[str, Any]) -> dict[str, Any]:
+    """Fail orphaned local jobs after a conservative timeout.
+
+    Cloud Run may terminate an instance while a local executor is processing.
+    Without this guard, the persisted job could remain "processing" forever.
+    """
+    if job.get("execution_mode") != "local_executor":
+        return job
+    if job.get("status") not in {"queued", "processing"}:
+        return job
+
+    updated_raw = job.get("updated_at")
+    if not updated_raw:
+        return job
+
+    try:
+        updated = datetime.fromisoformat(updated_raw)
+        if updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+        age_seconds = (datetime.now(timezone.utc) - updated).total_seconds()
+    except (TypeError, ValueError):
+        return job
+
+    if age_seconds <= _STALE_SECONDS:
+        return job
+
+    job = dict(job)
+    job.update({
+        "status": "failed",
+        "stage": "failed",
+        "message": "A execução foi interrompida antes de concluir.",
+        "error": {
+            "code": "worker_interrupted",
+            "message": (
+                "O worker da análise foi reiniciado. "
+                "Execute novamente a análise."
+            ),
+            "retryable": True,
+        },
+        "completed_at": _now(),
+        "updated_at": _now(),
+    })
+    _save(uid, job)
+    return job
+
+
 def create_job(uid: str, job_type: str, payload: dict[str, Any]) -> dict[str, Any]:
     now = _now()
     job = {
@@ -155,7 +202,10 @@ def update_job(uid: str, job_id: str, **changes: Any) -> Optional[dict[str, Any]
 
 def get_job(uid: str, job_id: str) -> Optional[dict[str, Any]]:
     job = _load(uid, job_id)
-    return _public(job) if job else None
+    if not job:
+        return None
+    job = _recover_if_stale(uid, job)
+    return _public(job)
 
 
 def list_jobs(uid: str, limit: int = 20) -> list[dict[str, Any]]:
@@ -172,6 +222,7 @@ def list_jobs(uid: str, limit: int = 20) -> list[dict[str, Any]]:
             )
             jobs = [s.to_dict() or {} for s in snapshots]
             jobs = [j for j in jobs if j.get("id")]
+            jobs = [_recover_if_stale(uid, j) for j in jobs]
             jobs.sort(key=lambda j: j.get("created_at", ""), reverse=True)
             return [_public(j) for j in jobs[:limit]]
         except Exception as exc:
@@ -183,6 +234,7 @@ def list_jobs(uid: str, limit: int = 20) -> list[dict[str, Any]]:
             for (owner, _), job in _jobs.items()
             if owner == uid
         ]
+    jobs = [_recover_if_stale(uid, j) for j in jobs]
     jobs.sort(key=lambda j: j.get("created_at", ""), reverse=True)
     return [_public(j) for j in jobs[:limit]]
 
