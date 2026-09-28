@@ -595,5 +595,35 @@ def active_job_count(uid: str | None = None) -> int:
     )
 
 
+def execution_status() -> dict[str, Any]:
+    backend = _execution_backend()
+    status: dict[str, Any] = {
+        "backend": backend,
+        "distributed": backend == "cloud_tasks",
+        "configured": True,
+    }
+    if backend != "cloud_tasks":
+        status["workers"] = max(
+            1,
+            int(os.getenv("ANALYSIS_JOB_WORKERS", "1")),
+        )
+        return status
+
+    try:
+        config = _cloud_tasks_config()
+        status.update({
+            "queue": config["queue"],
+            "location": config["location"],
+            "worker_configured": bool(config["worker_url"]),
+        })
+    except RuntimeError as exc:
+        status.update({
+            "configured": False,
+            "worker_configured": False,
+            "configuration_error": str(exc),
+        })
+    return status
+
+
 def is_terminal(status: str) -> bool:
     return status in _TERMINAL
