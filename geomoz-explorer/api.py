@@ -987,6 +987,40 @@ async def get_project_output_endpoint(
     return output
 
 
+@app.get("/geomoz-api/outputs/{output_id}/map")
+async def get_project_output_map(
+    output_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Return the private persistent map snapshot attached to an output."""
+    from project_assets import download_bytes
+    from project_outputs import get_output
+
+    output = get_output(uid, output_id)
+    if not output:
+        raise HTTPException(status_code=404, detail="Output GeoMoz não encontrado.")
+
+    map_asset = (output.get("assets") or {}).get("map")
+    if not isinstance(map_asset, dict) or not map_asset.get("storage_path"):
+        raise HTTPException(
+            status_code=404,
+            detail="Este output ainda não possui snapshot cartográfico persistente.",
+        )
+
+    map_bytes = download_bytes(map_asset["storage_path"])
+    if not map_bytes:
+        raise HTTPException(status_code=404, detail="Snapshot cartográfico indisponível.")
+
+    return Response(
+        content=map_bytes,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "Content-Disposition": f'inline; filename="geomoz-map-{output_id[:8]}.png"',
+        },
+    )
+
+
 @app.get("/geomoz-api/outputs/{output_id}/html")
 async def render_project_output_html(
     output_id: str,
@@ -1005,7 +1039,25 @@ async def render_project_output_html(
     if not project:
         raise HTTPException(status_code=404, detail="Projecto do output não encontrado.")
 
-    html = render_output_html(output, project)
+    map_data_uri = None
+    map_asset = (output.get("assets") or {}).get("map")
+    if isinstance(map_asset, dict) and map_asset.get("storage_path"):
+        try:
+            import base64
+            from project_assets import download_bytes
+
+            map_bytes = download_bytes(map_asset["storage_path"])
+            if map_bytes:
+                encoded = base64.b64encode(map_bytes).decode("ascii")
+                map_data_uri = f"data:image/png;base64,{encoded}"
+        except Exception as exc:
+            logger.warning(
+                "Could not embed output map %s: %s",
+                output_id,
+                exc,
+            )
+
+    html = render_output_html(output, project, map_data_uri=map_data_uri)
     return HTMLResponse(
         content=html,
         headers={
