@@ -630,7 +630,11 @@ function flyToResult(result: NominatimResult) {
       ) : activeTab === "GeoMoz AI" ? (
         <div className="flex flex-1 overflow-hidden">
           <Suspense fallback={<LoadingSkeleton label="GeoMoz AI" />}>
-            <LazyGeoMozAI />
+            <LazyGeoMozAI
+              aoi={aoi}
+              province={province}
+              district={district}
+            />
           </Suspense>
         </div>
       ) : (
