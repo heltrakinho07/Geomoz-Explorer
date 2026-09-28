@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { GoogleAuthProvider, linkWithPopup, reauthenticateWithPopup } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { useAuth } from "./useAuth";
 
@@ -62,14 +62,36 @@ export function useGeeAuth() {
   }, [user, fetchStatus]);
 
   const connectGee = async (project?: string) => {
-    if (!auth) {
-      setError("Firebase Auth não está inicializado. Verifique as configurações.");
+    if (!auth?.currentUser) {
+      setError("Inicie sessão no GeoMoz antes de ligar o Earth Engine.");
       return;
     }
+
+    const originalUid = auth.currentUser.uid;
     setLoading(true);
     setError(null);
+
     try {
-      const result = await signInWithPopup(auth, geeProvider);
+      // Never use signInWithPopup here: that could replace the current
+      // Firebase identity and silently move the user into another GeoMoz UID.
+      // Link Google to the existing account; if already linked, reauthenticate.
+      let result;
+      try {
+        result = await linkWithPopup(auth.currentUser, geeProvider);
+      } catch (linkError: any) {
+        if (linkError?.code === "auth/provider-already-linked") {
+          result = await reauthenticateWithPopup(auth.currentUser, geeProvider);
+        } else {
+          throw linkError;
+        }
+      }
+
+      if (result.user.uid !== originalUid || auth.currentUser.uid !== originalUid) {
+        throw new Error(
+          "A conta Google seleccionada não corresponde à sessão GeoMoz actual.",
+        );
+      }
+
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const accessToken = credential?.accessToken;
 
@@ -77,7 +99,7 @@ export function useGeeAuth() {
         throw new Error("Não foi possível obter o token de acesso Google do popup.");
       }
 
-      const idToken = await result.user.getIdToken(true);
+      const idToken = await auth.currentUser.getIdToken(true);
       const res = await fetch(`${apiBase}/geomoz-api/gee/oauth-token`, {
         method: "POST",
         headers: {
@@ -107,6 +129,13 @@ export function useGeeAuth() {
         msg = "O seu navegador bloqueou a janela pop-up de login. Permita pop-ups para este site.";
       } else if (err.code === "auth/unauthorized-domain") {
         msg = "Domínio não autorizado na Consola do Firebase (Authentication > Settings > Authorized Domains).";
+      } else if (
+        err.code === "auth/credential-already-in-use" ||
+        err.code === "auth/email-already-in-use"
+      ) {
+        msg =
+          "Esta conta Google já está associada a outro utilizador GeoMoz. " +
+          "Use a conta ligada à sessão actual ou contacte o administrador.";
       }
       setError(msg);
     } finally {
