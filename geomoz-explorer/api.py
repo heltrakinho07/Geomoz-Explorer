@@ -485,9 +485,25 @@ def _project_study_area_snapshot(project: dict) -> dict:
     aoi = project.get("aoi") or {}
     map_state = project.get("map_state") or {}
 
+    bounds = aoi.get("bounds")
+    if (
+        not isinstance(bounds, list)
+        or len(bounds) != 2
+        or not all(isinstance(item, list) and len(item) == 2 for item in bounds)
+    ):
+        bounds = None
+
+    center = map_state.get("center")
+    if (
+        not isinstance(center, list)
+        or len(center) != 2
+        or not all(isinstance(value, (int, float)) for value in center)
+    ):
+        center = None
+
     return {
         "label": aoi.get("label") or project.get("name") or "Área de estudo",
-        "kind": aoi.get("kind") or aoi.get("type") or "project",
+        "kind": aoi.get("source") or aoi.get("kind") or aoi.get("type") or "project",
         "province": (
             aoi.get("province")
             or map_state.get("province")
@@ -498,6 +514,9 @@ def _project_study_area_snapshot(project: dict) -> dict:
             or map_state.get("district")
             or None
         ),
+        "center": center,
+        "zoom": map_state.get("zoom"),
+        "bounds": bounds,
     }
 
 
