@@ -11,7 +11,7 @@ on:
       - "pnpm-workspace.yaml"
       - ".github/workflows/frontend-ci.yml"
   pull_request:
-    branches: [main]
+    branches: [main, "fix/geology-invalid-geometry"]
     paths:
       - "artifacts/geomoz-react/**"
       - "lib/**"
