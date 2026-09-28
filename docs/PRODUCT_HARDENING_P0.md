@@ -90,6 +90,7 @@ remove apenas a ligação Earth Engine.
 | --- | --- | --- | --- |
 | Índices espectrais / terreno | `gee.index` | Sim | Sim |
 | Cheias Sentinel-1 | `gee.flood` | Sim | Sim |
+| Erosão RUSLE | `gee.erosion` | Sim | Sim |
 | Água subterrânea AHP | `gee.groundwater` | Sim | Sim |
 
 O Dashboard já apresenta as análises recentes do utilizador, incluindo estado,
