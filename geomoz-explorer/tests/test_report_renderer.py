@@ -52,7 +52,19 @@ def test_render_plan_report_contains_steps_and_goal() -> None:
                 "tool_name": "Potencial de água subterrânea",
                 "purpose": "Classificar favorabilidade",
                 "parameters": {"year": 2024},
-                "result": {"high_pct": 18.2},
+                "result": {
+                    "year": 2024,
+                    "classes": [
+                        {"id": 1, "label": "Muito Baixo", "color": "#d73027", "areaKm2": 10},
+                        {"id": 2, "label": "Baixo", "color": "#fc8d59", "areaKm2": 15},
+                        {"id": 3, "label": "Moderado", "color": "#fee08b", "areaKm2": 25},
+                        {"id": 4, "label": "Alto", "color": "#91cf60", "areaKm2": 30},
+                        {"id": 5, "label": "Muito Alto", "color": "#1a9850", "areaKm2": 20},
+                    ],
+                    "weights": [
+                        {"key": "rainfall", "label": "Precipitação", "weight": 0.2, "favours": "alto"},
+                    ],
+                },
             }],
             "explanation": "Síntese final.",
         },
@@ -63,7 +75,8 @@ def test_render_plan_report_contains_steps_and_goal() -> None:
 
     assert "Identificar áreas prioritárias" in html
     assert "Potencial de água subterrânea" in html
-    assert "18,2000" in html
+    assert "50,0 km²" in html
+    assert "50,0%" in html
     assert "Síntese final." in html
 
 
