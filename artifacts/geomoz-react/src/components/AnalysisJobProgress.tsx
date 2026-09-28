@@ -9,6 +9,7 @@ import type { AnalysisJob } from "@/hooks/useAnalysisJob";
 interface AnalysisJobProgressProps {
   job: AnalysisJob<unknown> | null;
   title?: string;
+  onCancel?: () => void | Promise<void>;
 }
 
 const STEPS = [
@@ -22,6 +23,7 @@ const STEPS = [
 export default function AnalysisJobProgress({
   job,
   title = "Progresso da análise",
+  onCancel,
 }: AnalysisJobProgressProps) {
   if (!job) return null;
 
@@ -42,13 +44,25 @@ export default function AnalysisJobProgress({
           </div>
         </div>
 
-        <div className={[
-          "flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold",
+        <div className="flex shrink-0 items-center gap-2">
+          {onCancel && (job.status === "queued" || job.status === "processing") && (
+            <button
+              type="button"
+              onClick={() => void onCancel()}
+              className="rounded-full border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+            >
+              Cancelar
+            </button>
+          )}
+          <div className={[
+          "flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold",
           failed
             ? "bg-red-50 text-red-700"
             : completed
               ? "bg-emerald-50 text-emerald-700"
-              : "bg-sky-50 text-sky-700",
+              : job.status === "cancelled"
+                ? "bg-slate-100 text-slate-600"
+                : "bg-sky-50 text-sky-700",
         ].join(" ")}>
           {failed ? (
             <XCircle size={11} />
@@ -57,7 +71,8 @@ export default function AnalysisJobProgress({
           ) : (
             <Loader2 size={11} className="animate-spin" />
           )}
-          {failed ? "Falhou" : completed ? "Concluída" : `${progress}%`}
+          {failed ? "Falhou" : completed ? "Concluída" : job.status === "cancelled" ? "Cancelada" : `${progress}%`}
+          </div>
         </div>
       </div>
 
