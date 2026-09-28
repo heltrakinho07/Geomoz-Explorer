@@ -480,6 +480,40 @@ class ProjectCreateRequest(BaseModel):
         return value
 
 
+class ProjectOutputCreateRequest(BaseModel):
+    title: Optional[str] = None
+    description: str = ""
+    explanation: Optional[str] = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_output_title(cls, value):
+        if value is None:
+            return value
+        value = value.strip()
+        if len(value) > 180:
+            raise ValueError("O título do output deve ter no máximo 180 caracteres.")
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def validate_output_description(cls, value):
+        value = value.strip()
+        if len(value) > 1000:
+            raise ValueError("A descrição deve ter no máximo 1000 caracteres.")
+        return value
+
+    @field_validator("explanation")
+    @classmethod
+    def validate_output_explanation(cls, value):
+        if value is None:
+            return value
+        value = value.strip()
+        if len(value) > 12000:
+            raise ValueError("A interpretação deve ter no máximo 12000 caracteres.")
+        return value
+
+
 class ProjectUpdateRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
@@ -556,6 +590,187 @@ async def update_project_endpoint(
     if not project:
         raise HTTPException(status_code=404, detail="Projecto não encontrado.")
     return project
+
+
+@app.get("/geomoz-api/projects/{project_id}/outputs")
+async def list_project_outputs_endpoint(
+    project_id: str,
+    output_type: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    uid: str = Depends(require_firebase_auth),
+):
+    from project_outputs import list_outputs
+    from projects_store import get_project
+
+    if not get_project(uid, project_id):
+        raise HTTPException(status_code=404, detail="Projecto não encontrado.")
+
+    return {
+        "outputs": list_outputs(
+            uid,
+            project_id=project_id,
+            output_type=output_type,
+            limit=limit,
+        )
+    }
+
+
+@app.post("/geomoz-api/projects/{project_id}/outputs/from-job/{job_id}", status_code=201)
+async def create_project_output_from_job(
+    project_id: str,
+    job_id: str,
+    req: ProjectOutputCreateRequest,
+    uid: str = Depends(require_firebase_auth),
+):
+    from analysis_jobs import get_job
+    from project_outputs import compact_evidence, create_output
+    from projects_store import get_project, touch_project
+
+    project = get_project(uid, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projecto não encontrado.")
+
+    job = get_job(uid, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Analysis job não encontrado.")
+    if job.get("status") != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail="O job precisa estar concluído antes de criar um output.",
+        )
+    if job.get("project_id") and job.get("project_id") != project_id:
+        raise HTTPException(
+            status_code=409,
+            detail="O job pertence a outro projecto.",
+        )
+
+    title = req.title or f"Relatório · {job.get('type', 'Análise GeoMoz')}"
+    content = {
+        "schema": "geomoz.analysis_report.v1",
+        "analysis_type": job.get("type"),
+        "parameters": compact_evidence(job.get("payload") or {}),
+        "result": compact_evidence(job.get("result") or {}),
+        "explanation": req.explanation,
+        "job": {
+            "id": job.get("id"),
+            "created_at": job.get("created_at"),
+            "started_at": job.get("started_at"),
+            "completed_at": job.get("completed_at"),
+            "execution_mode": job.get("execution_mode"),
+        },
+    }
+
+    output = create_output(
+        uid,
+        project_id=project_id,
+        output_type="analysis_report",
+        title=title,
+        description=req.description,
+        source_type="analysis_job",
+        source_id=job_id,
+        content=content,
+    )
+    touch_project(uid, project_id)
+    return output
+
+
+@app.post("/geomoz-api/projects/{project_id}/outputs/from-plan/{plan_id}", status_code=201)
+async def create_project_output_from_plan(
+    project_id: str,
+    plan_id: str,
+    req: ProjectOutputCreateRequest,
+    uid: str = Depends(require_firebase_auth),
+):
+    from agent_plans import get_plan
+    from analysis_jobs import get_job
+    from project_outputs import compact_evidence, create_output
+    from projects_store import get_project, touch_project
+
+    project = get_project(uid, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projecto não encontrado.")
+
+    plan = get_plan(uid, plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plano GeoMoz não encontrado.")
+    if plan.get("status") != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail="O plano precisa estar concluído antes de criar um output.",
+        )
+    if plan.get("project_id") and plan.get("project_id") != project_id:
+        raise HTTPException(
+            status_code=409,
+            detail="O plano pertence a outro projecto.",
+        )
+
+    analyses = []
+    for step in plan.get("steps") or []:
+        job_id = step.get("job_id")
+        job = get_job(uid, job_id) if job_id else None
+        analyses.append({
+            "order": step.get("order"),
+            "tool_id": step.get("tool_id"),
+            "tool_name": step.get("tool_name"),
+            "purpose": step.get("purpose"),
+            "status": step.get("status"),
+            "job_id": job_id,
+            "parameters": compact_evidence((job or {}).get("payload") or step.get("arguments") or {}),
+            "result": compact_evidence((job or {}).get("result") or {}),
+            "completed_at": (job or {}).get("completed_at") or step.get("completed_at"),
+        })
+
+    title = req.title or f"Relatório Integrado · {plan.get('title', 'GeoMoz Agent')}"
+    content = {
+        "schema": "geomoz.plan_report.v1",
+        "plan": {
+            "id": plan.get("id"),
+            "title": plan.get("title"),
+            "goal": plan.get("goal"),
+            "created_at": plan.get("created_at"),
+            "completed_at": plan.get("completed_at"),
+        },
+        "analyses": analyses,
+        "explanation": req.explanation,
+    }
+
+    output = create_output(
+        uid,
+        project_id=project_id,
+        output_type="plan_report",
+        title=title,
+        description=req.description,
+        source_type="analysis_plan",
+        source_id=plan_id,
+        content=content,
+    )
+    touch_project(uid, project_id)
+    return output
+
+
+@app.get("/geomoz-api/outputs/{output_id}")
+async def get_project_output_endpoint(
+    output_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    from project_outputs import get_output
+
+    output = get_output(uid, output_id)
+    if not output:
+        raise HTTPException(status_code=404, detail="Output GeoMoz não encontrado.")
+    return output
+
+
+@app.delete("/geomoz-api/outputs/{output_id}")
+async def delete_project_output_endpoint(
+    output_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    from project_outputs import delete_output
+
+    if not delete_output(uid, output_id):
+        raise HTTPException(status_code=404, detail="Output GeoMoz não encontrado.")
+    return {"deleted": True, "id": output_id}
 
 
 @app.delete("/geomoz-api/projects/{project_id}")
