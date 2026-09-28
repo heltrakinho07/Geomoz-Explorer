@@ -52,11 +52,23 @@ jobs:
 
       - name: Resolve runtime service account
         id: runtime
+        env:
+          CONFIGURED_RUNTIME_SA: ${{ secrets.GCP_RUNTIME_SERVICE_ACCOUNT }}
         run: |
-          PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')
-          RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+          if [ -n "${CONFIGURED_RUNTIME_SA}" ]; then
+            RUNTIME_SA="${CONFIGURED_RUNTIME_SA}"
+          else
+            PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')
+            RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+          fi
           echo "service_account=${RUNTIME_SA}" >> "${GITHUB_OUTPUT}"
           echo "Using Cloud Run runtime identity: ${RUNTIME_SA}"
+
+      - name: Enable Cloud Tasks API
+        run: |
+          gcloud services enable cloudtasks.googleapis.com \
+            --project "${PROJECT_ID}" \
+            --quiet
 
       - name: Ensure Cloud Tasks queue
         run: |
