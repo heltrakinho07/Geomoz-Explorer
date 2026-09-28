@@ -92,6 +92,7 @@ remove apenas a ligação Earth Engine.
 | Cheias Sentinel-1 | `gee.flood` | Sim | Sim |
 | Erosão RUSLE | `gee.erosion` | Sim | Sim |
 | Água subterrânea AHP | `gee.groundwater` | Sim | Sim |
+| Targeting mineral | `gee.targeting` | Sim | Sim |
 
 O Dashboard já apresenta as análises recentes do utilizador, incluindo estado,
 progresso, mensagem da etapa e horário. Jobs locais órfãos são marcados como
