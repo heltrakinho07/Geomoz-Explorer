@@ -305,6 +305,27 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
     }
   }
 
+  async function openOutputHtml(output: ProjectOutput) {
+    setSavingOutput(`html:${output.id}`);
+    try {
+      const res = await apiFetch(`/geomoz-api/outputs/${output.id}/html`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const html = await res.text();
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const reportWindow = window.open(url, "_blank", "noopener,noreferrer");
+      if (!reportWindow) {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `GeoMoz_Relatorio_${output.id.slice(0, 8)}.html`;
+        a.click();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } finally {
+      setSavingOutput(null);
+    }
+  }
+
   function downloadOutput(output: ProjectOutput) {
     const blob = new Blob(
       [JSON.stringify(output, null, 2)],
@@ -879,6 +900,17 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => void openOutputHtml(output)}
+                          disabled={savingOutput === `html:${output.id}`}
+                          className="rounded-lg border border-slate-200 p-2 text-slate-400 hover:border-violet-200 hover:text-violet-600 disabled:opacity-40"
+                          title="Abrir relatório HTML para leitura/impressão"
+                        >
+                          {savingOutput === `html:${output.id}`
+                            ? <Loader2 size={12} className="animate-spin" />
+                            : <ExternalLink size={12} />}
+                        </button>
                         <button
                           type="button"
                           onClick={() => downloadOutput(output)}
