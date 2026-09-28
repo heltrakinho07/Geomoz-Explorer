@@ -833,6 +833,20 @@ async def create_analysis_job(
     from analysis_jobs import submit_job
     import gee_session_store
 
+    supported_job_types = {
+        "gee.index",
+        "gee.flood",
+        "gee.watershed",
+        "gee.targeting",
+        "gee.erosion",
+        "gee.groundwater",
+    }
+    if req.type not in supported_job_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tipo de job ainda não suportado: {req.type}",
+        )
+
     if not gee_session_store.get_token(uid):
         raise HTTPException(
             status_code=409,
@@ -1026,8 +1040,8 @@ async def create_analysis_job(
         return submit_job(uid, req.type, normalized_payload, runner)
 
     raise HTTPException(
-        status_code=400,
-        detail=f"Tipo de job ainda não suportado: {req.type}",
+        status_code=500,
+        detail="Tipo de job registado sem executor associado.",
     )
 
 
