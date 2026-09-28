@@ -7,7 +7,7 @@
  * Sidebar esquerda recolhível.
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   MapContainer, TileLayer, GeoJSON, ScaleControl, ZoomControl,
   CircleMarker, useMapEvents,
@@ -25,9 +25,11 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer,
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
+import { useAnalysisJob } from "@/hooks/useAnalysisJob";
 import { useStats } from "@/hooks/useGeoMoz";
 import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
+import AnalysisJobProgress from "@/components/AnalysisJobProgress";
 import AreaSelect from "@/components/AreaSelect";
 import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
@@ -184,7 +186,15 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
   const [watershedData, setWatershedData] = useState<WatershedResult | null>(null);
   const [maxIter]                         = useState(60);   // D8 fallback only
   const [level,         setLevel]         = useState(10);
-  const [loadingWS,     setLoadingWS]     = useState(false);
+  const deliveredWatershedJobRef          = useRef<string | null>(null);
+  const {
+    job: watershedJob,
+    submitJob: submitWatershedJob,
+    running: watershedRunning,
+    error: watershedJobError,
+    resetJob: resetWatershedJob,
+  } = useAnalysisJob<WatershedResult>();
+  const loadingWS = watershedRunning;
   const [wsStats,       setWsStats]       = useState<BasinStats | null>(null);
   const [loadingWsSt,   setLoadingWsSt]   = useState(false);
 
@@ -306,46 +316,81 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
   }
 
   // Watershed delineation
-  async function onMapClick(lat: number, lng: number) {
-    if (mode !== "delineate") return;
-    setError(null); setPourPoint([lat, lng]); setWatershedData(null); setWsStats(null);
-    setBasinReport(null); setReportLayer("none"); setLoadingWS(true);
-    const ok = await checkGEE();
-    if (!ok) { setLoadingWS(false); return; }
-    // Hard timeout so the UI never hangs forever on a slow GEE response.
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 90_000);
-    try {
-      const r = await apiFetch("/geomoz-api/gee/watershed", { method: "POST",
-        headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
-        body: JSON.stringify({ lat, lon: lng, ...aoiToAPI(aoi), max_iter: maxIter, level }) });
-      if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
-      const wd: WatershedResult = await r.json();
-      setWatershedData(wd);
-      setLoadingWS(false);   // show the basin immediately; stats load separately
-      // Auto-stats for delineated watershed
-      if (wd.geojson?.features?.length) {
-        setLoadingWsSt(true);
-        try {
-          const sr = await apiFetch("/geomoz-api/gee/basin-stats", { method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ geometry: wd.geojson.features[0]?.geometry ?? wd.geojson }) });
-          if (sr.ok) setWsStats(await sr.json());
-        } catch { /* silent */ } finally { setLoadingWsSt(false); }
+  useEffect(() => {
+    if (
+      watershedJob?.status !== "completed" ||
+      !watershedJob.result ||
+      deliveredWatershedJobRef.current === watershedJob.id
+    ) {
+      return;
+    }
+
+    deliveredWatershedJobRef.current = watershedJob.id;
+    const wd = watershedJob.result;
+    setWatershedData(wd);
+
+    if (!wd.geojson?.features?.length) return;
+
+    let cancelled = false;
+    const loadStats = async () => {
+      setLoadingWsSt(true);
+      try {
+        const sr = await apiFetch("/geomoz-api/gee/basin-stats", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            geometry: wd.geojson.features[0]?.geometry ?? wd.geojson,
+          }),
+        });
+        if (sr.ok && !cancelled) {
+          setWsStats(await sr.json());
+        }
+      } catch {
+        // Delineation remains usable even if optional statistics fail.
+      } finally {
+        if (!cancelled) setLoadingWsSt(false);
       }
-    } catch (e) {
-      const aborted = e instanceof DOMException && e.name === "AbortError";
-      const errorMsg = aborted
-        ? "A delineação demorou demasiado. Tente outro ponto ou um nível de detalhe mais baixo."
-        : String(e instanceof Error ? e.message : e);
-      setError(errorMsg);
+    };
+
+    void loadStats();
+    return () => {
+      cancelled = true;
+    };
+  }, [watershedJob]);
+
+  useEffect(() => {
+    if (watershedJob?.status === "failed" && watershedJob.error?.message) {
       toast({
         variant: "destructive",
         title: "Erro ao delinear bacia",
-        description: errorMsg,
+        description: watershedJob.error.message,
       });
     }
-    finally { clearTimeout(timer); setLoadingWS(false); }
+  }, [watershedJob?.id, watershedJob?.status]);
+
+  async function onMapClick(lat: number, lng: number) {
+    if (mode !== "delineate") return;
+
+    setError(null);
+    setPourPoint([lat, lng]);
+    setWatershedData(null);
+    setWsStats(null);
+    setBasinReport(null);
+    setReportLayer("none");
+    resetWatershedJob();
+    deliveredWatershedJobRef.current = null;
+
+    try {
+      await submitWatershedJob("gee.watershed", {
+        lat,
+        lon: lng,
+        ...aoiToAPI(aoi),
+        max_iter: maxIter,
+        level,
+      });
+    } catch {
+      // useAnalysisJob exposes the actionable error in the panel.
+    }
   }
 
   // Generate the full hydro-environmental report for the delineated basin
