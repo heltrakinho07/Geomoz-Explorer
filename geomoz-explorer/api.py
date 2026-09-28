@@ -1762,6 +1762,19 @@ class AnalysisJobCreateRequest(BaseModel):
     project_id: Optional[str] = None
 
 
+@app.get("/geomoz-api/analysis-engine/status")
+async def analysis_engine_status(
+    uid: str = Depends(require_firebase_auth),
+):
+    """Return non-sensitive execution-engine diagnostics for the current user."""
+    from analysis_jobs import active_job_count, execution_status
+
+    return {
+        **execution_status(),
+        "active_jobs": active_job_count(uid),
+    }
+
+
 def _prepare_analysis_runner(
     uid: str,
     job_type: str,
