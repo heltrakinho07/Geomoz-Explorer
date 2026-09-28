@@ -15,7 +15,7 @@ import {
   Waves, Navigation, Building2, Activity,
   Download, Loader2, CheckCircle2, Sprout,
   FileText, BarChart2, Layers,
-  ExternalLink, RefreshCw, Clock3, XCircle,
+  ExternalLink, RefreshCw, Clock3, XCircle, GitBranch,
 } from "lucide-react";
 import { apiUrl, apiFetch } from "@/lib/api";
 import type { Stats } from "@/hooks/useGeoMoz";
@@ -54,6 +54,24 @@ interface GeeIndexInfo {
 
 interface JobListResponse {
   jobs: AnalysisJob[];
+}
+
+interface DashboardPlanStep {
+  status: "pending" | "queued" | "processing" | "completed" | "failed" | "cancelled";
+}
+
+interface DashboardPlan {
+  id: string;
+  title: string;
+  goal: string;
+  status: "ready" | "running" | "completed" | "failed" | "cancelled";
+  current_step: number;
+  steps: DashboardPlanStep[];
+  created_at: string;
+}
+
+interface PlanListResponse {
+  plans: DashboardPlan[];
 }
 
 const JOB_LABELS: Record<string, string> = {
@@ -180,6 +198,27 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
   });
 
   const recentJobs = jobsData?.jobs ?? [];
+
+  const {
+    data: plansData,
+    isLoading: plansLoading,
+    refetch: refetchPlans,
+  } = useQuery<PlanListResponse>({
+    queryKey: ["analysis-plans", "recent", activeProject?.id ?? "all"],
+    queryFn: async () => {
+      const projectQuery = activeProject?.id
+        ? `&project_id=${encodeURIComponent(activeProject.id)}`
+        : "";
+      const res = await apiFetch(`/geomoz-api/ai/plans?limit=4${projectQuery}`);
+      if (!res.ok) return { plans: [] };
+      return res.json();
+    },
+    refetchInterval: 5_000,
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
+
+  const recentPlans = plansData?.plans ?? [];
 
 
   // ── GEE status check ───────────────────────────────────────────────────
@@ -509,6 +548,121 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
                             {job.progress || 0}%
                           </div>
                         )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Recent GeoMoz Agent plans */}
+        <div className="mb-6">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Planos GeoMoz AI
+              </h3>
+              <p className="mt-0.5 text-[11px] text-slate-400">
+                Workflows multi-etapa executados sequencialmente pelo Agent.
+              </p>
+            </div>
+            <button
+              onClick={() => refetchPlans()}
+              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-400 hover:border-violet-200 hover:text-violet-600"
+              title="Actualizar planos"
+            >
+              <RefreshCw size={12} className={plansLoading ? "animate-spin" : ""} />
+            </button>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            {plansLoading && recentPlans.length === 0 ? (
+              <div className="flex items-center justify-center gap-2 px-4 py-6 text-xs text-slate-400">
+                <Loader2 size={13} className="animate-spin" /> A carregar planos…
+              </div>
+            ) : recentPlans.length === 0 ? (
+              <div className="px-4 py-6 text-center">
+                <GitBranch size={18} className="mx-auto mb-2 text-slate-300" />
+                <div className="text-xs font-medium text-slate-600">Ainda não há planos multi-etapa</div>
+                <div className="mt-1 text-[11px] text-slate-400">
+                  O Ask GeoMoz cria planos quando um objectivo requer duas ou mais ferramentas.
+                </div>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {recentPlans.map(plan => {
+                  const completedSteps = plan.steps.filter(step => step.status === "completed").length;
+                  const active = plan.status === "ready" || plan.status === "running";
+                  const failed = plan.status === "failed";
+                  const completed = plan.status === "completed";
+                  const cancelled = plan.status === "cancelled";
+                  const progress = plan.steps.length
+                    ? Math.round((completedSteps / plan.steps.length) * 100)
+                    : 0;
+
+                  return (
+                    <div key={plan.id} className="flex items-center gap-3 px-4 py-3">
+                      <div className={[
+                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                        failed
+                          ? "bg-red-50"
+                          : completed
+                            ? "bg-emerald-50"
+                            : cancelled
+                              ? "bg-slate-100"
+                              : "bg-violet-50",
+                      ].join(" ")}>
+                        {failed ? (
+                          <XCircle size={15} className="text-red-500" />
+                        ) : completed ? (
+                          <CheckCircle2 size={15} className="text-emerald-500" />
+                        ) : cancelled ? (
+                          <XCircle size={15} className="text-slate-400" />
+                        ) : (
+                          <GitBranch size={15} className="text-violet-500" />
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-xs font-semibold text-slate-800">
+                            {plan.title}
+                          </span>
+                          <span className={[
+                            "rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase",
+                            failed
+                              ? "bg-red-50 text-red-600"
+                              : completed
+                                ? "bg-emerald-50 text-emerald-600"
+                                : cancelled
+                                  ? "bg-slate-100 text-slate-500"
+                                  : "bg-violet-50 text-violet-600",
+                          ].join(" ")}>
+                            {plan.status}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 truncate text-[10px] text-slate-400">
+                          {plan.goal}
+                        </div>
+                        {active && (
+                          <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className="h-full rounded-full bg-violet-500 transition-all"
+                              style={{ width: `${Math.max(2, progress)}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        <div className="text-[10px] font-semibold text-slate-500">
+                          {completedSteps}/{plan.steps.length} etapas
+                        </div>
+                        <div className="mt-0.5 flex items-center justify-end gap-1 text-[9px] text-slate-400">
+                          <Clock3 size={8} /> {formatJobTime(plan.created_at)}
+                        </div>
                       </div>
                     </div>
                   );
