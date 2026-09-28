@@ -528,7 +528,7 @@ export function runVectorIntersect(
       if (fB.geometry.type !== "Polygon" && fB.geometry.type !== "MultiPolygon") continue;
       try {
         const inter = turf.intersect(
-          turf.featureCollection([fA as Feature<Polygon | MultiPolygon>, fB as Feature<Polygon | MultiPolygon>])
+          turf.featureCollection([fA as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>, fB as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>])
         );
         if (inter) {
           inter.properties = {
@@ -571,7 +571,7 @@ export function runVectorPointsInPolygon(
     for (const pt of pointsFc.features) {
       if (pt.geometry.type === "Point") {
         try {
-          if (turf.booleanPointInPolygon(pt as Feature<Point>, poly as Feature<Polygon | MultiPolygon>)) {
+          if (turf.booleanPointInPolygon(pt as GeoJSON.Feature<GeoJSON.Point>, poly as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>)) {
             count++;
           }
         } catch {}
