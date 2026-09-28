@@ -730,23 +730,89 @@ class OAuthTokenRequest(BaseModel):
     access_token: str
     project: Optional[str] = None
 
+    @field_validator("access_token")
+    @classmethod
+    def validate_access_token(cls, value):
+        value = value.strip()
+        if len(value) < 20:
+            raise ValueError("Token OAuth inválido.")
+        return value
+
+    @field_validator("project")
+    @classmethod
+    def validate_project(cls, value):
+        if value is None:
+            return value
+        value = value.strip()
+        return value or None
+
+
 @app.post("/geomoz-api/gee/oauth-token")
 async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_firebase_auth)):
+    """Register and immediately verify a user's BYO-GEE connection."""
     import gee_session_store
+    from gee_module import gee_status as verified_gee_status
+
+    if not req.project:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Informe o Google Cloud Project ID associado ao Earth Engine. "
+                "O GeoMoz usa este projecto para executar as análises."
+            ),
+        )
+
     gee_session_store.set_token(uid, {
         "access_token": req.access_token,
-        "project": req.project
+        "project": req.project,
     })
-    return {"message": "Token guardado com sucesso."}
+
+    status = verified_gee_status(uid)
+    if not status.get("connected"):
+        gee_session_store.clear_token(uid)
+        raise HTTPException(
+            status_code=400,
+            detail=status.get("message") or "Não foi possível validar a ligação ao Earth Engine.",
+        )
+
+    return {
+        "message": "Google Earth Engine conectado e validado.",
+        **status,
+    }
+
 
 @app.get("/geomoz-api/gee/status")
 async def gee_status_endpoint(uid: str = Depends(require_firebase_auth)):
+    """Return a verified status for the current user's GEE connection."""
     import gee_session_store
+    from gee_module import gee_status as verified_gee_status
+    from gee_presets import INDEX_REGISTRY
+
     token = gee_session_store.get_token(uid)
+    if not token:
+        return {
+            "connected": False,
+            "project": None,
+            "auth_type": None,
+            "message": "Google Earth Engine ainda não foi conectado.",
+            "reason": "not_connected",
+            "indices": list(INDEX_REGISTRY.keys()),
+        }
+
+    status = verified_gee_status(uid)
+    status["indices"] = list(INDEX_REGISTRY.keys())
+    return status
+
+
+@app.post("/geomoz-api/gee/disconnect")
+async def gee_disconnect(uid: str = Depends(require_firebase_auth)):
+    """Disconnect Earth Engine without signing the user out of GeoMoz."""
+    import gee_session_store
+    gee_session_store.clear_token(uid)
     return {
-        "connected": bool(token),
-        "project": token.get("project") if token else None,
-        "auth_type": "oauth2" if token else None
+        "connected": False,
+        "message": "Ligação ao Google Earth Engine removida.",
+        "reason": "disconnected_by_user",
     }
 
 @app.post("/geomoz-api/gee/index")
