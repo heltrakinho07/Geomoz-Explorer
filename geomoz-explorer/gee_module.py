@@ -17,6 +17,7 @@ import os
 import json
 import logging
 import threading
+from contextlib import contextmanager
 from typing import Optional
 
 from gee_presets import (
@@ -29,6 +30,26 @@ from gee_presets import (
 logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
+
+# earthengine-api keeps credentials/project in process-global state. Every
+# user-scoped Earth Engine operation must hold this lock for its complete
+# lifetime (initialization + remote requests), not only during ee.Initialize.
+_gee_execution_lock = threading.Lock()
+
+
+@contextmanager
+def gee_execution(uid: str | None = None):
+    """Serialize one complete Earth Engine execution context.
+
+    This is a correctness/security boundary for the current in-process
+    architecture. It prevents another user from calling ee.Initialize with a
+    different credential while the first user's operation is still building or
+    evaluating Earth Engine requests.
+    """
+    with _gee_execution_lock:
+        _init_gee(uid)
+        yield
+
 _gee_initialized = False
 _gee_error: Optional[str] = None
 
