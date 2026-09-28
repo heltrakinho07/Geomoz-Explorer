@@ -44,7 +44,7 @@ async def require_gee_auth(uid: str = Depends(require_firebase_auth)) -> str:
     from gee_module import _init_gee
     _init_gee(uid)
     return uid
-from pydantic import BaseModel, field_validator, constr
+from pydantic import BaseModel, Field, field_validator, constr
 
 # ── Package imports ────────────────────────────────────────────────────────
 # These modules are siblings of api.py in the geomoz-explorer directory.
@@ -440,6 +440,112 @@ def get_province_summary():
     return {"provinces": _province_summary_cached()}
 
 
+# ── Projects / persistent workspaces ─────────────────────────────────────────
+
+class ProjectCreateRequest(BaseModel):
+    name: str
+    description: str = ""
+    aoi: Optional[dict] = None
+    map_state: Optional[dict] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("O nome do projecto é obrigatório.")
+        if len(value) > 120:
+            raise ValueError("O nome do projecto deve ter no máximo 120 caracteres.")
+        return value
+
+
+class ProjectUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    aoi: Optional[dict] = None
+    map_state: Optional[dict] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_optional_name(cls, value):
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("O nome do projecto não pode ficar vazio.")
+        if len(value) > 120:
+            raise ValueError("O nome do projecto deve ter no máximo 120 caracteres.")
+        return value
+
+
+@app.post("/geomoz-api/projects", status_code=201)
+async def create_project_endpoint(
+    req: ProjectCreateRequest,
+    uid: str = Depends(require_firebase_auth),
+):
+    from projects_store import create_project
+    return create_project(
+        uid,
+        req.name,
+        req.description,
+        req.aoi,
+        req.map_state or {},
+    )
+
+
+@app.get("/geomoz-api/projects")
+async def list_projects_endpoint(
+    limit: int = Query(100, ge=1, le=200),
+    uid: str = Depends(require_firebase_auth),
+):
+    from projects_store import list_projects
+    return {"projects": list_projects(uid, limit=limit)}
+
+
+@app.get("/geomoz-api/projects/{project_id}")
+async def get_project_endpoint(
+    project_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    from projects_store import get_project
+    project = get_project(uid, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projecto não encontrado.")
+    return project
+
+
+@app.patch("/geomoz-api/projects/{project_id}")
+async def update_project_endpoint(
+    project_id: str,
+    req: ProjectUpdateRequest,
+    uid: str = Depends(require_firebase_auth),
+):
+    from projects_store import update_project
+    project = update_project(
+        uid,
+        project_id,
+        name=req.name,
+        description=req.description,
+        aoi=req.aoi,
+        map_state=req.map_state,
+        update_aoi="aoi" in req.model_fields_set,
+        update_map_state="map_state" in req.model_fields_set,
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Projecto não encontrado.")
+    return project
+
+
+@app.delete("/geomoz-api/projects/{project_id}")
+async def delete_project_endpoint(
+    project_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    from projects_store import delete_project
+    if not delete_project(uid, project_id):
+        raise HTTPException(status_code=404, detail="Projecto não encontrado.")
+    return {"deleted": True, "id": project_id}
+
 # ── GEE endpoints ──────────────────────────────────────────────────────────────
 
 @app.get("/geomoz-api/status")
@@ -814,6 +920,506 @@ async def gee_disconnect(uid: str = Depends(require_firebase_auth)):
         "message": "Ligação ao Google Earth Engine removida.",
         "reason": "disconnected_by_user",
     }
+
+class ToolExecuteRequest(BaseModel):
+    parameters: dict = Field(default_factory=dict)
+    project_id: Optional[str] = None
+
+
+class GeoMozAgentRequest(BaseModel):
+    message: str
+    project_id: Optional[str] = None
+    context: dict = Field(default_factory=dict)
+
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("Escreva um pedido para o GeoMoz Agent.")
+        if len(value) > 4000:
+            raise ValueError("O pedido deve ter no máximo 4000 caracteres.")
+        return value
+
+
+@app.get("/geomoz-api/ai/status")
+async def geomoz_ai_status(uid: str = Depends(require_firebase_auth)):
+    """Return planner configuration without exposing credentials."""
+    from ai_agent import planner_status
+    from tool_registry import registry_summary
+
+    return {
+        "agent": planner_status(),
+        "registry": registry_summary(),
+    }
+
+
+@app.get("/geomoz-api/ai/tools")
+async def list_ai_tools(
+    category: Optional[str] = Query(None),
+    uid: str = Depends(require_firebase_auth),
+):
+    """List deterministic GIS tools available to GeoMoz AI."""
+    from tool_registry import list_tools, registry_summary
+
+    return {
+        "tools": list_tools(category=category),
+        "registry": registry_summary(),
+    }
+
+
+@app.get("/geomoz-api/ai/tools/{tool_id}")
+async def get_ai_tool(
+    tool_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Return one registered GeoMoz AI tool definition."""
+    from tool_registry import get_tool
+
+    tool = get_tool(tool_id)
+    if not tool:
+        raise HTTPException(status_code=404, detail="Ferramenta GeoMoz AI não encontrada.")
+    return tool
+
+
+@app.post("/geomoz-api/ai/tools/{tool_id}/execute", status_code=202)
+async def execute_ai_tool(
+    tool_id: str,
+    req: ToolExecuteRequest,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Execute a registered tool through the validated AnalysisJob engine."""
+    from tool_registry import get_tool, resolve_job_type
+
+    tool = get_tool(tool_id)
+    if not tool:
+        raise HTTPException(status_code=404, detail="Ferramenta GeoMoz AI não encontrada.")
+
+    if tool.get("confirmation_required"):
+        raise HTTPException(
+            status_code=409,
+            detail="Esta ferramenta requer confirmação explícita antes da execução.",
+        )
+
+    job_type = resolve_job_type(tool_id)
+    if not job_type:
+        raise HTTPException(
+            status_code=409,
+            detail="A ferramenta ainda não possui executor configurado.",
+        )
+
+    job_request = AnalysisJobCreateRequest(
+        type=job_type,
+        payload=req.parameters,
+        project_id=req.project_id,
+    )
+    return await create_analysis_job(job_request, uid)
+
+
+class AnalysisJobCreateRequest(BaseModel):
+    type: str
+    payload: dict
+    project_id: Optional[str] = None
+
+
+@app.post("/geomoz-api/jobs", status_code=202)
+async def create_analysis_job(
+    req: AnalysisJobCreateRequest,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Create an asynchronous GeoMoz analysis job.
+
+    Workflows are migrated one-by-one while synchronous endpoints remain
+    available for backwards compatibility.
+    """
+    from analysis_jobs import submit_job
+    import gee_session_store
+
+    supported_job_types = {
+        "gee.index",
+        "gee.flood",
+        "gee.watershed",
+        "gee.targeting",
+        "gee.erosion",
+        "gee.groundwater",
+    }
+    if req.type not in supported_job_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tipo de job ainda não suportado: {req.type}",
+        )
+
+    if req.project_id:
+        from projects_store import get_project
+        if not get_project(uid, req.project_id):
+            raise HTTPException(
+                status_code=404,
+                detail="Projecto associado ao job não foi encontrado.",
+            )
+
+    if not gee_session_store.get_token(uid):
+        raise HTTPException(
+            status_code=409,
+            detail="Conecte o Google Earth Engine antes de iniciar esta análise.",
+        )
+
+    if req.type == "gee.index":
+        try:
+            validated = GEEIndexRequest(**req.payload)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+        from gee_presets import INDEX_REGISTRY
+        if validated.index not in INDEX_REGISTRY:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Índice GeoMoz desconhecido: {validated.index}",
+            )
+
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
+        )
+
+        def runner(progress):
+            from gee_module import _init_gee, compute_index_tile
+
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A preparar imagens e área de análise.")
+            result = compute_index_tile(
+                validated.index,
+                region,
+                validated.start_date,
+                validated.end_date,
+                validated.cloud_pct,
+            )
+            progress(90, "rendering", "A preparar mapa e estatísticas.")
+            result["province"] = validated.province
+            result["district"] = validated.district
+            return result
+
+        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
+
+    if req.type == "gee.flood":
+        try:
+            validated = GEEFloodRequest(**req.payload)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
+        )
+
+        def runner(progress):
+            from gee_module import _init_gee, compute_flood_sar
+
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A preparar Sentinel-1 e linha de base.")
+            progress(45, "processing", "A detectar mudança SAR e extensão da cheia.")
+            result = compute_flood_sar(
+                region,
+                validated.event_start,
+                validated.event_end,
+                validated.baseline_start,
+                validated.baseline_end,
+            )
+            progress(90, "rendering", "A preparar mapa e métricas de inundação.")
+            return result
+
+        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
+
+    if req.type == "gee.watershed":
+        try:
+            validated = GEEWatershedRequest(**req.payload)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
+        )
+
+        def runner(progress):
+            from gee_module import _init_gee, compute_watershed_from_point
+
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A localizar o ponto de saída e dados hidrológicos.")
+            progress(45, "processing", "A delimitar a bacia hidrográfica.")
+            result = compute_watershed_from_point(
+                validated.lat,
+                validated.lon,
+                region,
+                validated.max_iter,
+                validated.level,
+            )
+            progress(90, "rendering", "A preparar limite da bacia e área.")
+            return result
+
+        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
+
+    if req.type == "gee.targeting":
+        try:
+            validated = GEETargetingRequest(**req.payload)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+        from gee_presets import MINERAL_PRESETS
+        if validated.mineral not in MINERAL_PRESETS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Preset mineral GeoMoz desconhecido: {validated.mineral}",
+            )
+
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
+        )
+
+        def runner(progress):
+            from gee_module import _init_gee, compute_targeting_tile
+
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A preparar Sentinel-2, relevo e critérios do modelo.")
+            progress(45, "processing", "A combinar evidências e calcular favorabilidade mineral.")
+            result = compute_targeting_tile(
+                validated.mineral,
+                region,
+                validated.start_date,
+                validated.end_date,
+                validated.cloud_pct,
+                validated.weights_override,
+                validated.invert_override,
+                validated.score_threshold,
+            )
+            progress(90, "rendering", "A preparar mapa, percentis e área favorável.")
+            result["province"] = validated.province
+            result["district"] = validated.district
+            return result
+
+        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
+
+    if req.type == "gee.erosion":
+        try:
+            validated = GEEErosionRequest(**req.payload)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
+        )
+
+        def runner(progress):
+            from gee_module import _init_gee, compute_erosion_rusle
+
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A preparar chuva, solo, relevo e cobertura.")
+            progress(45, "processing", "A calcular factores RUSLE e perda de solo.")
+            result = compute_erosion_rusle(region, validated.year)
+            progress(90, "rendering", "A classificar risco e calcular áreas.")
+            return result
+
+        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
+
+    if req.type == "gee.groundwater":
+        try:
+            validated = GEEGroundwaterRequest(**req.payload)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
+        )
+
+        def runner(progress):
+            from gee_module import _init_gee, compute_groundwater_ahp
+
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A preparar os factores hidrogeológicos.")
+            progress(45, "processing", "A calcular a sobreposição ponderada AHP.")
+            result = compute_groundwater_ahp(region, validated.year)
+            progress(90, "rendering", "A classificar potencial e calcular áreas.")
+            return result
+
+        return submit_job(uid, req.type, normalized_payload, runner, project_id=req.project_id)
+
+    raise HTTPException(
+        status_code=500,
+        detail="Tipo de job registado sem executor associado.",
+    )
+
+
+@app.post("/geomoz-api/ai/agent")
+async def geomoz_ai_agent(
+    req: GeoMozAgentRequest,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Plan one natural-language request and optionally execute one safe tool."""
+    from ai_agent import AgentNotConfigured, AgentPlannerError, plan_agent_turn
+
+    if req.project_id:
+        from projects_store import get_project
+        if not get_project(uid, req.project_id):
+            raise HTTPException(status_code=404, detail="Projecto não encontrado.")
+
+    try:
+        plan = await plan_agent_turn(req.message, req.context)
+    except AgentNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except AgentPlannerError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    if plan.get("mode") != "tool_call":
+        return {
+            "mode": "message",
+            "message": plan.get("message") or "Pedido analisado.",
+            "model": plan.get("model"),
+            "response_id": plan.get("response_id"),
+        }
+
+    tool_id = plan.get("tool_id")
+    arguments = plan.get("arguments") or {}
+    if not isinstance(tool_id, str) or not isinstance(arguments, dict):
+        raise HTTPException(status_code=502, detail="Plano AI inválido.")
+
+    job = await execute_ai_tool(
+        tool_id,
+        ToolExecuteRequest(
+            parameters=arguments,
+            project_id=req.project_id,
+        ),
+        uid,
+    )
+
+    from tool_registry import get_tool
+    tool = get_tool(tool_id) or {}
+
+    return {
+        "mode": "tool_call",
+        "message": f"A iniciar: {tool.get('name', tool_id)}.",
+        "tool": {
+            "id": tool_id,
+            "name": tool.get("name", tool_id),
+            "category": tool.get("category"),
+        },
+        "arguments": arguments,
+        "job": job,
+        "model": plan.get("model"),
+        "response_id": plan.get("response_id"),
+    }
+
+
+@app.post("/geomoz-api/ai/jobs/{job_id}/explain")
+async def explain_analysis_job(
+    job_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Generate an evidence-grounded explanation for one completed user job."""
+    from analysis_jobs import get_job
+    from ai_agent import AgentNotConfigured, AgentPlannerError, explain_job_result
+
+    job = get_job(uid, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Analysis job não encontrado.")
+    if job.get("status") != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail="A análise precisa estar concluída antes de ser explicada.",
+        )
+
+    try:
+        return await explain_job_result(job)
+    except AgentNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except AgentPlannerError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.get("/geomoz-api/jobs")
+async def get_analysis_jobs(
+    limit: int = Query(20, ge=1, le=100),
+    project_id: Optional[str] = Query(None),
+    uid: str = Depends(require_firebase_auth),
+):
+    """List recent analysis jobs belonging to the current user."""
+    from analysis_jobs import list_jobs
+    return {
+        "jobs": list_jobs(uid, limit=limit, project_id=project_id),
+        "project_id": project_id,
+    }
+
+
+@app.get("/geomoz-api/jobs/{job_id}")
+async def get_analysis_job(
+    job_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Return one user-owned analysis job."""
+    from analysis_jobs import get_job
+    job = get_job(uid, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Analysis job não encontrado.")
+    return job
+
+@app.post("/geomoz-api/jobs/{job_id}/cancel")
+async def cancel_analysis_job(
+    job_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Cancel a queued or running analysis job owned by the current user."""
+    from analysis_jobs import cancel_job
+    job = cancel_job(uid, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Analysis job não encontrado.")
+    return job
+
+
+@app.post("/geomoz-api/jobs/{job_id}/retry", status_code=202)
+async def retry_analysis_job(
+    job_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Create a new execution using the same type, payload and project."""
+    from analysis_jobs import get_job
+
+    previous = get_job(uid, job_id)
+    if not previous:
+        raise HTTPException(status_code=404, detail="Analysis job não encontrado.")
+
+    if previous.get("status") in {"queued", "processing"}:
+        raise HTTPException(
+            status_code=409,
+            detail="A análise ainda está activa e não pode ser repetida.",
+        )
+
+    request = AnalysisJobCreateRequest(
+        type=previous["type"],
+        payload=previous.get("payload") or {},
+        project_id=previous.get("project_id"),
+    )
+    return await create_analysis_job(request, uid)
+
+
 
 @app.post("/geomoz-api/gee/index")
 async def gee_index(req: GEEIndexRequest, uid: str = Depends(require_gee_auth)):

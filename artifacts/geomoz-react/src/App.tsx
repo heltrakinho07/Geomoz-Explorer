@@ -3,6 +3,8 @@ import { Toaster } from "@/components/ui/toaster";
 import Explorer from "@/pages/Explorer";
 import { ErrorBoundary } from "react-error-boundary";
 import { AuthProvider } from "@/hooks/useAuth";
+import { ProjectProvider } from "@/hooks/useProject";
+import { WorkspaceLayersProvider } from "@/hooks/useWorkspaceLayers";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,12 +38,16 @@ function ErrorFallback({ error, resetErrorBoundary }: any) {
 export default function App() {
   return (
     <AuthProvider>
-      <QueryClientProvider client={queryClient}>
-        <ErrorBoundary FallbackComponent={ErrorFallback}>
-          <Explorer />
-        </ErrorBoundary>
-        <Toaster />
-      </QueryClientProvider>
+      <ProjectProvider>
+        <WorkspaceLayersProvider>
+          <QueryClientProvider client={queryClient}>
+          <ErrorBoundary FallbackComponent={ErrorFallback}>
+            <Explorer />
+          </ErrorBoundary>
+          <Toaster />
+          </QueryClientProvider>
+        </WorkspaceLayersProvider>
+      </ProjectProvider>
     </AuthProvider>
   );
 }

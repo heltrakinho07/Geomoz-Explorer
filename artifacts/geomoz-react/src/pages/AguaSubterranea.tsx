@@ -6,13 +6,14 @@
  * TWI e cobertura do solo. Resultado classificado em 5 classes de potencial.
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { MapContainer, TileLayer, ScaleControl, ZoomControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { Droplets, Loader2, Play, ChevronDown, Info, Scale, FileDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiUrl, apiFetch } from "@/lib/api";
+import { useAnalysisJob } from "@/hooks/useAnalysisJob";
 import MapTools from "@/components/MapTools";
+import AnalysisJobProgress from "@/components/AnalysisJobProgress";
 import AreaSelect from "@/components/AreaSelect";
 import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
@@ -40,30 +41,64 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const [year, setYear] = useState(2023);
   const [result, setResult] = useState<GwpResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const deliveredJobRef = useRef<string | null>(null);
+  const {
+    job,
+    submitJob,
+    running,
+    error,
+    cancel: cancelJob,
+    retry: retryJob,
+    resetJob,
+  } = useAnalysisJob<GwpResult>();
   const [drawingEnabled, setDrawingEnabled] = useState(false);
 
-  const run = useCallback(async () => {
-    setLoading(true); setError(null); setResult(null);
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 240_000);
-    try {
-      const r = await apiFetch("/geomoz-api/gee/groundwater", {
-        method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
-        body: JSON.stringify({ ...aoiToAPI(aoi), year }),
+  useEffect(() => {
+    if (
+      job?.status === "completed" &&
+      job.result &&
+      deliveredJobRef.current !== job.id
+    ) {
+      deliveredJobRef.current = job.id;
+      setResult(job.result);
+    }
+  }, [job]);
+
+  useEffect(() => {
+    if (job?.status === "failed" && job.error?.message) {
+      toast({
+        variant: "destructive",
+        title: "Erro no potencial hídrico",
+        description: job.error.message,
       });
-      if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
-      setResult(await r.json());
-    } catch (e) {
-      const aborted = e instanceof DOMException && e.name === "AbortError";
-      const msg = aborted ? "O cálculo AHP demorou demasiado. Escolha uma província/distrito em vez de todo o país." : String(e instanceof Error ? e.message : e);
-      setError(msg);
-      toast({ variant: "destructive", title: "Erro no potencial hídrico", description: msg });
-    } finally { clearTimeout(timer); setLoading(false); }
-  }, [province, district, year]);
+    }
+  }, [job?.id, job?.status]);
+
+  const run = useCallback(async () => {
+    setResult(null);
+    resetJob();
+    deliveredJobRef.current = null;
+
+    try {
+      await submitJob("gee.groundwater", {
+        ...aoiToAPI(aoi),
+        year,
+      });
+    } catch {
+      // useAnalysisJob exposes the actionable error in the panel.
+    }
+  }, [aoi, year, resetJob, submitJob]);
 
   const total = result ? result.classes.reduce((s, c) => s + c.areaKm2, 0) || 1 : 1;
+  const priorityKm2 = result
+    ? result.classes.filter(c => c.id >= 4).reduce((sum, c) => sum + c.areaKm2, 0)
+    : 0;
+  const priorityPct = result ? (priorityKm2 / total) * 100 : 0;
+  const dominantClass = result && result.classes.length > 0
+    ? result.classes.reduce(
+        (best, current) => current.areaKm2 > best.areaKm2 ? current : best,
+      )
+    : null;
 
   // ── PDF Export ──────────────────────────────────────────────────────────────
   async function exportGroundwaterPdf() {
@@ -122,6 +157,8 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
         { label: "Fatores", value: `${result.weights.length}`, color: [14, 165, 233] },
         { label: "Resolução", value: "~500 m", color: [100, 116, 139] },
         { label: "Área total", value: `${total.toLocaleString("pt-PT", { maximumFractionDigits: 0 })} km²`, color: [16, 185, 129] },
+        { label: "Alta + Muito alta", value: `${priorityKm2.toLocaleString("pt-PT", { maximumFractionDigits: 0 })} km²`, color: [6, 148, 162] },
+        { label: "% prioritária", value: `${priorityPct.toFixed(1)}%`, color: [13, 148, 136] },
       ]);
     }
 
@@ -162,10 +199,11 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
             <input type="range" min={2018} max={2024} step={1} value={year} onChange={e => setYear(+e.target.value)} className="w-full accent-cyan-500" />
             <div className="flex justify-between text-[10px] text-slate-400"><span>2018</span><span>2024</span></div>
           </div>
-          <button onClick={run} disabled={loading}
+          <button onClick={run} disabled={running}
             className="w-full flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors">
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Calcular potencial
+            {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Calcular potencial
           </button>
+          <AnalysisJobProgress job={job} title="GeoMoz Water · Potencial AHP" onCancel={cancelJob} onRetry={retryJob} />
         </div>
 
         {/* Weights */}
@@ -209,11 +247,11 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
           />
         </MapContainer>
 
-        {loading && (
+        {running && (
           <div className="absolute inset-0 z-[600] bg-white/55 backdrop-blur-sm flex items-center justify-center">
             <div className="bg-white rounded-2xl shadow-xl border border-slate-200 px-7 py-5 flex items-center gap-3 max-w-xs">
               <Loader2 size={20} className="text-cyan-500 animate-spin shrink-0" />
-              <span className="text-sm text-slate-700 font-medium">A calcular potencial hídrico (AHP, 6 fatores)… pode levar ~1 min.</span>
+              <span className="text-sm text-slate-700 font-medium">{job?.message || "A calcular potencial hídrico (AHP, 6 fatores)…"}</span>
             </div>
           </div>
         )}
@@ -236,6 +274,31 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
         <div className="w-80 flex flex-col bg-white border-l border-slate-200 overflow-y-auto shrink-0">
           <div className="p-4 space-y-4">
             <div className="flex items-center gap-2"><Droplets size={15} className="text-cyan-600" /><span className="text-sm font-semibold text-slate-900">Potencial de Água Subterrânea</span></div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-cyan-100 bg-cyan-50 p-3">
+                <div className="text-[9px] font-semibold uppercase tracking-wider text-cyan-600">Área prioritária</div>
+                <div className="mt-1 text-lg font-bold text-cyan-900">
+                  {priorityKm2.toLocaleString("pt-PT", { maximumFractionDigits: 0 })} km²
+                </div>
+                <div className="text-[10px] text-cyan-700">Alta + muito alta</div>
+              </div>
+              <div className="rounded-xl border border-teal-100 bg-teal-50 p-3">
+                <div className="text-[9px] font-semibold uppercase tracking-wider text-teal-600">Prioridade da AOI</div>
+                <div className="mt-1 text-lg font-bold text-teal-900">{priorityPct.toFixed(1)}%</div>
+                <div className="text-[10px] text-teal-700">da área analisada</div>
+              </div>
+              <div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Classe dominante</div>
+                <div className="mt-1 flex items-center justify-between gap-3">
+                  <div className="text-sm font-semibold text-slate-800">{dominantClass?.label ?? "—"}</div>
+                  <div className="text-[11px] font-mono text-slate-500">
+                    {dominantClass ? dominantClass.areaKm2.toLocaleString("pt-PT", { maximumFractionDigits: 0 }) : "0"} km²
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-1.5">
               {result.classes.map(c => {
                 const pct = (c.areaKm2 / total) * 100;

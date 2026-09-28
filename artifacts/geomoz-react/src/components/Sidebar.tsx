@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { Filter, Layers, ChevronDown, X, MapPin, CheckCircle2 } from "lucide-react";
+import { Filter, Layers, ChevronDown, X, MapPin, CheckCircle2, Trash2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
+import { useWorkspaceLayers } from "@/hooks/useWorkspaceLayers";
 
 export interface LayerState {
   provinces: boolean;
@@ -61,6 +62,12 @@ export default function Sidebar({
   }, [resizing]);
   const { data: provinceData, isLoading: loadingProvinces } = useProvinceNames();
   const { data: districtData, isLoading: loadingDistricts } = useDistrictNames(province);
+  const {
+    resultLayers,
+    toggleResultLayer,
+    setResultLayerOpacity,
+    removeResultLayer,
+  } = useWorkspaceLayers();
 
   const hasSelection = !!province || !!district;
 
@@ -174,6 +181,67 @@ export default function Sidebar({
             </div>
           ))}
         </div>
+
+        {resultLayers.length > 0 && (
+          <div className="mt-4 border-t border-slate-100 pt-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Resultados de análise
+              </span>
+              <span className="rounded-full bg-sky-50 px-1.5 py-0.5 text-[9px] font-semibold text-sky-600">
+                {resultLayers.length}
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              {resultLayers.map(layer => (
+                <div
+                  key={layer.id}
+                  className="rounded-lg border border-slate-100 bg-slate-50/70 px-2.5 py-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={layer.visible}
+                      onCheckedChange={() => toggleResultLayer(layer.id)}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[11px] font-semibold text-slate-700">
+                        {layer.name}
+                      </div>
+                      <div className="truncate text-[9px] text-slate-400">
+                        {layer.analysisType.replace(/^gee\./, "")}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeResultLayer(layer.id)}
+                      title="Remover camada"
+                      className="rounded p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="w-12 text-[9px] text-slate-400">Opacidade</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={layer.opacity}
+                      onChange={event => setResultLayerOpacity(layer.id, Number(event.target.value))}
+                      className="h-1 flex-1 cursor-pointer accent-sky-500"
+                    />
+                    <span className="w-7 text-right text-[9px] tabular-nums text-slate-400">
+                      {Math.round(layer.opacity * 100)}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Color by */}

@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, Suspense } from "react";
-import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard, BrainCircuit, Pen } from "lucide-react";
+import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard, BrainCircuit, Pen, FolderKanban } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -9,11 +9,14 @@ import MapView from "@/components/MapView";
 import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
 import DashboardPanel from "@/components/DashboardPanel";
+import ProjectsPanel, { type GeoMozProject } from "@/components/ProjectsPanel";
 import { LazyGeoAnalises, LazyHidroGeoMoz, LazyGeoperigos, LazyAguaSubterranea, LazyGeoMozAI } from "@/lib/lazy-pages";
 import { apiUrl, apiFetch } from "@/lib/api";
 import SettingsDialog from "@/components/SettingsDialog";
 import GeeCredentialsDialog from "@/components/GeeCredentialsDialog";
 import { useAuth } from "@/hooks/useAuth";
+import { useProject } from "@/hooks/useProject";
+import { useWorkspaceLayers } from "@/hooks/useWorkspaceLayers";
 import ZoneSelect from "@/components/ZoneSelect";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { mozambiqueAOI, GLOBAL_AOI, customAOI } from "@/lib/aoi";
@@ -26,10 +29,11 @@ interface NominatimResult {
   boundingbox: [string, string, string, string];
 }
 
-type Tab = "Mapa" | "Análise" | "GeoAnálises" | "Bacias Hidrográficas" | "Água Subterrânea" | "Geoperigos" | "GeoMoz AI" | "Dashboard" | "Exportar";
+type Tab = "Mapa" | "Projetos" | "Análise" | "GeoAnálises" | "Bacias Hidrográficas" | "Água Subterrânea" | "Geoperigos" | "GeoMoz AI" | "Dashboard" | "Exportar";
 
 const TABS: { id: Tab; icon: React.ReactNode; label: string }[] = [
   { id: "Mapa",                 icon: <Globe size={13} />,    label: "Mapa" },
+  { id: "Projetos",              icon: <FolderKanban size={13} />, label: "Projetos" },
   { id: "Análise",              icon: null,                   label: "Análise" },
   { id: "GeoAnálises",         icon: <Satellite size={13} />, label: "GeoAnálises" },
   { id: "Bacias Hidrográficas", icon: <Droplets size={13} />, label: "Bacias Hidrográficas" },
@@ -53,6 +57,8 @@ export default function Explorer() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [geeDialogOpen, setGeeDialogOpen] = useState(false);
   const { user } = useAuth();
+  const { activeProject, clearActiveProject } = useProject();
+  const { resultLayers, setResultLayers } = useWorkspaceLayers();
   const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [finishRequest, setFinishRequest] = useState(0);
 
@@ -70,11 +76,20 @@ export default function Explorer() {
   const skipAutoSearchRef = useRef(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const restoredProjectRef = useRef<string | null>(null);
+  const projectWorkspaceReadyRef = useRef(false);
+  const projectAutosaveTimerRef = useRef<number | null>(null);
 
-  // Keep aoi synced with province/district when selecting or clearing Mozambique regions.
-  useEffect(() => {
-    setAOI(mozambiqueAOI(province, district));
-  }, [province, district]);
+  function handleProvinceChange(nextProvince: string | null) {
+    setProvince(nextProvince);
+    setDistrict(null);
+    setAOI(mozambiqueAOI(nextProvince, null));
+  }
+
+  function handleDistrictChange(nextDistrict: string | null) {
+    setDistrict(nextDistrict);
+    setAOI(mozambiqueAOI(province, nextDistrict));
+  }
 
   function toggleLayer(key: keyof LayerState) {
     setLayers(prev => ({ ...prev, [key]: !prev[key] }));
@@ -163,6 +178,9 @@ function flyToResult(result: NominatimResult) {
     if (newAOI.source === "mozambique") {
       setProvince(newAOI.province);
       setDistrict(newAOI.district);
+    } else {
+      setProvince(null);
+      setDistrict(null);
     }
   }
 
@@ -185,12 +203,155 @@ function flyToResult(result: NominatimResult) {
     setDistrict(null);
   }
 
+  function applyProjectWorkspace(project: GeoMozProject, notify = true) {
+    const state = project.map_state ?? {};
+
+    projectWorkspaceReadyRef.current = false;
+
+    setAOI(project.aoi ?? GLOBAL_AOI);
+    setProvince(state.province ?? project.aoi?.province ?? null);
+    setDistrict(state.district ?? project.aoi?.district ?? null);
+
+    if (state.center && state.center.length === 2) {
+      setMapCenter(state.center);
+    } else {
+      setMapCenter([-18, 35]);
+    }
+    setMapZoom(typeof state.zoom === "number" ? state.zoom : 5);
+
+    if (state.layers) {
+      setLayers(state.layers);
+    }
+    if (state.color_by) {
+      setColorBy(state.color_by);
+    }
+    setResultLayers(state.result_layers ?? []);
+
+    restoredProjectRef.current = project.id;
+    window.setTimeout(() => {
+      projectWorkspaceReadyRef.current = true;
+    }, 0);
+
+    setActiveTab("Mapa");
+    if (notify) {
+      toast({
+        title: "Projecto aberto",
+        description: `${project.name}: AOI e estado do mapa restaurados.`,
+      });
+    }
+  }
+
+  function handleOpenProject(project: GeoMozProject) {
+    applyProjectWorkspace(project, true);
+  }
+
+
+  // Restore the persisted workspace when the app reloads with an active project.
+  useEffect(() => {
+    if (!user || !activeProject?.id) {
+      restoredProjectRef.current = null;
+      projectWorkspaceReadyRef.current = false;
+      return;
+    }
+    if (restoredProjectRef.current === activeProject.id) return;
+
+    let cancelled = false;
+    projectWorkspaceReadyRef.current = false;
+
+    void apiFetch(`/geomoz-api/projects/${activeProject.id}`)
+      .then(async response => {
+        if (!response.ok) {
+          throw new Error(`Não foi possível carregar o projecto (HTTP ${response.status}).`);
+        }
+        return response.json() as Promise<GeoMozProject>;
+      })
+      .then(project => {
+        if (!cancelled) applyProjectWorkspace(project, false);
+      })
+      .catch(error => {
+        if (cancelled) return;
+        projectWorkspaceReadyRef.current = false;
+        restoredProjectRef.current = null;
+        clearActiveProject();
+        console.error("Failed to restore project workspace:", error);
+        toast({
+          variant: "destructive",
+          title: "Projecto não restaurado",
+          description: error instanceof Error ? error.message : String(error),
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  // applyProjectWorkspace is intentionally driven by activeProject identity.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, activeProject?.id]);
+
+  // Autosave the active workspace after user changes settle. This intentionally
+  // waits until the server snapshot has been restored so defaults never replace
+  // a saved project during application startup.
+  useEffect(() => {
+    if (!user || !activeProject?.id || !projectWorkspaceReadyRef.current) return;
+
+    if (projectAutosaveTimerRef.current !== null) {
+      window.clearTimeout(projectAutosaveTimerRef.current);
+    }
+
+    projectAutosaveTimerRef.current = window.setTimeout(() => {
+      const payload = {
+        aoi,
+        map_state: {
+          province,
+          district,
+          center: mapCenter,
+          zoom: mapZoom,
+          layers,
+          color_by: colorBy,
+          result_layers: resultLayers,
+        },
+      };
+
+      void apiFetch(`/geomoz-api/projects/${activeProject.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`Autosave do projecto falhou (HTTP ${response.status}).`);
+          }
+        })
+        .catch(error => {
+          console.error("Project autosave failed:", error);
+        });
+    }, 1800);
+
+    return () => {
+      if (projectAutosaveTimerRef.current !== null) {
+        window.clearTimeout(projectAutosaveTimerRef.current);
+        projectAutosaveTimerRef.current = null;
+      }
+    };
+  }, [
+    user?.uid,
+    activeProject?.id,
+    aoi,
+    province,
+    district,
+    mapCenter,
+    mapZoom,
+    layers,
+    colorBy,
+    resultLayers,
+  ]);
+
   const sharedSidebar = (
     <Sidebar
       province={province}
       district={district}
-      onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-      onDistrictChange={setDistrict}
+      onProvinceChange={handleProvinceChange}
+      onDistrictChange={handleDistrictChange}
       layers={layers}
       onLayerToggle={toggleLayer}
       colorBy={colorBy}
@@ -333,6 +494,17 @@ function flyToResult(result: NominatimResult) {
             </button>
           )}
 
+          {activeProject && (
+            <button
+              onClick={() => setActiveTab("Projetos")}
+              className="hidden lg:flex max-w-[180px] items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100"
+              title="Abrir projectos"
+            >
+              <FolderKanban size={11} />
+              <span className="truncate">{activeProject.name}</span>
+            </button>
+          )}
+
           {/* GEE status indicator */}
           <button
             onClick={() => setGeeDialogOpen(true)}
@@ -374,7 +546,21 @@ function flyToResult(result: NominatimResult) {
       </header>
 
       {/* Body */}
-      {activeTab === "Dashboard" ? (
+      {activeTab === "Projetos" ? (
+        <div className="flex flex-1 overflow-hidden">
+          <ProjectsPanel
+            aoi={aoi}
+            province={province}
+            district={district}
+            mapCenter={mapCenter}
+            mapZoom={mapZoom}
+            layers={layers}
+            colorBy={colorBy}
+            resultLayers={resultLayers}
+            onOpenProject={handleOpenProject}
+          />
+        </div>
+      ) : activeTab === "Dashboard" ? (
         <div className="flex flex-1 overflow-hidden">
           {sharedSidebar}
           <DashboardPanel province={province} district={district} />
@@ -397,7 +583,7 @@ function flyToResult(result: NominatimResult) {
               province={province}
               district={district}
               onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-              onDistrictChange={setDistrict}
+              onDistrictChange={handleDistrictChange}
               onAOIChange={handleAOIChange}
             />
           </Suspense>
@@ -410,7 +596,7 @@ function flyToResult(result: NominatimResult) {
               province={province}
               district={district}
               onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-              onDistrictChange={setDistrict}
+              onDistrictChange={handleDistrictChange}
               onAOIChange={handleAOIChange}
             />
           </Suspense>
@@ -423,7 +609,7 @@ function flyToResult(result: NominatimResult) {
               province={province}
               district={district}
               onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-              onDistrictChange={setDistrict}
+              onDistrictChange={handleDistrictChange}
               onAOIChange={handleAOIChange}
             />
           </Suspense>
@@ -436,7 +622,7 @@ function flyToResult(result: NominatimResult) {
               province={province}
               district={district}
               onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-              onDistrictChange={setDistrict}
+              onDistrictChange={handleDistrictChange}
               onAOIChange={handleAOIChange}
             />
           </Suspense>
@@ -444,7 +630,11 @@ function flyToResult(result: NominatimResult) {
       ) : activeTab === "GeoMoz AI" ? (
         <div className="flex flex-1 overflow-hidden">
           <Suspense fallback={<LoadingSkeleton label="GeoMoz AI" />}>
-            <LazyGeoMozAI />
+            <LazyGeoMozAI
+              aoi={aoi}
+              province={province}
+              district={district}
+            />
           </Suspense>
         </div>
       ) : (
@@ -457,12 +647,14 @@ function flyToResult(result: NominatimResult) {
             layers={layers}
             colorBy={colorBy}
             aoi={aoi}
+            mapCenter={mapCenter}
+            mapZoom={mapZoom}
             drawingEnabled={drawingEnabled}
             finishRequest={finishRequest}
             onDrawComplete={handleDrawComplete}
             onDrawCancel={handleDrawCancel}
             mapRef={mapRef}
-            onProvinceClick={name => { setProvince(name); setDistrict(null); }}
+            onProvinceClick={handleProvinceChange}
             onMapState={(c, z) => { setMapCenter(c); setMapZoom(z); }}
           />
           <StatsPanel

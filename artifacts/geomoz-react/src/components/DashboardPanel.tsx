@@ -15,10 +15,12 @@ import {
   Waves, Navigation, Building2, Activity,
   Download, Loader2, CheckCircle2, Sprout,
   FileText, BarChart2, Layers,
-  ExternalLink, RefreshCw,
+  ExternalLink, RefreshCw, Clock3, XCircle,
 } from "lucide-react";
 import { apiUrl, apiFetch } from "@/lib/api";
 import type { Stats } from "@/hooks/useGeoMoz";
+import type { AnalysisJob } from "@/hooks/useAnalysisJob";
+import { useProject } from "@/hooks/useProject";
 
 interface DashboardPanelProps {
   province: string | null;
@@ -49,6 +51,33 @@ interface GeeIndexInfo {
   name: string;
   formula: string;
 }
+
+interface JobListResponse {
+  jobs: AnalysisJob[];
+}
+
+const JOB_LABELS: Record<string, string> = {
+  "gee.index": "Índice espectral",
+  "gee.flood": "Cheias Sentinel-1",
+  "gee.erosion": "Erosão RUSLE",
+  "gee.groundwater": "Potencial hídrico AHP",
+  "gee.targeting": "Targeting mineral",
+  "gee.watershed": "Delimitação de bacia",
+};
+
+function formatJobTime(value: string): string {
+  try {
+    return new Intl.DateTimeFormat("pt-PT", {
+      hour: "2-digit",
+      minute: "2-digit",
+      day: "2-digit",
+      month: "short",
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
 
 const MODULES: ModuleCard[] = [
   { id: "geology", name: "Geologia & Mapa", description: "Visualização geológica, litologias, províncias e distritos",
@@ -104,6 +133,7 @@ function fmt(n: number): string {
 const MZ_AREA = 801_590;
 
 export default function DashboardPanel({ province, district }: DashboardPanelProps) {
+  const { activeProject } = useProject();
   const qc = useQueryClient();
   const [geeStatus, setGeeStatus] = useState<GeeStatus | null>(null);
   const [geeLoading, setGeeLoading] = useState(false);
@@ -135,6 +165,22 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
     () => MODULES.reduce((acc, m) => acc + getIndexCount(m.id), 0),
     [groupCounts]
   );
+
+  const { data: jobsData, isLoading: jobsLoading, refetch: refetchJobs } = useQuery<JobListResponse>({
+    queryKey: ["analysis-jobs", "recent", activeProject?.id ?? "all"],
+    queryFn: async () => {
+      const projectQuery = activeProject?.id ? `&project_id=${encodeURIComponent(activeProject.id)}` : "";
+      const res = await apiFetch(`/geomoz-api/jobs?limit=6${projectQuery}`);
+      if (!res.ok) return { jobs: [] };
+      return res.json();
+    },
+    refetchInterval: 5_000,
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
+
+  const recentJobs = jobsData?.jobs ?? [];
+
 
   // ── GEE status check ───────────────────────────────────────────────────
 
@@ -363,6 +409,112 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        {/* Recent analysis jobs */}
+        <div className="mb-6">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Análises recentes
+              </h3>
+              <p className="mt-0.5 text-[11px] text-slate-400">
+                {activeProject ? `Histórico do projecto ${activeProject.name}.` : "Histórico operacional das análises executadas no GeoMoz."}
+              </p>
+            </div>
+            <button
+              onClick={() => refetchJobs()}
+              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-400 hover:border-sky-200 hover:text-sky-600"
+              title="Actualizar análises"
+            >
+              <RefreshCw size={12} className={jobsLoading ? "animate-spin" : ""} />
+            </button>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            {jobsLoading && recentJobs.length === 0 ? (
+              <div className="flex items-center justify-center gap-2 px-4 py-6 text-xs text-slate-400">
+                <Loader2 size={13} className="animate-spin" /> A carregar análises…
+              </div>
+            ) : recentJobs.length === 0 ? (
+              <div className="px-4 py-6 text-center">
+                <Activity size={18} className="mx-auto mb-2 text-slate-300" />
+                <div className="text-xs font-medium text-slate-600">Ainda não há análises registadas</div>
+                <div className="mt-1 text-[11px] text-slate-400">
+                  Índices, cheias, erosão e potencial hídrico já criam jobs persistentes.
+                </div>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {recentJobs.map(job => {
+                  const active = job.status === "queued" || job.status === "processing";
+                  const failed = job.status === "failed";
+                  const completed = job.status === "completed";
+                  const cancelled = job.status === "cancelled";
+                  return (
+                    <div key={job.id} className="flex items-center gap-3 px-4 py-3">
+                      <div className={[
+                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                        failed ? "bg-red-50" : completed ? "bg-emerald-50" : cancelled ? "bg-slate-100" : "bg-sky-50",
+                      ].join(" ")}>
+                        {failed ? (
+                          <XCircle size={15} className="text-red-500" />
+                        ) : completed ? (
+                          <CheckCircle2 size={15} className="text-emerald-500" />
+                        ) : cancelled ? (
+                          <XCircle size={15} className="text-slate-400" />
+                        ) : (
+                          <Loader2 size={15} className="animate-spin text-sky-500" />
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-xs font-semibold text-slate-800">
+                            {JOB_LABELS[job.type] || job.type}
+                          </span>
+                          <span className={[
+                            "rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase",
+                            failed
+                              ? "bg-red-50 text-red-600"
+                              : completed
+                                ? "bg-emerald-50 text-emerald-600"
+                                : cancelled
+                                  ? "bg-slate-100 text-slate-500"
+                                  : "bg-sky-50 text-sky-600",
+                          ].join(" ")}>
+                            {failed ? "falhou" : completed ? "concluída" : cancelled ? "cancelada" : job.status === "queued" ? "fila" : "processando"}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 truncate text-[10px] text-slate-400">
+                          {job.message || job.stage || "Análise GeoMoz"}
+                        </div>
+                        {active && (
+                          <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className="h-full rounded-full bg-sky-500 transition-all"
+                              style={{ width: `${Math.max(2, job.progress || 0)}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                          <Clock3 size={9} /> {formatJobTime(job.created_at)}
+                        </div>
+                        {active && (
+                          <div className="mt-1 text-[10px] font-semibold text-sky-600">
+                            {job.progress || 0}%
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
