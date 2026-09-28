@@ -4,7 +4,7 @@
 
 Separar a recepção de pedidos de análise do processamento pesado Google Earth Engine.
 
-A API pública persiste o job e responde imediatamente. Em produção, o job é enviado para uma fila Google Cloud Tasks e executado por um serviço Cloud Run privado dedicado.
+A API pública persiste o job e responde imediatamente. Em produção, cada análise inicia uma execução isolada de **Cloud Run Jobs**, evitando executar trabalho pesado em threads de background da API.
 
 ## Arquitectura
 
@@ -16,15 +16,13 @@ Browser
 GeoMoz API (Cloud Run)
   |
   | persist job -> Firestore
-  | create task
+  | POST run.googleapis.com .../geomoz-analysis-job:run
+  | env override: uid + job_id
   v
-Cloud Tasks: geomoz-analysis
-  |
-  | OIDC authenticated POST
-  v
-geomoz-analysis-worker (Cloud Run private)
-  | concurrency=1 per instance
-  | autoscaling across instances
+geomoz-analysis-job (Cloud Run Job)
+  | 1 task por execução
+  | processo GEE isolado
+  | execuções diferentes podem correr em paralelo
   v
 Google Earth Engine
   |
@@ -35,45 +33,61 @@ Firestore
 
 ## Porque melhora o desempenho
 
-O executor anterior usava uma thread dentro da API e serializava o acesso ao estado global do Earth Engine. O Engine V2 mantém isolamento por instância, mas permite que o Cloud Run crie várias instâncias do worker. Assim, jobs de utilizadores diferentes deixam de precisar de esperar todos pela mesma thread de uma instância da API.
+O executor local usa uma thread dentro da API e precisa serializar o acesso ao estado global do Earth Engine. Com Cloud Run Jobs, cada análise recebe um processo isolado, portanto o lock de credenciais continua a proteger a execução dentro do processo sem obrigar análises de utilizadores diferentes a esperar pela mesma instância.
+
+Esta arquitectura também remove a dependência de bootstrap do Cloud Tasks. O projecto já utiliza Cloud Run, por isso o mesmo plano de controlo cria e executa os workers.
 
 ## Configuração de produção
 
 A API usa:
 
-- `ANALYSIS_EXECUTION_BACKEND=cloud_tasks`
-- `ANALYSIS_TASKS_PROJECT`
-- `ANALYSIS_TASKS_LOCATION`
-- `ANALYSIS_TASKS_QUEUE`
-- `ANALYSIS_WORKER_URL`
-- `ANALYSIS_TASKS_AUDIENCE`
-- `ANALYSIS_TASKS_SERVICE_ACCOUNT`
+- `ANALYSIS_EXECUTION_BACKEND=cloud_run_jobs`
+- `ANALYSIS_RUN_JOB_PROJECT`
+- `ANALYSIS_RUN_JOB_LOCATION`
+- `ANALYSIS_RUN_JOB_NAME`
+- `ANALYSIS_RUN_JOB_TIMEOUT_SECONDS`
 - `ANALYSIS_MAX_ACTIVE_PER_USER`
 
-O worker usa:
+O job worker usa:
 
-- `GEOMOZ_SERVICE_ROLE=analysis-worker`
+- `GEOMOZ_SERVICE_ROLE=analysis-job`
 - `ANALYSIS_EXECUTION_BACKEND=local`
-- `ANALYSIS_TASK_MAX_RETRIES=2`
+- `ANALYSIS_RUN_JOB_MAX_RETRIES=2`
+- `GEOMOZ_JOB_UID` e `GEOMOZ_JOB_ID` como overrides por execução
 
-O deployment activa a API Cloud Tasks, cria/actualiza a fila `geomoz-analysis`, publica o mesmo container num serviço worker privado, configura `concurrency=1` e autoriza a identidade runtime a invocar o worker. Se o secret GitHub `GCP_RUNTIME_SERVICE_ACCOUNT` estiver definido, essa service account é usada; caso contrário o workflow usa a Compute Engine default service account do projecto.
+O deployment publica o mesmo container como API e como Cloud Run Job. A identidade runtime da API recebe `roles/run.jobsExecutorWithOverrides` **apenas no job GeoMoz**, porque o dispatcher precisa de `run.jobs.runWithOverrides` para injectar o UID e ID do job em cada execução.
 
 ## Segurança
 
-- O endpoint `/geomoz-api/internal/analysis/run` responde apenas quando a instância está configurada como `analysis-worker`.
-- O serviço worker é publicado com `--no-allow-unauthenticated`.
-- Cloud Tasks usa OIDC para invocar o worker.
-- As credenciais BYO-GEE continuam user-scoped e são recuperadas do Firestore pelo UID do job.
-- Uma instância worker recebe no máximo uma análise simultânea, evitando troca concorrente do estado global do Earth Engine.
+- Cada execução GEE corre num processo isolado.
+- O UID e job ID identificam apenas um job já persistido no Firestore.
+- As credenciais BYO-GEE permanecem user-scoped e são recuperadas do Firestore pelo UID.
+- Não existe endpoint worker público a expor para o backend Cloud Run Jobs.
+- A identidade runtime recebe permissão de execução apenas sobre o job `geomoz-analysis-job`.
+- O conteúdo do job é novamente validado por `_prepare_analysis_runner` no worker.
 
 ## Resiliência
 
-- Os jobs permanecem persistidos no Firestore.
-- Cloud Tasks usa nomes determinísticos de tarefa para evitar duplicação acidental.
-- Falhas temporárias podem ser repetidas automaticamente.
-- Cancelamentos persistidos impedem um worker tardio de executar o job.
-- O modo local continua disponível para desenvolvimento e testes.
+- Os jobs permanecem persistidos no Firestore antes do dispatch.
+- O worker é idempotente para jobs já `completed`, `failed` ou `cancelled`.
+- Cloud Run Jobs executa retries de task e o GeoMoz mantém o contador de tentativas.
+- Se o job distribuído não puder ser inicializado, o deploy mantém o modo local como fallback para preservar disponibilidade.
+- Métricas `queue_wait_ms`, `execution_ms` e `total_ms` permitem distinguir espera de processamento efectivo.
 
-## Próxima optimização
+## Performance GEE
 
-Depois da migração para o Engine V2, a prioridade seguinte é reduzir round-trips síncronos ao Earth Engine, especialmente chamadas `getInfo()` e `reduceRegion().getInfo()`, e introduzir cache persistente por fingerprint de análise.
+A primeira passagem de performance já reduz round-trips síncronos em:
+
+- Groundwater AHP;
+- RUSLE;
+- Mineral Targeting;
+- Flood Sentinel-1.
+
+O monitor frontend apresenta fila, processamento e total ao utilizador.
+
+## Próximas optimizações
+
+- reducers combinados adicionais para análises hidrológicas;
+- cache persistente por fingerprint de análise;
+- preview de baixa resolução antes do resultado científico;
+- métricas agregadas por tipo de análise para identificar os maiores gargalos.
