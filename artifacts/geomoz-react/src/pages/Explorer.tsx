@@ -74,6 +74,9 @@ export default function Explorer() {
   const skipAutoSearchRef = useRef(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const restoredProjectRef = useRef<string | null>(null);
+  const projectWorkspaceReadyRef = useRef(false);
+  const projectAutosaveTimerRef = useRef<number | null>(null);
 
   function handleProvinceChange(nextProvince: string | null) {
     setProvince(nextProvince);
@@ -198,22 +201,22 @@ function flyToResult(result: NominatimResult) {
     setDistrict(null);
   }
 
-  function handleOpenProject(project: GeoMozProject) {
+  function applyProjectWorkspace(project: GeoMozProject, notify = true) {
     const state = project.map_state ?? {};
 
-    if (project.aoi) {
-      setAOI(project.aoi);
-    }
+    projectWorkspaceReadyRef.current = false;
 
+    setAOI(project.aoi ?? GLOBAL_AOI);
     setProvince(state.province ?? project.aoi?.province ?? null);
     setDistrict(state.district ?? project.aoi?.district ?? null);
 
     if (state.center && state.center.length === 2) {
       setMapCenter(state.center);
+    } else {
+      setMapCenter([-18, 35]);
     }
-    if (typeof state.zoom === "number") {
-      setMapZoom(state.zoom);
-    }
+    setMapZoom(typeof state.zoom === "number" ? state.zoom : 5);
+
     if (state.layers) {
       setLayers(state.layers);
     }
@@ -221,12 +224,114 @@ function flyToResult(result: NominatimResult) {
       setColorBy(state.color_by);
     }
 
+    restoredProjectRef.current = project.id;
+    window.setTimeout(() => {
+      projectWorkspaceReadyRef.current = true;
+    }, 0);
+
     setActiveTab("Mapa");
-    toast({
-      title: "Projecto aberto",
-      description: `${project.name}: AOI e estado do mapa restaurados.`,
-    });
+    if (notify) {
+      toast({
+        title: "Projecto aberto",
+        description: `${project.name}: AOI e estado do mapa restaurados.`,
+      });
+    }
   }
+
+  function handleOpenProject(project: GeoMozProject) {
+    applyProjectWorkspace(project, true);
+  }
+
+
+  // Restore the persisted workspace when the app reloads with an active project.
+  useEffect(() => {
+    if (!user || !activeProject?.id) {
+      restoredProjectRef.current = null;
+      projectWorkspaceReadyRef.current = false;
+      return;
+    }
+    if (restoredProjectRef.current === activeProject.id) return;
+
+    let cancelled = false;
+    projectWorkspaceReadyRef.current = false;
+
+    void apiFetch(`/geomoz-api/projects/${activeProject.id}`)
+      .then(async response => {
+        if (!response.ok) {
+          throw new Error(`Não foi possível carregar o projecto (HTTP ${response.status}).`);
+        }
+        return response.json() as Promise<GeoMozProject>;
+      })
+      .then(project => {
+        if (!cancelled) applyProjectWorkspace(project, false);
+      })
+      .catch(error => {
+        if (cancelled) return;
+        projectWorkspaceReadyRef.current = false;
+        console.error("Failed to restore project workspace:", error);
+        toast({
+          variant: "destructive",
+          title: "Projecto não restaurado",
+          description: error instanceof Error ? error.message : String(error),
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  // applyProjectWorkspace is intentionally driven by activeProject identity.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, activeProject?.id]);
+
+  // Autosave the active workspace after user changes settle. This intentionally
+  // waits until the server snapshot has been restored so defaults never replace
+  // a saved project during application startup.
+  useEffect(() => {
+    if (!user || !activeProject?.id || !projectWorkspaceReadyRef.current) return;
+
+    if (projectAutosaveTimerRef.current !== null) {
+      window.clearTimeout(projectAutosaveTimerRef.current);
+    }
+
+    projectAutosaveTimerRef.current = window.setTimeout(() => {
+      const payload = {
+        aoi,
+        map_state: {
+          province,
+          district,
+          center: mapCenter,
+          zoom: mapZoom,
+          layers,
+          color_by: colorBy,
+        },
+      };
+
+      void apiFetch(`/geomoz-api/projects/${activeProject.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).catch(error => {
+        console.error("Project autosave failed:", error);
+      });
+    }, 1800);
+
+    return () => {
+      if (projectAutosaveTimerRef.current !== null) {
+        window.clearTimeout(projectAutosaveTimerRef.current);
+        projectAutosaveTimerRef.current = null;
+      }
+    };
+  }, [
+    user?.uid,
+    activeProject?.id,
+    aoi,
+    province,
+    district,
+    mapCenter,
+    mapZoom,
+    layers,
+    colorBy,
+  ]);
 
   const sharedSidebar = (
     <Sidebar
