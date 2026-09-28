@@ -1315,6 +1315,32 @@ async def geomoz_ai_agent(
     }
 
 
+@app.post("/geomoz-api/ai/jobs/{job_id}/explain")
+async def explain_analysis_job(
+    job_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Generate an evidence-grounded explanation for one completed user job."""
+    from analysis_jobs import get_job
+    from ai_agent import AgentNotConfigured, AgentPlannerError, explain_job_result
+
+    job = get_job(uid, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Analysis job não encontrado.")
+    if job.get("status") != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail="A análise precisa estar concluída antes de ser explicada.",
+        )
+
+    try:
+        return await explain_job_result(job)
+    except AgentNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except AgentPlannerError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @app.get("/geomoz-api/jobs")
 async def get_analysis_jobs(
     limit: int = Query(20, ge=1, le=100),
