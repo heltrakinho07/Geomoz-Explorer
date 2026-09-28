@@ -28,7 +28,7 @@ import {
   Satellite, Layers, Crosshair, Calendar, Settings2,
   Plus, Trash2, Check, X,
   Palette, Search, Award, Gem, CircleDot, Square,
-  Wrench, Flame, Mountain,
+  Wrench, Flame, Mountain, Sparkles,
 } from "lucide-react";
 
 import { useProvinceSummary, useProvincesGeoJSON, ProvinceSummaryItem } from "@/hooks/useGeoMoz";
