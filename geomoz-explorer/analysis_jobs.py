@@ -296,7 +296,13 @@ def submit_job(
             )
 
         try:
-            result = runner(progress)
+            from gee_module import gee_execution
+
+            # Analysis workers may be configured above one for future
+            # non-GEE work, but current GIS runners share Earth Engine's
+            # process-global credential state and therefore execute serially.
+            with gee_execution(uid):
+                result = runner(progress)
 
             current = _load(uid, job_id)
             if current and current.get("status") == "cancelled":
