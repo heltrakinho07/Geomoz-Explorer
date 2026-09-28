@@ -93,7 +93,7 @@ export default function GeeCredentialsDialog({
                 variant="outline"
                 className="w-full text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200 text-xs py-2 h-auto"
                 onClick={disconnectGee}
-                disabled={loading || !projectInput.trim()}
+                disabled={loading}
               >
                 <LogOut size={14} className="mr-2" />
                 Desligar Earth Engine
@@ -116,7 +116,7 @@ export default function GeeCredentialsDialog({
                 </a>
               </div>
 
-              {/* Optional Project ID Input */}
+              {/* Required Project ID Input */}
               <div className="space-y-1">
                 <label className="text-[11px] font-medium text-slate-600">
                   GCP Project ID:
@@ -133,7 +133,7 @@ export default function GeeCredentialsDialog({
               {/* Main Login / Connect Button */}
               <Button
                 onClick={handleConnect}
-                disabled={loading}
+                disabled={loading || !projectInput.trim()}
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 h-auto shadow-md shadow-indigo-100 transition-all flex items-center justify-center gap-2 text-sm"
               >
                 {loading ? (
