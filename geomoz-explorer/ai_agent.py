@@ -465,3 +465,119 @@ async def explain_job_result(job: dict[str, Any]) -> dict[str, Any]:
         "model": model,
         "response_id": data.get("id"),
     }
+
+
+
+async def explain_plan_result(
+    plan: dict[str, Any],
+    jobs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Synthesize a completed multi-step plan using only persisted evidence."""
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise AgentNotConfigured(
+            "GeoMoz Agent ainda não está configurado no servidor."
+        )
+
+    if plan.get("status") != "completed":
+        raise AgentPlannerError(
+            "O plano precisa estar concluído antes de gerar a síntese."
+        )
+
+    evidence_jobs = []
+    for job in jobs[:6]:
+        if job.get("status") != "completed":
+            continue
+        evidence_jobs.append({
+            "analysis_type": job.get("type"),
+            "parameters": _compact_for_explanation(job.get("payload") or {}),
+            "result": _compact_for_explanation(job.get("result") or {}),
+            "completed_at": job.get("completed_at"),
+        })
+
+    if not evidence_jobs:
+        raise AgentPlannerError(
+            "O plano não possui resultados concluídos disponíveis para síntese."
+        )
+
+    evidence = {
+        "title": plan.get("title"),
+        "goal": plan.get("goal"),
+        "steps": [
+            {
+                "order": step.get("order"),
+                "tool_id": step.get("tool_id"),
+                "purpose": step.get("purpose"),
+                "status": step.get("status"),
+            }
+            for step in (plan.get("steps") or [])[:6]
+        ],
+        "analyses": evidence_jobs,
+    }
+
+    model = os.environ.get("GEOMOZ_AI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    payload = {
+        "model": model,
+        "instructions": (
+            "Você é um analista geoespacial do GeoMoz. Produza uma síntese "
+            "integrada baseada exclusivamente nas evidências fornecidas. Não "
+            "invente números, relações causais, precisão, recursos existentes "
+            "ou validação de campo. Compare os resultados apenas quando forem "
+            "comparáveis. Destaque convergências e divergências entre as "
+            "análises sem transformar indicadores de favorabilidade ou risco "
+            "em certezas. Responda em português com quatro blocos: Síntese, "
+            "Evidências principais, Implicações e Limitações/Próximos passos."
+        ),
+        "input": [{
+            "role": "user",
+            "content": (
+                "Sintetize este plano GeoMoz com base apenas nesta evidência:\n"
+                + json.dumps(evidence, ensure_ascii=False, default=str)
+            ),
+        }],
+        "store": False,
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=35.0) as client:
+            response = await client.post(
+                OPENAI_RESPONSES_URL,
+                headers=headers,
+                json=payload,
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("GeoMoz plan explanation network error: %s", exc)
+        raise AgentPlannerError(
+            "O serviço de síntese AI está temporariamente indisponível."
+        ) from exc
+
+    if response.status_code >= 400:
+        logger.warning(
+            "GeoMoz plan explanation upstream error status=%s request_id=%s",
+            response.status_code,
+            response.headers.get("x-request-id"),
+        )
+        raise AgentPlannerError(
+            f"O serviço de síntese AI respondeu com HTTP {response.status_code}."
+        )
+
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise AgentPlannerError("A síntese AI devolveu uma resposta inválida.") from exc
+
+    text = _extract_text(data)
+    if not text:
+        raise AgentPlannerError("A síntese AI veio vazia.")
+
+    return {
+        "explanation": text,
+        "model": model,
+        "response_id": data.get("id"),
+        "analyses_used": len(evidence_jobs),
+    }
