@@ -22,6 +22,7 @@ import type { AreaOfInterest } from "@/lib/aoi";
 import { mozambiqueAOI, GLOBAL_AOI, customAOI } from "@/lib/aoi";
 import CommandCenter, { type GeoMozWorkspaceTab } from "@/components/CommandCenter";
 import WelcomeDialog from "@/components/WelcomeDialog";
+import GeoMozMark from "@/components/GeoMozMark";
 
 interface NominatimResult {
   place_id: number;
@@ -423,11 +424,16 @@ function flyToResult(result: NominatimResult) {
       <header className="flex-none h-14 border-b border-slate-200/50 glass-panel px-4 flex items-center justify-between shrink-0 z-30 transition-all">
         <div className="flex items-center gap-5">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-sky-500 flex items-center justify-center text-white shadow-sm">
-              <Globe size={17} />
+            <GeoMozMark size={32} className="shrink-0 shadow-sm" />
+            <div className="hidden sm:block leading-none">
+              <div className="text-sm font-bold tracking-tight text-slate-900">
+                GeoMoz <span className="font-medium text-slate-400">Explorer</span>
+              </div>
+              <div className="mt-1 text-[8px] font-semibold uppercase tracking-[0.18em] text-sky-600">
+                Earth Intelligence
+              </div>
             </div>
-            <span className="font-bold text-slate-900 tracking-tight text-base">GeoMoz Explorer</span>
-            <Badge variant="outline" className="ml-1 text-xs font-normal border-slate-200 text-slate-400 bg-slate-50">
+            <Badge variant="outline" className="ml-1 hidden text-xs font-normal border-slate-200 text-slate-400 bg-slate-50 xl:inline-flex">
               Moçambique
             </Badge>
           </div>
