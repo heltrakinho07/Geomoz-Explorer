@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Save,
   Trash2,
+  Layers,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -392,6 +393,9 @@ export default function ProjectsPanel({
                     </span>
                     <span className="flex items-center gap-1">
                       <Clock3 size={9} /> {formatDate(project.updated_at)}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Layers size={9} /> {project.map_state?.result_layers?.length ?? 0} resultados
                     </span>
                   </div>
 
