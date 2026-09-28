@@ -509,3 +509,45 @@ class TestAnalysisJobRetry:
         resp = client.post("/geomoz-api/jobs/running-job/retry")
 
         assert resp.status_code == 409
+
+
+
+class TestAnalysisJobCatalogValidation:
+    def test_create_index_job_rejects_unknown_index(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import gee_session_store
+
+        monkeypatch.setattr(
+            gee_session_store,
+            "get_token",
+            lambda uid: {"access_token": "mock-token", "project": "test-project"},
+        )
+
+        resp = client.post(
+            "/geomoz-api/jobs",
+            json={"type": "gee.index", "payload": {"index": "not-a-real-index"}},
+        )
+
+        assert resp.status_code == 422
+
+    def test_create_targeting_job_rejects_unknown_mineral(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import gee_session_store
+
+        monkeypatch.setattr(
+            gee_session_store,
+            "get_token",
+            lambda uid: {"access_token": "mock-token", "project": "test-project"},
+        )
+
+        resp = client.post(
+            "/geomoz-api/jobs",
+            json={
+                "type": "gee.targeting",
+                "payload": {"mineral": "unobtainium"},
+            },
+        )
+
+        assert resp.status_code == 422
