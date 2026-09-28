@@ -451,16 +451,19 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
                   const active = job.status === "queued" || job.status === "processing";
                   const failed = job.status === "failed";
                   const completed = job.status === "completed";
+                  const cancelled = job.status === "cancelled";
                   return (
                     <div key={job.id} className="flex items-center gap-3 px-4 py-3">
                       <div className={[
                         "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-                        failed ? "bg-red-50" : completed ? "bg-emerald-50" : "bg-sky-50",
+                        failed ? "bg-red-50" : completed ? "bg-emerald-50" : cancelled ? "bg-slate-100" : "bg-sky-50",
                       ].join(" ")}>
                         {failed ? (
                           <XCircle size={15} className="text-red-500" />
                         ) : completed ? (
                           <CheckCircle2 size={15} className="text-emerald-500" />
+                        ) : cancelled ? (
+                          <XCircle size={15} className="text-slate-400" />
                         ) : (
                           <Loader2 size={15} className="animate-spin text-sky-500" />
                         )}
@@ -477,9 +480,11 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
                               ? "bg-red-50 text-red-600"
                               : completed
                                 ? "bg-emerald-50 text-emerald-600"
-                                : "bg-sky-50 text-sky-600",
+                                : cancelled
+                                  ? "bg-slate-100 text-slate-500"
+                                  : "bg-sky-50 text-sky-600",
                           ].join(" ")}>
-                            {failed ? "falhou" : completed ? "concluída" : job.status === "queued" ? "fila" : "processando"}
+                            {failed ? "falhou" : completed ? "concluída" : cancelled ? "cancelada" : job.status === "queued" ? "fila" : "processando"}
                           </span>
                         </div>
                         <div className="mt-0.5 truncate text-[10px] text-slate-400">
