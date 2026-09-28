@@ -18,7 +18,7 @@ from shapely.errors import TopologicalError, GEOSException
 from fastapi import FastAPI, Query, HTTPException, Request, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 
 import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
@@ -37,12 +37,16 @@ async def require_firebase_auth(request: Request) -> str:
     try:
         decoded = firebase_auth.verify_id_token(token)
         return decoded["uid"]
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Token Firebase inválido: {str(e)}")
+    except Exception:
+        logger.warning("Firebase token verification failed.")
+        raise HTTPException(status_code=401, detail="Sessão inválida ou expirada.")
 
 async def require_gee_auth(uid: str = Depends(require_firebase_auth)) -> str:
     from gee_module import _init_gee
-    _init_gee(uid)
+    try:
+        _init_gee(uid)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
     return uid
 from pydantic import BaseModel, field_validator, constr
 
@@ -113,7 +117,14 @@ app = FastAPI(title="GeoMoz API", version="2.1.0")
 
 # CORS configuration - use environment variable for allowed origins
 # Default to localhost for development, set CORS_ORIGINS env var for production
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
+    if origin.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -131,16 +142,26 @@ async def rate_limit_middleware(request: Request, call_next):
     """Apply rate limiting to all requests."""
     client_ip = request.client.host if request.client else "unknown"
     
-    # Skip rate limiting for health checks or if disabled
+    # Health checks must remain available even when a client is throttled.
+    if request.url.path in {"/geomoz-api/health", "/geomoz-api/status"}:
+        return await call_next(request)
+
     if os.getenv("DISABLE_RATE_LIMIT", "false").lower() == "true":
         return await call_next(request)
-    
+
     if not _check_rate_limit(client_ip):
-        raise HTTPException(
+        return JSONResponse(
             status_code=429,
-            detail=f"Rate limit exceeded. Maximum {_rate_limit_max_requests} requests per {_rate_limit_window_seconds} seconds."
+            content={
+                "detail": (
+                    f"Limite de pedidos excedido. Máximo de "
+                    f"{_rate_limit_max_requests} pedidos por "
+                    f"{_rate_limit_window_seconds} segundos."
+                )
+            },
+            headers={"Retry-After": str(_rate_limit_window_seconds)},
         )
-    
+
     return await call_next(request)
 
 # ── data loaders (cached) ──────────────────────────────────────────────────────
@@ -493,12 +514,12 @@ class GEEServiceAccountKeyRequest(BaseModel):
 
 
 @app.get("/geomoz-api/gee/config")
-def gee_config():
+def gee_config(uid: str = Depends(require_firebase_auth)):
     """
     Return current GEE configuration (with sensitive values masked).
     Used by the Settings page to show the user what's configured.
     """
-    from gee_module import _init_gee, gee_status as _gee_status
+    from gee_module import gee_status as _gee_status
 
     sa_key_raw = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
     project_id = os.environ.get("GEE_PROJECT_ID", "").strip()
@@ -512,15 +533,13 @@ def gee_config():
             email = key_data.get("client_email", "")
             proj = key_data.get("project_id", "")
             masked_key = {
-                "client_email": email,
                 "project_id": proj or "(n/a)",
-                "key_prefix": sa_key_raw[:40] + "…" if len(sa_key_raw) > 40 else sa_key_raw[:20] + "…",
                 "has_private_key": bool(key_data.get("private_key", "")),
             }
         except (json.JSONDecodeError, Exception):
             masked_key = {"error": "Invalid JSON in GEE_SERVICE_ACCOUNT_KEY"}
 
-    status = _gee_status()
+    status = _gee_status(uid)
 
     return {
         "status": status,
@@ -544,13 +563,35 @@ def gee_config():
 
 
 @app.post("/geomoz-api/gee/configure")
-def gee_configure(req: GEEServiceAccountKeyRequest):
+def gee_configure(
+    req: GEEServiceAccountKeyRequest,
+    uid: str = Depends(require_firebase_auth),
+):
     """
     Update GEE credentials and reinitialize the connection.
     Accepts service_account_key (JSON string) and/or project_id.
     Returns the new connection status.
     """
-    from gee_module import reset_gee, _init_gee, gee_status as _gee_status
+    from gee_module import reset_gee, gee_status as _gee_status
+
+    # Legacy global service-account configuration is intentionally restricted.
+    # Normal GeoMoz users must use the per-user BYO-GEE OAuth flow.
+    admin_uids = {
+        value.strip()
+        for value in os.getenv("GEE_ADMIN_UIDS", "").split(",")
+        if value.strip()
+    }
+    if (
+        os.getenv("ALLOW_GEE_ADMIN_CONFIG", "false").lower() != "true"
+        or uid not in admin_uids
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Configuração global do Earth Engine está desativada. "
+                "Use 'Ligar com a Conta Google' e o seu próprio GCP Project ID."
+            ),
+        )
 
     changed = False
 
@@ -570,29 +611,18 @@ def gee_configure(req: GEEServiceAccountKeyRequest):
             "message": "Nenhuma credencial fornecida. Envie service_account_key e/ou project_id.",
         }
 
-    # Reset and reinitialize GEE
+    # Reset process-level caches. Per-user OAuth sessions remain isolated in
+    # gee_session_store and are initialized on their next request.
     reset_gee()
-    try:
-        _init_gee()
-        status = _gee_status()
-        status["configured"] = True
-        status["message"] = "GEE configurado e conectado com sucesso!"
-        logger.info("GEE reinitialized successfully after configuration update")
-        return status
-    except RuntimeError as exc:
-        logger.error("GEE reinitialization failed after configuration update: %s", exc)
-        return {
-            "configured": False,
-            "connected": False,
-            "message": f"Falha ao conectar GEE: {exc}",
-        }
-    except Exception as exc:
-        logger.error("Unexpected error during GEE configuration: %s", exc)
-        return {
-            "configured": False,
-            "connected": False,
-            "message": f"Erro inesperado: {exc}",
-        }
+    status = _gee_status(uid)
+    return {
+        **status,
+        "configured": True,
+        "message": (
+            "Configuração global atualizada. "
+            "A ligação do utilizador continua a usar BYO-GEE OAuth."
+        ),
+    }
 
 
 class GEEIndexRequest(BaseModel):
@@ -728,25 +758,52 @@ class GEECompositeRequest(BaseModel):
 
 class OAuthTokenRequest(BaseModel):
     access_token: str
-    project: Optional[str] = None
+    project: str
+
+    @field_validator("access_token", "project")
+    @classmethod
+    def validate_required_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Este campo é obrigatório.")
+        return value
+
 
 @app.post("/geomoz-api/gee/oauth-token")
 async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_firebase_auth)):
     import gee_session_store
-    gee_session_store.set_token(uid, {
-        "access_token": req.access_token,
-        "project": req.project
-    })
-    return {"message": "Token guardado com sucesso."}
+    from gee_module import gee_status as _gee_status
+
+    gee_session_store.set_token(
+        uid,
+        {"access_token": req.access_token, "project": req.project},
+    )
+    status = _gee_status(uid)
+    if not status.get("connected"):
+        gee_session_store.clear_token(uid)
+        raise HTTPException(
+            status_code=400,
+            detail=status.get("message") or "Não foi possível validar a ligação ao Earth Engine.",
+        )
+
+    return status
+
 
 @app.get("/geomoz-api/gee/status")
 async def gee_status_endpoint(uid: str = Depends(require_firebase_auth)):
+    from gee_module import gee_status as _gee_status
+    return _gee_status(uid)
+
+
+@app.post("/geomoz-api/gee/disconnect")
+async def gee_disconnect_endpoint(uid: str = Depends(require_firebase_auth)):
     import gee_session_store
-    token = gee_session_store.get_token(uid)
+    gee_session_store.clear_token(uid)
     return {
-        "connected": bool(token),
-        "project": token.get("project") if token else None,
-        "auth_type": "oauth2" if token else None
+        "connected": False,
+        "project": None,
+        "auth_type": None,
+        "message": "Earth Engine desligado desta sessão GeoMoz.",
     }
 
 @app.post("/geomoz-api/gee/index")
