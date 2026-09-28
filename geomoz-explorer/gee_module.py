@@ -119,42 +119,83 @@ def _build_cache_key_for_request(
 from google.oauth2.credentials import Credentials
 import gee_session_store
 
-def _init_gee(uid: str = None) -> None:
-    """Initialize GEE with the user's token."""
+def _init_gee(uid: str | None = None) -> None:
+    """Initialize Earth Engine for a GeoMoz user or the server fallback.
+
+    User requests use the OAuth access token registered for the uid and the
+    user\'s Google Cloud project (BYO-GEE). Server/admin paths may omit uid
+    and fall back to the service-account/ADC configuration.
+    """
     global _gee_initialized, _gee_error
 
-    if not uid:
-        raise RuntimeError("uid é obrigatório para ligar ao GEE.")
-        
-    token_data = gee_session_store.get_token(uid)
-    if not token_data:
-        raise RuntimeError("Utilizador não tem ligação ao GEE (token em falta).")
-        
     try:
         import ee
-    except ImportError:
-        raise RuntimeError("earthengine-api package not installed.")
+    except ImportError as exc:
+        raise RuntimeError("earthengine-api package not installed.") from exc
 
-    # We initialize EE with the user's token.
-    # Warning: In a multi-threaded async app, this overrides global state!
-    # For MVP, this works if traffic is low or we rely on thread separation (not perfect).
     with _lock:
-        creds = Credentials(token=token_data["access_token"])
-        ee.Initialize(credentials=creds, project=token_data.get("project"))
-        _gee_initialized = True
-
-
         try:
-            ee.Initialize(project=project_id)
+            if uid:
+                token_data = gee_session_store.get_token(uid)
+                if not token_data:
+                    raise RuntimeError(
+                        "Google Earth Engine não está ligado a esta conta. "
+                        "Conecte o GEE nas definições do GeoMoz."
+                    )
+
+                project_id = (token_data.get("project") or "").strip()
+                if not project_id:
+                    raise RuntimeError(
+                        "Project ID do Google Cloud em falta. "
+                        "Indique um projecto com Earth Engine habilitado."
+                    )
+
+                access_token = token_data.get("access_token")
+                if not access_token:
+                    raise RuntimeError("Token OAuth do Earth Engine em falta.")
+
+                creds = Credentials(token=access_token)
+                ee.Initialize(credentials=creds, project=project_id)
+                auth_type = "oauth2"
+            else:
+                project_id = os.environ.get("GEE_PROJECT_ID", "").strip() or None
+                sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
+
+                if sa_key:
+                    try:
+                        key_data = json.loads(sa_key)
+                        service_email = key_data.get("client_email")
+                        project_id = project_id or key_data.get("project_id")
+                        if not service_email:
+                            raise ValueError("client_email ausente")
+                        creds = ee.ServiceAccountCredentials(service_email, key_data=sa_key)
+                        ee.Initialize(credentials=creds, project=project_id)
+                        auth_type = "service_account"
+                    except (json.JSONDecodeError, ValueError) as exc:
+                        raise RuntimeError("GEE_SERVICE_ACCOUNT_KEY inválida.") from exc
+                else:
+                    if not project_id:
+                        raise RuntimeError(
+                            "GEE não configurado no servidor: defina GEE_PROJECT_ID "
+                            "ou conecte o Earth Engine pela conta do utilizador."
+                        )
+                    ee.Initialize(project=project_id)
+                    auth_type = "application_default"
+
             _gee_initialized = True
-            return
+            _gee_error = None
+            logger.info("Earth Engine initialized (auth=%s, project=%s, uid=%s)", auth_type, project_id, uid or "server")
+        except RuntimeError:
+            _gee_initialized = False
+            raise
         except Exception as exc:
-            _gee_error = (
-                "GEE not configured. "
-                "Set GEE_SERVICE_ACCOUNT_KEY (service account JSON as string) or run "
-                "`earthencine authenticate` and set GEE_PROJECT_ID."
-            )
-            raise RuntimeError(_gee_error)
+            _gee_initialized = False
+            _gee_error = str(exc)
+            logger.warning("Earth Engine initialization failed for uid=%s: %s", uid or "server", exc)
+            raise RuntimeError(
+                "Não foi possível inicializar o Google Earth Engine. "
+                "Verifique o Project ID, permissões e ligação OAuth."
+            ) from exc
 
 
 def reset_gee():
@@ -163,34 +204,40 @@ def reset_gee():
         _gee_initialized = False
         _gee_error = None
         _cache_clear()
-        logger.info("GEE reset: auth cleared + index-image cache cleared (%d entries)", len(_INDEX_IMAGE_CACHE))
+        logger.info("GEE reset: auth state and index-image cache cleared")
 
 
-def gee_status(uid: str = None) -> dict:
-    global _gee_error
+def gee_status(uid: str | None = None) -> dict:
+    """Return a verified Earth Engine connection status."""
     try:
         import ee
-        ee.String("ok").getInfo()
-        sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "")
-        auth_type = "oauth2"
-        project = os.environ.get("GEE_PROJECT_ID", "")
+        _init_gee(uid)
+        ee.String("geomoz-ok").getInfo()
+
+        token_data = gee_session_store.get_token(uid) if uid else None
+        sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
+        project = ((token_data or {}).get("project") if uid else os.environ.get("GEE_PROJECT_ID", "").strip())
         if not project and sa_key:
             try:
                 project = json.loads(sa_key).get("project_id", "")
-            except Exception:
-                pass
+            except json.JSONDecodeError:
+                project = ""
+
+        auth_type = "oauth2" if uid else ("service_account" if sa_key else "application_default")
         return {
             "connected": True,
             "auth_type": auth_type,
-            "project": project,
-            "message": f"GEE conectado ({auth_type})",
+            "project": project or None,
+            "message": "Google Earth Engine conectado e validado.",
+            "reason": None,
         }
     except Exception as exc:
         return {
             "connected": False,
-            "auth_type": None,
-            "project": None,
+            "auth_type": "oauth2" if uid else None,
+            "project": ((gee_session_store.get_token(uid) or {}).get("project") if uid else os.environ.get("GEE_PROJECT_ID") or None),
             "message": str(exc),
+            "reason": "connection_failed",
         }
 
 
