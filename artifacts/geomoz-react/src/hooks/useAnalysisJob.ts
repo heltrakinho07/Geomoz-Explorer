@@ -173,6 +173,30 @@ export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
     return cancelled;
   }, [job]);
 
+  const retry = useCallback(async () => {
+    if (!job?.id || ACTIVE_STATUSES.has(job.status)) return job;
+
+    setRequestError(null);
+    setSubmitting(true);
+    try {
+      const res = await apiFetch(`/geomoz-api/jobs/${job.id}/retry`, {
+        method: "POST",
+      });
+
+      if (!res.ok) {
+        const message = await parseError(res);
+        setRequestError(message);
+        throw new Error(message);
+      }
+
+      const retried = (await res.json()) as AnalysisJob<T>;
+      if (mounted.current) setJob(retried);
+      return retried;
+    } finally {
+      if (mounted.current) setSubmitting(false);
+    }
+  }, [job]);
+
   const resetJob = useCallback(() => {
     setJob(null);
     setRequestError(null);
@@ -183,6 +207,7 @@ export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
     submitJob,
     refresh,
     cancel,
+    retry,
     resetJob,
     running: submitting || (!!job && ACTIVE_STATUSES.has(job.status)),
     submitting,
