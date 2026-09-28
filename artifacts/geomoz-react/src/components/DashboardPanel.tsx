@@ -14,7 +14,7 @@ import {
   Globe, Satellite, Mountain, Droplets, Flame,
   Waves, Navigation, Building2, Activity,
   Download, Loader2, CheckCircle2, Sprout,
-  FileText, BarChart2, Layers,
+  FileText, BarChart2, Layers, Map,
   ExternalLink, RefreshCw, Clock3, XCircle, GitBranch, Save, Trash2,
 } from "lucide-react";
 import { apiUrl, apiFetch } from "@/lib/api";
@@ -83,6 +83,13 @@ interface ProjectOutput {
   source_type: string;
   source_id: string;
   content: Record<string, unknown>;
+  assets?: {
+    map?: {
+      storage_path: string;
+      content_type?: string;
+      size_bytes?: number;
+    };
+  };
   created_at: string;
   updated_at: string;
 }
@@ -893,10 +900,18 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
                         <div className="truncate text-xs font-semibold text-slate-800">
                           {output.title}
                         </div>
-                        <div className="mt-0.5 flex items-center gap-2 text-[9px] text-slate-400">
+                        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[9px] text-slate-400">
                           <span>{output.type === "plan_report" ? "Plano integrado" : "Análise"}</span>
                           <span>·</span>
                           <span>{formatJobTime(output.created_at)}</span>
+                          {output.assets?.map?.storage_path && (
+                            <>
+                              <span>·</span>
+                              <span className="inline-flex items-center gap-1 font-semibold text-emerald-600">
+                                <Map size={9} /> mapa incluído
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
