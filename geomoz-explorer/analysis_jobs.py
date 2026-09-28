@@ -54,6 +54,8 @@ def _execution_backend() -> str:
     value = os.getenv("ANALYSIS_EXECUTION_BACKEND", "local").strip().lower()
     if value in {"cloud_tasks", "cloud-tasks", "tasks"}:
         return "cloud_tasks"
+    if value in {"cloud_run_jobs", "cloud-run-jobs", "run_jobs", "run-jobs"}:
+        return "cloud_run_jobs"
     return "local_executor"
 
 
@@ -137,6 +139,103 @@ def _enqueue_cloud_task(uid: str, job_id: str) -> str:
         if exc.__class__.__name__ != "AlreadyExists":
             raise
     return task_name
+
+
+def _cloud_run_job_config() -> dict[str, str]:
+    """Resolve the isolated Cloud Run Job used by the production analysis engine."""
+    project = (
+        os.getenv("ANALYSIS_RUN_JOB_PROJECT", "").strip()
+        or os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
+        or os.getenv("FIREBASE_PROJECT_ID", "").strip()
+    )
+    location = os.getenv("ANALYSIS_RUN_JOB_LOCATION", "europe-west1").strip()
+    job_name = os.getenv("ANALYSIS_RUN_JOB_NAME", "geomoz-analysis-job").strip()
+
+    missing = [
+        name
+        for name, value in {
+            "project": project,
+            "location": location,
+            "job_name": job_name,
+        }.items()
+        if not value
+    ]
+    if missing:
+        raise RuntimeError(
+            "Cloud Run Job não configurado: " + ", ".join(missing)
+        )
+    return {
+        "project": project,
+        "location": location,
+        "job_name": job_name,
+    }
+
+
+def _enqueue_cloud_run_job(uid: str, job_id: str) -> str:
+    """Start one isolated Cloud Run Job execution.
+
+    The API call only starts the execution; the long-running GIS computation
+    happens in a separate Cloud Run task with its own process-global GEE state.
+    Per-execution env overrides identify the persisted user/job pair.
+    """
+    import google.auth
+    from google.auth.transport.requests import AuthorizedSession
+
+    config = _cloud_run_job_config()
+    credentials, _ = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/cloud-platform"],
+    )
+    session = AuthorizedSession(credentials)
+    timeout_seconds = max(
+        60,
+        min(
+            int(os.getenv("ANALYSIS_RUN_JOB_TIMEOUT_SECONDS", "900")),
+            604800,
+        ),
+    )
+    url = (
+        "https://run.googleapis.com/v2/projects/"
+        f'{config["project"]}/locations/{config["location"]}/jobs/'
+        f'{config["job_name"]}:run'
+    )
+    body = {
+        "overrides": {
+            "containerOverrides": [{
+                "env": [
+                    {"name": "GEOMOZ_JOB_UID", "value": uid},
+                    {"name": "GEOMOZ_JOB_ID", "value": job_id},
+                ],
+            }],
+            "taskCount": 1,
+            "timeout": f"{timeout_seconds}s",
+        },
+    }
+    response = session.post(url, json=body, timeout=30)
+    if not response.ok:
+        message = response.text[:1000]
+        raise RuntimeError(
+            f"Cloud Run Job dispatch falhou ({response.status_code}): {message}"
+        )
+
+    data = response.json()
+    return str(data.get("name") or f"cloud-run-job:{job_id}")
+
+
+def _job_is_persisted(uid: str, job_id: str) -> bool:
+    """Verify that an isolated worker can load the job from Firestore."""
+    doc = _doc(uid, job_id)
+    if doc is None:
+        return False
+    try:
+        snapshot = doc.get()
+        return bool(snapshot.exists)
+    except Exception as exc:
+        logger.warning(
+            "Could not verify persistent analysis job %s: %s",
+            job_id,
+            exc,
+        )
+        return False
 
 
 def _now() -> str:
@@ -230,7 +329,11 @@ def _recover_if_stale(uid: str, job: dict[str, Any]) -> dict[str, Any]:
     Cloud Run may terminate an instance while a local executor is processing.
     Without this guard, the persisted job could remain "processing" forever.
     """
-    if job.get("execution_mode") not in {"local_executor", "cloud_tasks"}:
+    if job.get("execution_mode") not in {
+        "local_executor",
+        "cloud_tasks",
+        "cloud_run_jobs",
+    }:
         return job
     if job.get("status") not in {"queued", "processing"}:
         return job
@@ -547,6 +650,26 @@ def submit_job(
     )
     job_id = job["id"]
 
+    if execution_mode in {"cloud_tasks", "cloud_run_jobs"}:
+        if not _job_is_persisted(uid, job_id):
+            logger.warning(
+                "Distributed backend %s unavailable because job persistence "
+                "could not be verified; falling back to local executor.",
+                execution_mode,
+            )
+            update_job(
+                uid,
+                job_id,
+                execution_mode="local_executor",
+                stage="queued",
+                message=(
+                    "Persistência distribuída indisponível; "
+                    "a executar nesta instância."
+                ),
+            )
+            _submit_local_job(uid, job_id, runner)
+            return get_job(uid, job_id) or job
+
     if execution_mode == "cloud_tasks":
         try:
             task_name = _enqueue_cloud_task(uid, job_id)
@@ -558,20 +681,46 @@ def submit_job(
                 queue_task=task_name,
             ) or job
         except Exception as exc:
-            logger.exception("Could not enqueue analysis job %s", job_id)
+            logger.exception("Could not enqueue Cloud Tasks job %s", job_id)
+            update_job(
+                uid,
+                job_id,
+                execution_mode="local_executor",
+                stage="queued",
+                message=(
+                    "Fila distribuída indisponível; "
+                    "a executar nesta instância."
+                ),
+                error=None,
+            )
+            _submit_local_job(uid, job_id, runner)
+            return get_job(uid, job_id) or job
+
+    if execution_mode == "cloud_run_jobs":
+        try:
+            operation_name = _enqueue_cloud_run_job(uid, job_id)
             return update_job(
                 uid,
                 job_id,
-                status="failed",
-                stage="failed",
-                message="Não foi possível colocar a análise na fila.",
-                error={
-                    "code": "queue_unavailable",
-                    "message": str(exc),
-                    "retryable": True,
-                },
-                completed_at=_now(),
+                stage="queued",
+                message="Análise enviada para worker Cloud Run isolado.",
+                dispatch_ref=operation_name,
             ) or job
+        except Exception as exc:
+            logger.exception("Could not start Cloud Run analysis job %s", job_id)
+            update_job(
+                uid,
+                job_id,
+                execution_mode="local_executor",
+                stage="queued",
+                message=(
+                    "Worker distribuído indisponível; "
+                    "a executar nesta instância."
+                ),
+                error=None,
+            )
+            _submit_local_job(uid, job_id, runner)
+            return get_job(uid, job_id) or job
 
     _submit_local_job(uid, job_id, runner)
     return job
@@ -612,7 +761,7 @@ def cancel_job(uid: str, job_id: str) -> Optional[dict[str, Any]]:
 
 
 def active_job_count(uid: str | None = None) -> int:
-    """Count queued/processing jobs, including distributed Cloud Tasks jobs."""
+    """Count queued/processing jobs across local and distributed backends."""
     if uid is not None:
         db = _firestore()
         if db is not None:
@@ -648,12 +797,14 @@ def active_job_count(uid: str | None = None) -> int:
 
 def execution_status() -> dict[str, Any]:
     backend = _execution_backend()
+    distributed = backend in {"cloud_tasks", "cloud_run_jobs"}
     status: dict[str, Any] = {
         "backend": backend,
-        "distributed": backend == "cloud_tasks",
+        "distributed": distributed,
         "configured": True,
     }
-    if backend != "cloud_tasks":
+
+    if backend == "local_executor":
         status["workers"] = max(
             1,
             int(os.getenv("ANALYSIS_JOB_WORKERS", "1")),
@@ -661,12 +812,20 @@ def execution_status() -> dict[str, Any]:
         return status
 
     try:
-        config = _cloud_tasks_config()
-        status.update({
-            "queue": config["queue"],
-            "location": config["location"],
-            "worker_configured": bool(config["worker_url"]),
-        })
+        if backend == "cloud_tasks":
+            config = _cloud_tasks_config()
+            status.update({
+                "queue": config["queue"],
+                "location": config["location"],
+                "worker_configured": bool(config["worker_url"]),
+            })
+        elif backend == "cloud_run_jobs":
+            config = _cloud_run_job_config()
+            status.update({
+                "job_name": config["job_name"],
+                "location": config["location"],
+                "worker_configured": True,
+            })
     except RuntimeError as exc:
         status.update({
             "configured": False,
