@@ -480,6 +480,27 @@ class ProjectCreateRequest(BaseModel):
         return value
 
 
+def _project_study_area_snapshot(project: dict) -> dict:
+    """Return a compact, durable study-area descriptor without raw geometry."""
+    aoi = project.get("aoi") or {}
+    map_state = project.get("map_state") or {}
+
+    return {
+        "label": aoi.get("label") or project.get("name") or "Área de estudo",
+        "kind": aoi.get("kind") or aoi.get("type") or "project",
+        "province": (
+            aoi.get("province")
+            or map_state.get("province")
+            or None
+        ),
+        "district": (
+            aoi.get("district")
+            or map_state.get("district")
+            or None
+        ),
+    }
+
+
 class ProjectOutputCreateRequest(BaseModel):
     title: Optional[str] = None
     description: str = ""
@@ -648,6 +669,7 @@ async def create_project_output_from_job(
     content = {
         "schema": "geomoz.analysis_report.v1",
         "analysis_type": job.get("type"),
+        "study_area": _project_study_area_snapshot(project),
         "parameters": compact_evidence(job.get("payload") or {}),
         "result": compact_evidence(job.get("result") or {}),
         "explanation": req.explanation,
@@ -723,6 +745,7 @@ async def create_project_output_from_plan(
     title = req.title or f"Relatório Integrado · {plan.get('title', 'GeoMoz Agent')}"
     content = {
         "schema": "geomoz.plan_report.v1",
+        "study_area": _project_study_area_snapshot(project),
         "plan": {
             "id": plan.get("id"),
             "title": plan.get("title"),
