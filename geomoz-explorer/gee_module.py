@@ -1987,27 +1987,31 @@ def compute_targeting_tile(
     map_data = vis_img.getMapId()
 
     score_for_stats = score.unmask(0)
-    try:
-        stat_dict = score_for_stats.reduceRegion(
-            reducer=ee.Reducer.mean().combine(
-                ee.Reducer.percentile([90, 95, 99]), sharedInputs=True,
-            ),
-            geometry=region, scale=200, bestEffort=True, maxPixels=int(1e9),
-        ).getInfo() or {}
-    except Exception as exc:
-        logger.warning("Failed to compute targeting stats: %s", exc)
-        stat_dict = {}
+    stats_reduction = score_for_stats.reduceRegion(
+        reducer=ee.Reducer.mean().combine(
+            ee.Reducer.percentile([90, 95, 99]), sharedInputs=True,
+        ),
+        geometry=region, scale=200, bestEffort=True, maxPixels=int(1e9),
+    )
+    favorable_mask = score_for_stats.gte(score_threshold)
+    area_img = favorable_mask.multiply(ee.Image.pixelArea()).rename("area")
+    area_reduction = area_img.reduceRegion(
+        reducer=ee.Reducer.sum(), geometry=region,
+        scale=200, bestEffort=True, maxPixels=int(1e9),
+    )
 
     try:
-        favorable_mask = score_for_stats.gte(score_threshold)
-        area_img = favorable_mask.multiply(ee.Image.pixelArea()).rename("area")
-        area_m2 = area_img.reduceRegion(
-            reducer=ee.Reducer.sum(), geometry=region,
-            scale=200, bestEffort=True, maxPixels=int(1e9),
-        ).get("area").getInfo()
+        # Evaluate independent reducers in one Earth Engine round-trip.
+        summary = ee.Dictionary({
+            "stats": stats_reduction,
+            "favorableAreaM2": area_reduction.get("area"),
+        }).getInfo() or {}
+        stat_dict = summary.get("stats") or {}
+        area_m2 = summary.get("favorableAreaM2")
         favorable_km2 = (area_m2 or 0) / 1e6
     except Exception as exc:
-        logger.warning("Failed to compute favorable area: %s", exc)
+        logger.warning("Failed to compute targeting summary: %s", exc)
+        stat_dict = {}
         favorable_km2 = None
 
     return {
@@ -2936,10 +2940,28 @@ def compute_erosion_rusle(region_geojson: Optional[dict], year: int = 2023) -> d
     tile = classified.visualize(min=1, max=5, palette=palette, opacity=0.7) \
                      .getMapId()["tile_fetcher"].url_format
 
-    groups = (ee.Image.pixelArea().addBands(classified).reduceRegion(
+    class_scale = _compute_dynamic_scale(region)
+    groups_reduction = ee.Image.pixelArea().addBands(classified).reduceRegion(
         reducer=ee.Reducer.sum().group(groupField=1, groupName="class"),
-        geometry=region, scale=_compute_dynamic_scale(region), bestEffort=True, maxPixels=max_px,
-    ).getInfo().get("groups", []) or [])
+        geometry=region, scale=class_scale, bestEffort=True, maxPixels=max_px,
+    )
+    mean_reduction = A.reduceRegion(
+        reducer=ee.Reducer.mean(), geometry=region, scale=250,
+        bestEffort=True, maxPixels=max_px,
+    )
+
+    try:
+        summary = ee.Dictionary({
+            "groups": groups_reduction.get("groups"),
+            "mean": mean_reduction.get("A"),
+        }).getInfo() or {}
+        groups = summary.get("groups") or []
+        a_mean = summary.get("mean")
+    except Exception as exc:
+        logger.warning("Failed to compute RUSLE summary: %s", exc)
+        groups = []
+        a_mean = None
+
     by_class = {int(g["class"]): float(g.get("sum", 0)) / 1e6 for g in groups}
 
     classes = []
@@ -2948,9 +2970,6 @@ def compute_erosion_rusle(region_geojson: Optional[dict], year: int = 2023) -> d
         classes.append({"id": cid, "label": label, "color": f"#{color}",
                         "range": f"{lo}–{'∞' if hi >= 1e9 else int(hi)} t/ha/ano",
                         "areaKm2": a})
-
-    a_mean = A.reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=250,
-                            bestEffort=True, maxPixels=max_px).get("A").getInfo()
 
     return {
         "tile":       tile,
@@ -2997,26 +3016,46 @@ def compute_groundwater_ahp(region_geojson: Optional[dict], year: int = 2023) ->
            "drainage": drainage, "twi": twi, "landcover": lc_score}
 
     stack = ee.Image.cat([raw[k].toFloat() for k, *_ in GWP_FACTORS])
+    # The previous expression used max(1000, _compute_dynamic_scale(region)).
+    # _compute_dynamic_scale never returns more than 1000, so that forced an
+    # unnecessary synchronous region.area().getInfo() while always choosing
+    # exactly 1000 m. Keep the same effective scale without the round-trip.
     mm = stack.reduceRegion(
-        reducer=ee.Reducer.minMax(), geometry=region, scale=max(1000, _compute_dynamic_scale(region)),
+        reducer=ee.Reducer.minMax(), geometry=region, scale=1000,
         bestEffort=True, maxPixels=max_px,
-    ).getInfo()
+    )
 
     gwpi = ee.Image.constant(0)
     for key, _label, sign, weight in GWP_FACTORS:
-        vmin = mm.get(f"{key}_min")
-        vmax = mm.get(f"{key}_max")
-        if vmin is None or vmax is None:
-            continue
-            
-        if vmax == vmin:
-            # Flat region for this factor, assign neutral normalized value
-            norm = ee.Image(0.5)
-        else:
-            norm = raw[key].subtract(vmin).divide(vmax - vmin).clamp(0, 1)
-            
+        min_key = f"{key}_min"
+        max_key = f"{key}_max"
+        has_values = mm.contains(min_key).And(mm.contains(max_key))
+        vmin = ee.Number(ee.Algorithms.If(has_values, mm.get(min_key), 0))
+        vmax = ee.Number(ee.Algorithms.If(has_values, mm.get(max_key), 0))
+        value_range = vmax.subtract(vmin)
+
+        normalized = raw[key].subtract(vmin).divide(value_range).clamp(0, 1)
+        norm = ee.Image(
+            ee.Algorithms.If(
+                has_values,
+                ee.Algorithms.If(
+                    value_range.eq(0),
+                    ee.Image.constant(0.5),
+                    normalized,
+                ),
+                # Missing factor values behaved like a skipped factor before.
+                ee.Image.constant(0),
+            )
+        )
+
         if sign < 0:
-            norm = ee.Image(1).subtract(norm)
+            norm = ee.Image(
+                ee.Algorithms.If(
+                    has_values,
+                    ee.Image(1).subtract(norm),
+                    ee.Image.constant(0),
+                )
+            )
         gwpi = gwpi.add(norm.multiply(weight))
     gwpi = gwpi.clip(region).rename("gwpi")
 
