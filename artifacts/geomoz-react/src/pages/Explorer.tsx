@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, Suspense } from "react";
-import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard, BrainCircuit, Pen } from "lucide-react";
+import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard, BrainCircuit, Pen, FolderKanban } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -9,11 +9,13 @@ import MapView from "@/components/MapView";
 import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
 import DashboardPanel from "@/components/DashboardPanel";
+import ProjectsPanel, { type GeoMozProject } from "@/components/ProjectsPanel";
 import { LazyGeoAnalises, LazyHidroGeoMoz, LazyGeoperigos, LazyAguaSubterranea, LazyGeoMozAI } from "@/lib/lazy-pages";
 import { apiUrl, apiFetch } from "@/lib/api";
 import SettingsDialog from "@/components/SettingsDialog";
 import GeeCredentialsDialog from "@/components/GeeCredentialsDialog";
 import { useAuth } from "@/hooks/useAuth";
+import { useProject } from "@/hooks/useProject";
 import ZoneSelect from "@/components/ZoneSelect";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { mozambiqueAOI, GLOBAL_AOI, customAOI } from "@/lib/aoi";
@@ -26,10 +28,11 @@ interface NominatimResult {
   boundingbox: [string, string, string, string];
 }
 
-type Tab = "Mapa" | "Análise" | "GeoAnálises" | "Bacias Hidrográficas" | "Água Subterrânea" | "Geoperigos" | "GeoMoz AI" | "Dashboard" | "Exportar";
+type Tab = "Mapa" | "Projetos" | "Análise" | "GeoAnálises" | "Bacias Hidrográficas" | "Água Subterrânea" | "Geoperigos" | "GeoMoz AI" | "Dashboard" | "Exportar";
 
 const TABS: { id: Tab; icon: React.ReactNode; label: string }[] = [
   { id: "Mapa",                 icon: <Globe size={13} />,    label: "Mapa" },
+  { id: "Projetos",              icon: <FolderKanban size={13} />, label: "Projetos" },
   { id: "Análise",              icon: null,                   label: "Análise" },
   { id: "GeoAnálises",         icon: <Satellite size={13} />, label: "GeoAnálises" },
   { id: "Bacias Hidrográficas", icon: <Droplets size={13} />, label: "Bacias Hidrográficas" },
@@ -53,6 +56,7 @@ export default function Explorer() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [geeDialogOpen, setGeeDialogOpen] = useState(false);
   const { user } = useAuth();
+  const { activeProject } = useProject();
   const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [finishRequest, setFinishRequest] = useState(0);
 
@@ -68,11 +72,16 @@ export default function Explorer() {
   const [showResults, setShowResults] = useState(false);
   const [searchWorldwide, setSearchWorldwide] = useState(false);
   const skipAutoSearchRef = useRef(false);
+  const skipAOISyncRef = useRef(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
 
   // Keep aoi synced with province/district when selecting or clearing Mozambique regions.
   useEffect(() => {
+    if (skipAOISyncRef.current) {
+      skipAOISyncRef.current = false;
+      return;
+    }
     setAOI(mozambiqueAOI(province, district));
   }, [province, district]);
 
@@ -163,12 +172,17 @@ function flyToResult(result: NominatimResult) {
     if (newAOI.source === "mozambique") {
       setProvince(newAOI.province);
       setDistrict(newAOI.district);
+    } else {
+      skipAOISyncRef.current = true;
+      setProvince(null);
+      setDistrict(null);
     }
   }
 
   function handleDrawComplete(geometry: GeoJSON.GeoJSON, label: string) {
     setDrawingEnabled(false);
     setAOI(customAOI(geometry, label, "draw"));
+    skipAOISyncRef.current = true;
     setProvince(null);
     setDistrict(null);
     setActiveTab("Mapa");
@@ -181,8 +195,40 @@ function flyToResult(result: NominatimResult) {
   function handleClearAOI() {
     setDrawingEnabled(false);
     setAOI(GLOBAL_AOI);
+    skipAOISyncRef.current = true;
     setProvince(null);
     setDistrict(null);
+  }
+
+  function handleOpenProject(project: GeoMozProject) {
+    const state = project.map_state ?? {};
+    skipAOISyncRef.current = true;
+
+    if (project.aoi) {
+      setAOI(project.aoi);
+    }
+
+    setProvince(state.province ?? project.aoi?.province ?? null);
+    setDistrict(state.district ?? project.aoi?.district ?? null);
+
+    if (state.center && state.center.length === 2) {
+      setMapCenter(state.center);
+    }
+    if (typeof state.zoom === "number") {
+      setMapZoom(state.zoom);
+    }
+    if (state.layers) {
+      setLayers(state.layers);
+    }
+    if (state.color_by) {
+      setColorBy(state.color_by);
+    }
+
+    setActiveTab("Mapa");
+    toast({
+      title: "Projecto aberto",
+      description: `${project.name}: AOI e estado do mapa restaurados.`,
+    });
   }
 
   const sharedSidebar = (
@@ -333,6 +379,17 @@ function flyToResult(result: NominatimResult) {
             </button>
           )}
 
+          {activeProject && (
+            <button
+              onClick={() => setActiveTab("Projetos")}
+              className="hidden lg:flex max-w-[180px] items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100"
+              title="Abrir projectos"
+            >
+              <FolderKanban size={11} />
+              <span className="truncate">{activeProject.name}</span>
+            </button>
+          )}
+
           {/* GEE status indicator */}
           <button
             onClick={() => setGeeDialogOpen(true)}
@@ -374,7 +431,20 @@ function flyToResult(result: NominatimResult) {
       </header>
 
       {/* Body */}
-      {activeTab === "Dashboard" ? (
+      {activeTab === "Projetos" ? (
+        <div className="flex flex-1 overflow-hidden">
+          <ProjectsPanel
+            aoi={aoi}
+            province={province}
+            district={district}
+            mapCenter={mapCenter}
+            mapZoom={mapZoom}
+            layers={layers}
+            colorBy={colorBy}
+            onOpenProject={handleOpenProject}
+          />
+        </div>
+      ) : activeTab === "Dashboard" ? (
         <div className="flex flex-1 overflow-hidden">
           {sharedSidebar}
           <DashboardPanel province={province} district={district} />
@@ -457,6 +527,8 @@ function flyToResult(result: NominatimResult) {
             layers={layers}
             colorBy={colorBy}
             aoi={aoi}
+            mapCenter={mapCenter}
+            mapZoom={mapZoom}
             drawingEnabled={drawingEnabled}
             finishRequest={finishRequest}
             onDrawComplete={handleDrawComplete}
