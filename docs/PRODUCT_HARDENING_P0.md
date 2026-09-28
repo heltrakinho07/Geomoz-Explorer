@@ -71,18 +71,31 @@ remove apenas a ligação Earth Engine.
 
 ## Próximos P0
 
-- [ ] Criar um modelo universal `AnalysisJob`: queued / preparing / processing / rendering / completed / failed.
-- [ ] Remover execução pesada dependente do request HTTP sempre que possível.
-- [ ] Persistir jobs e resultados no Firestore.
+- [x] Criar um modelo universal `AnalysisJob`: queued / processing / completed / failed.
+- [x] Migrar os primeiros fluxos pesados para execução fora do request HTTP: índices, cheias e groundwater AHP.
+- [x] Persistir jobs e resultados pequenos no Firestore, com cache local.
 - [ ] Introduzir Cloud Tasks/PubSub + Cloud Run Job/worker para análises longas.
-- [ ] Padronizar erros em formato `code/message/retryable/details`.
-- [ ] Criar toast + progress UI universal para todos os módulos.
+- [~] Padronizar erros em formato `code/message/retryable/details` — implementado no Job Engine; falta migrar endpoints legados.
+- [~] Criar toast + progress UI universal — componente criado e aplicado aos workflows já migrados.
 - [ ] Executar smoke tests E2E contra deployment real.
 - [ ] Adicionar telemetry de latência e falhas por endpoint/módulo.
 - [ ] Rever concorrência BYO-GEE: a biblioteca Python EE usa estado global; não
       assumir isolamento multiutilizador apenas com `ee.Initialize`.
 - [ ] Migrar o OAuth BYO-GEE para fluxo server-side com refresh token para evitar
       reconexão quando o access token expirar.
+
+## Workflows já migrados para AnalysisJob
+
+| Workflow | Job type | UI com progresso | Persistência |
+| --- | --- | --- | --- |
+| Índices espectrais / terreno | `gee.index` | Sim | Sim |
+| Cheias Sentinel-1 | `gee.flood` | Sim | Sim |
+| Água subterrânea AHP | `gee.groundwater` | Sim | Sim |
+
+O Dashboard já apresenta as análises recentes do utilizador, incluindo estado,
+progresso, mensagem da etapa e horário. Jobs locais órfãos são marcados como
+falhados após timeout conservador para não permanecerem eternamente em
+`processing` após restart do worker.
 
 ## P1 — Produto
 
