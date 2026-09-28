@@ -72,18 +72,19 @@ export default function Explorer() {
   const [showResults, setShowResults] = useState(false);
   const [searchWorldwide, setSearchWorldwide] = useState(false);
   const skipAutoSearchRef = useRef(false);
-  const skipAOISyncRef = useRef(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
 
-  // Keep aoi synced with province/district when selecting or clearing Mozambique regions.
-  useEffect(() => {
-    if (skipAOISyncRef.current) {
-      skipAOISyncRef.current = false;
-      return;
-    }
-    setAOI(mozambiqueAOI(province, district));
-  }, [province, district]);
+  function handleProvinceChange(nextProvince: string | null) {
+    setProvince(nextProvince);
+    setDistrict(null);
+    setAOI(mozambiqueAOI(nextProvince, null));
+  }
+
+  function handleDistrictChange(nextDistrict: string | null) {
+    setDistrict(nextDistrict);
+    setAOI(mozambiqueAOI(province, nextDistrict));
+  }
 
   function toggleLayer(key: keyof LayerState) {
     setLayers(prev => ({ ...prev, [key]: !prev[key] }));
@@ -173,7 +174,6 @@ function flyToResult(result: NominatimResult) {
       setProvince(newAOI.province);
       setDistrict(newAOI.district);
     } else {
-      skipAOISyncRef.current = true;
       setProvince(null);
       setDistrict(null);
     }
@@ -182,7 +182,6 @@ function flyToResult(result: NominatimResult) {
   function handleDrawComplete(geometry: GeoJSON.GeoJSON, label: string) {
     setDrawingEnabled(false);
     setAOI(customAOI(geometry, label, "draw"));
-    skipAOISyncRef.current = true;
     setProvince(null);
     setDistrict(null);
     setActiveTab("Mapa");
@@ -195,14 +194,12 @@ function flyToResult(result: NominatimResult) {
   function handleClearAOI() {
     setDrawingEnabled(false);
     setAOI(GLOBAL_AOI);
-    skipAOISyncRef.current = true;
     setProvince(null);
     setDistrict(null);
   }
 
   function handleOpenProject(project: GeoMozProject) {
     const state = project.map_state ?? {};
-    skipAOISyncRef.current = true;
 
     if (project.aoi) {
       setAOI(project.aoi);
@@ -235,8 +232,8 @@ function flyToResult(result: NominatimResult) {
     <Sidebar
       province={province}
       district={district}
-      onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-      onDistrictChange={setDistrict}
+      onProvinceChange={handleProvinceChange}
+      onDistrictChange={handleDistrictChange}
       layers={layers}
       onLayerToggle={toggleLayer}
       colorBy={colorBy}
@@ -467,7 +464,7 @@ function flyToResult(result: NominatimResult) {
               province={province}
               district={district}
               onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-              onDistrictChange={setDistrict}
+              onDistrictChange={handleDistrictChange}
               onAOIChange={handleAOIChange}
             />
           </Suspense>
@@ -480,7 +477,7 @@ function flyToResult(result: NominatimResult) {
               province={province}
               district={district}
               onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-              onDistrictChange={setDistrict}
+              onDistrictChange={handleDistrictChange}
               onAOIChange={handleAOIChange}
             />
           </Suspense>
@@ -493,7 +490,7 @@ function flyToResult(result: NominatimResult) {
               province={province}
               district={district}
               onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-              onDistrictChange={setDistrict}
+              onDistrictChange={handleDistrictChange}
               onAOIChange={handleAOIChange}
             />
           </Suspense>
@@ -506,7 +503,7 @@ function flyToResult(result: NominatimResult) {
               province={province}
               district={district}
               onProvinceChange={p => { setProvince(p); setDistrict(null); }}
-              onDistrictChange={setDistrict}
+              onDistrictChange={handleDistrictChange}
               onAOIChange={handleAOIChange}
             />
           </Suspense>
@@ -534,7 +531,7 @@ function flyToResult(result: NominatimResult) {
             onDrawComplete={handleDrawComplete}
             onDrawCancel={handleDrawCancel}
             mapRef={mapRef}
-            onProvinceClick={name => { setProvince(name); setDistrict(null); }}
+            onProvinceClick={handleProvinceChange}
             onMapState={(c, z) => { setMapCenter(c); setMapZoom(z); }}
           />
           <StatsPanel
