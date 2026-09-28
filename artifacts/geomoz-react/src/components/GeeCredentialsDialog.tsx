@@ -28,11 +28,13 @@ export default function GeeCredentialsDialog({
   onOpenChange: (o: boolean) => void;
 }) {
   const { user } = useAuth();
-  const { geeConnected, loading, error, connectGee, disconnectGee } = useGeeAuth();
+  const { geeConnected, geeProject, loading, error, connectGee, disconnectGee } = useGeeAuth();
   const [projectInput, setProjectInput] = useState("");
 
   const handleConnect = async () => {
-    await connectGee(projectInput.trim() || undefined);
+    const project = projectInput.trim();
+    if (!project) return;
+    await connectGee(project);
   };
 
   return (
@@ -73,8 +75,8 @@ export default function GeeCredentialsDialog({
                 </div>
                 <div>
                   <h4 className="text-sm font-semibold text-emerald-900">Earth Engine Ligado</h4>
-                  <p className="text-xs text-emerald-700 truncate max-w-[240px]">
-                    {user.email}
+                  <p className="max-w-[240px] truncate text-xs text-emerald-700">
+                    {geeProject || user.email}
                   </p>
                 </div>
               </div>
@@ -93,7 +95,7 @@ export default function GeeCredentialsDialog({
                 variant="outline"
                 className="w-full text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200 text-xs py-2 h-auto"
                 onClick={disconnectGee}
-                disabled={loading}
+                disabled={loading || !projectInput.trim()}
               >
                 <LogOut size={14} className="mr-2" />
                 Terminar Sessão / Desligar GEE
@@ -116,18 +118,21 @@ export default function GeeCredentialsDialog({
                 </a>
               </div>
 
-              {/* Optional Project ID Input */}
+              {/* Required Project ID Input */}
               <div className="space-y-1">
                 <label className="text-[11px] font-medium text-slate-600">
-                  GCP Project ID (opcional):
+                  Google Cloud Project ID:
                 </label>
                 <input
                   type="text"
-                  placeholder="ex: ee-meu-projeto ou deixe em branco"
+                  placeholder="ex: ee-meu-projeto"
                   value={projectInput}
                   onChange={(e) => setProjectInput(e.target.value)}
                   className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
                 />
+                <p className="text-[10px] leading-relaxed text-slate-400">
+                  Obrigatório. O projecto deve ter o Earth Engine habilitado e a sua conta Google deve ter acesso.
+                </p>
               </div>
 
               {/* Main Login / Connect Button */}

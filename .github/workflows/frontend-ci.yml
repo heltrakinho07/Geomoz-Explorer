@@ -2,7 +2,7 @@ name: Frontend CI
 
 on:
   push:
-    branches: [main, develop, "feat/**"]
+    branches: [main, develop, "feat/**", "fix/**"]
     paths:
       - "artifacts/geomoz-react/**"
       - "lib/**"

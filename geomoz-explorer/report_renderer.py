@@ -563,7 +563,29 @@ def _index_report(content: dict[str, Any]) -> str:
         ),
     )
     stats = result.get("stats")
-    if isinstance(stats, dict) and stats:
+    if not isinstance(stats, dict) or not stats:
+        # Backward compatibility with older persisted index outputs, where
+        # summary statistics were stored directly at the result root.
+        stats = {
+            key: result[key]
+            for key in (
+                "mean",
+                "min",
+                "max",
+                "median",
+                "stdDev",
+                "std_dev",
+                "p05",
+                "p10",
+                "p25",
+                "p75",
+                "p90",
+                "p95",
+                "p99",
+            )
+            if key in result and result[key] is not None
+        }
+    if stats:
         body += _section("Estatísticas", _render_mapping(stats))
 
     body += _section("Parâmetros de execução", _render_mapping(params))
@@ -694,7 +716,11 @@ def _report_label(output_type: Any, content: dict[str, Any]) -> str:
     return mapping.get(str(content.get("analysis_type") or ""), "Relatório de Análise")
 
 
-def render_output_html(output: dict[str, Any], project: dict[str, Any]) -> str:
+def render_output_html(
+    output: dict[str, Any],
+    project: dict[str, Any],
+    map_data_uri: str | None = None,
+) -> str:
     """Render one sanitized output as a self-contained printable HTML report."""
     title = escape(str(output.get("title") or "Relatório GeoMoz"))
     project_name = escape(str(project.get("name") or "Projecto GeoMoz"))
@@ -708,6 +734,19 @@ def render_output_html(output: dict[str, Any], project: dict[str, Any]) -> str:
         body = _analysis_body(content)
 
     type_label = _report_label(output_type, content)
+
+    if map_data_uri:
+        safe_map_uri = escape(map_data_uri, quote=True)
+        body = (
+            '<section class="map-section">'
+            '<h2>Mapa do resultado</h2>'
+            '<div class="report-map">'
+            f'<img src="{safe_map_uri}" alt="Mapa técnico persistido do resultado GeoMoz">'
+            '</div>'
+            '<p class="map-caption">Snapshot cartográfico persistido no momento da criação do entregável.</p>'
+            '</section>'
+            + body
+        )
 
     return f"""<!doctype html>
 <html lang="pt">
@@ -758,6 +797,9 @@ def render_output_html(output: dict[str, Any], project: dict[str, Any]) -> str:
   .source {{ margin-top:8px; padding:8px 10px; background:#f8fafc; border-radius:8px; color:#64748b; font-size:10px; overflow-wrap:anywhere; }}
   .narrative {{ background:#f8fafc; border-left:3px solid var(--accent); padding:14px 16px; font-size:12px; line-height:1.7; }}
   .period {{ margin-top:8px; color:#475569; font-size:12px; }}
+  .report-map {{ border:1px solid var(--line); border-radius:12px; overflow:hidden; background:#f8fafc; }}
+  .report-map img {{ display:block; width:100%; height:auto; }}
+  .map-caption {{ margin:7px 2px 0; color:#94a3b8; font-size:9px; }}
   .notice {{ margin:18px 0 28px; border-radius:10px; padding:12px 14px; font-size:11px; line-height:1.6; break-inside:avoid; }}
   .notice.warning {{ background:#fffbeb; border:1px solid #fde68a; color:#92400e; }}
   .notice.info {{ background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; }}
