@@ -60,6 +60,7 @@ const JOB_LABELS: Record<string, string> = {
   "gee.flood": "Cheias Sentinel-1",
   "gee.erosion": "Erosão RUSLE",
   "gee.groundwater": "Potencial hídrico AHP",
+  "gee.targeting": "Targeting mineral",
 };
 
 function formatJobTime(value: string): string {
