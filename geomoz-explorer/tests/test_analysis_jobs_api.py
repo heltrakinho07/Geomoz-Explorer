@@ -255,4 +255,36 @@ class TestAnalysisJobAPI:
         )
         assert resp.status_code == 202
         assert resp.json()["type"] == "gee.targeting"
-\n    def test_create_watershed_job_returns_202(\n        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,\n    ) -> None:\n        import analysis_jobs\n        import gee_session_store\n\n        monkeypatch.setattr(\n            gee_session_store, "get_token",\n            lambda uid: {"access_token": "mock-oauth-token", "project": "test-project"},\n        )\n        monkeypatch.setattr(\n            analysis_jobs, "submit_job",\n            lambda uid, job_type, payload, runner: {\n                "id": "watershed-job-1", "type": job_type, "status": "queued",\n                "stage": "queued", "progress": 0, "message": "queued",\n                "payload": payload, "result": None, "error": None,\n                "created_at": "2026-09-28T00:00:00+00:00",\n                "updated_at": "2026-09-28T00:00:00+00:00",\n                "started_at": None, "completed_at": None,\n                "execution_mode": "local_executor",\n            },\n        )\n\n        resp = client.post(\n            "/geomoz-api/jobs",\n            json={\n                "type": "gee.watershed",\n                "payload": {"lat": -17.8, "lon": 35.1, "level": 10, "max_iter": 60},\n            },\n        )\n        assert resp.status_code == 202\n        assert resp.json()["type"] == "gee.watershed"\n
+
+    def test_create_watershed_job_returns_202(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import analysis_jobs
+        import gee_session_store
+
+        monkeypatch.setattr(
+            gee_session_store, "get_token",
+            lambda uid: {"access_token": "mock-oauth-token", "project": "test-project"},
+        )
+        monkeypatch.setattr(
+            analysis_jobs, "submit_job",
+            lambda uid, job_type, payload, runner: {
+                "id": "watershed-job-1", "type": job_type, "status": "queued",
+                "stage": "queued", "progress": 0, "message": "queued",
+                "payload": payload, "result": None, "error": None,
+                "created_at": "2026-09-28T00:00:00+00:00",
+                "updated_at": "2026-09-28T00:00:00+00:00",
+                "started_at": None, "completed_at": None,
+                "execution_mode": "local_executor",
+            },
+        )
+
+        resp = client.post(
+            "/geomoz-api/jobs",
+            json={
+                "type": "gee.watershed",
+                "payload": {"lat": -17.8, "lon": 35.1, "level": 10, "max_iter": 60},
+            },
+        )
+        assert resp.status_code == 202
+        assert resp.json()["type"] == "gee.watershed"
