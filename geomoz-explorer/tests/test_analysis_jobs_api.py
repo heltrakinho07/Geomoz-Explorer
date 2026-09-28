@@ -130,3 +130,46 @@ class TestAnalysisJobAPI:
 
         assert resp.status_code == 202
         assert resp.json()["type"] == "gee.flood"
+
+    def test_create_groundwater_job_returns_202(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import analysis_jobs
+        import gee_session_store
+
+        monkeypatch.setattr(
+            gee_session_store,
+            "get_token",
+            lambda uid: {"access_token": "mock-oauth-token", "project": "test-project"},
+        )
+        monkeypatch.setattr(
+            analysis_jobs,
+            "submit_job",
+            lambda uid, job_type, payload, runner: {
+                "id": "groundwater-job-1",
+                "type": job_type,
+                "status": "queued",
+                "stage": "queued",
+                "progress": 0,
+                "message": "queued",
+                "payload": payload,
+                "result": None,
+                "error": None,
+                "created_at": "2026-09-28T00:00:00+00:00",
+                "updated_at": "2026-09-28T00:00:00+00:00",
+                "started_at": None,
+                "completed_at": None,
+                "execution_mode": "local_executor",
+            },
+        )
+
+        resp = client.post(
+            "/geomoz-api/jobs",
+            json={
+                "type": "gee.groundwater",
+                "payload": {"province": "Maputo", "year": 2023},
+            },
+        )
+
+        assert resp.status_code == 202
+        assert resp.json()["type"] == "gee.groundwater"
