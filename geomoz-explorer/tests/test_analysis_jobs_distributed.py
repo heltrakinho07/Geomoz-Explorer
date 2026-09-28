@@ -26,6 +26,11 @@ def test_cloud_tasks_submit_does_not_run_in_api_process(
 ) -> None:
     analysis_jobs = clean_jobs
     monkeypatch.setenv("ANALYSIS_EXECUTION_BACKEND", "cloud_tasks")
+    monkeypatch.setattr(
+        analysis_jobs,
+        "_job_is_persisted",
+        lambda uid, job_id: True,
+    )
 
     enqueued: list[tuple[str, str]] = []
     monkeypatch.setattr(
