@@ -227,3 +227,77 @@ def test_watershed_template_identifies_hydrobasins_method() -> None:
     assert "HydroBASINS" in html
     assert "Ponto de saída" in html
     assert "delimitação hidrológica" in html
+
+
+
+def test_erosion_template_reports_rusle_metrics() -> None:
+    from report_renderer import render_output_html
+
+    output = {
+        "id": "erosion-output",
+        "type": "analysis_report",
+        "title": "Risco de Erosão",
+        "description": "",
+        "created_at": "2026-09-28T10:00:00+00:00",
+        "content": {
+            "analysis_type": "gee.erosion",
+            "parameters": {"year": 2024},
+            "result": {
+                "year": 2024,
+                "meanTPerHa": 12.34,
+                "source": "RUSLE · CHIRPS+DEM+MODIS",
+                "classes": [
+                    {"id": 1, "label": "Muito Baixo", "color": "#1a9850", "range": "0–5 t/ha/ano", "areaKm2": 10},
+                    {"id": 2, "label": "Baixo", "color": "#91cf60", "range": "5–10 t/ha/ano", "areaKm2": 20},
+                    {"id": 3, "label": "Moderado", "color": "#fee08b", "range": "10–20 t/ha/ano", "areaKm2": 30},
+                    {"id": 4, "label": "Alto", "color": "#fc8d59", "range": "20–40 t/ha/ano", "areaKm2": 25},
+                    {"id": 5, "label": "Muito Alto", "color": "#d73027", "range": "40–∞ t/ha/ano", "areaKm2": 15},
+                ],
+            },
+            "job": {"completed_at": "2026-09-28T10:01:00+00:00"},
+        },
+    }
+
+    html = render_output_html(output, {"name": "Projecto Erosão"})
+
+    assert "Relatório de Risco de Erosão RUSLE" in html
+    assert "12,34 t/ha/ano" in html
+    assert "40,0%" in html
+    assert "A = R × K × LS × C × P" in html
+    assert "K constante" in html
+
+
+def test_index_template_reports_formula_bands_and_period() -> None:
+    from report_renderer import render_output_html
+
+    output = {
+        "id": "index-output",
+        "type": "analysis_report",
+        "title": "NDVI 2024",
+        "description": "",
+        "created_at": "2026-09-28T10:00:00+00:00",
+        "content": {
+            "analysis_type": "gee.index",
+            "parameters": {"index": "ndvi", "cloud_pct": 20},
+            "result": {
+                "name": "NDVI",
+                "formula": "(NIR - RED) / (NIR + RED)",
+                "bands": "B8, B4",
+                "group": "vegetation",
+                "sceneCount": 12,
+                "dateRange": "2024-01-01 → 2024-12-31",
+                "stats": {},
+                "classNames": None,
+            },
+            "job": {"completed_at": "2026-09-28T10:01:00+00:00"},
+        },
+    }
+
+    html = render_output_html(output, {"name": "Projecto Agricultura"})
+
+    assert "Relatório de Índice Geoespacial" in html
+    assert "NDVI" in html
+    assert "(NIR - RED) / (NIR + RED)" in html
+    assert "B8, B4" in html
+    assert "2024-01-01" in html
+    assert "indicadores biofísicos" in html
