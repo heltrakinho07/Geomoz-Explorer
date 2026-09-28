@@ -1178,20 +1178,40 @@ def api_status():
     return {"status": "ok", "message": msg}
 
 @app.post("/geomoz-api/convert-geom")
-async def convert_geom(file: UploadFile = File(...)):
-    """Converts a KML, GPX or zipped Shapefile into a GeoJSON dict."""
+async def convert_geom(
+    file: UploadFile = File(...),
+    uid: str = Depends(require_firebase_auth),
+):
+    """Convert an authenticated user's KML/GPX/GeoJSON into GeoJSON.
+
+    Archive formats are intentionally excluded here until archive expansion can
+    be validated against zip-bomb/path-traversal limits.
+    """
     import tempfile
     import os
     import json
     
-    ext = file.filename.split('.')[-1].lower()
-    if ext not in ['kml', 'gpx', 'zip', 'json', 'geojson']:
-        raise HTTPException(status_code=400, detail="Formato não suportado. Use KML, GPX, ZIP ou GeoJSON.")
-        
+    filename = file.filename or "upload"
+    ext = filename.split('.')[-1].lower()
+    if ext not in ['kml', 'gpx', 'json', 'geojson']:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato não suportado. Use KML, GPX ou GeoJSON.",
+        )
+
+    max_upload_bytes = 10 * 1024 * 1024
+    tmp_path = None
+
     try:
-        # Save uploaded file to temp
+        content = await file.read(max_upload_bytes + 1)
+        if len(content) > max_upload_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail="Ficheiro demasiado grande. Limite máximo: 10 MB.",
+            )
+
+        # Save uploaded file to a private temporary path.
         with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
-            content = await file.read()
             tmp.write(content)
             tmp_path = tmp.name
             
@@ -1207,12 +1227,21 @@ async def convert_geom(file: UploadFile = File(...)):
         gdf.geometry = gdf.geometry.buffer(0)
             
         geojson_str = gdf.to_json()
-        os.remove(tmp_path)
-        
         return json.loads(geojson_str)
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
         logger.exception("Erro ao converter ficheiro de geometria.")
-        raise HTTPException(status_code=500, detail=f"Erro na conversão: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Erro ao converter o ficheiro de geometria.",
+        )
+    finally:
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
 
@@ -3441,6 +3470,7 @@ def export_shapefile(
     province: Optional[str] = Query(None),
     district: Optional[str] = Query(None),
     layer: str = Query("geology"),
+    uid: str = Depends(require_firebase_auth),
 ):
     """Export a layer as a zipped ESRI Shapefile (QGIS/ArcGIS-ready).
 
