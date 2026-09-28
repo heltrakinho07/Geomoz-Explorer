@@ -30,16 +30,67 @@ try:
 except ValueError:
     pass
 
+def _admin_uid_allowlist() -> set[str]:
+    return {
+        uid.strip()
+        for uid in os.environ.get("GEOMOZ_ADMIN_UIDS", "").split(",")
+        if uid.strip()
+    }
+
+
 async def require_firebase_auth(request: Request) -> str:
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Token Firebase ausente ou inválido.")
     token = auth_header.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Token Firebase ausente ou inválido.")
     try:
         decoded = firebase_auth.verify_id_token(token)
-        return decoded["uid"]
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Token Firebase inválido: {str(e)}")
+        uid = decoded.get("uid")
+        if not uid:
+            raise ValueError("uid ausente")
+        return uid
+    except HTTPException:
+        raise
+    except Exception:
+        # Never return verifier internals or token details to clients.
+        raise HTTPException(status_code=401, detail="Token Firebase inválido.")
+
+
+async def require_admin_auth(request: Request) -> str:
+    """Require a Firebase-authenticated GeoMoz administrator.
+
+    Admin status can come from a Firebase custom claim (admin=true) or from the
+    server-side GEOMOZ_ADMIN_UIDS allowlist. The allowlist is useful during the
+    migration to custom claims and never leaves the backend.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Autenticação administrativa necessária.")
+
+    token = auth_header.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Autenticação administrativa necessária.")
+
+    try:
+        decoded = firebase_auth.verify_id_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token Firebase inválido.")
+
+    uid = decoded.get("uid")
+    if not uid:
+        raise HTTPException(status_code=401, detail="Token Firebase inválido.")
+
+    is_admin = decoded.get("admin") is True or uid in _admin_uid_allowlist()
+    if not is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Esta operação requer privilégios de administrador.",
+        )
+
+    return uid
+
 
 async def require_gee_auth(uid: str = Depends(require_firebase_auth)) -> str:
     from gee_module import _init_gee
@@ -119,7 +170,7 @@ cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -1171,7 +1222,7 @@ class GEEServiceAccountKeyRequest(BaseModel):
 
 
 @app.get("/geomoz-api/gee/config")
-def gee_config():
+def gee_config(admin_uid: str = Depends(require_admin_auth)):
     """
     Return current GEE configuration (with sensitive values masked).
     Used by the Settings page to show the user what's configured.
@@ -1222,13 +1273,25 @@ def gee_config():
 
 
 @app.post("/geomoz-api/gee/configure")
-def gee_configure(req: GEEServiceAccountKeyRequest):
+def gee_configure(
+    req: GEEServiceAccountKeyRequest,
+    admin_uid: str = Depends(require_admin_auth),
+):
     """
     Update GEE credentials and reinitialize the connection.
     Accepts service_account_key (JSON string) and/or project_id.
     Returns the new connection status.
     """
     from gee_module import reset_gee, _init_gee, gee_status as _gee_status
+
+    if os.environ.get("GEOMOZ_ALLOW_RUNTIME_CONFIG", "false").lower() != "true":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Configuração GEE global em runtime está desactivada. "
+                "Use Secret Manager / configuração de deployment."
+            ),
+        )
 
     changed = False
 
