@@ -1730,8 +1730,22 @@ async def create_analysis_job(
     Workflows are migrated one-by-one while synchronous endpoints remain
     available for backwards compatibility.
     """
-    from analysis_jobs import submit_job
+    from analysis_jobs import active_job_count, submit_job
     import gee_session_store
+
+    max_active_jobs = max(
+        1,
+        min(int(os.environ.get("ANALYSIS_MAX_ACTIVE_PER_USER", "5")), 20),
+    )
+    active_jobs = active_job_count(uid)
+    if active_jobs >= max_active_jobs:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Já existem {active_jobs} análises activas. "
+                "Aguarde ou cancele uma análise antes de iniciar outra."
+            ),
+        )
 
     supported_job_types = {
         "gee.index",
