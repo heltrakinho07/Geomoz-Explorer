@@ -10,6 +10,7 @@ interface AnalysisJobProgressProps {
   job: AnalysisJob<unknown> | null;
   title?: string;
   onCancel?: () => unknown | Promise<unknown>;
+  onRetry?: () => unknown | Promise<unknown>;
 }
 
 const STEPS = [
@@ -24,6 +25,7 @@ export default function AnalysisJobProgress({
   job,
   title = "Progresso da análise",
   onCancel,
+  onRetry,
 }: AnalysisJobProgressProps) {
   if (!job) return null;
 
@@ -46,6 +48,15 @@ export default function AnalysisJobProgress({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          {onRetry && (job.status === "failed" || job.status === "cancelled") && (
+            <button
+              type="button"
+              onClick={() => void onRetry()}
+              className="rounded-full border border-sky-200 px-2 py-1 text-[10px] font-semibold text-sky-600 transition hover:bg-sky-50"
+            >
+              Repetir
+            </button>
+          )}
           {onCancel && (job.status === "queued" || job.status === "processing") && (
             <button
               type="button"
