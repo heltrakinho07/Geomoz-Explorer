@@ -147,6 +147,8 @@ export default function GeoMozAIAgentTab({
   const [explaining, setExplaining] = useState(false);
   const [plan, setPlan] = useState<AnalysisPlan | null>(null);
   const [planBusy, setPlanBusy] = useState(false);
+  const [planExplanation, setPlanExplanation] = useState<string | null>(null);
+  const [planExplaining, setPlanExplaining] = useState(false);
   const [conversation, setConversation] = useState<ConversationEntry[]>([]);
 
   const spatial = useMemo(() => aoiToAPI(aoi), [aoi]);
@@ -269,6 +271,25 @@ export default function GeoMozAIAgentTab({
     }
   }
 
+  async function explainPlan() {
+    if (!plan?.id || plan.status !== "completed" || planExplaining) return;
+
+    setPlanExplaining(true);
+    setRequestError(null);
+    try {
+      const res = await apiFetch(`/geomoz-api/ai/plans/${plan.id}/explain`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error(await parseError(res));
+      const data = await res.json() as { explanation: string };
+      setPlanExplanation(data.explanation);
+    } catch (err) {
+      setRequestError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPlanExplaining(false);
+    }
+  }
+
   async function retryPlan() {
     if (!plan?.id || planBusy) return;
     setPlanBusy(true);
@@ -311,6 +332,7 @@ export default function GeoMozAIAgentTab({
     setPrompt("");
     setRequestError(null);
     setPlan(null);
+    setPlanExplanation(null);
     setSubmitting(true);
     setConversation(current => [
       ...current,
@@ -594,6 +616,40 @@ export default function GeoMozAIAgentTab({
                   {plan.error?.message && (
                     <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[10px] text-red-700">
                       Etapa {plan.error.step ?? plan.current_step + 1}: {plan.error.message}
+                    </div>
+                  )}
+
+                  {plan.status === "completed" && status?.agent.configured && (
+                    <div className="mt-3 border-t border-slate-100 pt-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-[10px] font-semibold uppercase tracking-wider text-violet-500">
+                            Síntese integrada
+                          </div>
+                          <div className="mt-0.5 text-[10px] text-slate-400">
+                            Combina apenas as evidências reais das etapas concluídas.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void explainPlan()}
+                          disabled={planExplaining}
+                          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-[10px] font-semibold text-white hover:bg-violet-700 disabled:bg-slate-300"
+                        >
+                          {planExplaining ? (
+                            <Loader2 size={11} className="animate-spin" />
+                          ) : (
+                            <Sparkles size={11} />
+                          )}
+                          {planExplanation ? "Actualizar síntese" : "Sintetizar plano"}
+                        </button>
+                      </div>
+
+                      {planExplanation && (
+                        <div className="mt-3 whitespace-pre-wrap rounded-lg bg-violet-50/70 px-3 py-3 text-xs leading-relaxed text-slate-700">
+                          {planExplanation}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
