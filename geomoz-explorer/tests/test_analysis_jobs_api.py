@@ -365,3 +365,63 @@ class TestAnalysisJobAPI:
         )
 
         assert resp.status_code == 404
+
+
+class TestAnalysisJobCancellation:
+    def test_cancel_job_endpoint(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import analysis_jobs
+
+        monkeypatch.setattr(
+            analysis_jobs,
+            "cancel_job",
+            lambda uid, job_id: {
+                "id": job_id,
+                "type": "gee.index",
+                "project_id": None,
+                "status": "cancelled",
+                "stage": "cancelled",
+                "progress": 25,
+                "message": "Análise cancelada pelo utilizador.",
+                "payload": {"index": "ndvi"},
+                "result": None,
+                "error": None,
+                "created_at": "2026-09-28T00:00:00+00:00",
+                "updated_at": "2026-09-28T00:00:05+00:00",
+                "started_at": "2026-09-28T00:00:01+00:00",
+                "completed_at": "2026-09-28T00:00:05+00:00",
+                "execution_mode": "local_executor",
+            },
+        )
+
+        resp = client.post("/geomoz-api/jobs/job-cancel-1/cancel")
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "cancelled"
+
+    def test_cancel_missing_job_returns_404(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import analysis_jobs
+        monkeypatch.setattr(analysis_jobs, "cancel_job", lambda uid, job_id: None)
+
+        resp = client.post("/geomoz-api/jobs/missing/cancel")
+
+        assert resp.status_code == 404
+
+    def test_cancel_job_marks_active_job_cancelled(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import analysis_jobs
+
+        monkeypatch.setattr(analysis_jobs, "_firestore", lambda: None)
+        uid = "cancel-unit-user"
+        job = analysis_jobs.create_job(uid, "gee.index", {"index": "ndvi"})
+
+        cancelled = analysis_jobs.cancel_job(uid, job["id"])
+
+        assert cancelled is not None
+        assert cancelled["status"] == "cancelled"
+        assert cancelled["stage"] == "cancelled"
+        assert cancelled["completed_at"] is not None
