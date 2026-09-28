@@ -1094,9 +1094,28 @@ async def delete_project_endpoint(
     project_id: str,
     uid: str = Depends(require_firebase_auth),
 ):
-    from projects_store import delete_project
-    if not delete_project(uid, project_id):
+    from project_outputs import delete_output, list_outputs
+    from projects_store import delete_project, get_project
+
+    if not get_project(uid, project_id):
         raise HTTPException(status_code=404, detail="Projecto não encontrado.")
+
+    # Clean durable deliverables and their private Storage assets first.
+    # Job/plan history is intentionally independent and follows its own
+    # retention policy.
+    for output in list_outputs(uid, project_id=project_id, limit=200):
+        try:
+            delete_output(uid, output["id"])
+        except Exception as exc:
+            logger.warning(
+                "Could not clean output=%s before deleting project=%s: %s",
+                output.get("id"),
+                project_id,
+                exc,
+            )
+
+    if not delete_project(uid, project_id):
+        raise HTTPException(status_code=500, detail="Falha ao eliminar o projecto.")
     return {"deleted": True, "id": project_id}
 
 # ── GEE endpoints ──────────────────────────────────────────────────────────────
