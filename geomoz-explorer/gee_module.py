@@ -229,34 +229,49 @@ def reset_gee():
 
 
 def gee_status(uid: str | None = None) -> dict:
-    """Return a verified Earth Engine connection status."""
+    """Return a verified Earth Engine connection status.
+
+    The lightweight probe participates in the same execution lock as normal
+    analyses so a status check cannot switch process-global EE credentials
+    while another user's request is still running.
+    """
     try:
         import ee
-        _init_gee(uid)
-        ee.String("geomoz-ok").getInfo()
 
-        token_data = gee_session_store.get_token(uid) if uid else None
-        sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
-        project = ((token_data or {}).get("project") if uid else os.environ.get("GEE_PROJECT_ID", "").strip())
-        if not project and sa_key:
-            try:
-                project = json.loads(sa_key).get("project_id", "")
-            except json.JSONDecodeError:
-                project = ""
+        with gee_execution(uid):
+            ee.String("geomoz-ok").getInfo()
 
-        auth_type = "oauth2" if uid else ("service_account" if sa_key else "application_default")
-        return {
-            "connected": True,
-            "auth_type": auth_type,
-            "project": project or None,
-            "message": "Google Earth Engine conectado e validado.",
-            "reason": None,
-        }
+            token_data = gee_session_store.get_token(uid) if uid else None
+            sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
+            project = (
+                (token_data or {}).get("project")
+                if uid
+                else os.environ.get("GEE_PROJECT_ID", "").strip()
+            )
+            if not project and sa_key:
+                try:
+                    project = json.loads(sa_key).get("project_id", "")
+                except json.JSONDecodeError:
+                    project = ""
+
+            auth_type = "oauth2" if uid else (
+                "service_account" if sa_key else "application_default"
+            )
+            return {
+                "connected": True,
+                "auth_type": auth_type,
+                "project": project or None,
+                "message": "Google Earth Engine conectado e validado.",
+                "reason": None,
+            }
     except Exception as exc:
         return {
             "connected": False,
             "auth_type": "oauth2" if uid else None,
-            "project": ((gee_session_store.get_token(uid) or {}).get("project") if uid else os.environ.get("GEE_PROJECT_ID") or None),
+            "project": (
+                (gee_session_store.get_token(uid) or {}).get("project")
+                if uid else os.environ.get("GEE_PROJECT_ID") or None
+            ),
             "message": str(exc),
             "reason": "connection_failed",
         }
