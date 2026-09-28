@@ -1199,6 +1199,32 @@ async def cancel_analysis_job(
     return job
 
 
+@app.post("/geomoz-api/jobs/{job_id}/retry", status_code=202)
+async def retry_analysis_job(
+    job_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Create a new execution using the same type, payload and project."""
+    from analysis_jobs import get_job
+
+    previous = get_job(uid, job_id)
+    if not previous:
+        raise HTTPException(status_code=404, detail="Analysis job não encontrado.")
+
+    if previous.get("status") in {"queued", "processing"}:
+        raise HTTPException(
+            status_code=409,
+            detail="A análise ainda está activa e não pode ser repetida.",
+        )
+
+    request = AnalysisJobCreateRequest(
+        type=previous["type"],
+        payload=previous.get("payload") or {},
+        project_id=previous.get("project_id"),
+    )
+    return await create_analysis_job(request, uid)
+
+
 
 @app.post("/geomoz-api/gee/index")
 async def gee_index(req: GEEIndexRequest, uid: str = Depends(require_gee_auth)):
