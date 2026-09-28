@@ -257,7 +257,7 @@ def cancel_plan(uid: str, plan_id: str) -> Optional[dict[str, Any]]:
     plan["updated_at"] = now
 
     for step in plan.get("steps") or []:
-        if step.get("status") == "pending":
+        if step.get("status") in {"pending", "queued", "processing"}:
             step["status"] = "cancelled"
             step["message"] = "Etapa cancelada com o plano."
             step["completed_at"] = now
