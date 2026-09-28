@@ -668,6 +668,7 @@ function GeeAnalysisPanel({
     submitJob,
     running,
     error,
+    cancel: cancelJob,
     resetJob,
   } = useAnalysisJob<GeeResult>();
 
@@ -761,6 +762,7 @@ function GeeAnalysisPanel({
       <AnalysisJobProgress
         job={job}
         title={`GeoMoz Analysis · ${def.short}`}
+        onCancel={cancelJob}
       />
 
       {/* Error */}
@@ -1048,6 +1050,7 @@ function TargetingPanel({
     submitJob: submitTargetingJob,
     running: targetingRunning,
     error: targetingError,
+    cancel: cancelTargetingJob,
     resetJob: resetTargetingJob,
   } = useAnalysisJob<TargetingResult>();
   const [overlapRes, setOverlapRes]         = useState<OverlapResult | null>(null);
@@ -1236,6 +1239,7 @@ function TargetingPanel({
       <AnalysisJobProgress
         job={targetingJob}
         title="GeoMoz Mining · Targeting Mineral"
+        onCancel={cancelTargetingJob}
       />
 
       {targetingError && (
