@@ -815,6 +815,94 @@ async def gee_disconnect(uid: str = Depends(require_firebase_auth)):
         "reason": "disconnected_by_user",
     }
 
+class AnalysisJobCreateRequest(BaseModel):
+    type: str
+    payload: dict
+
+
+@app.post("/geomoz-api/jobs", status_code=202)
+async def create_analysis_job(
+    req: AnalysisJobCreateRequest,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Create an asynchronous GeoMoz analysis job.
+
+    The job API is intentionally generic. The first migrated workflow is
+    gee.index; additional analysis types will be registered incrementally.
+    """
+    from analysis_jobs import submit_job
+
+    if req.type != "gee.index":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tipo de job ainda não suportado: {req.type}",
+        )
+
+    try:
+        validated = GEEIndexRequest(**req.payload)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    import gee_session_store
+    if not gee_session_store.get_token(uid):
+        raise HTTPException(
+            status_code=409,
+            detail="Conecte o Google Earth Engine antes de iniciar esta análise.",
+        )
+
+    normalized_payload = validated.model_dump()
+    region = _region_geojson(
+        validated.province,
+        validated.district,
+        validated.geometry,
+    )
+
+    def runner(progress):
+        from gee_module import _init_gee, compute_index_tile
+
+        progress(10, "auth", "A validar ligação ao Earth Engine.")
+        _init_gee(uid)
+
+        progress(25, "preparing", "A preparar imagens e área de análise.")
+        result = compute_index_tile(
+            validated.index,
+            region,
+            validated.start_date,
+            validated.end_date,
+            validated.cloud_pct,
+        )
+
+        progress(90, "rendering", "A preparar mapa e estatísticas.")
+        result["province"] = validated.province
+        result["district"] = validated.district
+        return result
+
+    return submit_job(uid, req.type, normalized_payload, runner)
+
+
+@app.get("/geomoz-api/jobs")
+async def get_analysis_jobs(
+    limit: int = Query(20, ge=1, le=100),
+    uid: str = Depends(require_firebase_auth),
+):
+    """List recent analysis jobs belonging to the current user."""
+    from analysis_jobs import list_jobs
+    return {"jobs": list_jobs(uid, limit=limit)}
+
+
+@app.get("/geomoz-api/jobs/{job_id}")
+async def get_analysis_job(
+    job_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Return one user-owned analysis job."""
+    from analysis_jobs import get_job
+    job = get_job(uid, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Analysis job não encontrado.")
+    return job
+
+
 @app.post("/geomoz-api/gee/index")
 async def gee_index(req: GEEIndexRequest, uid: str = Depends(require_gee_auth)):
     """
