@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { GeoMozWorkspaceTab } from "@/components/CommandCenter";
+import GeoMozMark from "@/components/GeoMozMark";
 
 interface WelcomeDialogProps {
   open: boolean;
@@ -82,9 +83,7 @@ export default function WelcomeDialog({
 
           <div className="relative">
             <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-400 to-cyan-500 shadow-lg shadow-sky-950/30">
-                <Sparkles size={20} />
-              </div>
+              <GeoMozMark size={44} className="shrink-0 shadow-lg shadow-sky-950/30" />
               <div>
                 <DialogTitle className="text-xl font-bold tracking-tight text-white">
                   Bem-vindo ao GeoMoz
