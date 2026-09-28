@@ -9,9 +9,8 @@ env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: europe-west1
   SERVICE_NAME: geomoz-explorer-api
-  WORKER_SERVICE_NAME: geomoz-analysis-worker
+  ANALYSIS_JOB_NAME: geomoz-analysis-job
   IMAGE_NAME: geomoz-explorer-api
-  TASK_QUEUE: geomoz-analysis
 
 jobs:
   deploy:
@@ -64,145 +63,59 @@ jobs:
           echo "service_account=${RUNTIME_SA}" >> "${GITHUB_OUTPUT}"
           echo "Using Cloud Run runtime identity: ${RUNTIME_SA}"
 
-      - name: Check Cloud Tasks API
-        id: tasks-api
-        run: |
-          set +e
-          ENABLED=$(gcloud services list \
-            --enabled \
-            --project "${PROJECT_ID}" \
-            --filter='config.name:cloudtasks.googleapis.com' \
-            --format='value(config.name)' 2>/dev/null)
-
-          if [ "${ENABLED}" = "cloudtasks.googleapis.com" ]; then
-            echo "Cloud Tasks API is already enabled."
-            echo "enabled=true" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          echo "Cloud Tasks API is not enabled. Attempting one-time bootstrap..."
-          gcloud services enable cloudtasks.googleapis.com \
-            --project "${PROJECT_ID}" \
-            --quiet
-          STATUS=$?
-
-          if [ "${STATUS}" -eq 0 ]; then
-            echo "Cloud Tasks API enabled."
-            echo "enabled=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "::warning::Cloud Tasks API could not be enabled by the deployment identity. The API will deploy with the safe local-executor fallback. Grant roles/serviceusage.serviceUsageAdmin once or enable cloudtasks.googleapis.com manually, then rerun this workflow."
-            echo "enabled=false" >> "${GITHUB_OUTPUT}"
-          fi
-          exit 0
-
-      - name: Ensure Cloud Tasks queue
-        id: task-queue
-        if: steps.tasks-api.outputs.enabled == 'true'
-        continue-on-error: true
-        run: |
-          gcloud tasks queues describe "${TASK_QUEUE}" \
-            --location "${REGION}" \
-            --project "${PROJECT_ID}" >/dev/null 2>&1 || \
-          gcloud tasks queues create "${TASK_QUEUE}" \
-            --location "${REGION}" \
-            --project "${PROJECT_ID}" \
-            --max-concurrent-dispatches=10 \
-            --max-dispatches-per-second=5 \
-            --max-attempts=3 \
-            --min-backoff=5s \
-            --max-backoff=60s
-
-          gcloud tasks queues update "${TASK_QUEUE}" \
-            --location "${REGION}" \
-            --project "${PROJECT_ID}" \
-            --max-concurrent-dispatches=10 \
-            --max-dispatches-per-second=5 \
-            --max-attempts=3 \
-            --min-backoff=5s \
-            --max-backoff=60s
-
-      - name: Grant runtime queue permissions
-        id: task-iam
-        if: steps.tasks-api.outputs.enabled == 'true' && steps.task-queue.outcome == 'success'
+      - name: Deploy isolated analysis job
+        id: analysis-job
         continue-on-error: true
         env:
           RUNTIME_SA: ${{ steps.runtime.outputs.service_account }}
         run: |
-          gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-            --member="serviceAccount:${RUNTIME_SA}" \
-            --role="roles/cloudtasks.enqueuer" \
-            --condition=None \
-            --quiet
-
-          gcloud iam service-accounts add-iam-policy-binding "${RUNTIME_SA}" \
-            --member="serviceAccount:${RUNTIME_SA}" \
-            --role="roles/iam.serviceAccountUser" \
-            --project "${PROJECT_ID}" \
-            --quiet
-
-      - name: Deploy private analysis worker
-        id: worker
-        if: steps.tasks-api.outputs.enabled == 'true' && steps.task-queue.outcome == 'success' && steps.task-iam.outcome == 'success'
-        continue-on-error: true
-        env:
-          RUNTIME_SA: ${{ steps.runtime.outputs.service_account }}
-        run: |
-          gcloud run deploy "${WORKER_SERVICE_NAME}" \
+          gcloud run jobs deploy "${ANALYSIS_JOB_NAME}" \
             --image "${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_NAME}/${SERVICE_NAME}:${{ github.sha }}" \
-            --platform managed \
             --region "${REGION}" \
-            --no-allow-unauthenticated \
             --service-account "${RUNTIME_SA}" \
-            --port 5003 \
             --memory 2Gi \
             --cpu 1 \
-            --concurrency 1 \
-            --max-instances 10 \
-            --min-instances 0 \
-            --timeout 900s \
-            --set-env-vars="^@^PYTHONUNBUFFERED=1@GEOMOZ_SERVICE_ROLE=analysis-worker@ANALYSIS_EXECUTION_BACKEND=local@ANALYSIS_TASK_MAX_RETRIES=2@FIREBASE_PROJECT_ID=geoprocessamento-426809@GEOMOZ_STORAGE_BUCKET=geoprocessamento-426809.firebasestorage.app@GEOMOZ_ALLOW_RUNTIME_CONFIG=false" \
-            --set-secrets=GEE_SERVICE_ACCOUNT_KEY=geomoz-gee-key:latest
+            --tasks 1 \
+            --parallelism 1 \
+            --task-timeout 900s \
+            --max-retries 2 \
+            --command python \
+            --args analysis_job_worker.py \
+            --set-env-vars="^@^PYTHONUNBUFFERED=1@GEOMOZ_SERVICE_ROLE=analysis-job@ANALYSIS_EXECUTION_BACKEND=local@ANALYSIS_RUN_JOB_MAX_RETRIES=2@FIREBASE_PROJECT_ID=geoprocessamento-426809@GEOMOZ_STORAGE_BUCKET=geoprocessamento-426809.firebasestorage.app@GEOMOZ_ALLOW_RUNTIME_CONFIG=false" \
+            --set-secrets=GEE_SERVICE_ACCOUNT_KEY=geomoz-gee-key:latest \
+            --quiet
 
-      - name: Authorize Cloud Tasks to invoke worker
-        id: worker-iam
-        if: steps.worker.outcome == 'success'
+      - name: Authorize API to execute analysis job
+        id: analysis-job-iam
+        if: steps.analysis-job.outcome == 'success'
         continue-on-error: true
         env:
           RUNTIME_SA: ${{ steps.runtime.outputs.service_account }}
         run: |
-          gcloud run services add-iam-policy-binding "${WORKER_SERVICE_NAME}" \
+          # Per-execution uid/job_id are supplied through env overrides, so
+          # run.jobs.runWithOverrides is required. Scope it to this job only.
+          gcloud run jobs add-iam-policy-binding "${ANALYSIS_JOB_NAME}" \
             --region "${REGION}" \
+            --project "${PROJECT_ID}" \
             --member="serviceAccount:${RUNTIME_SA}" \
-            --role="roles/run.invoker" \
+            --role="roles/run.jobsExecutorWithOverrides" \
             --quiet
-
-      - name: Resolve worker URL
-        id: worker-url
-        if: steps.worker.outcome == 'success' && steps.worker-iam.outcome == 'success'
-        continue-on-error: true
-        run: |
-          WORKER_URL=$(gcloud run services describe "${WORKER_SERVICE_NAME}" \
-            --platform managed \
-            --region "${REGION}" \
-            --format 'value(status.url)')
-          test -n "${WORKER_URL}"
-          echo "worker_url=${WORKER_URL}" >> "${GITHUB_OUTPUT}"
-          echo "Analysis worker: ${WORKER_URL}"
 
       - name: Deploy public API
         env:
           RUNTIME_SA: ${{ steps.runtime.outputs.service_account }}
-          RESOLVED_WORKER_URL: ${{ steps.worker-url.outputs.worker_url }}
+          ANALYSIS_JOB_DEPLOY_OUTCOME: ${{ steps.analysis-job.outcome }}
+          ANALYSIS_JOB_IAM_OUTCOME: ${{ steps.analysis-job-iam.outcome }}
         run: |
           BACKEND="local"
           EXTRA_ANALYSIS_ENV=""
 
-          if [ -n "${RESOLVED_WORKER_URL}" ]; then
-            BACKEND="cloud_tasks"
-            EXTRA_ANALYSIS_ENV="@ANALYSIS_TASKS_PROJECT=${PROJECT_ID}@ANALYSIS_TASKS_LOCATION=${REGION}@ANALYSIS_TASKS_QUEUE=${TASK_QUEUE}@ANALYSIS_WORKER_URL=${RESOLVED_WORKER_URL}@ANALYSIS_TASKS_AUDIENCE=${RESOLVED_WORKER_URL}@ANALYSIS_TASKS_SERVICE_ACCOUNT=${RUNTIME_SA}"
-            echo "Deploying API with distributed Analysis Engine V2."
+          if [ "${ANALYSIS_JOB_DEPLOY_OUTCOME}" = "success" ] && [ "${ANALYSIS_JOB_IAM_OUTCOME}" = "success" ]; then
+            BACKEND="cloud_run_jobs"
+            EXTRA_ANALYSIS_ENV="@ANALYSIS_RUN_JOB_PROJECT=${PROJECT_ID}@ANALYSIS_RUN_JOB_LOCATION=${REGION}@ANALYSIS_RUN_JOB_NAME=${ANALYSIS_JOB_NAME}@ANALYSIS_RUN_JOB_TIMEOUT_SECONDS=900"
+            echo "Deploying API with isolated Cloud Run Jobs Analysis Engine."
           else
-            echo "::warning::Distributed worker bootstrap is incomplete. Deploying API with local executor fallback so production remains operational."
+            echo "::warning::Cloud Run analysis job bootstrap is incomplete. Deploying API with local executor fallback so production remains operational."
           fi
 
           gcloud run deploy "${SERVICE_NAME}" \
@@ -222,10 +135,11 @@ jobs:
 
       - name: Analysis Engine deployment status
         run: |
-          if [ -n "${{ steps.worker-url.outputs.worker_url }}" ]; then
-            echo "✅ Analysis Engine V2 distributed worker is active."
+          if [ "${{ steps.analysis-job.outcome }}" = "success" ] && [ "${{ steps.analysis-job-iam.outcome }}" = "success" ]; then
+            echo "✅ Analysis Engine V2 isolated Cloud Run Jobs backend is active."
+            echo "Job: ${ANALYSIS_JOB_NAME} (${REGION})"
           else
-            echo "⚠️ Analysis Engine V2 code is deployed, but Cloud Tasks bootstrap is pending."
+            echo "⚠️ Isolated analysis job bootstrap is incomplete."
             echo "Production is safely using the local executor fallback."
           fi
 
