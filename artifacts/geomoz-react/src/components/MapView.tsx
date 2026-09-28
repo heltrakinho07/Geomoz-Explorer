@@ -16,6 +16,7 @@ import type { LayerState } from "./Sidebar";
 import MapTools from "./MapTools";
 import MapDraw from "./MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
+import { useWorkspaceLayers } from "@/hooks/useWorkspaceLayers";
 
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -132,6 +133,7 @@ function NorthArrow() {
 }
 
 export default function MapView({ province, district, layers, colorBy, aoi, mapCenter = [-18, 35], mapZoom = 5, drawingEnabled, finishRequest, onDrawComplete, onDrawCancel, onProvinceClick, onMapState, mapRef }: MapViewProps) {
+  const { resultLayers } = useWorkspaceLayers();
   const { data: provinceGeoJSON } = useProvincesGeoJSON();
   const { data: districtGeoJSON } = useDistrictsGeoJSON(province);
   const { data: geologyGeoJSON, isFetching: loadingGeology } = useGeologyGeoJSON(province, district, colorBy, layers.geology);
@@ -224,6 +226,17 @@ export default function MapView({ province, district, layers, colorBy, aoi, mapC
         <MapViewportSync center={mapCenter} zoom={mapZoom} />
         <MapStateTracker onMapState={onMapState} mapRef={mapRef} />
         <CoordTracker onMove={(lat, lng) => setCoords(lat !== null && lng !== null ? { lat, lng } : null)} />
+
+        {resultLayers
+          .filter(layer => layer.visible && layer.tileUrl)
+          .map(layer => (
+            <TileLayer
+              key={layer.id}
+              url={layer.tileUrl}
+              opacity={layer.opacity}
+              attribution="GeoMoz Analysis"
+            />
+          ))}
 
         {layers.geology && province && geologyGeoJSON && (
           <>
