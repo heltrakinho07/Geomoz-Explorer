@@ -39,11 +39,12 @@ export default function App() {
     <AuthProvider>
       <ProjectProvider>
         <QueryClientProvider client={queryClient}>
-        <ErrorBoundary FallbackComponent={ErrorFallback}>
-          <Explorer />
-        </ErrorBoundary>
-        <Toaster />
-      </QueryClientProvider>
+          <ErrorBoundary FallbackComponent={ErrorFallback}>
+            <Explorer />
+          </ErrorBoundary>
+          <Toaster />
+        </QueryClientProvider>
+      </ProjectProvider>
     </AuthProvider>
   );
 }
