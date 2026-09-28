@@ -227,3 +227,37 @@ def test_watershed_template_identifies_hydrobasins_method() -> None:
     assert "HydroBASINS" in html
     assert "Ponto de saída" in html
     assert "delimitação hidrológica" in html
+
+
+
+def test_report_can_embed_private_map_data_uri() -> None:
+    from report_renderer import render_output_html
+
+    output = {
+        "id": "output-map-1",
+        "type": "analysis_report",
+        "title": "Relatório com mapa",
+        "description": "",
+        "created_at": "2026-09-28T10:00:00+00:00",
+        "content": {
+            "analysis_type": "gee.flood",
+            "parameters": {},
+            "result": {
+                "areaKm2": 10.5,
+                "scenesEvent": 2,
+                "scenesBaseline": 4,
+            },
+            "job": {},
+        },
+    }
+    data_uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="
+
+    html = render_output_html(
+        output,
+        {"name": "Projecto Mapa"},
+        map_data_uri=data_uri,
+    )
+
+    assert 'class="report-map"' in html
+    assert data_uri in html
+    assert "Mapa do resultado" in html
