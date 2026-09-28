@@ -571,6 +571,7 @@ def active_job_count(uid: str | None = None) -> int:
                     db.collection("users")
                     .document(uid)
                     .collection("analysis_jobs")
+                    .where("status", "in", ["queued", "processing"])
                     .stream()
                 )
                 return sum(
