@@ -1186,6 +1186,19 @@ async def get_analysis_job(
         raise HTTPException(status_code=404, detail="Analysis job não encontrado.")
     return job
 
+@app.post("/geomoz-api/jobs/{job_id}/cancel")
+async def cancel_analysis_job(
+    job_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Cancel a queued or running analysis job owned by the current user."""
+    from analysis_jobs import cancel_job
+    job = cancel_job(uid, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Analysis job não encontrado.")
+    return job
+
+
 
 @app.post("/geomoz-api/gee/index")
 async def gee_index(req: GEEIndexRequest, uid: str = Depends(require_gee_auth)):
