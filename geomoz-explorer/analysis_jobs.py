@@ -97,6 +97,7 @@ def _cloud_tasks_config() -> dict[str, str]:
 def _enqueue_cloud_task(uid: str, job_id: str) -> str:
     """Enqueue one idempotently named HTTP task for the private worker."""
     from google.cloud import tasks_v2
+    from google.protobuf import duration_pb2
 
     config = _cloud_tasks_config()
     client = tasks_v2.CloudTasksClient()
@@ -108,8 +109,16 @@ def _enqueue_cloud_task(uid: str, job_id: str) -> str:
         {"uid": uid, "job_id": job_id}, separators=(",", ":")
     ).encode("utf-8")
 
+    dispatch_seconds = max(
+        60,
+        min(
+            int(os.getenv("ANALYSIS_TASK_DISPATCH_DEADLINE_SECONDS", "900")),
+            1800,
+        ),
+    )
     task = {
         "name": task_name,
+        "dispatch_deadline": duration_pb2.Duration(seconds=dispatch_seconds),
         "http_request": {
             "http_method": tasks_v2.HttpMethod.POST,
             "url": f'{config["worker_url"]}/geomoz-api/internal/analysis/run',
