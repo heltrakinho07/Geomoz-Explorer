@@ -1,6 +1,7 @@
 import {
   CheckCircle2,
   Circle,
+  Clock3,
   Loader2,
   XCircle,
 } from "lucide-react";
@@ -21,6 +22,25 @@ const STEPS = [
   { at: 90, label: "Resultado" },
 ];
 
+function durationMs(from?: string | null, toMs = Date.now()) {
+  if (!from) return null;
+  const startMs = Date.parse(from);
+  if (!Number.isFinite(startMs)) return null;
+  return Math.max(0, toMs - startMs);
+}
+
+function formatDuration(ms?: number | null) {
+  if (ms == null || !Number.isFinite(ms)) return "—";
+  if (ms < 1_000) return "<1 s";
+  const totalSeconds = Math.round(ms / 1_000);
+  if (totalSeconds < 60) return `${totalSeconds} s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 60) return `${minutes} min ${seconds}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours} h ${minutes % 60} min`;
+}
+
 export default function AnalysisJobProgress({
   job,
   title = "Progresso da análise",
@@ -34,6 +54,37 @@ export default function AnalysisJobProgress({
   const cancelled = job.status === "cancelled";
   const progress = Math.max(0, Math.min(job.progress || 0, 100));
   const activeAt = STEPS.reduce((latest, step) => progress >= step.at ? step.at : latest, 0);
+
+  const nowMs = Date.now();
+  const createdMs = Date.parse(job.created_at);
+  const startedMs = job.started_at ? Date.parse(job.started_at) : Number.NaN;
+  const completedMs = job.completed_at ? Date.parse(job.completed_at) : Number.NaN;
+
+  const queueMs =
+    job.timings?.queue_wait_ms ??
+    (Number.isFinite(startedMs) && Number.isFinite(createdMs)
+      ? Math.max(0, startedMs - createdMs)
+      : job.status === "queued"
+        ? durationMs(job.created_at, nowMs)
+        : null);
+
+  const executionMs =
+    job.timings?.execution_ms ??
+    (Number.isFinite(startedMs)
+      ? Math.max(
+          0,
+          (Number.isFinite(completedMs) ? completedMs : nowMs) - startedMs,
+        )
+      : null);
+
+  const totalMs =
+    job.timings?.total_ms ??
+    (Number.isFinite(createdMs)
+      ? Math.max(
+          0,
+          (Number.isFinite(completedMs) ? completedMs : nowMs) - createdMs,
+        )
+      : null);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -99,6 +150,35 @@ export default function AnalysisJobProgress({
           style={{ width: `${failed ? Math.max(progress, 8) : progress}%` }}
         />
       </div>
+
+      <div className="mt-2 grid grid-cols-3 gap-1.5">
+        {[
+          ["Fila", queueMs],
+          ["Processamento", executionMs],
+          ["Total", totalMs],
+        ].map(([label, value]) => (
+          <div key={String(label)} className="rounded-lg bg-slate-50 px-2 py-1.5">
+            <div className="flex items-center gap-1 text-[9px] font-medium uppercase tracking-wide text-slate-400">
+              <Clock3 size={9} />
+              {label}
+            </div>
+            <div className="mt-0.5 text-[11px] font-semibold tabular-nums text-slate-700">
+              {formatDuration(value as number | null)}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {(job.execution_mode || (job.attempt ?? 0) > 1) && (
+        <div className="mt-1.5 text-[9px] text-slate-400">
+          {job.execution_mode === "cloud_tasks"
+            ? "Worker distribuído"
+            : job.execution_mode === "local_executor"
+              ? "Worker local"
+              : job.execution_mode || ""}
+          {(job.attempt ?? 0) > 1 ? ` · tentativa ${job.attempt}` : ""}
+        </div>
+      )}
 
       <div className="mt-3 grid grid-cols-5 gap-1">
         {STEPS.map((step) => {
