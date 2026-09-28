@@ -26,6 +26,7 @@ def test_cloud_tasks_submit_does_not_run_in_api_process(
 ) -> None:
     analysis_jobs = clean_jobs
     monkeypatch.setenv("ANALYSIS_EXECUTION_BACKEND", "cloud_tasks")
+    monkeypatch.setattr(analysis_jobs, "_job_is_persisted", lambda uid, job_id: True)
 
     enqueued: list[tuple[str, str]] = []
     monkeypatch.setattr(
@@ -259,3 +260,156 @@ def test_analysis_engine_status_reports_distributed_backend(
     assert data["configured"] is True
     assert data["queue"] == "geomoz-analysis"
     assert data["active_jobs"] == 2
+
+
+
+def test_cloud_run_jobs_submit_dispatches_isolated_execution(
+    clean_jobs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analysis_jobs = clean_jobs
+    monkeypatch.setenv("ANALYSIS_EXECUTION_BACKEND", "cloud_run_jobs")
+    monkeypatch.setattr(
+        analysis_jobs,
+        "_job_is_persisted",
+        lambda uid, job_id: True,
+    )
+
+    dispatched: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        analysis_jobs,
+        "_enqueue_cloud_run_job",
+        lambda uid, job_id: (
+            dispatched.append((uid, job_id))
+            or "operations/analysis-execution"
+        ),
+    )
+
+    def must_not_run(progress):
+        raise AssertionError("runner must not execute inside the API process")
+
+    job = analysis_jobs.submit_job(
+        "uid-run-job",
+        "gee.index",
+        {"index": "ndvi"},
+        must_not_run,
+    )
+
+    assert job["status"] == "queued"
+    assert job["execution_mode"] == "cloud_run_jobs"
+    assert job["attempt"] == 0
+    assert dispatched == [("uid-run-job", job["id"])]
+
+
+def test_distributed_backend_falls_back_when_job_is_not_persisted(
+    clean_jobs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analysis_jobs = clean_jobs
+    monkeypatch.setenv("ANALYSIS_EXECUTION_BACKEND", "cloud_run_jobs")
+    monkeypatch.setattr(
+        analysis_jobs,
+        "_job_is_persisted",
+        lambda uid, job_id: False,
+    )
+
+    completed = []
+
+    def runner(progress):
+        completed.append(True)
+        return {"ok": True}
+
+    job = analysis_jobs.submit_job(
+        "uid-fallback",
+        "gee.index",
+        {"index": "ndvi"},
+        runner,
+    )
+
+    future = analysis_jobs._futures[("uid-fallback", job["id"])]
+    future.result(timeout=2)
+    result = analysis_jobs.get_job("uid-fallback", job["id"])
+
+    assert result is not None
+    assert result["execution_mode"] == "local_executor"
+    assert result["status"] == "completed"
+    assert completed == [True]
+
+
+def test_cloud_run_jobs_status_is_distributed(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import analysis_jobs
+
+    monkeypatch.setenv("ANALYSIS_EXECUTION_BACKEND", "cloud_run_jobs")
+    monkeypatch.setattr(analysis_jobs, "active_job_count", lambda uid=None: 1)
+    monkeypatch.setattr(
+        analysis_jobs,
+        "_cloud_run_job_config",
+        lambda: {
+            "project": "test-project",
+            "location": "europe-west1",
+            "job_name": "geomoz-analysis-job",
+        },
+    )
+
+    resp = client.get("/geomoz-api/analysis-engine/status")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["backend"] == "cloud_run_jobs"
+    assert data["distributed"] is True
+    assert data["configured"] is True
+    assert data["job_name"] == "geomoz-analysis-job"
+    assert data["active_jobs"] == 1
+
+
+def test_cloud_run_job_worker_passes_task_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import analysis_job_worker
+    import analysis_jobs
+    import api
+
+    monkeypatch.setenv("GEOMOZ_JOB_UID", "uid-worker")
+    monkeypatch.setenv("GEOMOZ_JOB_ID", "job-worker")
+    monkeypatch.setenv("CLOUD_RUN_TASK_ATTEMPT", "1")
+    monkeypatch.setenv("ANALYSIS_RUN_JOB_MAX_RETRIES", "2")
+
+    monkeypatch.setattr(
+        analysis_jobs,
+        "get_job",
+        lambda uid, job_id: {
+            "id": job_id,
+            "type": "gee.index",
+            "status": "queued",
+            "payload": {"index": "ndvi"},
+        },
+    )
+    monkeypatch.setattr(
+        api,
+        "_prepare_analysis_runner",
+        lambda uid, job_type, payload: (payload, lambda progress: {"ok": True}),
+    )
+
+    captured = {}
+
+    def fake_execute(uid, job_id, runner, *, retry_number=0, max_retries=0):
+        captured.update({
+            "uid": uid,
+            "job_id": job_id,
+            "retry_number": retry_number,
+            "max_retries": max_retries,
+        })
+        return {"status": "completed", "attempt": 2}
+
+    monkeypatch.setattr(analysis_jobs, "execute_job", fake_execute)
+
+    assert analysis_job_worker.run_once() == 0
+    assert captured == {
+        "uid": "uid-worker",
+        "job_id": "job-worker",
+        "retry_number": 1,
+        "max_retries": 2,
+    }
