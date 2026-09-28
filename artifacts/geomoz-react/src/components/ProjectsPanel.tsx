@@ -15,6 +15,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useProject } from "@/hooks/useProject";
 import type { AreaOfInterest } from "@/lib/aoi";
 import type { LayerState } from "@/components/Sidebar";
+import type { WorkspaceResultLayer } from "@/hooks/useWorkspaceLayers";
 import { useToast } from "@/hooks/use-toast";
 
 export interface GeoMozProject {
@@ -29,6 +30,7 @@ export interface GeoMozProject {
     zoom?: number;
     layers?: LayerState;
     color_by?: string;
+    result_layers?: WorkspaceResultLayer[];
   };
   created_at: string;
   updated_at: string;
@@ -46,6 +48,7 @@ interface ProjectsPanelProps {
   mapZoom: number;
   layers: LayerState;
   colorBy: string;
+  resultLayers: WorkspaceResultLayer[];
   onOpenProject: (project: GeoMozProject) => void;
 }
 
@@ -76,6 +79,7 @@ export default function ProjectsPanel({
   mapZoom,
   layers,
   colorBy,
+  resultLayers,
   onOpenProject,
 }: ProjectsPanelProps) {
   const { user } = useAuth();
@@ -99,8 +103,9 @@ export default function ProjectsPanel({
       zoom: mapZoom,
       layers,
       color_by: colorBy,
+      result_layers: resultLayers,
     },
-  }), [aoi, province, district, mapCenter, mapZoom, layers, colorBy]);
+  }), [aoi, province, district, mapCenter, mapZoom, layers, colorBy, resultLayers]);
 
   const loadProjects = useCallback(async () => {
     if (!user) {
