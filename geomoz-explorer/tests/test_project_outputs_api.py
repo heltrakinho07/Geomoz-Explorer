@@ -111,7 +111,13 @@ class TestProjectOutputsAPI:
             return {
                 "id": "output-1",
                 "owner_id": uid,
-                **kwargs,
+                "project_id": kwargs["project_id"],
+                "type": kwargs["output_type"],
+                "title": kwargs["title"],
+                "description": kwargs["description"],
+                "source_type": kwargs["source_type"],
+                "source_id": kwargs["source_id"],
+                "content": kwargs["content"],
                 "created_at": "2026-09-28T00:01:00+00:00",
                 "updated_at": "2026-09-28T00:01:00+00:00",
             }
@@ -254,7 +260,13 @@ class TestProjectOutputsAPI:
             return {
                 "id": "output-plan-1",
                 "owner_id": uid,
-                **kwargs,
+                "project_id": kwargs["project_id"],
+                "type": kwargs["output_type"],
+                "title": kwargs["title"],
+                "description": kwargs["description"],
+                "source_type": kwargs["source_type"],
+                "source_id": kwargs["source_id"],
+                "content": kwargs["content"],
                 "created_at": "2026-09-28T00:11:00+00:00",
                 "updated_at": "2026-09-28T00:11:00+00:00",
             }
