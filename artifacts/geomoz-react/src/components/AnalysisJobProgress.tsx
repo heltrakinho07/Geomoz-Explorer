@@ -28,6 +28,7 @@ export default function AnalysisJobProgress({
   const failed = job.status === "failed";
   const completed = job.status === "completed";
   const progress = Math.max(0, Math.min(job.progress || 0, 100));
+  const activeAt = STEPS.reduce((latest, step) => progress >= step.at ? step.at : latest, 0);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -73,8 +74,7 @@ export default function AnalysisJobProgress({
       <div className="mt-3 grid grid-cols-5 gap-1">
         {STEPS.map((step) => {
           const done = completed || progress >= step.at;
-          const active = !completed && !failed && done &&
-            (STEPS.findLast((candidate) => progress >= candidate.at)?.at === step.at);
+          const active = !completed && !failed && done && activeAt === step.at;
 
           return (
             <div key={step.label} className="min-w-0 text-center">
