@@ -107,3 +107,58 @@ class TestMapSnapshotHelpers:
         assert flood["tile_url"].startswith("https://example/f/")
         assert targeting["tile_url"].startswith("https://example/t/")
         assert watershed["overlay_geojson"]["type"] == "FeatureCollection"
+
+
+
+class TestProjectAssetAPI:
+    def test_private_map_endpoint_returns_png(
+        self, client, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import project_assets
+        import project_outputs
+
+        monkeypatch.setattr(
+            project_outputs,
+            "get_output",
+            lambda uid, output_id: {
+                "id": output_id,
+                "owner_id": uid,
+                "project_id": "project-1",
+                "assets": {
+                    "map": {
+                        "storage_path": "users/test-uid-123/projects/project-1/outputs/output-1/map.png",
+                    }
+                },
+            },
+        )
+        monkeypatch.setattr(
+            project_assets,
+            "download_bytes",
+            lambda path: b"fake-png-bytes",
+        )
+
+        resp = client.get("/geomoz-api/outputs/output-1/map")
+
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/png"
+        assert resp.content == b"fake-png-bytes"
+
+    def test_private_map_endpoint_rejects_output_without_asset(
+        self, client, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import project_outputs
+
+        monkeypatch.setattr(
+            project_outputs,
+            "get_output",
+            lambda uid, output_id: {
+                "id": output_id,
+                "owner_id": uid,
+                "project_id": "project-1",
+                "assets": {},
+            },
+        )
+
+        resp = client.get("/geomoz-api/outputs/output-1/map")
+
+        assert resp.status_code == 404
