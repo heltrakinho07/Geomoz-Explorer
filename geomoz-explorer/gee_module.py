@@ -2841,13 +2841,18 @@ def compute_flood_sar(
     after_col  = _s1(event_start, event_end)
     before_col = _s1(baseline_start, baseline_end)
 
-    n_after = after_col.size().getInfo()
+    # Fetch both collection sizes in one Earth Engine round-trip.
+    counts = ee.Dictionary({
+        "after": after_col.size(),
+        "before": before_col.size(),
+    }).getInfo() or {}
+    n_after = int(counts.get("after") or 0)
+    n_before = int(counts.get("before") or 0)
     if n_after == 0:
         raise RuntimeError(
             "Sem imagens Sentinel-1 no período do evento. Alargue as datas "
             "(o S1 passa a cada ~6–12 dias)."
         )
-    n_before = before_col.size().getInfo()
 
     smooth = lambda img: img.focal_median(50, "circle", "meters")
     after  = smooth(after_col.median())

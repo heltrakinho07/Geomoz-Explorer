@@ -184,6 +184,7 @@ def _public(job: dict[str, Any]) -> dict[str, Any]:
         "completed_at": job.get("completed_at"),
         "execution_mode": job.get("execution_mode", "local_executor"),
         "attempt": int(job.get("attempt") or 0),
+        "timings": job.get("timings") or {},
     }
 
 
@@ -295,6 +296,11 @@ def create_job(
         "completed_at": None,
         "execution_mode": execution_mode or _execution_backend(),
         "attempt": 0,
+        "timings": {
+            "queue_wait_ms": None,
+            "execution_ms": None,
+            "total_ms": None,
+        },
     }
     _save(uid, job)
     return _public(job)
@@ -375,6 +381,22 @@ def execute_job(
         return _public(job)
 
     attempt = int(job.get("attempt") or 0) + 1
+    started_at = _now()
+    queue_wait_ms = None
+    try:
+        created_at = datetime.fromisoformat(str(job.get("created_at")))
+        started_dt = datetime.fromisoformat(started_at)
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        if started_dt.tzinfo is None:
+            started_dt = started_dt.replace(tzinfo=timezone.utc)
+        queue_wait_ms = max(
+            0,
+            int((started_dt - created_at).total_seconds() * 1000),
+        )
+    except (TypeError, ValueError):
+        queue_wait_ms = None
+
     update_job(
         uid,
         job_id,
@@ -382,9 +404,15 @@ def execute_job(
         stage="starting",
         progress=max(5, int(job.get("progress") or 0)),
         message="A iniciar análise.",
-        started_at=job.get("started_at") or _now(),
+        started_at=job.get("started_at") or started_at,
         attempt=attempt,
         error=None,
+        timings={
+            **(job.get("timings") or {}),
+            "queue_wait_ms": queue_wait_ms,
+            "execution_ms": None,
+            "total_ms": None,
+        },
     )
 
     def progress(value: int, stage: str, message: str) -> None:
@@ -410,6 +438,27 @@ def execute_job(
         if current and current.get("status") == "cancelled":
             return _public(current)
 
+        completed_at = _now()
+        current = _load(uid, job_id) or {}
+        timings = dict(current.get("timings") or {})
+        try:
+            started_dt = datetime.fromisoformat(str(current.get("started_at")))
+            completed_dt = datetime.fromisoformat(completed_at)
+            created_dt = datetime.fromisoformat(str(current.get("created_at")))
+            for dt in (started_dt, completed_dt, created_dt):
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+            timings["execution_ms"] = max(
+                0,
+                int((completed_dt - started_dt).total_seconds() * 1000),
+            )
+            timings["total_ms"] = max(
+                0,
+                int((completed_dt - created_dt).total_seconds() * 1000),
+            )
+        except (TypeError, ValueError):
+            pass
+
         return update_job(
             uid,
             job_id,
@@ -419,7 +468,8 @@ def execute_job(
             message="Análise concluída.",
             result=result,
             error=None,
-            completed_at=_now(),
+            completed_at=completed_at,
+            timings=timings,
         )
     except JobCancelledError:
         logger.info("Analysis job %s cancelled", job_id)
