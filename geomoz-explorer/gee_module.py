@@ -3029,12 +3029,17 @@ def compute_groundwater_ahp(region_geojson: Optional[dict], year: int = 2023) ->
     for key, _label, sign, weight in GWP_FACTORS:
         min_key = f"{key}_min"
         max_key = f"{key}_max"
-        has_values = mm.contains(min_key).And(mm.contains(max_key))
+        has_values = ee.Algorithms.If(
+            mm.contains(min_key),
+            mm.contains(max_key),
+            False,
+        )
         vmin = ee.Number(ee.Algorithms.If(has_values, mm.get(min_key), 0))
         vmax = ee.Number(ee.Algorithms.If(has_values, mm.get(max_key), 0))
         value_range = vmax.subtract(vmin)
+        safe_range = value_range.max(1e-12)
 
-        normalized = raw[key].subtract(vmin).divide(value_range).clamp(0, 1)
+        normalized = raw[key].subtract(vmin).divide(safe_range).clamp(0, 1)
         norm = ee.Image(
             ee.Algorithms.If(
                 has_values,
