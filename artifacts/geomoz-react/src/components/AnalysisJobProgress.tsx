@@ -9,7 +9,7 @@ import type { AnalysisJob } from "@/hooks/useAnalysisJob";
 interface AnalysisJobProgressProps {
   job: AnalysisJob<unknown> | null;
   title?: string;
-  onCancel?: () => void | Promise<void>;
+  onCancel?: () => unknown | Promise<unknown>;
 }
 
 const STEPS = [
