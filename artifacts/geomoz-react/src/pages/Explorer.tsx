@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, Suspense } from "react";
-import { Globe, Settings, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard, BrainCircuit, Pen } from "lucide-react";
+import { Globe, Search, X, Loader2, MapPin, Satellite, Droplets, AlertTriangle, Droplet, CheckCircle2, XCircle, LayoutDashboard, BrainCircuit, Pen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -11,7 +11,6 @@ import ExportPanel from "@/components/ExportPanel";
 import DashboardPanel from "@/components/DashboardPanel";
 import { LazyGeoAnalises, LazyHidroGeoMoz, LazyGeoperigos, LazyAguaSubterranea, LazyGeoMozAI } from "@/lib/lazy-pages";
 import { apiUrl, apiFetch } from "@/lib/api";
-import SettingsDialog from "@/components/SettingsDialog";
 import GeeCredentialsDialog from "@/components/GeeCredentialsDialog";
 import { useAuth } from "@/hooks/useAuth";
 import ZoneSelect from "@/components/ZoneSelect";
@@ -50,7 +49,6 @@ export default function Explorer() {
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
   const [mapCenter, setMapCenter] = useState<[number, number]>([-18, 35]);
   const [mapZoom, setMapZoom] = useState(5);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [geeDialogOpen, setGeeDialogOpen] = useState(false);
   const { user } = useAuth();
   const [drawingEnabled, setDrawingEnabled] = useState(false);
@@ -342,15 +340,6 @@ function flyToResult(result: NominatimResult) {
             <GEEStatusDot />
           </button>
 
-          <div className="h-5 w-px bg-slate-200" />
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="text-slate-400 hover:text-slate-700 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
-            title="Configurações"
-          >
-            <Settings size={16} />
-          </button>
-
           {/* User Account / GEE login button */}
           <button
             onClick={() => setGeeDialogOpen(true)}
@@ -475,8 +464,6 @@ function flyToResult(result: NominatimResult) {
         </div>
       )}
 
-      {/* Settings Dialog */}
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <GeeCredentialsDialog open={geeDialogOpen} onOpenChange={setGeeDialogOpen} />
     </div>
   );
@@ -488,15 +475,31 @@ function GEEStatusDot() {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch("/geomoz-api/gee/status")
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled) setStatus(d.connected ? "connected" : "disconnected");
-      })
-      .catch(() => {
-        if (!cancelled) setStatus("disconnected");
-      });
-    return () => { cancelled = true; };
+
+    const refresh = () => {
+      if (!cancelled) setStatus("loading");
+      apiFetch("/geomoz-api/gee/status")
+        .then(async (response) => {
+          if (!response.ok) return { connected: false };
+          return response.json();
+        })
+        .then((data) => {
+          if (!cancelled) setStatus(data.connected ? "connected" : "disconnected");
+        })
+        .catch(() => {
+          if (!cancelled) setStatus("disconnected");
+        });
+    };
+
+    refresh();
+    window.addEventListener("geomoz:gee-status-changed", refresh);
+    const timer = window.setInterval(refresh, 60_000);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("geomoz:gee-status-changed", refresh);
+      window.clearInterval(timer);
+    };
   }, []);
 
   return (
@@ -508,18 +511,14 @@ function GEEStatusDot() {
         : "A verificar GEE…"
     }>
       {status === "loading" ? (
-        <Loader2 size={10} className="text-slate-300 animate-spin" />
+        <Loader2 size={12} className="animate-spin text-slate-400" />
       ) : status === "connected" ? (
-        <CheckCircle2 size={10} className="text-emerald-500" />
+        <CheckCircle2 size={12} className="text-emerald-500" />
       ) : (
-        <XCircle size={10} className="text-red-400" />
+        <XCircle size={12} className="text-amber-500" />
       )}
-      <span className={`text-[10px] font-medium ${
-        status === "connected" ? "text-emerald-600" :
-        status === "disconnected" ? "text-red-400" :
-        "text-slate-300"
-      }`}>
-        GEE
+      <span className="hidden lg:inline text-[10px] font-medium text-slate-500">
+        {status === "loading" ? "GEE…" : status === "connected" ? "GEE ligado" : "GEE offline"}
       </span>
     </div>
   );
