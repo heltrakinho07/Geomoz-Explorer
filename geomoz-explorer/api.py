@@ -1007,7 +1007,12 @@ async def get_project_output_map(
             detail="Este output ainda não possui snapshot cartográfico persistente.",
         )
 
-    map_bytes = download_bytes(map_asset["storage_path"])
+    import asyncio
+    loop = asyncio.get_running_loop()
+    map_bytes = await loop.run_in_executor(
+        _thread_pool_executor,
+        lambda: download_bytes(map_asset["storage_path"]),
+    )
     if not map_bytes:
         raise HTTPException(status_code=404, detail="Snapshot cartográfico indisponível.")
 
@@ -1046,7 +1051,12 @@ async def render_project_output_html(
             import base64
             from project_assets import download_bytes
 
-            map_bytes = download_bytes(map_asset["storage_path"])
+            import asyncio
+            loop = asyncio.get_running_loop()
+            map_bytes = await loop.run_in_executor(
+                _thread_pool_executor,
+                lambda: download_bytes(map_asset["storage_path"]),
+            )
             if map_bytes:
                 encoded = base64.b64encode(map_bytes).decode("ascii")
                 map_data_uri = f"data:image/png;base64,{encoded}"
