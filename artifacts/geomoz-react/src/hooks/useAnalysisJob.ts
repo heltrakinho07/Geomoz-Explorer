@@ -154,6 +154,15 @@ export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
     }
   }, [activeProject?.id]);
 
+  const adoptJob = useCallback((externalJob: AnalysisJob<T>) => {
+    if (mounted.current) {
+      setRequestError(null);
+      setJob(externalJob);
+      registerCompletedLayer(externalJob);
+    }
+    return externalJob;
+  }, [registerCompletedLayer]);
+
   const cancel = useCallback(async () => {
     if (!job?.id || !ACTIVE_STATUSES.has(job.status)) return job;
 
@@ -206,6 +215,7 @@ export function useAnalysisJob<T = unknown>(pollIntervalMs = 1200) {
     job,
     submitJob,
     refresh,
+    adoptJob,
     cancel,
     retry,
     resetJob,
