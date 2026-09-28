@@ -3,6 +3,7 @@ GeoMoz FastAPI backend — serves geomoz data as REST/GeoJSON endpoints.
 Run: uvicorn api:app --host 0.0.0.0 --port 5001
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -141,7 +142,7 @@ except ImportError:
 # Simple in-memory rate limiter
 # In production, use Redis or similar for distributed rate limiting
 _rate_limit_store = defaultdict(list)
-_rate_limit_max_requests = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "100"))
+_rate_limit_max_requests = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "240"))
 _rate_limit_window_seconds = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 
 def _check_rate_limit(client_ip: str) -> bool:
@@ -179,22 +180,53 @@ app.add_middleware(
 # Enable gzip compression for responses
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+def _rate_limit_identity(request: Request) -> str:
+    """Build a non-sensitive rate-limit key suitable behind Firebase/Cloud Run."""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header.removeprefix("Bearer ").strip()
+        if token:
+            digest = hashlib.sha256(token.encode("utf-8")).hexdigest()[:24]
+            return f"auth:{digest}"
+
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        # Google/Firebase proxies append forwarding metadata. For anonymous
+        # read-only traffic the first address is sufficient as a best-effort
+        # limiter and avoids grouping every visitor under the proxy address.
+        first = forwarded.split(",", 1)[0].strip()
+        if first:
+            return f"ip:{first}"
+
+    client_ip = request.client.host if request.client else "unknown"
+    return f"ip:{client_ip}"
+
+
 # Rate limiting middleware
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    """Apply rate limiting to all requests."""
-    client_ip = request.client.host if request.client else "unknown"
-    
-    # Skip rate limiting for health checks or if disabled
+    """Apply best-effort per-session/IP rate limiting."""
     if os.getenv("DISABLE_RATE_LIMIT", "false").lower() == "true":
         return await call_next(request)
-    
-    if not _check_rate_limit(client_ip):
+
+    # Do not spend quota on browser preflight or infrastructure probes.
+    if request.method == "OPTIONS" or request.url.path in {
+        "/geomoz-api/health",
+        "/geomoz-api/status",
+    }:
+        return await call_next(request)
+
+    identity = _rate_limit_identity(request)
+    if not _check_rate_limit(identity):
+        logger.warning("Rate limit exceeded for key=%s", identity[:32])
         raise HTTPException(
             status_code=429,
-            detail=f"Rate limit exceeded. Maximum {_rate_limit_max_requests} requests per {_rate_limit_window_seconds} seconds."
+            detail=(
+                f"Rate limit exceeded. Maximum {_rate_limit_max_requests} "
+                f"requests per {_rate_limit_window_seconds} seconds."
+            ),
         )
-    
+
     return await call_next(request)
 
 # ── data loaders (cached) ──────────────────────────────────────────────────────
