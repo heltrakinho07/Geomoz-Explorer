@@ -149,6 +149,25 @@ def create_output(
     return _public(item)
 
 
+def attach_asset(
+    uid: str,
+    output_id: str,
+    asset_key: str,
+    metadata: dict[str, Any],
+) -> Optional[dict[str, Any]]:
+    """Attach or replace private asset metadata on an existing output."""
+    item = _load(uid, output_id)
+    if not item:
+        return None
+
+    assets = dict(item.get("assets") or {})
+    assets[asset_key] = deepcopy(metadata)
+    item["assets"] = assets
+    item["updated_at"] = _now()
+    _save(uid, item)
+    return _public(item)
+
+
 def get_output(uid: str, output_id: str) -> Optional[dict[str, Any]]:
     item = _load(uid, output_id)
     return _public(item) if item else None
@@ -195,6 +214,22 @@ def delete_output(uid: str, output_id: str) -> bool:
     item = _load(uid, output_id)
     if not item:
         return False
+
+    for metadata in (item.get("assets") or {}).values():
+        if not isinstance(metadata, dict):
+            continue
+        storage_path = metadata.get("storage_path")
+        if storage_path:
+            try:
+                from project_assets import delete_asset
+                delete_asset(storage_path)
+            except Exception as exc:
+                logger.warning(
+                    "Could not delete output asset %s for %s: %s",
+                    storage_path,
+                    output_id,
+                    exc,
+                )
 
     with _lock:
         _outputs.pop((uid, output_id), None)
