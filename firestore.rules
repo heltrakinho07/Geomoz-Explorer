@@ -1,0 +1,21 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // GeoMoz persistence is server-side only. The FastAPI backend uses the
+    // Firebase Admin SDK, which bypasses client security rules.
+    //
+    // Sensitive examples:
+    //   gee_sessions/{uid}                 OAuth access tokens
+    //   users/{uid}/projects/**            Project workspaces
+    //   users/{uid}/analysis_jobs/**       Analysis state/results
+    //   users/{uid}/agent_plans/**         Agent plans
+    //   users/{uid}/project_outputs/**     Durable deliverables
+    //
+    // Client applications must use authenticated GeoMoz API endpoints instead
+    // of reading/writing Firestore directly.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

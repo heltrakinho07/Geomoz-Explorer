@@ -3,6 +3,7 @@ GeoMoz FastAPI backend — serves geomoz data as REST/GeoJSON endpoints.
 Run: uvicorn api:app --host 0.0.0.0 --port 5001
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -30,21 +31,74 @@ try:
 except ValueError:
     pass
 
+def _admin_uid_allowlist() -> set[str]:
+    return {
+        uid.strip()
+        for uid in os.environ.get("GEOMOZ_ADMIN_UIDS", "").split(",")
+        if uid.strip()
+    }
+
+
 async def require_firebase_auth(request: Request) -> str:
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Token Firebase ausente ou inválido.")
     token = auth_header.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Token Firebase ausente ou inválido.")
     try:
         decoded = firebase_auth.verify_id_token(token)
-        return decoded["uid"]
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Token Firebase inválido: {str(e)}")
+        uid = decoded.get("uid")
+        if not uid:
+            raise ValueError("uid ausente")
+        return uid
+    except HTTPException:
+        raise
+    except Exception:
+        # Never return verifier internals or token details to clients.
+        raise HTTPException(status_code=401, detail="Token Firebase inválido.")
 
-async def require_gee_auth(uid: str = Depends(require_firebase_auth)) -> str:
-    from gee_module import _init_gee
-    _init_gee(uid)
+
+async def require_admin_auth(request: Request) -> str:
+    """Require a Firebase-authenticated GeoMoz administrator.
+
+    Admin status can come from a Firebase custom claim (admin=true) or from the
+    server-side GEOMOZ_ADMIN_UIDS allowlist. The allowlist is useful during the
+    migration to custom claims and never leaves the backend.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Autenticação administrativa necessária.")
+
+    token = auth_header.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Autenticação administrativa necessária.")
+
+    try:
+        decoded = firebase_auth.verify_id_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token Firebase inválido.")
+
+    uid = decoded.get("uid")
+    if not uid:
+        raise HTTPException(status_code=401, detail="Token Firebase inválido.")
+
+    is_admin = decoded.get("admin") is True or uid in _admin_uid_allowlist()
+    if not is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Esta operação requer privilégios de administrador.",
+        )
+
     return uid
+
+
+def require_gee_auth(uid: str = Depends(require_firebase_auth)):
+    """Hold the process-global Earth Engine context for the full request."""
+    from gee_module import gee_execution
+
+    with gee_execution(uid):
+        yield uid
 from pydantic import BaseModel, Field, field_validator, constr
 
 # ── Package imports ────────────────────────────────────────────────────────
@@ -88,7 +142,7 @@ except ImportError:
 # Simple in-memory rate limiter
 # In production, use Redis or similar for distributed rate limiting
 _rate_limit_store = defaultdict(list)
-_rate_limit_max_requests = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "100"))
+_rate_limit_max_requests = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "240"))
 _rate_limit_window_seconds = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 
 def _check_rate_limit(client_ip: str) -> bool:
@@ -119,29 +173,60 @@ cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
 # Enable gzip compression for responses
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+def _rate_limit_identity(request: Request) -> str:
+    """Build a non-sensitive rate-limit key suitable behind Firebase/Cloud Run."""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header.removeprefix("Bearer ").strip()
+        if token:
+            digest = hashlib.sha256(token.encode("utf-8")).hexdigest()[:24]
+            return f"auth:{digest}"
+
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        # Google/Firebase proxies append forwarding metadata. For anonymous
+        # read-only traffic the first address is sufficient as a best-effort
+        # limiter and avoids grouping every visitor under the proxy address.
+        first = forwarded.split(",", 1)[0].strip()
+        if first:
+            return f"ip:{first}"
+
+    client_ip = request.client.host if request.client else "unknown"
+    return f"ip:{client_ip}"
+
+
 # Rate limiting middleware
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    """Apply rate limiting to all requests."""
-    client_ip = request.client.host if request.client else "unknown"
-    
-    # Skip rate limiting for health checks or if disabled
+    """Apply best-effort per-session/IP rate limiting."""
     if os.getenv("DISABLE_RATE_LIMIT", "false").lower() == "true":
         return await call_next(request)
-    
-    if not _check_rate_limit(client_ip):
+
+    # Do not spend quota on browser preflight or infrastructure probes.
+    if request.method == "OPTIONS" or request.url.path in {
+        "/geomoz-api/health",
+        "/geomoz-api/status",
+    }:
+        return await call_next(request)
+
+    identity = _rate_limit_identity(request)
+    if not _check_rate_limit(identity):
+        logger.warning("Rate limit exceeded for key=%s", identity[:32])
         raise HTTPException(
             status_code=429,
-            detail=f"Rate limit exceeded. Maximum {_rate_limit_max_requests} requests per {_rate_limit_window_seconds} seconds."
+            detail=(
+                f"Rate limit exceeded. Maximum {_rate_limit_max_requests} "
+                f"requests per {_rate_limit_window_seconds} seconds."
+            ),
         )
-    
+
     return await call_next(request)
 
 # ── data loaders (cached) ──────────────────────────────────────────────────────
@@ -1127,20 +1212,40 @@ def api_status():
     return {"status": "ok", "message": msg}
 
 @app.post("/geomoz-api/convert-geom")
-async def convert_geom(file: UploadFile = File(...)):
-    """Converts a KML, GPX or zipped Shapefile into a GeoJSON dict."""
+async def convert_geom(
+    file: UploadFile = File(...),
+    uid: str = Depends(require_firebase_auth),
+):
+    """Convert an authenticated user's KML/GPX/GeoJSON into GeoJSON.
+
+    Archive formats are intentionally excluded here until archive expansion can
+    be validated against zip-bomb/path-traversal limits.
+    """
     import tempfile
     import os
     import json
     
-    ext = file.filename.split('.')[-1].lower()
-    if ext not in ['kml', 'gpx', 'zip', 'json', 'geojson']:
-        raise HTTPException(status_code=400, detail="Formato não suportado. Use KML, GPX, ZIP ou GeoJSON.")
-        
+    filename = file.filename or "upload"
+    ext = filename.split('.')[-1].lower()
+    if ext not in ['kml', 'gpx', 'json', 'geojson']:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato não suportado. Use KML, GPX ou GeoJSON.",
+        )
+
+    max_upload_bytes = 10 * 1024 * 1024
+    tmp_path = None
+
     try:
-        # Save uploaded file to temp
+        content = await file.read(max_upload_bytes + 1)
+        if len(content) > max_upload_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail="Ficheiro demasiado grande. Limite máximo: 10 MB.",
+            )
+
+        # Save uploaded file to a private temporary path.
         with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
-            content = await file.read()
             tmp.write(content)
             tmp_path = tmp.name
             
@@ -1156,12 +1261,21 @@ async def convert_geom(file: UploadFile = File(...)):
         gdf.geometry = gdf.geometry.buffer(0)
             
         geojson_str = gdf.to_json()
-        os.remove(tmp_path)
-        
         return json.loads(geojson_str)
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
         logger.exception("Erro ao converter ficheiro de geometria.")
-        raise HTTPException(status_code=500, detail=f"Erro na conversão: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Erro ao converter o ficheiro de geometria.",
+        )
+    finally:
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
 
@@ -1171,7 +1285,7 @@ class GEEServiceAccountKeyRequest(BaseModel):
 
 
 @app.get("/geomoz-api/gee/config")
-def gee_config():
+def gee_config(admin_uid: str = Depends(require_admin_auth)):
     """
     Return current GEE configuration (with sensitive values masked).
     Used by the Settings page to show the user what's configured.
@@ -1222,13 +1336,25 @@ def gee_config():
 
 
 @app.post("/geomoz-api/gee/configure")
-def gee_configure(req: GEEServiceAccountKeyRequest):
+def gee_configure(
+    req: GEEServiceAccountKeyRequest,
+    admin_uid: str = Depends(require_admin_auth),
+):
     """
     Update GEE credentials and reinitialize the connection.
     Accepts service_account_key (JSON string) and/or project_id.
     Returns the new connection status.
     """
     from gee_module import reset_gee, _init_gee, gee_status as _gee_status
+
+    if os.environ.get("GEOMOZ_ALLOW_RUNTIME_CONFIG", "false").lower() != "true":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Configuração GEE global em runtime está desactivada. "
+                "Use Secret Manager / configuração de deployment."
+            ),
+        )
 
     changed = False
 
@@ -1604,8 +1730,22 @@ async def create_analysis_job(
     Workflows are migrated one-by-one while synchronous endpoints remain
     available for backwards compatibility.
     """
-    from analysis_jobs import submit_job
+    from analysis_jobs import active_job_count, submit_job
     import gee_session_store
+
+    max_active_jobs = max(
+        1,
+        min(int(os.environ.get("ANALYSIS_MAX_ACTIVE_PER_USER", "5")), 20),
+    )
+    active_jobs = active_job_count(uid)
+    if active_jobs >= max_active_jobs:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Já existem {active_jobs} análises activas. "
+                "Aguarde ou cancele uma análise antes de iniciar outra."
+            ),
+        )
 
     supported_job_types = {
         "gee.index",
@@ -3378,6 +3518,7 @@ def export_shapefile(
     province: Optional[str] = Query(None),
     district: Optional[str] = Query(None),
     layer: str = Query("geology"),
+    uid: str = Depends(require_firebase_auth),
 ):
     """Export a layer as a zipped ESRI Shapefile (QGIS/ArcGIS-ready).
 
