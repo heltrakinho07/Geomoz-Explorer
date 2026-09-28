@@ -926,6 +926,34 @@ class ToolExecuteRequest(BaseModel):
     project_id: Optional[str] = None
 
 
+class GeoMozAgentRequest(BaseModel):
+    message: str
+    project_id: Optional[str] = None
+    context: dict = Field(default_factory=dict)
+
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("Escreva um pedido para o GeoMoz Agent.")
+        if len(value) > 4000:
+            raise ValueError("O pedido deve ter no máximo 4000 caracteres.")
+        return value
+
+
+@app.get("/geomoz-api/ai/status")
+async def geomoz_ai_status(uid: str = Depends(require_firebase_auth)):
+    """Return planner configuration without exposing credentials."""
+    from ai_agent import planner_status
+    from tool_registry import registry_summary
+
+    return {
+        "agent": planner_status(),
+        "registry": registry_summary(),
+    }
+
+
 @app.get("/geomoz-api/ai/tools")
 async def list_ai_tools(
     category: Optional[str] = Query(None),
@@ -1225,6 +1253,66 @@ async def create_analysis_job(
         status_code=500,
         detail="Tipo de job registado sem executor associado.",
     )
+
+
+@app.post("/geomoz-api/ai/agent")
+async def geomoz_ai_agent(
+    req: GeoMozAgentRequest,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Plan one natural-language request and optionally execute one safe tool."""
+    from ai_agent import AgentNotConfigured, AgentPlannerError, plan_agent_turn
+
+    if req.project_id:
+        from projects_store import get_project
+        if not get_project(uid, req.project_id):
+            raise HTTPException(status_code=404, detail="Projecto não encontrado.")
+
+    try:
+        plan = await plan_agent_turn(req.message, req.context)
+    except AgentNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except AgentPlannerError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    if plan.get("mode") != "tool_call":
+        return {
+            "mode": "message",
+            "message": plan.get("message") or "Pedido analisado.",
+            "model": plan.get("model"),
+            "response_id": plan.get("response_id"),
+        }
+
+    tool_id = plan.get("tool_id")
+    arguments = plan.get("arguments") or {}
+    if not isinstance(tool_id, str) or not isinstance(arguments, dict):
+        raise HTTPException(status_code=502, detail="Plano AI inválido.")
+
+    job = await execute_ai_tool(
+        tool_id,
+        ToolExecuteRequest(
+            parameters=arguments,
+            project_id=req.project_id,
+        ),
+        uid,
+    )
+
+    from tool_registry import get_tool
+    tool = get_tool(tool_id) or {}
+
+    return {
+        "mode": "tool_call",
+        "message": f"A iniciar: {tool.get('name', tool_id)}.",
+        "tool": {
+            "id": tool_id,
+            "name": tool.get("name", tool_id),
+            "category": tool.get("category"),
+        },
+        "arguments": arguments,
+        "job": job,
+        "model": plan.get("model"),
+        "response_id": plan.get("response_id"),
+    }
 
 
 @app.get("/geomoz-api/jobs")
