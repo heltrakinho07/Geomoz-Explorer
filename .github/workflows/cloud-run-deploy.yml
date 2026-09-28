@@ -64,13 +64,41 @@ jobs:
           echo "service_account=${RUNTIME_SA}" >> "${GITHUB_OUTPUT}"
           echo "Using Cloud Run runtime identity: ${RUNTIME_SA}"
 
-      - name: Enable Cloud Tasks API
+      - name: Check Cloud Tasks API
+        id: tasks-api
         run: |
+          set +e
+          ENABLED=$(gcloud services list \
+            --enabled \
+            --project "${PROJECT_ID}" \
+            --filter='config.name:cloudtasks.googleapis.com' \
+            --format='value(config.name)' 2>/dev/null)
+
+          if [ "${ENABLED}" = "cloudtasks.googleapis.com" ]; then
+            echo "Cloud Tasks API is already enabled."
+            echo "enabled=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "Cloud Tasks API is not enabled. Attempting one-time bootstrap..."
           gcloud services enable cloudtasks.googleapis.com \
             --project "${PROJECT_ID}" \
             --quiet
+          STATUS=$?
+
+          if [ "${STATUS}" -eq 0 ]; then
+            echo "Cloud Tasks API enabled."
+            echo "enabled=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::warning::Cloud Tasks API could not be enabled by the deployment identity. The API will deploy with the safe local-executor fallback. Grant roles/serviceusage.serviceUsageAdmin once or enable cloudtasks.googleapis.com manually, then rerun this workflow."
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+          fi
+          exit 0
 
       - name: Ensure Cloud Tasks queue
+        id: task-queue
+        if: steps.tasks-api.outputs.enabled == 'true'
+        continue-on-error: true
         run: |
           gcloud tasks queues describe "${TASK_QUEUE}" \
             --location "${REGION}" \
@@ -94,6 +122,9 @@ jobs:
             --max-backoff=60s
 
       - name: Grant runtime queue permissions
+        id: task-iam
+        if: steps.tasks-api.outputs.enabled == 'true' && steps.task-queue.outcome == 'success'
+        continue-on-error: true
         env:
           RUNTIME_SA: ${{ steps.runtime.outputs.service_account }}
         run: |
@@ -110,6 +141,9 @@ jobs:
             --quiet
 
       - name: Deploy private analysis worker
+        id: worker
+        if: steps.tasks-api.outputs.enabled == 'true' && steps.task-queue.outcome == 'success' && steps.task-iam.outcome == 'success'
+        continue-on-error: true
         env:
           RUNTIME_SA: ${{ steps.runtime.outputs.service_account }}
         run: |
@@ -130,6 +164,9 @@ jobs:
             --set-secrets=GEE_SERVICE_ACCOUNT_KEY=geomoz-gee-key:latest
 
       - name: Authorize Cloud Tasks to invoke worker
+        id: worker-iam
+        if: steps.worker.outcome == 'success'
+        continue-on-error: true
         env:
           RUNTIME_SA: ${{ steps.runtime.outputs.service_account }}
         run: |
@@ -141,19 +178,33 @@ jobs:
 
       - name: Resolve worker URL
         id: worker-url
+        if: steps.worker.outcome == 'success' && steps.worker-iam.outcome == 'success'
+        continue-on-error: true
         run: |
           WORKER_URL=$(gcloud run services describe "${WORKER_SERVICE_NAME}" \
             --platform managed \
             --region "${REGION}" \
             --format 'value(status.url)')
+          test -n "${WORKER_URL}"
           echo "worker_url=${WORKER_URL}" >> "${GITHUB_OUTPUT}"
           echo "Analysis worker: ${WORKER_URL}"
 
       - name: Deploy public API
         env:
           RUNTIME_SA: ${{ steps.runtime.outputs.service_account }}
-          WORKER_URL: ${{ steps.worker-url.outputs.worker_url }}
+          RESOLVED_WORKER_URL: ${{ steps.worker-url.outputs.worker_url }}
         run: |
+          BACKEND="local"
+          EXTRA_ANALYSIS_ENV=""
+
+          if [ -n "${RESOLVED_WORKER_URL}" ]; then
+            BACKEND="cloud_tasks"
+            EXTRA_ANALYSIS_ENV="@ANALYSIS_TASKS_PROJECT=${PROJECT_ID}@ANALYSIS_TASKS_LOCATION=${REGION}@ANALYSIS_TASKS_QUEUE=${TASK_QUEUE}@ANALYSIS_WORKER_URL=${RESOLVED_WORKER_URL}@ANALYSIS_TASKS_AUDIENCE=${RESOLVED_WORKER_URL}@ANALYSIS_TASKS_SERVICE_ACCOUNT=${RUNTIME_SA}"
+            echo "Deploying API with distributed Analysis Engine V2."
+          else
+            echo "::warning::Distributed worker bootstrap is incomplete. Deploying API with local executor fallback so production remains operational."
+          fi
+
           gcloud run deploy "${SERVICE_NAME}" \
             --image "${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_NAME}/${SERVICE_NAME}:${{ github.sha }}" \
             --platform managed \
@@ -166,8 +217,17 @@ jobs:
             --max-instances 10 \
             --min-instances 0 \
             --timeout 300s \
-            --set-env-vars="^@^PYTHONUNBUFFERED=1@GEOMOZ_SERVICE_ROLE=api@ANALYSIS_EXECUTION_BACKEND=cloud_tasks@ANALYSIS_TASKS_PROJECT=${PROJECT_ID}@ANALYSIS_TASKS_LOCATION=${REGION}@ANALYSIS_TASKS_QUEUE=${TASK_QUEUE}@ANALYSIS_WORKER_URL=${WORKER_URL}@ANALYSIS_TASKS_AUDIENCE=${WORKER_URL}@ANALYSIS_TASKS_SERVICE_ACCOUNT=${RUNTIME_SA}@ANALYSIS_MAX_ACTIVE_PER_USER=5@FIREBASE_PROJECT_ID=geoprocessamento-426809@GEOMOZ_STORAGE_BUCKET=geoprocessamento-426809.firebasestorage.app@GEOMOZ_ALLOW_RUNTIME_CONFIG=false@CORS_ORIGINS=https://geomoz.geolithica.com,https://geoprocessamento-426809.web.app,https://geoprocessamento-426809.firebaseapp.com" \
+            --set-env-vars="^@^PYTHONUNBUFFERED=1@GEOMOZ_SERVICE_ROLE=api@ANALYSIS_EXECUTION_BACKEND=${BACKEND}@ANALYSIS_MAX_ACTIVE_PER_USER=5${EXTRA_ANALYSIS_ENV}@FIREBASE_PROJECT_ID=geoprocessamento-426809@GEOMOZ_STORAGE_BUCKET=geoprocessamento-426809.firebasestorage.app@GEOMOZ_ALLOW_RUNTIME_CONFIG=false@CORS_ORIGINS=https://geomoz.geolithica.com,https://geoprocessamento-426809.web.app,https://geoprocessamento-426809.firebaseapp.com" \
             --set-secrets=GEE_SERVICE_ACCOUNT_KEY=geomoz-gee-key:latest
+
+      - name: Analysis Engine deployment status
+        run: |
+          if [ -n "${{ steps.worker-url.outputs.worker_url }}" ]; then
+            echo "✅ Analysis Engine V2 distributed worker is active."
+          else
+            echo "⚠️ Analysis Engine V2 code is deployed, but Cloud Tasks bootstrap is pending."
+            echo "Production is safely using the local executor fallback."
+          fi
 
       - name: Get Service URL
         id: service-url
