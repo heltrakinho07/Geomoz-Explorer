@@ -8,6 +8,23 @@ logger = logging.getLogger(__name__)
 # Hot cache for the current Cloud Run instance. Firestore is the durable source
 # when available so a user session survives instance restarts and scale-out.
 _user_sessions: dict[str, dict] = {}
+_DEFAULT_TOKEN_TTL_SECONDS = max(
+    300,
+    min(int(__import__("os").environ.get("GEE_OAUTH_TOKEN_TTL_SECONDS", "3300")), 3600),
+)
+
+
+def _is_expired(payload: dict) -> bool:
+    expires_at = payload.get("expires_at")
+    if expires_at is None:
+        # Legacy sessions did not record an expiry. Treat them as stale rather
+        # than keeping an unknown-lived bearer token indefinitely.
+        return True
+    try:
+        return float(expires_at) <= time.time()
+    except (TypeError, ValueError):
+        return True
+
 
 
 @lru_cache(maxsize=1)
@@ -28,7 +45,11 @@ def _get_firestore_client():
 def set_token(uid: str, token_data: dict) -> None:
     """Store GEE OAuth data for one authenticated GeoMoz user."""
     payload = dict(token_data)
-    payload["updated_at"] = time.time()
+    now = time.time()
+    payload["updated_at"] = now
+    payload["expires_at"] = float(
+        payload.get("expires_at") or (now + _DEFAULT_TOKEN_TTL_SECONDS)
+    )
     _user_sessions[uid] = payload
 
     db = _get_firestore_client()
@@ -49,6 +70,9 @@ def get_token(uid: str) -> Optional[dict]:
     """
     cached = _user_sessions.get(uid)
     if cached:
+        if _is_expired(cached):
+            clear_token(uid)
+            return None
         return dict(cached)
 
     db = _get_firestore_client()
@@ -58,6 +82,9 @@ def get_token(uid: str) -> Optional[dict]:
             if snapshot.exists:
                 payload = snapshot.to_dict() or {}
                 if payload.get("access_token"):
+                    if _is_expired(payload):
+                        clear_token(uid)
+                        return None
                     _user_sessions[uid] = payload
                     return dict(payload)
         except Exception as exc:

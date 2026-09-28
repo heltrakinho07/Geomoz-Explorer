@@ -135,3 +135,40 @@ class TestProjectsAPI:
 
         resp = client.delete("/geomoz-api/projects/missing")
         assert resp.status_code == 404
+
+
+    def test_delete_project_cleans_outputs(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import project_outputs
+        import projects_store
+
+        monkeypatch.setattr(
+            projects_store,
+            "get_project",
+            lambda uid, project_id: {"id": project_id, "name": "Projecto"},
+        )
+        monkeypatch.setattr(
+            projects_store,
+            "delete_project",
+            lambda uid, project_id: True,
+        )
+        monkeypatch.setattr(
+            project_outputs,
+            "list_outputs",
+            lambda uid, project_id=None, limit=50, output_type=None: [
+                {"id": "output-1"},
+                {"id": "output-2"},
+            ],
+        )
+        deleted: list[str] = []
+        monkeypatch.setattr(
+            project_outputs,
+            "delete_output",
+            lambda uid, output_id: deleted.append(output_id) or True,
+        )
+
+        resp = client.delete("/geomoz-api/projects/project-1")
+
+        assert resp.status_code == 200
+        assert deleted == ["output-1", "output-2"]

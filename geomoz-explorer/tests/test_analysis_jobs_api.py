@@ -551,3 +551,25 @@ class TestAnalysisJobCatalogValidation:
         )
 
         assert resp.status_code == 422
+
+
+
+class TestAnalysisJobCapacity:
+    def test_create_job_rejects_when_user_queue_is_full(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import analysis_jobs
+
+        monkeypatch.setattr(analysis_jobs, "active_job_count", lambda uid=None: 5)
+        monkeypatch.setenv("ANALYSIS_MAX_ACTIVE_PER_USER", "5")
+
+        resp = client.post(
+            "/geomoz-api/jobs",
+            json={
+                "type": "gee.index",
+                "payload": {"index": "ndvi"},
+            },
+        )
+
+        assert resp.status_code == 429
+        assert "análises activas" in resp.json()["detail"]

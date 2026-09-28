@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { Upload, FileText, X, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
-import { apiUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 interface AreaUploadProps {
   onGeometryLoaded: (geojson: GeoJSON.GeoJSON, label: string) => void;
@@ -42,7 +42,7 @@ export default function AreaUpload({ onGeometryLoaded }: AreaUploadProps) {
       } else {
         const formData = new FormData();
         formData.append("file", file);
-        const res = await fetch(`${apiUrl}/geomoz-api/convert-geom`, {
+        const res = await apiFetch("/geomoz-api/convert-geom", {
           method: "POST",
           body: formData,
         });

@@ -382,3 +382,37 @@ def test_report_renders_extent_frame_when_bounds_available() -> None:
     assert "-25.7000, 32.3000" in html
     assert "-26.2000, 32.9000" in html
     assert "-25.96500, 32.58300 · z10" in html
+
+
+
+def test_report_can_embed_private_map_data_uri() -> None:
+    from report_renderer import render_output_html
+
+    output = {
+        "id": "output-map-1",
+        "type": "analysis_report",
+        "title": "Relatório com mapa",
+        "description": "",
+        "created_at": "2026-09-28T10:00:00+00:00",
+        "content": {
+            "analysis_type": "gee.flood",
+            "parameters": {},
+            "result": {
+                "areaKm2": 10.5,
+                "scenesEvent": 2,
+                "scenesBaseline": 4,
+            },
+            "job": {},
+        },
+    }
+    data_uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="
+
+    html = render_output_html(
+        output,
+        {"name": "Projecto Mapa"},
+        map_data_uri=data_uri,
+    )
+
+    assert 'class="report-map"' in html
+    assert data_uri in html
+    assert "Mapa do resultado" in html

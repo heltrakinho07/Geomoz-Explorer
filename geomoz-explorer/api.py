@@ -3,6 +3,7 @@ GeoMoz FastAPI backend — serves geomoz data as REST/GeoJSON endpoints.
 Run: uvicorn api:app --host 0.0.0.0 --port 5001
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -30,21 +31,74 @@ try:
 except ValueError:
     pass
 
+def _admin_uid_allowlist() -> set[str]:
+    return {
+        uid.strip()
+        for uid in os.environ.get("GEOMOZ_ADMIN_UIDS", "").split(",")
+        if uid.strip()
+    }
+
+
 async def require_firebase_auth(request: Request) -> str:
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Token Firebase ausente ou inválido.")
     token = auth_header.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Token Firebase ausente ou inválido.")
     try:
         decoded = firebase_auth.verify_id_token(token)
-        return decoded["uid"]
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Token Firebase inválido: {str(e)}")
+        uid = decoded.get("uid")
+        if not uid:
+            raise ValueError("uid ausente")
+        return uid
+    except HTTPException:
+        raise
+    except Exception:
+        # Never return verifier internals or token details to clients.
+        raise HTTPException(status_code=401, detail="Token Firebase inválido.")
 
-async def require_gee_auth(uid: str = Depends(require_firebase_auth)) -> str:
-    from gee_module import _init_gee
-    _init_gee(uid)
+
+async def require_admin_auth(request: Request) -> str:
+    """Require a Firebase-authenticated GeoMoz administrator.
+
+    Admin status can come from a Firebase custom claim (admin=true) or from the
+    server-side GEOMOZ_ADMIN_UIDS allowlist. The allowlist is useful during the
+    migration to custom claims and never leaves the backend.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Autenticação administrativa necessária.")
+
+    token = auth_header.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Autenticação administrativa necessária.")
+
+    try:
+        decoded = firebase_auth.verify_id_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token Firebase inválido.")
+
+    uid = decoded.get("uid")
+    if not uid:
+        raise HTTPException(status_code=401, detail="Token Firebase inválido.")
+
+    is_admin = decoded.get("admin") is True or uid in _admin_uid_allowlist()
+    if not is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Esta operação requer privilégios de administrador.",
+        )
+
     return uid
+
+
+def require_gee_auth(uid: str = Depends(require_firebase_auth)):
+    """Hold the process-global Earth Engine context for the full request."""
+    from gee_module import gee_execution
+
+    with gee_execution(uid):
+        yield uid
 from pydantic import BaseModel, Field, field_validator, constr
 
 # ── Package imports ────────────────────────────────────────────────────────
@@ -88,7 +142,7 @@ except ImportError:
 # Simple in-memory rate limiter
 # In production, use Redis or similar for distributed rate limiting
 _rate_limit_store = defaultdict(list)
-_rate_limit_max_requests = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "100"))
+_rate_limit_max_requests = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "240"))
 _rate_limit_window_seconds = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 
 def _check_rate_limit(client_ip: str) -> bool:
@@ -119,29 +173,60 @@ cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
 # Enable gzip compression for responses
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+def _rate_limit_identity(request: Request) -> str:
+    """Build a non-sensitive rate-limit key suitable behind Firebase/Cloud Run."""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header.removeprefix("Bearer ").strip()
+        if token:
+            digest = hashlib.sha256(token.encode("utf-8")).hexdigest()[:24]
+            return f"auth:{digest}"
+
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        # Google/Firebase proxies append forwarding metadata. For anonymous
+        # read-only traffic the first address is sufficient as a best-effort
+        # limiter and avoids grouping every visitor under the proxy address.
+        first = forwarded.split(",", 1)[0].strip()
+        if first:
+            return f"ip:{first}"
+
+    client_ip = request.client.host if request.client else "unknown"
+    return f"ip:{client_ip}"
+
+
 # Rate limiting middleware
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    """Apply rate limiting to all requests."""
-    client_ip = request.client.host if request.client else "unknown"
-    
-    # Skip rate limiting for health checks or if disabled
+    """Apply best-effort per-session/IP rate limiting."""
     if os.getenv("DISABLE_RATE_LIMIT", "false").lower() == "true":
         return await call_next(request)
-    
-    if not _check_rate_limit(client_ip):
+
+    # Do not spend quota on browser preflight or infrastructure probes.
+    if request.method == "OPTIONS" or request.url.path in {
+        "/geomoz-api/health",
+        "/geomoz-api/status",
+    }:
+        return await call_next(request)
+
+    identity = _rate_limit_identity(request)
+    if not _check_rate_limit(identity):
+        logger.warning("Rate limit exceeded for key=%s", identity[:32])
         raise HTTPException(
             status_code=429,
-            detail=f"Rate limit exceeded. Maximum {_rate_limit_max_requests} requests per {_rate_limit_window_seconds} seconds."
+            detail=(
+                f"Rate limit exceeded. Maximum {_rate_limit_max_requests} "
+                f"requests per {_rate_limit_window_seconds} seconds."
+            ),
         )
-    
+
     return await call_next(request)
 
 # ── data loaders (cached) ──────────────────────────────────────────────────────
@@ -632,6 +717,218 @@ async def update_project_endpoint(
     return project
 
 
+def _geojson_bounds(geojson: Optional[dict]) -> Optional[dict[str, float]]:
+    """Extract WGS84 bounds from GeoJSON without adding a GIS dependency."""
+    if not isinstance(geojson, dict):
+        return None
+
+    coordinates: list[tuple[float, float]] = []
+
+    def collect(value):
+        if isinstance(value, dict):
+            value_type = value.get("type")
+            if value_type == "FeatureCollection":
+                for feature in value.get("features") or []:
+                    collect(feature)
+            elif value_type == "Feature":
+                collect(value.get("geometry"))
+            elif value_type == "GeometryCollection":
+                for geometry in value.get("geometries") or []:
+                    collect(geometry)
+            else:
+                collect(value.get("coordinates"))
+            return
+
+        if isinstance(value, (list, tuple)):
+            if (
+                len(value) >= 2
+                and isinstance(value[0], (int, float))
+                and isinstance(value[1], (int, float))
+            ):
+                coordinates.append((float(value[0]), float(value[1])))
+                return
+            for item in value:
+                collect(item)
+
+    collect(geojson)
+    if not coordinates:
+        return None
+
+    lons = [item[0] for item in coordinates]
+    lats = [item[1] for item in coordinates]
+    west, east = min(lons), max(lons)
+    south, north = min(lats), max(lats)
+    if west == east or south == north:
+        padding = 0.05
+        west -= padding
+        east += padding
+        south -= padding
+        north += padding
+
+    lon_pad = max((east - west) * 0.04, 0.01)
+    lat_pad = max((north - south) * 0.04, 0.01)
+    return {
+        "south": max(-90.0, south - lat_pad),
+        "north": min(90.0, north + lat_pad),
+        "west": max(-180.0, west - lon_pad),
+        "east": min(180.0, east + lon_pad),
+    }
+
+
+def _project_or_job_bounds(project: dict, job: dict) -> Optional[dict[str, float]]:
+    payload = job.get("payload") or {}
+
+    try:
+        region = _region_geojson(
+            payload.get("province"),
+            payload.get("district"),
+            payload.get("geometry"),
+        )
+        bounds = _geojson_bounds(region)
+        if bounds:
+            return bounds
+    except Exception as exc:
+        logger.info("Could not derive snapshot bounds from job AOI: %s", exc)
+
+    aoi = project.get("aoi") or {}
+    raw_bounds = aoi.get("bounds")
+    if (
+        isinstance(raw_bounds, list)
+        and len(raw_bounds) == 2
+        and all(isinstance(pair, list) and len(pair) >= 2 for pair in raw_bounds)
+    ):
+        try:
+            south, west = float(raw_bounds[0][0]), float(raw_bounds[0][1])
+            north, east = float(raw_bounds[1][0]), float(raw_bounds[1][1])
+            if south < north and west < east:
+                return {
+                    "south": south,
+                    "north": north,
+                    "west": west,
+                    "east": east,
+                }
+        except (TypeError, ValueError):
+            pass
+
+    return _geojson_bounds(aoi.get("geometry"))
+
+
+def _job_snapshot_spec(job: dict) -> dict:
+    result = job.get("result") or {}
+    job_type = job.get("type")
+
+    tile_url = (
+        result.get("tileUrl")
+        or result.get("tile")
+        or result.get("floodTile")
+    )
+    overlay_geojson = None
+    legend_items = None
+
+    if job_type == "gee.groundwater":
+        classes = result.get("classes") or []
+        legend_items = [
+            {
+                "label": str(item.get("label") or item.get("id") or ""),
+                "color": str(item.get("color") or "#94a3b8"),
+            }
+            for item in classes
+            if isinstance(item, dict)
+        ]
+    elif job_type == "gee.flood":
+        legend_items = [
+            {"label": "Área potencialmente inundada", "color": "#d50000"},
+        ]
+    elif job_type == "gee.targeting":
+        legend_items = [
+            {"label": "Baixa favorabilidade", "color": "#313695"},
+            {"label": "Moderada", "color": "#ffffbf"},
+            {"label": "Alta favorabilidade", "color": "#a50026"},
+        ]
+    elif job_type == "gee.watershed":
+        overlay_geojson = result.get("geojson")
+        legend_items = [
+            {"label": "Bacia delimitada", "color": "#0d47a1"},
+        ]
+
+    return {
+        "tile_url": tile_url if isinstance(tile_url, str) else None,
+        "overlay_geojson": overlay_geojson if isinstance(overlay_geojson, dict) else None,
+        "legend_items": legend_items,
+    }
+
+
+async def _persist_output_map_snapshot(
+    uid: str,
+    project: dict,
+    output: dict,
+    job: Optional[dict],
+) -> dict:
+    """Best-effort publication-quality map snapshot for a persistent output."""
+    if not job or job.get("status") != "completed":
+        return output
+
+    from project_assets import output_map_path, storage_status, upload_png
+    from project_outputs import attach_asset
+
+    if not storage_status().get("configured"):
+        return output
+
+    bounds = _project_or_job_bounds(project, job)
+    if not bounds:
+        return output
+
+    spec = _job_snapshot_spec(job)
+    if not spec.get("tile_url") and not spec.get("overlay_geojson"):
+        return output
+
+    try:
+        import asyncio
+        from utils.map_export import render_map_from_gee_result
+
+        loop = asyncio.get_running_loop()
+        png_bytes = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: render_map_from_gee_result(
+                bounds=bounds,
+                tile_url=spec.get("tile_url"),
+                overlay_geojson=spec.get("overlay_geojson"),
+                overlay_label=output.get("title"),
+                legend_items=spec.get("legend_items"),
+                width_mm=182,
+                height_mm=105,
+                dpi=170,
+                title=output.get("title"),
+            ),
+        )
+
+        storage_path = output_map_path(
+            uid,
+            output["project_id"],
+            output["id"],
+        )
+        asset = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: upload_png(storage_path, png_bytes),
+        )
+        if not asset:
+            return output
+
+        asset.update({
+            "kind": "map_snapshot",
+            "bounds": bounds,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        })
+        return attach_asset(uid, output["id"], "map", asset) or output
+    except Exception as exc:
+        logger.warning(
+            "Map snapshot skipped for output=%s: %s",
+            output.get("id"),
+            exc,
+        )
+        return output
+
+
 @app.get("/geomoz-api/projects/{project_id}/outputs")
 async def list_project_outputs_endpoint(
     project_id: str,
@@ -711,6 +1008,7 @@ async def create_project_output_from_job(
         source_id=job_id,
         content=content,
     )
+    output = await _persist_output_map_snapshot(uid, project, output, job)
     touch_project(uid, project_id)
     return output
 
@@ -746,9 +1044,12 @@ async def create_project_output_from_plan(
         )
 
     analyses = []
+    plan_jobs = []
     for step in plan.get("steps") or []:
         job_id = step.get("job_id")
         job = get_job(uid, job_id) if job_id else None
+        if job:
+            plan_jobs.append(job)
         analyses.append({
             "order": step.get("order"),
             "tool_id": step.get("tool_id"),
@@ -786,6 +1087,16 @@ async def create_project_output_from_plan(
         source_id=plan_id,
         content=content,
     )
+    for candidate in reversed(plan_jobs):
+        spec = _job_snapshot_spec(candidate)
+        if spec.get("tile_url") or spec.get("overlay_geojson"):
+            output = await _persist_output_map_snapshot(
+                uid,
+                project,
+                output,
+                candidate,
+            )
+            break
     touch_project(uid, project_id)
     return output
 
@@ -801,6 +1112,45 @@ async def get_project_output_endpoint(
     if not output:
         raise HTTPException(status_code=404, detail="Output GeoMoz não encontrado.")
     return output
+
+
+@app.get("/geomoz-api/outputs/{output_id}/map")
+async def get_project_output_map(
+    output_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Return the private persistent map snapshot attached to an output."""
+    from project_assets import download_bytes
+    from project_outputs import get_output
+
+    output = get_output(uid, output_id)
+    if not output:
+        raise HTTPException(status_code=404, detail="Output GeoMoz não encontrado.")
+
+    map_asset = (output.get("assets") or {}).get("map")
+    if not isinstance(map_asset, dict) or not map_asset.get("storage_path"):
+        raise HTTPException(
+            status_code=404,
+            detail="Este output ainda não possui snapshot cartográfico persistente.",
+        )
+
+    import asyncio
+    loop = asyncio.get_running_loop()
+    map_bytes = await loop.run_in_executor(
+        _thread_pool_executor,
+        lambda: download_bytes(map_asset["storage_path"]),
+    )
+    if not map_bytes:
+        raise HTTPException(status_code=404, detail="Snapshot cartográfico indisponível.")
+
+    return Response(
+        content=map_bytes,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "Content-Disposition": f'inline; filename="geomoz-map-{output_id[:8]}.png"',
+        },
+    )
 
 
 @app.get("/geomoz-api/outputs/{output_id}/html")
@@ -821,7 +1171,30 @@ async def render_project_output_html(
     if not project:
         raise HTTPException(status_code=404, detail="Projecto do output não encontrado.")
 
-    html = render_output_html(output, project)
+    map_data_uri = None
+    map_asset = (output.get("assets") or {}).get("map")
+    if isinstance(map_asset, dict) and map_asset.get("storage_path"):
+        try:
+            import base64
+            from project_assets import download_bytes
+
+            import asyncio
+            loop = asyncio.get_running_loop()
+            map_bytes = await loop.run_in_executor(
+                _thread_pool_executor,
+                lambda: download_bytes(map_asset["storage_path"]),
+            )
+            if map_bytes:
+                encoded = base64.b64encode(map_bytes).decode("ascii")
+                map_data_uri = f"data:image/png;base64,{encoded}"
+        except Exception as exc:
+            logger.warning(
+                "Could not embed output map %s: %s",
+                output_id,
+                exc,
+            )
+
+    html = render_output_html(output, project, map_data_uri=map_data_uri)
     return HTMLResponse(
         content=html,
         headers={
@@ -848,9 +1221,28 @@ async def delete_project_endpoint(
     project_id: str,
     uid: str = Depends(require_firebase_auth),
 ):
-    from projects_store import delete_project
-    if not delete_project(uid, project_id):
+    from project_outputs import delete_output, list_outputs
+    from projects_store import delete_project, get_project
+
+    if not get_project(uid, project_id):
         raise HTTPException(status_code=404, detail="Projecto não encontrado.")
+
+    # Clean durable deliverables and their private Storage assets first.
+    # Job/plan history is intentionally independent and follows its own
+    # retention policy.
+    for output in list_outputs(uid, project_id=project_id, limit=200):
+        try:
+            delete_output(uid, output["id"])
+        except Exception as exc:
+            logger.warning(
+                "Could not clean output=%s before deleting project=%s: %s",
+                output.get("id"),
+                project_id,
+                exc,
+            )
+
+    if not delete_project(uid, project_id):
+        raise HTTPException(status_code=500, detail="Falha ao eliminar o projecto.")
     return {"deleted": True, "id": project_id}
 
 # ── GEE endpoints ──────────────────────────────────────────────────────────────
@@ -862,20 +1254,40 @@ def api_status():
     return {"status": "ok", "message": msg}
 
 @app.post("/geomoz-api/convert-geom")
-async def convert_geom(file: UploadFile = File(...)):
-    """Converts a KML, GPX or zipped Shapefile into a GeoJSON dict."""
+async def convert_geom(
+    file: UploadFile = File(...),
+    uid: str = Depends(require_firebase_auth),
+):
+    """Convert an authenticated user's KML/GPX/GeoJSON into GeoJSON.
+
+    Archive formats are intentionally excluded here until archive expansion can
+    be validated against zip-bomb/path-traversal limits.
+    """
     import tempfile
     import os
     import json
     
-    ext = file.filename.split('.')[-1].lower()
-    if ext not in ['kml', 'gpx', 'zip', 'json', 'geojson']:
-        raise HTTPException(status_code=400, detail="Formato não suportado. Use KML, GPX, ZIP ou GeoJSON.")
-        
+    filename = file.filename or "upload"
+    ext = filename.split('.')[-1].lower()
+    if ext not in ['kml', 'gpx', 'json', 'geojson']:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato não suportado. Use KML, GPX ou GeoJSON.",
+        )
+
+    max_upload_bytes = 10 * 1024 * 1024
+    tmp_path = None
+
     try:
-        # Save uploaded file to temp
+        content = await file.read(max_upload_bytes + 1)
+        if len(content) > max_upload_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail="Ficheiro demasiado grande. Limite máximo: 10 MB.",
+            )
+
+        # Save uploaded file to a private temporary path.
         with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
-            content = await file.read()
             tmp.write(content)
             tmp_path = tmp.name
             
@@ -891,12 +1303,21 @@ async def convert_geom(file: UploadFile = File(...)):
         gdf.geometry = gdf.geometry.buffer(0)
             
         geojson_str = gdf.to_json()
-        os.remove(tmp_path)
-        
         return json.loads(geojson_str)
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
         logger.exception("Erro ao converter ficheiro de geometria.")
-        raise HTTPException(status_code=500, detail=f"Erro na conversão: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Erro ao converter o ficheiro de geometria.",
+        )
+    finally:
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
 
@@ -906,7 +1327,7 @@ class GEEServiceAccountKeyRequest(BaseModel):
 
 
 @app.get("/geomoz-api/gee/config")
-def gee_config():
+def gee_config(admin_uid: str = Depends(require_admin_auth)):
     """
     Return current GEE configuration (with sensitive values masked).
     Used by the Settings page to show the user what's configured.
@@ -957,13 +1378,25 @@ def gee_config():
 
 
 @app.post("/geomoz-api/gee/configure")
-def gee_configure(req: GEEServiceAccountKeyRequest):
+def gee_configure(
+    req: GEEServiceAccountKeyRequest,
+    admin_uid: str = Depends(require_admin_auth),
+):
     """
     Update GEE credentials and reinitialize the connection.
     Accepts service_account_key (JSON string) and/or project_id.
     Returns the new connection status.
     """
     from gee_module import reset_gee, _init_gee, gee_status as _gee_status
+
+    if os.environ.get("GEOMOZ_ALLOW_RUNTIME_CONFIG", "false").lower() != "true":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Configuração GEE global em runtime está desactivada. "
+                "Use Secret Manager / configuração de deployment."
+            ),
+        )
 
     changed = False
 
@@ -1339,8 +1772,22 @@ async def create_analysis_job(
     Workflows are migrated one-by-one while synchronous endpoints remain
     available for backwards compatibility.
     """
-    from analysis_jobs import submit_job
+    from analysis_jobs import active_job_count, submit_job
     import gee_session_store
+
+    max_active_jobs = max(
+        1,
+        min(int(os.environ.get("ANALYSIS_MAX_ACTIVE_PER_USER", "5")), 20),
+    )
+    active_jobs = active_job_count(uid)
+    if active_jobs >= max_active_jobs:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Já existem {active_jobs} análises activas. "
+                "Aguarde ou cancele uma análise antes de iniciar outra."
+            ),
+        )
 
     supported_job_types = {
         "gee.index",
@@ -3113,6 +3560,7 @@ def export_shapefile(
     province: Optional[str] = Query(None),
     district: Optional[str] = Query(None),
     layer: str = Query("geology"),
+    uid: str = Depends(require_firebase_auth),
 ):
     """Export a layer as a zipped ESRI Shapefile (QGIS/ArcGIS-ready).
 

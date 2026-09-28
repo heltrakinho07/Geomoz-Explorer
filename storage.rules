@@ -1,0 +1,12 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Project-output maps and future binary artefacts are private server assets.
+    // The Firebase Admin SDK writes/reads them; authenticated delivery happens
+    // through ownership-checked GeoMoz API endpoints.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
