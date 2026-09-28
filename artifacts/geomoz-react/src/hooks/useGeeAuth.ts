@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { signInWithPopup, GoogleAuthProvider, signOut as firebaseSignOut } from "firebase/auth";
+import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { useAuth } from "./useAuth";
 
@@ -37,8 +37,13 @@ export function useGeeAuth() {
         const data = await res.json();
         setGeeConnected(!!data.connected);
         setGeeProject(data.project || null);
+        if (!data.connected && data.message) {
+          setError(data.message);
+        }
       } else {
         setGeeConnected(false);
+        const data = await res.json().catch(() => ({}));
+        setError(data.detail || `Falha ao verificar o Earth Engine (HTTP ${res.status})`);
       }
     } catch (e: any) {
       console.error("Error fetching GEE status", e);
@@ -87,8 +92,12 @@ export function useGeeAuth() {
         throw new Error(errData.detail || `Falha ao registar credenciais (HTTP ${res.status})`);
       }
 
-      setGeeConnected(true);
-      setGeeProject(project || null);
+      const data = await res.json();
+      setGeeConnected(!!data.connected);
+      setGeeProject(data.project || project || null);
+      if (!data.connected) {
+        throw new Error(data.message || "A ligação ao Google Earth Engine não foi validada.");
+      }
     } catch (err: any) {
       console.error("Error connecting GEE:", err);
       let msg = err.message || "Erro ao ligar ao Google Earth Engine.";
@@ -108,14 +117,29 @@ export function useGeeAuth() {
   const disconnectGee = async () => {
     try {
       setLoading(true);
-      if (auth) {
-        await firebaseSignOut(auth);
+      setError(null);
+
+      if (!auth?.currentUser) {
+        setGeeConnected(false);
+        setGeeProject(null);
+        return;
       }
+
+      const idToken = await auth.currentUser.getIdToken();
+      const res = await fetch(`${apiBase}/geomoz-api/gee/disconnect`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${idToken}` }
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `Falha ao desligar GEE (HTTP ${res.status})`);
+      }
+
       setGeeConnected(false);
       setGeeProject(null);
-      setError(null);
     } catch (e: any) {
-      setError(e.message || "Erro ao desligar.");
+      setError(e.message || "Erro ao desligar o Google Earth Engine.");
     } finally {
       setLoading(false);
     }
