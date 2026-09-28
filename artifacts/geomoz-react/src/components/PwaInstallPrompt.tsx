@@ -21,6 +21,7 @@ export default function PwaInstallPrompt() {
       const timer = setTimeout(() => setDismissed(false), 4000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, []);
 
   const handleDismiss = () => {
