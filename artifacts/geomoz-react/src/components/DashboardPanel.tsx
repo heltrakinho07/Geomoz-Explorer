@@ -15,7 +15,7 @@ import {
   Waves, Navigation, Building2, Activity,
   Download, Loader2, CheckCircle2, Sprout,
   FileText, BarChart2, Layers,
-  ExternalLink, RefreshCw, Clock3, XCircle, GitBranch,
+  ExternalLink, RefreshCw, Clock3, XCircle, GitBranch, Save, Trash2,
 } from "lucide-react";
 import { apiUrl, apiFetch } from "@/lib/api";
 import type { Stats } from "@/hooks/useGeoMoz";
@@ -72,6 +72,23 @@ interface DashboardPlan {
 
 interface PlanListResponse {
   plans: DashboardPlan[];
+}
+
+interface ProjectOutput {
+  id: string;
+  project_id: string;
+  type: "analysis_report" | "plan_report" | string;
+  title: string;
+  description: string;
+  source_type: string;
+  source_id: string;
+  content: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ProjectOutputsResponse {
+  outputs: ProjectOutput[];
 }
 
 const JOB_LABELS: Record<string, string> = {
@@ -156,6 +173,7 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
   const [geeStatus, setGeeStatus] = useState<GeeStatus | null>(null);
   const [geeLoading, setGeeLoading] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [savingOutput, setSavingOutput] = useState<string | null>(null);
 
   // ── Dynamic index counts from the API ──────────────────────────────────
 
@@ -219,6 +237,120 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
   });
 
   const recentPlans = plansData?.plans ?? [];
+
+  const {
+    data: outputsData,
+    isLoading: outputsLoading,
+    refetch: refetchOutputs,
+  } = useQuery<ProjectOutputsResponse>({
+    queryKey: ["project-outputs", activeProject?.id ?? "none"],
+    queryFn: async () => {
+      if (!activeProject?.id) return { outputs: [] };
+      const res = await apiFetch(`/geomoz-api/projects/${activeProject.id}/outputs?limit=20`);
+      if (!res.ok) return { outputs: [] };
+      return res.json();
+    },
+    enabled: !!activeProject?.id,
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
+
+  const projectOutputs = outputsData?.outputs ?? [];
+
+  function outputForSource(sourceType: string, sourceId: string) {
+    return projectOutputs.find(output =>
+      output.source_type === sourceType && output.source_id === sourceId
+    );
+  }
+
+  async function saveJobOutput(job: AnalysisJob) {
+    if (!activeProject?.id || job.status !== "completed") return;
+    setSavingOutput(`job:${job.id}`);
+    try {
+      const res = await apiFetch(
+        `/geomoz-api/projects/${activeProject.id}/outputs/from-job/${job.id}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: `Relatório · ${JOB_LABELS[job.type] || job.type}`,
+          }),
+        },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await refetchOutputs();
+    } finally {
+      setSavingOutput(null);
+    }
+  }
+
+  async function savePlanOutput(plan: DashboardPlan) {
+    if (!activeProject?.id || plan.status !== "completed") return;
+    setSavingOutput(`plan:${plan.id}`);
+    try {
+      const res = await apiFetch(
+        `/geomoz-api/projects/${activeProject.id}/outputs/from-plan/${plan.id}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: `Relatório Integrado · ${plan.title}`,
+          }),
+        },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await refetchOutputs();
+    } finally {
+      setSavingOutput(null);
+    }
+  }
+
+  async function openOutputHtml(output: ProjectOutput) {
+    setSavingOutput(`html:${output.id}`);
+    try {
+      const res = await apiFetch(`/geomoz-api/outputs/${output.id}/html`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const html = await res.text();
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const reportWindow = window.open(url, "_blank", "noopener,noreferrer");
+      if (!reportWindow) {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `GeoMoz_Relatorio_${output.id.slice(0, 8)}.html`;
+        a.click();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } finally {
+      setSavingOutput(null);
+    }
+  }
+
+  function downloadOutput(output: ProjectOutput) {
+    const blob = new Blob(
+      [JSON.stringify(output, null, 2)],
+      { type: "application/json;charset=utf-8" },
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `GeoMoz_${output.type}_${output.id.slice(0, 8)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function deleteOutput(outputId: string) {
+    setSavingOutput(`delete:${outputId}`);
+    try {
+      const res = await apiFetch(`/geomoz-api/outputs/${outputId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await refetchOutputs();
+    } finally {
+      setSavingOutput(null);
+    }
+  }
 
 
   // ── GEE status check ───────────────────────────────────────────────────
@@ -540,13 +672,32 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
                       </div>
 
                       <div className="shrink-0 text-right">
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                        <div className="flex items-center justify-end gap-1 text-[10px] text-slate-400">
                           <Clock3 size={9} /> {formatJobTime(job.created_at)}
                         </div>
                         {active && (
                           <div className="mt-1 text-[10px] font-semibold text-sky-600">
                             {job.progress || 0}%
                           </div>
+                        )}
+                        {completed && activeProject && (
+                          outputForSource("analysis_job", job.id) ? (
+                            <div className="mt-1 text-[9px] font-semibold text-emerald-600">
+                              relatório guardado
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void saveJobOutput(job)}
+                              disabled={savingOutput === `job:${job.id}`}
+                              className="mt-1 inline-flex items-center gap-1 rounded-md border border-sky-200 px-1.5 py-1 text-[9px] font-semibold text-sky-600 hover:bg-sky-50 disabled:opacity-50"
+                            >
+                              {savingOutput === `job:${job.id}`
+                                ? <Loader2 size={9} className="animate-spin" />
+                                : <Save size={9} />}
+                              Guardar relatório
+                            </button>
+                          )
                         )}
                       </div>
                     </div>
@@ -663,6 +814,25 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
                         <div className="mt-0.5 flex items-center justify-end gap-1 text-[9px] text-slate-400">
                           <Clock3 size={8} /> {formatJobTime(plan.created_at)}
                         </div>
+                        {completed && activeProject && (
+                          outputForSource("analysis_plan", plan.id) ? (
+                            <div className="mt-1 text-[9px] font-semibold text-emerald-600">
+                              relatório guardado
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void savePlanOutput(plan)}
+                              disabled={savingOutput === `plan:${plan.id}`}
+                              className="mt-1 inline-flex items-center gap-1 rounded-md border border-violet-200 px-1.5 py-1 text-[9px] font-semibold text-violet-600 hover:bg-violet-50 disabled:opacity-50"
+                            >
+                              {savingOutput === `plan:${plan.id}`
+                                ? <Loader2 size={9} className="animate-spin" />
+                                : <Save size={9} />}
+                              Guardar relatório
+                            </button>
+                          )
+                        )}
                       </div>
                     </div>
                   );
@@ -671,6 +841,103 @@ export default function DashboardPanel({ province, district }: DashboardPanelPro
             )}
           </div>
         </div>
+
+        {/* Persistent project outputs */}
+        {activeProject && (
+          <div className="mb-6">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Entregáveis do Projecto
+                </h3>
+                <p className="mt-0.5 text-[11px] text-slate-400">
+                  Relatórios persistentes seleccionados a partir de análises e planos concluídos.
+                </p>
+              </div>
+              <button
+                onClick={() => refetchOutputs()}
+                className="rounded-lg border border-slate-200 bg-white p-2 text-slate-400 hover:border-emerald-200 hover:text-emerald-600"
+                title="Actualizar entregáveis"
+              >
+                <RefreshCw size={12} className={outputsLoading ? "animate-spin" : ""} />
+              </button>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              {outputsLoading && projectOutputs.length === 0 ? (
+                <div className="flex items-center justify-center gap-2 px-4 py-6 text-xs text-slate-400">
+                  <Loader2 size={13} className="animate-spin" /> A carregar entregáveis…
+                </div>
+              ) : projectOutputs.length === 0 ? (
+                <div className="px-4 py-6 text-center">
+                  <FileText size={18} className="mx-auto mb-2 text-slate-300" />
+                  <div className="text-xs font-medium text-slate-600">Ainda não existem entregáveis guardados</div>
+                  <div className="mt-1 text-[11px] text-slate-400">
+                    Guarde uma análise ou plano concluído para criar o primeiro relatório persistente.
+                  </div>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {projectOutputs.map(output => (
+                    <div key={output.id} className="flex items-center gap-3 px-4 py-3">
+                      <div className={[
+                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                        output.type === "plan_report" ? "bg-violet-50" : "bg-sky-50",
+                      ].join(" ")}>
+                        <FileText
+                          size={15}
+                          className={output.type === "plan_report" ? "text-violet-500" : "text-sky-500"}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-semibold text-slate-800">
+                          {output.title}
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-2 text-[9px] text-slate-400">
+                          <span>{output.type === "plan_report" ? "Plano integrado" : "Análise"}</span>
+                          <span>·</span>
+                          <span>{formatJobTime(output.created_at)}</span>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => void openOutputHtml(output)}
+                          disabled={savingOutput === `html:${output.id}`}
+                          className="rounded-lg border border-slate-200 p-2 text-slate-400 hover:border-violet-200 hover:text-violet-600 disabled:opacity-40"
+                          title="Abrir relatório HTML para leitura/impressão"
+                        >
+                          {savingOutput === `html:${output.id}`
+                            ? <Loader2 size={12} className="animate-spin" />
+                            : <ExternalLink size={12} />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => downloadOutput(output)}
+                          className="rounded-lg border border-slate-200 p-2 text-slate-400 hover:border-sky-200 hover:text-sky-600"
+                          title="Descarregar JSON estruturado"
+                        >
+                          <Download size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void deleteOutput(output.id)}
+                          disabled={savingOutput === `delete:${output.id}`}
+                          className="rounded-lg border border-slate-200 p-2 text-slate-300 hover:border-red-200 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+                          title="Eliminar entregável"
+                        >
+                          {savingOutput === `delete:${output.id}`
+                            ? <Loader2 size={12} className="animate-spin" />
+                            : <Trash2 size={12} />}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Quick export actions */}
         <div className="mb-6">
