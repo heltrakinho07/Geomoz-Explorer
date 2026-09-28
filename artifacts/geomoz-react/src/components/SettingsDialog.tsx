@@ -60,7 +60,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("gee");
   const [projectIdInput, setProjectIdInput] = useState(
-    geeProject && geeProject !== "eengine-project" ? geeProject : "geoprocessamento-426809"
+    geeProject && geeProject !== "eengine-project" ? geeProject : ""
   );
   const [accountInput, setAccountInput] = useState(geeAccount || "");
   const [saKeyInput, setSaKeyInput] = useState("");
@@ -73,7 +73,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
 
   // Sync inputs with active context and user profile
   React.useEffect(() => {
-    setProjectIdInput(geeProject || "geoprocessamento-426809");
+    setProjectIdInput(geeProject || "");
     setAccountInput(geeAccount || (user?.email || ""));
   }, [geeProject, geeAccount, user]);
 
@@ -87,8 +87,15 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   });
 
   const handleSaveProjectOnly = async () => {
-    const proj = projectIdInput.trim() || geeProject || "geoprocessamento-426809";
+    const proj = projectIdInput.trim() || geeProject || "";
     const acc = accountInput.trim() || geeAccount || "";
+    if (!proj) {
+      setTestResult({
+        connected: false,
+        message: "Introduza o Project ID do seu projeto Google Cloud.",
+      });
+      return;
+    }
     setSavingProject(true);
     setTestResult(null);
     try {
@@ -108,9 +115,16 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   };
 
   const handleSaveServiceAccount = async () => {
-    const proj = projectIdInput.trim() || geeProject || "geoprocessamento-426809";
+    const proj = projectIdInput.trim() || geeProject || "";
     const acc = accountInput.trim() || geeAccount || "";
     const sa = saKeyInput.trim() || undefined;
+    if (!proj) {
+      setTestResult({
+        connected: false,
+        message: "Introduza o Project ID do seu projeto Google Cloud.",
+      });
+      return;
+    }
     setSavingSa(true);
     setTestResult(null);
     try {
@@ -134,10 +148,18 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   };
 
   const handleConnectGee = async () => {
+    const project = projectIdInput.trim();
+    if (!project) {
+      setTestResult({
+        connected: false,
+        message: "Introduza primeiro o Project ID do seu projeto Google Cloud.",
+      });
+      return;
+    }
     setConnectingGoogle(true);
     setTestResult(null);
     try {
-      await connectGee(projectIdInput.trim() || undefined, accountInput.trim() || undefined);
+      await connectGee(project, accountInput.trim() || undefined);
       setTestResult({
         connected: true,
         message: "Conta Google autenticada com sucesso no Earth Engine!",
@@ -154,10 +176,18 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   };
 
   const handleConnectWithRedirect = async () => {
+    const project = projectIdInput.trim();
+    if (!project) {
+      setTestResult({
+        connected: false,
+        message: "Introduza primeiro o Project ID do seu projeto Google Cloud.",
+      });
+      return;
+    }
     setConnectingGoogle(true);
     setTestResult(null);
     try {
-      await connectGeeWithRedirect(projectIdInput.trim() || undefined, accountInput.trim() || undefined);
+      await connectGeeWithRedirect(project, accountInput.trim() || undefined);
     } catch (err: any) {
       setTestResult({
         connected: false,
@@ -176,13 +206,19 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   };
 
   const handleTestConnection = async () => {
+    const project = projectIdInput.trim() || geeProject || "";
+    if (!project) {
+      setTestResult({
+        connected: false,
+        message: "Introduza o Project ID antes de testar a ligação.",
+      });
+      return;
+    }
     setTesting(true);
     setTestResult(null);
     try {
       const res = await apiFetch("/geomoz-api/gee/status", {
-        headers: {
-          "X-GEE-Project": projectIdInput.trim() || geeProject || "geoprocessamento-426809",
-        },
+        headers: { "X-GEE-Project": project },
       });
       const data = await res.json().catch(() => ({}));
       if (data.connected) {
@@ -322,8 +358,8 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       }`}
                     >
                       {geeConnected
-                        ? `Projeto vinculado: ${geeProject || "geoprocessamento-426809"} | Conta: ${geeAccount || "Quota Ativa"}`
-                        : `Projeto selecionado: ${geeProject || "geoprocessamento-426809"}. Conecte a sua conta Google com 1 clique abaixo para processar imagens.`}
+                        ? `Projeto vinculado: ${geeProject || "não definido"} | Conta: ${geeAccount || "Quota Ativa"}`
+                        : `Projeto selecionado: ${geeProject || "não definido"}. Conecte a sua conta Google com 1 clique abaixo para processar imagens.`}
                     </p>
                   </div>
                 </div>
@@ -436,7 +472,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                     <div className="space-y-2">
                       <Button
                         onClick={handleConnectGee}
-                        disabled={geeLoading}
+                        disabled={geeLoading || !projectIdInput.trim()}
                         className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl shadow-sm flex items-center justify-center gap-2.5 text-xs transition-all"
                       >
                         <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -481,12 +517,12 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                         type="text"
                         value={projectIdInput}
                         onChange={(e) => setProjectIdInput(e.target.value)}
-                        placeholder="geoprocessamento-426809"
+                        placeholder="ex: meu-projeto-earth-engine"
                         className="text-xs font-mono bg-white dark:bg-slate-900 flex-1"
                       />
                       <Button
                         onClick={handleSaveProjectOnly}
-                        disabled={savingProject}
+                        disabled={savingProject || !projectIdInput.trim()}
                         className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 rounded-xl shrink-0"
                       >
                         {savingProject ? (
@@ -497,10 +533,10 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       </Button>
                     </div>
                     <p className="text-[10px] text-slate-400">
-                      ID do projeto GCP onde a API do Earth Engine está ativada (ex: <code>geoprocessamento-426809</code> ou o projeto indicado no <a href="https://code.earthengine.google.com" target="_blank" rel="noreferrer" className="text-sky-600 underline">Code Editor</a>).
+                      ID do seu projeto GCP onde a API do Earth Engine está ativada (ex: <code>meu-projeto-earth-engine</code> ou o projeto indicado no <a href="https://code.earthengine.google.com" target="_blank" rel="noreferrer" className="text-sky-600 underline">Code Editor</a>).
                     </p>
                     <a
-                      href={`https://console.cloud.google.com/apis/library/earthengine.googleapis.com?project=${projectIdInput.trim() || "geoprocessamento-426809"}`}
+                      href={projectIdInput.trim() ? `https://console.cloud.google.com/apis/library/earthengine.googleapis.com?project=${encodeURIComponent(projectIdInput.trim())}` : "https://console.cloud.google.com/apis/library/earthengine.googleapis.com"}
                       target="_blank"
                       rel="noreferrer"
                       className="text-[10px] text-sky-600 hover:underline inline-flex items-center gap-1"
@@ -546,7 +582,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                         type="text"
                         value={accountInput}
                         onChange={(e) => setAccountInput(e.target.value)}
-                        placeholder="ex: geoanalises@geoprocessamento-426809.iam.gserviceaccount.com"
+                        placeholder="ex: gee-service@meu-projeto.iam.gserviceaccount.com"
                         className="text-xs bg-white dark:bg-slate-900"
                       />
                     </div>
@@ -558,7 +594,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       <textarea
                         value={saKeyInput}
                         onChange={(e) => setSaKeyInput(e.target.value)}
-                        placeholder={`{\n  "type": "service_account",\n  "project_id": "geoprocessamento-426809",\n  "private_key_id": "...",\n  "private_key": "-----BEGIN PRIVATE KEY-----...",\n  "client_email": "geoanalises@geoprocessamento-426809.iam.gserviceaccount.com"\n}`}
+                        placeholder={`{\n  "type": "service_account",\n  "project_id": "meu-projeto-earth-engine",\n  "private_key_id": "...",\n  "private_key": "-----BEGIN PRIVATE KEY-----...",\n  "client_email": "gee-service@meu-projeto.iam.gserviceaccount.com"\n}`}
                         rows={4}
                         className="w-full text-[11px] font-mono p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                       />
