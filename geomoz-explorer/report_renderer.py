@@ -196,6 +196,66 @@ def _weights_table(weights: Any) -> str:
     )
 
 
+def _study_area_section(content: dict[str, Any]) -> str:
+    area = content.get("study_area") or {}
+    if not isinstance(area, dict) or not any(area.values()):
+        return ""
+
+    location_parts = [
+        str(value)
+        for value in (area.get("district"), area.get("province"))
+        if value
+    ]
+    location = " · ".join(location_parts) if location_parts else "—"
+
+    center = area.get("center")
+    center_label = "—"
+    if isinstance(center, list) and len(center) == 2:
+        lat = _number(center[0])
+        lon = _number(center[1])
+        if lat is not None and lon is not None:
+            center_label = f"{lat:.5f}, {lon:.5f}"
+
+    bounds = area.get("bounds")
+    extent_html = ""
+    if (
+        isinstance(bounds, list)
+        and len(bounds) == 2
+        and all(isinstance(item, list) and len(item) == 2 for item in bounds)
+    ):
+        sw_lat = _number(bounds[0][0])
+        sw_lon = _number(bounds[0][1])
+        ne_lat = _number(bounds[1][0])
+        ne_lon = _number(bounds[1][1])
+        if None not in (sw_lat, sw_lon, ne_lat, ne_lon):
+            extent_html = (
+                '<div class="extent-card">'
+                '<div class="extent-grid">'
+                '<div><span>NW</span>'
+                f'<strong>{ne_lat:.4f}, {sw_lon:.4f}</strong></div>'
+                '<div><span>NE</span>'
+                f'<strong>{ne_lat:.4f}, {ne_lon:.4f}</strong></div>'
+                '<div><span>SW</span>'
+                f'<strong>{sw_lat:.4f}, {sw_lon:.4f}</strong></div>'
+                '<div><span>SE</span>'
+                f'<strong>{sw_lat:.4f}, {ne_lon:.4f}</strong></div>'
+                '</div>'
+                '<div class="extent-caption">Extensão cartográfica persistida do Project</div>'
+                '</div>'
+            )
+
+    return _section(
+        "Área de estudo",
+        '<div class="summary-grid four">'
+        + _metric("Designação", area.get("label") or "Área de estudo")
+        + _metric("Tipo", area.get("kind") or "project")
+        + _metric("Localização", location)
+        + _metric("Centro / zoom", f"{center_label} · z{area.get('zoom') or '—'}")
+        + "</div>"
+        + extent_html,
+    )
+
+
 def _job_identity(content: dict[str, Any]) -> str:
     job = content.get("job") or {}
     return _section(
@@ -235,7 +295,7 @@ def _groundwater_report(content: dict[str, Any]) -> str:
         default=None,
     )
 
-    body = _job_identity(content)
+    body = _job_identity(content) + _study_area_section(content)
     body += _section(
         "Resumo executivo",
         '<div class="summary-grid four">'
@@ -280,7 +340,7 @@ def _flood_report(content: dict[str, Any]) -> str:
     params = content.get("parameters") or {}
     result = content.get("result") or {}
 
-    body = _job_identity(content)
+    body = _job_identity(content) + _study_area_section(content)
     body += _section(
         "Resumo do evento",
         '<div class="summary-grid four">'
@@ -324,7 +384,7 @@ def _targeting_report(content: dict[str, Any]) -> str:
     threshold_pct = threshold * 100 if threshold is not None else None
     weights = result.get("weights") or {}
 
-    body = _job_identity(content)
+    body = _job_identity(content) + _study_area_section(content)
     body += _section(
         "Resumo de favorabilidade",
         '<div class="summary-grid four">'
@@ -387,7 +447,7 @@ def _watershed_report(content: dict[str, Any]) -> str:
         )
     )
 
-    body = _job_identity(content)
+    body = _job_identity(content) + _study_area_section(content)
     body += _section(
         "Resumo da bacia",
         '<div class="summary-grid four">'
@@ -416,12 +476,115 @@ def _watershed_report(content: dict[str, Any]) -> str:
     return body
 
 
+def _erosion_report(content: dict[str, Any]) -> str:
+    params = content.get("parameters") or {}
+    result = content.get("result") or {}
+    classes = [
+        item for item in (result.get("classes") or [])
+        if isinstance(item, dict)
+    ]
+
+    total_area = sum((_number(item.get("areaKm2")) or 0) for item in classes)
+    high_area = sum(
+        (_number(item.get("areaKm2")) or 0)
+        for item in classes
+        if int(item.get("id") or 0) in {4, 5}
+    )
+    high_pct = (high_area / total_area * 100) if total_area > 0 else None
+
+    body = _job_identity(content) + _study_area_section(content)
+    body += _section(
+        "Resumo de risco de erosão",
+        '<div class="summary-grid four">'
+        + _metric("Ano", result.get("year") or params.get("year") or "—")
+        + _metric("Perda média", _fmt_number(result.get("meanTPerHa"), 2, " t/ha/ano"))
+        + _metric("Área analisada", _fmt_number(total_area, 1, " km²"))
+        + _metric("Alta + Muito Alta", _fmt_number(high_pct, 1, "%"))
+        + "</div>",
+    )
+    body += _section(
+        "Distribuição das classes",
+        _class_table(classes, include_range=True),
+    )
+    body += _section(
+        "Metodologia",
+        '<p class="method">O GeoMoz aplica a equação RUSLE '
+        '<strong>A = R × K × LS × C × P</strong> para estimar perda potencial '
+        'de solo. Nesta implementação, a erosividade da chuva (R) deriva de '
+        'CHIRPS, a erodibilidade do solo (K) usa um valor de referência constante, '
+        'o factor LS deriva do relevo Copernicus DEM e o factor C é estimado a '
+        'partir de NDVI MODIS. O resultado é classificado em cinco classes de risco.</p>'
+        f'<div class="source">Fonte do modelo: {escape(str(result.get("source") or "RUSLE GeoMoz"))}</div>',
+    )
+    body += _section("Parâmetros de execução", _render_mapping(params))
+    body += _interpretation(content)
+    body += _notice(
+        "RUSLE estima perda potencial média de solo e não substitui medições "
+        "locais. O uso de K constante e a ausência de práticas de conservação "
+        "espacialmente detalhadas podem introduzir incerteza; aplicações de "
+        "engenharia devem calibrar factores com dados locais.",
+        "warning",
+    )
+    return body
+
+
+def _index_report(content: dict[str, Any]) -> str:
+    params = content.get("parameters") or {}
+    result = content.get("result") or {}
+    group = str(result.get("group") or "index")
+
+    body = _job_identity(content) + _study_area_section(content)
+    body += _section(
+        "Resumo do índice",
+        '<div class="summary-grid four">'
+        + _metric("Índice", result.get("name") or params.get("index") or "—")
+        + _metric("Grupo", group)
+        + _metric("Cenas", result.get("sceneCount") or 0)
+        + _metric("Período", result.get("dateRange") or "—")
+        + "</div>",
+    )
+    body += _section(
+        "Definição técnica",
+        '<div class="summary-grid">'
+        + _metric("Fórmula", result.get("formula") or "—")
+        + _metric("Bandas", result.get("bands") or "—")
+        + _metric(
+            "Classificação",
+            "Disponível" if result.get("classNames") else "Contínua",
+        )
+        + "</div>"
+        + (
+            _section(
+                "Classes",
+                _render_list(result.get("classNames") or []),
+            )
+            if result.get("classNames")
+            else ""
+        ),
+    )
+    stats = result.get("stats")
+    if isinstance(stats, dict) and stats:
+        body += _section("Estatísticas", _render_mapping(stats))
+
+    body += _section("Parâmetros de execução", _render_mapping(params))
+    body += _interpretation(content)
+    body += _notice(
+        "Índices espectrais e derivados são indicadores biofísicos ou temáticos. "
+        "A interpretação depende do sensor, período, cobertura de nuvens, "
+        "resolução espacial, condições atmosféricas e contexto local. "
+        "Valores semelhantes podem representar processos diferentes.",
+        "warning",
+    )
+    return body
+
+
 def _generic_analysis_report(content: dict[str, Any]) -> str:
     params = content.get("parameters") or {}
     result = content.get("result") or {}
 
     return (
         _job_identity(content)
+        + _study_area_section(content)
         + _section("Parâmetros", _render_mapping(params if isinstance(params, dict) else {}))
         + _section("Resultados", _render_mapping(result if isinstance(result, dict) else {}))
         + _interpretation(content)
@@ -450,6 +613,10 @@ def _analysis_body(content: dict[str, Any]) -> str:
         return _targeting_report(content)
     if analysis_type == "gee.watershed":
         return _watershed_report(content)
+    if analysis_type == "gee.erosion":
+        return _erosion_report(content)
+    if analysis_type == "gee.index":
+        return _index_report(content)
     return _generic_analysis_report(content)
 
 
@@ -458,7 +625,7 @@ def _plan_report(content: dict[str, Any]) -> str:
     analyses = content.get("analyses") or []
     explanation = content.get("explanation")
 
-    overview = _section(
+    overview = _study_area_section(content) + _section(
         "Objectivo",
         _narrative(plan.get("goal") or "—")
         + '<div class="summary-grid">'
@@ -521,7 +688,8 @@ def _report_label(output_type: Any, content: dict[str, Any]) -> str:
         "gee.flood": "Relatório de Inundação Sentinel-1",
         "gee.targeting": "Relatório de Targeting Mineral",
         "gee.watershed": "Relatório de Bacia Hidrográfica",
-        "gee.erosion": "Relatório de Risco de Erosão",
+        "gee.erosion": "Relatório de Risco de Erosão RUSLE",
+        "gee.index": "Relatório de Índice Geoespacial",
     }
     return mapping.get(str(content.get("analysis_type") or ""), "Relatório de Análise")
 
@@ -620,6 +788,16 @@ def render_output_html(
   .swatch {{ display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:7px; vertical-align:middle; border:1px solid rgba(15,23,42,.12); }}
   .tags {{ display:flex; flex-wrap:wrap; gap:6px; }}
   .tag {{ border-radius:999px; background:#f1f5f9; padding:5px 8px; font-size:10px; color:#475569; }}
+  .extent-card {{ margin-top:12px; border:1px solid var(--line); border-radius:12px; padding:14px; background:linear-gradient(180deg,#f8fafc,#ffffff); }}
+  .extent-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; min-height:130px; position:relative; }}
+  .extent-grid::before {{ content:""; position:absolute; inset:18px 25%; border-left:1px dashed #cbd5e1; border-right:1px dashed #cbd5e1; }}
+  .extent-grid::after {{ content:""; position:absolute; left:18px; right:18px; top:50%; border-top:1px dashed #cbd5e1; }}
+  .extent-grid div {{ display:flex; flex-direction:column; gap:2px; z-index:1; }}
+  .extent-grid div:nth-child(2), .extent-grid div:nth-child(4) {{ text-align:right; align-items:flex-end; }}
+  .extent-grid div:nth-child(3), .extent-grid div:nth-child(4) {{ justify-content:flex-end; }}
+  .extent-grid span {{ font-size:9px; font-weight:700; color:#94a3b8; letter-spacing:.08em; }}
+  .extent-grid strong {{ font-size:11px; color:#334155; }}
+  .extent-caption {{ margin-top:8px; text-align:center; font-size:9px; color:#94a3b8; text-transform:uppercase; letter-spacing:.08em; }}
   footer {{ padding:16px 44px 24px; color:#94a3b8; font-size:10px; border-top:1px solid var(--line); line-height:1.5; }}
   @media (max-width:700px) {{ .page{{margin:0;border:0;}} header,main,footer{{padding-left:22px;padding-right:22px;}} .summary-grid,.summary-grid.four{{grid-template-columns:1fr 1fr;}} .kv{{grid-template-columns:1fr;gap:3px;}} }}
   @media print {{ body{{background:white;}} .page{{width:100%;margin:0;border:0;box-shadow:none;}} header{{-webkit-print-color-adjust:exact;print-color-adjust:exact;}} .notice,.metric,.swatch{{-webkit-print-color-adjust:exact;print-color-adjust:exact;}} @page{{size:A4;margin:12mm;}} }}
