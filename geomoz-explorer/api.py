@@ -92,10 +92,12 @@ async def require_admin_auth(request: Request) -> str:
     return uid
 
 
-async def require_gee_auth(uid: str = Depends(require_firebase_auth)) -> str:
-    from gee_module import _init_gee
-    _init_gee(uid)
-    return uid
+def require_gee_auth(uid: str = Depends(require_firebase_auth)):
+    """Hold the process-global Earth Engine context for the full request."""
+    from gee_module import gee_execution
+
+    with gee_execution(uid):
+        yield uid
 from pydantic import BaseModel, Field, field_validator, constr
 
 # ── Package imports ────────────────────────────────────────────────────────
