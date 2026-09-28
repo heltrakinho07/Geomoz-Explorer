@@ -47,6 +47,7 @@ COPY tool_registry.py .
 COPY ai_agent.py .
 COPY agent_plans.py .
 COPY project_outputs.py .
+COPY report_renderer.py .
 COPY utils/ utils/
 
 # ── Health check ─────────────────────────────────────────────────────────────
