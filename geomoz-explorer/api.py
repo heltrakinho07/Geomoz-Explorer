@@ -761,6 +761,34 @@ async def get_project_output_endpoint(
     return output
 
 
+@app.get("/geomoz-api/outputs/{output_id}/html")
+async def render_project_output_html(
+    output_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    from fastapi.responses import HTMLResponse
+    from project_outputs import get_output
+    from projects_store import get_project
+    from report_renderer import render_output_html
+
+    output = get_output(uid, output_id)
+    if not output:
+        raise HTTPException(status_code=404, detail="Output GeoMoz não encontrado.")
+
+    project = get_project(uid, output.get("project_id"))
+    if not project:
+        raise HTTPException(status_code=404, detail="Projecto do output não encontrado.")
+
+    html = render_output_html(output, project)
+    return HTMLResponse(
+        content=html,
+        headers={
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": f'inline; filename="geomoz-report-{output_id[:8]}.html"',
+        },
+    )
+
+
 @app.delete("/geomoz-api/outputs/{output_id}")
 async def delete_project_output_endpoint(
     output_id: str,
