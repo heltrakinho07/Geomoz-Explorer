@@ -6,6 +6,7 @@ import {
   Loader2,
   MapPin,
   RotateCcw,
+  Save,
   Send,
   Sparkles,
   Square,
@@ -149,6 +150,9 @@ export default function GeoMozAIAgentTab({
   const [planBusy, setPlanBusy] = useState(false);
   const [planExplanation, setPlanExplanation] = useState<string | null>(null);
   const [planExplaining, setPlanExplaining] = useState(false);
+  const [savingOutput, setSavingOutput] = useState<"job" | "plan" | null>(null);
+  const [savedJobOutputId, setSavedJobOutputId] = useState<string | null>(null);
+  const [savedPlanOutputId, setSavedPlanOutputId] = useState<string | null>(null);
   const [conversation, setConversation] = useState<ConversationEntry[]>([]);
 
   const spatial = useMemo(() => aoiToAPI(aoi), [aoi]);
@@ -186,7 +190,12 @@ export default function GeoMozAIAgentTab({
 
   useEffect(() => {
     setExplanation(null);
+    setSavedJobOutputId(null);
   }, [job?.id]);
+
+  useEffect(() => {
+    setSavedPlanOutputId(null);
+  }, [plan?.id]);
 
   async function explainCurrentJob() {
     if (!job?.id || job.status !== "completed" || explaining) return;
@@ -204,6 +213,60 @@ export default function GeoMozAIAgentTab({
       setRequestError(err instanceof Error ? err.message : String(err));
     } finally {
       setExplaining(false);
+    }
+  }
+
+  async function saveCurrentJobToProject() {
+    if (!activeProject?.id || !job?.id || job.status !== "completed" || savingOutput) return;
+
+    setSavingOutput("job");
+    setRequestError(null);
+    try {
+      const res = await apiFetch(
+        `/geomoz-api/projects/${activeProject.id}/outputs/from-job/${job.id}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: `Relatório · ${job.type.replace(/^gee\\./, "").replaceAll(".", " ")}`,
+            explanation,
+          }),
+        },
+      );
+      if (!res.ok) throw new Error(await parseError(res));
+      const output = await res.json() as { id: string };
+      setSavedJobOutputId(output.id);
+    } catch (err) {
+      setRequestError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingOutput(null);
+    }
+  }
+
+  async function saveCurrentPlanToProject() {
+    if (!activeProject?.id || !plan?.id || plan.status !== "completed" || savingOutput) return;
+
+    setSavingOutput("plan");
+    setRequestError(null);
+    try {
+      const res = await apiFetch(
+        `/geomoz-api/projects/${activeProject.id}/outputs/from-plan/${plan.id}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: `Relatório Integrado · ${plan.title}`,
+            explanation: planExplanation,
+          }),
+        },
+      );
+      if (!res.ok) throw new Error(await parseError(res));
+      const output = await res.json() as { id: string };
+      setSavedPlanOutputId(output.id);
+    } catch (err) {
+      setRequestError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingOutput(null);
     }
   }
 
@@ -650,6 +713,26 @@ export default function GeoMozAIAgentTab({
                           {planExplanation}
                         </div>
                       )}
+
+                      {activeProject && (
+                        <div className="mt-3 flex items-center justify-end">
+                          <button
+                            type="button"
+                            onClick={() => void saveCurrentPlanToProject()}
+                            disabled={savingOutput === "plan" || !!savedPlanOutputId}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-default disabled:opacity-70"
+                          >
+                            {savingOutput === "plan" ? (
+                              <Loader2 size={11} className="animate-spin" />
+                            ) : savedPlanOutputId ? (
+                              <CheckCircle2 size={11} />
+                            ) : (
+                              <Save size={11} />
+                            )}
+                            {savedPlanOutputId ? "Guardado no projecto" : "Guardar relatório no projecto"}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -693,6 +776,26 @@ export default function GeoMozAIAgentTab({
                       {explanation && (
                         <div className="mt-3 whitespace-pre-wrap rounded-lg bg-violet-50/60 px-3 py-3 text-xs leading-relaxed text-slate-700">
                           {explanation}
+                        </div>
+                      )}
+
+                      {activeProject && (
+                        <div className="mt-3 flex items-center justify-end">
+                          <button
+                            type="button"
+                            onClick={() => void saveCurrentJobToProject()}
+                            disabled={savingOutput === "job" || !!savedJobOutputId}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-default disabled:opacity-70"
+                          >
+                            {savingOutput === "job" ? (
+                              <Loader2 size={11} className="animate-spin" />
+                            ) : savedJobOutputId ? (
+                              <CheckCircle2 size={11} />
+                            ) : (
+                              <Save size={11} />
+                            )}
+                            {savedJobOutputId ? "Guardado no projecto" : "Guardar relatório no projecto"}
+                          </button>
                         </div>
                       )}
                     </div>
