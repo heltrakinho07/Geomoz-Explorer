@@ -6,7 +6,7 @@
  * Erosão: risco de perda de solo por RUSLE (A = R·K·LS·C·P), 5 classes.
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { MapContainer, TileLayer, ScaleControl, ZoomControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
@@ -14,8 +14,10 @@ import {
   CheckCircle2, Calendar, Droplets, Layers, FileDown,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAnalysisJob } from "@/hooks/useAnalysisJob";
 import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
+import AnalysisJobProgress from "@/components/AnalysisJobProgress";
 import AreaSelect from "@/components/AreaSelect";
 import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
@@ -61,6 +63,14 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
   const [eventEnd,   setEventEnd]   = useState("2019-03-25");
   const [showPerm,   setShowPerm]   = useState(true);
   const [flood, setFlood] = useState<FloodResult | null>(null);
+  const deliveredFloodJobRef = useRef<string | null>(null);
+  const {
+    job: floodJob,
+    submitJob: submitFloodJob,
+    running: floodRunning,
+    error: floodJobError,
+    resetJob: resetFloodJob,
+  } = useAnalysisJob<FloodResult>();
 
   // Erosion params
   const [year, setYear] = useState(2023);
@@ -70,24 +80,43 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
   const [error,   setError]   = useState<string | null>(null);
   const [drawingEnabled, setDrawingEnabled] = useState(false);
 
-  const runFlood = useCallback(async () => {
-    setLoading(true); setError(null); setFlood(null);
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 180_000);
-    try {
-      const r = await apiFetch("/geomoz-api/gee/flood", {
-        method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
-        body: JSON.stringify({ ...aoiToAPI(aoi), event_start: eventStart, event_end: eventEnd }),
+  useEffect(() => {
+    if (
+      floodJob?.status === "completed" &&
+      floodJob.result &&
+      deliveredFloodJobRef.current !== floodJob.id
+    ) {
+      deliveredFloodJobRef.current = floodJob.id;
+      setFlood(floodJob.result);
+    }
+  }, [floodJob]);
+
+  useEffect(() => {
+    if (floodJob?.status === "failed" && floodJob.error?.message) {
+      toast({
+        variant: "destructive",
+        title: "Erro nas cheias",
+        description: floodJob.error.message,
       });
-      if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
-      setFlood(await r.json());
-    } catch (e) {
-      const aborted = e instanceof DOMException && e.name === "AbortError";
-      const msg = aborted ? "A análise de radar demorou demasiado. Reduza a área (escolha uma província)." : String(e instanceof Error ? e.message : e);
-      setError(msg);
-      toast({ variant: "destructive", title: "Erro nas cheias", description: msg });
-    } finally { clearTimeout(timer); setLoading(false); }
-  }, [province, district, eventStart, eventEnd]);
+    }
+  }, [floodJob?.id, floodJob?.status]);
+
+  const runFlood = useCallback(async () => {
+    setError(null);
+    setFlood(null);
+    resetFloodJob();
+    deliveredFloodJobRef.current = null;
+
+    try {
+      await submitFloodJob("gee.flood", {
+        ...aoiToAPI(aoi),
+        event_start: eventStart,
+        event_end: eventEnd,
+      });
+    } catch {
+      // useAnalysisJob exposes the actionable error in the panel.
+    }
+  }, [aoi, eventStart, eventEnd, resetFloodJob, submitFloodJob]);
 
   const runErosion = useCallback(async () => {
     setLoading(true); setError(null); setErosion(null);
@@ -254,10 +283,11 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
             <label className="flex items-center justify-between text-[11px] text-slate-600">
               Mostrar água permanente <input type="checkbox" checked={showPerm} onChange={e => setShowPerm(e.target.checked)} className="accent-blue-600" />
             </label>
-            <button onClick={runFlood} disabled={loading}
+            <button onClick={runFlood} disabled={floodRunning}
               className="w-full flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors">
-              {loading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Mapear cheia
+              {floodRunning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Mapear cheia
             </button>
+            <AnalysisJobProgress job={floodJob} title="GeoMoz Hazard · Cheias SAR" />
           </div>
         )}
 
@@ -280,7 +310,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
           </div>
         )}
 
-        {error && (
+        {(error || floodJobError) && (
           <div className="m-3 bg-red-50 border border-red-200 rounded-xl p-2.5 text-[11px] text-red-700">{error}</div>
         )}
       </div>
@@ -317,7 +347,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
         </MapContainer>
 
         {/* Loading overlay */}
-        {loading && (
+        {(loading || floodRunning) && (
           <div className="absolute inset-0 z-[600] bg-white/55 backdrop-blur-sm flex items-center justify-center">
             <div className="bg-white rounded-2xl shadow-xl border border-slate-200 px-7 py-5 flex items-center gap-3 max-w-xs">
               <Loader2 size={20} className="text-rose-500 animate-spin shrink-0" />
