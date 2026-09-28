@@ -296,12 +296,13 @@ def submit_job(
             )
 
         try:
-            from gee_module import gee_execution
+            from gee_module import gee_execution_lock
 
             # Analysis workers may be configured above one for future
             # non-GEE work, but current GIS runners share Earth Engine's
             # process-global credential state and therefore execute serially.
-            with gee_execution(uid):
+            # The runner itself remains responsible for _init_gee(uid).
+            with gee_execution_lock():
                 result = runner(progress)
 
             current = _load(uid, job_id)
