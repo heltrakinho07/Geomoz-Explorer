@@ -16,6 +16,7 @@ import SettingsDialog from "@/components/SettingsDialog";
 import GeeCredentialsDialog from "@/components/GeeCredentialsDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { useProject } from "@/hooks/useProject";
+import { useWorkspaceLayers } from "@/hooks/useWorkspaceLayers";
 import ZoneSelect from "@/components/ZoneSelect";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { mozambiqueAOI, GLOBAL_AOI, customAOI } from "@/lib/aoi";
@@ -57,6 +58,7 @@ export default function Explorer() {
   const [geeDialogOpen, setGeeDialogOpen] = useState(false);
   const { user } = useAuth();
   const { activeProject } = useProject();
+  const { resultLayers, setResultLayers } = useWorkspaceLayers();
   const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [finishRequest, setFinishRequest] = useState(0);
 
@@ -223,6 +225,7 @@ function flyToResult(result: NominatimResult) {
     if (state.color_by) {
       setColorBy(state.color_by);
     }
+    setResultLayers(state.result_layers ?? []);
 
     restoredProjectRef.current = project.id;
     window.setTimeout(() => {
@@ -303,6 +306,7 @@ function flyToResult(result: NominatimResult) {
           zoom: mapZoom,
           layers,
           color_by: colorBy,
+          result_layers: resultLayers,
         },
       };
 
@@ -331,6 +335,7 @@ function flyToResult(result: NominatimResult) {
     mapZoom,
     layers,
     colorBy,
+    resultLayers,
   ]);
 
   const sharedSidebar = (
@@ -543,6 +548,7 @@ function flyToResult(result: NominatimResult) {
             mapZoom={mapZoom}
             layers={layers}
             colorBy={colorBy}
+            resultLayers={resultLayers}
             onOpenProject={handleOpenProject}
           />
         </div>
