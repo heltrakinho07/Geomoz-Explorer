@@ -192,6 +192,7 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
     submitJob: submitWatershedJob,
     running: watershedRunning,
     error: watershedJobError,
+    cancel: cancelWatershedJob,
     resetJob: resetWatershedJob,
   } = useAnalysisJob<WatershedResult>();
   const loadingWS = watershedRunning;
@@ -873,7 +874,7 @@ export default function HidroGeoMoz({ aoi, province, district, onProvinceChange,
                 {watershedData && <div className="text-blue-700 font-bold not-italic">{watershedData.areaKm2.toLocaleString("pt-PT")} km²</div>}
               </div>
             )}
-            <AnalysisJobProgress job={watershedJob} title="GeoMoz Hydro · Delimitação de Bacia" />
+            <AnalysisJobProgress job={watershedJob} title="GeoMoz Hydro · Delimitação de Bacia" onCancel={cancelWatershedJob} />
           </div>
         )}
 
