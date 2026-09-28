@@ -2,7 +2,7 @@ name: Python Backend CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, "feat/**"]
     paths:
       - "geomoz-explorer/**"
       - "pyproject.toml"
