@@ -28,12 +28,18 @@ export default function GeeCredentialsDialog({
   onOpenChange: (o: boolean) => void;
 }) {
   const { user } = useAuth();
-  const { geeConnected, loading, error, connectGee, disconnectGee } = useGeeAuth();
-  const [projectInput, setProjectInput] = useState("");
+  const { geeConnected, geeProject, loading, error, connectGee, disconnectGee } = useGeeAuth();
+  const [projectInput, setProjectInput] = useState(geeProject || "");
+
+  React.useEffect(() => {
+    if (open && geeProject) setProjectInput(geeProject);
+  }, [open, geeProject]);
 
   const handleConnect = async () => {
+    const project = projectInput.trim();
+    if (!project) return;
     try {
-      await connectGee(projectInput.trim() || undefined);
+      await connectGee(project);
       onOpenChange(false);
     } catch {}
   };
@@ -99,7 +105,7 @@ export default function GeeCredentialsDialog({
                 disabled={loading}
               >
                 <LogOut size={14} className="mr-2" />
-                Terminar Sessão / Desligar GEE
+                Desligar Earth Engine
               </Button>
             </div>
           ) : (
@@ -107,7 +113,7 @@ export default function GeeCredentialsDialog({
             <div className="space-y-4">
               <div className="bg-sky-50/70 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/50 rounded-xl p-4 text-xs text-sky-900 dark:text-sky-200 space-y-2">
                 <p className="leading-relaxed">
-                  Para aceder a análises completas, inicie sessão com a sua <strong>conta Google que tenha acesso ao Google Earth Engine</strong>.
+                  Para executar análises, ligue a sua <strong>conta Google Earth Engine</strong> e indique o <strong>seu próprio projeto Google Cloud</strong>. O processamento usa a quota desse projeto.
                 </p>
                 <a
                   href="https://code.earthengine.google.com"
@@ -119,14 +125,14 @@ export default function GeeCredentialsDialog({
                 </a>
               </div>
 
-              {/* Optional Project ID Input */}
+              {/* Required BYO-GEE Project ID */}
               <div className="space-y-1">
                 <label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
-                  GCP Project ID (opcional):
+                  GCP Project ID (obrigatório):
                 </label>
                 <input
                   type="text"
-                  placeholder="ex: ee-meu-projeto ou deixe em branco"
+                  placeholder="ex: meu-projeto-earth-engine"
                   value={projectInput}
                   onChange={(e) => setProjectInput(e.target.value)}
                   className="w-full text-xs px-3 py-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
@@ -136,7 +142,7 @@ export default function GeeCredentialsDialog({
               {/* Main Login / Connect Button */}
               <Button
                 onClick={handleConnect}
-                disabled={loading}
+                disabled={loading || !projectInput.trim()}
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 h-auto shadow-md shadow-indigo-100 transition-all flex items-center justify-center gap-2 text-sm"
               >
                 {loading ? (
