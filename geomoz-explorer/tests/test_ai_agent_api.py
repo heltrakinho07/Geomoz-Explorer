@@ -7,6 +7,21 @@ from fastapi.testclient import TestClient
 
 
 class TestAgentPlannerHelpers:
+    def test_compact_explanation_removes_render_and_secret_fields(self) -> None:
+        from ai_agent import _compact_for_explanation
+
+        compact = _compact_for_explanation({
+            "stats": {"mean": 0.42},
+            "tileUrl": "https://example.invalid/private-tile",
+            "geojson": {"type": "FeatureCollection"},
+            "access_token": "secret",
+        })
+
+        assert compact["stats"]["mean"] == 0.42
+        assert "tileUrl" not in compact
+        assert "geojson" not in compact
+        assert "access_token" not in compact
+
     def test_merge_geo_context_only_fills_missing_values(self) -> None:
         from ai_agent import merge_geo_context
 
@@ -177,3 +192,60 @@ class TestAgentAPI:
         resp = client.post("/geomoz-api/ai/agent", json={"message": "   "})
 
         assert resp.status_code == 422
+
+
+
+class TestAgentExplanationAPI:
+    def test_explain_completed_job(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import analysis_jobs
+        import ai_agent
+
+        monkeypatch.setattr(
+            analysis_jobs,
+            "get_job",
+            lambda uid, job_id: {
+                "id": job_id,
+                "type": "gee.index",
+                "status": "completed",
+                "payload": {"index": "ndvi"},
+                "result": {"name": "NDVI", "stats": {"mean": 0.42}},
+                "completed_at": "2026-09-28T00:01:00+00:00",
+            },
+        )
+
+        async def fake_explain(job):
+            return {
+                "explanation": "Resultado: NDVI médio 0,42. Interpretação: indicador de vegetação. Limitações: requer validação de campo.",
+                "model": "test-model",
+                "response_id": "resp-explain-1",
+            }
+
+        monkeypatch.setattr(ai_agent, "explain_job_result", fake_explain)
+
+        resp = client.post("/geomoz-api/ai/jobs/job-1/explain")
+
+        assert resp.status_code == 200
+        assert "0,42" in resp.json()["explanation"]
+
+    def test_explain_requires_completed_job(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import analysis_jobs
+
+        monkeypatch.setattr(
+            analysis_jobs,
+            "get_job",
+            lambda uid, job_id: {
+                "id": job_id,
+                "type": "gee.index",
+                "status": "processing",
+                "payload": {"index": "ndvi"},
+                "result": None,
+            },
+        )
+
+        resp = client.post("/geomoz-api/ai/jobs/job-running/explain")
+
+        assert resp.status_code == 409
