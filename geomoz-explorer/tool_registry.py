@@ -14,6 +14,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Optional
 
+from gee_presets import INDEX_REGISTRY, MINERAL_PRESETS
+
 
 _TOOLS: dict[str, dict[str, Any]] = {
     "calculate_index": {
@@ -33,7 +35,11 @@ _TOOLS: dict[str, dict[str, Any]] = {
             "type": "object",
             "required": ["index"],
             "properties": {
-                "index": {"type": "string", "description": "ID do índice GeoMoz."},
+                "index": {
+                    "type": "string",
+                    "enum": sorted(INDEX_REGISTRY.keys()),
+                    "description": "ID exacto de um índice registado no GeoMoz.",
+                },
                 "province": {"type": ["string", "null"]},
                 "district": {"type": ["string", "null"]},
                 "geometry": {"type": ["object", "null"]},
@@ -114,7 +120,11 @@ _TOOLS: dict[str, dict[str, Any]] = {
             "type": "object",
             "required": ["mineral"],
             "properties": {
-                "mineral": {"type": "string"},
+                "mineral": {
+                    "type": "string",
+                    "enum": sorted(MINERAL_PRESETS.keys()),
+                    "description": "Preset mineral registado no GeoMoz.",
+                },
                 "province": {"type": ["string", "null"]},
                 "district": {"type": ["string", "null"]},
                 "geometry": {"type": ["object", "null"]},
