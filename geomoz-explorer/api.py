@@ -904,6 +904,32 @@ async def create_analysis_job(
 
         return submit_job(uid, req.type, normalized_payload, runner)
 
+    if req.type == "gee.erosion":
+        try:
+            validated = GEEErosionRequest(**req.payload)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+        normalized_payload = validated.model_dump()
+        region = _region_geojson(
+            validated.province,
+            validated.district,
+            validated.geometry,
+        )
+
+        def runner(progress):
+            from gee_module import _init_gee, compute_erosion_rusle
+
+            progress(10, "auth", "A validar ligação ao Earth Engine.")
+            _init_gee(uid)
+            progress(25, "preparing", "A preparar chuva, solo, relevo e cobertura.")
+            progress(45, "processing", "A calcular factores RUSLE e perda de solo.")
+            result = compute_erosion_rusle(region, validated.year)
+            progress(90, "rendering", "A classificar risco e calcular áreas.")
+            return result
+
+        return submit_job(uid, req.type, normalized_payload, runner)
+
     if req.type == "gee.groundwater":
         try:
             validated = GEEGroundwaterRequest(**req.payload)
