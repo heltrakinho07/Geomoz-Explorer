@@ -625,6 +625,7 @@ function flyToResult(result: NominatimResult) {
             colorBy={colorBy}
             resultLayers={resultLayers}
             onOpenProject={handleOpenProject}
+            onStartWorkflow={navigateWorkspace}
           />
         </div>
       ) : activeTab === "Dashboard" ? (
