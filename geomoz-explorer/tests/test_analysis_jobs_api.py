@@ -21,7 +21,7 @@ class TestAnalysisJobAPI:
         monkeypatch.setattr(
             analysis_jobs,
             "submit_job",
-            lambda uid, job_type, payload, runner: {
+            lambda uid, job_type, payload, runner, project_id=None: {
                 "id": "job-123",
                 "type": job_type,
                 "status": "queued",
@@ -98,7 +98,7 @@ class TestAnalysisJobAPI:
         monkeypatch.setattr(
             analysis_jobs,
             "submit_job",
-            lambda uid, job_type, payload, runner: {
+            lambda uid, job_type, payload, runner, project_id=None: {
                 "id": "flood-job-1",
                 "type": job_type,
                 "status": "queued",
@@ -145,7 +145,7 @@ class TestAnalysisJobAPI:
         monkeypatch.setattr(
             analysis_jobs,
             "submit_job",
-            lambda uid, job_type, payload, runner: {
+            lambda uid, job_type, payload, runner, project_id=None: {
                 "id": "groundwater-job-1",
                 "type": job_type,
                 "status": "queued",
@@ -188,7 +188,7 @@ class TestAnalysisJobAPI:
         monkeypatch.setattr(
             analysis_jobs,
             "submit_job",
-            lambda uid, job_type, payload, runner: {
+            lambda uid, job_type, payload, runner, project_id=None: {
                 "id": "erosion-job-1",
                 "type": job_type,
                 "status": "queued",
@@ -231,7 +231,7 @@ class TestAnalysisJobAPI:
         monkeypatch.setattr(
             analysis_jobs,
             "submit_job",
-            lambda uid, job_type, payload, runner: {
+            lambda uid, job_type, payload, runner, project_id=None: {
                 "id": "targeting-job-1", "type": job_type, "status": "queued",
                 "stage": "queued", "progress": 0, "message": "queued",
                 "payload": payload, "result": None, "error": None,
@@ -268,7 +268,7 @@ class TestAnalysisJobAPI:
         )
         monkeypatch.setattr(
             analysis_jobs, "submit_job",
-            lambda uid, job_type, payload, runner: {
+            lambda uid, job_type, payload, runner, project_id=None: {
                 "id": "watershed-job-1", "type": job_type, "status": "queued",
                 "stage": "queued", "progress": 0, "message": "queued",
                 "payload": payload, "result": None, "error": None,
@@ -288,3 +288,80 @@ class TestAnalysisJobAPI:
         )
         assert resp.status_code == 202
         assert resp.json()["type"] == "gee.watershed"
+
+
+    def test_job_can_be_associated_with_owned_project(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import analysis_jobs
+        import gee_session_store
+        import projects_store
+
+        monkeypatch.setattr(
+            gee_session_store, "get_token",
+            lambda uid: {"access_token": "mock-oauth-token", "project": "test-project"},
+        )
+        monkeypatch.setattr(
+            projects_store, "get_project",
+            lambda uid, project_id: {"id": project_id, "name": "Projecto Teste"},
+        )
+
+        captured = {}
+
+        def fake_submit(uid, job_type, payload, runner, project_id=None):
+            captured["project_id"] = project_id
+            return {
+                "id": "job-project-1",
+                "type": job_type,
+                "project_id": project_id,
+                "status": "queued",
+                "stage": "queued",
+                "progress": 0,
+                "message": "queued",
+                "payload": payload,
+                "result": None,
+                "error": None,
+                "created_at": "2026-09-28T00:00:00+00:00",
+                "updated_at": "2026-09-28T00:00:00+00:00",
+                "started_at": None,
+                "completed_at": None,
+                "execution_mode": "local_executor",
+            }
+
+        monkeypatch.setattr(analysis_jobs, "submit_job", fake_submit)
+
+        resp = client.post(
+            "/geomoz-api/jobs",
+            json={
+                "type": "gee.index",
+                "project_id": "project-123",
+                "payload": {"index": "ndvi"},
+            },
+        )
+
+        assert resp.status_code == 202
+        assert captured["project_id"] == "project-123"
+        assert resp.json()["project_id"] == "project-123"
+
+    def test_job_rejects_unknown_project(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import gee_session_store
+        import projects_store
+
+        monkeypatch.setattr(
+            gee_session_store, "get_token",
+            lambda uid: {"access_token": "mock-oauth-token", "project": "test-project"},
+        )
+        monkeypatch.setattr(projects_store, "get_project", lambda uid, project_id: None)
+
+        resp = client.post(
+            "/geomoz-api/jobs",
+            json={
+                "type": "gee.index",
+                "project_id": "missing-project",
+                "payload": {"index": "ndvi"},
+            },
+        )
+
+        assert resp.status_code == 404
