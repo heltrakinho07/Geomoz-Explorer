@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { signInWithPopup, GoogleAuthProvider, signOut as firebaseSignOut } from "firebase/auth";
+import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { useAuth } from "./useAuth";
 
@@ -61,6 +61,13 @@ export function useGeeAuth() {
       setError("Firebase Auth não está inicializado. Verifique as configurações.");
       return;
     }
+
+    const normalizedProject = project?.trim();
+    if (!normalizedProject) {
+      setError("Introduza o GCP Project ID associado à sua conta Earth Engine.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -79,16 +86,18 @@ export function useGeeAuth() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${idToken}`
         },
-        body: JSON.stringify({ access_token: accessToken, project: project || null })
+        body: JSON.stringify({ access_token: accessToken, project: normalizedProject })
       });
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || `Falha ao registar credenciais (HTTP ${res.status})`);
+        throw new Error(errData.detail || `Falha ao validar Earth Engine (HTTP ${res.status})`);
       }
 
-      setGeeConnected(true);
-      setGeeProject(project || null);
+      const status = await res.json();
+      setGeeConnected(!!status.connected);
+      setGeeProject(status.project || normalizedProject);
+      window.dispatchEvent(new CustomEvent("geomoz:gee-status-changed"));
     } catch (err: any) {
       console.error("Error connecting GEE:", err);
       let msg = err.message || "Erro ao ligar ao Google Earth Engine.";
@@ -108,14 +117,26 @@ export function useGeeAuth() {
   const disconnectGee = async () => {
     try {
       setLoading(true);
-      if (auth) {
-        await firebaseSignOut(auth);
+      setError(null);
+
+      if (auth?.currentUser) {
+        const idToken = await auth.currentUser.getIdToken();
+        const res = await fetch(`${apiBase}/geomoz-api/gee/disconnect`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || `Falha ao desligar GEE (HTTP ${res.status})`);
+        }
       }
+
+      // Disconnect Earth Engine only. Never terminate the user's GeoMoz/Firebase session.
       setGeeConnected(false);
       setGeeProject(null);
-      setError(null);
+      window.dispatchEvent(new CustomEvent("geomoz:gee-status-changed"));
     } catch (e: any) {
-      setError(e.message || "Erro ao desligar.");
+      setError(e.message || "Erro ao desligar Earth Engine.");
     } finally {
       setLoading(false);
     }
