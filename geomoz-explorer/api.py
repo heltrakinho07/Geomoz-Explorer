@@ -440,6 +440,112 @@ def get_province_summary():
     return {"provinces": _province_summary_cached()}
 
 
+# ── Projects / persistent workspaces ─────────────────────────────────────────
+
+class ProjectCreateRequest(BaseModel):
+    name: str
+    description: str = ""
+    aoi: Optional[dict] = None
+    map_state: dict = {}
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("O nome do projecto é obrigatório.")
+        if len(value) > 120:
+            raise ValueError("O nome do projecto deve ter no máximo 120 caracteres.")
+        return value
+
+
+class ProjectUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    aoi: Optional[dict] = None
+    map_state: Optional[dict] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_optional_name(cls, value):
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("O nome do projecto não pode ficar vazio.")
+        if len(value) > 120:
+            raise ValueError("O nome do projecto deve ter no máximo 120 caracteres.")
+        return value
+
+
+@app.post("/geomoz-api/projects", status_code=201)
+async def create_project_endpoint(
+    req: ProjectCreateRequest,
+    uid: str = Depends(require_firebase_auth),
+):
+    from projects_store import create_project
+    return create_project(
+        uid,
+        req.name,
+        req.description,
+        req.aoi,
+        req.map_state,
+    )
+
+
+@app.get("/geomoz-api/projects")
+async def list_projects_endpoint(
+    limit: int = Query(100, ge=1, le=200),
+    uid: str = Depends(require_firebase_auth),
+):
+    from projects_store import list_projects
+    return {"projects": list_projects(uid, limit=limit)}
+
+
+@app.get("/geomoz-api/projects/{project_id}")
+async def get_project_endpoint(
+    project_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    from projects_store import get_project
+    project = get_project(uid, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projecto não encontrado.")
+    return project
+
+
+@app.patch("/geomoz-api/projects/{project_id}")
+async def update_project_endpoint(
+    project_id: str,
+    req: ProjectUpdateRequest,
+    uid: str = Depends(require_firebase_auth),
+):
+    from projects_store import update_project
+    project = update_project(
+        uid,
+        project_id,
+        name=req.name,
+        description=req.description,
+        aoi=req.aoi,
+        map_state=req.map_state,
+        update_aoi="aoi" in req.model_fields_set,
+        update_map_state="map_state" in req.model_fields_set,
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Projecto não encontrado.")
+    return project
+
+
+@app.delete("/geomoz-api/projects/{project_id}")
+async def delete_project_endpoint(
+    project_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    from projects_store import delete_project
+    if not delete_project(uid, project_id):
+        raise HTTPException(status_code=404, detail="Projecto não encontrado.")
+    return {"deleted": True, "id": project_id}
+
 # ── GEE endpoints ──────────────────────────────────────────────────────────────
 
 @app.get("/geomoz-api/status")
