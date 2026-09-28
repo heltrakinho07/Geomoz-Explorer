@@ -69,6 +69,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
     running: floodRunning,
     error: floodJobError,
     cancel: cancelFloodJob,
+    retry: retryFloodJob,
     resetJob: resetFloodJob,
   } = useAnalysisJob<FloodResult>();
 
@@ -82,6 +83,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
     running: erosionRunning,
     error: erosionJobError,
     cancel: cancelErosionJob,
+    retry: retryErosionJob,
     resetJob: resetErosionJob,
   } = useAnalysisJob<ErosionResult>();
 
@@ -311,7 +313,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
               className="w-full flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors">
               {floodRunning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Mapear cheia
             </button>
-            <AnalysisJobProgress job={floodJob} title="GeoMoz Hazard · Cheias SAR" onCancel={cancelFloodJob} />
+            <AnalysisJobProgress job={floodJob} title="GeoMoz Hazard · Cheias SAR" onCancel={cancelFloodJob} onRetry={retryFloodJob} />
           </div>
         )}
 
@@ -331,7 +333,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
               className="w-full flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors">
               {erosionRunning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Calcular erosão
             </button>
-            <AnalysisJobProgress job={erosionJob} title="GeoMoz Hazard · Erosão RUSLE" onCancel={cancelErosionJob} />
+            <AnalysisJobProgress job={erosionJob} title="GeoMoz Hazard · Erosão RUSLE" onCancel={cancelErosionJob} onRetry={retryErosionJob} />
           </div>
         )}
 
