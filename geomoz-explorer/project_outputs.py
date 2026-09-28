@@ -211,7 +211,7 @@ def compact_evidence(value: Any, depth: int = 0) -> Any:
         for key, item in value.items():
             lower = str(key).lower()
             if any(token in lower for token in (
-                "tileurl", "tile_url", "access_token", "refresh_token",
+                "tile", "access_token", "refresh_token",
                 "token", "credentials", "coordinates", "geojson", "training",
             )):
                 continue
