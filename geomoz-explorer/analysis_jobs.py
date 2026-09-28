@@ -69,6 +69,7 @@ def _public(job: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": job["id"],
         "type": job["type"],
+        "project_id": job.get("project_id"),
         "status": job["status"],
         "stage": job.get("stage"),
         "progress": job.get("progress", 0),
@@ -166,12 +167,18 @@ def _recover_if_stale(uid: str, job: dict[str, Any]) -> dict[str, Any]:
     return job
 
 
-def create_job(uid: str, job_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+def create_job(
+    uid: str,
+    job_type: str,
+    payload: dict[str, Any],
+    project_id: str | None = None,
+) -> dict[str, Any]:
     now = _now()
     job = {
         "id": uuid.uuid4().hex,
         "user_id": uid,
         "type": job_type,
+        "project_id": project_id,
         "status": "queued",
         "stage": "queued",
         "progress": 0,
@@ -208,7 +215,11 @@ def get_job(uid: str, job_id: str) -> Optional[dict[str, Any]]:
     return _public(job)
 
 
-def list_jobs(uid: str, limit: int = 20) -> list[dict[str, Any]]:
+def list_jobs(
+    uid: str,
+    limit: int = 20,
+    project_id: str | None = None,
+) -> list[dict[str, Any]]:
     limit = max(1, min(limit, 100))
     db = _firestore()
 
@@ -222,6 +233,8 @@ def list_jobs(uid: str, limit: int = 20) -> list[dict[str, Any]]:
             )
             jobs = [s.to_dict() or {} for s in snapshots]
             jobs = [j for j in jobs if j.get("id")]
+            if project_id is not None:
+                jobs = [j for j in jobs if j.get("project_id") == project_id]
             jobs = [_recover_if_stale(uid, j) for j in jobs]
             jobs.sort(key=lambda j: j.get("created_at", ""), reverse=True)
             return [_public(j) for j in jobs[:limit]]
@@ -232,7 +245,9 @@ def list_jobs(uid: str, limit: int = 20) -> list[dict[str, Any]]:
         jobs = [
             dict(job)
             for (owner, _), job in _jobs.items()
-            if owner == uid
+            if owner == uid and (
+                project_id is None or job.get("project_id") == project_id
+            )
         ]
     jobs = [_recover_if_stale(uid, j) for j in jobs]
     jobs.sort(key=lambda j: j.get("created_at", ""), reverse=True)
@@ -244,8 +259,9 @@ def submit_job(
     job_type: str,
     payload: dict[str, Any],
     runner: JobRunner,
+    project_id: str | None = None,
 ) -> dict[str, Any]:
-    job = create_job(uid, job_type, payload)
+    job = create_job(uid, job_type, payload, project_id=project_id)
     job_id = job["id"]
 
     def execute() -> None:
