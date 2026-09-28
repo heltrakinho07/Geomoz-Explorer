@@ -37,7 +37,7 @@ import {
   lithologyProfile,
   FavorabilityResult, MineralType, KMeansResult,
 } from "@/lib/geoml";
-import { API_BASE } from "@/lib/api";
+import { API_BASE, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import MapDraw from "@/components/MapDraw";
 
@@ -168,7 +168,7 @@ function TrainingBoundsFitter({ trainingSamples }: { trainingSamples: TrainingSa
   return null;
 }
 
-const AE_BASE = `${API_BASE}/geomoz-api/gee/embedding`;
+const AE_BASE = "/geomoz-api/gee/embedding";
 
 interface AlphaEarthResult {
   tileUrl: string;
@@ -308,7 +308,7 @@ function AlphaEarthTab() {
           break;
       }
 
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
