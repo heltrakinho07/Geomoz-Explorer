@@ -46,6 +46,7 @@ def _public(project: dict[str, Any]) -> dict[str, Any]:
         "id": project["id"],
         "name": project["name"],
         "description": project.get("description", ""),
+        "solution_id": project.get("solution_id"),
         "aoi": project.get("aoi"),
         "map_state": project.get("map_state", {}),
         "created_at": project["created_at"],
@@ -72,6 +73,7 @@ def create_project(
     description: str = "",
     aoi: Optional[dict[str, Any]] = None,
     map_state: Optional[dict[str, Any]] = None,
+    solution_id: Optional[str] = None,
 ) -> dict[str, Any]:
     now = _now()
     project = {
@@ -79,6 +81,7 @@ def create_project(
         "owner_id": uid,
         "name": name.strip(),
         "description": description.strip(),
+        "solution_id": solution_id,
         "aoi": aoi,
         "map_state": map_state or {},
         "created_at": now,
