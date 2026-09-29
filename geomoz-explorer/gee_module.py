@@ -421,20 +421,24 @@ def _to_ee_region(region_geojson: Optional[dict]):
         return ee.Geometry.BBox(w, s, e, n)
     return ee.Geometry(region_geojson, opt_proj="EPSG:4326", opt_geodesic=False)
 
+def _scale_from_area_km2(area_km2: float) -> int:
+    """Return an appropriate reduction scale when area is already known."""
+    if area_km2 > 200_000:
+        return 1000
+    if area_km2 > 50_000:
+        return 500
+    if area_km2 > 10_000:
+        return 250
+    if area_km2 > 1_000:
+        return 90
+    return 30
+
+
 def _compute_dynamic_scale(region: 'ee.Geometry') -> int:
     """Return an appropriate scale (meters) based on the geometry area."""
     try:
         area_km2 = region.area(maxError=100).getInfo() / 1e6
-        if area_km2 > 200_000:
-            return 1000
-        elif area_km2 > 50_000:
-            return 500
-        elif area_km2 > 10_000:
-            return 250
-        elif area_km2 > 1_000:
-            return 90
-        else:
-            return 30
+        return _scale_from_area_km2(area_km2)
     except Exception as e:
         logger.warning("Error computing dynamic scale: %s", e)
         return 250
@@ -2588,28 +2592,32 @@ def compute_basins(region_geojson: Optional[dict], level: int = 6) -> dict:
 
 
 def compute_basin_stats(basin_geometry: dict) -> dict:
-    """Compute elevation, slope, NDVI, NDWI, precipitation and derived
-    risk indices for one basin.
+    """Compute core hydro-environmental basin statistics.
 
-    basin_geometry : GeoJSON geometry dict (Polygon / MultiPolygon).
+    Reductions are intentionally batched into one Earth Engine evaluation so
+    latency is dominated by computation instead of multiple sequential
+    getInfo() round-trips.
     """
     import ee
 
     region = ee.Geometry(basin_geometry)
+    max_px = int(1e9)
 
     dem_proj = ee.ImageCollection("COPERNICUS/DEM/GLO30").select("DEM").first().projection()
-    dem   = _build_dem(region).rename("elev")
+    dem = _build_dem(region).rename("elev")
     slope = ee.Terrain.slope(dem.setDefaultProjection(dem_proj)).rename("slope")
+    relief = dem.addBands(slope)
 
     has_s2 = False
-    ndvi = ndwi = None
+    spectral = None
     try:
         s2, _ = _build_s2_composite(region, "2023-01-01", "2023-12-31", 60)
         ndvi = s2.normalizedDifference(["B8", "B4"]).rename("ndvi")
         ndwi = s2.normalizedDifference(["B3", "B8"]).rename("ndwi")
+        spectral = ndvi.addBands(ndwi)
         has_s2 = True
-    except Exception as e:
-        logger.exception("Erro silencioso capturado: %s", e)
+    except Exception as exc:
+        logger.warning("Basin stats: Sentinel-2 unavailable: %s", exc)
 
     has_precip = False
     chirps = None
@@ -2621,72 +2629,98 @@ def compute_basin_stats(basin_geometry: dict) -> dict:
             .rename("precip")
         )
         has_precip = True
-    except Exception as e:
-        logger.exception("Erro silencioso capturado: %s", e)
+    except Exception as exc:
+        logger.warning("Basin stats: CHIRPS unavailable: %s", exc)
 
-    max_px = int(1e9)
-    reducer_mm = ee.Reducer.min().combine(ee.Reducer.max(), sharedInputs=True).combine(ee.Reducer.mean(), sharedInputs=True)
+    reducer_mm = (
+        ee.Reducer.min()
+        .combine(ee.Reducer.max(), sharedInputs=True)
+        .combine(ee.Reducer.mean(), sharedInputs=True)
+    )
 
-    elev_info  = dem.unmask(0).reduceRegion(reducer=reducer_mm, geometry=region, scale=90, bestEffort=True, maxPixels=max_px).getInfo()
-    slope_info = slope.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=90, bestEffort=True, maxPixels=max_px).getInfo()
+    payload = {
+        "relief": relief.unmask(0).reduceRegion(
+            reducer=reducer_mm,
+            geometry=region,
+            scale=90,
+            bestEffort=True,
+            maxPixels=max_px,
+        ),
+        "areaM2": region.area(maxError=100),
+        "perimeterM": region.perimeter(maxError=100),
+    }
+    if has_s2 and spectral is not None:
+        payload["spectral"] = spectral.unmask(0).reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region,
+            scale=30,
+            bestEffort=True,
+            maxPixels=max_px,
+        )
+    if has_precip and chirps is not None:
+        payload["precip"] = chirps.unmask(0).reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region,
+            scale=5000,
+            bestEffort=True,
+            maxPixels=max_px,
+        )
 
-    ndvi_mean = ndwi_mean = None
-    if has_s2:
-        try:
-            nv = ndvi.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=30, bestEffort=True, maxPixels=max_px).getInfo()
-            nw = ndwi.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=30, bestEffort=True, maxPixels=max_px).getInfo()
-            ndvi_mean = nv.get("ndvi")
-            ndwi_mean = nw.get("ndwi")
-        except Exception as e:
-            logger.exception("Erro silencioso capturado: %s", e)
+    try:
+        summary = ee.Dictionary(payload).getInfo() or {}
+    except Exception as exc:
+        logger.warning("Basin stats batched reduction failed: %s", exc)
+        # Essential fallback: still return morphometry instead of failing the UI.
+        summary = ee.Dictionary({
+            "relief": payload["relief"],
+            "areaM2": payload["areaM2"],
+            "perimeterM": payload["perimeterM"],
+        }).getInfo() or {}
 
-    precip_mm_yr = 800.0
-    if has_precip:
-        try:
-            pr = chirps.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=5000, bestEffort=True, maxPixels=max_px).getInfo()
-            precip_mm_yr = float(pr.get("precip") or 800)
-        except Exception as e:
-            logger.exception("Erro silencioso capturado: %s", e)
+    relief_info = summary.get("relief") or {}
+    spectral_info = summary.get("spectral") or {}
+    precip_info = summary.get("precip") or {}
 
-    area_km2 = region.area(maxError=100).getInfo() / 1e6
-    perim_km = region.perimeter(maxError=100).getInfo() / 1e3
+    area_km2 = float(summary.get("areaM2") or 0) / 1e6
+    perim_km = float(summary.get("perimeterM") or 0) / 1e3
+    mean_slope = float(relief_info.get("slope_mean") or 0)
+    ndvi_mean = spectral_info.get("ndvi")
+    ndwi_mean = spectral_info.get("ndwi")
+    precip_mm_yr = float(precip_info.get("precip") or 800.0)
 
-    mean_slope = float(slope_info.get("slope") or 0)
-    mean_ndvi  = float(ndvi_mean or 0.3)
-    precip_n   = min(1.0, precip_mm_yr / 2000.0)
-    slope_n    = min(1.0, mean_slope / 45.0)
-    veg_n      = max(0.0, min(1.0, mean_ndvi))
+    mean_ndvi = float(ndvi_mean or 0.3)
+    precip_n = min(1.0, precip_mm_yr / 2000.0)
+    slope_n = min(1.0, mean_slope / 45.0)
+    veg_n = max(0.0, min(1.0, mean_ndvi))
 
     erosion_risk = round(slope_n * 50 + (1 - veg_n) * 30 + precip_n * 20, 1)
-    flat_n       = max(0.0, 1.0 - slope_n)
-    ndwi_n       = max(0.0, min(1.0, float(ndwi_mean or 0) * 2))
-    flood_risk   = round(flat_n * 40 + precip_n * 40 + ndwi_n * 20, 1)
-    slope_hydro  = _math.exp(-((mean_slope - 10) ** 2) / 200.0)
-    hydro_pot    = round(slope_hydro * 30 + precip_n * 40 + veg_n * 30, 1)
+    flat_n = max(0.0, 1.0 - slope_n)
+    ndwi_n = max(0.0, min(1.0, float(ndwi_mean or 0) * 2))
+    flood_risk = round(flat_n * 40 + precip_n * 40 + ndwi_n * 20, 1)
+    slope_hydro = _math.exp(-((mean_slope - 10) ** 2) / 200.0)
+    hydro_pot = round(slope_hydro * 30 + precip_n * 40 + veg_n * 30, 1)
 
     return {
-        "areaKm2":        round(area_km2, 2),
-        "perimeterKm":    round(perim_km, 2),
-        "elevMinM":       round(float(elev_info.get("elev_min")  or 0), 1),
-        "elevMeanM":      round(float(elev_info.get("elev_mean") or 0), 1),
-        "elevMaxM":       round(float(elev_info.get("elev_max")  or 0), 1),
-        "slopeMeanDeg":   round(mean_slope, 2),
-        "ndviMean":       round(float(ndvi_mean), 3) if ndvi_mean is not None else None,
-        "ndwiMean":       round(float(ndwi_mean), 3) if ndwi_mean is not None else None,
-        "precipMmYr":     round(precip_mm_yr, 1),
-        "erosionRisk":    erosion_risk,
-        "floodRisk":      flood_risk,
+        "areaKm2": round(area_km2, 2),
+        "perimeterKm": round(perim_km, 2),
+        "elevMinM": round(float(relief_info.get("elev_min") or 0), 1),
+        "elevMeanM": round(float(relief_info.get("elev_mean") or 0), 1),
+        "elevMaxM": round(float(relief_info.get("elev_max") or 0), 1),
+        "slopeMeanDeg": round(mean_slope, 2),
+        "ndviMean": round(float(ndvi_mean), 3) if ndvi_mean is not None else None,
+        "ndwiMean": round(float(ndwi_mean), 3) if ndwi_mean is not None else None,
+        "precipMmYr": round(precip_mm_yr, 1),
+        "erosionRisk": erosion_risk,
+        "floodRisk": flood_risk,
         "hydroPotential": hydro_pot,
     }
 
-
 def compute_basin_report(basin_geometry: dict, start_year: int = 2019, end_year: int = 2024) -> dict:
-    """Full hydro-environmental basin report: morphometry + land cover + CHIRPS
-    monthly rainfall + SCS-CN runoff potential.
+    """Full hydro-environmental basin report with batched GEE reductions.
 
-    basin_geometry : GeoJSON geometry dict (Polygon / MultiPolygon).
-    start_year     : Initial year for CHIRPS precipitation climatology (default 2019).
-    end_year       : Final year for CHIRPS precipitation climatology (default 2024).
+    The report used to execute several independent getInfo() calls in sequence.
+    Here morphometry is resolved in one request and environmental summaries in
+    a second, while keeping the response contract unchanged.
     """
     import ee
 
@@ -2694,113 +2728,171 @@ def compute_basin_report(basin_geometry: dict, start_year: int = 2019, end_year:
     max_px = int(1e9)
 
     dem_proj = ee.ImageCollection("COPERNICUS/DEM/GLO30").select("DEM").first().projection()
-    dem   = _build_dem(region).rename("elev")
+    dem = _build_dem(region).rename("elev")
     slope = ee.Terrain.slope(dem.setDefaultProjection(dem_proj)).rename("slope")
     relief = dem.addBands(slope)
-    reducer_ms = (ee.Reducer.min().combine(ee.Reducer.max(), sharedInputs=True)
-                  .combine(ee.Reducer.mean(), sharedInputs=True))
-    rinfo = relief.unmask(0).reduceRegion(
-        reducer=reducer_ms, geometry=region, scale=90, bestEffort=True, maxPixels=max_px,
-    ).getInfo()
-
-    area_km2 = region.area(maxError=100).getInfo() / 1e6
-    perim_km = region.perimeter(maxError=100).getInfo() / 1e3
-    area_km2 = max(area_km2, 1e-6)
+    reducer_ms = (
+        ee.Reducer.min()
+        .combine(ee.Reducer.max(), sharedInputs=True)
+        .combine(ee.Reducer.mean(), sharedInputs=True)
+    )
 
     acc = ee.Image("WWF/HydroSHEDS/15ACC").select("b1")
-    stream_cells = (
-        acc.gte(200).selfMask().clip(region)
-        .reduceRegion(reducer=ee.Reducer.count(), geometry=region, scale=500,
-                      bestEffort=True, maxPixels=max_px).getInfo().get("b1") or 0
+    stream_count = (
+        acc.gte(200)
+        .selfMask()
+        .clip(region)
+        .reduceRegion(
+            reducer=ee.Reducer.count(),
+            geometry=region,
+            scale=500,
+            bestEffort=True,
+            maxPixels=max_px,
+        )
     )
-    drainage_density = round((float(stream_cells) * 0.5) / area_km2, 3)
+
+    base = ee.Dictionary({
+        "relief": relief.unmask(0).reduceRegion(
+            reducer=reducer_ms,
+            geometry=region,
+            scale=90,
+            bestEffort=True,
+            maxPixels=max_px,
+        ),
+        "areaM2": region.area(maxError=100),
+        "perimeterM": region.perimeter(maxError=100),
+        "streams": stream_count,
+    }).getInfo() or {}
+
+    rinfo = base.get("relief") or {}
+    area_km2 = max(float(base.get("areaM2") or 0) / 1e6, 1e-6)
+    perim_km = float(base.get("perimeterM") or 0) / 1e3
+    stream_cells = float((base.get("streams") or {}).get("b1") or 0)
+
+    drainage_density = round((stream_cells * 0.5) / area_km2, 3)
     compactness = round(0.2821 * perim_km / (area_km2 ** 0.5), 3)
     basin_len = max(perim_km / 2.0 - (area_km2 ** 0.5), area_km2 ** 0.5)
     form_factor = round(area_km2 / (basin_len ** 2), 3)
 
-    # Land cover
+    # Land cover and visualization.
     lc = ee.ImageCollection("ESA/WorldCover/v200").first().select("Map").clip(region)
-    codes  = [c   for c, _, _ in ESA_WORLDCOVER]
-    colors = [col for _, _, col in ESA_WORLDCOVER]
+    codes = [code for code, _, _ in ESA_WORLDCOVER]
+    colors = [color for _, _, color in ESA_WORLDCOVER]
     lc_vis = lc.remap(codes, list(range(1, len(codes) + 1))).visualize(
-        min=1, max=len(codes), palette=colors)
+        min=1, max=len(codes), palette=colors
+    )
     landcover_tile = lc_vis.getMapId()["tile_fetcher"].url_format
 
-    per_code: dict = {}
-    try:
-        groups = (ee.Image.pixelArea().addBands(lc).reduceRegion(
-            reducer=ee.Reducer.sum().group(groupField=1, groupName="code"),
-            geometry=region, scale=_compute_dynamic_scale(region), bestEffort=True, maxPixels=max_px,
-        ).getInfo() or {}).get("groups", []) or []
-        for g in groups:
-            per_code[int(g["code"])] = float(g.get("sum", 0)) / 1e6
-    except Exception as exc:
-        logger.warning("Failed to compute landcover areas: %s", exc)
-        per_code = {}
-    lc_total = sum(per_code.values()) or 1.0
-    landcover = []
-    for code, label, color in ESA_WORLDCOVER:
-        a = per_code.get(code, 0.0)
-        if a > 0:
-            landcover.append({"code": code, "label": label, "color": f"#{color}",
-                              "areaKm2": round(a, 2), "pct": round(a / lc_total * 100, 2)})
-    landcover.sort(key=lambda c: c["areaKm2"], reverse=True)
-
-    # Monthly precipitation (CHIRPS with custom date range)
+    # Monthly CHIRPS precipitation.
     sy = max(1981, min(2025, int(start_year or 2019)))
     ey = max(sy + 1, min(2025, int(end_year or 2024)))
     years = max(1, ey - sy)
-    chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate(f"{sy}-01-01", f"{ey}-01-01")
+    chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate(
+        f"{sy}-01-01", f"{ey}-01-01"
+    )
 
     def _monthly(m):
         m = ee.Number(m)
-        return (chirps.filter(ee.Filter.calendarRange(m, m, "month")).sum()
-                .divide(years).rename(ee.String("mon_").cat(m.int().format("%02d"))))
+        return (
+            chirps.filter(ee.Filter.calendarRange(m, m, "month"))
+            .sum()
+            .divide(years)
+            .rename(ee.String("mon_").cat(m.int().format("%02d")))
+        )
 
     monthly_img = ee.ImageCollection(ee.List.sequence(1, 12).map(_monthly)).toBands()
-    mp = monthly_img.reduceRegion(reducer=ee.Reducer.mean(), geometry=region,
-                                  scale=5000, bestEffort=True, maxPixels=max_px).getInfo() or {}
+
+    # SCS Curve Number.
+    cn = lc.remap(list(ESA_CN.keys()), list(ESA_CN.values())).rename("cn")
+    cn_tile = cn.visualize(
+        min=40,
+        max=100,
+        palette=["1a9850", "fee08b", "d73027"],
+    ).getMapId()["tile_fetcher"].url_format
+
+    lc_scale = _scale_from_area_km2(area_km2)
+    environmental = ee.Dictionary({
+        "landcover": ee.Image.pixelArea().addBands(lc).reduceRegion(
+            reducer=ee.Reducer.sum().group(groupField=1, groupName="code"),
+            geometry=region,
+            scale=lc_scale,
+            bestEffort=True,
+            maxPixels=max_px,
+        ),
+        "monthly": monthly_img.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region,
+            scale=5000,
+            bestEffort=True,
+            maxPixels=max_px,
+        ),
+        "curveNumber": cn.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region,
+            scale=100,
+            bestEffort=True,
+            maxPixels=max_px,
+        ),
+    }).getInfo() or {}
+
+    per_code: dict[int, float] = {}
+    groups = (environmental.get("landcover") or {}).get("groups", []) or []
+    for group in groups:
+        per_code[int(group["code"])] = float(group.get("sum", 0)) / 1e6
+
+    lc_total = sum(per_code.values()) or 1.0
+    landcover = []
+    for code, label, color in ESA_WORLDCOVER:
+        area = per_code.get(code, 0.0)
+        if area > 0:
+            landcover.append({
+                "code": code,
+                "label": label,
+                "color": f"#{color}",
+                "areaKm2": round(area, 2),
+                "pct": round(area / lc_total * 100, 2),
+            })
+    landcover.sort(key=lambda item: item["areaKm2"], reverse=True)
+
+    mp = environmental.get("monthly") or {}
     precip_monthly = []
-    for mm in range(1, 13):
-        key = next((k for k in mp if k.endswith(f"mon_{mm:02d}")), None)
+    for month in range(1, 13):
+        key = next((key for key in mp if key.endswith(f"mon_{month:02d}")), None)
         precip_monthly.append(round(float(mp.get(key) or 0), 1))
     precip_annual = round(sum(precip_monthly), 1)
 
-    # SCS Curve Number
-    cn = lc.remap(list(ESA_CN.keys()), list(ESA_CN.values())).rename("cn")
-    cn_tile = cn.visualize(min=40, max=100,
-                           palette=["1a9850", "fee08b", "d73027"]).getMapId()["tile_fetcher"].url_format
-    cn_mean = cn.reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=100,
-                              bestEffort=True, maxPixels=max_px).getInfo().get("cn")
+    cn_mean = (environmental.get("curveNumber") or {}).get("cn")
 
     return {
         "morphometry": {
-            "areaKm2":          round(area_km2, 2),
-            "perimeterKm":      round(perim_km, 2),
-            "elevMinM":         round(float(rinfo.get("elev_min")  or 0), 1),
-            "elevMeanM":        round(float(rinfo.get("elev_mean") or 0), 1),
-            "elevMaxM":         round(float(rinfo.get("elev_max")  or 0), 1),
-            "reliefM":          round(float(rinfo.get("elev_max") or 0) - float(rinfo.get("elev_min") or 0), 1),
-            "slopeMeanDeg":     round(float(rinfo.get("slope_mean") or 0), 2),
-            "slopeMaxDeg":      round(float(rinfo.get("slope_max")  or 0), 2),
-            "drainageDensity":  drainage_density,
-            "compactness":      compactness,
-            "formFactor":       form_factor,
+            "areaKm2": round(area_km2, 2),
+            "perimeterKm": round(perim_km, 2),
+            "elevMinM": round(float(rinfo.get("elev_min") or 0), 1),
+            "elevMeanM": round(float(rinfo.get("elev_mean") or 0), 1),
+            "elevMaxM": round(float(rinfo.get("elev_max") or 0), 1),
+            "reliefM": round(
+                float(rinfo.get("elev_max") or 0) - float(rinfo.get("elev_min") or 0),
+                1,
+            ),
+            "slopeMeanDeg": round(float(rinfo.get("slope_mean") or 0), 2),
+            "slopeMaxDeg": round(float(rinfo.get("slope_max") or 0), 2),
+            "drainageDensity": drainage_density,
+            "compactness": compactness,
+            "formFactor": form_factor,
         },
-        "landcover":      landcover,
-        "landcoverTile":  landcover_tile,
-        "precipMonthly":  precip_monthly,
+        "landcover": landcover,
+        "landcoverTile": landcover_tile,
+        "precipMonthly": precip_monthly,
         "precipAnnualMm": precip_annual,
-        "startYear":      sy,
-        "endYear":        ey,
-        "period":         f"{sy}–{ey}",
+        "startYear": sy,
+        "endYear": ey,
+        "period": f"{sy}–{ey}",
         "runoff": {
-            "cnMean":   round(float(cn_mean), 1) if cn_mean is not None else None,
-            "cnTile":   cn_tile,
-            "note":     "CN alto (vermelho) = maior escoamento / menor infiltração.",
+            "cnMean": round(float(cn_mean), 1) if cn_mean is not None else None,
+            "cnTile": cn_tile,
+            "note": "CN alto (vermelho) = maior escoamento / menor infiltração.",
         },
     }
-
 
 def refresh_basin_tiles(region_geojson: Optional[dict]) -> dict:
     """Fast regeneration of active GEE tile URLs for an existing basin polygon.
