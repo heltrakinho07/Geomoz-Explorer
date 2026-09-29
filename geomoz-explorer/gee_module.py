@@ -3085,61 +3085,94 @@ def compute_flood_sar(
 ) -> dict:
     """Flood extent from Sentinel-1 SAR (C-band, VV) — UN-SPIDER change-detection."""
     import ee
+
     region = _to_ee_region(region_geojson)
+    event_start_ee = ee.Date(event_start)
+    # UI dates are inclusive; Earth Engine filterDate uses an exclusive end.
+    event_end_ee = ee.Date(event_end).advance(1, "day")
 
     if not (baseline_start and baseline_end):
-        ev_start = ee.Date(event_start)
-        baseline_end   = ev_start.advance(-1, "day")
-        baseline_start = ev_start.advance(-60, "day")
+        baseline_start_ee = event_start_ee.advance(-60, "day")
+        baseline_end_ee = event_start_ee
     else:
-        baseline_start = ee.Date(baseline_start)
-        baseline_end   = ee.Date(baseline_end)
+        baseline_start_ee = ee.Date(baseline_start)
+        baseline_end_ee = ee.Date(baseline_end).advance(1, "day")
 
     def _s1(d0, d1):
-        return (ee.ImageCollection("COPERNICUS/S1_GRD")
-                .filterBounds(region).filterDate(d0, d1)
-                .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
-                .select("VV"))
+        return (
+            ee.ImageCollection("COPERNICUS/S1_GRD")
+            .filterBounds(region)
+            .filterDate(d0, d1)
+            .filter(ee.Filter.eq("instrumentMode", "IW"))
+            .filter(ee.Filter.eq("resolution_meters", 10))
+            .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
+            .select("VV")
+        )
 
-    after_col  = _s1(event_start, event_end)
-    before_col = _s1(baseline_start, baseline_end)
+    after_col = _s1(event_start_ee, event_end_ee)
+    before_col = _s1(baseline_start_ee, baseline_end_ee)
+
+    # One server round-trip gives real scene counts and prevents opaque failures
+    # later when median() is evaluated on an empty collection.
+    counts = ee.Dictionary({
+        "event": after_col.size(),
+        "baseline": before_col.size(),
+    }).getInfo() or {}
+    scenes_event = int(counts.get("event") or 0)
+    scenes_baseline = int(counts.get("baseline") or 0)
+    if scenes_event == 0:
+        raise RuntimeError(
+            "Sem cenas Sentinel-1 VV/IW de 10 m para o período do evento. "
+            "Aumente o intervalo de datas ou a área de estudo."
+        )
+    if scenes_baseline == 0:
+        raise RuntimeError(
+            "Sem cenas Sentinel-1 VV/IW de 10 m para a linha de base. "
+            "Aumente o período de referência."
+        )
 
     smooth = lambda img: img.focal_median(50, "circle", "meters")
-    after  = smooth(after_col.median())
+    after = smooth(after_col.median())
     before = smooth(before_col.median())
 
-    # UN-SPIDER change detection: backscatter decrease < -2.5 dB, water backscatter < -14 dB
-    diff  = after.subtract(before)
+    # UN-SPIDER-style change detection: backscatter decrease and dark-water threshold.
+    diff = after.subtract(before)
     flood = diff.lt(-2.5).And(after.lt(-14))
 
-    # Permanent water from JRC (occurrence > 35%)
+    # Permanent water from JRC (occurrence > 35%).
     jrc = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
     perm_water = jrc.gt(35).unmask(0)
     flood = flood.where(perm_water, 0)
 
-    # Topographic filter: inundations occur only on flat terrain (slope < 6°)
-    # Reproject DEM to metric projection (EPSG:3857) so dz/dx is in meters/meters
+    # Topographic filter: inundation is much more plausible on low slopes.
     dem = _build_dem(region)
     dem_metric = dem.reproject("EPSG:3857", None, 90)
     slope = ee.Terrain.slope(dem_metric)
     flood = flood.updateMask(slope.lt(6.0))
 
-    # Mask and speckle reduction
+    # Speckle/noise reduction.
     flood = flood.selfMask()
-    conn  = flood.connectedPixelCount(15, True)
+    conn = flood.connectedPixelCount(15, True)
     flood = flood.updateMask(conn.gte(4)).rename("flood")
 
-    flood_tile = flood.visualize(palette=["d50000"], opacity=0.85) \
-                      .getMapId()["tile_fetcher"].url_format
-    perm_tile  = perm_water.selfMask().visualize(palette=["1565c0"], opacity=0.6) \
-                      .getMapId()["tile_fetcher"].url_format
+    flood_tile = (
+        flood.visualize(palette=["d50000"], opacity=0.85)
+        .getMapId()["tile_fetcher"].url_format
+    )
+    perm_tile = (
+        perm_water.selfMask().visualize(palette=["1565c0"], opacity=0.6)
+        .getMapId()["tile_fetcher"].url_format
+    )
 
     dyn_scale = max(_compute_dynamic_scale(region), 120)
     area_km2 = 0.0
     try:
         flood_area = flood.multiply(ee.Image.pixelArea()).reduceRegion(
-            reducer=ee.Reducer.sum(), geometry=region, scale=dyn_scale,
-            bestEffort=True, maxPixels=int(1e10),
+            reducer=ee.Reducer.sum(),
+            geometry=region,
+            scale=dyn_scale,
+            bestEffort=True,
+            maxPixels=int(1e10),
         ).get("flood")
         area_val = flood_area.getInfo()
         if area_val:
@@ -3148,16 +3181,17 @@ def compute_flood_sar(
         logger.warning("Could not compute flood area: %s", exc)
 
     return {
-        "floodTile":      flood_tile,
-        "permWaterTile":  perm_tile,
-        "areaKm2":        area_km2,
-        "scenesEvent":    1,
-        "scenesBaseline": 1,
-        "eventStart":     event_start,
-        "eventEnd":       event_end,
-        "source":         "sentinel-1",
+        "floodTile": flood_tile,
+        "permWaterTile": perm_tile,
+        "areaKm2": area_km2,
+        "scenesEvent": scenes_event,
+        "scenesBaseline": scenes_baseline,
+        "eventStart": event_start,
+        "eventEnd": event_end,
+        "baselineStart": baseline_start,
+        "baselineEnd": baseline_end,
+        "source": "COPERNICUS/S1_GRD · VV · IW · 10 m + JRC GSW",
     }
-
 
 def compute_erosion_rusle(region_geojson: Optional[dict], year: int = 2023) -> dict:
     """Soil-loss risk via RUSLE: A = R·K·LS·C·P (t/ha/yr)."""
@@ -3249,35 +3283,85 @@ def compute_wildfire_firms(
     end_date: str,
     min_confidence: int = 50,
 ) -> dict:
-    """Active fire detection and thermal anomalies from NASA FIRMS (MODIS & VIIRS)."""
+    """Active-fire thermal anomalies using GEE FIRMS/VIIRS public products.
+
+    For periods from 2023-09-03 onward, use the 375 m VIIRS NRT collections
+    (S-NPP plus NOAA-20). Older periods fall back to the long MODIS FIRMS
+    record at 1 km. Confidence is always applied as a *pixel-band mask*.
+    """
     import ee
+
     region = _to_ee_region(region_geojson)
+    end_exclusive = ee.Date(end_date).advance(1, "day")
     max_px = int(1e10)
+    viirs_start = "2023-09-03"
+    use_viirs = start_date >= viirs_start
 
-    firms_col = (
-        ee.ImageCollection("FIRMS")
-        .filterBounds(region)
-        .filterDate(start_date, end_date)
-    )
+    if use_viirs:
+        # VIIRS confidence is categorical: 0=low, 1=nominal, 2=high.
+        if min_confidence >= 80:
+            confidence_threshold = 2
+        elif min_confidence >= 50:
+            confidence_threshold = 1
+        else:
+            confidence_threshold = 0
 
-    # Filter by confidence threshold
-    filtered = firms_col.filter(ee.Filter.gte("confidence", min_confidence))
+        snpp = (
+            ee.ImageCollection("NASA/LANCE/SNPP_VIIRS/C2")
+            .filterBounds(region)
+            .filterDate(start_date, end_exclusive)
+        )
+        noaa20 = (
+            ee.ImageCollection("NASA/LANCE/NOAA20_VIIRS/C2")
+            .filterBounds(region)
+            .filterDate(start_date, end_exclusive)
+        )
+        raw = snpp.merge(noaa20)
+        temperature_band = "Bright_ti4"
+        resolution_m = 375
+        confidence_mode = "categorical"
+        sensor = "VIIRS 375 m (S-NPP + NOAA-20)"
+        source = "NASA/LANCE/SNPP_VIIRS/C2 + NASA/LANCE/NOAA20_VIIRS/C2"
 
-    # Mosaic of maximum brightness temperature (band T21, in Kelvin)
-    t21_max = filtered.select("T21").max().clip(region)
+        def _mask_confidence(img):
+            conf = img.select("confidence")
+            return img.updateMask(conf.gte(confidence_threshold))
+    else:
+        raw = (
+            ee.ImageCollection("FIRMS")
+            .filterBounds(region)
+            .filterDate(start_date, end_exclusive)
+        )
+        temperature_band = "T21"
+        resolution_m = 1000
+        confidence_mode = "percent"
+        sensor = "MODIS FIRMS 1 km"
+        source = "FIRMS · MODIS LANCE"
+
+        def _mask_confidence(img):
+            conf = img.select("confidence")
+            return img.updateMask(conf.gte(min_confidence))
+
+    image_count = int(raw.size().getInfo() or 0)
+    if image_count == 0:
+        raise RuntimeError(
+            "Sem dados de fogo activo no Earth Engine para o período selecionado. "
+            "Escolha um período anterior à data mais recente disponível no catálogo."
+        )
+
+    filtered = raw.map(_mask_confidence)
+    temp_max = filtered.select(temperature_band).max().clip(region)
     conf_max = filtered.select("confidence").max().clip(region)
 
-    # Palette for thermal anomalies: Yellow -> Orange -> Red -> Dark Red
     palette = ["fff000", "ff8000", "ff0000", "7a0000"]
-    tile = t21_max.visualize(
-        min=305, max=390,
-        palette=palette,
-        opacity=0.88
-    ).getMapId()["tile_fetcher"].url_format
+    tile = (
+        temp_max.visualize(min=305, max=390, palette=palette, opacity=0.88)
+        .getMapId()["tile_fetcher"].url_format
+    )
 
-    dyn_scale = max(_compute_dynamic_scale(region), 375)
+    dyn_scale = max(_compute_dynamic_scale(region), resolution_m)
     hotspot_count = 0
-    t21_mean_c = None
+    temperature_mean_c = None
     hotspot_points = []
 
     try:
@@ -3295,36 +3379,36 @@ def compute_wildfire_firms(
         logger.warning("Could not compute hotspot count: %s", exc)
 
     try:
-        t_val = t21_max.reduceRegion(
+        t_val = temp_max.reduceRegion(
             reducer=ee.Reducer.mean(),
             geometry=region,
             scale=dyn_scale,
             bestEffort=True,
             maxPixels=max_px,
-        ).get("T21").getInfo()
+        ).get(temperature_band).getInfo()
         if t_val is not None:
-            t21_mean_c = round(float(t_val) - 273.15, 1)
+            temperature_mean_c = round(float(t_val) - 273.15, 1)
     except Exception as exc:
         logger.warning("Could not compute mean fire temperature: %s", exc)
 
     try:
-        fire_mask = t21_max.mask().selfMask()
-        samples = t21_max.addBands(conf_max).sample(
+        samples = temp_max.addBands(conf_max).sample(
             region=region,
             scale=dyn_scale,
             numPixels=60,
-            geometries=True
-        ).getInfo()
+            geometries=True,
+        ).getInfo() or {}
         for feat in samples.get("features", []):
             coords = feat.get("geometry", {}).get("coordinates", [])
             props = feat.get("properties", {})
             if coords and len(coords) >= 2:
-                tk = props.get("T21")
+                tk = props.get(temperature_band)
+                confidence_value = props.get("confidence")
                 hotspot_points.append({
                     "lat": coords[1],
                     "lon": coords[0],
-                    "tempCelsius": round(float(tk) - 273.15, 1) if tk else None,
-                    "confidence": int(props.get("confidence", min_confidence)),
+                    "tempCelsius": round(float(tk) - 273.15, 1) if tk is not None else None,
+                    "confidence": int(confidence_value) if confidence_value is not None else confidence_threshold,
                 })
     except Exception as exc:
         logger.warning("Could not sample hotspot coordinates: %s", exc)
@@ -3332,15 +3416,18 @@ def compute_wildfire_firms(
     return {
         "tile": tile,
         "hotspotCount": hotspot_count,
-        "meanTempCelsius": t21_mean_c,
+        "meanTempCelsius": temperature_mean_c,
         "startDate": start_date,
         "endDate": end_date,
         "minConfidence": min_confidence,
+        "confidenceMode": confidence_mode,
         "hotspotPoints": hotspot_points,
         "palette": palette,
-        "source": "NASA FIRMS (MODIS/VIIRS 375m)",
+        "sensor": sensor,
+        "resolutionMeters": resolution_m,
+        "imageCount": image_count,
+        "source": source,
     }
-
 
 
 def compute_burned_area(
@@ -3537,6 +3624,7 @@ def compute_spi_ndvi(
     year: int = 2024,
     clim_start: int = 2001,
     samples: int = 400,
+    include_samples: bool = True,
 ) -> dict:
     """SPI (anomalia temporal de precipitação CHIRPS) × NDVI MODIS + correlação.
 
@@ -3623,33 +3711,35 @@ def compute_spi_ndvi(
     except Exception as exc:
         logger.warning("SPI×NDVI: drought area failed: %s", exc)
 
-    # Scatter samples (client-side pairs for the chart)
+    # Scatter samples are optional because the Geoperigos summary only needs
+    # raster/statistics. Skipping this extra getInfo() materially reduces latency.
     pairs = []
-    try:
-        fc = both.sample(
-            region=region, scale=5000,
-            numPixels=max(50, min(samples, 2000)),
-            seed=42, geometries=False,
-        ).getInfo() or {}
-        for f in fc.get("features", []):
-            p = f.get("properties", {})
-            s, n = p.get("SPI"), p.get("NDVI")
-            if s is not None and n is not None:
-                pairs.append({"spi": round(float(s), 3), "ndvi": round(float(n), 3)})
-    except Exception as exc:
-        logger.warning("SPI×NDVI: sampling failed: %s", exc)
-
-    # OLS trendline over the sampled pairs (NDVI = a·SPI + b)
     slope = intercept = None
-    if len(pairs) >= 10:
+    if include_samples:
         try:
-            import numpy as np
-            xs = np.array([p["spi"] for p in pairs])
-            ys = np.array([p["ndvi"] for p in pairs])
-            slope_f, intercept_f = np.polyfit(xs, ys, 1)
-            slope, intercept = round(float(slope_f), 4), round(float(intercept_f), 4)
+            fc = both.sample(
+                region=region, scale=5000,
+                numPixels=max(50, min(samples, 2000)),
+                seed=42, geometries=False,
+            ).getInfo() or {}
+            for f in fc.get("features", []):
+                p = f.get("properties", {})
+                s, n = p.get("SPI"), p.get("NDVI")
+                if s is not None and n is not None:
+                    pairs.append({"spi": round(float(s), 3), "ndvi": round(float(n), 3)})
         except Exception as exc:
-            logger.warning("SPI×NDVI: trendline fit failed: %s", exc)
+            logger.warning("SPI×NDVI: sampling failed: %s", exc)
+
+        # OLS trendline over the sampled pairs (NDVI = a·SPI + b)
+        if len(pairs) >= 10:
+            try:
+                import numpy as np
+                xs = np.array([p["spi"] for p in pairs])
+                ys = np.array([p["ndvi"] for p in pairs])
+                slope_f, intercept_f = np.polyfit(xs, ys, 1)
+                slope, intercept = round(float(slope_f), 4), round(float(intercept_f), 4)
+            except Exception as exc:
+                logger.warning("SPI×NDVI: trendline fit failed: %s", exc)
 
     drought_pct = (round(drought_km2 / total_km2 * 100, 1)
                    if drought_km2 is not None and total_km2 else None)
