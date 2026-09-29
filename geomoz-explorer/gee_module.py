@@ -891,19 +891,22 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
     # Source: script 00039_modis_vhi
     if index == "vhi":
         import ee
-        # Validate MODIS NDVI collection
+        # Validate both MODIS collections in one Earth Engine round-trip.
         ndvi_coll = (ee.ImageCollection("MODIS/061/MOD13A2")
                      .filterBounds(region).select("NDVI"))
-        ndvi_count = ndvi_coll.size().getInfo()
+        lst_coll = (ee.ImageCollection("MODIS/061/MOD11A2")
+                    .filterBounds(region).select("LST_Day_1km"))
+        collection_counts = ee.Dictionary({
+            "ndvi": ndvi_coll.size(),
+            "lst": lst_coll.size(),
+        }).getInfo() or {}
+        ndvi_count = int(collection_counts.get("ndvi") or 0)
+        lst_count = int(collection_counts.get("lst") or 0)
         if ndvi_count < 3:
             raise ValueError(
                 "VHI (NDVI): pelo menos 3 imagens MODIS necessárias. "
                 f"Encontradas: {ndvi_count}. Tente uma área maior ou período multi-anual."
             )
-        # Validate MODIS LST collection
-        lst_coll = (ee.ImageCollection("MODIS/061/MOD11A2")
-                    .filterBounds(region).select("LST_Day_1km"))
-        lst_count = lst_coll.size().getInfo()
         if lst_count < 3:
             raise ValueError(
                 "VHI (LST): pelo menos 3 imagens MODIS necessárias. "
@@ -2452,31 +2455,68 @@ def compute_basin_stats(basin_geometry: dict) -> dict:
         logger.exception("Erro silencioso capturado: %s", e)
 
     max_px = int(1e9)
-    reducer_mm = ee.Reducer.min().combine(ee.Reducer.max(), sharedInputs=True).combine(ee.Reducer.mean(), sharedInputs=True)
+    reducer_mm = (
+        ee.Reducer.min()
+        .combine(ee.Reducer.max(), sharedInputs=True)
+        .combine(ee.Reducer.mean(), sharedInputs=True)
+    )
 
-    elev_info  = dem.unmask(0).reduceRegion(reducer=reducer_mm, geometry=region, scale=90, bestEffort=True, maxPixels=max_px).getInfo()
-    slope_info = slope.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=90, bestEffort=True, maxPixels=max_px).getInfo()
-
-    ndvi_mean = ndwi_mean = None
+    # These values are independent but were previously evaluated with up to
+    # seven sequential getInfo() calls. Bundle them into one server request
+    # while preserving the original reducer scales and formulas.
+    summary_request = {
+        "elevation": dem.unmask(0).reduceRegion(
+            reducer=reducer_mm,
+            geometry=region,
+            scale=90,
+            bestEffort=True,
+            maxPixels=max_px,
+        ),
+        "slope": slope.unmask(0).reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region,
+            scale=90,
+            bestEffort=True,
+            maxPixels=max_px,
+        ),
+        "area_m2": region.area(maxError=100),
+        "perimeter_m": region.perimeter(maxError=100),
+    }
     if has_s2:
-        try:
-            nv = ndvi.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=30, bestEffort=True, maxPixels=max_px).getInfo()
-            nw = ndwi.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=30, bestEffort=True, maxPixels=max_px).getInfo()
-            ndvi_mean = nv.get("ndvi")
-            ndwi_mean = nw.get("ndwi")
-        except Exception as e:
-            logger.exception("Erro silencioso capturado: %s", e)
-
-    precip_mm_yr = 800.0
+        summary_request["ndvi"] = ndvi.unmask(0).reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region,
+            scale=30,
+            bestEffort=True,
+            maxPixels=max_px,
+        )
+        summary_request["ndwi"] = ndwi.unmask(0).reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region,
+            scale=30,
+            bestEffort=True,
+            maxPixels=max_px,
+        )
     if has_precip:
-        try:
-            pr = chirps.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=5000, bestEffort=True, maxPixels=max_px).getInfo()
-            precip_mm_yr = float(pr.get("precip") or 800)
-        except Exception as e:
-            logger.exception("Erro silencioso capturado: %s", e)
+        summary_request["precip"] = chirps.unmask(0).reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region,
+            scale=5000,
+            bestEffort=True,
+            maxPixels=max_px,
+        )
 
-    area_km2 = region.area(maxError=100).getInfo() / 1e6
-    perim_km = region.perimeter(maxError=100).getInfo() / 1e3
+    summary = ee.Dictionary(summary_request).getInfo() or {}
+    elev_info = summary.get("elevation") or {}
+    slope_info = summary.get("slope") or {}
+    ndvi_mean = (summary.get("ndvi") or {}).get("ndvi") if has_s2 else None
+    ndwi_mean = (summary.get("ndwi") or {}).get("ndwi") if has_s2 else None
+    precip_mm_yr = float(
+        ((summary.get("precip") or {}).get("precip") if has_precip else None)
+        or 800
+    )
+    area_km2 = float(summary.get("area_m2") or 0) / 1e6
+    perim_km = float(summary.get("perimeter_m") or 0) / 1e3
 
     mean_slope = float(slope_info.get("slope") or 0)
     mean_ndvi  = float(ndvi_mean or 0.3)
