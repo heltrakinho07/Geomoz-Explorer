@@ -17,12 +17,6 @@ export interface AnalysisJobError {
   details?: unknown;
 }
 
-export interface AnalysisJobTimings {
-  queue_wait_ms?: number | null;
-  execution_ms?: number | null;
-  total_ms?: number | null;
-}
-
 export interface AnalysisJob<T = unknown> {
   id: string;
   type: string;
@@ -39,8 +33,6 @@ export interface AnalysisJob<T = unknown> {
   started_at: string | null;
   completed_at: string | null;
   execution_mode?: string;
-  attempt?: number;
-  timings?: AnalysisJobTimings;
 }
 
 const ACTIVE_STATUSES = new Set<AnalysisJobStatus>(["queued", "processing"]);
