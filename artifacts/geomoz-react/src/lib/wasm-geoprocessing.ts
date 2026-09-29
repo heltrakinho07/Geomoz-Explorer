@@ -248,7 +248,7 @@ export function runVectorBuffer(
   dissolve = false
 ): { result: FeatureCollection; stats: GeoprocessingStats } {
   const t0 = performance.now();
-  const bufferedFeatures: Feature[] = [];
+  const bufferedFeatures: Feature<Polygon | MultiPolygon>[] = [];
 
   for (const feature of fc.features) {
     try {
@@ -266,11 +266,12 @@ export function runVectorBuffer(
     }
   }
 
-  let finalFc: FeatureCollection = turf.featureCollection(bufferedFeatures);
+  let finalFc: FeatureCollection<Polygon | MultiPolygon> = turf.featureCollection(bufferedFeatures);
 
   if (dissolve && bufferedFeatures.length > 1) {
     try {
-      const dissolved = turf.dissolve(finalFc);
+      const flatPolygons = turf.flatten(finalFc) as FeatureCollection<Polygon>;
+      const dissolved = turf.dissolve(flatPolygons);
       if (dissolved && dissolved.features.length > 0) {
         finalFc = dissolved;
       }
@@ -390,10 +391,18 @@ export function runVectorDissolve(
   propertyName?: string
 ): { result: FeatureCollection; stats: GeoprocessingStats } {
   const t0 = performance.now();
-  let dissolved: FeatureCollection;
+  let dissolved: FeatureCollection = fc;
 
   try {
-    dissolved = turf.dissolve(fc, { propertyName: propertyName || undefined });
+    const polygonFeatures = fc.features.filter(
+      (feature): feature is Feature<Polygon | MultiPolygon> =>
+        feature.geometry?.type === "Polygon" || feature.geometry?.type === "MultiPolygon"
+    );
+    if (polygonFeatures.length > 0) {
+      const polygonCollection = turf.featureCollection(polygonFeatures);
+      const flatPolygons = turf.flatten(polygonCollection) as FeatureCollection<Polygon>;
+      dissolved = turf.dissolve(flatPolygons, { propertyName: propertyName || undefined });
+    }
   } catch (err) {
     console.warn("Turf dissolve error:", err);
     dissolved = fc;

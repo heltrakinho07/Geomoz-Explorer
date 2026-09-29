@@ -9,7 +9,7 @@ export default function PwaInstallPrompt() {
   const [showIosGuide, setShowIosGuide] = useState<boolean>(false);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") return undefined;
     const lastDismissed = localStorage.getItem("geomoz_pwa_dismissed");
     if (!lastDismissed) {
       // Don't show immediately on first millisecond — wait 4 seconds for page to settle
@@ -21,6 +21,7 @@ export default function PwaInstallPrompt() {
       const timer = setTimeout(() => setDismissed(false), 4000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, []);
 
   const handleDismiss = () => {

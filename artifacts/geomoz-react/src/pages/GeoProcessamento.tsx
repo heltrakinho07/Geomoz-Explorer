@@ -270,7 +270,9 @@ export default function GeoProcessamento({
 
   // Synchronize drawn AOI as a layer
   React.useEffect(() => {
-    if (aoi && aoi.source === "draw" && aoi.geometry) {
+    const rawGeometry = aoi?.geometry;
+    if (aoi && aoi.source === "draw" && rawGeometry && "coordinates" in rawGeometry) {
+      const geometry = rawGeometry as GeoJSON.Geometry;
       const drawnId = "drawn_aoi_layer";
       const fc: FeatureCollection = {
         type: "FeatureCollection",
@@ -278,7 +280,7 @@ export default function GeoProcessamento({
           {
             type: "Feature",
             properties: { nome: aoi.label || "Área Desenhada" },
-            geometry: aoi.geometry,
+            geometry,
           },
         ],
       };
@@ -291,7 +293,7 @@ export default function GeoProcessamento({
             name: aoi.label || "Área Desenhada",
             geojson: fc,
             featureCount: 1,
-            geometryType: aoi.geometry.type,
+            geometryType: geometry.type,
             fields: ["nome"],
             color: "#e11d48",
             visible: true,
@@ -302,7 +304,7 @@ export default function GeoProcessamento({
 
       if (!selectedLayerId) setSelectedLayerId(drawnId);
     }
-  }, [aoi]);
+  }, [aoi, selectedLayerId]);
 
   // Default SQL when layer loads
   React.useEffect(() => {
@@ -580,16 +582,16 @@ export default function GeoProcessamento({
 
   // ── Export PDF Report ────────────────────────────────────────────────────
   const exportPdf = () => {
-    const ctx = createPDFContext();
+    const reportTitle = "Dossiê Avançado de Geoprocessamento";
+    const ctx = createPDFContext(reportTitle);
     drawCover(
       ctx,
-      "Dossiê Avançado de Geoprocessamento",
       `GeoLibre Processing Engine — ${province ?? "Moçambique"} · Dados Próprios`,
       [
-        { label: "Província", value: province ?? "Nacional" },
-        { label: "Total de Camadas", value: `${layers.length}` },
-        { label: "Operações Realizadas", value: `${history.length}` },
-        { label: "Privacidade & Execução", value: "Turf.js Client-Side (Zero Server Upload)" },
+        `Província: ${province ?? "Nacional"}`,
+        `Camadas: ${layers.length}`,
+        `Operações: ${history.length}`,
+        "Execução: Turf.js local",
       ]
     );
 

@@ -109,8 +109,8 @@ class TestGeeIndicesAPI:
         """The API should report the expected total number of indices."""
         resp = client.get("/geomoz-api/gee/indices")
         data = resp.json()
-        assert len(data["indices"]) == 53, (
-            f"Expected 53 indices, got {len(data['indices'])}"
+        assert len(data["indices"]) == 62, (
+            f"Expected 62 indices, got {len(data['indices'])}"
         )
 
 

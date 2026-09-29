@@ -360,7 +360,7 @@ export const GEE_ONLY_INDICES: SpectralIndex[] = [
 export function applyColormap(t: number, index: SpectralIndex): string {
   t = Math.max(0, Math.min(1, t));
 
-  const ramps: Record<SpectralIndex, [number, number, number][]> = {
+  const ramps: Partial<Record<SpectralIndex, [number, number, number][]>> = {
     ndvi:        [[139,90,43],[189,138,90],[240,220,130],[180,230,120],[60,180,60],[0,100,0]],
     fe_oxide:    [[255,255,240],[255,220,150],[255,160,50],[200,60,20],[120,0,0]],
     clay:        [[255,255,255],[200,225,255],[130,180,240],[50,120,200],[0,50,140]],
@@ -419,7 +419,7 @@ export function applyColormap(t: number, index: SpectralIndex): string {
     canopy_height:[[0,0,0],[0,63,0],[0,127,0],[63,191,63],[127,255,127],[191,255,191],[255,255,255]],
   };
 
-  const ramp = ramps[index];
+  const ramp = ramps[index] ?? ramps.ndvi!;
   const n = ramp.length - 1;
   const i = Math.min(Math.floor(t * n), n - 1);
   const f = t * n - i;
