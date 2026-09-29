@@ -435,6 +435,79 @@ class TestGEEFloodRequest:
         assert req.baseline_start == "2019-01-01"
 
 
+
+
+class TestGEEGeohazardValidation:
+    """Validation guards for public geohazard analyses."""
+
+    def test_wildfire_rejects_invalid_confidence(self) -> None:
+        from pydantic import ValidationError
+        from api import GEEWildfireRequest
+
+        with pytest.raises(ValidationError):
+            GEEWildfireRequest(
+                start_date="2024-08-01",
+                end_date="2024-08-31",
+                min_confidence=101,
+            )
+
+    def test_wildfire_rejects_reversed_period(self, client: TestClient) -> None:
+        resp = client.post(
+            "/geomoz-api/gee/wildfire",
+            json={
+                "start_date": "2024-09-01",
+                "end_date": "2024-08-01",
+                "min_confidence": 50,
+            },
+        )
+        assert resp.status_code == 400
+        assert "end_date" in resp.json()["detail"]
+
+    def test_flood_rejects_reversed_event_period(self, client: TestClient) -> None:
+        resp = client.post(
+            "/geomoz-api/gee/flood",
+            json={
+                "event_start": "2023-03-20",
+                "event_end": "2023-03-11",
+            },
+        )
+        assert resp.status_code == 400
+        assert "event_end" in resp.json()["detail"]
+
+    def test_flood_requires_complete_baseline_period(self, client: TestClient) -> None:
+        resp = client.post(
+            "/geomoz-api/gee/flood",
+            json={
+                "event_start": "2023-03-11",
+                "event_end": "2023-03-20",
+                "baseline_start": "2023-01-01",
+            },
+        )
+        assert resp.status_code == 400
+        assert "baseline_start" in resp.json()["detail"]
+
+    def test_burned_area_rejects_reversed_period(self, client: TestClient) -> None:
+        resp = client.post(
+            "/geomoz-api/gee/burned-area",
+            json={
+                "start_date": "2024-11-30",
+                "end_date": "2024-07-01",
+            },
+        )
+        assert resp.status_code == 400
+
+    def test_drought_requires_minimum_climatology(self, client: TestClient) -> None:
+        resp = client.post(
+            "/geomoz-api/gee/drought",
+            json={
+                "year": 2024,
+                "clim_start": 2022,
+            },
+        )
+        assert resp.status_code == 400
+        assert "clim_start" in resp.json()["detail"]
+
+
 # ── GEE endpoint helpers ───────────────────────────────────────────────────────
 
 
