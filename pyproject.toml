@@ -8,7 +8,6 @@ dependencies = [
     "fastapi>=0.136.1",
     "folium>=0.20.0",
     "firebase-admin>=6.5.0",
-    "google-cloud-tasks>=2.16.0",
     "earthengine-api>=1.7.0",
     "geomoz>=0.1.1",
     "geopandas>=1.1.3",

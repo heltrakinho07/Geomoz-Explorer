@@ -9,7 +9,6 @@ matplotlib>=3.10.9
 streamlit>=1.57.0
 streamlit-folium>=0.27.2
 earthengine-api>=1.7.0
-google-cloud-tasks>=2.16.0
 httpx>=0.25.0
 # Security: GHSA-65pc-fj4g-8rjx — idna 3.14 is vulnerable; fixed in 3.16
 idna>=3.16
