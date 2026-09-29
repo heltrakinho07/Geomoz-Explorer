@@ -95,6 +95,7 @@ import {
   runVectorExplode,
   runVectorMetrics,
   runVectorIntersect,
+  runVectorDifference,
   runVectorPointsInPolygon,
 } from "@/lib/wasm-geoprocessing";
 import { executeSpatialQuery, exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-loader";
@@ -375,17 +376,29 @@ export default function GeoProcessamento({
         case "vector_intersect":
           if (!overlayFc) throw new Error("A segunda camada é obrigatória para interseção espacial.");
           return runVectorIntersect(inputFc, overlayFc);
+        case "vector_difference":
+          if (!overlayFc) throw new Error("A segunda camada é obrigatória para diferença espacial.");
+          return runVectorDifference(inputFc, overlayFc);
         case "vector_points_in_poly":
           if (!overlayFc) throw new Error("A segunda camada de polígonos/pontos é obrigatória.");
           return runVectorPointsInPolygon(inputFc, overlayFc);
         default:
-          return runVectorCentroids(inputFc);
+          throw new Error(`A ferramenta "${toolId}" ainda não possui um executor compatível com este workspace vetorial.`);
       }
     },
     []
   );
 
   const handleRunTool = useCallback(() => {
+    if (currentTool.implemented === false) {
+      toast({
+        title: "Ferramenta raster ainda não ligada",
+        description: "Este algoritmo requer um motor raster/DEM. Ele permanece catalogado, mas não será executado como uma operação vetorial incorreta.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!activeLayer) {
       toast({
         title: "Selecione uma Camada",
@@ -952,13 +965,18 @@ export default function GeoProcessamento({
                 {/* Execute Button */}
                 <button
                   onClick={handleRunTool}
-                  disabled={isExecuting || !activeLayer}
+                  disabled={isExecuting || !activeLayer || currentTool.implemented === false}
                   className="w-full py-2.5 px-3 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer disabled:opacity-50"
                 >
                   {isExecuting ? (
                     <>
                       <RefreshCw size={14} className="animate-spin" />
                       <span>A computar no navegador...</span>
+                    </>
+                  ) : currentTool.implemented === false ? (
+                    <>
+                      <AlertCircle size={14} />
+                      <span>Requer motor raster</span>
                     </>
                   ) : (
                     <>
@@ -1032,8 +1050,8 @@ export default function GeoProcessamento({
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">{t.name}</span>
-                    <span className="text-[9px] px-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-500">
-                      {t.categoryLabel}
+                    <span className={`text-[9px] px-1 rounded ${t.implemented === false ? "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300" : "bg-slate-100 dark:bg-slate-700 text-slate-500"}`}>
+                      {t.implemented === false ? "Requer raster" : t.categoryLabel}
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">{t.description}</p>
