@@ -1122,6 +1122,7 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
                 <FileDown size={13} /> Exportar Relatório PDF
               </button>
             </div>
+          )}
           {tool === "drought" && drought && (
             <div className="p-4 space-y-4">
               <div className="flex items-center gap-2"><Droplets size={15} className="text-orange-600 dark:text-orange-400" /><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Seca — SPI × NDVI</span></div>
@@ -1159,7 +1160,6 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
                 <Info size={12} className="mt-0.5 shrink-0 text-red-500" /> Este produto identifica cicatrizes de fogo observadas pelo MODIS e é complementar aos focos ativos FIRMS. Pequenas queimadas podem ficar abaixo da resolução de 500 m.
               </div>
             </div>
-          )}
           )}
         </div>
       )}
