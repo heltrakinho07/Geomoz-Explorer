@@ -61,7 +61,7 @@ jobs:
             --max-instances 10 \
             --min-instances 0 \
             --timeout 300s \
-            --set-env-vars="^@^PYTHONUNBUFFERED=1@FIREBASE_PROJECT_ID=geoprocessamento-426809@CORS_ORIGINS=https://geoprocessamento-426809.web.app,https://geoprocessamento-426809.firebaseapp.com" \
+            --set-env-vars="^@^PYTHONUNBUFFERED=1@FIREBASE_PROJECT_ID=geoprocessamento-426809@ALLOW_SERVER_GEE_FALLBACK=true@CORS_ORIGINS=https://geoprocessamento-426809.web.app,https://geoprocessamento-426809.firebaseapp.com" \
             --set-secrets=GEE_SERVICE_ACCOUNT_KEY=geomoz-gee-key:latest
 
       - name: Get Service URL

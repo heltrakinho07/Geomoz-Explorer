@@ -51,11 +51,11 @@ const MOCK_INDICES = {
     { id: "forest_loss", group: "fire", name: "Desflorestação", formula: "Hansen GFC" },
     { id: "burned_area", group: "fire", name: "Área Queimada", formula: "MODIS MCD64A1" },
     { id: "fire_risk", group: "fire", name: "Risco Incêndio", formula: "(1-NDVI)×0.4+(1-NDMI)×0.35+NDDI×0.25" },
-    // coastal (4)
-    { id: "mangrove_health", group: "coastal", name: "Saúde Mangal", formula: "0.5NDVI+0.5NDWI" },
-    { id: "coastal_index", group: "coastal", name: "Índice Costeiro", formula: "prox+invElev+invSlope" },
-    { id: "coastal_erosion", group: "coastal", name: "Erosão Costeira", formula: "JRC transition" },
-    { id: "tsunami_risk", group: "coastal", name: "Risco Tsunami", formula: "invElev+prox+invSlope" },
+    // water (4)
+    { id: "awei_nsh", group: "water", name: "AWEI s/ Sombra", formula: "4*(B3-B11)-(0.25*B8+2.75*B12)" },
+    { id: "awei_sh", group: "water", name: "AWEI c/ Sombra", formula: "B2+2.5*B3-1.5*(B8+B11)-0.25*B12" },
+    { id: "wri", group: "water", name: "WRI", formula: "(B3+B4)/(B8+B11)" },
+    { id: "wi2015", group: "water", name: "WI2015", formula: "1.7204+171*B3+3*B4-70*B8-45*B11-71*B12" },
     // climate (5) — wind_speed added
     { id: "precipitation", group: "climate", name: "Precipitação", formula: "CHIRPS" },
     { id: "temperature_lst", group: "climate", name: "Temperatura", formula: "MODIS" },

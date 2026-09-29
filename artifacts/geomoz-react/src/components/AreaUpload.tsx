@@ -82,8 +82,8 @@ export default function AreaUpload({ onGeometryLoaded }: AreaUploadProps) {
         onClick={() => inputRef.current?.click()}
         className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
           dragOver
-            ? "border-sky-400 bg-sky-50"
-            : "border-slate-200 hover:border-sky-300 hover:bg-sky-50/50"
+            ? "border-sky-400 bg-sky-50 dark:border-sky-500 dark:bg-sky-950/40"
+            : "border-slate-200 dark:border-slate-700 hover:border-sky-300 dark:hover:border-sky-500 hover:bg-sky-50/50 dark:hover:bg-slate-800/40"
         }`}
       >
         <input
@@ -94,17 +94,17 @@ export default function AreaUpload({ onGeometryLoaded }: AreaUploadProps) {
           onChange={onFileInput}
         />
         {loading ? (
-          <div className="flex items-center justify-center gap-2 text-slate-500">
+          <div className="flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400">
             <Loader2 size={16} className="animate-spin text-sky-500" />
             <span className="text-sm">A ler ficheiro…</span>
           </div>
         ) : (
           <>
-            <Upload size={20} className="mx-auto mb-1.5 text-slate-400" />
-            <p className="text-xs text-slate-500 font-medium">
+            <Upload size={20} className="mx-auto mb-1.5 text-slate-400 dark:text-slate-500" />
+            <p className="text-xs text-slate-500 dark:text-slate-300 font-medium">
               Arraste um ficheiro ou clique para escolher
             </p>
-            <p className="text-[10px] text-slate-400 mt-1">
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
               GeoJSON, KML ou GPX
             </p>
           </>
@@ -112,7 +112,7 @@ export default function AreaUpload({ onGeometryLoaded }: AreaUploadProps) {
       </div>
 
       {error && (
-        <div className="flex items-start gap-2 p-2.5 bg-red-50 border border-red-200 rounded-lg text-[11px] text-red-700">
+        <div className="flex items-start gap-2 p-2.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-lg text-[11px] text-red-700 dark:text-red-300">
           <AlertTriangle size={12} className="mt-0.5 shrink-0" />
           <span>{error}</span>
         </div>

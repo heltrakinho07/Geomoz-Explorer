@@ -18,3 +18,4 @@ idna>=3.16           # GHSA-65pc-fj4g-8rjx
 starlette>=1.0.1     # PYSEC-2026-161
 firebase-admin>=6.5.0
 cryptography>=42.0.0
+google-genai>=0.1.1
