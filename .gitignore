@@ -35,7 +35,6 @@ node_modules
 npm-debug.log
 yarn-error.log
 testem.log
-firebase-debug.log
 /typings
 
 # System Files
@@ -50,15 +49,8 @@ Thumbs.db
 .local/
 
 # Secrets / credentials — never commit
-.env
-*.env
-.env.*
 service-account-key.json
 *-service-account*.json
-service_account*.json
-service_account.json
-.gee_sessions.json
-*.gee_sessions.json
 .env.local
 .env.*.local
 __pycache__/
@@ -66,12 +58,3 @@ __pycache__/
 *.pyo
 .venv/
 venv/
-.venv-win/
-build/
-desktop/
-build-*/
-dist-*/
-google-cloud-sdk/
-*.tar.gz
-geolibre-ref/
-

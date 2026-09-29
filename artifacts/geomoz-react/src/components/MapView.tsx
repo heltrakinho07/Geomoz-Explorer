@@ -6,7 +6,6 @@ import {
   useMap,
   useMapEvents,
   ScaleControl,
-  Pane,
 } from "react-leaflet";
 import type { Layer } from "leaflet";
 import L from "leaflet";
@@ -14,19 +13,8 @@ import "leaflet/dist/leaflet.css";
 
 import { useGeologyGeoJSON, useProvincesGeoJSON, useDistrictsGeoJSON } from "@/hooks/useGeoMoz";
 import type { LayerState } from "./Sidebar";
-import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
-import BasemapSwitcher from "./BasemapSwitcher";
 import MapTools from "./MapTools";
 import MapDraw from "./MapDraw";
-import MapLibre3DView from "./MapLibre3DView";
-import TimeLapsePlayer from "./TimeLapsePlayer";
-import SplitScreenCompare from "./SplitScreenCompare";
-import PixelInspectorHUD, {
-  type GeologyContext,
-  type AdminContext,
-} from "./PixelInspectorHUD";
-import { sampleTerrariumElevation } from "@/lib/dem-terrain";
-import { Globe, Layers, Clock, Columns2 } from "lucide-react";
 import type { AreaOfInterest } from "@/lib/aoi";
 
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
@@ -44,9 +32,6 @@ interface MapViewProps {
   aoi: AreaOfInterest;
   drawingEnabled: boolean;
   finishRequest?: number;
-  initialViewMode?: "2d" | "3d";
-  viewMode?: "2d" | "3d";
-  onViewModeChange?: (mode: "2d" | "3d") => void;
   onDrawComplete: (geometry: GeoJSON.GeoJSON, label: string) => void;
   onDrawCancel: () => void;
   onProvinceClick?: (name: string) => void;
@@ -98,29 +83,10 @@ function MapStateTracker({ onMapState, mapRef }: {
   return null;
 }
 
-function CoordTracker({
-  onMove,
-}: {
-  onMove: (lat: number | null, lng: number | null, ele?: number | null) => void;
-}) {
-  const timerRef = useRef<any>(null);
+function CoordTracker({ onMove }: { onMove: (lat: number | null, lng: number | null) => void }) {
   useMapEvents({
-    mousemove(e) {
-      const { lat, lng } = e.latlng;
-      onMove(lat, lng, null);
-
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(async () => {
-        try {
-          const ele = await sampleTerrariumElevation(lat, lng, 10);
-          onMove(lat, lng, ele);
-        } catch {}
-      }, 60);
-    },
-    mouseout() {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      onMove(null, null, null);
-    },
+    mousemove(e) { onMove(e.latlng.lat, e.latlng.lng); },
+    mouseout() { onMove(null, null); },
   });
   return null;
 }
@@ -128,7 +94,7 @@ function CoordTracker({
 function NorthArrow() {
   return (
     <div className="absolute z-[500] pointer-events-none" style={{ top: 80, right: 10 }} title="Norte geográfico">
-      <div className="bg-white dark:bg-slate-900 rounded-full shadow-md border border-slate-200 dark:border-slate-700 w-10 h-10 flex items-center justify-center">
+      <div className="bg-white rounded-full shadow-md border border-slate-200 w-10 h-10 flex items-center justify-center">
         <svg viewBox="0 0 32 32" width="28" height="28">
           <polygon points="16,3 19,15 16,13 13,15" fill="#0ea5e9" />
           <polygon points="16,29 19,17 16,19 13,17" fill="#94a3b8" />
@@ -140,57 +106,11 @@ function NorthArrow() {
   );
 }
 
-export default function MapView({
-  province,
-  district,
-  layers,
-  colorBy,
-  aoi,
-  drawingEnabled,
-  finishRequest,
-  initialViewMode,
-  viewMode: propViewMode,
-  onViewModeChange,
-  onDrawComplete,
-  onDrawCancel,
-  onProvinceClick,
-  onMapState,
-  mapRef,
-}: MapViewProps) {
+export default function MapView({ province, district, layers, colorBy, aoi, drawingEnabled, finishRequest, onDrawComplete, onDrawCancel, onProvinceClick, onMapState, mapRef }: MapViewProps) {
   const { data: provinceGeoJSON } = useProvincesGeoJSON();
   const { data: districtGeoJSON } = useDistrictsGeoJSON(province);
   const { data: geologyGeoJSON, isFetching: loadingGeology } = useGeologyGeoJSON(province, district, colorBy, layers.geology);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [basemap, setBasemap] = useState<BasemapType>("hybrid");
-
-  const isWebGL = typeof window !== "undefined" && Boolean(
-    window.WebGLRenderingContext &&
-    document.createElement("canvas").getContext("webgl")
-  );
-
-  const [internalViewMode, setInternalViewMode] = useState<"2d" | "3d">(() => {
-    if (propViewMode) return propViewMode;
-    if (initialViewMode) return initialViewMode;
-    if (!isWebGL) return "2d";
-    try {
-      return (localStorage.getItem("geomoz_view_mode") as "2d" | "3d") || "3d";
-    } catch {
-      return "3d";
-    }
-  });
-
-  const activeViewMode = propViewMode ?? internalViewMode;
-
-  const handleViewModeChange = (mode: "2d" | "3d") => {
-    if (onViewModeChange) {
-      onViewModeChange(mode);
-    } else {
-      setInternalViewMode(mode);
-    }
-    try {
-      localStorage.setItem("geomoz_view_mode", mode);
-    } catch {}
-  };
 
   const provinceStyle = (): L.PathOptions => ({
     color: "#64748b", weight: 1.5, fillColor: "#e2e8f0", fillOpacity: province ? 0.05 : 0.2,
@@ -204,22 +124,16 @@ export default function MapView({
     fillOpacity: 0.82,
   });
 
-  const [coordsElevation, setCoordsElevation] = useState<number | null>(null);
-  const [hoveredGeology, setHoveredGeology] = useState<GeologyContext | null>(null);
-  const [hoveredAdmin, setHoveredAdmin] = useState<AdminContext | null>(null);
-
   function onEachProvince(feature: GeoJSON.Feature, layer: Layer) {
     const p = feature.properties as Record<string, string>;
     const name = p?.Provincia || p?.PROVINCIA || p?.NAME_1 || p?.name || "Province";
-    layer.bindTooltip(`<b>${name}</b><br/><span style="color:#64748b;font-size:11px">Clique para focar província</span>`, { sticky: true });
+    layer.bindTooltip(`<b>${name}</b><br/><span style="color:#64748b;font-size:11px">Clique para ver geologia</span>`, { sticky: true });
     layer.on("click", () => onProvinceClick?.(name));
     (layer as L.Path).on("mouseover", (e) => {
       (e.target as L.Path).setStyle({ fillOpacity: 0.35, weight: 2, fillColor: "#0ea5e9" });
-      setHoveredAdmin({ province: name });
     });
     (layer as L.Path).on("mouseout", (e) => {
       (e.target as L.Path).setStyle({ fillOpacity: province ? 0.05 : 0.2, weight: 1.5, fillColor: "#e2e8f0" });
-      setHoveredAdmin(province ? { province, district: district ?? undefined } : null);
     });
   }
 
@@ -231,309 +145,92 @@ export default function MapView({
     if (p?.ERA) lines.push(`Era: ${p.ERA}`);
     if (p?.PERIOD) lines.push(`Período: ${p.PERIOD}`);
     if (lines.length) layer.bindTooltip(lines.join("<br/>"), { sticky: true });
-
-    (layer as L.Path).on("mouseover", () => {
-      setHoveredGeology({
-        name: p?.Legend || p?.LEGEND || p?.code2006,
-        code: p?.code2006,
-        era: p?.ERA,
-        period: p?.PERIOD,
-      });
-    });
-    (layer as L.Path).on("mouseout", () => {
-      setHoveredGeology(null);
-    });
   }
 
   function onEachDistrict(feature: GeoJSON.Feature, layer: Layer) {
     const p = feature.properties as Record<string, string>;
     const name = p?.Distrito || p?.DISTRITO || p?.NAME_2 || p?.name || "District";
     layer.bindTooltip(name, { sticky: true });
-
-    (layer as L.Path).on("mouseover", () => {
-      setHoveredAdmin({
-        province: province ?? undefined,
-        district: name,
-      });
-    });
-    (layer as L.Path).on("mouseout", () => {
-      setHoveredAdmin(province ? { province, district: district ?? undefined } : null);
-    });
   }
-
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-  const [showTimeLapse, setShowTimeLapse] = useState(false);
-  const [timeLapsePlaying, setTimeLapsePlaying] = useState(false);
-  const [selectedYear, setSelectedYear] = useState("2024");
-  const [compareActive, setCompareActive] = useState(false);
-  const [splitPercent, setSplitPercent] = useState(50);
-  const [compareLeftYear, setCompareLeftYear] = useState("2018");
-  const [compareRightYear, setCompareRightYear] = useState("2024");
 
   const geologyKey = `geo-${province}-${district}-${colorBy}-${geologyGeoJSON?.features?.length ?? 0}`;
   const provKey = `prov-${provinceGeoJSON?.features?.length ?? 0}-${province}`;
   const distKey = `dist-${districtGeoJSON?.features?.length ?? 0}-${district}`;
 
   return (
-    <main className="flex-1 relative overflow-hidden" id="geomoz-map-area" ref={mapContainerRef}>
-      {/* Top Temporal Toolbar: Time-Lapse & Split-Screen */}
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[600] flex items-center gap-1.5 bg-slate-900/95 backdrop-blur-md px-2.5 py-1.5 rounded-2xl shadow-2xl border border-slate-700/80 text-white">
-        <button
-          type="button"
-          onClick={() => {
-            const next = !showTimeLapse;
-            setShowTimeLapse(next);
-            if (next && compareActive) setCompareActive(false);
-          }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-            showTimeLapse
-              ? "bg-sky-500 text-white shadow-md shadow-sky-500/30"
-              : "text-slate-200 hover:text-white hover:bg-slate-800"
-          }`}
-          title="Time-Lapse Multitemporal (2016–2024)"
-        >
-          <Clock size={14} className={showTimeLapse ? "animate-spin text-white" : "text-sky-400"} />
-          <span>Time-Lapse</span>
-          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-sky-400/20 text-sky-300 font-extrabold hidden sm:inline">2016–2024</span>
-        </button>
-
-        <div className="w-px h-4 bg-slate-700" />
-
-        {/* Split-Screen Compare button (ocultado temporariamente a pedido do utilizador, lógica preservada) */}
-        {false && (
-          <button
-            type="button"
-            onClick={() => {
-              const next = !compareActive;
-              setCompareActive(next);
-              if (next && showTimeLapse) setShowTimeLapse(false);
-              if (next && activeViewMode === "3d") {
-                handleViewModeChange("2d");
-              }
-            }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              compareActive
-                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
-                : "text-slate-200 hover:text-white hover:bg-slate-800"
-            }`}
-            title="Comparação Split-Screen Antes / Depois"
-          >
-            <Columns2 size={14} className={compareActive ? "text-white" : "text-indigo-400"} />
-            <span>Comparar</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-400/20 text-indigo-300 font-extrabold hidden sm:inline">Antes / Depois</span>
-          </button>
-        )}
-      </div>
-
-      {/* TimeLapse Player Floating Overlay */}
-      {showTimeLapse && !compareActive && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[650] w-[95%] sm:w-[90%] max-w-xl">
-          <TimeLapsePlayer
-            currentYear={selectedYear}
-            onYearChange={setSelectedYear}
-            isPlaying={timeLapsePlaying}
-            onPlayChange={setTimeLapsePlaying}
-            title="Sentinel-2 Mosaicos Globais (2016–2024)"
-            onClose={() => setShowTimeLapse(false)}
-          />
+    <main className="flex-1 relative overflow-hidden" id="geomoz-map-area">
+      {loadingGeology && province && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[600] bg-white border border-slate-200 shadow-md rounded-full px-4 py-1.5 text-xs font-medium text-slate-600 flex items-center gap-2 pointer-events-none">
+          <svg className="animate-spin w-3.5 h-3.5 text-sky-500" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+          A carregar geologia…
         </div>
       )}
 
-      {/* Split-Screen Compare Curtain Overlay (ocultado temporariamente a pedido do utilizador, lógica preservada) */}
-      {false && compareActive && (
-        <SplitScreenCompare
-          splitPercent={splitPercent}
-          onSplitChange={setSplitPercent}
-          leftValue={compareLeftYear}
-          rightValue={compareRightYear}
-          onLeftChange={setCompareLeftYear}
-          onRightChange={setCompareRightYear}
-          containerRef={mapContainerRef}
-          onClose={() => setCompareActive(false)}
-        />
+      {!province && (
+        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[600] bg-white/95 backdrop-blur-sm border border-sky-200 shadow-lg rounded-xl px-5 py-3 text-sm text-slate-700 flex items-center gap-2.5 pointer-events-none max-w-xs text-center">
+          <svg className="w-4 h-4 text-sky-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Clique numa <strong>&nbsp;Província&nbsp;</strong> no mapa ou no filtro para ver a geologia
+        </div>
       )}
 
-      {activeViewMode === "3d" ? (
-        <MapLibre3DView
-          province={province}
-          district={district}
-          colorBy={colorBy}
-          layers={layers}
-          aoi={aoi}
-          basemap={basemap}
-          viewMode={activeViewMode}
-          overlayRasterUrl={
-            showTimeLapse
-              ? `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${selectedYear}_3857/default/g/{z}/{y}/{x}.jpg`
-              : undefined
-          }
-          overlayOpacity={0.92}
-          onBasemapChange={setBasemap}
-          onViewModeChange={handleViewModeChange}
-          onProvinceClick={onProvinceClick}
-        />
-      ) : (
-        <>
-          {!province && (
-            <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[600] bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border border-sky-200 dark:border-sky-800/60 shadow-lg rounded-xl px-5 py-3 text-sm text-slate-700 dark:text-slate-200 flex items-center gap-2.5 pointer-events-none max-w-xs text-center">
-              <svg className="w-4 h-4 text-sky-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Clique numa <strong>&nbsp;Província&nbsp;</strong> no mapa ou no filtro para focar a área
-            </div>
-          )}
+      {/* Coordinate display */}
+      {coords && (
+        <div className="absolute bottom-8 right-3 z-[600] bg-white/90 backdrop-blur-sm border border-slate-200 shadow-sm rounded-md px-2.5 py-1 text-xs font-mono text-slate-600 pointer-events-none select-none">
+          {coords.lat >= 0 ? "+" : ""}{coords.lat.toFixed(5)}°,&nbsp;
+          {coords.lng >= 0 ? "+" : ""}{coords.lng.toFixed(5)}°
+        </div>
+      )}
 
-          {/* Google Maps Bottom-Left Layer Controller */}
-          <BasemapSwitcher
-            current={basemap}
-            onChange={setBasemap}
-            viewMode={activeViewMode}
-            onViewModeChange={handleViewModeChange}
-            className="absolute bottom-6 left-4 z-[600]"
-            position="bottom-left"
+      <NorthArrow />
+
+      <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl>
+        <TileLayer crossOrigin="anonymous"
+          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          maxZoom={19}
+        />
+
+        <ScaleControl position="bottomleft" imperial={false} />
+        <MapStateTracker onMapState={onMapState} mapRef={mapRef} />
+        <CoordTracker onMove={(lat, lng) => setCoords(lat !== null && lng !== null ? { lat, lng } : null)} />
+
+        {layers.geology && province && geologyGeoJSON && (
+          <>
+            <FitBounds data={geologyGeoJSON} deps={[province, district]} />
+            <GeoJSONLayer data={geologyGeoJSON} layerKey={geologyKey} style={geologyStyle} onEachFeature={onEachGeology} />
+          </>
+        )}
+
+        {layers.provinces && provinceGeoJSON && (
+          <>
+            {!province && <FitBounds data={provinceGeoJSON} deps={[]} />}
+            <GeoJSONLayer data={provinceGeoJSON} layerKey={provKey} style={provinceStyle} onEachFeature={onEachProvince} />
+          </>
+        )}
+
+        {layers.districts && province && districtGeoJSON && (
+          <GeoJSONLayer data={districtGeoJSON} layerKey={distKey} style={districtStyle} onEachFeature={onEachDistrict} />
+        )}
+        {drawingEnabled && (
+          <MapDraw
+            enabled={drawingEnabled}
+            onDrawComplete={onDrawComplete}
+            onCancel={onDrawCancel}
+            hasDrawnAOI={aoi?.source === "draw"}
+            onClearAOI={onDrawCancel}
+            finishRequest={finishRequest}
           />
-          <NorthArrow />
-
-          <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl>
-            {compareActive ? (
-              <>
-                <TileLayer
-                  key={basemap}
-                  crossOrigin="anonymous"
-                  url={GOOGLE_BASEMAPS[basemap].url}
-                  subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
-                  attribution={GOOGLE_BASEMAPS[basemap].attribution}
-                  maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
-                />
-                {/* Left Side (Antes) */}
-                <Pane name="mapviewCompareLeftPane" style={{ clipPath: `inset(0 calc(100% - ${splitPercent}%) 0 0)`, zIndex: 440 }}>
-                  <TileLayer
-                    key={`s2-mv-left-${compareLeftYear}`}
-                    crossOrigin="anonymous"
-                    url={`https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${compareLeftYear}_3857/default/g/{z}/{y}/{x}.jpg`}
-                    attribution={`Sentinel-2 cloudless ${compareLeftYear} (Antes) — EOX`}
-                    maxZoom={18}
-                  />
-                  <TileLayer
-                    crossOrigin="anonymous"
-                    url="https://mt{s}.google.com/vt/lyrs=h&x={x}&y={y}&z={z}"
-                    subdomains="0123"
-                    attribution=""
-                    maxZoom={20}
-                    pane="shadowPane"
-                  />
-                </Pane>
-
-                {/* Right Side (Depois) */}
-                <Pane name="mapviewCompareRightPane" style={{ clipPath: `inset(0 0 0 ${splitPercent}%)`, zIndex: 450 }}>
-                  <TileLayer
-                    key={`s2-mv-right-${compareRightYear}`}
-                    crossOrigin="anonymous"
-                    url={`https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${compareRightYear}_3857/default/g/{z}/{y}/{x}.jpg`}
-                    attribution={`Sentinel-2 cloudless ${compareRightYear} (Depois) — EOX`}
-                    maxZoom={18}
-                  />
-                  <TileLayer
-                    crossOrigin="anonymous"
-                    url="https://mt{s}.google.com/vt/lyrs=h&x={x}&y={y}&z={z}"
-                    subdomains="0123"
-                    attribution=""
-                    maxZoom={20}
-                    pane="shadowPane"
-                  />
-                </Pane>
-              </>
-            ) : showTimeLapse ? (
-              <>
-                <TileLayer
-                  key={basemap}
-                  crossOrigin="anonymous"
-                  url={GOOGLE_BASEMAPS[basemap].url}
-                  subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
-                  attribution={GOOGLE_BASEMAPS[basemap].attribution}
-                  maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
-                />
-                <TileLayer
-                  key={`s2-mv-timelapse-${selectedYear}`}
-                  crossOrigin="anonymous"
-                  url={`https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${selectedYear}_3857/default/g/{z}/{y}/{x}.jpg`}
-                  attribution={`Sentinel-2 cloudless ${selectedYear} — EOX`}
-                  maxZoom={18}
-                  opacity={0.92}
-                />
-                <TileLayer
-                  crossOrigin="anonymous"
-                  url="https://mt{s}.google.com/vt/lyrs=h&x={x}&y={y}&z={z}"
-                  subdomains="0123"
-                  attribution=""
-                  maxZoom={20}
-                  pane="shadowPane"
-                />
-              </>
-            ) : (
-              <TileLayer
-                key={basemap}
-                crossOrigin="anonymous"
-                url={GOOGLE_BASEMAPS[basemap].url}
-                subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
-                attribution={GOOGLE_BASEMAPS[basemap].attribution}
-                maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
-              />
-            )}
-
-            <ScaleControl position="bottomleft" imperial={false} />
-            <MapStateTracker onMapState={onMapState} mapRef={mapRef} />
-            <CoordTracker
-              onMove={(lat, lng, ele) => {
-                if (lat !== null && lng !== null) {
-                  setCoords({ lat, lng });
-                  if (ele !== undefined && ele !== null) {
-                    setCoordsElevation(ele);
-                  }
-                } else {
-                  setCoords(null);
-                  setCoordsElevation(null);
-                  setHoveredGeology(null);
-                  setHoveredAdmin(null);
-                }
-              }}
-            />
-
-            {/* Camada de geologia oculta para protecção de dados (preservada para reactivação futura) */}
-            {false && layers.geology && province && geologyGeoJSON && (
-              <>
-                <FitBounds data={geologyGeoJSON} deps={[province, district]} />
-                <GeoJSONLayer data={geologyGeoJSON} layerKey={geologyKey} style={geologyStyle} onEachFeature={onEachGeology} />
-              </>
-            )}
-
-            {layers.provinces && provinceGeoJSON && (
-              <>
-                <FitBounds data={provinceGeoJSON} deps={[province, district]} />
-                <GeoJSONLayer data={provinceGeoJSON} layerKey={provKey} style={provinceStyle} onEachFeature={onEachProvince} />
-              </>
-            )}
-
-            {layers.districts && province && districtGeoJSON && (
-              <GeoJSONLayer data={districtGeoJSON} layerKey={distKey} style={districtStyle} onEachFeature={onEachDistrict} />
-            )}
-            {drawingEnabled && (
-              <MapDraw
-                enabled={drawingEnabled}
-                onDrawComplete={onDrawComplete}
-                onCancel={onDrawCancel}
-                hasDrawnAOI={aoi?.source === "draw"}
-                onClearAOI={onDrawCancel}
-                finishRequest={finishRequest}
-              />
-            )}
-            {aoi?.source !== "global" && aoi?.geometry && (
-              <GeoJSON data={aoi.geometry as GeoJSON.FeatureCollection | GeoJSON.Feature} style={{ color: "#f43f5e", weight: 2, dashArray: "6 4", fillOpacity: 0.05 }} />
-            )}
-            <MapTools />
-          </MapContainer>
-        </>
-      )}
+        )}
+        {aoi?.source !== "global" && aoi?.geometry && (
+          <GeoJSON data={aoi.geometry as GeoJSON.FeatureCollection | GeoJSON.Feature} style={{ color: "#f43f5e", weight: 2, dashArray: "6 4", fillOpacity: 0.05 }} />
+        )}
+        <MapTools />
+      </MapContainer>
     </main>
   );
 }

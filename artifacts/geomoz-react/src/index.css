@@ -109,9 +109,9 @@
   --chart-4: 160 60% 45%;
   --chart-5: 0 84% 60%;
 
-  --app-font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  --app-font-sans: 'Inter', system-ui, sans-serif;
   --app-font-serif: Georgia, serif;
-  --app-font-mono: 'JetBrains Mono', Menlo, monospace;
+  --app-font-mono: Menlo, monospace;
   --radius: .5rem;
   --shadow-2xs: 0 1px 2px rgba(0,0,0,0.04);
   --shadow-xs: 0 1px 3px rgba(0,0,0,0.06);
@@ -301,29 +301,6 @@
   }
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-slate-300 dark:bg-slate-600;
-  }
-
-  /* PWA Safe Area Insets for Mobile & Standalone Mode */
-  :root {
-    --sat: env(safe-area-inset-top, 0px);
-    --sar: env(safe-area-inset-right, 0px);
-    --sab: env(safe-area-inset-bottom, 0px);
-    --sal: env(safe-area-inset-left, 0px);
-  }
-
-  @supports (padding-top: env(safe-area-inset-top)) {
-    #root {
-      padding-top: var(--sat);
-      padding-bottom: var(--sab);
-      padding-left: var(--sal);
-      padding-right: var(--sar);
-    }
-  }
-
-  @media all and (display-mode: standalone) {
-    body {
-      -webkit-tap-highlight-color: transparent;
-    }
   }
 }
 

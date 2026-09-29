@@ -17,7 +17,7 @@ import os
 import json
 import logging
 import threading
-from typing import Optional, Any
+from typing import Optional
 
 from gee_presets import (
     INDEX_REGISTRY, MINERAL_PRESETS,
@@ -31,11 +31,6 @@ logger = logging.getLogger(__name__)
 _lock = threading.Lock()
 _gee_initialized = False
 _gee_error: Optional[str] = None
-_last_initialized_project: Optional[str] = None
-_last_initialized_token: Optional[str] = None
-_adc_checked: bool = False
-_adc_creds: Optional[Any] = None
-_adc_project: Optional[str] = None
 
 # ── In-memory cache for computed ee.Image objects ─────────────────────────────
 #
@@ -121,325 +116,80 @@ def _build_cache_key_for_request(
 # ── Initialization ─────────────────────────────────────────────────────────────
 
 
+from google.oauth2.credentials import Credentials
 import gee_session_store
 
-def _load_env_file():
-    env_path = os.path.join(os.path.dirname(__file__), ".env")
-    if os.path.exists(env_path):
-        try:
-            with open(env_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        k, v = line.split("=", 1)
-                        if k.strip() not in os.environ:
-                            os.environ[k.strip()] = v.strip()
-        except Exception:
-            pass
+def _init_gee(uid: str = None) -> None:
+    """Initialize GEE with the user's token."""
+    global _gee_initialized, _gee_error
 
-_load_env_file()
+    if not uid:
+        raise RuntimeError("uid é obrigatório para ligar ao GEE.")
+        
+    token_data = gee_session_store.get_token(uid)
+    if not token_data:
+        raise RuntimeError("Utilizador não tem ligação ao GEE (token em falta).")
+        
+    try:
+        import ee
+    except ImportError:
+        raise RuntimeError("earthengine-api package not installed.")
 
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
-
-_last_initialized_uid = None
-
-def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
-    """Initialize GEE with the active user's credentials (OAuth refresh_token, OAuth access_token, user service account, or local CLI)."""
-    global _gee_initialized, _gee_error, _last_initialized_project, _last_initialized_token, _last_initialized_uid
-
+    # We initialize EE with the user's token.
+    # Warning: In a multi-threaded async app, this overrides global state!
+    # For MVP, this works if traffic is low or we rely on thread separation (not perfect).
     with _lock:
-        token_data = gee_session_store.get_token(uid) if uid else None
-        effective_token = token or (token_data.get("access_token") if token_data else None)
-        user_refresh_token = token_data.get("refresh_token") if token_data else None
-        user_sa_key = token_data.get("service_account_key") if token_data else None
-        allow_server = (
-            os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower()
-            == "true"
-        )
+        creds = Credentials(token=token_data["access_token"])
+        ee.Initialize(credentials=creds, project=token_data.get("project"))
+        _gee_initialized = True
 
-        effective_project = (
-            project
-            or (token_data.get("project") if token_data else None)
-            or (os.environ.get("GEE_PROJECT_ID") if allow_server else None)
-            or ""
-        ).strip()
-        if not effective_project:
-            raise RuntimeError(
-                "Google Cloud Project ID em falta. Configure o seu próprio projeto Earth Engine."
-            )
 
-        # If already initialized for this exact user, project and token, reuse session
-        if _gee_initialized and _last_initialized_uid == uid and _last_initialized_project == effective_project and _last_initialized_token == effective_token:
+        try:
+            ee.Initialize(project=project_id)
+            _gee_initialized = True
             return
-
-        # 0. Prefer the user's permanent OAuth refresh token.
-        if user_refresh_token:
-            try:
-                import ee
-                from google.auth.transport.requests import Request as GoogleAuthRequest
-                from google.oauth2.credentials import Credentials
-
-                if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
-                    raise RuntimeError(
-                        "OAuth server credentials are not configured for permanent GEE refresh."
-                    )
-
-                creds = Credentials(
-                    token=effective_token,
-                    refresh_token=user_refresh_token,
-                    token_uri="https://oauth2.googleapis.com/token",
-                    client_id=GOOGLE_CLIENT_ID,
-                    client_secret=GOOGLE_CLIENT_SECRET,
-                    scopes=["https://www.googleapis.com/auth/earthengine"],
-                )
-
-                # Refresh explicitly on initialization so a Cloud Run cold start
-                # never reuses an expired access token from persistent storage.
-                creds.refresh(GoogleAuthRequest())
-                effective_token = creds.token
-                gee_session_store.set_token(
-                    uid,
-                    {
-                        "access_token": creds.token,
-                        "expires_at": creds.expiry.isoformat() if creds.expiry else None,
-                    },
-                )
-
-                ee.Initialize(credentials=creds, project=effective_project)
-                ee.Number(1).getInfo()
-                _gee_initialized = True
-                _gee_error = None
-                _last_initialized_project = effective_project
-                _last_initialized_token = effective_token
-                _last_initialized_uid = uid
-                logger.info(
-                    "GEE initialized with refreshed OAuth credentials for user '%s', project: %s",
-                    uid,
-                    effective_project,
-                )
-                return
-            except Exception as e:
-                logger.warning("Failed to refresh GEE OAuth for user '%s': %s", uid, e)
-
-        # 1. Try user's personal OAuth token
-        if effective_token:
-            try:
-                import ee
-                from google.oauth2.credentials import Credentials
-                creds = Credentials(token=effective_token)
-                ee.Initialize(credentials=creds, project=effective_project)
-                # Verify that the access token is valid by performing a minimal API call
-                ee.Number(1).getInfo()
-                _gee_initialized = True
-                _gee_error = None
-                _last_initialized_project = effective_project
-                _last_initialized_token = effective_token
-                _last_initialized_uid = uid
-                logger.info("GEE initialized successfully with OAuth token for user '%s', project: %s", uid, effective_project)
-                return
-            except Exception as e:
-                logger.warning("Failed to initialize GEE with user '%s' OAuth token: %s", uid, e)
-                err_str = str(e)
-                if (
-                    "The credentials do not contain the necessary fields" in err_str
-                    or "refresh the access token" in err_str
-                    or "invalid_grant" in err_str
-                    or "expired" in err_str.lower()
-                ):
-                    if uid:
-                        try:
-                            gee_session_store.set_token(uid, {"access_token": None})
-                        except Exception:
-                            pass
-
-        # 2. Try user's personal Service Account Key JSON
-        if user_sa_key:
-            try:
-                import ee
-                import json
-                from google.oauth2 import service_account
-                key_dict = json.loads(user_sa_key) if isinstance(user_sa_key, str) else user_sa_key
-                scopes = getattr(ee.oauth, 'SCOPES', ['https://www.googleapis.com/auth/earthengine'])
-                creds = service_account.Credentials.from_service_account_info(
-                    key_dict,
-                    scopes=scopes
-                )
-                sa_project = effective_project or key_dict.get("project_id")
-                ee.Initialize(credentials=creds, project=sa_project)
-                _gee_initialized = True
-                _gee_error = None
-                _last_initialized_project = sa_project
-                _last_initialized_token = None
-                _last_initialized_uid = uid
-                logger.info("GEE initialized successfully with user's Service Account for user '%s', project: %s", uid, sa_project)
-                return
-            except Exception as e:
-                logger.warning("Failed to initialize GEE with user '%s' service account: %s", uid, e)
-
-        # 3. Try local Earth Engine user credentials (from 'earthengine authenticate')
-        home = os.path.expanduser("~")
-        has_local_creds = os.path.exists(os.path.join(home, ".config", "earthengine", "credentials"))
-        if allow_server and has_local_creds:
-            try:
-                import ee
-                ee.Initialize(project=effective_project)
-                _gee_initialized = True
-                _gee_error = None
-                _last_initialized_project = effective_project
-                _last_initialized_token = None
-                _last_initialized_uid = uid
-                logger.info("GEE initialized successfully with local Earth Engine user credentials for project: %s", effective_project)
-                return
-            except Exception as e:
-                logger.debug("Local EE user credentials init failed for project '%s': %s", effective_project, e)
-
-        # 4. Fallback to server credentials if allowed and user has not configured custom credentials
-        sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
-        sa_file = os.environ.get("GEE_SERVICE_ACCOUNT_FILE", "").strip() or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
-        if not sa_file:
-            local_sa = os.path.join(os.path.dirname(__file__), "service_account.json")
-            if os.path.exists(local_sa):
-                sa_file = local_sa
-
-        if allow_server and sa_file and os.path.exists(sa_file):
-            try:
-                import ee
-                from google.oauth2 import service_account
-                scopes = getattr(ee.oauth, 'SCOPES', ['https://www.googleapis.com/auth/earthengine'])
-                creds = service_account.Credentials.from_service_account_file(sa_file, scopes=scopes)
-                sa_project = creds.project_id or effective_project
-                ee.Initialize(credentials=creds, project=sa_project)
-                _gee_initialized = True
-                _gee_error = None
-                _last_initialized_project = sa_project
-                _last_initialized_token = None
-                _last_initialized_uid = uid
-                logger.info("GEE initialized successfully with server Service Account file '%s' for project: %s", sa_file, sa_project)
-                return
-            except Exception as e:
-                logger.warning("Failed to initialize GEE with server service account file '%s': %s", sa_file, e)
-
-        if allow_server and sa_key:
-            try:
-                import ee
-                import json
-                from google.oauth2 import service_account
-                key_dict = json.loads(sa_key) if isinstance(sa_key, str) else sa_key
-                scopes = getattr(ee.oauth, 'SCOPES', ['https://www.googleapis.com/auth/earthengine'])
-                creds = service_account.Credentials.from_service_account_info(
-                    key_dict,
-                    scopes=scopes
-                )
-                sa_project = effective_project or key_dict.get("project_id")
-                ee.Initialize(credentials=creds, project=sa_project)
-                _gee_initialized = True
-                _gee_error = None
-                _last_initialized_project = sa_project
-                _last_initialized_token = None
-                _last_initialized_uid = uid
-                logger.info("GEE initialized successfully with server Service Account for project: %s", sa_project)
-                return
-            except Exception as e:
-                logger.warning("Failed to initialize GEE with server service account for project '%s': %s", effective_project, e)
-
-        # 5. Fallback to Google Application Default Credentials (only if explicitly configured in environment)
-        global _adc_checked, _adc_creds, _adc_project
-        if allow_server and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-            if not _adc_checked:
-                _adc_checked = True
-                try:
-                    import google.auth
-                    _adc_creds, _adc_project = google.auth.default(scopes=['https://www.googleapis.com/auth/earthengine'])
-                except Exception as adc_err:
-                    _adc_creds = None
-                    logger.info("Application Default Credentials not available: %s", adc_err)
-
-            if _adc_creds is not None:
-                try:
-                    import ee
-                    ee.Initialize(credentials=_adc_creds, project=effective_project)
-                    _gee_initialized = True
-                    _gee_error = None
-                    _last_initialized_project = effective_project
-                    _last_initialized_token = None
-                    _last_initialized_uid = uid
-                    logger.info("GEE initialized successfully with ADC for project: %s", effective_project)
-                    return
-                except Exception as proj_err:
-                    logger.warning("ADC init attempt for project '%s': %s", effective_project, proj_err)
-
-        _gee_error = (
-            f"A sua sessão do Google Earth Engine expirou ou não possui credenciais ativas para o projeto '{effective_project}'. "
-            "Por favor, reconecte a sua conta Google no painel de opções ou insira uma Chave de Conta de Serviço (JSON) nas Definições."
-        )
-        raise RuntimeError(_gee_error)
+        except Exception as exc:
+            _gee_error = (
+                "GEE not configured. "
+                "Set GEE_SERVICE_ACCOUNT_KEY (service account JSON as string) or run "
+                "`earthencine authenticate` and set GEE_PROJECT_ID."
+            )
+            raise RuntimeError(_gee_error)
 
 
 def reset_gee():
-    global _gee_initialized, _gee_error, _last_initialized_project, _last_initialized_token, _last_initialized_uid
+    global _gee_initialized, _gee_error
     with _lock:
         _gee_initialized = False
         _gee_error = None
-        _last_initialized_project = None
-        _last_initialized_token = None
-        _last_initialized_uid = None
         _cache_clear()
         logger.info("GEE reset: auth cleared + index-image cache cleared (%d entries)", len(_INDEX_IMAGE_CACHE))
 
 
-def gee_status(uid: str = None, project: str = None, token: str = None) -> dict:
-    global _gee_error, _gee_initialized, _last_initialized_project, _last_initialized_uid
-    token_data = gee_session_store.get_token(uid) if uid else None
-    effective_token = token or (token_data.get("access_token") if token_data else None)
-    user_sa_key = token_data.get("service_account_key") if token_data else None
-    effective_project = project or (token_data.get("project") if token_data else None)
-
-    # If this specific user has no project or credentials, report unconfigured
-    if not effective_token and not user_sa_key and not effective_project:
-        return {
-            "connected": False,
-            "auth_type": "none",
-            "project": None,
-            "account": None,
-            "message": "Nenhuma credencial do Earth Engine configurada para este utilizador.",
-        }
-
-    is_perm = bool(token_data and (token_data.get("refresh_token") or token_data.get("service_account_key")))
-    has_rt = bool(token_data and token_data.get("refresh_token"))
-
-    # If already successfully initialized for THIS user
-    if _gee_initialized and _last_initialized_uid == uid and _last_initialized_project == effective_project:
-        return {
-            "connected": True,
-            "auth_type": "user_credentials",
-            "is_permanent": is_perm,
-            "has_refresh_token": has_rt,
-            "project": _last_initialized_project,
-            "account": token_data.get("account") if token_data else None,
-            "message": f"GEE conectado com sucesso para o utilizador (Projeto: {_last_initialized_project})",
-        }
-
-    # Otherwise attempt initialization for THIS user
+def gee_status(uid: str = None) -> dict:
+    global _gee_error
     try:
-        _init_gee(uid=uid, project=effective_project, token=effective_token)
+        import ee
+        ee.String("ok").getInfo()
+        sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "")
+        auth_type = "oauth2"
+        project = os.environ.get("GEE_PROJECT_ID", "")
+        if not project and sa_key:
+            try:
+                project = json.loads(sa_key).get("project_id", "")
+            except Exception:
+                pass
         return {
             "connected": True,
-            "auth_type": "user_credentials",
-            "is_permanent": is_perm,
-            "has_refresh_token": has_rt,
-            "project": _last_initialized_project or effective_project,
-            "account": token_data.get("account") if token_data else None,
-            "message": f"GEE verificado com sucesso para o utilizador (Projeto: {_last_initialized_project or effective_project})",
+            "auth_type": auth_type,
+            "project": project,
+            "message": f"GEE conectado ({auth_type})",
         }
     except Exception as exc:
         return {
             "connected": False,
-            "auth_type": "none",
-            "is_permanent": False,
-            "has_refresh_token": False,
-            "project": effective_project,
-            "account": token_data.get("account") if token_data else None,
+            "auth_type": None,
+            "project": None,
             "message": str(exc),
         }
 
@@ -547,7 +297,7 @@ def _build_rivers_raster(region):
     """Rasterize HydroSHEDS FreeFlowingRivers within region (value 1, else 0)."""
     import ee
     rivers_fc = ee.FeatureCollection("WWF/HydroSHEDS/v1/FreeFlowingRivers").filterBounds(region)
-    return ee.Image().byte().paint(rivers_fc, 1).clip(region).rename("water")
+    return ee.Image().byte().paint(rivers_fc, 1).rename("water")
 
 
 # ── Index image builder ────────────────────────────────────────────────────────
@@ -558,10 +308,6 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
 
     if index == "ndvi":
         return s2.normalizedDifference(["B8", "B4"]).rename("index")
-    if index == "ndwi":
-        return s2.normalizedDifference(["B3", "B8"]).rename("index")
-    if index == "mndwi":
-        return s2.normalizedDifference(["B3", "B11"]).rename("index")
     if index == "fe_oxide":
         return s2.select("B4").divide(s2.select("B2")).rename("index")
     if index == "clay":
@@ -584,27 +330,6 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         return ferric.multiply(al_oh).rename("index")
     if index == "ndvi_l8":
         return l8.normalizedDifference(["SR_B5", "SR_B4"]).rename("index")
-    if index == "fe_oxide_l8":
-        return l8.select("SR_B4").divide(l8.select("SR_B2")).rename("index")
-    if index == "clay_l8":
-        return l8.select("SR_B6").divide(l8.select("SR_B7")).rename("index")
-    if index == "ferrous_l8":
-        return l8.select("SR_B6").divide(l8.select("SR_B5")).rename("index")
-    if index == "hydrothermal_l8":
-        fe = l8.select("SR_B4").divide(l8.select("SR_B2"))
-        clay = l8.select("SR_B6").divide(l8.select("SR_B7"))
-        return fe.multiply(clay).rename("index")
-    if index == "gossan_l8":
-        fe = l8.select("SR_B4").divide(l8.select("SR_B2"))
-        clay = l8.select("SR_B6").divide(l8.select("SR_B7"))
-        return fe.multiply(clay).rename("index")
-    if index == "carbonate_chlorite_l8":
-        num = l8.select("SR_B5").add(l8.select("SR_B7"))
-        return num.divide(l8.select("SR_B6")).rename("index")
-    if index == "silica_l8":
-        r1 = l8.select("SR_B6").divide(l8.select("SR_B5"))
-        r2 = l8.select("SR_B6").divide(l8.select("SR_B7"))
-        return r1.multiply(r2).rename("index")
     if index == "elevation":
         return dem.rename("index")
     if index == "slope":
@@ -775,54 +500,62 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         return inv_ndvi.multiply(0.40).add(inv_ndmi.multiply(0.35)).add(nddi_n.multiply(0.25)).rename("index")
 
 
-    # ── Water Extraction & Moisture indices ─────────────────────────────────
+    # ── Coastal & Marine indices ────────────────────────────────────────────
 
-    if index == "awei_nsh":
-        # AWEI_nsh = 4 * (Green - SWIR1) - (0.25 * NIR + 2.75 * SWIR2)
-        # S2: 4 * (B3 - B11) - (0.25 * B8 + 2.75 * B12)
-        b3 = s2.select("B3")
-        b8 = s2.select("B8")
-        b11 = s2.select("B11")
-        b12 = s2.select("B12")
-        return b3.subtract(b11).multiply(4).subtract(
-            b8.multiply(0.25).add(b12.multiply(2.75))
-        ).rename("index")
+    if index == "mangrove_health":
+        # Mangrove health: equal-weight composite of NDVI + NDWI (Gao)
+        # NDVI = (B8-B4)/(B8+B4), NDWI = (B3-B8)/(B3+B8)
+        ndvi_raw = s2.normalizedDifference(["B8", "B4"])
+        ndwi_raw = s2.normalizedDifference(["B3", "B8"])
+        # Normalize each to [0,1] then average
+        ndvi_n = ndvi_raw.subtract(-0.2).divide(1.1).clamp(0, 1)
+        ndwi_n = ndwi_raw.subtract(-0.5).divide(1.0).clamp(0, 1)
+        return ndvi_n.multiply(0.50).add(ndwi_n.multiply(0.50)).rename("index")
 
-    if index == "awei_sh":
-        # AWEI_sh = Blue + 2.5 * Green - 1.5 * (NIR + SWIR1) - 0.25 * SWIR2
-        # S2: B2 + 2.5 * B3 - 1.5 * (B8 + B11) - 0.25 * B12
-        b2 = s2.select("B2")
-        b3 = s2.select("B3")
-        b8 = s2.select("B8")
-        b11 = s2.select("B11")
-        b12 = s2.select("B12")
-        return b2.add(b3.multiply(2.5)).subtract(
-            b8.add(b11).multiply(1.5)
-        ).subtract(b12.multiply(0.25)).rename("index")
-
-    if index == "wri":
-        # WRI = (Green + Red) / (NIR + SWIR1)
-        # S2: (B3 + B4) / (B8 + B11)
-        b3 = s2.select("B3")
-        b4 = s2.select("B4")
-        b8 = s2.select("B8")
-        b11 = s2.select("B11")
-        num = b3.add(b4)
-        den = b8.add(b11).add(0.0001)
-        return num.divide(den).rename("index")
-
-    if index == "wi2015":
-        # WI2015 = 1.7204 + 171 * Green + 3 * Red - 70 * NIR - 45 * SWIR1 - 71 * SWIR2
-        # S2: 1.7204 + 171*B3 + 3*B4 - 70*B8 - 45*B11 - 71*B12
+    if index == "coastal_index":
+        # Coastal Vulnerability Index: combines proximity to coast, elevation,
+        # flat slope, and DEM-derived proxy for vegetation buffer
         import ee
-        b3 = s2.select("B3")
-        b4 = s2.select("B4")
-        b8 = s2.select("B8")
-        b11 = s2.select("B11")
-        b12 = s2.select("B12")
-        return ee.Image(1.7204).add(b3.multiply(171)).add(b4.multiply(3)).subtract(
-            b8.multiply(70)
-        ).subtract(b11.multiply(45)).subtract(b12.multiply(71)).rename("index")
+        jrc_water = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
+        coastline = jrc_water.gt(40).selfMask().clip(region).clip(region)
+        coast_dist = coastline.fastDistanceTransform(True).sqrt().multiply(30).rename("dist")
+        max_dist = 50000
+        prox_raw = ee.Image(1).subtract(coast_dist.divide(max_dist)).clamp(0, 1)
+        inv_elev = ee.Image(1).subtract(dem.divide(50).clamp(0, 1))
+        slope_n = ee.Terrain.slope(dem).divide(30).clamp(0, 1)
+        inv_slope = ee.Image(1).subtract(slope_n)
+        # Simulated NDVI from DEM (lower in exposed coastal areas)
+        ndvi_proxy = dem.expression(
+            "1 - (e / 100)", {"e": dem}
+        ).clamp(0, 1).rename("ndvi_proxy")
+        inv_ndvi = ee.Image(1).subtract(ndvi_proxy)
+        return prox_raw.multiply(0.35).add(inv_elev.multiply(0.25)).add(inv_slope.multiply(0.25)).add(inv_ndvi.multiply(0.15)).rename("index")
+
+    if index == "coastal_erosion":
+        # JRC Global Surface Water — transition band (1984–2021)
+        # transition: 1 = permanent water, 2 = new permanent, 3 = lost permanent, 0 = land
+        import ee
+        jrc_transition = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("transition")
+        # Reclassify to 4 classes: 0=no change, 1=land gain, 2=land loss, 3=permanent water
+        return jrc_transition.rename("index")
+
+    if index == "tsunami_risk":
+        # Tsunami coastal inundation vulnerability index
+        # Combines: low elevation (strongest weight), proximity to coast,
+        # flat slope (further wave travel), low vegetation (less resistance)
+        import ee
+        jrc_water = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
+        coastline = jrc_water.gt(40).selfMask()
+        coast_dist = coastline.fastDistanceTransform(True).sqrt().multiply(30).rename("dist")
+        max_dist = 30000
+        prox_raw = ee.Image(1).subtract(coast_dist.divide(max_dist)).clamp(0, 1)
+        inv_elev = ee.Image(1).subtract(dem.divide(30).clamp(0, 1))
+        slope_n = ee.Terrain.slope(dem).divide(20).clamp(0, 1)
+        inv_slope = ee.Image(1).subtract(slope_n)
+        # NDVI vegetation buffer — now available because needs includes s2
+        ndvi_raw = s2.normalizedDifference(["B8", "B4"])
+        inv_ndvi = ee.Image(1).subtract(ndvi_raw.subtract(-0.2).divide(1.1).clamp(0, 1))
+        return inv_elev.multiply(0.35).add(prox_raw.multiply(0.30)).add(inv_slope.multiply(0.20)).add(inv_ndvi.multiply(0.15)).rename("index")
 
 
 
@@ -960,7 +693,7 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         built_up = lc.eq(50).rename("built")
         # Distance transform from built-up areas
         # Closer to built-up = higher access
-        built_dist = built_up.selfMask().fastDistanceTransform(1024).sqrt().multiply(30)
+        built_dist = built_up.selfMask().fastDistanceTransform(True).sqrt().multiply(30)
         max_dist = 50000
         proximity = ee.Image(1).subtract(built_dist.divide(max_dist)).clamp(0, 1).rename("index")
         # Fallback: use NDBI where no built-up detected
@@ -1007,7 +740,7 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         malaria_cond = precip_n.multiply(0.30).add(temp_n.multiply(0.25)).add(ndwi_n.multiply(0.20)).add(inv_elev.multiply(0.15)).add(inv_ndvi.multiply(0.10))
         # Flood proximity (JRC water occurrence)
         jrc_water = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
-        flood_prox = jrc_water.gt(10).selfMask().fastDistanceTransform(1024).sqrt().multiply(30)
+        flood_prox = jrc_water.gt(10).selfMask().fastDistanceTransform(True).sqrt().multiply(30)
         inund_prox = ee.Image(1).subtract(flood_prox.divide(30000)).clamp(0, 1).unmask(0).rename("inund")
         # Healthcare access inverse (from NDBI)
         ndbi = s2.normalizedDifference(["B11", "B8"])
@@ -1716,37 +1449,6 @@ def compute_index_tile(
     map_data = vis_img.getMapId()
     tile_url = map_data["tile_fetcher"].url_format
 
-    stats: dict = {}
-    try:
-        stats_reducer = (
-            ee.Reducer.mean()
-            .combine(ee.Reducer.stdDev(), "", True)
-            .combine(ee.Reducer.percentile([10, 25, 50, 75, 90]), "", True)
-            .combine(ee.Reducer.minMax(), "", True)
-        )
-        raw_stats = idx_img.reduceRegion(
-            reducer=stats_reducer,
-            geometry=region,
-            scale=150,
-            maxPixels=1e9,
-            bestEffort=True,
-            tileScale=4,
-        ).getInfo()
-
-        for k, v in (raw_stats or {}).items():
-            clean_k = k.split("_")[-1] if "_" in k else k
-            if isinstance(v, (int, float)):
-                stats[clean_k] = round(float(v), 4)
-
-        try:
-            area_m2 = region.area(maxError=1000).getInfo()
-            if area_m2:
-                stats["areaKm2"] = round(area_m2 / 1e6, 2)
-        except Exception:
-            pass
-    except Exception as e:
-        logger.warning(f"Failed to compute stats for {index}: {e}")
-
     return {
         "tileUrl":    tile_url,
         "name":       cfg["name"],
@@ -1755,7 +1457,7 @@ def compute_index_tile(
         "group":      cfg["group"],
         "sceneCount": scene_count,
         "dateRange":  f"{start_date} → {end_date}" if cfg["group"] != "terrain" else "Estático (DEM)",
-        "stats":      stats,
+        "stats":      {},
         "classNames": cfg.get("class_names"),
     }
 
@@ -2007,7 +1709,7 @@ def compute_lineaments_tile(
     region_geojson: Optional[dict],
     smooth_m: int = 30,
     density_radius_m: int = 750,
-    rose_samples: int = 1500,
+    rose_samples: int = 4000,
 ) -> dict:
     """Detect topographic lineaments from the DEM and return:
       - density tile (heat-style)
@@ -2032,13 +1734,12 @@ def compute_lineaments_tile(
     density_map = density_vis.getMapId()
     edges_map = edges_vis.getMapId()
 
-    # Orientation rose with safe scale and robust error handling
+    # Orientation rose
     masked_dir = layers["direction"].updateMask(layers["edges_bin"])
-    dirs = []
+    sample_fc = masked_dir.sample(
+        region=region, scale=90, numPixels=rose_samples, dropNulls=True, seed=42,
+    )
     try:
-        sample_fc = masked_dir.sample(
-            region=region, scale=120, numPixels=rose_samples, dropNulls=True, seed=42,
-        )
         dirs = sample_fc.aggregate_array("dir").getInfo() or []
     except Exception as exc:
         logger.warning("Failed to sample orientation directions: %s", exc)
@@ -2058,7 +1759,7 @@ def compute_lineaments_tile(
     try:
         mean_density = density.unmask(0).reduceRegion(
             reducer=ee.Reducer.mean(), geometry=region,
-            scale=250, bestEffort=True, maxPixels=int(1e9),
+            scale=200, bestEffort=True, maxPixels=int(1e9),
         ).get("density").getInfo()
     except Exception as exc:
         logger.warning("Failed to compute lineament density: %s", exc)
@@ -2163,7 +1864,6 @@ def _build_targeting_score(
             norm = img.subtract(nmin).divide(nmax - nmin).clamp(0, 1)
         if k in invert_set:
             norm = ee.Image(1).subtract(norm)
-        norm = norm.unmask(0)
         weighted = norm.multiply(w)
         composite = weighted if composite is None else composite.add(weighted)
 
@@ -2202,7 +1902,7 @@ def compute_targeting_tile(
             reducer=ee.Reducer.mean().combine(
                 ee.Reducer.percentile([90, 95, 99]), sharedInputs=True,
             ),
-            geometry=region, scale=250, bestEffort=True, maxPixels=int(1e9),
+            geometry=region, scale=200, bestEffort=True, maxPixels=int(1e9),
         ).getInfo() or {}
     except Exception as exc:
         logger.warning("Failed to compute targeting stats: %s", exc)
@@ -2713,13 +2413,11 @@ def compute_basin_stats(basin_geometry: dict) -> dict:
     }
 
 
-def compute_basin_report(basin_geometry: dict, start_year: int = 2019, end_year: int = 2024) -> dict:
+def compute_basin_report(basin_geometry: dict) -> dict:
     """Full hydro-environmental basin report: morphometry + land cover + CHIRPS
     monthly rainfall + SCS-CN runoff potential.
 
     basin_geometry : GeoJSON geometry dict (Polygon / MultiPolygon).
-    start_year     : Initial year for CHIRPS precipitation climatology (default 2019).
-    end_year       : Final year for CHIRPS precipitation climatology (default 2024).
     """
     import ee
 
@@ -2779,11 +2477,9 @@ def compute_basin_report(basin_geometry: dict, start_year: int = 2019, end_year:
                               "areaKm2": round(a, 2), "pct": round(a / lc_total * 100, 2)})
     landcover.sort(key=lambda c: c["areaKm2"], reverse=True)
 
-    # Monthly precipitation (CHIRPS with custom date range)
-    sy = max(1981, min(2025, int(start_year or 2019)))
-    ey = max(sy + 1, min(2025, int(end_year or 2024)))
-    years = max(1, ey - sy)
-    chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate(f"{sy}-01-01", f"{ey}-01-01")
+    # Monthly precipitation (CHIRPS 2019–2023)
+    years = 5
+    chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate("2019-01-01", "2024-01-01")
 
     def _monthly(m):
         m = ee.Number(m)
@@ -2824,9 +2520,6 @@ def compute_basin_report(basin_geometry: dict, start_year: int = 2019, end_year:
         "landcoverTile":  landcover_tile,
         "precipMonthly":  precip_monthly,
         "precipAnnualMm": precip_annual,
-        "startYear":      sy,
-        "endYear":        ey,
-        "period":         f"{sy}–{ey}",
         "runoff": {
             "cnMean":   round(float(cn_mean), 1) if cn_mean is not None else None,
             "cnTile":   cn_tile,
@@ -2835,83 +2528,22 @@ def compute_basin_report(basin_geometry: dict, start_year: int = 2019, end_year:
     }
 
 
-def refresh_basin_tiles(region_geojson: Optional[dict]) -> dict:
-    """Fast regeneration of active GEE tile URLs for an existing basin polygon.
-    Only creates visualization map IDs (0 reductions, <1s response).
-    """
-    import ee
-    region = _to_ee_region(region_geojson)
-
-    # 1. ESA WorldCover (10m) clipped to basin
-    codes = [c for c, _, _ in ESA_WORLDCOVER]
-    colors = [col for _, _, col in ESA_WORLDCOVER]
-    lc = ee.ImageCollection("ESA/WorldCover/v200").first().select("Map").clip(region)
-    lc_vis = lc.remap(codes, list(range(1, len(codes) + 1))).visualize(
-        min=1, max=len(codes), palette=colors
-    )
-    landcover_tile = lc_vis.getMapId()["tile_fetcher"].url_format
-
-    # 2. SCS Curve Number runoff potential
-    cn = lc.remap(list(ESA_CN.keys()), list(ESA_CN.values())).rename("cn")
-    cn_tile = cn.visualize(
-        min=40, max=100, palette=["1a9850", "fee08b", "d73027"]
-    ).getMapId()["tile_fetcher"].url_format
-
-    # 3. HydroSHEDS drainage network
-    acc = ee.Image("WWF/HydroSHEDS/15ACC").select("b1")
-    acc_rivers = acc.gte(500).selfMask()
-    try:
-        vec_rivers = _build_rivers_raster(region).selfMask()
-        combined = acc_rivers.unmask(0).max(vec_rivers.unmask(0)).selfMask().clip(region)
-    except Exception:
-        combined = acc_rivers.clip(region)
-    drain_tile = combined.visualize(palette=["0284c7"]).getMapId()["tile_fetcher"].url_format
-
-    return {
-        "landcoverTile": landcover_tile,
-        "cnTile": cn_tile,
-        "drainageTile": drain_tile,
-    }
-
-
 def compute_drainage_tile(region_geojson: Optional[dict], threshold: int = 500) -> dict:
-    """HydroSHEDS flow accumulation + FreeFlowingRivers vector lines clipped to region."""
+    """HydroSHEDS 15-arc-second flow accumulation thresholded → drainage network."""
     import ee
     region  = _to_ee_region(region_geojson)
     acc     = ee.Image("WWF/HydroSHEDS/15ACC").select("b1")
-    acc_rivers = acc.gte(threshold).selfMask()
-    try:
-        vec_rivers = _build_rivers_raster(region).selfMask()
-        combined = acc_rivers.unmask(0).max(vec_rivers.unmask(0)).selfMask().clip(region)
-    except Exception as exc:
-        logger.warning("FreeFlowingRivers overlay in drainage failed: %s", exc)
-        combined = acc_rivers.clip(region)
-
-    vis     = combined.visualize(palette=["0284c7"])
+    rivers  = acc.gte(threshold).selfMask().clip(region)
+    vis     = rivers.visualize(palette=["1565c0"])
     tile_url = vis.getMapId()["tile_fetcher"].url_format
     return {"tileUrl": tile_url, "threshold": threshold}
 
 
 def compute_river_network(region_geojson: Optional[dict]) -> dict:
-    """Multi-order river network derived from HydroSHEDS flow accumulation and FreeFlowingRivers."""
+    """Multi-order river network derived from HydroSHEDS flow accumulation."""
     import ee
     region = _to_ee_region(region_geojson)
-
-    # 1. Vector FreeFlowingRivers painted as raster (User requested: WWF/HydroSHEDS/v1/FreeFlowingRivers)
-    vector_tile = None
-    try:
-        rivers_fc = ee.FeatureCollection("WWF/HydroSHEDS/v1/FreeFlowingRivers").filterBounds(region)
-        rivers_raster = ee.Image().byte().paint(rivers_fc, 1).clip(region).rename("water")
-        vector_tile = (
-            rivers_raster.selfMask()
-            .visualize(palette=["3366ff"])
-            .getMapId()["tile_fetcher"].url_format
-        )
-    except Exception as exc:
-        logger.warning("Failed to render FreeFlowingRivers vector raster: %s", exc)
-
-    # 2. Flow accumulation multi-order raster (Strahler 1-5)
-    acc = ee.Image("WWF/HydroSHEDS/15ACC").select("b1").clip(region)
+    acc    = ee.Image("WWF/HydroSHEDS/15ACC").select("b1").clip(region)
 
     classified = (
         ee.Image(0)
@@ -2930,9 +2562,8 @@ def compute_river_network(region_geojson: Optional[dict]) -> dict:
                     .getMapId()["tile_fetcher"].url_format
 
     return {
-        "tileUrl":            tile_all,
-        "majorTileUrl":       tile_major,
-        "freeFlowingTileUrl": vector_tile,
+        "tileUrl":       tile_all,
+        "majorTileUrl":  tile_major,
         "orders": {
             "1_headwaters": 100,
             "2_small":      500,
@@ -2948,10 +2579,10 @@ def compute_watershed_from_point(
     lat: float,
     lon: float,
     region_geojson: Optional[dict],
-    max_iter: int = 40,
+    max_iter: int = 60,
     level: int = 10,
 ) -> dict:
-    """Delineate the basin at a clicked location with double fallback hierarchy."""
+    """Delineate the basin at a clicked location."""
     import ee
 
     pt = ee.Geometry.Point([lon, lat])
@@ -2960,48 +2591,44 @@ def compute_watershed_from_point(
         if hb is not None:
             return hb
     except Exception as e:
-        logger.warning("HydroBASINS lookup failed, falling back to D8: %s", e)
+        logger.exception("Erro silencioso capturado: %s", e)
 
     return _watershed_d8(lat, lon, region_geojson, max_iter)
 
 
 def _watershed_hydrobasins(pt, lat: float, lon: float, level: int):
-    """Containing HydroBASINS / HydroATLAS sub-basin (instant, real boundary). None if absent."""
+    """Containing HydroBASINS sub-basin (instant, real boundary). None if absent."""
     import ee
     keep = ["HYBAS_ID", "SUB_AREA", "UP_AREA", "ORDER_"]
     seen: list = []
-    order = [level] + [l for l in (10, 8, 6, 12) if l != level]
+    order = [level] + [l for l in (12, 10, 8, 6) if l != level]
     for lvl in order:
         if lvl in seen or not (1 <= lvl <= 12):
             continue
         seen.append(lvl)
-        cids = [
-            f"WWF/HydroATLAS/v1/Basins/level{lvl:02d}",
-            f"WWF/HydroSHEDS/v1/Basins/hybas_af_lev{lvl:02d}_v1c",
-        ]
-        for cid in cids:
-            try:
-                fc = (ee.FeatureCollection(cid).filterBounds(pt)
-                      .select(keep, None, True).limit(1))
-                geojson = fc.getInfo()
-                feats = geojson.get("features", [])
-                if not feats:
-                    continue
-                props = feats[0].get("properties", {})
-                area_km2 = float(props.get("SUB_AREA") or props.get("UP_AREA") or 0)
-                tile = (fc.style(color="0d47a1", fillColor="1565c033", width=2)
-                        .getMapId()["tile_fetcher"].url_format)
-                return {
-                    "tileUrl":   tile,
-                    "geojson":   geojson,
-                    "pourPoint": [lat, lon],
-                    "areaKm2":   round(float(area_km2), 2),
-                    "maxIter":   0,
-                    "level":     lvl,
-                    "source":    "hydrobasins",
-                }
-            except Exception:
+        cid = f"WWF/HydroATLAS/v1/Basins/level{lvl:02d}"
+        try:
+            fc = (ee.FeatureCollection(cid).filterBounds(pt)
+                  .select(keep, None, True).limit(1))
+            geojson = fc.getInfo()
+            feats = geojson.get("features", [])
+            if not feats:
                 continue
+            props = feats[0].get("properties", {})
+            area_km2 = float(props.get("SUB_AREA") or 0)
+            tile = (fc.style(color="0d47a1", fillColor="1565c033", width=2)
+                    .getMapId()["tile_fetcher"].url_format)
+            return {
+                "tileUrl":   tile,
+                "geojson":   geojson,
+                "pourPoint": [lat, lon],
+                "areaKm2":   round(float(area_km2), 2),
+                "maxIter":   0,
+                "level":     lvl,
+                "source":    "hydrobasins",
+            }
+        except Exception:
+            continue
     return None
 
 
@@ -3009,9 +2636,9 @@ def _watershed_d8(
     lat: float,
     lon: float,
     region_geojson: Optional[dict],
-    max_iter: int = 40,
+    max_iter: int = 60,
 ) -> dict:
-    """Delineate a watershed from a pour point using D8 flow direction with dynamic snap."""
+    """Delineate a watershed from a pour point using D8 flow direction."""
     import ee
 
     fdir = ee.Image("WWF/HydroSHEDS/15DIR").select("b1")
@@ -3020,32 +2647,28 @@ def _watershed_d8(
 
     pour_pt = ee.Geometry.Point([lon, lat])
 
-    # Dynamic Snap to drainage: try cascading thresholds (500 -> 100 -> 20 -> pour_pt)
+    min_acc  = 500
     snap_buf = pour_pt.buffer(15_000)
-    snap_lon = None
-    snap_lat = None
-    for min_acc in (500, 100, 20):
-        try:
-            snap_img = acc.updateMask(acc.gte(min_acc)).addBands(ee.Image.pixelLonLat())
-            snapped = snap_img.reduceRegion(
-                reducer   = ee.Reducer.max(3).setOutputs(["acc", "lon", "lat"]),
-                geometry  = snap_buf,
-                scale     = 500,
-                maxPixels = int(1e7),
-                bestEffort= True,
-            )
-            val_lon = snapped.get("lon").getInfo()
-            if val_lon is not None:
-                snap_lon = val_lon
-                snap_lat = snapped.get("lat").getInfo()
-                break
-        except Exception:
-            continue
-
-    if snap_lon is None or snap_lat is None:
-        snap_lon, snap_lat = lon, lat
-
+    snap_img = (
+        acc.updateMask(acc.gte(min_acc))
+        .addBands(ee.Image.pixelLonLat())
+    )
+    snapped = snap_img.reduceRegion(
+        reducer   = ee.Reducer.max(3).setOutputs(["acc", "lon", "lat"]),
+        geometry  = snap_buf,
+        scale     = 500,
+        maxPixels = int(1e7),
+        bestEffort= True,
+    )
+    snap_lon = snapped.get("lon")
+    snap_lat = snapped.get("lat")
+    if snap_lon.getInfo() is None:
+        raise RuntimeError(
+            "Nenhum canal de drenagem encontrado perto do ponto. "
+            "Clique mais perto de um rio/curso de água."
+        )
     seed_pt = ee.Geometry.Point([snap_lon, snap_lat])
+
     seed_geom = ee.Geometry(seed_pt).buffer(600)
     basin = (
         ee.Image.constant(1)
@@ -3056,9 +2679,7 @@ def _watershed_d8(
         .unmask(0)
     )
 
-    # Safe iteration limit to avoid computation timeouts
-    effective_iter = min(max_iter, 45)
-    for _ in range(effective_iter):
+    for _ in range(max_iter):
         upstream = (
             fdir.eq(1  ).And(basin.translate(-1,  0, "pixels", proj))
             .Or(fdir.eq(2  ).And(basin.translate(-1, -1, "pixels", proj)))
@@ -3072,8 +2693,8 @@ def _watershed_d8(
         basin = basin.Or(upstream).reproject(proj).unmask(0)
 
     basin = basin.selfMask()
-    clip_region = _to_ee_region(region_geojson) or pour_pt.buffer(effective_iter * 600)
-    
+
+    clip_region = _to_ee_region(region_geojson) or pour_pt.buffer(max_iter * 600)
     vec = basin.reduceToVectors(
         geometry       = clip_region,
         scale          = 500,
@@ -3083,27 +2704,19 @@ def _watershed_d8(
         labelProperty  = "basin",
     )
 
-    try:
-        area_km2_val = round(float(vec.geometry().area(maxError=100).divide(1e6).getInfo()), 2)
-    except Exception:
-        area_km2_val = 0.0
+    area_km2 = vec.geometry().area(maxError=100).divide(1e6)
 
     tile_url = (
         basin.visualize(palette=["0d47a1"], opacity=0.45)
         .getMapId()["tile_fetcher"].url_format
     )
 
-    try:
-        geojson_data = vec.getInfo()
-    except Exception:
-        geojson_data = {"type": "FeatureCollection", "features": []}
-
     return {
         "tileUrl":    tile_url,
-        "geojson":    geojson_data,
-        "pourPoint":  [snap_lat, snap_lon],
-        "areaKm2":    area_km2_val,
-        "maxIter":    effective_iter,
+        "geojson":    vec.getInfo(),
+        "pourPoint":  [lat, lon],
+        "areaKm2":    round(float(area_km2.getInfo()), 2),
+        "maxIter":    max_iter,
     }
 
 
@@ -3131,61 +2744,58 @@ def compute_flood_sar(
     def _s1(d0, d1):
         return (ee.ImageCollection("COPERNICUS/S1_GRD")
                 .filterBounds(region).filterDate(d0, d1)
+                .filter(ee.Filter.eq("instrumentMode", "IW"))
                 .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
                 .select("VV"))
 
     after_col  = _s1(event_start, event_end)
     before_col = _s1(baseline_start, baseline_end)
 
+    n_after = after_col.size().getInfo()
+    if n_after == 0:
+        raise RuntimeError(
+            "Sem imagens Sentinel-1 no período do evento. Alargue as datas "
+            "(o S1 passa a cada ~6–12 dias)."
+        )
+    n_before = before_col.size().getInfo()
+
     smooth = lambda img: img.focal_median(50, "circle", "meters")
     after  = smooth(after_col.median())
-    before = smooth(before_col.median())
+    before = smooth(before_col.median()) if n_before else after
 
-    # UN-SPIDER change detection: backscatter decrease < -2.5 dB, water backscatter < -14 dB
     diff  = after.subtract(before)
-    flood = diff.lt(-2.5).And(after.lt(-14))
+    flood = diff.lt(-3).And(after.lt(-15))
 
-    # Permanent water from JRC (occurrence > 35%)
     jrc = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
-    perm_water = jrc.gt(35).unmask(0)
+    perm_water = jrc.gt(40).unmask(0)
     flood = flood.where(perm_water, 0)
 
-    # Topographic filter: inundations occur only on flat terrain (slope < 6°)
-    # Reproject DEM to metric projection (EPSG:3857) so dz/dx is in meters/meters
-    dem = _build_dem(region)
-    dem_metric = dem.reproject("EPSG:3857", None, 90)
-    slope = ee.Terrain.slope(dem_metric)
-    flood = flood.updateMask(slope.lt(6.0))
+    slope = ee.Terrain.slope(_build_dem(region)).clip(region)
+    flood = flood.updateMask(slope.lt(5))
 
-    # Mask and speckle reduction
-    flood = flood.selfMask()
-    conn  = flood.connectedPixelCount(15, True)
-    flood = flood.updateMask(conn.gte(4)).rename("flood")
+    flood = flood.updateMask(flood)
+    conn  = flood.connectedPixelCount(25, True)
+    flood = flood.updateMask(conn.gte(8)).rename("flood")
+
+    flood_area_km2 = (
+        flood.multiply(ee.Image.pixelArea()).reduceRegion(
+            reducer=ee.Reducer.sum(), geometry=region, scale=60,
+            bestEffort=True, maxPixels=int(1e10),
+        ).get("flood")
+    )
 
     flood_tile = flood.visualize(palette=["d50000"], opacity=0.85) \
                       .getMapId()["tile_fetcher"].url_format
     perm_tile  = perm_water.selfMask().visualize(palette=["1565c0"], opacity=0.6) \
                       .getMapId()["tile_fetcher"].url_format
 
-    dyn_scale = max(_compute_dynamic_scale(region), 120)
-    area_km2 = 0.0
-    try:
-        flood_area = flood.multiply(ee.Image.pixelArea()).reduceRegion(
-            reducer=ee.Reducer.sum(), geometry=region, scale=dyn_scale,
-            bestEffort=True, maxPixels=int(1e10),
-        ).get("flood")
-        area_val = flood_area.getInfo()
-        if area_val:
-            area_km2 = round(float(area_val) / 1e6, 2)
-    except Exception as exc:
-        logger.warning("Could not compute flood area: %s", exc)
-
+    area_val = flood_area_km2.getInfo()
     return {
         "floodTile":      flood_tile,
         "permWaterTile":  perm_tile,
-        "areaKm2":        area_km2,
-        "scenesEvent":    1,
-        "scenesBaseline": 1,
+        "areaKm2":        round((float(area_val) / 1e6) if area_val else 0.0, 2),
+        "scenesEvent":    n_after,
+        "scenesBaseline": n_before,
         "eventStart":     event_start,
         "eventEnd":       event_end,
         "source":         "sentinel-1",
@@ -3198,35 +2808,28 @@ def compute_erosion_rusle(region_geojson: Optional[dict], year: int = 2023) -> d
     region = _to_ee_region(region_geojson)
     max_px = int(1e10)
 
-    # 1. R Factor (Rainfall Erosivity): derived from CHIRPS Annual Precipitation
-    # R = 0.363 * P + 79 (Wischmeier & Smith)
-    precip_col = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate(f"{year}-01-01", f"{year+1}-01-01")
-    precip = precip_col.sum()
+    precip = (ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY")
+              .filterDate(f"{year}-01-01", f"{year+1}-01-01").sum())
     R = precip.multiply(0.363).add(79).rename("R")
 
-    # 2. K Factor (Soil Erodibility): typical for tropical and sub-Saharan weathered soils
     K = ee.Image.constant(0.25).rename("K")
 
-    # 3. LS Factor (Slope Length & Steepness):
-    # Reproject DEM to metric projection (EPSG:3857) so dz / dx is in meters/meters
-    dem = _build_dem(region)
-    dem_metric = dem.reproject("EPSG:3857", None, 90)
-    slope_deg = ee.Terrain.slope(dem_metric).clamp(0.1, 55)
-    slope_pct = slope_deg.divide(180).multiply(_math.pi).tan().multiply(100).clamp(0.1, 100)
+    dem   = _build_dem(region)
+    proj  = ee.ImageCollection("COPERNICUS/DEM/GLO30").select("DEM").first().projection()
+    slope_deg = ee.Terrain.slope(dem.setDefaultProjection(proj))
+    slope_pct = slope_deg.divide(180).multiply(_math.pi).tan().multiply(100)
     LS = (slope_pct.pow(2).multiply(0.0065)
-          .add(slope_pct.multiply(0.0456)).add(0.065)).clamp(0.1, 35).rename("LS")
+          .add(slope_pct.multiply(0.0456)).add(0.065)).rename("LS")
 
-    # 4. C Factor (Cover Management): from NDVI
     try:
         ndvi = (ee.ImageCollection("MODIS/061/MOD13Q1")
                 .filterDate(f"{year}-01-01", f"{year+1}-01-01")
                 .select("NDVI").mean().multiply(0.0001).clamp(-0.99, 0.99))
-        C = ndvi.multiply(-2).divide(ee.Image(1).subtract(ndvi)).exp().clamp(0.01, 1.0).rename("C")
+        C = ndvi.multiply(-2).divide(ee.Image(1).subtract(ndvi)).exp().clamp(0, 1).rename("C")
     except Exception as exc:
-        logger.warning("MODIS NDVI unavailable, using fallback C=0.35: %s", exc)
-        C = ee.Image.constant(0.35).rename("C")
+        logger.warning("MODIS NDVI unavailable, using fallback C=0.5: %s", exc)
+        C = ee.Image.constant(0.5).rename("C")
 
-    # 5. P Factor (Support Practice): assumed 1.0 (no contour farming on natural landscapes)
     A = R.multiply(K).multiply(LS).multiply(C).rename("A").clip(region)
 
     classified = ee.Image(0)
@@ -3235,20 +2838,14 @@ def compute_erosion_rusle(region_geojson: Optional[dict], year: int = 2023) -> d
     classified = classified.selfMask().rename("class")
 
     palette = [c for _, _, c, _, _ in RUSLE_CLASSES]
-    tile = classified.visualize(min=1, max=5, palette=palette, opacity=0.75) \
+    tile = classified.visualize(min=1, max=5, palette=palette, opacity=0.7) \
                      .getMapId()["tile_fetcher"].url_format
 
-    dyn_scale = max(_compute_dynamic_scale(region), 250)
-
-    by_class = {}
-    try:
-        groups = (ee.Image.pixelArea().addBands(classified).reduceRegion(
-            reducer=ee.Reducer.sum().group(groupField=1, groupName="class"),
-            geometry=region, scale=dyn_scale, bestEffort=True, maxPixels=max_px,
-        ).getInfo().get("groups", []) or [])
-        by_class = {int(g["class"]): float(g.get("sum", 0)) / 1e6 for g in groups}
-    except Exception as exc:
-        logger.warning("Could not compute RUSLE class areas: %s", exc)
+    groups = (ee.Image.pixelArea().addBands(classified).reduceRegion(
+        reducer=ee.Reducer.sum().group(groupField=1, groupName="class"),
+        geometry=region, scale=_compute_dynamic_scale(region), bestEffort=True, maxPixels=max_px,
+    ).getInfo().get("groups", []) or [])
+    by_class = {int(g["class"]): float(g.get("sum", 0)) / 1e6 for g in groups}
 
     classes = []
     for cid, label, color, lo, hi in RUSLE_CLASSES:
@@ -3257,121 +2854,16 @@ def compute_erosion_rusle(region_geojson: Optional[dict], year: int = 2023) -> d
                         "range": f"{lo}–{'∞' if hi >= 1e9 else int(hi)} t/ha/ano",
                         "areaKm2": a})
 
-    a_mean = None
-    try:
-        mean_val = A.reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=dyn_scale,
-                                  bestEffort=True, maxPixels=max_px).get("A").getInfo()
-        if mean_val is not None:
-            a_mean = round(float(mean_val), 2)
-    except Exception:
-        pass
+    a_mean = A.reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=250,
+                            bestEffort=True, maxPixels=max_px).get("A").getInfo()
 
     return {
         "tile":       tile,
         "classes":    classes,
-        "meanTPerHa": a_mean,
+        "meanTPerHa": round(float(a_mean), 2) if a_mean is not None else None,
         "year":       year,
         "palette":    palette,
         "source":     "RUSLE · CHIRPS+DEM+MODIS",
-    }
-
-
-def compute_wildfire_firms(
-    region_geojson: Optional[dict],
-    start_date: str,
-    end_date: str,
-    min_confidence: int = 50,
-) -> dict:
-    """Active fire detection and thermal anomalies from NASA FIRMS (MODIS & VIIRS)."""
-    import ee
-    region = _to_ee_region(region_geojson)
-    max_px = int(1e10)
-
-    firms_col = (
-        ee.ImageCollection("FIRMS")
-        .filterBounds(region)
-        .filterDate(start_date, end_date)
-    )
-
-    # Filter by confidence threshold
-    filtered = firms_col.filter(ee.Filter.gte("confidence", min_confidence))
-
-    # Mosaic of maximum brightness temperature (band T21, in Kelvin)
-    t21_max = filtered.select("T21").max().clip(region)
-    conf_max = filtered.select("confidence").max().clip(region)
-
-    # Palette for thermal anomalies: Yellow -> Orange -> Red -> Dark Red
-    palette = ["fff000", "ff8000", "ff0000", "7a0000"]
-    tile = t21_max.visualize(
-        min=305, max=390,
-        palette=palette,
-        opacity=0.88
-    ).getMapId()["tile_fetcher"].url_format
-
-    dyn_scale = max(_compute_dynamic_scale(region), 375)
-    hotspot_count = 0
-    t21_mean_c = None
-    hotspot_points = []
-
-    try:
-        count_img = filtered.select("confidence").count().clip(region)
-        cnt = count_img.reduceRegion(
-            reducer=ee.Reducer.sum(),
-            geometry=region,
-            scale=dyn_scale,
-            bestEffort=True,
-            maxPixels=max_px,
-        ).get("confidence").getInfo()
-        if cnt is not None:
-            hotspot_count = int(cnt)
-    except Exception as exc:
-        logger.warning("Could not compute hotspot count: %s", exc)
-
-    try:
-        t_val = t21_max.reduceRegion(
-            reducer=ee.Reducer.mean(),
-            geometry=region,
-            scale=dyn_scale,
-            bestEffort=True,
-            maxPixels=max_px,
-        ).get("T21").getInfo()
-        if t_val is not None:
-            t21_mean_c = round(float(t_val) - 273.15, 1)
-    except Exception as exc:
-        logger.warning("Could not compute mean fire temperature: %s", exc)
-
-    try:
-        fire_mask = t21_max.mask().selfMask()
-        samples = t21_max.addBands(conf_max).sample(
-            region=region,
-            scale=dyn_scale,
-            numPixels=60,
-            geometries=True
-        ).getInfo()
-        for feat in samples.get("features", []):
-            coords = feat.get("geometry", {}).get("coordinates", [])
-            props = feat.get("properties", {})
-            if coords and len(coords) >= 2:
-                tk = props.get("T21")
-                hotspot_points.append({
-                    "lat": coords[1],
-                    "lon": coords[0],
-                    "tempCelsius": round(float(tk) - 273.15, 1) if tk else None,
-                    "confidence": int(props.get("confidence", min_confidence)),
-                })
-    except Exception as exc:
-        logger.warning("Could not sample hotspot coordinates: %s", exc)
-
-    return {
-        "tile": tile,
-        "hotspotCount": hotspot_count,
-        "meanTempCelsius": t21_mean_c,
-        "startDate": start_date,
-        "endDate": end_date,
-        "minConfidence": min_confidence,
-        "hotspotPoints": hotspot_points,
-        "palette": palette,
-        "source": "NASA FIRMS (MODIS/VIIRS 375m)",
     }
 
 
@@ -3672,54 +3164,4 @@ def compute_targeting_zones(
                               for k, w in pos.items()
                           ),
         "dateRange":      f"{start_date} → {end_date}",
-    }
-
-# ── GeoTIFF raster export via getDownloadURL ──────────────────────────────────
-
-def get_index_download_url(
-    index: str,
-    region_geojson: Optional[dict],
-    start_date: str = "2023-01-01",
-    end_date: str = "2023-12-31",
-    cloud_pct: int = 30,
-    scale: int = 30,
-) -> dict:
-    """Generate a direct GeoTIFF raster download URL from GEE for a given index and AOI."""
-    import ee
-
-    if index not in INDEX_REGISTRY:
-        raise ValueError(f"Índice desconhecido '{index}'. Disponíveis: {list(INDEX_REGISTRY)}")
-
-    cfg = INDEX_REGISTRY[index]
-    region = _to_ee_region(region_geojson)
-
-    s2 = l8 = dem = rivers = None
-    needs = cfg["needs"]
-    if "s2" in needs:
-        s2, _ = _build_s2_composite(region, start_date, end_date, cloud_pct)
-    if "l8" in needs:
-        l8, _ = _build_l8_composite(region, start_date, end_date, cloud_pct)
-    if "dem" in needs:
-        dem = _build_dem(region)
-    if "rivers" in needs:
-        rivers = _build_rivers_raster(region)
-
-    idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers).clip(region)
-
-    download_params = {
-        "name": f"geomoz_{index}_{start_date}_{end_date}",
-        "scale": scale,
-        "crs": "EPSG:4326",
-        "region": region,
-        "format": "GEO_TIFF",
-    }
-
-    url = idx_img.getDownloadURL(download_params)
-    return {
-        "downloadUrl": url,
-        "index": index,
-        "name": cfg["name"],
-        "scale": scale,
-        "format": "GEO_TIFF",
-        "dateRange": f"{start_date} → {end_date}",
     }
