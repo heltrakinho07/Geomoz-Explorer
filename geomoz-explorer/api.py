@@ -1810,6 +1810,78 @@ async def gee_wildfire(req: GEEWildfireRequest, uid: str = Depends(require_gee_a
         raise HTTPException(500, f"GEE wildfire failed: {exc}")
 
 
+class GEEDroughtRequest(BaseModel):
+    province: Optional[str] = None
+    district: Optional[str] = None
+    geometry: Optional[dict] = None
+    year: int = 2024
+    clim_start: int = 2001
+
+
+@app.post("/geomoz-api/gee/drought")
+async def gee_drought(req: GEEDroughtRequest, uid: str = Depends(require_gee_auth)):
+    """SPI-12 approximation from CHIRPS combined with annual MODIS NDVI."""
+    import asyncio
+    from gee_module import compute_spi_ndvi
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    if req.clim_start > req.year - 5:
+        raise HTTPException(400, "clim_start deve ser pelo menos 5 anos anterior ao ano de análise.")
+
+    loop = asyncio.get_event_loop()
+    try:
+        return await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_spi_ndvi(region, req.year, req.clim_start, 250),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE drought failed: {exc}")
+
+
+class GEEBurnedAreaRequest(BaseModel):
+    province: Optional[str] = None
+    district: Optional[str] = None
+    geometry: Optional[dict] = None
+    start_date: str
+    end_date: str
+
+    @field_validator("start_date", "end_date")
+    @classmethod
+    def validate_burned_date_format(cls, v):
+        from datetime import datetime
+        try:
+            datetime.strptime(v, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("Date must be in YYYY-MM-DD format")
+        return v
+
+
+@app.post("/geomoz-api/gee/burned-area")
+async def gee_burned_area(req: GEEBurnedAreaRequest, uid: str = Depends(require_gee_auth)):
+    """Historical burned-area footprint from MODIS MCD64A1 BurnDate."""
+    import asyncio
+    from gee_module import compute_burned_area
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    if req.end_date < req.start_date:
+        raise HTTPException(400, "end_date deve ser igual ou posterior a start_date.")
+
+    loop = asyncio.get_event_loop()
+    try:
+        return await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_burned_area(region, req.start_date, req.end_date),
+        )
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE burned-area failed: {exc}")
+
+
 class GEEGroundwaterRequest(BaseModel):
     province: Optional[str] = None
     district: Optional[str] = None
