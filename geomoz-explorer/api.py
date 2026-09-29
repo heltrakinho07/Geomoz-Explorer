@@ -1725,6 +1725,13 @@ async def gee_flood(req: GEEFloodRequest, uid: str = Depends(require_gee_auth)):
     import asyncio
     from gee_module import compute_flood_sar
 
+    if req.event_end < req.event_start:
+        raise HTTPException(400, "event_end deve ser igual ou posterior a event_start.")
+    if bool(req.baseline_start) != bool(req.baseline_end):
+        raise HTTPException(400, "baseline_start e baseline_end devem ser informados em conjunto.")
+    if req.baseline_start and req.baseline_end and req.baseline_end < req.baseline_start:
+        raise HTTPException(400, "baseline_end deve ser igual ou posterior a baseline_start.")
+
     region = _region_geojson(req.province, req.district, req.geometry)
     loop   = asyncio.get_event_loop()
     try:
@@ -1787,12 +1794,22 @@ class GEEWildfireRequest(BaseModel):
             raise ValueError('Date must be in YYYY-MM-DD format')
         return v
 
+    @field_validator('min_confidence')
+    @classmethod
+    def validate_min_confidence(cls, v):
+        if not 0 <= v <= 100:
+            raise ValueError('min_confidence must be between 0 and 100')
+        return v
+
 
 @app.post("/geomoz-api/gee/wildfire")
 async def gee_wildfire(req: GEEWildfireRequest, uid: str = Depends(require_gee_auth)):
-    """NASA FIRMS active fire detection (thermal anomalies) from MODIS and VIIRS."""
+    """Active-fire detection from VIIRS 375 m with historical MODIS FIRMS fallback."""
     import asyncio
     from gee_module import compute_wildfire_firms
+
+    if req.end_date < req.start_date:
+        raise HTTPException(400, "end_date deve ser igual ou posterior a start_date.")
 
     region = _region_geojson(req.province, req.district, req.geometry)
     loop   = asyncio.get_event_loop()
@@ -1832,7 +1849,9 @@ async def gee_drought(req: GEEDroughtRequest, uid: str = Depends(require_gee_aut
     try:
         return await loop.run_in_executor(
             _thread_pool_executor,
-            lambda: compute_spi_ndvi(region, req.year, req.clim_start, 250),
+            lambda: compute_spi_ndvi(
+                region, req.year, req.clim_start, 250, include_samples=False
+            ),
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))

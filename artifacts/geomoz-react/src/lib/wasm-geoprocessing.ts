@@ -38,6 +38,8 @@ export interface ToolDefinition {
   categoryLabel: string;
   description: string;
   requiresSecondLayer?: boolean;
+  /** False when the tool is catalogued but needs a raster engine not yet wired to this vector workspace. */
+  implemented?: boolean;
   parameters: {
     name: string;
     label: string;
@@ -167,6 +169,7 @@ export const GEOPROCESSING_TOOLS_CATALOG: ToolDefinition[] = [
   // ── Terreno & Relevo ───────────────────────────────────────────────────────
   {
     id: "terrain_slope",
+    implemented: false,
     name: "Declive Topográfico (Slope)",
     category: "terrain",
     categoryLabel: "Terreno & Relevo",
@@ -186,6 +189,7 @@ export const GEOPROCESSING_TOOLS_CATALOG: ToolDefinition[] = [
   },
   {
     id: "terrain_aspect",
+    implemented: false,
     name: "Orientação de Encostas (Aspect)",
     category: "terrain",
     categoryLabel: "Terreno & Relevo",
@@ -194,6 +198,7 @@ export const GEOPROCESSING_TOOLS_CATALOG: ToolDefinition[] = [
   },
   {
     id: "terrain_hillshade",
+    implemented: false,
     name: "Sombreamento Analítico (Hillshade)",
     category: "terrain",
     categoryLabel: "Terreno & Relevo",
@@ -207,6 +212,7 @@ export const GEOPROCESSING_TOOLS_CATALOG: ToolDefinition[] = [
   // ── Hidrologia ─────────────────────────────────────────────────────────────
   {
     id: "hydro_d8",
+    implemented: false,
     name: "Acumulação de Fluxo & Talvegue (D8)",
     category: "hydrology",
     categoryLabel: "Hidrologia & Drenagem",
@@ -217,6 +223,7 @@ export const GEOPROCESSING_TOOLS_CATALOG: ToolDefinition[] = [
   },
   {
     id: "hydro_twi",
+    implemented: false,
     name: "Índice Topográfico de Humidade (TWI)",
     category: "hydrology",
     categoryLabel: "Hidrologia & Drenagem",
@@ -227,6 +234,7 @@ export const GEOPROCESSING_TOOLS_CATALOG: ToolDefinition[] = [
   // ── Sensoriamento Remoto & Radar ───────────────────────────────────────────
   {
     id: "spectral_sar",
+    implemented: false,
     name: "Limiarização de Cheia por Radar SAR",
     category: "spectral",
     categoryLabel: "Sensoriamento Remoto",
@@ -556,6 +564,72 @@ export function runVectorIntersect(
       outputFeatureCount: finalFc.features.length,
       geometryType: "Polygon",
       summary: `Interseção espacial concluída: ${finalFc.features.length} feições de sobreposição geradas em ${duration}ms.`,
+    },
+  };
+}
+
+export function runVectorDifference(
+  fcA: FeatureCollection,
+  fcB: FeatureCollection
+): { result: FeatureCollection; stats: GeoprocessingStats } {
+  const t0 = performance.now();
+  const masks = fcB.features.filter(
+    (feature): feature is Feature<Polygon | MultiPolygon> =>
+      feature.geometry?.type === "Polygon" || feature.geometry?.type === "MultiPolygon"
+  );
+
+  if (masks.length === 0) {
+    throw new Error("A camada de máscara deve conter pelo menos um polígono.");
+  }
+
+  const output: Feature<Polygon | MultiPolygon>[] = [];
+
+  for (const source of fcA.features) {
+    if (source.geometry?.type !== "Polygon" && source.geometry?.type !== "MultiPolygon") {
+      continue;
+    }
+
+    let current: Feature<Polygon | MultiPolygon> | null =
+      source as Feature<Polygon | MultiPolygon>;
+
+    for (const mask of masks) {
+      if (!current) break;
+      try {
+        current = turf.difference(
+          turf.featureCollection([current, mask])
+        ) as Feature<Polygon | MultiPolygon> | null;
+      } catch (err) {
+        console.warn("Difference failed for mask:", err);
+      }
+    }
+
+    if (current) {
+      current.properties = {
+        ...source.properties,
+        _difference: true,
+      };
+      output.push(current);
+    }
+  }
+
+  const finalFc = turf.featureCollection(output);
+  const duration = Math.round(performance.now() - t0);
+  let totalArea = 0;
+  for (const feature of output) {
+    try {
+      totalArea += turf.area(feature) / 1_000_000;
+    } catch {}
+  }
+
+  return {
+    result: finalFc,
+    stats: {
+      executionTimeMs: duration,
+      inputFeatureCount: fcA.features.length + fcB.features.length,
+      outputFeatureCount: finalFc.features.length,
+      geometryType: "Polygon",
+      totalAreaKm2: Math.round(totalArea * 100) / 100,
+      summary: `Diferença espacial concluída: ${finalFc.features.length} feições remanescentes (${Math.round(totalArea * 100) / 100} km²) em ${duration}ms.`,
     },
   };
 }

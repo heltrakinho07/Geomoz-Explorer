@@ -54,7 +54,11 @@ interface WildfireResult {
   startDate: string;
   endDate: string;
   minConfidence: number;
+  confidenceMode: "percent" | "categorical";
   hotspotPoints?: WildfireHotspot[];
+  sensor: string;
+  resolutionMeters: number;
+  imageCount: number;
   source: string;
 }
 
@@ -689,7 +693,7 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
           <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-2.5 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
               <Info size={12} className="mt-0.5 shrink-0 text-amber-500" />
-              <span>NASA FIRMS: Deteção de anomalias térmicas e focos de calor ativos via satélites <strong>VIIRS (375m)</strong> e <strong>MODIS (1km)</strong>.</span>
+              <span>NASA FIRMS/LANCE: usa <strong>VIIRS 375 m</strong> nos períodos recentes e <strong>MODIS 1 km</strong> como série histórica. A fonte é escolhida automaticamente pela data.</span>
             </div>
 
             <div>
@@ -918,7 +922,11 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
                     <Flame size={12} /> Foco de Calor (FIRMS)
                   </div>
                   <div>Temperatura: <strong>{pt.tempCelsius != null ? `${pt.tempCelsius} °C` : "—"}</strong></div>
-                  <div>Confiança: <strong>{pt.confidence}%</strong></div>
+                  <div>Confiança: <strong>{
+                    wildfire.confidenceMode === "categorical"
+                      ? (["Baixa", "Nominal", "Alta"][pt.confidence] ?? pt.confidence)
+                      : `${pt.confidence}%`
+                  }</strong></div>
                   <div className="text-[10px] text-slate-400">Coords: {pt.lat.toFixed(4)}, {pt.lon.toFixed(4)}</div>
                 </div>
               </Popup>
@@ -1104,16 +1112,26 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
                 </div>
                 <div className="flex justify-between">
                   <span>Filtro de confiança</span>
-                  <span className="font-medium text-slate-800 dark:text-slate-200">≥ {wildfire.minConfidence}%</span>
+                  <span className="font-medium text-slate-800 dark:text-slate-200">
+                    {wildfire.confidenceMode === "categorical"
+                      ? (wildfire.minConfidence >= 80 ? "Alta" : wildfire.minConfidence >= 50 ? "Nominal" : "Baixa")
+                      : `≥ ${wildfire.minConfidence}%`}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Sensor</span>
+                  <span className="font-medium text-right text-slate-800 dark:text-slate-200">{wildfire.sensor}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Satélites / Sensores</span>
-                  <span className="font-medium text-slate-800 dark:text-slate-200">VIIRS 375m &amp; MODIS 1km</span>
+                  <span>Resolução</span>
+                  <span className="font-medium text-slate-800 dark:text-slate-200">{wildfire.resolutionMeters} m</span>
                 </div>
               </div>
               <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
                 <Info size={12} className="mt-0.5 shrink-0 text-amber-500" />
-                NASA FIRMS monitora radiância de corpo negro na banda de 4µm (T21). As anomalias indicam frentes ativas de fogo de biomassa ou atividade industrial térmica.
+                {wildfire.confidenceMode === "categorical"
+                  ? "VIIRS usa o canal térmico I4 e confiança baixa/nominal/alta. É um produto quase em tempo real para deteção de fogo ativo."
+                  : "MODIS FIRMS usa T21 e confiança percentual. É a fonte histórica para períodos anteriores à disponibilidade VIIRS 375 m no GEE."}
               </div>
               <button
                 onClick={exportGeoperigosPdf}
