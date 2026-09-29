@@ -15,20 +15,14 @@ dependencies = [
     "geomoz",
     "pandas>=2.0.0",
     "numpy>=1.26.0",
-    "matplotlib-scalebar>=0.9.0",
-    "contextily>=1.6.2",
-    "cartopy>=0.24.0",
-    "matplotlib>=3.10.9",
     "python-multipart>=0.0.28",
     "earthengine-api>=1.7.0",
-    "httpx>=0.25.0",
-    "firebase-admin>=6.5.0",
     "idna>=3.16",
     "starlette>=1.0.1",
 ]
 
 [tool.setuptools]
-py-modules = ["api", "gee_module", "gee_presets", "gee_session_store", "analysis_jobs", "projects_store", "tool_registry", "ai_agent", "agent_plans", "project_outputs", "report_renderer", "project_assets"]
+py-modules = ["api", "gee_module", "gee_presets"]
 
 [tool.setuptools.packages.find]
 include = ["utils*"]

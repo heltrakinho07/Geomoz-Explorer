@@ -28,7 +28,7 @@ import {
   Satellite, Layers, Crosshair, Calendar, Settings2,
   Plus, Trash2, Check, X,
   Palette, Search, Award, Gem, CircleDot, Square,
-  Wrench, Flame, Mountain, Sparkles,
+  Wrench, Flame, Mountain,
 } from "lucide-react";
 
 import { useProvinceSummary, useProvincesGeoJSON, ProvinceSummaryItem } from "@/hooks/useGeoMoz";
@@ -37,11 +37,9 @@ import {
   lithologyProfile,
   FavorabilityResult, MineralType, KMeansResult,
 } from "@/lib/geoml";
-import { API_BASE, apiFetch } from "@/lib/api";
+import { API_BASE } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import MapDraw from "@/components/MapDraw";
-import GeoMozAIAgentTab from "@/components/GeoMozAIAgentTab";
-import type { AreaOfInterest } from "@/lib/aoi";
 
 function buildProvinceFeatures(p: ProvinceSummaryItem): number[] {
   const prof = lithologyProfile(p.lithologies, p.eras, p.periods);
@@ -76,7 +74,7 @@ const MINERAL_OPTIONS: { value: MineralType; label: string; icon: React.ReactNod
   { value: "hydrocarbons",   label: "Hidrocarbonetos",      icon: <Flame size={20} className="text-orange-500" />, desc: "Bacias mesozoicas, calcário, evaporite" },
 ];
 
-type AITab = "agent" | "clustering" | "favorability" | "pca" | "about" | "alphaearth";
+type AITab = "clustering" | "favorability" | "pca" | "about" | "alphaearth";
 
 type AlphaEarthMode = "pca" | "cluster" | "change" | "similarity" | "classify";
 
@@ -170,7 +168,7 @@ function TrainingBoundsFitter({ trainingSamples }: { trainingSamples: TrainingSa
   return null;
 }
 
-const AE_BASE = "/geomoz-api/gee/embedding";
+const AE_BASE = `${API_BASE}/geomoz-api/gee/embedding`;
 
 interface AlphaEarthResult {
   tileUrl: string;
@@ -310,7 +308,7 @@ function AlphaEarthTab() {
           break;
       }
 
-      const res = await apiFetch(url, {
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -1012,20 +1010,13 @@ function AboutTab() {
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-interface GeoMozAIProps {
-  aoi: AreaOfInterest;
-  province: string | null;
-  district: string | null;
-}
-
-export default function GeoMozAI({ aoi, province, district }: GeoMozAIProps) {
-  const [activeTab, setActiveTab] = useState<AITab>("agent");
+export default function GeoMozAI() {
+  const [activeTab, setActiveTab] = useState<AITab>("clustering");
   const [loadEnabled, setLoadEnabled] = useState(false);
   const { data: summaryData, isLoading, error } = useProvinceSummary(loadEnabled);
   const summaryItems = summaryData?.provinces ?? [];
 
   const tabs: { id: AITab; label: string; icon: React.ReactNode }[] = [
-    { id: "agent",        label: "Ask GeoMoz",             icon: <Sparkles size={13} /> },
     { id: "clustering",   label: "Clustering Geológico", icon: <GitBranch size={13} /> },
     { id: "favorability", label: "Mapa de Favorabilidade", icon: <Target size={13} /> },
     { id: "pca",          label: "Análise PCA",           icon: <BarChart2 size={13} /> },
@@ -1033,7 +1024,7 @@ export default function GeoMozAI({ aoi, province, district }: GeoMozAIProps) {
     { id: "about",        label: "Sobre / Roadmap",       icon: <Info size={13} /> },
   ];
 
-  const showLoadGate = activeTab !== "agent" && activeTab !== "about" && activeTab !== "alphaearth";
+  const showLoadGate = activeTab !== "about" && activeTab !== "alphaearth";
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
@@ -1057,9 +1048,7 @@ export default function GeoMozAI({ aoi, province, district }: GeoMozAIProps) {
         ))}
       </div>
 
-      {activeTab === "agent" ? (
-        <GeoMozAIAgentTab aoi={aoi} province={province} district={district} />
-      ) : activeTab === "alphaearth" ? (
+      {activeTab === "alphaearth" ? (
         <AlphaEarthTab />
       ) : showLoadGate && !loadEnabled ? (
         <div className="flex-1 flex items-center justify-center">

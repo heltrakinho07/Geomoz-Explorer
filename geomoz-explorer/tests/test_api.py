@@ -191,7 +191,7 @@ class TestAPIMetadata:
         assert len(gzip_middleware) == 1
 
     def test_cors_restricts_methods(self) -> None:
-        """CORS should allow the HTTP methods used by the GeoMoz workspace."""
+        """CORS should only allow GET, POST, OPTIONS."""
         from api import app
         cors_found = False
         for m in app.user_middleware:
@@ -202,7 +202,7 @@ class TestAPIMetadata:
                 methods = opts.get("allow_methods", None)
                 # Skip the assertion if we can't retrieve methods (test robustness)
                 if methods is not None:
-                    assert methods == ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
+                    assert methods == ["GET", "POST", "OPTIONS"]
         assert cors_found, "CORSMiddleware should be registered"
 
 
@@ -825,60 +825,3 @@ class TestExportShapefile:
         """An unknown layer name should be rejected."""
         resp = client.get("/geomoz-api/export/shapefile?layer=bogus")
         assert resp.status_code == 400
-
-
-# ── BYO-GEE connection lifecycle ──────────────────────────────────────────────
-
-
-class TestBYOGEEConnectionLifecycle:
-    """Regression tests for the per-user Earth Engine connection flow."""
-
-    def test_oauth_token_model_trims_values(self) -> None:
-        from api import OAuthTokenRequest
-
-        req = OAuthTokenRequest(
-            access_token="  " + ("x" * 32) + "  ",
-            project="  geomoz-customer-project  ",
-        )
-        assert req.access_token == "x" * 32
-        assert req.project == "geomoz-customer-project"
-
-    def test_oauth_token_model_rejects_short_token(self) -> None:
-        from pydantic import ValidationError
-        from api import OAuthTokenRequest
-
-        with pytest.raises(ValidationError):
-            OAuthTokenRequest(access_token="too-short", project="project-id")
-
-    def test_disconnect_endpoint_does_not_sign_out_geomoz_user(
-        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        import gee_session_store
-
-        cleared: list[str] = []
-        monkeypatch.setattr(
-            gee_session_store,
-            "clear_token",
-            lambda uid: cleared.append(uid),
-        )
-
-        resp = client.post("/geomoz-api/gee/disconnect")
-
-        assert resp.status_code == 200
-        assert resp.json()["connected"] is False
-        assert cleared == ["test-uid-123"]
-
-    def test_status_without_token_reports_not_connected(
-        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        import gee_session_store
-
-        monkeypatch.setattr(gee_session_store, "get_token", lambda uid: None)
-
-        resp = client.get("/geomoz-api/gee/status")
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["connected"] is False
-        assert data["reason"] == "not_connected"
-        assert isinstance(data["indices"], list)

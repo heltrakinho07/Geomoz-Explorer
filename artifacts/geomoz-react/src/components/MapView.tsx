@@ -16,7 +16,6 @@ import type { LayerState } from "./Sidebar";
 import MapTools from "./MapTools";
 import MapDraw from "./MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
-import { useWorkspaceLayers } from "@/hooks/useWorkspaceLayers";
 
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -31,8 +30,6 @@ interface MapViewProps {
   layers: LayerState;
   colorBy: string;
   aoi: AreaOfInterest;
-  mapCenter?: [number, number];
-  mapZoom?: number;
   drawingEnabled: boolean;
   finishRequest?: number;
   onDrawComplete: (geometry: GeoJSON.GeoJSON, label: string) => void;
@@ -86,29 +83,6 @@ function MapStateTracker({ onMapState, mapRef }: {
   return null;
 }
 
-function MapViewportSync({ center, zoom }: {
-  center?: [number, number];
-  zoom?: number;
-}) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!center || zoom == null) return;
-    const current = map.getCenter();
-    const currentZoom = map.getZoom();
-    const moved =
-      Math.abs(current.lat - center[0]) > 0.00001 ||
-      Math.abs(current.lng - center[1]) > 0.00001 ||
-      currentZoom !== zoom;
-
-    if (moved) {
-      map.setView(center, zoom, { animate: false });
-    }
-  }, [map, center?.[0], center?.[1], zoom]);
-
-  return null;
-}
-
 function CoordTracker({ onMove }: { onMove: (lat: number | null, lng: number | null) => void }) {
   useMapEvents({
     mousemove(e) { onMove(e.latlng.lat, e.latlng.lng); },
@@ -132,8 +106,7 @@ function NorthArrow() {
   );
 }
 
-export default function MapView({ province, district, layers, colorBy, aoi, mapCenter = [-18, 35], mapZoom = 5, drawingEnabled, finishRequest, onDrawComplete, onDrawCancel, onProvinceClick, onMapState, mapRef }: MapViewProps) {
-  const { resultLayers } = useWorkspaceLayers();
+export default function MapView({ province, district, layers, colorBy, aoi, drawingEnabled, finishRequest, onDrawComplete, onDrawCancel, onProvinceClick, onMapState, mapRef }: MapViewProps) {
   const { data: provinceGeoJSON } = useProvincesGeoJSON();
   const { data: districtGeoJSON } = useDistrictsGeoJSON(province);
   const { data: geologyGeoJSON, isFetching: loadingGeology } = useGeologyGeoJSON(province, district, colorBy, layers.geology);
@@ -215,7 +188,7 @@ export default function MapView({ province, district, layers, colorBy, aoi, mapC
 
       <NorthArrow />
 
-      <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: "100%", width: "100%" }} zoomControl>
+      <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl>
         <TileLayer crossOrigin="anonymous"
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
@@ -223,20 +196,8 @@ export default function MapView({ province, district, layers, colorBy, aoi, mapC
         />
 
         <ScaleControl position="bottomleft" imperial={false} />
-        <MapViewportSync center={mapCenter} zoom={mapZoom} />
         <MapStateTracker onMapState={onMapState} mapRef={mapRef} />
         <CoordTracker onMove={(lat, lng) => setCoords(lat !== null && lng !== null ? { lat, lng } : null)} />
-
-        {resultLayers
-          .filter(layer => layer.visible && layer.tileUrl)
-          .map(layer => (
-            <TileLayer
-              key={layer.id}
-              url={layer.tileUrl}
-              opacity={layer.opacity}
-              attribution="GeoMoz Analysis"
-            />
-          ))}
 
         {layers.geology && province && geologyGeoJSON && (
           <>

@@ -34,9 +34,7 @@ import {
 
 import { useGeologyGeoJSON } from "@/hooks/useGeoMoz";
 import { useGeeAuth } from "@/hooks/useGeeAuth";
-import { useAnalysisJob } from "@/hooks/useAnalysisJob";
 import GeeCredentialsDialog from "@/components/GeeCredentialsDialog";
-import AnalysisJobProgress from "@/components/AnalysisJobProgress";
 import { computeSpectralValue, applyColormap, SpectralIndex, GEE_ONLY_INDICES } from "@/lib/geoml";
 import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
@@ -661,50 +659,41 @@ function GeeAnalysisPanel({
   const [startDate, setStartDate] = useState("2023-01-01");
   const [endDate, setEndDate]     = useState("2023-12-31");
   const [cloudPct, setCloudPct]   = useState(30);
+  const [running, setRunning]     = useState(false);
+  const [error, setError]         = useState<string | null>(null);
   const [result, setResult]       = useState<GeeResult | null>(null);
-  const deliveredJobRef           = useRef<string | null>(null);
-  const {
-    job,
-    submitJob,
-    running,
-    error,
-    cancel: cancelJob,
-    retry: retryJob,
-    resetJob,
-  } = useAnalysisJob<GeeResult>();
 
   const def = INDEX_DEFS.find(d => d.id === activeIndex)!;
 
-  useEffect(() => {
-    if (
-      job?.status === "completed" &&
-      job.result &&
-      deliveredJobRef.current !== job.id
-    ) {
-      deliveredJobRef.current = job.id;
-      setResult(job.result);
-      onTileReady(job.result);
-    }
-  }, [job, onTileReady]);
-
   async function runAnalysis() {
-    resetJob();
-    deliveredJobRef.current = null;
-    setResult(null);
+    setRunning(true);
+    setError(null);
     onTileReady(null);
-
     try {
-      await submitJob("gee.index", {
-        index:      activeIndex,
-        province:   province || null,
-        district:   district || null,
-        geometry:   geometry ?? null,
-        start_date: startDate,
-        end_date:   endDate,
-        cloud_pct:  cloudPct,
+      const res = await apiFetch("/geomoz-api/gee/index", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          index:      activeIndex,
+          province:   province || null,
+          district:   district || null,
+          geometry:   geometry ?? null,
+          start_date: startDate,
+          end_date:   endDate,
+          cloud_pct:  cloudPct,
+        }),
       });
-    } catch {
-      // The hook exposes a user-facing error and keeps the panel reusable.
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail ?? "Erro GEE desconhecido");
+      }
+      const data: GeeResult = await res.json();
+      setResult(data);
+      onTileReady(data);
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setRunning(false);
     }
   }
 
@@ -760,12 +749,12 @@ function GeeAnalysisPanel({
           : <><Play size={14} /> Calcular {def.short} com Sentinel-2</>}
       </button>
 
-      <AnalysisJobProgress
-        job={job}
-        title={`GeoMoz Analysis · ${def.short}`}
-        onCancel={cancelJob}
-        onRetry={retryJob}
-      />
+      {running && (
+        <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-xs text-sky-700 leading-relaxed">
+          <Loader2 size={12} className="inline animate-spin mr-1.5" />
+          O GEE está a carregar cenas Sentinel-2, aplicar máscara de nuvens e calcular o índice. Tipicamente 5–20 s.
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -1045,17 +1034,9 @@ function TargetingPanel({
   const [endDate, setEnd]       = useState("2023-12-31");
   const [cloudPct, setCloudPct] = useState(30);
   const [threshold, setTh]      = useState(0.7);
+  const [running, setRunning]   = useState(false);
+  const [error, setError]       = useState<string | null>(null);
   const [result, setResult]     = useState<TargetingResult | null>(null);
-  const deliveredTargetJobRef   = useRef<string | null>(null);
-  const {
-    job: targetingJob,
-    submitJob: submitTargetingJob,
-    running: targetingRunning,
-    error: targetingError,
-    cancel: cancelTargetingJob,
-    retry: retryTargetingJob,
-    resetJob: resetTargetingJob,
-  } = useAnalysisJob<TargetingResult>();
   const [overlapRes, setOverlapRes]         = useState<OverlapResult | null>(null);
   const [overlapRunning, setOverlapRunning] = useState(false);
   const [overlapError, setOverlapError]     = useState<string | null>(null);
@@ -1067,41 +1048,28 @@ function TargetingPanel({
 
   const current = presets.find(p => p.id === mineral);
 
-  useEffect(() => {
-    if (
-      targetingJob?.status === "completed" &&
-      targetingJob.result &&
-      deliveredTargetJobRef.current !== targetingJob.id
-    ) {
-      deliveredTargetJobRef.current = targetingJob.id;
-      setResult(targetingJob.result);
-      onResult(targetingJob.result);
-    }
-  }, [targetingJob, onResult]);
-
   async function run() {
-    setResult(null);
-    onResult(null);
-    setOverlapRes(null);
-    setOverlapError(null);
-    onOverlap(null);
-    resetTargetingJob();
-    deliveredTargetJobRef.current = null;
-
+    setRunning(true); setError(null); onResult(null);
+    setOverlapRes(null); setOverlapError(null); onOverlap(null);
     try {
-      await submitTargetingJob("gee.targeting", {
-        mineral,
-        province: province || null,
-        district: district || null,
-        geometry: geometry ?? null,
-        start_date: startDate,
-        end_date: endDate,
-        cloud_pct: cloudPct,
-        score_threshold: threshold,
+      const res = await apiFetch("/geomoz-api/gee/targeting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mineral, province: province || null, district: district || null, geometry: geometry ?? null,
+          start_date: startDate, end_date: endDate, cloud_pct: cloudPct,
+          score_threshold: threshold,
+        }),
       });
-    } catch {
-      // useAnalysisJob exposes the actionable error in the panel.
-    }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail ?? "Erro GEE");
+      }
+      const data: TargetingResult = await res.json();
+      setResult(data); onResult(data);
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally { setRunning(false); }
   }
 
   async function runOverlap() {
@@ -1232,27 +1200,27 @@ function TargetingPanel({
         </div>
       )}
 
-      <button onClick={run} disabled={targetingRunning || !mineral}
+      <button onClick={run} disabled={running || !mineral}
         className="w-full flex items-center justify-center gap-2 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-amber-200">
-        {targetingRunning
+        {running
           ? <><Loader2 size={14} className="animate-spin" /> A calcular favorabilidade…</>
           : <><Target size={14} /> Calcular Potencial Mineral</>}
       </button>
 
-      <AnalysisJobProgress
-        job={targetingJob}
-        title="GeoMoz Mining · Targeting Mineral"
-        onCancel={cancelTargetingJob}
-        onRetry={retryTargetingJob}
-      />
-
-      {targetingError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
-          <strong>Erro:</strong> {targetingError}
+      {running && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 leading-relaxed">
+          <Loader2 size={12} className="inline animate-spin mr-1.5" />
+          A combinar Sentinel-2 + DEM + lineamentos. Pode demorar 30–60 s.
         </div>
       )}
 
-      {result && !targetingRunning && (
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+          <strong>Erro:</strong> {error}
+        </div>
+      )}
+
+      {result && !running && (
         <div className="space-y-3">
           <div className="bg-white border border-amber-200 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1.5">

@@ -41,14 +41,6 @@ COPY api.py .
 COPY gee_module.py .
 COPY gee_session_store.py .
 COPY gee_presets.py .
-COPY analysis_jobs.py .
-COPY projects_store.py .
-COPY tool_registry.py .
-COPY ai_agent.py .
-COPY agent_plans.py .
-COPY project_outputs.py .
-COPY report_renderer.py .
-COPY project_assets.py .
 COPY utils/ utils/
 
 # ── Health check ─────────────────────────────────────────────────────────────
