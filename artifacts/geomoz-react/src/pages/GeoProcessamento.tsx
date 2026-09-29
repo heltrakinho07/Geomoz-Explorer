@@ -270,8 +270,9 @@ export default function GeoProcessamento({
 
   // Synchronize drawn AOI as a layer
   React.useEffect(() => {
-    const geometry = aoi?.geometry;
-    if (aoi && aoi.source === "draw" && geometry) {
+    const rawGeometry = aoi?.geometry;
+    if (aoi && aoi.source === "draw" && rawGeometry && "coordinates" in rawGeometry) {
+      const geometry = rawGeometry as GeoJSON.Geometry;
       const drawnId = "drawn_aoi_layer";
       const fc: FeatureCollection = {
         type: "FeatureCollection",
