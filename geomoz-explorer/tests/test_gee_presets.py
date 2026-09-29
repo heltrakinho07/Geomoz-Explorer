@@ -297,6 +297,6 @@ class TestCrossModuleConsistency:
         # + 6 fire + 7 water + 5 climate + 4 urban + 4 health
         # + 2 biophysical
         # = 55 total
-        assert len(INDEX_REGISTRY) == 55, (
-            f"Expected 55 indices, got {len(INDEX_REGISTRY)}"
+        assert len(INDEX_REGISTRY) == 62, (
+            f"Expected 62 indices, got {len(INDEX_REGISTRY)}"
         )
