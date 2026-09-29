@@ -54,7 +54,7 @@ class TestIndexRegistry:
     def test_class_names_only_on_classified_indices(self) -> None:
         """Only indices with class_names should have that key."""
         from gee_presets import INDEX_REGISTRY
-        classified_ids = {"topo_class", "burn_severity", "coastal_erosion"}
+        classified_ids = {"topo_class", "burn_severity"}
         for idx_id, cfg in INDEX_REGISTRY.items():
             if "class_names" in cfg:
                 assert idx_id in classified_ids, (
@@ -293,10 +293,10 @@ class TestCrossModuleConsistency:
     def test_total_index_count(self) -> None:
         """Sanity check on total number of registered indices."""
         from gee_presets import INDEX_REGISTRY
-        # 8 spectral + 1 landsat + 5 terrain + 6 agriculture + 6 drought
-        # + 6 fire + 4 coastal + 5 climate + 4 urban + 4 health
-        # + 1 water + 2 biophysical
-        # = 53 total
-        assert len(INDEX_REGISTRY) == 53, (
-            f"Expected 53 indices, got {len(INDEX_REGISTRY)}"
+        # 8 spectral + 1 landsat + 5 terrain + 7 agriculture + 6 drought
+        # + 6 fire + 7 water + 5 climate + 4 urban + 4 health
+        # + 2 biophysical
+        # = 55 total
+        assert len(INDEX_REGISTRY) == 55, (
+            f"Expected 55 indices, got {len(INDEX_REGISTRY)}"
         )

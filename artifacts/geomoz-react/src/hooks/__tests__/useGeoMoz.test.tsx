@@ -51,7 +51,8 @@ describe("useProvinceNames", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(mockData);
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/province-names")
+      expect.stringContaining("/province-names"),
+      expect.anything()
     );
   });
 
@@ -85,7 +86,8 @@ describe("useDistrictNames", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(mockData);
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("province=Maputo")
+      expect.stringContaining("province=Maputo"),
+      expect.anything()
     );
   });
 
@@ -121,10 +123,12 @@ describe("useStats", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(mockStats);
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("province=Maputo")
+      expect.stringContaining("province=Maputo"),
+      expect.anything()
     );
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("district=Manhi%C3%A7a")
+      expect.stringContaining("district=Manhi%C3%A7a"),
+      expect.anything()
     );
   });
 
@@ -164,7 +168,8 @@ describe("useGeologyGeoJSON", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("color_by=code2006")
+      expect.stringContaining("color_by=code2006"),
+      expect.anything()
     );
   });
 
@@ -195,7 +200,8 @@ describe("useProvincesGeoJSON", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/provinces")
+      expect.stringContaining("/provinces"),
+      expect.anything()
     );
   });
 });
@@ -213,7 +219,8 @@ describe("useDistrictsGeoJSON", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("province=Maputo")
+      expect.stringContaining("province=Maputo"),
+      expect.anything()
     );
   });
 });

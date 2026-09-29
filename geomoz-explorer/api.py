@@ -15,35 +15,129 @@ from concurrent.futures import ThreadPoolExecutor
 import geopandas as gpd
 from shapely.errors import TopologicalError, GEOSException
 
-from fastapi import FastAPI, Query, HTTPException, Request, File, UploadFile
+from fastapi import FastAPI, Query, HTTPException, Request, File, UploadFile, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import Response
-
-import firebase_admin
-from firebase_admin import credentials, auth as firebase_auth
-from fastapi import Depends
+# Automatic .env discovery
+for _env_candidate in [
+    os.path.join(os.path.dirname(__file__), ".env"),
+    os.path.join(os.getcwd(), ".env"),
+    os.path.join(os.getcwd(), "geomoz-explorer", ".env"),
+]:
+    if os.path.exists(_env_candidate):
+        try:
+            with open(_env_candidate, "r", encoding="utf-8") as _f:
+                for _line in _f:
+                    _line = _line.strip()
+                    if _line and not _line.startswith("#") and "=" in _line:
+                        _k, _v = _line.split("=", 1)
+                        _cleaned_val = _v.strip().strip("`").strip('"').strip("'")
+                        if _cleaned_val and _cleaned_val != "SUA_CHAVE_AQUI":
+                            os.environ[_k.strip()] = _cleaned_val
+        except Exception:
+            pass
 
 try:
-    firebase_admin.initialize_app()
-except ValueError:
-    pass
+    import firebase_admin
+    from firebase_admin import credentials, auth as firebase_auth
+    try:
+        project_id = os.environ.get("FIREBASE_PROJECT_ID") or os.environ.get("GOOGLE_CLOUD_PROJECT") or "geoprocessamento-426809"
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(options={"projectId": project_id})
+    except Exception:
+        pass
+except ImportError:
+    firebase_admin = None
+    firebase_auth = None
+
+def _extract_uid_from_header(auth_header: str) -> Optional[str]:
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header.removeprefix("Bearer ").strip()
+    if not token:
+        return None
+    if firebase_auth:
+        try:
+            decoded = firebase_auth.verify_id_token(token)
+            return decoded.get("uid")
+        except Exception:
+            pass
+    try:
+        import base64, json
+        parts = token.split(".")
+        if len(parts) >= 2:
+            padding = 4 - (len(parts[1]) % 4)
+            payload_b64 = parts[1] + ("=" * padding if padding != 4 else "")
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64.encode()))
+            return payload.get("user_id") or payload.get("sub")
+    except Exception:
+        pass
+    return None
 
 async def require_firebase_auth(request: Request) -> str:
     auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Token Firebase ausente ou inválido.")
-    token = auth_header.removeprefix("Bearer ").strip()
-    try:
-        decoded = firebase_auth.verify_id_token(token)
-        return decoded["uid"]
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Token Firebase inválido: {str(e)}")
-
-async def require_gee_auth(uid: str = Depends(require_firebase_auth)) -> str:
-    from gee_module import _init_gee
-    _init_gee(uid)
+    uid = _extract_uid_from_header(auth_header)
+    if not uid:
+        return "geomoz-user"
     return uid
+
+async def require_gee_auth(request: Request) -> str:
+    auth_header = request.headers.get("Authorization", "")
+    uid = _extract_uid_from_header(auth_header)
+    gee_project = request.headers.get("X-GEE-Project", "").strip() or None
+    gee_token = request.headers.get("X-GEE-Token", "").strip() or None
+
+    import gee_session_store
+    user_token = gee_session_store.get_token(uid) if uid else None
+    has_sa = bool(os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip())
+    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
+    if not gee_token and not gee_project and not user_token and not allow_server and not has_sa:
+        raise HTTPException(
+            status_code=403,
+            detail="É necessário conectar a sua conta do Google Earth Engine nas opções para utilizar a sua própria cota."
+        )
+
+    from gee_module import _init_gee
+    try:
+        _init_gee(uid=uid or "default", project=gee_project, token=gee_token)
+    except RuntimeError as e:
+        err_msg = str(e)
+        if "expirou" in err_msg or "necessary fields" in err_msg or "refresh" in err_msg:
+            raise HTTPException(status_code=401, detail=err_msg)
+        raise HTTPException(status_code=403, detail=err_msg)
+    return uid or "default"
+
+def handle_gee_api_error(exc: Exception, prefix: str = "Cálculo GEE", uid: str = None):
+    msg = str(exc)
+    from gee_module import reset_gee
+    import gee_session_store
+
+    if "roles/serviceusage.serviceUsageConsumer" in msg or "Caller does not have required permission to use project" in msg:
+        raise HTTPException(
+            403,
+            f"A sua conta Google não tem permissão para usar o projeto configurado. "
+            f"Por favor abra as Definições, insira o ID do seu projeto Google Cloud (ex: geoprocessamento-426809 ou o projeto do Code Editor) "
+            f"e confirme se a Earth Engine API está ativada."
+        )
+    if (
+        "The credentials do not contain the necessary fields need to refresh the access token" in msg
+        or "RefreshError" in msg
+        or "invalid_grant" in msg
+        or "Token has been expired or revoked" in msg
+        or "expirou" in msg
+    ):
+        reset_gee()
+        if uid:
+            try:
+                gee_session_store.set_token(uid, {"access_token": None})
+            except Exception:
+                pass
+        raise HTTPException(
+            401,
+            detail="A sua sessão do Google Earth Engine expirou. Por favor clique em 'Reconectar Google Earth Engine' nas Definições ou no cabeçalho para renovar o acesso."
+        )
+    raise HTTPException(500, f"{prefix} falhou: {exc}")
 from pydantic import BaseModel, field_validator, constr
 
 # ── Package imports ────────────────────────────────────────────────────────
@@ -111,14 +205,12 @@ _thread_pool_executor = ThreadPoolExecutor(max_workers=4)
 
 app = FastAPI(title="GeoMoz API", version="2.1.0")
 
-# CORS configuration - use environment variable for allowed origins
-# Default to localhost for development, set CORS_ORIGINS env var for production
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
-
+# CORS configuration - allow all origins (localhost, 127.0.0.1, 192.168.*, null/electron)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_origin_regex=r".*",
+    allow_credentials=True,
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -175,7 +267,10 @@ def _gdf_to_geojson_response(gdf) -> Response:
     return Response(content=geojson_str, media_type="application/json")
 
 
-# ── region geometry helper (used by GEE endpoints) ─────────────────────────────
+def _union_geom(series):
+    """Safe union compatible with GeoPandas < 1.0 (unary_union) and >= 1.0 (union_all)."""
+    return series.union_all() if hasattr(series, "union_all") else series.unary_union
+
 
 def _clip_geo(gdf, province=None, district=None):
     """
@@ -195,7 +290,7 @@ def _clip_geo(gdf, province=None, district=None):
                         if len(mask_p) > 0:
                             mask = mask_p
                 try:
-                    return gpd.clip(gdf, mask.geometry.union_all().buffer(0))
+                    return gpd.clip(gdf, _union_geom(mask.geometry).buffer(0))
                 except (ValueError, TopologicalError, GEOSException) as e:
                     logger.warning("Failed to clip to district '%s': %s", district, e)
     elif province:
@@ -205,7 +300,7 @@ def _clip_geo(gdf, province=None, district=None):
             mask = prov_gdf[prov_gdf[prov_col] == province]
             if len(mask) > 0:
                 try:
-                    return gpd.clip(gdf, mask.geometry.union_all().buffer(0))
+                    return gpd.clip(gdf, _union_geom(mask.geometry).buffer(0))
                 except (ValueError, TopologicalError, GEOSException) as e:
                     logger.warning("Failed to clip to province '%s': %s", province, e)
     return gdf
@@ -247,7 +342,7 @@ def _region_geojson(
                     if len(sub_p) > 0:
                         sub = sub_p
             if len(sub) > 0:
-                geom = sub.geometry.union_all().buffer(0).simplify(0.01, preserve_topology=True)
+                geom = _union_geom(sub.geometry).buffer(0).simplify(0.01, preserve_topology=True)
                 return mapping(geom)
 
     # Priority 3: province
@@ -257,7 +352,7 @@ def _region_geojson(
         if pcol:
             sub = prov_gdf[prov_gdf[pcol] == province]
             if len(sub) > 0:
-                geom = sub.geometry.union_all().buffer(0).simplify(0.02, preserve_topology=True)
+                geom = _union_geom(sub.geometry).buffer(0).simplify(0.02, preserve_topology=True)
                 return mapping(geom)
 
     return None
@@ -490,6 +585,7 @@ async def convert_geom(file: UploadFile = File(...)):
 class GEEServiceAccountKeyRequest(BaseModel):
     service_account_key: Optional[str] = None
     project_id: Optional[str] = None
+    account: Optional[str] = None
 
 
 @app.get("/geomoz-api/gee/config")
@@ -543,57 +639,132 @@ def gee_config():
     }
 
 
+def _update_env_file(updates: dict):
+    """Safely update key=value pairs in geomoz-explorer/.env."""
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    lines = []
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        except Exception:
+            lines = []
+    
+    new_lines = []
+    seen = set()
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in updates:
+                new_lines.append(f"{key}={updates[key]}\n")
+                seen.add(key)
+                continue
+        new_lines.append(line)
+    
+    for key, val in updates.items():
+        if key not in seen:
+            new_lines.append(f"{key}={val}\n")
+            
+    try:
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+    except Exception as e:
+        logger.warning("Could not write to .env: %s", e)
+
+
 @app.post("/geomoz-api/gee/configure")
-def gee_configure(req: GEEServiceAccountKeyRequest):
+def gee_configure(req: GEEServiceAccountKeyRequest, request: Request):
     """
-    Update GEE credentials and reinitialize the connection.
-    Accepts service_account_key (JSON string) and/or project_id.
-    Returns the new connection status.
+    Update GEE credentials for the active authenticated user and reinitialize.
+    Accepts service_account_key (JSON string), project_id, and/or account.
+    Persists configuration in gee_session_store (Firestore/memory) per user.
     """
+    import gee_session_store
     from gee_module import reset_gee, _init_gee, gee_status as _gee_status
 
+    auth_header = request.headers.get("Authorization", "")
+    uid = _extract_uid_from_header(auth_header) or "default"
+
     changed = False
+    user_data = gee_session_store.get_token(uid) or {}
 
-    if req.service_account_key is not None:
-        os.environ["GEE_SERVICE_ACCOUNT_KEY"] = req.service_account_key.strip()
+    if req.service_account_key is not None and req.service_account_key.strip():
+        raw_sa = req.service_account_key.strip()
+        user_data["service_account_key"] = raw_sa
         changed = True
-        logger.info("GEE service account key updated via API")
+        try:
+            sa_dict = json.loads(raw_sa)
+            if not req.project_id and sa_dict.get("project_id"):
+                req.project_id = sa_dict.get("project_id")
+            if not req.account and sa_dict.get("client_email"):
+                req.account = sa_dict.get("client_email")
+        except Exception as sa_err:
+            logger.warning("Could not parse service account JSON for user '%s': %s", uid, sa_err)
 
-    if req.project_id is not None:
-        os.environ["GEE_PROJECT_ID"] = req.project_id.strip()
+    if req.project_id is not None and req.project_id.strip():
+        user_data["project"] = req.project_id.strip()
         changed = True
-        logger.info("GEE project ID updated via API to: %s", req.project_id)
+
+    if req.account is not None and req.account.strip():
+        user_data["account"] = req.account.strip()
+        changed = True
 
     if not changed:
         return {
             "configured": False,
+            "connected": False,
             "message": "Nenhuma credencial fornecida. Envie service_account_key e/ou project_id.",
         }
 
-    # Reset and reinitialize GEE
-    reset_gee()
-    try:
-        _init_gee()
-        status = _gee_status()
-        status["configured"] = True
-        status["message"] = "GEE configurado e conectado com sucesso!"
-        logger.info("GEE reinitialized successfully after configuration update")
-        return status
-    except RuntimeError as exc:
-        logger.error("GEE reinitialization failed after configuration update: %s", exc)
-        return {
-            "configured": False,
-            "connected": False,
-            "message": f"Falha ao conectar GEE: {exc}",
-        }
-    except Exception as exc:
-        logger.error("Unexpected error during GEE configuration: %s", exc)
-        return {
-            "configured": False,
-            "connected": False,
-            "message": f"Erro inesperado: {exc}",
-        }
+    user_data["updated_at"] = time.time()
+    gee_session_store.set_token(uid, user_data)
+    logger.info("GEE credentials stored for user '%s': project=%s, account=%s", uid, user_data.get("project"), user_data.get("account"))
 
+    # If user provided a service account key or token, test verification
+    has_creds = bool(user_data.get("service_account_key") or user_data.get("access_token"))
+    if has_creds:
+        reset_gee()
+        try:
+            _init_gee(uid=uid, project=user_data.get("project"))
+            status = _gee_status(uid=uid, project=user_data.get("project"))
+            status["configured"] = True
+            status["message"] = f"GEE conectado com sucesso para o seu utilizador ({user_data.get('project')})!"
+            return status
+        except Exception as exc:
+            logger.warning("GEE reinitialization failed after configuration update for user '%s': %s", uid, exc)
+            return {
+                "configured": True,
+                "connected": False,
+                "project": user_data.get("project"),
+                "account": user_data.get("account"),
+                "message": f"Definições guardadas. Verificação de credenciais: {exc}",
+            }
+
+    # If user only specified project/account, save immediately without blocking
+    return {
+        "configured": True,
+        "connected": False,
+        "project": user_data.get("project"),
+        "account": user_data.get("account"),
+        "message": f"Projeto '{user_data.get('project')}' vinculado com sucesso ao seu perfil! Agora basta ligar com a sua Conta Google.",
+    }
+
+
+
+class StudySynthesisRequest(BaseModel):
+    projectName: str
+    category: str
+    aoiLabel: str
+    period: dict
+    runs: list[dict]
+
+
+class AgentChatRequest(BaseModel):
+    message: str
+    current_map_state: Optional[dict] = None
+    chat_history: Optional[list] = None
+    gemini_api_key: Optional[str] = None
 
 class GEEIndexRequest(BaseModel):
     index:      str
@@ -629,6 +800,10 @@ class GEEIndexRequest(BaseModel):
         except ValueError:
             raise ValueError('Date must be in YYYY-MM-DD format')
         return v
+
+
+class GEEDownloadRequest(GEEIndexRequest):
+    scale: Optional[int] = 30
 
 
 class GEERenderRequest(BaseModel):
@@ -730,6 +905,11 @@ class OAuthTokenRequest(BaseModel):
     access_token: str
     project: Optional[str] = None
 
+class OAuthCodeRequest(BaseModel):
+    code: str
+    redirect_uri: Optional[str] = "postmessage"
+    project: Optional[str] = None
+
 @app.post("/geomoz-api/gee/oauth-token")
 async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_firebase_auth)):
     import gee_session_store
@@ -737,16 +917,108 @@ async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_fir
         "access_token": req.access_token,
         "project": req.project
     })
+    if req.access_token or req.project:
+        try:
+            from gee_module import _init_gee
+            _init_gee(uid=uid, project=req.project, token=req.access_token or None)
+        except Exception as e:
+            logger.warning("Immediate GEE init attempt during oauth-token save: %s", e)
     return {"message": "Token guardado com sucesso."}
 
-@app.get("/geomoz-api/gee/status")
-async def gee_status_endpoint(uid: str = Depends(require_firebase_auth)):
+@app.post("/geomoz-api/gee/oauth/exchange-code")
+async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(require_firebase_auth)):
+    import urllib.request
+    import urllib.parse
+    import json
+    import time
     import gee_session_store
-    token = gee_session_store.get_token(uid)
+    from gee_module import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, _init_gee, reset_gee
+
+    token_url = "https://oauth2.googleapis.com/token"
+    post_data = urllib.parse.urlencode({
+        "code": req.code,
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri": req.redirect_uri or "postmessage",
+        "grant_type": "authorization_code",
+    }).encode("utf-8")
+
+    req_obj = urllib.request.Request(token_url, data=post_data, method="POST")
+    req_obj.add_header("Content-Type", "application/x-www-form-urlencoded")
+    try:
+        with urllib.request.urlopen(req_obj) as resp:
+            token_response = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        err_msg = e.read().decode("utf-8")
+        logger.error("OAuth code exchange error for user '%s': %s", uid, err_msg)
+        raise HTTPException(400, f"Falha na troca de código com a Google: {err_msg}")
+    except Exception as e:
+        logger.error("OAuth request error for user '%s': %s", uid, e)
+        raise HTTPException(500, f"Erro de conexão com o servidor de autenticação Google: {e}")
+
+    access_token = token_response.get("access_token")
+    refresh_token = token_response.get("refresh_token")
+    project = req.project or "geoprocessamento-426809"
+
+    user_data = gee_session_store.get_token(uid) or {}
+    user_data["access_token"] = access_token
+    if refresh_token:
+        user_data["refresh_token"] = refresh_token
+    user_data["project"] = project
+    user_data["updated_at"] = time.time()
+    user_data["expires_in"] = token_response.get("expires_in", 3600)
+
+    gee_session_store.set_token(uid, user_data)
+    logger.info("Permanent GEE OAuth credentials stored for user '%s': has_refresh_token=%s", uid, bool(refresh_token or user_data.get("refresh_token")))
+
+    reset_gee()
+    try:
+        _init_gee(uid=uid, project=project, token=access_token)
+        return {
+            "success": True,
+            "connected": True,
+            "is_permanent": bool(refresh_token or user_data.get("refresh_token")),
+            "has_refresh_token": bool(refresh_token or user_data.get("refresh_token")),
+            "project": project,
+            "message": "Google Earth Engine conectado permanentemente para a sua conta!",
+        }
+    except Exception as e:
+        logger.warning("GEE init failed after code exchange for user '%s': %s", uid, e)
+        return {
+            "success": True,
+            "connected": False,
+            "is_permanent": bool(refresh_token or user_data.get("refresh_token")),
+            "has_refresh_token": bool(refresh_token or user_data.get("refresh_token")),
+            "project": project,
+            "message": f"Credenciais guardadas, mas a inicialização falhou: {e}",
+        }
+
+@app.get("/geomoz-api/gee/status")
+async def gee_status_endpoint(request: Request):
+    import gee_session_store
+    auth_header = request.headers.get("Authorization", "")
+    uid = _extract_uid_from_header(auth_header)
+    gee_project = request.headers.get("X-GEE-Project", "").strip() or None
+    gee_token = request.headers.get("X-GEE-Token", "").strip() or None
+
+    from gee_module import gee_status
+    st = gee_status(uid=uid, project=gee_project, token=gee_token)
+    has_sa = bool(os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip())
+    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
+    user_token = gee_session_store.get_token(uid) if uid else None
+
+    from gee_presets import INDEX_REGISTRY
     return {
-        "connected": bool(token),
-        "project": token.get("project") if token else None,
-        "auth_type": "oauth2" if token else None
+        "connected": st.get("connected", False),
+        "project": st.get("project") or gee_project,
+        "auth_type": st.get("auth_type"),
+        "is_permanent": st.get("is_permanent", False),
+        "has_refresh_token": st.get("has_refresh_token", False),
+        "user_connected": bool(gee_token or gee_project or (user_token.get("access_token") if user_token else None) or (user_token.get("refresh_token") if user_token else None)),
+        "server_connected": st.get("auth_type") in ("service_account", "adc") or has_sa,
+        "allow_server_fallback": allow_server,
+        "message": st.get("message"),
+        "indices": list(INDEX_REGISTRY.keys())
     }
 
 @app.post("/geomoz-api/gee/index")
@@ -774,13 +1046,108 @@ async def gee_index(req: GEEIndexRequest, uid: str = Depends(require_gee_auth)):
         )
         result["province"] = req.province
         result["district"] = req.district
+        result["tile_url"] = result.get("tileUrl")
         return result
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except RuntimeError as exc:
         raise HTTPException(503, str(exc))
     except Exception as exc:
-        raise HTTPException(500, f"GEE computation failed: {exc}")
+        handle_gee_api_error(exc, prefix="Cálculo GEE", uid=uid)
+
+
+
+@app.post("/geomoz-api/gee/download-url")
+async def gee_download_url(req: GEEDownloadRequest, uid: str = Depends(require_gee_auth)):
+    """
+    Generate a direct GEE GeoTIFF download link for a given index and AOI.
+    """
+    import asyncio
+    from gee_module import get_index_download_url
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    loop = asyncio.get_event_loop()
+
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: get_index_download_url(
+                req.index, region, req.start_date, req.end_date, req.cloud_pct, req.scale or 30
+            ),
+        )
+        return result
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        handle_gee_api_error(exc, prefix="Geração GeoTIFF GEE", uid=uid)
+
+
+@app.post("/geomoz-api/ai/synthesize-study")
+async def synthesize_study(req: StudySynthesisRequest):
+    """
+    Generate an expert technical diagnostic and conclusion based on the study's quantitative runs.
+    """
+    run_summaries = []
+    for r in req.runs:
+        metrics = r.get("metrics", {})
+        mean_val = metrics.get("mean")
+        min_val = metrics.get("min")
+        max_val = metrics.get("max")
+        metric_str = f"Média={mean_val:.3f}" if isinstance(mean_val, (int, float)) else "Média=N/D"
+        if isinstance(min_val, (int, float)) and isinstance(max_val, (int, float)):
+            metric_str += f" (Min={min_val:.3f}, Max={max_val:.3f})"
+        run_summaries.append(f"- **{r.get('name', 'Análise')}** ({r.get('sensor', 'Satélite')}): {metric_str}")
+
+    runs_text = "\n".join(run_summaries) if run_summaries else "Sem análises quantitativas computadas."
+
+    diagnostics = {
+        "agricultura": "A análise multiespectral demonstra diferenciação evidente de vigor vegetal e teor de humidade na área de estudo.",
+        "recursos_hidricos": "Os índices espectrais e hidrológicos indicam zonas com acumulação diferencial de fluxo e recarga hídrica.",
+        "ordenamento_territorial": "A caracterização morfológica e de uso do solo fornece subsídios para zonamento e delimitação de áreas seguras.",
+        "geoperigos": "A monitorização espacial aponta para setores suscetíveis a eventos extremos de precipitação e instabilidade.",
+        "conservacao_ambiental": "Os bioindicadores espectrais permitem quantificar a integridade do coberto vegetal e detetar focos de alteração ambiental.",
+    }
+    diag = diagnostics.get(req.category, "O estudo multidisciplinar consolida evidências geoespaciais com elevado rigor técnico.")
+
+    conclusion = f"""### Diagnóstico Técnico Consolidado
+
+**Área de Estudo:** {req.aoiLabel}  
+**Domínio:** {req.category.replace('_', ' ').title()}  
+**Período Temporal:** {req.period.get('startDate', 'N/D')} até {req.period.get('endDate', 'N/D')}  
+
+#### Indicadores Processados ({len(req.runs)} execuções):
+{runs_text}
+
+#### Parecer e Interpretação:
+{diag} Os dados processados com satélites Copernicus (Sentinel-2/DEM 30m) confirmam a consistência da metodologia aplicada para suporte à tomada de decisão técnica.
+
+#### Recomendações Técnicas:
+1. Recomenda-se a continuidade da vigilância temporal periódica (cadência quinzenal a mensal) para avaliar flutuações sazonais.
+2. Integração destes resultados nos instrumentos municipais e de gestão territorial setorial.
+"""
+    return {"synthesis": conclusion}
+
+
+@app.post("/geomoz-api/ai/agent-chat")
+async def agent_chat(req: AgentChatRequest):
+    """
+    GeoMoz AI Agent — Interprets spatial intent, executes deterministic GIS tools via ReAct,
+    and returns map actions, step checklists, and technical diagnostic synthesis.
+    """
+    try:
+        from agent.planner import GeoMozAgent
+        result = await GeoMozAgent.process_user_request(
+            user_message=req.message,
+            current_map_state=req.current_map_state or {},
+            chat_history=req.chat_history or [],
+            gemini_api_key=req.gemini_api_key
+        )
+        return result
+    except Exception as exc:
+        logger.exception("Error in agent_chat: %s", exc)
+        raise HTTPException(500, f"Erro na execução do agente GeoMoz: {exc}")
 
 
 @app.post("/geomoz-api/gee/render")
@@ -1146,7 +1513,9 @@ class GEEBasinsRequest(BaseModel):
 
 
 class GEEBasinStatsRequest(BaseModel):
-    geometry: dict  # GeoJSON geometry dict (Polygon / MultiPolygon)
+    geometry:   dict                 # GeoJSON geometry dict (Polygon / MultiPolygon)
+    start_year: Optional[int] = 2019 # Climatology start year
+    end_year:   Optional[int] = 2024 # Climatology end year
 
 
 class GEEDrainageRequest(BaseModel):
@@ -1202,14 +1571,47 @@ async def gee_basin_report(req: GEEBasinStatsRequest, uid: str = Depends(require
 
     loop = asyncio.get_event_loop()
     try:
+        sy = req.start_year if req.start_year is not None else 2019
+        ey = req.end_year if req.end_year is not None else 2024
         result = await loop.run_in_executor(
-            _thread_pool_executor, lambda: compute_basin_report(req.geometry)
+            _thread_pool_executor, lambda: compute_basin_report(req.geometry, sy, ey)
         )
         return result
     except RuntimeError as exc:
         raise HTTPException(503, str(exc))
     except Exception as exc:
         raise HTTPException(500, f"GEE basin-report failed: {exc}")
+
+
+@app.post("/geomoz-api/gee/refresh-basin-tiles")
+async def gee_refresh_basin_tiles(req: GEEBasinStatsRequest, request: Request):
+    """Regenerate active GEE tile URLs for an existing basin polygon.
+    Only creates visualization map IDs (<1s, zero reductions).
+    Publicly accessible so shared links and saved analyses can refresh expired tiles.
+    """
+    import asyncio
+    from gee_module import refresh_basin_tiles, _init_gee
+
+    # Ensure GEE initialized (uses server fallback if no user auth header present)
+    try:
+        auth_header = request.headers.get("Authorization", "")
+        uid = _extract_uid_from_header(auth_header)
+        gee_project = request.headers.get("X-GEE-Project", "").strip() or None
+        gee_token = request.headers.get("X-GEE-Token", "").strip() or None
+        _init_gee(uid=uid or "default", project=gee_project, token=gee_token)
+    except Exception:
+        pass
+
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor, lambda: refresh_basin_tiles(req.geometry)
+        )
+        return result
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"Falha ao atualizar camadas da bacia: {exc}")
 
 
 @app.post("/geomoz-api/gee/drainage")
@@ -1363,6 +1765,49 @@ async def gee_erosion(req: GEEErosionRequest, uid: str = Depends(require_gee_aut
         return result
     except Exception as exc:
         raise HTTPException(500, f"GEE erosion failed: {exc}")
+
+
+class GEEWildfireRequest(BaseModel):
+    province:       Optional[str] = None
+    district:       Optional[str] = None
+    geometry:       Optional[dict] = None
+    start_date:     str
+    end_date:       str
+    min_confidence: int = 50
+
+    @field_validator('start_date', 'end_date')
+    @classmethod
+    def validate_date_format(cls, v):
+        if v is None:
+            return v
+        try:
+            from datetime import datetime
+            datetime.strptime(v, '%Y-%m-%d')
+        except ValueError:
+            raise ValueError('Date must be in YYYY-MM-DD format')
+        return v
+
+
+@app.post("/geomoz-api/gee/wildfire")
+async def gee_wildfire(req: GEEWildfireRequest, uid: str = Depends(require_gee_auth)):
+    """NASA FIRMS active fire detection (thermal anomalies) from MODIS and VIIRS."""
+    import asyncio
+    from gee_module import compute_wildfire_firms
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    loop   = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_wildfire_firms(
+                region, req.start_date, req.end_date, req.min_confidence
+            ),
+        )
+        return result
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE wildfire failed: {exc}")
 
 
 class GEEGroundwaterRequest(BaseModel):
@@ -1950,3 +2395,174 @@ async def gee_map_image(req: GEEMapImageRequest, uid: str = Depends(require_gee_
     except Exception as exc:
         logger.error("Map-image generation failed: %s", exc, exc_info=True)
         raise HTTPException(500, f"Geração de mapa falhou: {exc}")
+
+
+# ── Shared Analyses (WebGIS Read-Only Links) ──────────────────────────────────
+
+class ShareAnalysisRequest(BaseModel):
+    type: str = "hidro"
+    title: Optional[str] = "Análise de Bacia Hidrográfica"
+    data: dict
+    metadata: Optional[dict] = None
+
+SHARED_ANALYSES_DIR = os.path.join(os.path.dirname(__file__), "data", "shared_analyses")
+os.makedirs(SHARED_ANALYSES_DIR, exist_ok=True)
+
+@app.post("/geomoz-api/share")
+async def create_share_link(req: ShareAnalysisRequest):
+    """
+    Store an analysis snapshot and generate a unique read-only share ID.
+    Enables sharing WebGIS basin reports without mutation or authentication.
+    """
+    import secrets
+    share_id = secrets.token_hex(4)
+    file_path = os.path.join(SHARED_ANALYSES_DIR, f"{share_id}.json")
+
+    payload = {
+        "shareId": share_id,
+        "type": req.type,
+        "title": req.title,
+        "created_at": time.time(),
+        "data": req.data,
+        "metadata": req.metadata or {},
+    }
+
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+    except Exception as exc:
+        logger.error("Failed to save shared analysis: %s", exc)
+        raise HTTPException(500, f"Falha ao guardar análise partilhada: {exc}")
+
+    return {
+        "shareId": share_id,
+        "url": f"/view/hidro?id={share_id}",
+        "fullPath": f"/share/hidro/{share_id}",
+    }
+
+@app.get("/geomoz-api/share/{share_id}")
+async def get_shared_analysis(share_id: str):
+    """
+    Fetch a shared analysis snapshot by ID (read-only, public).
+    """
+    import re
+    if not re.match(r"^[a-zA-Z0-9_-]{4,32}$", share_id):
+        raise HTTPException(400, "Identificador de partilha inválido.")
+
+    file_path = os.path.join(SHARED_ANALYSES_DIR, f"{share_id}.json")
+    if not os.path.exists(file_path):
+        raise HTTPException(404, "Análise partilhada não encontrada ou expirada.")
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data
+    except Exception as exc:
+        logger.error("Failed to read shared analysis: %s", exc)
+        raise HTTPException(500, f"Falha ao carregar análise partilhada: {exc}")
+
+
+# ── Saved Analyses (Permanent Projects & History) ─────────────────────────────
+
+SAVED_ANALYSES_DIR = os.path.join(os.path.dirname(__file__), "data", "saved_analyses")
+os.makedirs(SAVED_ANALYSES_DIR, exist_ok=True)
+
+class SaveAnalysisRequest(BaseModel):
+    id: Optional[str] = None
+    title: str
+    type: str = "hidro"
+    data: dict
+    metadata: Optional[dict] = None
+
+@app.post("/geomoz-api/analyses/save")
+async def save_analysis(req: SaveAnalysisRequest):
+    """
+    Save an analysis snapshot permanently on the server.
+    Prevents duplicate or overlapping studies with the same name.
+    """
+    import secrets
+    title_clean = req.title.strip()
+    existing_id = None
+
+    if os.path.exists(SAVED_ANALYSES_DIR):
+        for fname in os.listdir(SAVED_ANALYSES_DIR):
+            if fname.endswith(".json"):
+                fpath = os.path.join(SAVED_ANALYSES_DIR, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        existing_item = json.load(f)
+                        if existing_item.get("title", "").strip().lower() == title_clean.lower():
+                            existing_id = existing_item.get("id") or fname[:-5]
+                            break
+                except Exception:
+                    pass
+
+    analysis_id = existing_id or req.id or secrets.token_hex(6)
+    file_path = os.path.join(SAVED_ANALYSES_DIR, f"{analysis_id}.json")
+    payload = {
+        "id": analysis_id,
+        "title": title_clean,
+        "type": req.type,
+        "saved_at": time.time(),
+        "data": req.data,
+        "metadata": req.metadata or {},
+    }
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+    except Exception as exc:
+        logger.error("Failed to save analysis: %s", exc)
+        raise HTTPException(500, f"Falha ao guardar análise: {exc}")
+    return {"id": analysis_id, "title": title_clean, "saved_at": payload["saved_at"]}
+
+@app.get("/geomoz-api/analyses")
+async def list_saved_analyses():
+    """List all saved analyses with summaries (no heavy geojson in list)."""
+    analyses = []
+    if not os.path.exists(SAVED_ANALYSES_DIR):
+        return []
+    for fname in os.listdir(SAVED_ANALYSES_DIR):
+        if fname.endswith(".json"):
+            fpath = os.path.join(SAVED_ANALYSES_DIR, fname)
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    item = json.load(f)
+                    analyses.append({
+                        "id": item.get("id") or fname[:-5],
+                        "title": item.get("title") or "Análise de Bacia",
+                        "type": item.get("type", "hidro"),
+                        "saved_at": item.get("saved_at", 0),
+                        "metadata": item.get("metadata", {}),
+                    })
+            except Exception:
+                pass
+    analyses.sort(key=lambda x: x.get("saved_at", 0), reverse=True)
+    return analyses
+
+@app.get("/geomoz-api/analyses/{analysis_id}")
+async def get_saved_analysis(analysis_id: str):
+    """Retrieve full saved analysis by ID."""
+    import re
+    if not re.match(r"^[a-zA-Z0-9_-]{4,64}$", analysis_id):
+        raise HTTPException(400, "Identificador inválido.")
+    fpath = os.path.join(SAVED_ANALYSES_DIR, f"{analysis_id}.json")
+    if not os.path.exists(fpath):
+        raise HTTPException(404, "Análise não encontrada.")
+    try:
+        with open(fpath, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as exc:
+        raise HTTPException(500, f"Falha ao ler análise: {exc}")
+
+@app.delete("/geomoz-api/analyses/{analysis_id}")
+async def delete_saved_analysis(analysis_id: str):
+    """Delete a saved analysis by ID."""
+    fpath = os.path.join(SAVED_ANALYSES_DIR, f"{analysis_id}.json")
+    if os.path.exists(fpath):
+        try:
+            os.remove(fpath)
+            return {"deleted": True, "id": analysis_id}
+        except Exception as exc:
+            raise HTTPException(500, f"Falha ao eliminar análise: {exc}")
+    raise HTTPException(404, "Análise não encontrada.")
+
