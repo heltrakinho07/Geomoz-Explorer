@@ -460,8 +460,9 @@ export default function HidroGeoMoz({
     } else {
       setWatershedDrainageTile(null);
     }
-    if (fullData.province) setProvince(fullData.province);
-    if (fullData.district) setDistrict(fullData.district);
+    if (fullData.province) onProvinceChange(fullData.province);
+    if (fullData.district) onDistrictChange(fullData.district);
+    if (fullData.aoi) onAOIChange(fullData.aoi);
     setSavedModalOpen(false);
     setMobileRightPanelOpen(true);
     setReportLayer("lulc");
@@ -907,12 +908,14 @@ export default function HidroGeoMoz({
 
   // Generate the full hydro-environmental report for the delineated basin
   async function runBasinReport(customStartYear?: number, customEndYear?: number) {
-    let geom: any = watershedData?.geojson?.features?.[0]?.geometry;
-    if (!geom) {
-      if ((watershedData?.geojson as any)?.type === "Polygon" || (watershedData?.geojson as any)?.type === "MultiPolygon") {
-        geom = watershedData.geojson;
-      } else if ((watershedData?.geojson as any)?.geometry) {
-        geom = (watershedData.geojson as any).geometry;
+    const watershedGeojson = watershedData?.geojson;
+    let geom: any = watershedGeojson?.features?.[0]?.geometry;
+    if (!geom && watershedGeojson) {
+      const rawGeojson = watershedGeojson as any;
+      if (rawGeojson.type === "Polygon" || rawGeojson.type === "MultiPolygon") {
+        geom = rawGeojson;
+      } else if (rawGeojson.geometry) {
+        geom = rawGeojson.geometry;
       }
     }
     if (!geom) {
