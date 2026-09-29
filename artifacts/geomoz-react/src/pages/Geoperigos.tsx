@@ -31,7 +31,7 @@ import {
   drawStatCards, drawTable, addMapImage, fetchMapImage,
 } from "@/lib/pdf-export";
 
-type Tool = "flood" | "erosion" | "wildfire";
+type Tool = "flood" | "erosion" | "wildfire" | "drought" | "burned";
 
 interface FloodResult {
   floodTile: string; permWaterTile: string; areaKm2: number;
@@ -55,6 +55,33 @@ interface WildfireResult {
   endDate: string;
   minConfidence: number;
   hotspotPoints?: WildfireHotspot[];
+  source: string;
+}
+
+interface DroughtResult {
+  spiTileUrl: string;
+  ndviTileUrl: string;
+  name: string;
+  year: number;
+  climStart: number;
+  stats: {
+    pearsonR: number | null;
+    pValue: number | null;
+    meanSpi: number | null;
+    meanNdvi: number | null;
+    droughtKm2: number | null;
+    droughtPct: number | null;
+    sampleCount: number;
+  };
+}
+
+interface BurnedAreaResult {
+  tile: string;
+  areaKm2: number;
+  areaPct: number;
+  startDate: string;
+  endDate: string;
+  imageCount: number;
   source: string;
 }
 
@@ -110,6 +137,16 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
   const [wildfireEnd,   setWildfireEnd]   = useState("2024-10-31");
   const [minConfidence, setMinConfidence] = useState(50);
   const [wildfire, setWildfire] = useState<WildfireResult | null>(null);
+
+  // Drought params (CHIRPS SPI × MODIS NDVI)
+  const [droughtYear, setDroughtYear] = useState(2024);
+  const [climStart, setClimStart] = useState(2001);
+  const [drought, setDrought] = useState<DroughtResult | null>(null);
+
+  // Historical burned-area params (MODIS MCD64A1)
+  const [burnedStart, setBurnedStart] = useState("2024-07-01");
+  const [burnedEnd, setBurnedEnd] = useState("2024-11-30");
+  const [burned, setBurned] = useState<BurnedAreaResult | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
@@ -247,23 +284,114 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
     } finally { clearTimeout(timer); setLoading(false); }
   }, [aoi, province, district, wildfireStart, wildfireEnd, minConfidence, isGeeConnected]);
 
+
+  const runDrought = useCallback(async () => {
+    if (!isGeeConnected) {
+      setGeeDialogOpen(true);
+      toast({
+        title: "Google Earth Engine necessário",
+        description: "Conecte a sua conta GEE para analisar CHIRPS e MODIS.",
+      });
+      return;
+    }
+    setLoading(true); setError(null); setDrought(null);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 240_000);
+    try {
+      const aoiPayload = aoiToAPI(aoi);
+      const prov = province || aoiPayload.province;
+      const dist = district || aoiPayload.district;
+      const r = await apiFetch("/geomoz-api/gee/drought", {
+        method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
+        body: JSON.stringify({
+          province: prov,
+          district: dist,
+          geometry: aoiPayload.geometry,
+          year: droughtYear,
+          clim_start: climStart,
+        }),
+      });
+      if (!r.ok) {
+        const errJson = await r.json().catch(() => ({}));
+        throw new Error(errJson.detail ?? r.statusText);
+      }
+      const data = await r.json();
+      setDrought(data);
+      toast({
+        title: "Análise de seca concluída!",
+        description: data.stats?.droughtPct != null
+          ? `${data.stats.droughtPct}% da área apresenta SPI < -1.`
+          : "Mapa SPI × NDVI gerado com CHIRPS e MODIS.",
+      });
+    } catch (e) {
+      const aborted = e instanceof DOMException && e.name === "AbortError";
+      const msg = aborted ? "A análise de seca demorou demasiado. Reduza a área de estudo." : String(e instanceof Error ? e.message : e);
+      setError(msg);
+      toast({ variant: "destructive", title: "Erro na análise de seca", description: msg });
+    } finally { clearTimeout(timer); setLoading(false); }
+  }, [aoi, province, district, droughtYear, climStart, isGeeConnected]);
+
+  const runBurnedArea = useCallback(async () => {
+    if (!isGeeConnected) {
+      setGeeDialogOpen(true);
+      toast({
+        title: "Google Earth Engine necessário",
+        description: "Conecte a sua conta GEE para consultar MODIS MCD64A1.",
+      });
+      return;
+    }
+    setLoading(true); setError(null); setBurned(null);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 180_000);
+    try {
+      const aoiPayload = aoiToAPI(aoi);
+      const prov = province || aoiPayload.province;
+      const dist = district || aoiPayload.district;
+      const r = await apiFetch("/geomoz-api/gee/burned-area", {
+        method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
+        body: JSON.stringify({
+          province: prov,
+          district: dist,
+          geometry: aoiPayload.geometry,
+          start_date: burnedStart,
+          end_date: burnedEnd,
+        }),
+      });
+      if (!r.ok) {
+        const errJson = await r.json().catch(() => ({}));
+        throw new Error(errJson.detail ?? r.statusText);
+      }
+      const data = await r.json();
+      setBurned(data);
+      toast({
+        title: "Área queimada mapeada!",
+        description: `${data.areaKm2.toLocaleString("pt-PT")} km² identificados pelo MODIS MCD64A1.`,
+      });
+    } catch (e) {
+      const aborted = e instanceof DOMException && e.name === "AbortError";
+      const msg = aborted ? "A análise de área queimada demorou demasiado. Reduza a área ou o período." : String(e instanceof Error ? e.message : e);
+      setError(msg);
+      toast({ variant: "destructive", title: "Erro na área queimada", description: msg });
+    } finally { clearTimeout(timer); setLoading(false); }
+  }, [aoi, province, district, burnedStart, burnedEnd, isGeeConnected]);
+
   const erosionTotal = erosion ? erosion.classes.reduce((s, c) => s + c.areaKm2, 0) || 1 : 1;
 
   // ── PDF Export ──────────────────────────────────────────────────────────────
   async function exportGeoperigosPdf() {
     if (!mapContainerRef.current) return;
-    const toolTitle = tool === "flood" ? "Cheias SAR" : tool === "erosion" ? "Erosão RUSLE" : "Queimadas FIRMS";
+    const toolTitle = tool === "flood" ? "Cheias SAR" : tool === "erosion" ? "Erosão RUSLE" : tool === "wildfire" ? "Queimadas FIRMS" : tool === "drought" ? "Seca SPI × NDVI" : "Área Queimada MODIS";
     const ctx = createPDFContext(
       `${toolTitle} — ${province ?? "Moçambique"}`,
     );
-    drawCover(ctx, `Relatório de Geoperigos — ${tool === "flood" ? "Cheias (Sentinel-1)" : tool === "erosion" ? "Erosão (RUSLE)" : "Focos de Calor (NASA FIRMS)"}`, [
+    drawCover(ctx, `Relatório de Geoperigos — ${toolTitle}`, [
       `Ferramenta: ${toolTitle}`,
       `${province ? `Província: ${province}` : "Área: Moçambique"}`,
       ctx.date,
     ]);
 
     // Map — fetch from backend Cartopy API with analysis tile overlay
-    const analysisTile = tool === "flood" ? flood?.floodTile : tool === "erosion" ? erosion?.tile : wildfire?.tile;
+    const analysisTile = tool === "flood" ? flood?.floodTile : tool === "erosion" ? erosion?.tile : tool === "wildfire" ? wildfire?.tile : tool === "drought" ? drought?.spiTileUrl : burned?.tile;
     const legendItems = tool === "erosion" ? erosion?.classes?.map(c => ({ label: c.label, color: c.color })) : undefined;
     try {
       const imgData = await fetchMapImage(
@@ -342,6 +470,26 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
       ctx.y += 8;
     }
 
+    if (tool === "drought" && drought) {
+      sectionTitle(ctx, "Seca Meteorológica e Vegetação");
+      drawStatCards(ctx, [
+        { label: "Área SPI < -1", value: drought.stats.droughtPct != null ? `${drought.stats.droughtPct}%` : "—", color: [194, 65, 12] },
+        { label: "SPI médio", value: drought.stats.meanSpi != null ? drought.stats.meanSpi.toFixed(2) : "—", color: [234, 88, 12] },
+        { label: "NDVI médio", value: drought.stats.meanNdvi != null ? drought.stats.meanNdvi.toFixed(3) : "—", color: [101, 163, 13] },
+        { label: "Fonte", value: "CHIRPS + MODIS", color: [100, 116, 139] },
+      ]);
+    }
+
+    if (tool === "burned" && burned) {
+      sectionTitle(ctx, "Área Queimada Observada");
+      drawStatCards(ctx, [
+        { label: "Área Queimada", value: `${burned.areaKm2.toLocaleString("pt-PT")} km²`, color: [153, 27, 27] },
+        { label: "% da AOI", value: `${burned.areaPct.toLocaleString("pt-PT")}%`, color: [220, 38, 38] },
+        { label: "Resolução", value: "500 m", color: [234, 88, 12] },
+        { label: "Fonte", value: "MODIS MCD64A1", color: [100, 116, 139] },
+      ]);
+    }
+
     addPDFFooter(ctx);
     ctx.doc.save(`GeoMoz_Geoperigos_${tool}_${province ?? "MZ"}_${new Date().toISOString().slice(0, 10)}.pdf`);
   }
@@ -386,7 +534,7 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
                   {isGeeConnected ? "GEE Ativo" : "Conectar GEE"}
                 </button>
               </div>
-              <p className="text-[10px] text-slate-400">Cheias SAR · Erosão RUSLE · GEE</p>
+              <p className="text-[10px] text-slate-400">Cheias · Erosão · Fogo · Seca · Área queimada</p>
             </div>
           </div>
           <button
@@ -401,7 +549,13 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
         {/* Tool toggle */}
         <div className="p-3 border-b border-slate-100 dark:border-slate-800">
           <div className="grid grid-cols-3 gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
-            {([["flood", "Cheias", Waves], ["erosion", "Erosão", Mountain], ["wildfire", "Queimadas", Flame]] as const).map(([t, label, Icon]) => (
+            {([
+              ["flood", "Cheias", Waves],
+              ["erosion", "Erosão", Mountain],
+              ["wildfire", "Focos", Flame],
+              ["drought", "Seca", Droplets],
+              ["burned", "Área queimada", Layers],
+            ] as const).map(([t, label, Icon]) => (
               <button key={t} onClick={() => { setTool(t); setError(null); }}
                 className={`flex items-center justify-center gap-1 text-[11px] font-medium py-2 rounded-lg transition-all ${tool === t ? "bg-white dark:bg-slate-700 text-rose-700 dark:text-rose-400 shadow-sm font-semibold" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}>
                 <Icon size={12} /> {label}
@@ -417,7 +571,7 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
               <span>Google Earth Engine Necessário</span>
             </div>
             <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-relaxed">
-              O radar Sentinel-1 e os rasters RUSLE requerem autenticação GEE ativa para processamento.
+              Sentinel-1, CHIRPS, MODIS e os rasters RUSLE são processados pelo Google Earth Engine e requerem autenticação GEE ativa.
             </p>
             <button
               type="button"
@@ -626,6 +780,63 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
           </div>
         )}
 
+
+        {/* Drought config */}
+        {tool === "drought" && (
+          <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/50 rounded-xl p-2.5 text-[11px] text-orange-800 dark:text-orange-300 flex items-start gap-2">
+              <Info size={12} className="mt-0.5 shrink-0 text-orange-500" />
+              <span><strong>SPI × NDVI:</strong> anomalia de precipitação CHIRPS face à climatologia e resposta da vegetação MODIS. SPI &lt; -1 indica seca meteorológica relevante.</span>
+            </div>
+            <div>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Ano analisado — <strong className="text-slate-700 dark:text-slate-200">{droughtYear}</strong></label>
+              <input type="range" min={2006} max={2025} step={1} value={droughtYear} onChange={e => setDroughtYear(+e.target.value)} className="w-full accent-orange-500" />
+              <div className="flex justify-between text-[10px] text-slate-400"><span>2006</span><span>2025</span></div>
+            </div>
+            <div>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Início da climatologia</label>
+              <select value={climStart} onChange={e => setClimStart(+e.target.value)}
+                className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200">
+                {[1991, 1995, 2000, 2001, 2005, 2010].filter(v => v <= droughtYear - 5).map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+            <button onClick={runDrought} disabled={loading}
+              className="w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors cursor-pointer">
+              {loading ? <><Loader2 size={14} className="animate-spin" /><span>A analisar seca...</span></> :
+               drought ? <><RefreshCw size={14} /><span>Recalcular Seca</span></> :
+               <><Play size={14} /><span>Mapear seca</span></>}
+            </button>
+          </div>
+        )}
+
+        {/* Historical burned-area config */}
+        {tool === "burned" && (
+          <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-xl p-2.5 text-[11px] text-red-800 dark:text-red-300 flex items-start gap-2">
+              <Info size={12} className="mt-0.5 shrink-0 text-red-500" />
+              <span><strong>MODIS MCD64A1:</strong> área efetivamente queimada a 500 m. Complementa os focos ativos FIRMS com a cicatriz histórica do fogo.</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> Início</label>
+                <input type="date" value={burnedStart} onChange={e => setBurnedStart(e.target.value)}
+                  className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200" />
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> Fim</label>
+                <input type="date" value={burnedEnd} onChange={e => setBurnedEnd(e.target.value)}
+                  className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200" />
+              </div>
+            </div>
+            <button onClick={runBurnedArea} disabled={loading}
+              className="w-full flex items-center justify-center gap-2 bg-red-700 hover:bg-red-800 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors cursor-pointer">
+              {loading ? <><Loader2 size={14} className="animate-spin" /><span>A mapear área queimada...</span></> :
+               burned ? <><RefreshCw size={14} /><span>Recalcular Área Queimada</span></> :
+               <><Flame size={14} /><span>Mapear área queimada</span></>}
+            </button>
+          </div>
+        )}
+
         {error && (
           <div className="m-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl p-2.5 text-[11px] text-red-700 dark:text-red-300">{error}</div>
         )}
@@ -683,6 +894,12 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
           {tool === "wildfire" && wildfire && (
             <TileLayer crossOrigin="anonymous" key={`fire-${wildfire.tile}`} url={wildfire.tile} opacity={0.88} maxZoom={18} />
           )}
+          {tool === "drought" && drought && (
+            <TileLayer crossOrigin="anonymous" key={`drought-${drought.spiTileUrl}`} url={drought.spiTileUrl} opacity={0.78} maxZoom={18} />
+          )}
+          {tool === "burned" && burned && (
+            <TileLayer crossOrigin="anonymous" key={`burned-${burned.tile}`} url={burned.tile} opacity={0.82} maxZoom={18} />
+          )}
           {tool === "wildfire" && wildfire?.hotspotPoints?.map((pt, idx) => (
             <CircleMarker
               key={`fire-pt-${idx}`}
@@ -734,7 +951,11 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
                   ? "A processar radar Sentinel-1… (pode levar ~1 min)"
                   : tool === "erosion"
                   ? "A calcular RUSLE… (pode levar ~1–2 min)"
-                  : "A consultar dados NASA FIRMS…"}
+                  : tool === "wildfire"
+                  ? "A consultar dados NASA FIRMS…"
+                  : tool === "drought"
+                  ? "A calcular SPI × NDVI com CHIRPS e MODIS…"
+                  : "A mapear área queimada MODIS MCD64A1…"}
               </span>
             </div>
           </div>
@@ -784,8 +1005,23 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
         )}
       </div>
 
+
+        {tool === "drought" && drought && (
+          <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-orange-100 dark:border-orange-900/40 p-3 text-[11px] min-w-[165px]">
+            <div className="font-semibold text-orange-800 dark:text-orange-300 mb-2 flex items-center gap-1"><Droplets size={11} /> SPI — Seca</div>
+            <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-4 h-3 rounded bg-[#7f0000]" /><span className="text-slate-600 dark:text-slate-300">Seca extrema</span></div>
+            <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-4 h-3 rounded bg-[#d73027]" /><span className="text-slate-600 dark:text-slate-300">Seca moderada</span></div>
+            <div className="flex items-center gap-1.5"><span className="inline-block w-4 h-3 rounded bg-[#2166ac]" /><span className="text-slate-600 dark:text-slate-300">Condição húmida</span></div>
+          </div>
+        )}
+        {tool === "burned" && burned && (
+          <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-red-100 dark:border-red-900/40 p-3 text-[11px] min-w-[150px]">
+            <div className="font-semibold text-red-800 dark:text-red-300 mb-2 flex items-center gap-1"><Layers size={11} /> Área Queimada</div>
+            <div className="flex items-center gap-1.5"><span className="inline-block w-4 h-3 rounded bg-[#9d0208]" /><span className="text-slate-600 dark:text-slate-300">Cicatriz de fogo MODIS</span></div>
+          </div>
+        )}
       {/* ── Right panel ─────────────────────────────────────────── */}
-      {((tool === "flood" && flood) || (tool === "erosion" && erosion) || (tool === "wildfire" && wildfire)) && (
+      {((tool === "flood" && flood) || (tool === "erosion" && erosion) || (tool === "wildfire" && wildfire) || (tool === "drought" && drought) || (tool === "burned" && burned)) && (
         <div className="w-80 flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0">
           {tool === "flood" && flood && (
             <div className="p-4 space-y-4">
@@ -886,6 +1122,44 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
                 <FileDown size={13} /> Exportar Relatório PDF
               </button>
             </div>
+          {tool === "drought" && drought && (
+            <div className="p-4 space-y-4">
+              <div className="flex items-center gap-2"><Droplets size={15} className="text-orange-600 dark:text-orange-400" /><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Seca — SPI × NDVI</span></div>
+              <div className="bg-gradient-to-r from-orange-700 to-amber-500 rounded-2xl p-4 text-white">
+                <div className="text-xs opacity-75 mb-1">Área com SPI &lt; -1</div>
+                <div className="text-3xl font-bold">{drought.stats.droughtPct != null ? drought.stats.droughtPct.toLocaleString("pt-PT") : "—"}%</div>
+                <div className="text-xs opacity-75">{drought.stats.droughtKm2 != null ? `${drought.stats.droughtKm2.toLocaleString("pt-PT")} km²` : "área de seca meteorológica"}</div>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-2 text-[12px] text-slate-600 dark:text-slate-300">
+                <div className="flex justify-between"><span>Ano</span><span className="font-medium">{drought.year}</span></div>
+                <div className="flex justify-between"><span>Climatologia</span><span className="font-medium">{drought.climStart}–{drought.year - 1}</span></div>
+                <div className="flex justify-between"><span>SPI médio</span><span className="font-medium">{drought.stats.meanSpi != null ? drought.stats.meanSpi.toFixed(2) : "—"}</span></div>
+                <div className="flex justify-between"><span>NDVI médio</span><span className="font-medium">{drought.stats.meanNdvi != null ? drought.stats.meanNdvi.toFixed(3) : "—"}</span></div>
+                <div className="flex justify-between"><span>Correlação SPI/NDVI</span><span className="font-medium">{drought.stats.pearsonR != null ? drought.stats.pearsonR.toFixed(2) : "—"}</span></div>
+              </div>
+              <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/50 rounded-xl p-3 text-[11px] text-orange-800 dark:text-orange-300 flex items-start gap-2">
+                <Info size={12} className="mt-0.5 shrink-0 text-orange-500" /> CHIRPS mede precipitação em grelha; MODIS NDVI indica resposta da vegetação. O produto é adequado para monitorização regional, não substitui observações agroclimáticas locais.
+              </div>
+            </div>
+          )}
+          {tool === "burned" && burned && (
+            <div className="p-4 space-y-4">
+              <div className="flex items-center gap-2"><Layers size={15} className="text-red-700 dark:text-red-400" /><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Área Queimada — MODIS</span></div>
+              <div className="bg-gradient-to-r from-red-800 to-orange-600 rounded-2xl p-4 text-white">
+                <div className="text-xs opacity-75 mb-1">Área queimada no período</div>
+                <div className="text-3xl font-bold">{burned.areaKm2.toLocaleString("pt-PT")}</div>
+                <div className="text-xs opacity-75">km² · {burned.areaPct.toLocaleString("pt-PT")}% da AOI</div>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-2 text-[12px] text-slate-600 dark:text-slate-300">
+                <div className="flex justify-between"><span>Período</span><span className="font-medium">{burned.startDate} → {burned.endDate}</span></div>
+                <div className="flex justify-between"><span>Resolução</span><span className="font-medium">500 m</span></div>
+                <div className="flex justify-between"><span>Produto</span><span className="font-medium">MCD64A1 v6.1</span></div>
+              </div>
+              <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-xl p-3 text-[11px] text-red-800 dark:text-red-300 flex items-start gap-2">
+                <Info size={12} className="mt-0.5 shrink-0 text-red-500" /> Este produto identifica cicatrizes de fogo observadas pelo MODIS e é complementar aos focos ativos FIRMS. Pequenas queimadas podem ficar abaixo da resolução de 500 m.
+              </div>
+            </div>
+          )}
           )}
         </div>
       )}
