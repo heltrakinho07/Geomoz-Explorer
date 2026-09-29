@@ -3342,6 +3342,97 @@ def compute_wildfire_firms(
     }
 
 
+
+def compute_burned_area(
+    region_geojson: Optional[dict],
+    start_date: str,
+    end_date: str,
+) -> dict:
+    """Burned-area footprint from MODIS MCD64A1 BurnDate (500 m).
+
+    MCD64A1 is a monthly product. BurnDate stores the Julian day of burn for
+    each pixel, so we reconstruct the actual burn date and keep only pixels
+    falling inside the requested interval.
+    """
+    import ee
+
+    region = _to_ee_region(region_geojson)
+    start = ee.Date(start_date)
+    end_exclusive = ee.Date(end_date).advance(1, "day")
+    max_px = int(1e10)
+
+    # Expand the collection window so partial start/end months are included;
+    # the pixel-level BurnDate mask below enforces the exact requested dates.
+    collection = (
+        ee.ImageCollection("MODIS/061/MCD64A1")
+        .filterDate(start.advance(-32, "day"), end_exclusive.advance(32, "day"))
+        .select("BurnDate")
+    )
+    image_count = int(collection.size().getInfo() or 0)
+    if image_count == 0:
+        raise RuntimeError("Sem dados MODIS MCD64A1 para o período selecionado.")
+
+    start_ms = start.millis()
+    end_ms = end_exclusive.millis()
+    day_ms = 24 * 60 * 60 * 1000
+
+    def _burned_in_window(img):
+        burn_day = img.select("BurnDate")
+        year = ee.Date(img.get("system:time_start")).get("year")
+        year_start_ms = ee.Date.fromYMD(year, 1, 1).millis()
+        burn_ms = (
+            ee.Image.constant(year_start_ms)
+            .add(burn_day.subtract(1).multiply(day_ms))
+        )
+        valid = (
+            burn_day.gt(0)
+            .And(burn_ms.gte(start_ms))
+            .And(burn_ms.lt(end_ms))
+        )
+        return valid.selfMask().rename("burned")
+
+    burned = collection.map(_burned_in_window).max().clip(region).rename("burned")
+    palette = ["ffd166", "f8961e", "e85d04", "9d0208"]
+    tile = burned.visualize(
+        min=0,
+        max=1,
+        palette=[palette[-1]],
+        opacity=0.82,
+    ).getMapId()["tile_fetcher"].url_format
+
+    scale = max(_compute_dynamic_scale(region), 500)
+    stats = (
+        ee.Image.pixelArea()
+        .updateMask(burned)
+        .rename("burnedArea")
+        .addBands(ee.Image.pixelArea().rename("totalArea"))
+        .reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=region,
+            scale=scale,
+            bestEffort=True,
+            maxPixels=max_px,
+        )
+        .getInfo()
+        or {}
+    )
+
+    burned_km2 = float(stats.get("burnedArea") or 0) / 1e6
+    total_km2 = float(stats.get("totalArea") or 0) / 1e6
+    burned_pct = (burned_km2 / total_km2 * 100) if total_km2 else 0.0
+
+    return {
+        "tile": tile,
+        "areaKm2": round(burned_km2, 2),
+        "areaPct": round(burned_pct, 2),
+        "startDate": start_date,
+        "endDate": end_date,
+        "imageCount": image_count,
+        "palette": [f"#{color}" for color in palette],
+        "source": "MODIS/061/MCD64A1 · NASA LP DAAC · 500 m",
+    }
+
+
 # ── Potencial de Água Subterrânea (AHP) ──
 
 def compute_groundwater_ahp(region_geojson: Optional[dict], year: int = 2023) -> dict:
