@@ -2559,105 +2559,177 @@ def compute_basin_report(basin_geometry: dict) -> dict:
     max_px = int(1e9)
 
     dem_proj = ee.ImageCollection("COPERNICUS/DEM/GLO30").select("DEM").first().projection()
-    dem   = _build_dem(region).rename("elev")
+    dem = _build_dem(region).rename("elev")
     slope = ee.Terrain.slope(dem.setDefaultProjection(dem_proj)).rename("slope")
     relief = dem.addBands(slope)
-    reducer_ms = (ee.Reducer.min().combine(ee.Reducer.max(), sharedInputs=True)
-                  .combine(ee.Reducer.mean(), sharedInputs=True))
-    rinfo = relief.unmask(0).reduceRegion(
-        reducer=reducer_ms, geometry=region, scale=90, bestEffort=True, maxPixels=max_px,
-    ).getInfo()
-
-    area_km2 = region.area(maxError=100).getInfo() / 1e6
-    perim_km = region.perimeter(maxError=100).getInfo() / 1e3
-    area_km2 = max(area_km2, 1e-6)
+    reducer_ms = (
+        ee.Reducer.min()
+        .combine(ee.Reducer.max(), sharedInputs=True)
+        .combine(ee.Reducer.mean(), sharedInputs=True)
+    )
 
     acc = ee.Image("WWF/HydroSHEDS/15ACC").select("b1")
-    stream_cells = (
-        acc.gte(200).selfMask().clip(region)
-        .reduceRegion(reducer=ee.Reducer.count(), geometry=region, scale=500,
-                      bestEffort=True, maxPixels=max_px).getInfo().get("b1") or 0
-    )
-    drainage_density = round((float(stream_cells) * 0.5) / area_km2, 3)
-    compactness = round(0.2821 * perim_km / (area_km2 ** 0.5), 3)
-    basin_len = max(perim_km / 2.0 - (area_km2 ** 0.5), area_km2 ** 0.5)
-    form_factor = round(area_km2 / (basin_len ** 2), 3)
 
     # Land cover
     lc = ee.ImageCollection("ESA/WorldCover/v200").first().select("Map").clip(region)
-    codes  = [c   for c, _, _ in ESA_WORLDCOVER]
-    colors = [col for _, _, col in ESA_WORLDCOVER]
+    codes = [code for code, _, _ in ESA_WORLDCOVER]
+    colors = [color for _, _, color in ESA_WORLDCOVER]
     lc_vis = lc.remap(codes, list(range(1, len(codes) + 1))).visualize(
-        min=1, max=len(codes), palette=colors)
+        min=1,
+        max=len(codes),
+        palette=colors,
+    )
     landcover_tile = lc_vis.getMapId()["tile_fetcher"].url_format
 
-    per_code: dict = {}
-    try:
-        groups = (ee.Image.pixelArea().addBands(lc).reduceRegion(
-            reducer=ee.Reducer.sum().group(groupField=1, groupName="code"),
-            geometry=region, scale=_compute_dynamic_scale(region), bestEffort=True, maxPixels=max_px,
-        ).getInfo() or {}).get("groups", []) or []
-        for g in groups:
-            per_code[int(g["code"])] = float(g.get("sum", 0)) / 1e6
-    except Exception as exc:
-        logger.warning("Failed to compute landcover areas: %s", exc)
-        per_code = {}
-    lc_total = sum(per_code.values()) or 1.0
-    landcover = []
-    for code, label, color in ESA_WORLDCOVER:
-        a = per_code.get(code, 0.0)
-        if a > 0:
-            landcover.append({"code": code, "label": label, "color": f"#{color}",
-                              "areaKm2": round(a, 2), "pct": round(a / lc_total * 100, 2)})
-    landcover.sort(key=lambda c: c["areaKm2"], reverse=True)
+    # Dynamic land-cover scale still requires one area lookup, but all remaining
+    # report statistics are evaluated together below instead of serial getInfo().
+    landcover_scale = _compute_dynamic_scale(region)
+    landcover_reduction = ee.Image.pixelArea().addBands(lc).reduceRegion(
+        reducer=ee.Reducer.sum().group(groupField=1, groupName="code"),
+        geometry=region,
+        scale=landcover_scale,
+        bestEffort=True,
+        maxPixels=max_px,
+    )
 
     # Monthly precipitation (CHIRPS 2019–2023)
     years = 5
-    chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate("2019-01-01", "2024-01-01")
+    chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate(
+        "2019-01-01",
+        "2024-01-01",
+    )
 
     def _monthly(m):
         m = ee.Number(m)
-        return (chirps.filter(ee.Filter.calendarRange(m, m, "month")).sum()
-                .divide(years).rename(ee.String("mon_").cat(m.int().format("%02d"))))
+        return (
+            chirps.filter(ee.Filter.calendarRange(m, m, "month"))
+            .sum()
+            .divide(years)
+            .rename(ee.String("mon_").cat(m.int().format("%02d")))
+        )
 
     monthly_img = ee.ImageCollection(ee.List.sequence(1, 12).map(_monthly)).toBands()
-    mp = monthly_img.reduceRegion(reducer=ee.Reducer.mean(), geometry=region,
-                                  scale=5000, bestEffort=True, maxPixels=max_px).getInfo() or {}
-    precip_monthly = []
-    for mm in range(1, 13):
-        key = next((k for k in mp if k.endswith(f"mon_{mm:02d}")), None)
-        precip_monthly.append(round(float(mp.get(key) or 0), 1))
-    precip_annual = round(sum(precip_monthly), 1)
+    monthly_reduction = monthly_img.reduceRegion(
+        reducer=ee.Reducer.mean(),
+        geometry=region,
+        scale=5000,
+        bestEffort=True,
+        maxPixels=max_px,
+    )
 
     # SCS Curve Number
     cn = lc.remap(list(ESA_CN.keys()), list(ESA_CN.values())).rename("cn")
-    cn_tile = cn.visualize(min=40, max=100,
-                           palette=["1a9850", "fee08b", "d73027"]).getMapId()["tile_fetcher"].url_format
-    cn_mean = cn.reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=100,
-                              bestEffort=True, maxPixels=max_px).getInfo().get("cn")
+    cn_tile = cn.visualize(
+        min=40,
+        max=100,
+        palette=["1a9850", "fee08b", "d73027"],
+    ).getMapId()["tile_fetcher"].url_format
+    cn_reduction = cn.reduceRegion(
+        reducer=ee.Reducer.mean(),
+        geometry=region,
+        scale=100,
+        bestEffort=True,
+        maxPixels=max_px,
+    )
+
+    summary = ee.Dictionary({
+        "relief": relief.unmask(0).reduceRegion(
+            reducer=reducer_ms,
+            geometry=region,
+            scale=90,
+            bestEffort=True,
+            maxPixels=max_px,
+        ),
+        "area_m2": region.area(maxError=100),
+        "perimeter_m": region.perimeter(maxError=100),
+        "stream_cells": (
+            acc.gte(200)
+            .selfMask()
+            .clip(region)
+            .reduceRegion(
+                reducer=ee.Reducer.count(),
+                geometry=region,
+                scale=500,
+                bestEffort=True,
+                maxPixels=max_px,
+            )
+        ),
+        "landcover": landcover_reduction,
+        "precip": monthly_reduction,
+        "cn": cn_reduction,
+    }).getInfo() or {}
+
+    rinfo = summary.get("relief") or {}
+    area_km2 = max(float(summary.get("area_m2") or 0) / 1e6, 1e-6)
+    perim_km = float(summary.get("perimeter_m") or 0) / 1e3
+    stream_cells = float((summary.get("stream_cells") or {}).get("b1") or 0)
+
+    drainage_density = round((stream_cells * 0.5) / area_km2, 3)
+    compactness = round(0.2821 * perim_km / (area_km2 ** 0.5), 3)
+    basin_len = max(
+        perim_km / 2.0 - (area_km2 ** 0.5),
+        area_km2 ** 0.5,
+    )
+    form_factor = round(area_km2 / (basin_len ** 2), 3)
+
+    per_code: dict = {}
+    try:
+        groups = (summary.get("landcover") or {}).get("groups", []) or []
+        for group in groups:
+            per_code[int(group["code"])] = float(group.get("sum", 0)) / 1e6
+    except Exception as exc:
+        logger.warning("Failed to compute landcover areas: %s", exc)
+        per_code = {}
+
+    lc_total = sum(per_code.values()) or 1.0
+    landcover = []
+    for code, label, color in ESA_WORLDCOVER:
+        area = per_code.get(code, 0.0)
+        if area > 0:
+            landcover.append({
+                "code": code,
+                "label": label,
+                "color": f"#{color}",
+                "areaKm2": round(area, 2),
+                "pct": round(area / lc_total * 100, 2),
+            })
+    landcover.sort(key=lambda item: item["areaKm2"], reverse=True)
+
+    mp = summary.get("precip") or {}
+    precip_monthly = []
+    for month in range(1, 13):
+        key = next((k for k in mp if k.endswith(f"mon_{month:02d}")), None)
+        precip_monthly.append(round(float(mp.get(key) or 0), 1))
+    precip_annual = round(sum(precip_monthly), 1)
+
+    cn_mean = (summary.get("cn") or {}).get("cn")
 
     return {
         "morphometry": {
-            "areaKm2":          round(area_km2, 2),
-            "perimeterKm":      round(perim_km, 2),
-            "elevMinM":         round(float(rinfo.get("elev_min")  or 0), 1),
-            "elevMeanM":        round(float(rinfo.get("elev_mean") or 0), 1),
-            "elevMaxM":         round(float(rinfo.get("elev_max")  or 0), 1),
-            "reliefM":          round(float(rinfo.get("elev_max") or 0) - float(rinfo.get("elev_min") or 0), 1),
-            "slopeMeanDeg":     round(float(rinfo.get("slope_mean") or 0), 2),
-            "slopeMaxDeg":      round(float(rinfo.get("slope_max")  or 0), 2),
-            "drainageDensity":  drainage_density,
-            "compactness":      compactness,
-            "formFactor":       form_factor,
+            "areaKm2": round(area_km2, 2),
+            "perimeterKm": round(perim_km, 2),
+            "elevMinM": round(float(rinfo.get("elev_min") or 0), 1),
+            "elevMeanM": round(float(rinfo.get("elev_mean") or 0), 1),
+            "elevMaxM": round(float(rinfo.get("elev_max") or 0), 1),
+            "reliefM": round(
+                float(rinfo.get("elev_max") or 0)
+                - float(rinfo.get("elev_min") or 0),
+                1,
+            ),
+            "slopeMeanDeg": round(float(rinfo.get("slope_mean") or 0), 2),
+            "slopeMaxDeg": round(float(rinfo.get("slope_max") or 0), 2),
+            "drainageDensity": drainage_density,
+            "compactness": compactness,
+            "formFactor": form_factor,
         },
-        "landcover":      landcover,
-        "landcoverTile":  landcover_tile,
-        "precipMonthly":  precip_monthly,
+        "landcover": landcover,
+        "landcoverTile": landcover_tile,
+        "precipMonthly": precip_monthly,
         "precipAnnualMm": precip_annual,
         "runoff": {
-            "cnMean":   round(float(cn_mean), 1) if cn_mean is not None else None,
-            "cnTile":   cn_tile,
-            "note":     "CN alto (vermelho) = maior escoamento / menor infiltração.",
+            "cnMean": round(float(cn_mean), 1) if cn_mean is not None else None,
+            "cnTile": cn_tile,
+            "note": "CN alto (vermelho) = maior escoamento / menor infiltração.",
         },
     }
 
