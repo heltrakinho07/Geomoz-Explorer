@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   GLOBAL_AOI,
   MOZAMBIQUE_MAP_BOUNDS,
+  WORLD_MAP_BOUNDS,
   aoiToMapBounds,
   customAOI,
   type AreaOfInterest,
@@ -53,8 +54,8 @@ describe("aoiToMapBounds", () => {
     expect(bounds.east).toBeGreaterThan(33);
   });
 
-  it("falls back to Mozambique for a global AOI without bounds", () => {
-    expect(aoiToMapBounds(GLOBAL_AOI)).toEqual(MOZAMBIQUE_MAP_BOUNDS);
+  it("uses world bounds for the global AOI", () => {
+    expect(aoiToMapBounds(GLOBAL_AOI)).toEqual(WORLD_MAP_BOUNDS);
   });
 
   it("rejects invalid bounds and uses fallback", () => {
