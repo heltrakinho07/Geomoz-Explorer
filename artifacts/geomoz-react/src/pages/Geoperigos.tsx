@@ -254,11 +254,11 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
     if (!mapContainerRef.current) return;
     const toolTitle = tool === "flood" ? "Cheias SAR" : tool === "erosion" ? "Erosão RUSLE" : "Queimadas FIRMS";
     const ctx = createPDFContext(
-      `${toolTitle} — ${province ?? "Moçambique"}`,
+      `${toolTitle} — ${aoi.label}`,
     );
     drawCover(ctx, `Relatório de Geoperigos — ${tool === "flood" ? "Cheias (Sentinel-1)" : tool === "erosion" ? "Erosão (RUSLE)" : "Focos de Calor (NASA FIRMS)"}`, [
       `Ferramenta: ${toolTitle}`,
-      `${province ? `Província: ${province}` : "Área: Moçambique"}`,
+      `Área: ${aoi.label}`,
       ctx.date,
     ]);
 
@@ -270,7 +270,7 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
         aoiToMapBounds(aoi),
         { tileUrl: analysisTile,
           legendItems,
-          title: `${toolTitle} — ${province ?? "Moçambique"}`,
+          title: `${toolTitle} — ${aoi.label}`,
           dpi: 200 },
       );
       addMapImage(ctx, imgData, 100);
