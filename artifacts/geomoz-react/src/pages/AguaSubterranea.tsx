@@ -77,11 +77,11 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
   async function exportGroundwaterPdf() {
     if (!mapContainerRef.current) return;
     const ctx = createPDFContext(
-      `Água Subterrânea — ${province ?? "Moçambique"}`,
+      `Água Subterrânea — ${aoi.label}`,
     );
     drawCover(ctx, "Relatório de Potencial Hídrico Subterrâneo (AHP)", [
       `Ano: ${year}`,
-      `${province ? `Província: ${province}` : "Área: Moçambique"}`,
+      `Área: ${aoi.label}`,
       ctx.date,
     ]);
 
@@ -92,7 +92,7 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
         aoiToMapBounds(aoi),
         { tileUrl: result?.tile,
           legendItems,
-          title: `Potencial Hídrico — ${province ?? "Moçambique"}`, dpi: 200 },
+          title: `Potencial Hídrico — ${aoi.label}`, dpi: 200 },
       );
       addMapImage(ctx, imgData, 100);
     } catch (e) {
