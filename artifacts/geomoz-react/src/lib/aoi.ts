@@ -270,6 +270,13 @@ export const MOZAMBIQUE_MAP_BOUNDS: MapBounds = {
   east: 41.0,
 };
 
+export const WORLD_MAP_BOUNDS: MapBounds = {
+  south: -80,
+  north: 80,
+  west: -180,
+  east: 180,
+};
+
 /**
  * Resolve a stable report/export extent from the current AOI.
  *
@@ -281,6 +288,10 @@ export function aoiToMapBounds(
   aoi: AreaOfInterest,
   fallback: MapBounds = MOZAMBIQUE_MAP_BOUNDS,
 ): MapBounds {
+  if (aoi.source === "global") {
+    return { ...WORLD_MAP_BOUNDS };
+  }
+
   const bounds = aoi.bounds ?? (
     aoi.geometry ? computeGeoJSONBounds(aoi.geometry) : null
   );
