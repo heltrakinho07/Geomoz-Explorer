@@ -50,7 +50,7 @@ import ZoneSelect from "@/components/ZoneSelect";
 import DraggablePanel from "@/components/DraggablePanel";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
-import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
+import { aoiToAPI, aoiToMapBounds, customAOI, GLOBAL_AOI } from "@/lib/aoi";
 import RasterVisPanel, { DEFAULT_VIS_PARAMS } from "@/components/RasterVisPanel";
 import type { RasterVisParams } from "@/components/RasterVisPanel";
 import StoryMapModal, { type DynamicAnalysisContext } from "@/components/StoryMapModal";
@@ -2991,10 +2991,10 @@ export default function GeoAnalises({
   // ── PDF Export (universal for all analysis types) ────────────────
   async function exportGeoAnalisesPdf() {
     if (!mapContainerRef.current) return;
-    const ctx = createPDFContext(`${activeTab} — ${province ?? "Moçambique"}`);
+    const ctx = createPDFContext(`${activeTab} — ${aoi.label}`);
     drawCover(ctx, `Relatório de Análise — ${activeTab}`, [
       `Análise: ${activeTab}`,
-      `${province ? `Província: ${province}` : "Área: Moçambique"}`,
+      `Área: ${aoi.label}`,
       ctx.date,
     ]);
     try {
@@ -3018,10 +3018,10 @@ export default function GeoAnalises({
               }))
             : undefined;
       const imgData = await fetchMapImage(
-        { south: -26.9, north: -10.4, west: 30.2, east: 41 },
+        aoiToMapBounds(aoi),
         { tileUrl: analysisTile,
           legendItems: analysisLegendItems,
-          title: `Análise ${activeTab} — ${province ?? "Moçambique"}`, dpi: 200 },
+          title: `Análise ${activeTab} — ${aoi.label}`, dpi: 200 },
       );
       addMapImage(ctx, imgData, 100);
     } catch (e) {

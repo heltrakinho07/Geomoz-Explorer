@@ -19,7 +19,7 @@ import BasemapSwitcher from "@/components/BasemapSwitcher";
 import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
-import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
+import { aoiToAPI, aoiToMapBounds, customAOI, GLOBAL_AOI } from "@/lib/aoi";
 import {
   createPDFContext, drawCover, sectionTitle, addPDFFooter, MARGIN, CONTENT_W,
   drawStatCards, drawTable, addMapImage, fetchMapImage,
@@ -69,7 +69,7 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
       setError(msg);
       toast({ variant: "destructive", title: "Erro no potencial hídrico", description: msg });
     } finally { clearTimeout(timer); setLoading(false); }
-  }, [province, district, year]);
+  }, [aoi, year]);
 
   const total = result ? result.classes.reduce((s, c) => s + c.areaKm2, 0) || 1 : 1;
 
@@ -77,11 +77,11 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
   async function exportGroundwaterPdf() {
     if (!mapContainerRef.current) return;
     const ctx = createPDFContext(
-      `Água Subterrânea — ${province ?? "Moçambique"}`,
+      `Água Subterrânea — ${aoi.label}`,
     );
     drawCover(ctx, "Relatório de Potencial Hídrico Subterrâneo (AHP)", [
       `Ano: ${year}`,
-      `${province ? `Província: ${province}` : "Área: Moçambique"}`,
+      `Área: ${aoi.label}`,
       ctx.date,
     ]);
 
@@ -89,10 +89,10 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
     try {
       const legendItems = result?.classes?.map(c => ({ label: c.label, color: c.color }));
       const imgData = await fetchMapImage(
-        { south: -26.9, north: -10.4, west: 30.2, east: 41 },
+        aoiToMapBounds(aoi),
         { tileUrl: result?.tile,
           legendItems,
-          title: `Potencial Hídrico — ${province ?? "Moçambique"}`, dpi: 200 },
+          title: `Potencial Hídrico — ${aoi.label}`, dpi: 200 },
       );
       addMapImage(ctx, imgData, 100);
     } catch (e) {

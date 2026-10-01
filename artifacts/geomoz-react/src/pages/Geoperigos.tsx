@@ -23,7 +23,7 @@ import BasemapSwitcher from "@/components/BasemapSwitcher";
 import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
-import { aoiToAPI, customAOI, GLOBAL_AOI, mozambiqueAOI } from "@/lib/aoi";
+import { aoiToAPI, aoiToMapBounds, customAOI, GLOBAL_AOI, mozambiqueAOI } from "@/lib/aoi";
 import { useGeeAuth } from "@/hooks/useGeeAuth";
 import GeeCredentialsDialog from "@/components/GeeCredentialsDialog";
 import {
@@ -254,11 +254,11 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
     if (!mapContainerRef.current) return;
     const toolTitle = tool === "flood" ? "Cheias SAR" : tool === "erosion" ? "Erosão RUSLE" : "Queimadas FIRMS";
     const ctx = createPDFContext(
-      `${toolTitle} — ${province ?? "Moçambique"}`,
+      `${toolTitle} — ${aoi.label}`,
     );
     drawCover(ctx, `Relatório de Geoperigos — ${tool === "flood" ? "Cheias (Sentinel-1)" : tool === "erosion" ? "Erosão (RUSLE)" : "Focos de Calor (NASA FIRMS)"}`, [
       `Ferramenta: ${toolTitle}`,
-      `${province ? `Província: ${province}` : "Área: Moçambique"}`,
+      `Área: ${aoi.label}`,
       ctx.date,
     ]);
 
@@ -267,10 +267,10 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
     const legendItems = tool === "erosion" ? erosion?.classes?.map(c => ({ label: c.label, color: c.color })) : undefined;
     try {
       const imgData = await fetchMapImage(
-        { south: -26.9, north: -10.4, west: 30.2, east: 41 },
+        aoiToMapBounds(aoi),
         { tileUrl: analysisTile,
           legendItems,
-          title: `${toolTitle} — ${province ?? "Moçambique"}`,
+          title: `${toolTitle} — ${aoi.label}`,
           dpi: 200 },
       );
       addMapImage(ctx, imgData, 100);
