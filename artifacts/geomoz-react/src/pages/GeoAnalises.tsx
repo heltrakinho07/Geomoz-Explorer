@@ -50,7 +50,7 @@ import ZoneSelect from "@/components/ZoneSelect";
 import DraggablePanel from "@/components/DraggablePanel";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
-import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
+import { aoiToAPI, aoiToMapBounds, customAOI, GLOBAL_AOI } from "@/lib/aoi";
 import RasterVisPanel, { DEFAULT_VIS_PARAMS } from "@/components/RasterVisPanel";
 import type { RasterVisParams } from "@/components/RasterVisPanel";
 import StoryMapModal, { type DynamicAnalysisContext } from "@/components/StoryMapModal";
@@ -3018,7 +3018,7 @@ export default function GeoAnalises({
               }))
             : undefined;
       const imgData = await fetchMapImage(
-        { south: -26.9, north: -10.4, west: 30.2, east: 41 },
+        aoiToMapBounds(aoi),
         { tileUrl: analysisTile,
           legendItems: analysisLegendItems,
           title: `Análise ${activeTab} — ${province ?? "Moçambique"}`, dpi: 200 },
