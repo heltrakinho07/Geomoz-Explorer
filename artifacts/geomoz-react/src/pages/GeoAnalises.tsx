@@ -2991,10 +2991,10 @@ export default function GeoAnalises({
   // ── PDF Export (universal for all analysis types) ────────────────
   async function exportGeoAnalisesPdf() {
     if (!mapContainerRef.current) return;
-    const ctx = createPDFContext(`${activeTab} — ${province ?? "Moçambique"}`);
+    const ctx = createPDFContext(`${activeTab} — ${aoi.label}`);
     drawCover(ctx, `Relatório de Análise — ${activeTab}`, [
       `Análise: ${activeTab}`,
-      `${province ? `Província: ${province}` : "Área: Moçambique"}`,
+      `Área: ${aoi.label}`,
       ctx.date,
     ]);
     try {
@@ -3021,7 +3021,7 @@ export default function GeoAnalises({
         aoiToMapBounds(aoi),
         { tileUrl: analysisTile,
           legendItems: analysisLegendItems,
-          title: `Análise ${activeTab} — ${province ?? "Moçambique"}`, dpi: 200 },
+          title: `Análise ${activeTab} — ${aoi.label}`, dpi: 200 },
       );
       addMapImage(ctx, imgData, 100);
     } catch (e) {
