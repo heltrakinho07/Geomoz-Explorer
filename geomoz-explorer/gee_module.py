@@ -477,7 +477,8 @@ def _mask_l8_clouds(image):
     qa = image.select("QA_PIXEL")
     mask = (qa.bitwiseAnd(1 << 3).eq(0)
             .And(qa.bitwiseAnd(1 << 5).eq(0)))
-    return image.updateMask(mask)
+    optical = image.select("SR_B.*").multiply(0.0000275).add(-0.2).max(0.0001)
+    return image.updateMask(mask).addBands(optical, overwrite=True)
 
 
 def _build_l8_composite(region, start: str, end: str, cloud_pct: int):
@@ -1091,9 +1092,9 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
     # Source: script 00068_landsat_lai
     if index == "lai":
         import ee
-        nir = l8.select("SR_B5").multiply(0.0000275).add(-0.2)
-        red = l8.select("SR_B4").multiply(0.0000275).add(-0.2)
-        blue = l8.select("SR_B2").multiply(0.0000275).add(-0.2)
+        nir = l8.select("SR_B5")
+        red = l8.select("SR_B4")
+        blue = l8.select("SR_B2")
         evi = nir.subtract(red).multiply(2.5).divide(
             nir.add(red.multiply(6)).subtract(blue.multiply(7.5)).add(1)
         )
@@ -1679,16 +1680,12 @@ def compute_index_tile(
     ck = _build_cache_key_for_request(index, region_geojson, start_date, end_date, cloud_pct)
     _cache_put(ck, idx_img)
 
-    vis_img = idx_img.visualize(**cfg["vis"])
-    map_data = vis_img.getMapId()
-    tile_url = map_data["tile_fetcher"].url_format
-
     stats: dict = {}
     try:
         stats_reducer = (
             ee.Reducer.mean()
             .combine(ee.Reducer.stdDev(), "", True)
-            .combine(ee.Reducer.percentile([10, 25, 50, 75, 90]), "", True)
+            .combine(ee.Reducer.percentile([2, 10, 25, 50, 75, 90, 98]), "", True)
             .combine(ee.Reducer.minMax(), "", True)
         )
         raw_stats = idx_img.reduceRegion(
@@ -1714,6 +1711,24 @@ def compute_index_tile(
     except Exception as e:
         logger.warning(f"Failed to compute stats for {index}: {e}")
 
+    vis_params = dict(cfg["vis"])
+    # Dynamic 2%–98% linear stretch for mineral & spectral ratio indices
+    # to maximize contrast across diverse lithological backgrounds.
+    is_mineral_or_spectral = (
+        cfg.get("group") in ("minerals", "spectral")
+        and not cfg.get("class_names")
+        and index not in ("topo_class", "burn_severity")
+    )
+    p2 = stats.get("p2")
+    p98 = stats.get("p98")
+    if is_mineral_or_spectral and p2 is not None and p98 is not None and (p98 > p2 + 0.005):
+        vis_params["min"] = float(p2)
+        vis_params["max"] = float(p98)
+
+    vis_img = idx_img.visualize(**vis_params)
+    map_data = vis_img.getMapId()
+    tile_url = map_data["tile_fetcher"].url_format
+
     return {
         "tileUrl":    tile_url,
         "name":       cfg["name"],
@@ -1723,6 +1738,7 @@ def compute_index_tile(
         "sceneCount": scene_count,
         "dateRange":  f"{start_date} → {end_date}" if cfg["group"] != "terrain" else "Estático (DEM)",
         "stats":      stats,
+        "vis":        vis_params,
         "classNames": cfg.get("class_names"),
     }
 

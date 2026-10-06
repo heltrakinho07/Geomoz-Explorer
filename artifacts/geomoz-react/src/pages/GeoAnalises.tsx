@@ -242,6 +242,7 @@ interface GeeResult {
   dateRange: string;
   stats: Record<string, number>;
   province?: string | null;
+  vis?: { min?: number; max?: number; palette?: string[] };
 }
 
 interface IndexDef {
@@ -1046,7 +1047,13 @@ function GeospatialAnalyticsPanel({
           <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">{def.label}</span>
         </div>
         <p className="text-[11px] text-slate-500 dark:text-slate-400">
-          {def.group === "spectral" ? "Sentinel-2 · 10–20 m" : def.group === "landsat" ? "Landsat 8 · 30 m" : def.group === "terrain" ? "Copernicus DEM · 30 m" : "Multi-sensor"}
+          {def.group === "landsat" || def.group === "minerals" || def.id.endsWith("_l8")
+            ? "Landsat 8 · 30 m"
+            : def.group === "spectral"
+            ? "Sentinel-2 · 10–20 m"
+            : def.group === "terrain"
+            ? "Copernicus DEM · 30 m"
+            : "Multi-sensor"}
         </p>
       </div>
 
@@ -1071,7 +1078,7 @@ function GeospatialAnalyticsPanel({
             </span>
           </div>
           <div className="text-[11px] text-emerald-700 dark:text-emerald-400 space-y-0.5">
-            <div><strong>{result.sceneCount}</strong> cenas Sentinel-2 calibradas</div>
+            <div><strong>{result.sceneCount}</strong> cenas {def.group === "landsat" || def.group === "minerals" || def.id.endsWith("_l8") ? "Landsat 8" : "Sentinel-2"} calibradas</div>
             <div>Período: <strong>{result.dateRange}</strong></div>
           </div>
         </div>
@@ -3319,6 +3326,26 @@ export default function GeoAnalises({
         const data: GeeResult = await res.json();
         setGeeTile(data);
         setUseGEE(true);
+        if (data.vis?.min !== undefined && data.vis?.max !== undefined) {
+          setVisParams(prev => ({
+            ...prev,
+            min: data.vis!.min!,
+            max: data.vis!.max!,
+            palette: data.vis!.palette ?? prev.palette,
+          }));
+        } else if (data.stats?.p2 !== undefined && data.stats?.p98 !== undefined && data.stats.p98 > data.stats.p2) {
+          setVisParams(prev => ({
+            ...prev,
+            min: data.stats.p2,
+            max: data.stats.p98,
+          }));
+        } else if (data.stats?.min !== undefined && data.stats?.max !== undefined && data.stats.max > data.stats.min) {
+          setVisParams(prev => ({
+            ...prev,
+            min: data.stats.min,
+            max: data.stats.max,
+          }));
+        }
       } else if (isLineaments) {
         setLineamentsTile(null);
         const res = await apiFetch("/geomoz-api/gee/lineaments", {
@@ -4947,6 +4974,7 @@ export default function GeoAnalises({
                 onClose={() => setVisPanelOpen(false)}
                 availableBands={activeDefBands}
                 currentParams={visParams}
+                stats={geeTile.stats}
                 onApply={handleApplyVis}
                 onLiveCssChange={handleLiveCssChange}
                 onImport={handleImportVis}

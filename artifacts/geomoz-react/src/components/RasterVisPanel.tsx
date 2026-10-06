@@ -46,6 +46,8 @@ interface RasterVisPanelProps {
   availableBands: string[];
   /** Current visParams (from parent state) */
   currentParams: RasterVisParams;
+  /** Optional zonal statistics for quick adaptive stretch */
+  stats?: Record<string, number>;
   /** Called when the user clicks "Apply" — parent should re-render the GEE tile */
   onApply: (params: RasterVisParams) => void;
   /** Called in realtime for CSS-only changes like Opacity and Gamma */
@@ -175,6 +177,7 @@ export default function RasterVisPanel({
   onClose,
   availableBands,
   currentParams,
+  stats,
   onApply,
   onLiveCssChange,
   onImport,
@@ -299,11 +302,50 @@ export default function RasterVisPanel({
 
           {/* Range */}
           <div>
-            <span className="text-[11px] font-semibold text-slate-500 uppercase mb-2 block">Range (Min–Max)</span>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase">Range (Min–Max)</span>
+            </div>
             <div className="flex gap-2">
               <RangeInput label="Min" value={min} onChange={setMin} />
               <RangeInput label="Max" value={max} onChange={setMax} />
             </div>
+
+            {/* Quick Auto-Stretch Presets */}
+            {stats && (
+              <div className="flex items-center flex-wrap gap-1.5 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 font-medium">Ajuste rápido:</span>
+                {(stats.p2 != null && stats.p98 != null) && (
+                  <button
+                    type="button"
+                    onClick={() => { setMin(stats.p2); setMax(stats.p98); }}
+                    className="px-2 py-0.5 text-[10px] font-semibold bg-sky-50 dark:bg-sky-950/50 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 rounded transition-colors cursor-pointer"
+                    title={`Ajuste 2%–98% [${stats.p2}, ${stats.p98}]`}
+                  >
+                    2%–98%
+                  </button>
+                )}
+                {(stats.p10 != null && stats.p90 != null) && (
+                  <button
+                    type="button"
+                    onClick={() => { setMin(stats.p10); setMax(stats.p90); }}
+                    className="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded transition-colors cursor-pointer"
+                    title={`Ajuste 10%–90% [${stats.p10}, ${stats.p90}]`}
+                  >
+                    10%–90%
+                  </button>
+                )}
+                {(stats.min != null && stats.max != null) && (
+                  <button
+                    type="button"
+                    onClick={() => { setMin(stats.min); setMax(stats.max); }}
+                    className="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded transition-colors cursor-pointer"
+                    title={`Mín–Máx [${stats.min}, ${stats.max}]`}
+                  >
+                    Mín–Máx
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Stretch */}
@@ -317,7 +359,19 @@ export default function RasterVisPanel({
             <div className="relative">
               <select
                 value={stretch}
-                onChange={e => setStretch(Number(e.target.value))}
+                onChange={e => {
+                  const s = Number(e.target.value);
+                  setStretch(s);
+                  if (stats) {
+                    if (s === 0.98 && stats.p2 != null && stats.p98 != null) {
+                      setMin(stats.p2); setMax(stats.p98);
+                    } else if (s === 0.90 && stats.p10 != null && stats.p90 != null) {
+                      setMin(stats.p10); setMax(stats.p90);
+                    } else if (s === 1.00 && stats.min != null && stats.max != null) {
+                      setMin(stats.min); setMax(stats.max);
+                    }
+                  }
+                }}
                 className="w-full appearance-none text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md pl-2 pr-6 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500"
               >
                 {STRETCH_OPTIONS.map(opt => (
