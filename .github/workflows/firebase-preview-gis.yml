@@ -68,7 +68,4 @@ jobs:
           projectId: geoprocessamento-426809
           channelId: gis-workspace-pr-${{ github.event.pull_request.number }}
           expires: 7d
-
-      - name: Show preview URL
-        run: |
-          echo "Preview URL: ${{ steps.preview.outputs.details_url }}"
+\n# Head branch sync marker for preview validation.\n
