@@ -25,6 +25,7 @@ import {
   Moon,
   X,
   Download,
+  Database,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
@@ -58,6 +59,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: "Dashboard", label: "Dashboard", icon: <LayoutDashboard size={20} /> },
   { id: "Mapa", label: "Mapa 2D / 3D", icon: <Globe size={20} /> },
+  { id: "GIS Workspace", label: "GIS Workspace", icon: <Database size={20} /> },
   { id: "GeoAnálises", label: "GeoAnálises", icon: <Satellite size={20} /> },
   { id: "Bacias Hidrográficas", label: "Bacias Hidrográficas", icon: <Droplets size={20} /> },
   { id: "Água Subterrânea", label: "Água Subterrânea", icon: <Droplet size={20} /> },
