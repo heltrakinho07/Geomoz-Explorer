@@ -29,6 +29,7 @@ import MapView from "@/components/MapView";
 import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
 import DashboardPanel from "@/components/DashboardPanel";
+import GISWorkspacePanel from "@/components/GISWorkspacePanel";
 import {
   LazyGeoAnalises,
   LazyHidroGeoMoz,
@@ -59,6 +60,7 @@ interface NominatimResult {
 type Tab =
   | "Dashboard"
   | "Mapa"
+  | "GIS Workspace"
   | "Análise"
   | "GeoAnálises"
   | "Bacias Hidrográficas"
@@ -105,6 +107,9 @@ export default function Explorer() {
     if (path.includes("ai") || hash.includes("ai") || tabParam?.includes("ai")) {
       return "GeoMoz AI";
     }
+    if (path.includes("gis-workspace") || hash.includes("gis-workspace") || tabParam?.includes("gis-workspace")) {
+      return "GIS Workspace";
+    }
     if (path.includes("mapa") || hash.includes("mapa") || tabParam?.includes("mapa")) {
       return "Mapa";
     }
@@ -122,6 +127,7 @@ export default function Explorer() {
       const slugMap: Record<Tab, string> = {
         Dashboard: "dashboard",
         Mapa: "mapa",
+        "GIS Workspace": "gis-workspace",
         Análise: "estatisticas",
         GeoAnálises: "analises",
         "Bacias Hidrográficas": "hidrografia",
@@ -369,6 +375,12 @@ export default function Explorer() {
           icon: <Globe size={18} className="text-sky-500 shrink-0" />,
           title: "Mapa Geoespacial",
           subtitle: "2D / 3D Hipsometria & Relevo",
+        };
+      case "GIS Workspace":
+        return {
+          icon: <Layers size={18} className="text-sky-500 shrink-0" />,
+          title: "GIS Workspace",
+          subtitle: "Adicionar dados, gerir camadas e explorar atributos",
         };
       case "GeoAnálises":
         return {
@@ -710,6 +722,8 @@ export default function Explorer() {
               onViewModeChange={handleGlobalViewModeChange}
             />
           )}
+
+          {activeTab === "GIS Workspace" && <GISWorkspacePanel />}
 
           {activeTab === "GeoAnálises" && (
             <Suspense fallback={<LoadingSkeleton label="GeoAnálises" />}>
