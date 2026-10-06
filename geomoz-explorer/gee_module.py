@@ -3520,6 +3520,217 @@ def compute_burned_area(
     }
 
 
+# ── Humidade do Solo e Seca Agrícola (NASA SMAP) ──
+
+def compute_soil_moisture_smap(
+    region_geojson: Optional[dict],
+    start_date: str,
+    end_date: str,
+    layer: str = "susm",
+) -> dict:
+    """NASA-USDA Enhanced SMAP 10km soil moisture & root-zone drought analysis.
+
+    Bands:
+      susm: Subsurface soil moisture (0–100 cm root zone, mm)
+      ssm: Surface soil moisture (0–5 cm, mm)
+      smp: Soil moisture profile (% capacity, 0–100%)
+      susma: Subsurface soil moisture anomaly (Z-score)
+    """
+    import ee
+
+    region = _to_ee_region(region_geojson)
+    start = ee.Date(start_date)
+    end_exclusive = ee.Date(end_date).advance(1, "day")
+    max_px = int(1e10)
+
+    valid_layers = {"susm", "ssm", "smp", "susma"}
+    if layer not in valid_layers:
+        layer = "susm"
+
+    # Filter collection
+    collection = (
+        ee.ImageCollection("NASA_USDA/HSL/SMAP10KM_soil_moisture")
+        .filterDate(start, end_exclusive)
+    )
+    image_count = int(collection.size().getInfo() or 0)
+    if image_count == 0:
+        collection = (
+            ee.ImageCollection("NASA_USDA/HSL/SMAP10KM_soil_moisture")
+            .filterDate(start.advance(-15, "day"), end_exclusive.advance(15, "day"))
+        )
+        image_count = int(collection.size().getInfo() or 0)
+        if image_count == 0:
+            raise RuntimeError("Sem observações SMAP disponíveis para o período e região selecionados.")
+
+    mean_img = collection.select(layer).mean().clip(region)
+
+    # Setup visualization based on layer
+    if layer == "susm":
+        palette = ["7f0000", "d73027", "f46d43", "fdae61", "fee08b", "d9ef8b", "66bd63", "1a9850", "006837", "08519c"]
+        vis_min, vis_max = 5.0, 100.0
+        unit = "mm"
+        layer_label = "Humidade na Zona Radicular (0–100 cm)"
+    elif layer == "ssm":
+        palette = ["d73027", "fdae61", "fee08b", "a6d96a", "1a9850", "08519c"]
+        vis_min, vis_max = 1.0, 25.0
+        unit = "mm"
+        layer_label = "Humidade Superficial (0–5 cm)"
+    elif layer == "smp":
+        palette = ["d73027", "fdae61", "fee08b", "d9ef8b", "66bd63", "1a9850", "006837"]
+        vis_min, vis_max = 10.0, 90.0
+        unit = "%"
+        layer_label = "Perfil de Humidade do Solo"
+    else:  # susma
+        palette = ["67001f", "b2182b", "d6604d", "f4a582", "fddbc7", "d1e5f0", "92c5de", "4393c3", "2166ac", "053061"]
+        vis_min, vis_max = -2.5, 2.5
+        unit = "σ (Z-score)"
+        layer_label = "Anomalia da Zona Radicular"
+
+    tile = mean_img.visualize(
+        min=vis_min,
+        max=vis_max,
+        palette=palette,
+        opacity=0.88,
+    ).getMapId()["tile_fetcher"].url_format
+
+    scale = max(_compute_dynamic_scale(region), 10000)
+
+    stats = (
+        mean_img.reduceRegion(
+            reducer=ee.Reducer.mean().combine(
+                reducer2=ee.Reducer.minMax(),
+                sharedInputs=True,
+            ),
+            geometry=region,
+            scale=scale,
+            bestEffort=True,
+            maxPixels=max_px,
+        )
+        .getInfo()
+        or {}
+    )
+
+    mean_val = stats.get(f"{layer}_mean")
+    min_val = stats.get(f"{layer}_min")
+    max_val = stats.get(f"{layer}_max")
+
+    px_area = ee.Image.pixelArea()
+    if layer == "susm":
+        stress_cond = mean_img.lt(20.0)
+        mod_cond = mean_img.gte(20.0).And(mean_img.lt(40.0))
+        opt_cond = mean_img.gte(40.0).And(mean_img.lt(75.0))
+        surp_cond = mean_img.gte(75.0)
+    elif layer == "susma":
+        stress_cond = mean_img.lt(-1.0)
+        mod_cond = mean_img.gte(-1.0).And(mean_img.lt(-0.3))
+        opt_cond = mean_img.gte(-0.3).And(mean_img.lt(0.8))
+        surp_cond = mean_img.gte(0.8)
+    elif layer == "smp":
+        stress_cond = mean_img.lt(25.0)
+        mod_cond = mean_img.gte(25.0).And(mean_img.lt(45.0))
+        opt_cond = mean_img.gte(45.0).And(mean_img.lt(75.0))
+        surp_cond = mean_img.gte(75.0)
+    else:
+        stress_cond = mean_img.lt(5.0)
+        mod_cond = mean_img.gte(5.0).And(mean_img.lt(10.0))
+        opt_cond = mean_img.gte(10.0).And(mean_img.lt(18.0))
+        surp_cond = mean_img.gte(18.0)
+
+    area_stats = (
+        px_area.updateMask(stress_cond).rename("stressArea")
+        .addBands(px_area.updateMask(mod_cond).rename("modArea"))
+        .addBands(px_area.updateMask(opt_cond).rename("optArea"))
+        .addBands(px_area.updateMask(surp_cond).rename("surpArea"))
+        .addBands(px_area.updateMask(mean_img.mask()).rename("totalArea"))
+        .reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=region,
+            scale=scale,
+            bestEffort=True,
+            maxPixels=max_px,
+        )
+        .getInfo()
+        or {}
+    )
+
+    stress_km2 = float(area_stats.get("stressArea") or 0) / 1e6
+    mod_km2 = float(area_stats.get("modArea") or 0) / 1e6
+    opt_km2 = float(area_stats.get("optArea") or 0) / 1e6
+    surp_km2 = float(area_stats.get("surpArea") or 0) / 1e6
+    total_km2 = float(area_stats.get("totalArea") or 0) / 1e6
+
+    stress_pct = round(stress_km2 / total_km2 * 100, 1) if total_km2 else 0.0
+    mod_pct = round(mod_km2 / total_km2 * 100, 1) if total_km2 else 0.0
+    opt_pct = round(opt_km2 / total_km2 * 100, 1) if total_km2 else 0.0
+    surp_pct = round(surp_km2 / total_km2 * 100, 1) if total_km2 else 0.0
+
+    if stress_pct >= 50.0 or (mean_val is not None and ((layer == "susm" and mean_val < 18) or (layer == "susma" and mean_val < -1.2))):
+        risk_level = "Crítico"
+        risk_summary = "Défice hídrico severo generalizado. Risco agudo de perda de culturas de sequeiro (milho e feijão)."
+    elif stress_pct >= 25.0 or (mean_val is not None and ((layer == "susm" and mean_val < 30) or (layer == "susma" and mean_val < -0.5))):
+        risk_level = "Moderado"
+        risk_summary = "Stress hídrico significativo em parcelas agrícolas. Maturação comprometida para culturas exigentes."
+    else:
+        risk_level = "Favorável"
+        risk_summary = "Humidade adequada na zona radicular para o desenvolvimento vegetativo das principais culturas."
+
+    crop_assessments = [
+        {
+            "crop": "Milho (Zea mays)",
+            "sensitivity": "Alta na floração e enchimento de grão",
+            "requiredMoisture": "30 a 60 mm (susm)",
+            "status": "Severo" if stress_pct > 40 else ("Alerta" if stress_pct > 20 else "Favorável"),
+        },
+        {
+            "crop": "Mandioca (Manihot esculenta)",
+            "sensitivity": "Tolerante a seca prolongada",
+            "requiredMoisture": "> 15 mm (susm)",
+            "status": "Alerta" if stress_pct > 60 else "Favorável",
+        },
+        {
+            "crop": "Feijão vulgar e nhemba (Vigna unguiculata)",
+            "sensitivity": "Média-alta na fase reprodutiva",
+            "requiredMoisture": "25 a 45 mm (susm)",
+            "status": "Severo" if stress_pct > 35 else ("Alerta" if stress_pct > 18 else "Favorável"),
+        },
+        {
+            "crop": "Arroz de sequeiro e aluvial (Oryza sativa)",
+            "sensitivity": "Muito alta (necessita solos saturados)",
+            "requiredMoisture": "> 55 mm (susm)",
+            "status": "Crítico" if (opt_pct + surp_pct) < 30 else "Favorável",
+        },
+    ]
+
+    return {
+        "tile": tile,
+        "layer": layer,
+        "layerLabel": layer_label,
+        "unit": unit,
+        "startDate": start_date,
+        "endDate": end_date,
+        "imageCount": image_count,
+        "meanValue": round(float(mean_val), 2) if mean_val is not None else None,
+        "minValue": round(float(min_val), 2) if min_val is not None else None,
+        "maxValue": round(float(max_val), 2) if max_val is not None else None,
+        "totalAreaKm2": round(total_km2, 1),
+        "stressAreaKm2": round(stress_km2, 1),
+        "stressPct": stress_pct,
+        "classes": [
+            {"id": "stress", "label": "Défice Crítico / Stress", "km2": round(stress_km2, 1), "pct": stress_pct, "color": "#d73027"},
+            {"id": "moderate", "label": "Humidade Moderada", "km2": round(mod_km2, 1), "pct": mod_pct, "color": "#fee08b"},
+            {"id": "optimal", "label": "Humidade Adequada / Ótima", "km2": round(opt_km2, 1), "pct": opt_pct, "color": "#66bd63"},
+            {"id": "surplus", "label": "Excedente / Saturação", "km2": round(surp_km2, 1), "pct": surp_pct, "color": "#08519c"},
+        ],
+        "riskLevel": risk_level,
+        "riskSummary": risk_summary,
+        "crops": crop_assessments,
+        "palette": [f"#{c}" for c in palette],
+        "visMin": vis_min,
+        "visMax": vis_max,
+        "source": "NASA-USDA / HSL SMAP10KM · Global Soil Moisture · 10 km",
+    }
+
+
 # ── Potencial de Água Subterrânea (AHP) ──
 
 def compute_groundwater_ahp(region_geojson: Optional[dict], year: int = 2023) -> dict:

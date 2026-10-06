@@ -507,6 +507,29 @@ class TestGEEGeohazardValidation:
         assert resp.status_code == 400
         assert "clim_start" in resp.json()["detail"]
 
+    def test_soil_moisture_rejects_reversed_period(self, client: TestClient) -> None:
+        resp = client.post(
+            "/geomoz-api/gee/soil-moisture",
+            json={
+                "start_date": "2024-05-01",
+                "end_date": "2024-04-01",
+                "layer": "susm",
+            },
+        )
+        assert resp.status_code == 400
+        assert "end_date" in resp.json()["detail"]
+
+    def test_soil_moisture_rejects_invalid_layer(self, client: TestClient) -> None:
+        resp = client.post(
+            "/geomoz-api/gee/soil-moisture",
+            json={
+                "start_date": "2024-01-01",
+                "end_date": "2024-04-01",
+                "layer": "invalid_layer",
+            },
+        )
+        assert resp.status_code == 422
+
 
 # ── GEE endpoint helpers ───────────────────────────────────────────────────────
 

@@ -1901,6 +1901,56 @@ async def gee_burned_area(req: GEEBurnedAreaRequest, uid: str = Depends(require_
         raise HTTPException(500, f"GEE burned-area failed: {exc}")
 
 
+class GEESoilMoistureRequest(BaseModel):
+    province: Optional[str] = None
+    district: Optional[str] = None
+    geometry: Optional[dict] = None
+    start_date: str
+    end_date: str
+    layer: str = "susm"
+
+    @field_validator("start_date", "end_date")
+    @classmethod
+    def validate_soil_date_format(cls, v):
+        from datetime import datetime
+        try:
+            datetime.strptime(v, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("Date must be in YYYY-MM-DD format")
+        return v
+
+    @field_validator("layer")
+    @classmethod
+    def validate_layer(cls, v):
+        if v not in {"susm", "ssm", "smp", "susma"}:
+            raise ValueError("layer deve ser 'susm', 'ssm', 'smp' ou 'susma'")
+        return v
+
+
+@app.post("/geomoz-api/gee/soil-moisture")
+async def gee_soil_moisture(req: GEESoilMoistureRequest, uid: str = Depends(require_gee_auth)):
+    """NASA-USDA SMAP soil moisture and root-zone agricultural drought analysis."""
+    import asyncio
+    from gee_module import compute_soil_moisture_smap
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    if req.end_date < req.start_date:
+        raise HTTPException(400, "end_date deve ser igual ou posterior a start_date.")
+
+    loop = asyncio.get_event_loop()
+    try:
+        return await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_soil_moisture_smap(
+                region, req.start_date, req.end_date, req.layer
+            ),
+        )
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE soil moisture failed: {exc}")
+
+
 class GEEGroundwaterRequest(BaseModel):
     province: Optional[str] = None
     district: Optional[str] = None

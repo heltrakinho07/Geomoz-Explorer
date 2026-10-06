@@ -12,7 +12,7 @@ import "leaflet/dist/leaflet.css";
 import {
   AlertTriangle, Waves, Mountain, Flame, Loader2, Play, ChevronDown, Info,
   CheckCircle2, Calendar, Droplets, Layers, FileDown, SlidersHorizontal, X,
-  ChevronLeft, ChevronRight, RefreshCw, Thermometer,
+  ChevronLeft, ChevronRight, RefreshCw, Thermometer, Sprout,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiUrl, apiFetch } from "@/lib/api";
@@ -31,7 +31,7 @@ import {
   drawStatCards, drawTable, addMapImage, fetchMapImage,
 } from "@/lib/pdf-export";
 
-type Tool = "flood" | "erosion" | "wildfire" | "drought" | "burned";
+type Tool = "flood" | "erosion" | "wildfire" | "drought" | "burned" | "soil_moisture";
 
 interface FloodResult {
   floodTile: string; permWaterTile: string; areaKm2: number;
@@ -89,6 +89,45 @@ interface BurnedAreaResult {
   source: string;
 }
 
+interface SoilMoistureCrop {
+  crop: string;
+  sensitivity: string;
+  requiredMoisture: string;
+  status: "Favorável" | "Alerta" | "Severo" | "Crítico";
+}
+
+interface SoilMoistureClass {
+  id: string;
+  label: string;
+  km2: number;
+  pct: number;
+  color: string;
+}
+
+interface SoilMoistureResult {
+  tile: string;
+  layer: "susm" | "ssm" | "smp" | "susma";
+  layerLabel: string;
+  unit: string;
+  startDate: string;
+  endDate: string;
+  imageCount: number;
+  meanValue: number | null;
+  minValue: number | null;
+  maxValue: number | null;
+  totalAreaKm2: number;
+  stressAreaKm2: number;
+  stressPct: number;
+  classes: SoilMoistureClass[];
+  riskLevel: "Favorável" | "Moderado" | "Crítico";
+  riskSummary: string;
+  crops: SoilMoistureCrop[];
+  palette: string[];
+  visMin: number;
+  visMax: number;
+  source: string;
+}
+
 // Known cyclone events (quick presets for flood mapping).
 const FLOOD_PRESETS = [
   { label: "Idai (mar 2019)",     start: "2019-03-15", end: "2019-03-25", prov: "Sofala" },
@@ -103,6 +142,14 @@ const WILDFIRE_PRESETS = [
   { label: "Zambézia & Sofala (2024)",     start: "2024-07-01", end: "2024-11-15", prov: "Zambézia" },
   { label: "Tete & Manica (2024)",         start: "2024-08-15", end: "2024-11-01", prov: "Tete" },
   { label: "Temporada Seca 2023",          start: "2023-08-01", end: "2023-11-30", prov: null },
+];
+
+// Soil moisture / agricultural presets for Mozambique
+const SOIL_MOISTURE_PRESETS = [
+  { label: "Campanha Principal 2023/24 (Floração)", start: "2024-01-15", end: "2024-03-31", layer: "susm" as const, prov: null },
+  { label: "Seca El Niño Sul 2024 (Jan–Abr)",       start: "2024-01-01", end: "2024-04-30", layer: "susma" as const, prov: "Gaza" },
+  { label: "Época Seca / Fresca 2024 (Jun–Ago)",    start: "2024-06-01", end: "2024-08-31", layer: "susm" as const, prov: null },
+  { label: "Sementeira 2024/25 (Nov–Dez)",          start: "2024-11-01", end: "2024-12-31", layer: "ssm" as const, prov: "Nampula" },
 ];
 
 interface Props {
@@ -151,6 +198,12 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
   const [burnedStart, setBurnedStart] = useState("2024-07-01");
   const [burnedEnd, setBurnedEnd] = useState("2024-11-30");
   const [burned, setBurned] = useState<BurnedAreaResult | null>(null);
+
+  // Soil moisture params (NASA-USDA SMAP)
+  const [soilStart, setSoilStart] = useState("2024-01-15");
+  const [soilEnd, setSoilEnd] = useState("2024-03-31");
+  const [soilLayer, setSoilLayer] = useState<"susm" | "ssm" | "smp" | "susma">("susm");
+  const [soilMoisture, setSoilMoisture] = useState<SoilMoistureResult | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
@@ -379,12 +432,57 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
     } finally { clearTimeout(timer); setLoading(false); }
   }, [aoi, province, district, burnedStart, burnedEnd, isGeeConnected]);
 
+  const runSoilMoisture = useCallback(async () => {
+    if (!isGeeConnected) {
+      setGeeDialogOpen(true);
+      toast({
+        title: "Google Earth Engine necessário",
+        description: "Conecte a sua conta GEE para consultar o sensor NASA SMAP.",
+      });
+      return;
+    }
+    setLoading(true); setError(null); setSoilMoisture(null);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 240_000);
+    try {
+      const aoiPayload = aoiToAPI(aoi);
+      const prov = province || aoiPayload.province;
+      const dist = district || aoiPayload.district;
+      const r = await apiFetch("/geomoz-api/gee/soil-moisture", {
+        method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
+        body: JSON.stringify({
+          province: prov,
+          district: dist,
+          geometry: aoiPayload.geometry,
+          start_date: soilStart,
+          end_date: soilEnd,
+          layer: soilLayer,
+        }),
+      });
+      if (!r.ok) {
+        const errJson = await r.json().catch(() => ({}));
+        throw new Error(errJson.detail ?? r.statusText);
+      }
+      const data: SoilMoistureResult = await r.json();
+      setSoilMoisture(data);
+      toast({
+        title: "Análise de humidade do solo concluída!",
+        description: `NASA SMAP: ${data.stressPct}% da área sob défice hídrico (${data.riskLevel}).`,
+      });
+    } catch (e) {
+      const aborted = e instanceof DOMException && e.name === "AbortError";
+      const msg = aborted ? "A consulta SMAP demorou demasiado. Reduza o intervalo de datas ou a área." : String(e instanceof Error ? e.message : e);
+      setError(msg);
+      toast({ variant: "destructive", title: "Erro na humidade do solo", description: msg });
+    } finally { clearTimeout(timer); setLoading(false); }
+  }, [aoi, province, district, soilStart, soilEnd, soilLayer, isGeeConnected]);
+
   const erosionTotal = erosion ? erosion.classes.reduce((s, c) => s + c.areaKm2, 0) || 1 : 1;
 
   // ── PDF Export ──────────────────────────────────────────────────────────────
   async function exportGeoperigosPdf() {
     if (!mapContainerRef.current) return;
-    const toolTitle = tool === "flood" ? "Cheias SAR" : tool === "erosion" ? "Erosão RUSLE" : tool === "wildfire" ? "Queimadas FIRMS" : tool === "drought" ? "Seca SPI × NDVI" : "Área Queimada MODIS";
+    const toolTitle = tool === "flood" ? "Cheias SAR" : tool === "erosion" ? "Erosão RUSLE" : tool === "wildfire" ? "Queimadas FIRMS" : tool === "drought" ? "Seca SPI × NDVI" : tool === "burned" ? "Área Queimada MODIS" : "Humidade do Solo SMAP";
     const ctx = createPDFContext(
       `${toolTitle} — ${province ?? "Moçambique"}`,
     );
@@ -395,8 +493,12 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
     ]);
 
     // Map — fetch from backend Cartopy API with analysis tile overlay
-    const analysisTile = tool === "flood" ? flood?.floodTile : tool === "erosion" ? erosion?.tile : tool === "wildfire" ? wildfire?.tile : tool === "drought" ? drought?.spiTileUrl : burned?.tile;
-    const legendItems = tool === "erosion" ? erosion?.classes?.map(c => ({ label: c.label, color: c.color })) : undefined;
+    const analysisTile = tool === "flood" ? flood?.floodTile : tool === "erosion" ? erosion?.tile : tool === "wildfire" ? wildfire?.tile : tool === "drought" ? drought?.spiTileUrl : tool === "burned" ? burned?.tile : soilMoisture?.tile;
+    const legendItems = tool === "erosion"
+      ? erosion?.classes?.map(c => ({ label: c.label, color: c.color }))
+      : tool === "soil_moisture"
+      ? soilMoisture?.classes?.map(c => ({ label: `${c.label} (${c.pct}%)`, color: c.color }))
+      : undefined;
     try {
       const imgData = await fetchMapImage(
         { south: -26.9, north: -10.4, west: 30.2, east: 41 },
@@ -494,6 +596,46 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
       ]);
     }
 
+    if (tool === "soil_moisture" && soilMoisture) {
+      sectionTitle(ctx, "Diagnóstico de Humidade do Solo (NASA SMAP)");
+      drawStatCards(ctx, [
+        { label: "Humidade Média", value: soilMoisture.meanValue != null ? `${soilMoisture.meanValue} ${soilMoisture.unit}` : "—", color: [16, 185, 129] },
+        { label: "Área sob Stress", value: `${soilMoisture.stressPct}%`, color: [225, 29, 72] },
+        { label: "Nível de Risco", value: soilMoisture.riskLevel, color: [245, 158, 11] },
+        { label: "Camada", value: soilMoisture.layer.toUpperCase(), color: [14, 165, 233] },
+      ]);
+
+      sectionTitle(ctx, "Distribuição por Classe de Humidade");
+      drawTable(
+        ctx,
+        ["Classe", "Área (km²)", "%"],
+        soilMoisture.classes.map(c => ({
+          cells: [
+            c.label,
+            c.km2.toLocaleString("pt-PT", { maximumFractionDigits: 1 }),
+            `${c.pct}%`,
+          ],
+          color: c.color,
+        })),
+        [CONTENT_W * 0.5, CONTENT_W * 0.25, CONTENT_W * 0.25],
+      );
+
+      sectionTitle(ctx, "Impacto nas Culturas Alimentares de Moçambique");
+      drawTable(
+        ctx,
+        ["Cultura", "Sensibilidade", "Condição Atual"],
+        soilMoisture.crops.map(cr => ({
+          cells: [
+            cr.crop,
+            cr.sensitivity,
+            cr.status,
+          ],
+          color: cr.status === "Favorável" ? "#16a34a" : cr.status === "Alerta" ? "#d97706" : "#dc2626",
+        })),
+        [CONTENT_W * 0.35, CONTENT_W * 0.45, CONTENT_W * 0.2],
+      );
+    }
+
     addPDFFooter(ctx);
     ctx.doc.save(`GeoMoz_Geoperigos_${tool}_${province ?? "MZ"}_${new Date().toISOString().slice(0, 10)}.pdf`);
   }
@@ -538,7 +680,7 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
                   {isGeeConnected ? "GEE Ativo" : "Conectar GEE"}
                 </button>
               </div>
-              <p className="text-[10px] text-slate-400">Cheias · Erosão · Fogo · Seca · Área queimada</p>
+              <p className="text-[10px] text-slate-400">Cheias · Erosão · Fogo · Seca · Área queimada · Solo SMAP</p>
             </div>
           </div>
           <button
@@ -558,7 +700,8 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
               ["erosion", "Erosão", Mountain],
               ["wildfire", "Focos", Flame],
               ["drought", "Seca", Droplets],
-              ["burned", "Área queimada", Layers],
+              ["burned", "Queimada", Layers],
+              ["soil_moisture", "Solo SMAP", Sprout],
             ] as const).map(([t, label, Icon]) => (
               <button key={t} onClick={() => { setTool(t); setError(null); }}
                 className={`flex items-center justify-center gap-1 text-[11px] font-medium py-2 rounded-lg transition-all ${tool === t ? "bg-white dark:bg-slate-700 text-rose-700 dark:text-rose-400 shadow-sm font-semibold" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}>
@@ -841,6 +984,101 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
           </div>
         )}
 
+        {/* Soil Moisture config (NASA-USDA SMAP 10km) */}
+        {tool === "soil_moisture" && (
+          <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-xl p-2.5 text-[11px] text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
+              <Sprout size={13} className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <span><strong>NASA-USDA SMAP:</strong> humidade na zona radicular (0–100 cm) e anomalias a 10 km. Crucial para diagnosticar stress hídrico agrícola em Moçambique.</span>
+            </div>
+
+            <div>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Campanhas e Cenários</label>
+              <div className="grid grid-cols-2 gap-1">
+                {SOIL_MOISTURE_PRESETS.map(p => (
+                  <button
+                    key={p.label}
+                    onClick={() => {
+                      setSoilStart(p.start);
+                      setSoilEnd(p.end);
+                      setSoilLayer(p.layer);
+                      if (p.prov) {
+                        onProvinceChange(p.prov);
+                        onDistrictChange(null);
+                        onAOIChange(mozambiqueAOI(p.prov, null));
+                      }
+                    }}
+                    className="text-[10px] py-1 px-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 dark:hover:border-emerald-800 transition-colors cursor-pointer text-left truncate"
+                    title={p.label}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Camada do Sensor SMAP</label>
+              <select
+                value={soilLayer}
+                onChange={e => setSoilLayer(e.target.value as any)}
+                className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="susm">Zona Radicular Subsuperficial (0–100 cm, mm)</option>
+                <option value="susma">Anomalia da Zona Radicular (Z-score)</option>
+                <option value="ssm">Camada Superficial (0–5 cm, mm)</option>
+                <option value="smp">Perfil de Humidade Relativa (%)</option>
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> Início</label>
+                <input
+                  type="date"
+                  value={soilStart}
+                  min="2015-04-02"
+                  onChange={e => setSoilStart(e.target.value)}
+                  className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> Fim</label>
+                <input
+                  type="date"
+                  value={soilEnd}
+                  min="2015-04-02"
+                  onChange={e => setSoilEnd(e.target.value)}
+                  className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={runSoilMoisture}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors cursor-pointer shadow-sm"
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>A consultar SMAP...</span>
+                </>
+              ) : soilMoisture ? (
+                <>
+                  <RefreshCw size={14} />
+                  <span>Recalcular Humidade do Solo</span>
+                </>
+              ) : (
+                <>
+                  <Sprout size={14} />
+                  <span>Mapear Humidade do Solo</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
         {error && (
           <div className="m-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl p-2.5 text-[11px] text-red-700 dark:text-red-300">{error}</div>
         )}
@@ -904,6 +1142,9 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
           {tool === "burned" && burned && (
             <TileLayer crossOrigin="anonymous" key={`burned-${burned.tile}`} url={burned.tile} opacity={0.82} maxZoom={18} />
           )}
+          {tool === "soil_moisture" && soilMoisture && (
+            <TileLayer crossOrigin="anonymous" key={`smap-${soilMoisture.tile}`} url={soilMoisture.tile} opacity={0.82} maxZoom={18} />
+          )}
           {tool === "wildfire" && wildfire?.hotspotPoints?.map((pt, idx) => (
             <CircleMarker
               key={`fire-pt-${idx}`}
@@ -963,7 +1204,9 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
                   ? "A consultar dados NASA FIRMS…"
                   : tool === "drought"
                   ? "A calcular SPI × NDVI com CHIRPS e MODIS…"
-                  : "A mapear área queimada MODIS MCD64A1…"}
+                  : tool === "burned"
+                  ? "A mapear área queimada MODIS MCD64A1…"
+                  : "A consultar sensor NASA SMAP (10 km)…"}
               </span>
             </div>
           </div>
@@ -1028,8 +1271,21 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
             <div className="flex items-center gap-1.5"><span className="inline-block w-4 h-3 rounded bg-[#9d0208]" /><span className="text-slate-600 dark:text-slate-300">Cicatriz de fogo MODIS</span></div>
           </div>
         )}
+        {tool === "soil_moisture" && soilMoisture && (
+          <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-emerald-100 dark:border-emerald-900/40 p-3 text-[11px] min-w-[175px]">
+            <div className="font-semibold text-emerald-800 dark:text-emerald-300 mb-2 flex items-center gap-1">
+              <Sprout size={12} className="text-emerald-600 dark:text-emerald-400" /> Humidade Solo (SMAP)
+            </div>
+            {soilMoisture.classes.map(c => (
+              <div key={c.id} className="flex items-center gap-1.5 mb-1">
+                <span className="inline-block w-3 h-3 rounded" style={{ background: c.color }} />
+                <span className="text-slate-600 dark:text-slate-300">{c.label} ({c.pct}%)</span>
+              </div>
+            ))}
+          </div>
+        )}
       {/* ── Right panel ─────────────────────────────────────────── */}
-      {((tool === "flood" && flood) || (tool === "erosion" && erosion) || (tool === "wildfire" && wildfire) || (tool === "drought" && drought) || (tool === "burned" && burned)) && (
+      {((tool === "flood" && flood) || (tool === "erosion" && erosion) || (tool === "wildfire" && wildfire) || (tool === "drought" && drought) || (tool === "burned" && burned) || (tool === "soil_moisture" && soilMoisture)) && (
         <div className="w-80 flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0">
           {tool === "flood" && flood && (
             <div className="p-4 space-y-4">
@@ -1159,6 +1415,12 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
               <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/50 rounded-xl p-3 text-[11px] text-orange-800 dark:text-orange-300 flex items-start gap-2">
                 <Info size={12} className="mt-0.5 shrink-0 text-orange-500" /> CHIRPS mede precipitação em grelha; MODIS NDVI indica resposta da vegetação. O produto é adequado para monitorização regional, não substitui observações agroclimáticas locais.
               </div>
+              <button
+                onClick={exportGeoperigosPdf}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer"
+              >
+                <FileDown size={13} /> Exportar Relatório PDF
+              </button>
             </div>
           )}
           {tool === "burned" && burned && (
@@ -1177,6 +1439,106 @@ export default function Geoperigos({ aoi, province, district, viewMode = "2d", o
               <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-xl p-3 text-[11px] text-red-800 dark:text-red-300 flex items-start gap-2">
                 <Info size={12} className="mt-0.5 shrink-0 text-red-500" /> Este produto identifica cicatrizes de fogo observadas pelo MODIS e é complementar aos focos ativos FIRMS. Pequenas queimadas podem ficar abaixo da resolução de 500 m.
               </div>
+              <button
+                onClick={exportGeoperigosPdf}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-red-700 to-orange-700 hover:from-red-800 hover:to-orange-800 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer"
+              >
+                <FileDown size={13} /> Exportar Relatório PDF
+              </button>
+            </div>
+          )}
+          {tool === "soil_moisture" && soilMoisture && (
+            <div className="p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Sprout size={15} className="text-emerald-600 dark:text-emerald-400" />
+                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Humidade do Solo (SMAP)</span>
+              </div>
+
+              {/* Hero Banner */}
+              <div className="bg-gradient-to-r from-emerald-700 via-teal-700 to-cyan-800 rounded-2xl p-4 text-white">
+                <div className="text-xs opacity-75 mb-1">{soilMoisture.layerLabel}</div>
+                <div className="text-3xl font-bold">
+                  {soilMoisture.meanValue != null ? `${soilMoisture.meanValue} ${soilMoisture.unit}` : "—"}
+                </div>
+                <div className="text-xs opacity-90 mt-1 flex items-center justify-between">
+                  <span>Défice Crítico: <strong>{soilMoisture.stressPct}% da AOI</strong></span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                    soilMoisture.riskLevel === "Favorável"
+                      ? "bg-emerald-500/30 text-emerald-100"
+                      : soilMoisture.riskLevel === "Moderado"
+                      ? "bg-amber-500/30 text-amber-100"
+                      : "bg-red-500/40 text-red-100"
+                  }`}>
+                    {soilMoisture.riskLevel}
+                  </span>
+                </div>
+              </div>
+
+              {/* Diagnostics Summary */}
+              <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-2 text-[12px] text-slate-600 dark:text-slate-300">
+                <div className="flex justify-between"><span>Período</span><span className="font-medium text-slate-800 dark:text-slate-200">{soilMoisture.startDate} → {soilMoisture.endDate}</span></div>
+                <div className="flex justify-between"><span>Área Analisada</span><span className="font-medium text-slate-800 dark:text-slate-200">{soilMoisture.totalAreaKm2.toLocaleString("pt-PT")} km²</span></div>
+                <div className="flex justify-between"><span>Área sob Stress</span><span className="font-medium text-red-600 dark:text-red-400 font-bold">{soilMoisture.stressAreaKm2.toLocaleString("pt-PT")} km² ({soilMoisture.stressPct}%)</span></div>
+                <div className="flex justify-between"><span>Observações SMAP</span><span className="font-medium text-slate-800 dark:text-slate-200">{soilMoisture.imageCount} passagens</span></div>
+              </div>
+
+              {/* Distribution by Classes */}
+              <div className="space-y-1.5">
+                <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">Distribuição por Classes de Humidade</div>
+                {soilMoisture.classes.map(c => (
+                  <div key={c.id}>
+                    <div className="flex justify-between text-[11px] text-slate-600 dark:text-slate-300 mb-0.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="inline-block w-2.5 h-2.5 rounded" style={{ background: c.color }} />
+                        {c.label}
+                      </span>
+                      <span className="font-medium text-slate-800 dark:text-slate-200">
+                        {c.km2.toLocaleString("pt-PT")} km² ({c.pct}%)
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${c.pct}%`, background: c.color }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Crop Vulnerability Matrix */}
+              <div className="bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-800/40 rounded-xl p-3 space-y-2 text-[11px]">
+                <div className="font-semibold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                  <Sprout size={13} className="text-emerald-600" />
+                  Impacto Agrícola em Moçambique
+                </div>
+                <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-tight">
+                  {soilMoisture.riskSummary}
+                </p>
+                <div className="space-y-1.5 pt-1">
+                  {soilMoisture.crops.map((cr, idx) => (
+                    <div key={idx} className="flex items-center justify-between bg-white dark:bg-slate-800/80 p-1.5 rounded-lg border border-slate-100 dark:border-slate-700/60 text-[10px]">
+                      <div>
+                        <div className="font-semibold text-slate-800 dark:text-slate-200">{cr.crop}</div>
+                        <div className="text-slate-400 text-[9px]">{cr.requiredMoisture}</div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                        cr.status === "Favorável"
+                          ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300"
+                          : cr.status === "Alerta"
+                          ? "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300"
+                          : "bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-300"
+                      }`}>
+                        {cr.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={exportGeoperigosPdf}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer"
+              >
+                <FileDown size={13} /> Exportar Relatório PDF
+              </button>
             </div>
           )}
         </div>
