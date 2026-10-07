@@ -27,26 +27,12 @@ export interface PersistedGISRasterLayer {
   sizeBytes: number;
   visible: boolean;
   opacity: number;
-  blob?: Blob;
-  remoteUrl?: string;
+  isResult?: boolean;
   bandCount?: number | null;
   bounds?: [number, number, number, number] | null;
   rasterState?: Record<string, unknown>;
-  isResult?: boolean;
-}
-
-export interface PersistedGISRasterLayer {
-  id: string;
-  name: string;
-  fileName: string;
-  mimeType: string;
-  sizeBytes: number;
-  visible: boolean;
-  opacity: number;
-  isResult?: boolean;
-  bandCount?: number | null;
-  bounds?: [number, number, number, number] | null;
   error?: string | null;
+  remoteUrl?: string;
 }
 
 export interface PersistedProcessingHistoryEntry {
@@ -73,7 +59,7 @@ export interface GISWorkspaceSnapshot {
   version: number;
   projectId: string;
   layers: PersistedGISLayer[];
-  rasters?: PersistedGISRasterLayer[];
+  rasters: PersistedGISRasterLayer[];
   selectedLayerId: string;
   secondLayerId: string;
   tableLayerId: string | null;
@@ -92,7 +78,8 @@ function openWorkspaceDb(): Promise<IDBDatabase> {
     }
 
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onerror = () => reject(request.error ?? new Error("Falha ao abrir IndexedDB."));
+    request.onerror = () =>
+      reject(request.error ?? new Error("Falha ao abrir IndexedDB."));
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(SNAPSHOT_STORE)) {
@@ -106,17 +93,19 @@ function openWorkspaceDb(): Promise<IDBDatabase> {
   });
 }
 
-async function withSnapshotStore<T>(
+async function withStore<T>(
+  storeName: string,
   mode: IDBTransactionMode,
   operation: (store: IDBObjectStore) => IDBRequest<T>
 ): Promise<T> {
   const db = await openWorkspaceDb();
   try {
     return await new Promise<T>((resolve, reject) => {
-      const transaction = db.transaction(SNAPSHOT_STORE, mode);
-      const store = transaction.objectStore(SNAPSHOT_STORE);
+      const transaction = db.transaction(storeName, mode);
+      const store = transaction.objectStore(storeName);
       const request = operation(store);
-      request.onerror = () => reject(request.error ?? new Error("Operação IndexedDB falhou."));
+      request.onerror = () =>
+        reject(request.error ?? new Error("Operação IndexedDB falhou."));
       request.onsuccess = () => resolve(request.result);
       transaction.onerror = () =>
         reject(transaction.error ?? new Error("Transação IndexedDB falhou."));
@@ -131,22 +120,25 @@ export async function loadGISWorkspaceSnapshot(
 ): Promise<GISWorkspaceSnapshot | null> {
   if (!projectId) return null;
   try {
-    const result = await withSnapshotStore<GISWorkspaceSnapshot | undefined>(
+    const result = await withStore<GISWorkspaceSnapshot | undefined>(
+      SNAPSHOT_STORE,
       "readonly",
       (store) => store.get(projectId)
     );
     if (!result) return null;
+
     if (result.version === 1) {
       return {
         ...result,
         version: GIS_WORKSPACE_SCHEMA_VERSION,
-        rasterLayers: [],
+        rasters: [],
       };
     }
+
     if (result.version !== GIS_WORKSPACE_SCHEMA_VERSION) return null;
     return {
       ...result,
-      rasterLayers: result.rasterLayers ?? [],
+      rasters: result.rasters ?? [],
     };
   } catch (error) {
     console.warn("GIS Workspace: falha ao restaurar snapshot local:", error);
@@ -160,25 +152,31 @@ export async function saveGISWorkspaceSnapshot(
   if (!snapshot.projectId) return;
   const payload: GISWorkspaceSnapshot = {
     ...snapshot,
+    rasters: snapshot.rasters ?? [],
     version: GIS_WORKSPACE_SCHEMA_VERSION,
     updatedAt: new Date().toISOString(),
   };
   try {
-    await withSnapshotStore<IDBValidKey>("readwrite", (store) => store.put(payload));
+    await withStore<IDBValidKey>(SNAPSHOT_STORE, "readwrite", (store) =>
+      store.put(payload)
+    );
   } catch (error) {
     console.warn("GIS Workspace: falha ao persistir snapshot local:", error);
   }
 }
 
-export async function deleteGISWorkspaceSnapshot(projectId: string): Promise<void> {
+export async function deleteGISWorkspaceSnapshot(
+  projectId: string
+): Promise<void> {
   if (!projectId) return;
   try {
-    await withSnapshotStore<undefined>("readwrite", (store) => store.delete(projectId));
+    await withStore<undefined>(SNAPSHOT_STORE, "readwrite", (store) =>
+      store.delete(projectId)
+    );
   } catch (error) {
     console.warn("GIS Workspace: falha ao remover snapshot local:", error);
   }
 }
-
 
 interface RasterFileRecord {
   key: string;
@@ -191,26 +189,6 @@ interface RasterFileRecord {
 
 function rasterFileKey(projectId: string, rasterId: string): string {
   return `${projectId}:${rasterId}`;
-}
-
-async function withRasterStore<T>(
-  mode: IDBTransactionMode,
-  operation: (store: IDBObjectStore) => IDBRequest<T>
-): Promise<T> {
-  const db = await openWorkspaceDb();
-  try {
-    return await new Promise<T>((resolve, reject) => {
-      const transaction = db.transaction(RASTER_FILE_STORE, mode);
-      const store = transaction.objectStore(RASTER_FILE_STORE);
-      const request = operation(store);
-      request.onerror = () => reject(request.error ?? new Error("Operação raster IndexedDB falhou."));
-      request.onsuccess = () => resolve(request.result);
-      transaction.onerror = () =>
-        reject(transaction.error ?? new Error("Transação raster IndexedDB falhou."));
-    });
-  } finally {
-    db.close();
-  }
 }
 
 export async function saveGISWorkspaceRasterFile(
@@ -227,14 +205,18 @@ export async function saveGISWorkspaceRasterFile(
     mimeType: file.type || "image/tiff",
     blob: file,
   };
-  await withRasterStore<IDBValidKey>("readwrite", (store) => store.put(record));
+  await withStore<IDBValidKey>(RASTER_FILE_STORE, "readwrite", (store) =>
+    store.put(record)
+  );
 }
 
 export async function loadGISWorkspaceRasterFiles(
   projectId: string
 ): Promise<Map<string, File>> {
-  const records = await withRasterStore<RasterFileRecord[]>("readonly", (store) =>
-    store.getAll()
+  const records = await withStore<RasterFileRecord[]>(
+    RASTER_FILE_STORE,
+    "readonly",
+    (store) => store.getAll()
   );
   const result = new Map<string, File>();
   for (const record of records) {
@@ -251,41 +233,52 @@ export async function loadGISWorkspaceRasterFiles(
 
 export async function syncGISWorkspaceRasterFiles(
   projectId: string,
-  rasters: Array<{ id: string; file: File }>
+  rasters: Array<{ id: string; file?: File }>
 ): Promise<void> {
   if (!projectId) return;
-  const desired = new Set(rasters.map((raster) => raster.id));
+  const localRasters = rasters.filter(
+    (raster): raster is { id: string; file: File } => raster.file instanceof File
+  );
+  const desired = new Set(localRasters.map((raster) => raster.id));
+
   await Promise.all(
-    rasters.map((raster) =>
+    localRasters.map((raster) =>
       saveGISWorkspaceRasterFile(projectId, raster.id, raster.file)
     )
   );
 
-  const records = await withRasterStore<RasterFileRecord[]>("readonly", (store) =>
-    store.getAll()
+  const records = await withStore<RasterFileRecord[]>(
+    RASTER_FILE_STORE,
+    "readonly",
+    (store) => store.getAll()
   );
   await Promise.all(
     records
-      .filter((record) => record.projectId === projectId && !desired.has(record.rasterId))
+      .filter(
+        (record) =>
+          record.projectId === projectId && !desired.has(record.rasterId)
+      )
       .map((record) =>
-        withRasterStore<undefined>("readwrite", (store) => store.delete(record.key))
+        withStore<undefined>(RASTER_FILE_STORE, "readwrite", (store) =>
+          store.delete(record.key)
+        )
       )
   );
 }
 
 export function estimateGISWorkspaceSnapshotBytes(
-  snapshot: Pick<GISWorkspaceSnapshot, "layers" | "history" | "modelNodes" | "rasters">
+  snapshot: Pick<
+    GISWorkspaceSnapshot,
+    "layers" | "rasters" | "history" | "modelNodes"
+  >
 ): number {
   try {
-    const rasterBytes = snapshot.rasterLayers.reduce(
-      (total, layer) => total + (layer.blob?.size ?? layer.sizeBytes ?? 0),
+    const metadataBytes = new Blob([JSON.stringify(snapshot)]).size;
+    const rasterBytes = snapshot.rasters.reduce(
+      (total, raster) => total + (raster.sizeBytes || 0),
       0
     );
-    const metadataOnly = {
-      ...snapshot,
-      rasterLayers: snapshot.rasterLayers.map(({ blob: _blob, ...layer }) => layer),
-    };
-    return new Blob([JSON.stringify(metadataOnly)]).size + rasterBytes;
+    return metadataBytes + rasterBytes;
   } catch {
     return 0;
   }
