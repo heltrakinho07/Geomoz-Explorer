@@ -45,6 +45,9 @@ export default defineConfig({
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
   },
+  worker: {
+    format: "es",
+  },
   server: {
     port,
     strictPort: true,

@@ -15,6 +15,23 @@ service cloud.firestore {
         match /runs/{runId} {
           allow read, write: if request.auth != null && request.auth.uid == userId;
         }
+
+        // GIS Workspace lightweight state/manifest. Large datasets live in Storage.
+        match /workspace/{documentId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+
+        match /workspaceLayers/{layerId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+
+        match /processingRuns/{runId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+
+        match /models/{modelId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
       }
 
       // Credentials & GEE OAuth tokens

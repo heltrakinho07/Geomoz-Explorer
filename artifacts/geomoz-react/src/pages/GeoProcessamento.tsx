@@ -1,5 +1,5 @@
 /**
- * GeoProcessamento Avançado — Suite Completa de Geoprocessamento
+ * GeoMoz GIS Workspace — Ambiente GIS Integrado e Persistente
  * Fiel à arquitetura e estrutura do GeoLibre (https://geolibre.app/user-guide/processing/):
  *
  * 1. Whitebox Toolbox (1.000+ ferramentas categorizadas: Vector, Raster, Hydrology, Terrain, LiDAR, etc.)
@@ -14,16 +14,25 @@
  */
 
 import React, { useState, useRef, useMemo, useCallback } from "react";
+import GISWorkspaceMapLibre from "@/components/GISWorkspaceMapLibre";
 import {
-  MapContainer,
-  TileLayer,
-  GeoJSON as LeafletGeoJSON,
-  ScaleControl,
-  ZoomControl,
-  useMap,
-} from "react-leaflet";
-import "leaflet/dist/leaflet.css";
-import L from "leaflet";
+  fetchWfsCapabilities,
+  importWfsFeatureType,
+  type WfsFeatureType,
+} from "@/lib/ogc-wfs";
+import {
+  autoGISRasterStretch,
+  getGISRasterBandStats,
+  type GISRasterBandStats,
+  type GISWorkspaceRasterLayer,
+  type GISWorkspaceRasterMetadata,
+} from "@/lib/gis-raster";
+import {
+  computeGISRasterBreaks,
+  defaultGISRasterSymbology,
+  rasterClassColors,
+  type GISRasterSymbology,
+} from "@/lib/gis-raster-classification";
 import {
   Wrench,
   Boxes,
@@ -61,6 +70,8 @@ import {
   Mountain,
   Waves,
   Cpu,
+  Link2,
+  Globe2,
 } from "lucide-react";
 import {
   BarChart,
@@ -74,11 +85,8 @@ import {
   Cell,
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
-import AreaSelect from "@/components/AreaSelect";
 import BasemapSwitcher from "@/components/BasemapSwitcher";
-import MapTools from "@/components/MapTools";
-import MapDraw from "@/components/MapDraw";
-import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
+import { BasemapType } from "@/lib/basemaps";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { GLOBAL_AOI, customAOI } from "@/lib/aoi";
 import {
@@ -98,7 +106,13 @@ import {
   runVectorDifference,
   runVectorPointsInPolygon,
 } from "@/lib/wasm-geoprocessing";
-import { executeSpatialQuery, exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-loader";
+import { exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-loader";
+import {
+  executeDuckDbSpatialQuery,
+  importVectorFileWithDuckDb,
+  importShapefileBundleWithDuckDb,
+  sanitizeDuckDbTableName,
+} from "@/lib/duckdb-spatial";
 import {
   createPDFContext,
   drawCover,
@@ -110,22 +124,30 @@ import {
   CONTENT_W,
 } from "@/lib/pdf-export";
 import type { FeatureCollection, Feature } from "geojson";
-
-// Auto fit-bounds component
-function FitToLayer({ fc }: { fc?: FeatureCollection }) {
-  const map = useMap();
-  React.useEffect(() => {
-    if (!fc || fc.features.length === 0) return;
-    try {
-      const geoLayer = L.geoJSON(fc);
-      const bounds = geoLayer.getBounds();
-      if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
-      }
-    } catch {}
-  }, [fc, map]);
-  return null;
-}
+import { useProject } from "@/context/ProjectContext";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  loadGISWorkspaceFromCloud,
+  syncGISWorkspaceToCloud,
+} from "@/services/gisWorkspaceCloudService";
+import {
+  loadGISWorkspaceSnapshot,
+  saveGISWorkspaceSnapshot,
+  loadGISWorkspaceRasterFiles,
+  syncGISWorkspaceRasterFiles,
+  type PersistedGISRasterLayer,
+} from "@/lib/gis-workspace-persistence";
+import {
+  listWhiteboxWasmManifests,
+  runWhiteboxRasterTool,
+  runWhiteboxVectorTool,
+  whiteboxManifestDefaults,
+  whiteboxManifestName,
+  whiteboxParamKind,
+  whiteboxRasterSupport,
+  whiteboxVectorSupport,
+  type WhiteboxWasmManifest,
+} from "@/lib/whitebox-wasm";
 
 export interface UserLayer {
   id: string;
@@ -148,6 +170,7 @@ export interface ProcessingHistoryEntry {
   durationMs: number;
   inputLayerName: string;
   outputCount: number;
+  outputLabel?: string;
   status: "success" | "error";
   parameters: Record<string, any>;
 }
@@ -191,6 +214,17 @@ const PALETTE = [
   "#db2777",
 ];
 
+function rasterStatsKey(layerId: string, band: number): string {
+  return `${layerId}:${band}`;
+}
+
+function formatRasterValue(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  const abs = Math.abs(value);
+  if ((abs > 0 && abs < 0.001) || abs >= 1_000_000) return value.toExponential(3);
+  return Number(value.toPrecision(6)).toLocaleString("pt-PT");
+}
+
 export default function GeoProcessamento({
   aoi,
   province,
@@ -202,8 +236,16 @@ export default function GeoProcessamento({
   onAOIChange,
 }: Props) {
   const { toast } = useToast();
+  const { activeProject } = useProject();
+  const { user } = useAuth();
+  const workspaceProjectId = activeProject?.id ?? "session-default";
+  const cloudUid =
+    user?.uid && user.uid !== "guest_user" && !user.uid.startsWith("guest_")
+      ? user.uid
+      : null;
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const rasterErrorToastRef = useRef(new Set<string>());
 
   // Main UI Navigation
   const [activeTab, setActiveTab] = useState<MainTab>("geolibre_toolbox");
@@ -214,6 +256,18 @@ export default function GeoProcessamento({
 
   // User Layers
   const [layers, setLayers] = useState<UserLayer[]>([]);
+  const [rasterLayers, setRasterLayers] = useState<GISWorkspaceRasterLayer[]>([]);
+  const [rasterUrl, setRasterUrl] = useState("");
+  const [showRasterUrlInput, setShowRasterUrlInput] = useState(false);
+  const [rasterBandStats, setRasterBandStats] = useState<Record<string, GISRasterBandStats>>({});
+  const [rasterStatsLoadingKey, setRasterStatsLoadingKey] = useState<string | null>(null);
+  const [rasterStatsErrors, setRasterStatsErrors] = useState<Record<string, string>>({});
+  const [showWfsInput, setShowWfsInput] = useState(false);
+  const [wfsEndpoint, setWfsEndpoint] = useState("");
+  const [wfsVersion, setWfsVersion] = useState("2.0.0");
+  const [wfsFeatureTypes, setWfsFeatureTypes] = useState<WfsFeatureType[]>([]);
+  const [selectedWfsType, setSelectedWfsType] = useState("");
+  const [wfsLoading, setWfsLoading] = useState(false);
   const [selectedLayerId, setSelectedLayerId] = useState<string>("");
   const [secondLayerId, setSecondLayerId] = useState<string>("");
   const [tableLayerId, setTableLayerId] = useState<string | null>(null);
@@ -231,14 +285,200 @@ export default function GeoProcessamento({
   });
   const [isExecuting, setIsExecuting] = useState(false);
 
+  // Real Whitebox / GeoLibre WASM catalog (lazy-loaded only when the tab opens).
+  const [whiteboxTools, setWhiteboxTools] = useState<WhiteboxWasmManifest[]>([]);
+  const [whiteboxLoading, setWhiteboxLoading] = useState(false);
+  const [whiteboxError, setWhiteboxError] = useState<string | null>(null);
+  const [selectedWhiteboxToolId, setSelectedWhiteboxToolId] = useState("");
+  const [whiteboxParams, setWhiteboxParams] = useState<Record<string, unknown>>({});
+  const [selectedWhiteboxRasterId, setSelectedWhiteboxRasterId] = useState("");
+  const [secondWhiteboxRasterId, setSecondWhiteboxRasterId] = useState("");
+
   // Processing History
   const [history, setHistory] = useState<ProcessingHistoryEntry[]>([]);
+  const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
+  const hydratedProjectRef = useRef<string | null>(null);
 
   // Model Builder
   const [modelNodes, setModelNodes] = useState<ModelNode[]>([
     { id: "node_1", toolId: "vector_buffer", name: "Buffer", parameters: { distance: 1500, units: "meters", dissolve: false } },
     { id: "node_2", toolId: "vector_dissolve", name: "Dissolve", parameters: { propertyName: "" } },
   ]);
+
+  // Restore the newest available workspace snapshot. IndexedDB is the fast
+  // offline cache; authenticated projects additionally use Firestore + Storage.
+  React.useEffect(() => {
+    let cancelled = false;
+    setWorkspaceHydrated(false);
+    hydratedProjectRef.current = null;
+
+    const load = async () => {
+      const localPromise = loadGISWorkspaceSnapshot(workspaceProjectId);
+      const rasterFilesPromise = loadGISWorkspaceRasterFiles(workspaceProjectId).catch((error) => {
+        console.warn("GIS Workspace: raster cache indisponível:", error);
+        return new Map<string, File>();
+      });
+      const cloudPromise =
+        cloudUid && activeProject?.id
+          ? loadGISWorkspaceFromCloud(cloudUid, workspaceProjectId).catch((error) => {
+              console.warn("GIS Workspace: cloud restore unavailable, using local cache:", error);
+              return null;
+            })
+          : Promise.resolve(null);
+
+      const [localSnapshot, rasterFiles, cloudSnapshot] = await Promise.all([
+        localPromise,
+        rasterFilesPromise,
+        cloudPromise,
+      ]);
+      if (cancelled) return;
+
+      const localTime = localSnapshot ? Date.parse(localSnapshot.updatedAt) || 0 : 0;
+      const cloudTime = cloudSnapshot ? Date.parse(cloudSnapshot.updatedAt) || 0 : 0;
+      const snapshot =
+        cloudSnapshot && cloudTime > localTime ? cloudSnapshot : localSnapshot ?? cloudSnapshot;
+
+      if (snapshot) {
+        setLayers(snapshot.layers as UserLayer[]);
+        const rasterMetadata = (snapshot.rasters ?? []) as PersistedGISRasterLayer[];
+        setRasterLayers(
+          rasterMetadata.flatMap((raster) => {
+            const file = rasterFiles.get(raster.id);
+            if (!file && !raster.remoteUrl) return [];
+            return [
+              {
+                id: raster.id,
+                name: raster.name,
+                file,
+                remoteUrl: raster.remoteUrl,
+                sourceType: raster.sourceType,
+                fileName: raster.fileName,
+                mimeType: raster.mimeType || "image/tiff",
+                sizeBytes: file?.size ?? raster.sizeBytes ?? 0,
+                visible: raster.visible,
+                opacity: raster.opacity,
+                isResult: raster.isResult,
+                bandCount: raster.bandCount ?? null,
+                bounds: raster.bounds ?? null,
+                error: raster.error ?? null,
+                rasterState: raster.rasterState as GISWorkspaceRasterLayer["rasterState"],
+                rasterSymbology:
+                  raster.rasterSymbology as GISWorkspaceRasterLayer["rasterSymbology"],
+              } satisfies GISWorkspaceRasterLayer,
+            ];
+          })
+        );
+        setSelectedLayerId(snapshot.selectedLayerId || snapshot.layers[0]?.id || "");
+        setSecondLayerId(snapshot.secondLayerId || "");
+        setTableLayerId(snapshot.tableLayerId || null);
+        setHistory(snapshot.history as ProcessingHistoryEntry[]);
+        setModelNodes(snapshot.modelNodes as ModelNode[]);
+        if (snapshot.activeTab) setActiveTab(snapshot.activeTab as MainTab);
+        if (snapshot.basemap) setBasemap(snapshot.basemap as BasemapType);
+
+        // Refresh the local offline cache when the cloud copy is newer.
+        if (snapshot === cloudSnapshot) {
+          void saveGISWorkspaceSnapshot({
+            projectId: workspaceProjectId,
+            layers: snapshot.layers,
+            rasters: snapshot.rasters ?? [],
+            selectedLayerId: snapshot.selectedLayerId,
+            secondLayerId: snapshot.secondLayerId,
+            tableLayerId: snapshot.tableLayerId,
+            history: snapshot.history,
+            modelNodes: snapshot.modelNodes,
+            activeTab: snapshot.activeTab,
+            basemap: snapshot.basemap,
+          });
+        }
+      } else {
+        setLayers([]);
+        setRasterLayers([]);
+        setSelectedLayerId("");
+        setSecondLayerId("");
+        setTableLayerId(null);
+        setHistory([]);
+      }
+
+      hydratedProjectRef.current = workspaceProjectId;
+      setWorkspaceHydrated(true);
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceProjectId, cloudUid, activeProject?.id]);
+
+  // Persist project workspace changes without blocking map interaction.
+  React.useEffect(() => {
+    if (!workspaceHydrated || hydratedProjectRef.current !== workspaceProjectId) return;
+
+    const timer = window.setTimeout(() => {
+      const rasterSnapshot: PersistedGISRasterLayer[] = rasterLayers.map((raster) => ({
+        id: raster.id,
+        name: raster.name,
+        fileName: raster.file?.name ?? raster.fileName,
+        mimeType: raster.file?.type || raster.mimeType || "image/tiff",
+        sizeBytes: raster.file?.size ?? raster.sizeBytes ?? 0,
+        visible: raster.visible,
+        opacity: raster.opacity,
+        isResult: raster.isResult,
+        bandCount: raster.bandCount ?? null,
+        bounds: raster.bounds ?? null,
+        error: raster.error ?? null,
+        rasterState: raster.rasterState ? { ...raster.rasterState } : undefined,
+        rasterSymbology: raster.rasterSymbology
+          ? { ...raster.rasterSymbology }
+          : undefined,
+        remoteUrl: raster.remoteUrl,
+        sourceType: raster.sourceType,
+      }));
+
+      const snapshot = {
+        projectId: workspaceProjectId,
+        layers,
+        rasters: rasterSnapshot,
+        selectedLayerId,
+        secondLayerId,
+        tableLayerId,
+        history,
+        modelNodes,
+        activeTab,
+        basemap,
+      };
+
+      void (async () => {
+        await saveGISWorkspaceSnapshot(snapshot);
+        await syncGISWorkspaceRasterFiles(workspaceProjectId, rasterLayers).catch((error) => {
+          console.warn("GIS Workspace: falha ao persistir rasters localmente:", error);
+        });
+
+        if (cloudUid && activeProject?.id) {
+          await syncGISWorkspaceToCloud(cloudUid, snapshot).catch((error) => {
+            console.warn("GIS Workspace: cloud sync deferred; local copy is safe:", error);
+          });
+        }
+      })();
+    }, 900);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    workspaceHydrated,
+    workspaceProjectId,
+    cloudUid,
+    activeProject?.id,
+    layers,
+    rasterLayers,
+    selectedLayerId,
+    secondLayerId,
+    tableLayerId,
+    history,
+    modelNodes,
+    activeTab,
+    basemap,
+  ]);
+
 
   // Spatial SQL Workspace
   const [sqlQuery, setSqlQuery] = useState<string>("");
@@ -268,6 +508,217 @@ export default function GeoProcessamento({
       return matchSearch && matchCat;
     });
   }, [toolSearch, toolCategoryFilter]);
+
+  const selectedWhiteboxTool = useMemo(
+    () => whiteboxTools.find((tool) => tool.id === selectedWhiteboxToolId) ?? null,
+    [whiteboxTools, selectedWhiteboxToolId]
+  );
+
+  const selectedWhiteboxVectorSupport = useMemo(
+    () => (selectedWhiteboxTool ? whiteboxVectorSupport(selectedWhiteboxTool) : null),
+    [selectedWhiteboxTool]
+  );
+
+  const selectedWhiteboxRasterSupport = useMemo(
+    () => (selectedWhiteboxTool ? whiteboxRasterSupport(selectedWhiteboxTool) : null),
+    [selectedWhiteboxTool]
+  );
+
+  const selectedWhiteboxMode = useMemo<"vector" | "raster" | null>(() => {
+    if (selectedWhiteboxVectorSupport?.supported) return "vector";
+    if (selectedWhiteboxRasterSupport?.supported) return "raster";
+    return null;
+  }, [selectedWhiteboxVectorSupport, selectedWhiteboxRasterSupport]);
+
+  const loadRasterBandStats = useCallback(
+    async (layer: GISWorkspaceRasterLayer, band: number, signal?: AbortSignal) => {
+      const key = rasterStatsKey(layer.id, band);
+      setRasterStatsLoadingKey(key);
+      setRasterStatsErrors((previous) => {
+        if (!previous[key]) return previous;
+        const next = { ...previous };
+        delete next[key];
+        return next;
+      });
+      try {
+        const stats = await getGISRasterBandStats(layer, band, signal);
+        if (!stats) throw new Error("Não foi possível calcular estatísticas desta banda.");
+        setRasterBandStats((previous) => ({ ...previous, [key]: stats }));
+      } catch (error) {
+        if (signal?.aborted) return;
+        setRasterStatsErrors((previous) => ({
+          ...previous,
+          [key]: error instanceof Error ? error.message : String(error),
+        }));
+      } finally {
+        setRasterStatsLoadingKey((current) => (current === key ? null : current));
+      }
+    },
+    []
+  );
+
+  const selectedWhiteboxRaster = useMemo(
+    () => rasterLayers.find((layer) => layer.id === selectedWhiteboxRasterId) ?? null,
+    [rasterLayers, selectedWhiteboxRasterId]
+  );
+
+  const secondaryWhiteboxRaster = useMemo(
+    () => rasterLayers.find((layer) => layer.id === secondWhiteboxRasterId) ?? null,
+    [rasterLayers, secondWhiteboxRasterId]
+  );
+
+  React.useEffect(() => {
+    if (!selectedWhiteboxRaster) return;
+    const mode = selectedWhiteboxRaster.rasterState?.mode ?? "single";
+    const configuredBands = selectedWhiteboxRaster.rasterState?.bands?.length
+      ? selectedWhiteboxRaster.rasterState.bands
+      : [1];
+    const bands =
+      mode === "rgb" ? configuredBands.slice(0, 3) : [configuredBands[0] ?? 1];
+    const band = bands.find((candidate) => {
+      const key = rasterStatsKey(selectedWhiteboxRaster.id, candidate);
+      return !rasterBandStats[key] && rasterStatsLoadingKey !== key;
+    });
+    if (!band) return;
+
+    const controller = new AbortController();
+    void loadRasterBandStats(selectedWhiteboxRaster, band, controller.signal);
+    return () => controller.abort();
+  }, [
+    loadRasterBandStats,
+    rasterBandStats,
+    rasterStatsLoadingKey,
+    selectedWhiteboxRaster,
+  ]);
+
+  React.useEffect(() => {
+    if (selectedWhiteboxMode !== "raster") return;
+    if (!selectedWhiteboxRaster && rasterLayers[0]) {
+      setSelectedWhiteboxRasterId(rasterLayers[0].id);
+    }
+    if (
+      secondWhiteboxRasterId &&
+      !rasterLayers.some((layer) => layer.id === secondWhiteboxRasterId)
+    ) {
+      setSecondWhiteboxRasterId("");
+    }
+  }, [
+    rasterLayers,
+    secondWhiteboxRasterId,
+    selectedWhiteboxMode,
+    selectedWhiteboxRaster,
+  ]);
+
+  const openTerrainWhiteboxTool = useCallback(
+    async (toolId: "hillshade" | "slope" | "aspect", rasterId: string) => {
+      try {
+        let tools = whiteboxTools;
+        if (tools.length === 0) {
+          setWhiteboxLoading(true);
+          tools = await listWhiteboxWasmManifests();
+          setWhiteboxTools(tools);
+        }
+
+        const tool = tools.find((candidate) => candidate.id === toolId);
+        if (!tool || !whiteboxRasterSupport(tool).supported) {
+          throw new Error(
+            `A ferramenta ${toolId} não está disponível no runtime Whitebox atual.`
+          );
+        }
+
+        setSelectedWhiteboxRasterId(rasterId);
+        setSelectedWhiteboxToolId(tool.id);
+        setWhiteboxParams(whiteboxManifestDefaults(tool));
+        setToolSearch("");
+        setToolCategoryFilter("all");
+        setActiveTab("whitebox_toolbox");
+        setSidebarOpen(true);
+
+        toast({
+          title: `${whiteboxManifestName(tool)} preparado`,
+          description:
+            "O DEM já está selecionado. Confirme os parâmetros e execute no Whitebox WASM.",
+        });
+      } catch (error) {
+        toast({
+          title: "Ferramenta de terreno indisponível",
+          description: error instanceof Error ? error.message : String(error),
+          variant: "destructive",
+        });
+      } finally {
+        setWhiteboxLoading(false);
+      }
+    },
+    [toast, whiteboxTools]
+  );
+
+  const filteredWhiteboxTools = useMemo(() => {
+    const needle = toolSearch.trim().toLowerCase();
+    return whiteboxTools.filter((tool) => {
+      const category = (tool.category ?? "Outras").toLowerCase();
+      const matchesCategory =
+        toolCategoryFilter === "all" || category === toolCategoryFilter.toLowerCase();
+      const text = [
+        tool.id,
+        whiteboxManifestName(tool),
+        tool.summary ?? "",
+        tool.category ?? "",
+        tool.source ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return matchesCategory && (!needle || text.includes(needle));
+    });
+  }, [whiteboxTools, toolSearch, toolCategoryFilter]);
+
+  const whiteboxCategories = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          whiteboxTools
+            .map((tool) => tool.category)
+            .filter((category): category is string => Boolean(category))
+        )
+      )
+        .sort((a, b) => a.localeCompare(b))
+        .slice(0, 24),
+    [whiteboxTools]
+  );
+
+  React.useEffect(() => {
+    if (activeTab !== "whitebox_toolbox" || whiteboxTools.length > 0 || whiteboxLoading) return;
+
+    let cancelled = false;
+    setWhiteboxLoading(true);
+    setWhiteboxError(null);
+
+    void listWhiteboxWasmManifests()
+      .then((tools) => {
+        if (cancelled) return;
+        setWhiteboxTools(tools);
+        const first =
+          tools.find(
+            (tool) =>
+              whiteboxVectorSupport(tool).supported ||
+              whiteboxRasterSupport(tool).supported
+          ) ?? tools[0];
+        if (first) {
+          setSelectedWhiteboxToolId(first.id);
+          setWhiteboxParams(whiteboxManifestDefaults(first));
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setWhiteboxError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (!cancelled) setWhiteboxLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, whiteboxTools.length, whiteboxLoading]);
 
   // Synchronize drawn AOI as a layer
   React.useEffect(() => {
@@ -310,19 +761,270 @@ export default function GeoProcessamento({
   // Default SQL when layer loads
   React.useEffect(() => {
     if (layers.length > 0 && !sqlQuery) {
-      setSqlQuery(`SELECT * FROM ${layers[0].name.toLowerCase().replace(/[^a-z0-9_]/g, "_")} LIMIT 50`);
+      setSqlQuery(`SELECT * FROM ${sanitizeDuckDbTableName(layers[0].name)} LIMIT 50`);
     }
   }, [layers, sqlQuery]);
+
+  const handleRetrieveWfs = useCallback(async () => {
+    const endpoint = wfsEndpoint.trim();
+    if (!endpoint) {
+      toast({
+        title: "Introduza o endpoint WFS",
+        description: "Use o URL base do serviço WFS ou um URL GetCapabilities.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const parsed = new URL(endpoint);
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        throw new Error("Use um endpoint HTTP ou HTTPS.");
+      }
+    } catch (error) {
+      toast({
+        title: "Endpoint WFS inválido",
+        description: error instanceof Error ? error.message : "URL inválido.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setWfsLoading(true);
+    try {
+      const capabilities = await fetchWfsCapabilities(endpoint, {
+        version: wfsVersion,
+      });
+      setWfsVersion(capabilities.version);
+      setWfsFeatureTypes(capabilities.featureTypes);
+      setSelectedWfsType((current) =>
+        capabilities.featureTypes.some((item) => item.name === current)
+          ? current
+          : capabilities.featureTypes[0]?.name ?? ""
+      );
+      toast({
+        title: "WFS ligado",
+        description: `${capabilities.featureTypes.length} FeatureType(s) encontrados · WFS ${capabilities.version}.`,
+      });
+    } catch (error) {
+      setWfsFeatureTypes([]);
+      setSelectedWfsType("");
+      toast({
+        title: "Falha ao consultar WFS",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setWfsLoading(false);
+    }
+  }, [toast, wfsEndpoint, wfsVersion]);
+
+  const handleImportWfs = useCallback(async () => {
+    const featureType = wfsFeatureTypes.find(
+      (item) => item.name === selectedWfsType
+    );
+    if (!featureType) {
+      toast({
+        title: "Selecione um FeatureType",
+        description: "Consulte o GetCapabilities e escolha a camada a importar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setWfsLoading(true);
+    try {
+      const parsed = await importWfsFeatureType({
+        endpoint: wfsEndpoint,
+        version: wfsVersion,
+        typeName: featureType.name,
+        title: featureType.title,
+        wgs84Bounds: featureType.wgs84Bounds,
+        maxFeatures: 5000,
+      });
+
+      const newLayer: UserLayer = {
+        id: `wfs_${crypto.randomUUID().slice(0, 12)}`,
+        name: parsed.name,
+        geojson: parsed.geojson,
+        featureCount: parsed.featureCount,
+        geometryType: parsed.geometryType,
+        fields: parsed.fields,
+        color: PALETTE[layers.length % PALETTE.length],
+        visible: true,
+      };
+
+      setLayers((previous) => [newLayer, ...previous]);
+      setSelectedLayerId(newLayer.id);
+      toast({
+        title: "WFS importado",
+        description: `${parsed.name}: ${parsed.featureCount} feições adicionadas ao Workspace.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Falha ao importar WFS",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setWfsLoading(false);
+    }
+  }, [
+    layers.length,
+    selectedWfsType,
+    toast,
+    wfsEndpoint,
+    wfsFeatureTypes,
+    wfsVersion,
+  ]);
+
+  const handleAddRasterUrl = useCallback(() => {
+    const raw = rasterUrl.trim();
+    if (!raw) {
+      toast({
+        title: "Introduza um URL",
+        description: "Cole o endereço HTTP/HTTPS de um GeoTIFF ou COG remoto.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      toast({
+        title: "URL inválido",
+        description: "Use um endereço completo iniciado por http:// ou https://.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      toast({
+        title: "Protocolo não suportado",
+        description: "O GIS Workspace aceita rasters remotos por HTTP ou HTTPS.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const lastSegment = decodeURIComponent(
+      parsed.pathname.split("/").filter(Boolean).pop() || "raster-remoto.tif"
+    );
+    const fileName = /\.tiff?$/i.test(lastSegment)
+      ? lastSegment
+      : `${lastSegment || "raster-remoto"}.tif`;
+    const name = fileName.replace(/\.[^/.]+$/, "");
+
+    const raster: GISWorkspaceRasterLayer = {
+      id: `raster_url_${crypto.randomUUID().slice(0, 12)}`,
+      name,
+      remoteUrl: parsed.toString(),
+      sourceType: "url",
+      fileName,
+      mimeType: "image/tiff",
+      sizeBytes: 0,
+      visible: true,
+      opacity: 1,
+      bandCount: null,
+      bounds: null,
+      error: null,
+      rasterState: {
+        mode: "single",
+        bands: [1],
+        colormap: "viridis",
+        reversed: false,
+        rescale: null,
+        nodata: "auto",
+        stretch: "linear",
+        gamma: 1,
+      },
+    };
+
+    setRasterLayers((previous) => [raster, ...previous]);
+    setSelectedWhiteboxRasterId(raster.id);
+    setRasterUrl("");
+    setShowRasterUrlInput(false);
+    toast({
+      title: "COG remoto adicionado",
+      description:
+        "O raster será lido diretamente por HTTP Range quando o servidor suportar pedidos parciais.",
+    });
+  }, [rasterUrl, toast]);
 
   // ── Handle File Upload ───────────────────────────────────────────────────
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    const selectedFiles = Array.from(files);
+    const shapefileSidecars = new Set(["dbf", "shx", "prj", "cpg"]);
+
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
       try {
-        const parsed = await parseUserUploadedFile(file);
+        const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+        if (shapefileSidecars.has(extension)) continue;
+
+        if (extension === "tif" || extension === "tiff") {
+          const raster: GISWorkspaceRasterLayer = {
+            id: `raster_${crypto.randomUUID().slice(0, 12)}`,
+            name: file.name.replace(/\.[^/.]+$/, ""),
+            file,
+            sourceType: "storage",
+            fileName: file.name,
+            mimeType: file.type || "image/tiff",
+            sizeBytes: file.size,
+            visible: true,
+            opacity: 1,
+            bandCount: null,
+            bounds: null,
+            error: null,
+            rasterState: {
+              mode: "single",
+              bands: [1],
+              colormap: "viridis",
+              reversed: false,
+              rescale: null,
+              nodata: "auto",
+              stretch: "linear",
+              gamma: 1,
+            },
+          };
+          setRasterLayers((previous) => [raster, ...previous]);
+          setSelectedWhiteboxRasterId(raster.id);
+          toast({
+            title: "Raster adicionado",
+            description: `${raster.name} será lido como GeoTIFF/COG no mapa do GIS Workspace.`,
+          });
+          continue;
+        }
+
+        const duckDbFormats = new Set([
+          "gpkg",
+          "geoparquet",
+          "parquet",
+          "pq",
+          "fgb",
+          "gml",
+          "kml",
+          "dxf",
+          "zip",
+        ]);
+        const parsed =
+          extension === "shp"
+            ? await importShapefileBundleWithDuckDb(
+                selectedFiles.filter(
+                  (candidate) =>
+                    candidate.name.replace(/\.[^/.]+$/, "").toLowerCase() ===
+                    file.name.replace(/\.[^/.]+$/, "").toLowerCase()
+                )
+              )
+            : duckDbFormats.has(extension)
+              ? await importVectorFileWithDuckDb(file)
+              : await parseUserUploadedFile(file);
         const newLayer: UserLayer = {
           id: `layer_${Date.now()}_${i}`,
           name: parsed.name,
@@ -339,7 +1041,11 @@ export default function GeoProcessamento({
 
         toast({
           title: "Ficheiro Carregado",
-          description: `${parsed.name} (${parsed.featureCount} elementos) adicionado ao projeto.`,
+          description: `${parsed.name} (${parsed.featureCount} elementos) · ${
+            extension === "shp" || duckDbFormats.has(extension)
+              ? "DuckDB Spatial"
+              : "parser local"
+          }.`,
         });
       } catch (err: any) {
         toast({
@@ -352,6 +1058,90 @@ export default function GeoProcessamento({
 
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
+
+  const updateRasterState = useCallback(
+    (
+      rasterId: string,
+      patch: NonNullable<GISWorkspaceRasterLayer["rasterState"]>
+    ) => {
+      setRasterLayers((previous) =>
+        previous.map((layer) =>
+          layer.id === rasterId
+            ? {
+                ...layer,
+                rasterState: {
+                  ...layer.rasterState,
+                  ...patch,
+                },
+              }
+            : layer
+        )
+      );
+    },
+    []
+  );
+
+  const updateRasterSymbology = useCallback(
+    (rasterId: string, symbology: GISRasterSymbology | undefined) => {
+      setRasterLayers((previous) =>
+        previous.map((layer) =>
+          layer.id === rasterId ? { ...layer, rasterSymbology: symbology } : layer
+        )
+      );
+    },
+    []
+  );
+
+  const handleRasterMetadata = useCallback(
+    (metadata: GISWorkspaceRasterMetadata) => {
+      setRasterLayers((previous) => {
+        let changed = false;
+        const next = previous.map((layer) => {
+          if (layer.id !== metadata.id) return layer;
+          const sameBounds =
+            JSON.stringify(layer.bounds ?? null) === JSON.stringify(metadata.bounds ?? null);
+          const sameRasterState =
+            JSON.stringify(layer.rasterState ?? {}) ===
+            JSON.stringify(metadata.rasterState ?? {});
+          if (
+            layer.bandCount === metadata.bandCount &&
+            sameBounds &&
+            sameRasterState &&
+            (layer.error ?? null) === (metadata.error ?? null)
+          ) {
+            return layer;
+          }
+          changed = true;
+          return {
+            ...layer,
+            bandCount: metadata.bandCount,
+            bounds: metadata.bounds,
+            error: metadata.error,
+            rasterState: metadata.rasterState,
+          };
+        });
+        return changed ? next : previous;
+      });
+    },
+    []
+  );
+
+  const handleRasterError = useCallback(
+    (layerId: string, message: string) => {
+      setRasterLayers((previous) =>
+        previous.map((layer) => (layer.id === layerId ? { ...layer, error: message } : layer))
+      );
+      const key = `${layerId}:${message}`;
+      if (rasterErrorToastRef.current.has(key)) return;
+      rasterErrorToastRef.current.add(key);
+      toast({
+        title: "Falha ao abrir raster",
+        description: message,
+        variant: "destructive",
+      });
+    },
+    [toast]
+  );
 
   // ── Run Geoprocessing Tool ───────────────────────────────────────────────
   const executeToolById = useCallback(
@@ -529,30 +1319,259 @@ export default function GeoProcessamento({
     }, 30);
   }, [activeLayer, modelNodes, executeToolById, toast]);
 
-  // ── Execute Spatial SQL ──────────────────────────────────────────────────
-  const handleExecuteSql = useCallback(() => {
-    if (!activeLayer) {
+  const readRasterBytes = useCallback(
+    async (layer: GISWorkspaceRasterLayer): Promise<Uint8Array> => {
+      if (layer.file) {
+        return new Uint8Array(await layer.file.arrayBuffer());
+      }
+      if (layer.remoteUrl) {
+        const response = await fetch(layer.remoteUrl);
+        if (!response.ok) {
+          throw new Error(
+            `Não foi possível transferir "${layer.name}" da cloud (HTTP ${response.status}).`
+          );
+        }
+        return new Uint8Array(await response.arrayBuffer());
+      }
+      throw new Error(`A camada raster "${layer.name}" não possui bytes acessíveis.`);
+    },
+    []
+  );
+
+  const handleRunWhitebox = useCallback(async () => {
+    if (!selectedWhiteboxTool || !selectedWhiteboxMode) {
       toast({
-        title: "Selecione uma Camada",
-        description: "Escolha uma camada alvo para consultar via SQL.",
+        title: "Ferramenta ainda não ligada ao tipo de camada",
+        description:
+          selectedWhiteboxRasterSupport?.reason ||
+          selectedWhiteboxVectorSupport?.reason ||
+          "Selecione uma ferramenta Whitebox compatível.",
         variant: "destructive",
       });
       return;
     }
 
+    setIsExecuting(true);
     try {
-      const res = executeSpatialQuery(activeLayer.geojson.features, sqlQuery);
+      if (selectedWhiteboxMode === "raster") {
+        if (!selectedWhiteboxRaster) {
+          throw new Error("Selecione uma camada raster de entrada.");
+        }
+        if (
+          (selectedWhiteboxRasterSupport?.rasterInputs.length ?? 0) > 1 &&
+          !secondaryWhiteboxRaster
+        ) {
+          throw new Error("Esta ferramenta Whitebox requer uma segunda camada raster.");
+        }
+
+        const primaryBytes = await readRasterBytes(selectedWhiteboxRaster);
+        const secondaryBytes = secondaryWhiteboxRaster
+          ? await readRasterBytes(secondaryWhiteboxRaster)
+          : undefined;
+
+        const result = await runWhiteboxRasterTool({
+          manifest: selectedWhiteboxTool,
+          primaryRaster: {
+            name: selectedWhiteboxRaster.name,
+            bytes: primaryBytes,
+          },
+          secondaryRaster:
+            secondaryWhiteboxRaster && secondaryBytes
+              ? {
+                  name: secondaryWhiteboxRaster.name,
+                  bytes: secondaryBytes,
+                }
+              : undefined,
+          parameters: whiteboxParams,
+        });
+
+        const preferredRasterColormap =
+          selectedWhiteboxTool.id === "hillshade"
+            ? "gray"
+            : selectedWhiteboxTool.id === "slope"
+              ? "terrain"
+              : selectedWhiteboxTool.id === "aspect"
+                ? "turbo"
+                : "viridis";
+
+        const generated: GISWorkspaceRasterLayer[] = result.outputs.map((output) => {
+          const buffer = new Uint8Array(output.bytes).buffer;
+          const file = new File([buffer], output.fileName, { type: "image/tiff" });
+          return {
+            id: `whitebox_raster_${crypto.randomUUID().slice(0, 12)}`,
+            name: `${whiteboxManifestName(selectedWhiteboxTool)} — ${output.parameter}`,
+            file,
+            sourceType: "storage",
+            fileName: file.name,
+            mimeType: "image/tiff",
+            sizeBytes: file.size,
+            visible: true,
+            opacity: 1,
+            isResult: true,
+            bandCount: null,
+            bounds: null,
+            error: null,
+            rasterState: {
+              mode: "single",
+              bands: [1],
+              colormap: preferredRasterColormap,
+              reversed: false,
+              rescale: null,
+              nodata: "auto",
+              stretch: "linear",
+              gamma: 1,
+            },
+          };
+        });
+
+        setRasterLayers((previous) => [...generated, ...previous]);
+        setHistory((previous) => [
+          {
+            id: `hist_whitebox_raster_${Date.now()}`,
+            toolId: selectedWhiteboxTool.id,
+            toolName: whiteboxManifestName(selectedWhiteboxTool),
+            engine: "WASM",
+            timestamp: new Date().toLocaleTimeString("pt-PT"),
+            durationMs: result.executionTimeMs,
+            inputLayerName: [selectedWhiteboxRaster.name, secondaryWhiteboxRaster?.name]
+              .filter(Boolean)
+              .join(", "),
+            outputCount: generated.length,
+            outputLabel: generated.length === 1 ? "raster" : "rasters",
+            status: "success",
+            parameters: { ...whiteboxParams },
+          },
+          ...previous,
+        ]);
+
+        toast({
+          title: "Whitebox Raster concluído",
+          description: `${whiteboxManifestName(selectedWhiteboxTool)} gerou ${generated.length} COG raster em ${result.executionTimeMs}ms.`,
+        });
+        return;
+      }
+
+      if (!activeLayer) {
+        throw new Error("Selecione uma camada vetorial de entrada.");
+      }
+      if (
+        (selectedWhiteboxVectorSupport?.vectorInputs.length ?? 0) > 1 &&
+        !secondaryLayer
+      ) {
+        throw new Error("Esta ferramenta Whitebox requer uma segunda camada vetorial.");
+      }
+
+      const result = await runWhiteboxVectorTool({
+        manifest: selectedWhiteboxTool,
+        primaryLayer: activeLayer.geojson,
+        secondaryLayer: secondaryLayer?.geojson,
+        parameters: whiteboxParams,
+      });
+
+      const generated: UserLayer[] = result.outputs.map((output, index) => {
+        const geojson = output.geojson;
+        return {
+          id: `whitebox_${Date.now()}_${index}`,
+          name: `${whiteboxManifestName(selectedWhiteboxTool)} — ${output.parameter}`,
+          geojson,
+          featureCount: geojson.features.length,
+          geometryType: geojson.features[0]?.geometry?.type ?? "Geometry",
+          fields: geojson.features[0]?.properties
+            ? Object.keys(geojson.features[0].properties)
+            : [],
+          color: PALETTE[(layers.length + index + 1) % PALETTE.length],
+          visible: true,
+          isResult: true,
+        };
+      });
+
+      setLayers((previous) => [...generated, ...previous]);
+      if (generated[0]) setSelectedLayerId(generated[0].id);
+
+      const outputCount = generated.reduce(
+        (total, layer) => total + layer.featureCount,
+        0
+      );
+      setHistory((previous) => [
+        {
+          id: `hist_whitebox_${Date.now()}`,
+          toolId: selectedWhiteboxTool.id,
+          toolName: whiteboxManifestName(selectedWhiteboxTool),
+          engine: "WASM",
+          timestamp: new Date().toLocaleTimeString("pt-PT"),
+          durationMs: result.executionTimeMs,
+          inputLayerName: [activeLayer.name, secondaryLayer?.name]
+            .filter(Boolean)
+            .join(", "),
+          outputCount,
+          outputLabel: "feições",
+          status: "success",
+          parameters: { ...whiteboxParams },
+        },
+        ...previous,
+      ]);
+
+      toast({
+        title: "Whitebox WASM concluído",
+        description: `${whiteboxManifestName(selectedWhiteboxTool)} gerou ${outputCount} feições em ${result.executionTimeMs}ms.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Whitebox WASM falhou",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setIsExecuting(false);
+    }
+  }, [
+    activeLayer,
+    layers.length,
+    readRasterBytes,
+    secondaryLayer,
+    secondaryWhiteboxRaster,
+    selectedWhiteboxMode,
+    selectedWhiteboxRaster,
+    selectedWhiteboxRasterSupport,
+    selectedWhiteboxTool,
+    selectedWhiteboxVectorSupport,
+    toast,
+    whiteboxParams,
+  ]);
+
+  // ── Execute Spatial SQL (DuckDB-WASM Spatial real) ────────────────────────
+  const handleExecuteSql = useCallback(async () => {
+    if (layers.length === 0) {
+      toast({
+        title: "Adicione Dados",
+        description: "Carregue pelo menos uma camada vetorial antes de executar SQL espacial.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsExecuting(true);
+    const startedAt = performance.now();
+    try {
+      const res = await executeDuckDbSpatialQuery(
+        layers.map((layer) => ({
+          id: layer.id,
+          name: layer.name,
+          geojson: layer.geojson,
+        })),
+        sqlQuery
+      );
       setSqlResult(res);
 
       if (res.features && res.features.length > 0) {
         const sqlLayerId = `sql_${Date.now()}`;
         const newLayer: UserLayer = {
           id: sqlLayerId,
-          name: `SQL: ${activeLayer.name} (${res.rows.length})`,
+          name: `SQL Spatial (${res.features.length})`,
           geojson: { type: "FeatureCollection", features: res.features },
           featureCount: res.features.length,
-          geometryType: res.features[0]?.geometry?.type || "Point",
-          fields: res.columns,
+          geometryType: res.features[0]?.geometry?.type || "Geometry",
+          fields: res.columns.filter((column) => column.toLowerCase() !== "geom"),
           color: "#0891b2",
           visible: true,
           isResult: true,
@@ -561,18 +1580,34 @@ export default function GeoProcessamento({
         setSelectedLayerId(sqlLayerId);
       }
 
+      const historyEntry: ProcessingHistoryEntry = {
+        id: `hist_sql_${Date.now()}`,
+        toolId: "duckdb_spatial_sql",
+        toolName: "DuckDB Spatial SQL",
+        engine: "DuckDB Spatial",
+        timestamp: new Date().toLocaleTimeString("pt-PT"),
+        durationMs: Math.round(performance.now() - startedAt),
+        inputLayerName: layers.map((layer) => layer.name).join(", "),
+        outputCount: res.features?.length ?? res.rows.length,
+        status: "success",
+        parameters: { sql: sqlQuery },
+      };
+      setHistory((prev) => [historyEntry, ...prev]);
+
       toast({
-        title: "Consulta SQL Concluída",
-        description: `${res.rows.length} linhas obtidas em ${res.executionTimeMs}ms.`,
+        title: "DuckDB Spatial concluído",
+        description: `${res.rows.length} linhas em ${res.executionTimeMs}ms · ${res.tableNames.length} tabela(s) disponíveis.`,
       });
     } catch (err: any) {
       toast({
-        title: "Erro na Sintaxe SQL",
-        description: err.message,
+        title: "Erro no DuckDB Spatial",
+        description: err?.message || "Não foi possível executar a consulta espacial.",
         variant: "destructive",
       });
+    } finally {
+      setIsExecuting(false);
     }
-  }, [activeLayer, sqlQuery, toast]);
+  }, [layers, sqlQuery, toast]);
 
   // ── Swipe Drag Handler ───────────────────────────────────────────────────
   const handleMouseDown = useCallback(() => {
@@ -650,7 +1685,7 @@ export default function GeoProcessamento({
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".geojson,.json,.csv,.kml"
+        accept=".geojson,.json,.csv,.kml,.gml,.gpkg,.parquet,.geoparquet,.pq,.fgb,.dxf,.shp,.dbf,.shx,.prj,.cpg,.zip,.tif,.tiff"
         className="hidden"
         onChange={handleFileUpload}
       />
@@ -682,7 +1717,7 @@ export default function GeoProcessamento({
                   GeoLibre Core
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400">Whitebox · GeoLibre Toolbox · Model Builder · SQL</p>
+              <p className="text-[10px] text-slate-400">Mapa GIS · Toolbox · Model Builder · Spatial SQL · Histórico</p>
             </div>
           </div>
           <button
@@ -994,70 +2029,345 @@ export default function GeoProcessamento({
         {activeTab === "whitebox_toolbox" && (
           <div className="p-3 space-y-3 flex-1">
             <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/40 rounded-xl p-2.5 text-[11px] text-sky-900 dark:text-sky-300">
-              <span className="font-semibold block mb-0.5">Catálogo Whitebox Tools</span>
-              Navegue pelas centenas de algoritmos disponíveis para hidrologia, relevo, sensoriamento e conversão.
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold">Whitebox · GeoLibre WASM</span>
+                <span className="text-[9px] font-bold rounded-full bg-white/80 dark:bg-slate-900/70 px-2 py-0.5 border border-sky-200 dark:border-sky-800">
+                  {whiteboxLoading ? "a carregar…" : `${whiteboxTools.length} tools reais`}
+                </span>
+              </div>
+              <p className="mt-1">
+                Catálogo e execução vêm diretamente do runtime <code>geolibre-wasm</code>.
+                Ferramentas vetoriais e raster compatíveis executam no browser; saídas
+                raster são normalizadas para COG e regressam ao mesmo Workspace.
+              </p>
             </div>
 
-            {/* Search Box */}
+            {whiteboxError && (
+              <div className="rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 p-2.5 text-[11px] text-rose-700 dark:text-rose-300">
+                <strong>Runtime indisponível:</strong> {whiteboxError}
+              </div>
+            )}
+
             <div className="relative">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 value={toolSearch}
                 onChange={(e) => setToolSearch(e.target.value)}
-                placeholder="Pesquisar ferramentas Whitebox..."
+                placeholder="Pesquisar nos manifests Whitebox…"
                 className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
 
-            {/* Category Filter */}
             <div className="flex gap-1 overflow-x-auto pb-1 text-[10px]">
-              {[
-                { id: "all", label: "Todas" },
-                { id: "vector_geom", label: "Vetor" },
-                { id: "terrain", label: "Terreno" },
-                { id: "hydrology", label: "Hidrologia" },
-                { id: "spectral", label: "Radar/Sensoriamento" },
-              ].map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => setToolCategoryFilter(c.id)}
-                  className={`px-2 py-1 rounded-md shrink-0 transition-colors ${
-                    toolCategoryFilter === c.id
-                      ? "bg-indigo-600 text-white font-bold"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-                  }`}
-                >
-                  {c.label}
-                </button>
-              ))}
+              <button
+                onClick={() => setToolCategoryFilter("all")}
+                className={`px-2 py-1 rounded-md shrink-0 transition-colors ${
+                  toolCategoryFilter === "all"
+                    ? "bg-indigo-600 text-white font-bold"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                }`}
+              >
+                Todas
+              </button>
+              {whiteboxCategories.map((category) => {
+                const id = category.toLowerCase();
+                return (
+                  <button
+                    key={category}
+                    onClick={() => setToolCategoryFilter(id)}
+                    className={`px-2 py-1 rounded-md shrink-0 transition-colors ${
+                      toolCategoryFilter === id
+                        ? "bg-indigo-600 text-white font-bold"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                    }`}
+                  >
+                    {category}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Filtered Tools List */}
-            <div className="space-y-1.5 max-h-72 overflow-y-auto">
-              {filteredTools.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => {
-                    setSelectedToolId(t.id);
-                    setActiveTab("geolibre_toolbox");
-                  }}
-                  className={`w-full text-left p-2 rounded-xl border transition-all cursor-pointer ${
-                    selectedToolId === t.id
-                      ? "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-700"
-                      : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">{t.name}</span>
-                    <span className={`text-[9px] px-1 rounded ${t.implemented === false ? "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300" : "bg-slate-100 dark:bg-slate-700 text-slate-500"}`}>
-                      {t.implemented === false ? "Requer raster" : t.categoryLabel}
+            {whiteboxLoading ? (
+              <div className="py-8 text-center text-xs text-slate-400">
+                <RefreshCw size={18} className="animate-spin mx-auto mb-2" />
+                A inicializar manifests Whitebox WASM…
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                  <span>{filteredWhiteboxTools.length} correspondência(s)</span>
+                  {filteredWhiteboxTools.length > 250 && <span>a mostrar primeiras 250</span>}
+                </div>
+                <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                  {filteredWhiteboxTools.slice(0, 250).map((tool) => {
+                    const vectorSupport = whiteboxVectorSupport(tool);
+                    const rasterSupport = whiteboxRasterSupport(tool);
+                    const mode = vectorSupport.supported
+                      ? "vector"
+                      : rasterSupport.supported
+                        ? "raster"
+                        : null;
+                    return (
+                      <button
+                        key={tool.id}
+                        onClick={() => {
+                          setSelectedWhiteboxToolId(tool.id);
+                          setWhiteboxParams(whiteboxManifestDefaults(tool));
+                        }}
+                        className={`w-full text-left p-2 rounded-xl border transition-all cursor-pointer ${
+                          selectedWhiteboxToolId === tool.id
+                            ? "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-700"
+                            : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                            {whiteboxManifestName(tool)}
+                          </span>
+                          <span
+                            className={`text-[9px] px-1.5 py-0.5 rounded shrink-0 ${
+                              mode === "vector"
+                                ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300"
+                                : mode === "raster"
+                                  ? "bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300"
+                                  : "bg-slate-100 dark:bg-slate-700 text-slate-500"
+                            }`}
+                          >
+                            {mode === "vector"
+                              ? "WASM vetorial"
+                              : mode === "raster"
+                                ? "WASM raster"
+                                : tool.category ?? "WASM"}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 line-clamp-2 mt-0.5">
+                          {tool.summary || tool.id}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {selectedWhiteboxTool && (
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 space-y-3 shadow-xs">
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-xs font-extrabold text-slate-900 dark:text-slate-100">
+                      {whiteboxManifestName(selectedWhiteboxTool)}
+                    </h4>
+                    <span className="text-[9px] font-mono text-slate-400">
+                      {selectedWhiteboxTool.id}
                     </span>
                   </div>
-                  <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">{t.description}</p>
+                  <p className="mt-1 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+                    {selectedWhiteboxTool.summary || "Ferramenta declarada pelo runtime Whitebox WASM."}
+                  </p>
+                </div>
+
+                {selectedWhiteboxMode === "vector" && (
+                  <>
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                        Camada vetorial principal
+                      </label>
+                      <select
+                        value={selectedLayerId}
+                        onChange={(e) => setSelectedLayerId(e.target.value)}
+                        className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                      >
+                        <option value="">Selecione…</option>
+                        {layers.map((layer) => (
+                          <option key={layer.id} value={layer.id}>
+                            {layer.name} ({layer.featureCount})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {(selectedWhiteboxVectorSupport?.vectorInputs.length ?? 0) > 1 && (
+                      <div>
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                          Segunda camada vetorial
+                        </label>
+                        <select
+                          value={secondLayerId}
+                          onChange={(e) => setSecondLayerId(e.target.value)}
+                          className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                        >
+                          <option value="">Selecione…</option>
+                          {layers
+                            .filter((layer) => layer.id !== selectedLayerId)
+                            .map((layer) => (
+                              <option key={layer.id} value={layer.id}>
+                                {layer.name} ({layer.featureCount})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {selectedWhiteboxMode === "raster" && (
+                  <>
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                        Raster principal
+                      </label>
+                      <select
+                        value={selectedWhiteboxRasterId}
+                        onChange={(e) => setSelectedWhiteboxRasterId(e.target.value)}
+                        className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                      >
+                        <option value="">Selecione…</option>
+                        {rasterLayers.map((layer) => (
+                          <option key={layer.id} value={layer.id}>
+                            {layer.name}
+                            {layer.bandCount ? ` · ${layer.bandCount} banda(s)` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {(selectedWhiteboxRasterSupport?.rasterInputs.length ?? 0) > 1 && (
+                      <div>
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                          Segundo raster
+                        </label>
+                        <select
+                          value={secondWhiteboxRasterId}
+                          onChange={(e) => setSecondWhiteboxRasterId(e.target.value)}
+                          className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                        >
+                          <option value="">Selecione…</option>
+                          {rasterLayers
+                            .filter((layer) => layer.id !== selectedWhiteboxRasterId)
+                            .map((layer) => (
+                              <option key={layer.id} value={layer.id}>
+                                {layer.name}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+                  </>
+                )}
+                {(selectedWhiteboxTool.params ?? [])
+                  .filter((parameter) => {
+                    const kind = whiteboxParamKind(parameter);
+                    return !kind.endsWith("_in") && !kind.endsWith("_out");
+                  })
+                  .map((parameter) => {
+                    const kind = whiteboxParamKind(parameter);
+                    const options = parameter.schema?.options ?? [];
+                    const fallback = selectedWhiteboxTool.defaults?.[parameter.name] ?? "";
+                    const value = whiteboxParams[parameter.name] ?? fallback;
+                    const numeric = /^(int|integer|double|float|number)$/i.test(kind);
+                    const boolean = /^bool(ean)?$/i.test(kind);
+
+                    return (
+                      <div key={parameter.name} className="space-y-1">
+                        <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                          {parameter.name}
+                          {parameter.required ? " *" : ""}
+                        </label>
+                        {parameter.description && (
+                          <p className="text-[9px] text-slate-400">{parameter.description}</p>
+                        )}
+                        {boolean ? (
+                          <label className="flex items-center gap-2 text-xs">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(value)}
+                              onChange={(e) =>
+                                setWhiteboxParams((previous) => ({
+                                  ...previous,
+                                  [parameter.name]: e.target.checked,
+                                }))
+                              }
+                            />
+                            <span>{Boolean(value) ? "true" : "false"}</span>
+                          </label>
+                        ) : options.length > 0 ? (
+                          <select
+                            value={String(value)}
+                            onChange={(e) =>
+                              setWhiteboxParams((previous) => ({
+                                ...previous,
+                                [parameter.name]: e.target.value,
+                              }))
+                            }
+                            className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5"
+                          >
+                            <option value="">Selecione…</option>
+                            {options.map((option, index) => (
+                              <option key={index} value={String(option.value ?? "")}>
+                                {option.label ?? String(option.value ?? "")}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type={numeric ? "number" : "text"}
+                            value={String(value)}
+                            onChange={(e) =>
+                              setWhiteboxParams((previous) => ({
+                                ...previous,
+                                [parameter.name]: numeric
+                                  ? e.target.value === ""
+                                    ? ""
+                                    : Number(e.target.value)
+                                  : e.target.value,
+                              }))
+                            }
+                            className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+
+                {!selectedWhiteboxMode && (
+                  <div className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 p-2 text-[10px] text-amber-700 dark:text-amber-300">
+                    {selectedWhiteboxRasterSupport?.reason ||
+                      selectedWhiteboxVectorSupport?.reason ||
+                      "Esta ferramenta ainda não está ligada ao tipo de camada atual."}
+                  </div>
+                )}
+
+                <button
+                  onClick={() => void handleRunWhitebox()}
+                  disabled={
+                    isExecuting ||
+                    !selectedWhiteboxMode ||
+                    (selectedWhiteboxMode === "vector" &&
+                      (!activeLayer ||
+                        ((selectedWhiteboxVectorSupport?.vectorInputs.length ?? 0) > 1 &&
+                          !secondaryLayer))) ||
+                    (selectedWhiteboxMode === "raster" &&
+                      (!selectedWhiteboxRaster ||
+                        ((selectedWhiteboxRasterSupport?.rasterInputs.length ?? 0) > 1 &&
+                          !secondaryWhiteboxRaster)))
+                  }
+                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isExecuting ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      A executar Whitebox WASM…
+                    </>
+                  ) : (
+                    <>
+                      <Play size={14} />
+                      Executar no browser
+                    </>
+                  )}
                 </button>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1125,8 +2435,8 @@ export default function GeoProcessamento({
         {activeTab === "sql_workspace" && (
           <div className="p-3 space-y-3 flex-1">
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40 rounded-xl p-2.5 text-[11px] text-amber-900 dark:text-amber-300">
-              <span className="font-semibold block mb-0.5">DuckDB Spatial Workspace</span>
-              Escreva instruções SQL completas diretamente sobre os atributos e geometrias da camada ativa.
+              <span className="font-semibold block mb-0.5">DuckDB-WASM Spatial · Motor real</span>
+              Todas as camadas carregadas são tabelas SQL. Use funções ST_* para análise espacial, joins e geometrias derivadas.
             </div>
 
             <div>
@@ -1142,11 +2452,12 @@ export default function GeoProcessamento({
             </div>
 
             <button
-              onClick={handleExecuteSql}
-              className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+              onClick={() => void handleExecuteSql()}
+              disabled={isExecuting || layers.length === 0}
+              className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Play size={13} />
-              <span>Executar Query SQL</span>
+              {isExecuting ? <RefreshCw size={13} className="animate-spin" /> : <Play size={13} />}
+              <span>{isExecuting ? "A executar DuckDB…" : "Executar DuckDB Spatial"}</span>
             </button>
 
             {sqlResult && (
@@ -1278,7 +2589,7 @@ export default function GeoProcessamento({
                       <span>{h.timestamp}</span>
                     </div>
                     <div className="text-[10px] text-slate-400">
-                      Gerou {h.outputCount} feições via {h.engine}
+                      Gerou {h.outputCount} {h.outputLabel ?? "feições"} via {h.engine}
                     </div>
                   </div>
                 ))}
@@ -1290,17 +2601,1011 @@ export default function GeoProcessamento({
         {/* ── Sub-Section 7: Camadas ───────────────────────────────────────── */}
         {activeTab === "layers" && (
           <div className="p-3 space-y-3 flex-1">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                Camadas no Mapa ({layers.length})
+                Camadas no Mapa ({layers.length + rasterLayers.length})
               </span>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="py-1 px-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer"
-              >
-                <Upload size={11} /> Importar
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => {
+                    setShowRasterUrlInput((value) => !value);
+                    setShowWfsInput(false);
+                  }}
+                  className="py-1 px-2 bg-sky-50 dark:bg-sky-950/50 hover:bg-sky-100 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                  title="Adicionar GeoTIFF/COG por URL"
+                >
+                  <Link2 size={11} /> URL
+                </button>
+                <button
+                  onClick={() => {
+                    setShowWfsInput((value) => !value);
+                    setShowRasterUrlInput(false);
+                  }}
+                  className="py-1 px-2 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                  title="Adicionar camada de um serviço WFS"
+                >
+                  <Globe2 size={11} /> WFS
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="py-1 px-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                >
+                  <Upload size={11} /> Importar
+                </button>
+              </div>
             </div>
+
+            {showRasterUrlInput && (
+              <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-2.5 dark:border-sky-900 dark:bg-sky-950/20">
+                <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300">
+                  <Link2 size={11} />
+                  GeoTIFF / COG remoto
+                </div>
+                <div className="flex gap-1.5">
+                  <input
+                    type="url"
+                    value={rasterUrl}
+                    onChange={(event) => setRasterUrl(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") handleAddRasterUrl();
+                    }}
+                    placeholder="https://servidor/dados/raster.tif"
+                    className="min-w-0 flex-1 rounded-lg border border-sky-200 bg-white px-2 py-1.5 text-[10px] text-slate-700 outline-none focus:ring-2 focus:ring-sky-400 dark:border-sky-900 dark:bg-slate-900 dark:text-slate-200"
+                  />
+                  <button
+                    onClick={handleAddRasterUrl}
+                    className="rounded-lg bg-gradient-to-r from-sky-600 to-indigo-600 px-2.5 py-1.5 text-[10px] font-bold text-white hover:from-sky-700 hover:to-indigo-700"
+                  >
+                    Adicionar
+                  </button>
+                </div>
+                <p className="mt-1.5 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">
+                  Para melhor desempenho, use COG com CORS e suporte a HTTP Range.
+                </p>
+              </div>
+            )}
+
+            {showWfsInput && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 dark:border-emerald-900 dark:bg-emerald-950/20">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                    <Globe2 size={11} />
+                    Serviço WFS
+                  </div>
+                  <span className="text-[9px] text-slate-400">GeoJSON · até 5.000 feições</span>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex gap-1.5">
+                    <input
+                      type="url"
+                      value={wfsEndpoint}
+                      onChange={(event) => {
+                        setWfsEndpoint(event.target.value);
+                        setWfsFeatureTypes([]);
+                        setSelectedWfsType("");
+                      }}
+                      placeholder="https://servidor/geoserver/wfs"
+                      className="min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-2 py-1.5 text-[10px] text-slate-700 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-emerald-900 dark:bg-slate-900 dark:text-slate-200"
+                    />
+                    <button
+                      onClick={handleRetrieveWfs}
+                      disabled={wfsLoading || !wfsEndpoint.trim()}
+                      className="rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-emerald-300"
+                    >
+                      {wfsLoading ? "A consultar…" : "Listar"}
+                    </button>
+                  </div>
+
+                  {wfsFeatureTypes.length > 0 && (
+                    <div className="grid grid-cols-[1fr_auto] gap-1.5">
+                      <select
+                        value={selectedWfsType}
+                        onChange={(event) => setSelectedWfsType(event.target.value)}
+                        className="min-w-0 rounded-lg border border-emerald-200 bg-white p-1.5 text-[10px] dark:border-emerald-900 dark:bg-slate-900"
+                      >
+                        {wfsFeatureTypes.map((featureType) => (
+                          <option key={featureType.name} value={featureType.name}>
+                            {featureType.title === featureType.name
+                              ? featureType.name
+                              : `${featureType.title} (${featureType.name})`}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={handleImportWfs}
+                        disabled={wfsLoading || !selectedWfsType}
+                        className="rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-2.5 py-1.5 text-[10px] font-bold text-white hover:from-emerald-700 hover:to-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Importar
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-[9px] text-slate-500 dark:text-slate-400">
+                    <span>WFS {wfsVersion}</span>
+                    <span>A camada entra no DuckDB, tabela e geoprocessamento.</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {rasterLayers.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <Mountain size={12} />
+                  <span>Raster / COG</span>
+                </div>
+                {rasterLayers.map((raster) => (
+                  <div
+                    key={raster.id}
+                    onClick={() => setSelectedWhiteboxRasterId(raster.id)}
+                    className={`rounded-xl border p-2.5 transition-all cursor-pointer ${
+                      selectedWhiteboxRasterId === raster.id
+                        ? "border-sky-400 bg-sky-100/70 ring-1 ring-sky-300/60 dark:border-sky-700 dark:bg-sky-950/40"
+                        : "border-sky-200/80 bg-sky-50/40 hover:border-sky-300 dark:border-sky-900/60 dark:bg-sky-950/20"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-semibold text-slate-800 dark:text-slate-200">
+                          {raster.name}
+                        </div>
+                        <div className="mt-0.5 text-[10px] text-slate-400">
+                          {raster.bandCount
+                            ? `${raster.bandCount} banda(s)`
+                            : "a ler metadados…"}{" "}
+                          · {(raster.sizeBytes / (1024 * 1024)).toFixed(1)} MB
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() =>
+                            setRasterLayers((previous) =>
+                              previous.map((item) =>
+                                item.id === raster.id
+                                  ? { ...item, visible: !item.visible }
+                                  : item
+                              )
+                            )
+                          }
+                          className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                          title={raster.visible ? "Ocultar raster" : "Mostrar raster"}
+                        >
+                          {raster.visible ? <Eye size={13} /> : <EyeOff size={13} />}
+                        </button>
+                        <button
+                          onClick={() =>
+                            setRasterLayers((previous) =>
+                              previous.filter((item) => item.id !== raster.id)
+                            )
+                          }
+                          className="p-1 text-slate-400 hover:text-red-600"
+                          title="Remover raster"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="w-12 text-[10px] text-slate-400">Opacidade</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={raster.opacity}
+                        onChange={(event) => {
+                          const opacity = Number(event.target.value);
+                          setRasterLayers((previous) =>
+                            previous.map((item) =>
+                              item.id === raster.id ? { ...item, opacity } : item
+                            )
+                          );
+                        }}
+                        className="w-full accent-sky-600"
+                      />
+                      <span className="w-8 text-right text-[10px] font-semibold text-slate-500">
+                        {Math.round(raster.opacity * 100)}%
+                      </span>
+                    </div>
+                    {selectedWhiteboxRasterId === raster.id && (
+                      <div className="mt-2 rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-2 dark:border-emerald-900 dark:bg-emerald-950/20">
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <div>
+                            <span className="block text-[9px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                              Análise de Terreno
+                            </span>
+                            <span className="text-[9px] text-slate-400">
+                              DEM → derivados Whitebox WASM
+                            </span>
+                          </div>
+                          <Mountain size={13} className="text-emerald-600" />
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <button
+                            type="button"
+                            disabled={whiteboxLoading || isExecuting}
+                            onClick={() =>
+                              void openTerrainWhiteboxTool("hillshade", raster.id)
+                            }
+                            className="flex flex-col items-center gap-1 rounded-lg border border-emerald-200 bg-white px-1.5 py-2 text-[9px] font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-700 disabled:opacity-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-slate-300"
+                          >
+                            <Sparkles size={12} />
+                            Hillshade
+                          </button>
+                          <button
+                            type="button"
+                            disabled={whiteboxLoading || isExecuting}
+                            onClick={() =>
+                              void openTerrainWhiteboxTool("slope", raster.id)
+                            }
+                            className="flex flex-col items-center gap-1 rounded-lg border border-emerald-200 bg-white px-1.5 py-2 text-[9px] font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-700 disabled:opacity-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-slate-300"
+                          >
+                            <Mountain size={12} />
+                            Declive
+                          </button>
+                          <button
+                            type="button"
+                            disabled={whiteboxLoading || isExecuting}
+                            onClick={() =>
+                              void openTerrainWhiteboxTool("aspect", raster.id)
+                            }
+                            className="flex flex-col items-center gap-1 rounded-lg border border-emerald-200 bg-white px-1.5 py-2 text-[9px] font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-700 disabled:opacity-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-slate-300"
+                          >
+                            <Compass size={12} />
+                            Aspeto
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedWhiteboxRasterId === raster.id &&
+                      (() => {
+                        const state = raster.rasterState ?? {};
+                        const mode = state.mode === "rgb" ? "rgb" : "single";
+                        const bands = state.bands?.length ? state.bands : [1];
+                        const bandCount = Math.max(raster.bandCount ?? 1, 1);
+                        const bandOptions = Array.from(
+                          { length: bandCount },
+                          (_, index) => index + 1
+                        );
+                        const colormap = state.colormap ?? "viridis";
+                        const stretch = state.stretch ?? "linear";
+                        const gamma = state.gamma ?? 1;
+                        const statsBand = bands[0] ?? 1;
+                        const currentStatsKey = rasterStatsKey(raster.id, statsBand);
+                        const stats = rasterBandStats[currentStatsKey];
+                        const statsLoading = rasterStatsLoadingKey === currentStatsKey;
+                        const statsError = rasterStatsErrors[currentStatsKey];
+                        const autoRange = stats ? autoGISRasterStretch(stats) : null;
+                        const savedRange = state.rescale?.[0] ?? null;
+                        const effectiveRange = savedRange ?? autoRange;
+                        const histogramPeak = stats
+                          ? Math.max(1, ...stats.histogram)
+                          : 1;
+                        const rgbBands = [
+                          bands[0] ?? 1,
+                          bands[1] ?? Math.min(2, bandCount),
+                          bands[2] ?? Math.min(3, bandCount),
+                        ];
+                        const rgbStats = rgbBands.map(
+                          (band) => rasterBandStats[rasterStatsKey(raster.id, band)] ?? null
+                        );
+                        const rgbAutoRanges = rgbStats.map((channelStats) =>
+                          channelStats ? autoGISRasterStretch(channelStats) : null
+                        );
+                        const rgbStatsReady = rgbAutoRanges.every(
+                          (range): range is [number, number] => range !== null
+                        );
+                        const nodata =
+                          state.nodata === "off" || typeof state.nodata === "number"
+                            ? state.nodata
+                            : "auto";
+                        const symbology = raster.rasterSymbology;
+                        const classColors = symbology
+                          ? rasterClassColors(symbology)
+                          : [];
+
+                        return (
+                          <div
+                            className="mt-2 space-y-2 rounded-xl border border-sky-200/80 bg-white/80 p-2 dark:border-sky-900 dark:bg-slate-900/70"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300">
+                                Visualização Raster
+                              </span>
+                              <span className="text-[9px] text-slate-400">
+                                {mode === "rgb" ? "Composição RGB" : "Banda única"}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="space-y-1">
+                                <span className="text-[9px] font-semibold text-slate-500">
+                                  Modo
+                                </span>
+                                <select
+                                  value={mode}
+                                  onChange={(event) => {
+                                    const nextMode = event.target.value as "single" | "rgb";
+                                    updateRasterState(raster.id, {
+                                      mode: nextMode,
+                                      bands:
+                                        nextMode === "rgb"
+                                          ? [
+                                              1,
+                                              Math.min(2, bandCount),
+                                              Math.min(3, bandCount),
+                                            ]
+                                          : [bands[0] ?? 1],
+                                    });
+                                  }}
+                                  className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-800"
+                                >
+                                  <option value="single">Banda única</option>
+                                  {bandCount >= 3 && <option value="rgb">RGB</option>}
+                                </select>
+                              </label>
+
+                              {mode === "single" && (
+                                <label className="space-y-1">
+                                  <span className="text-[9px] font-semibold text-slate-500">
+                                    Banda
+                                  </span>
+                                  <select
+                                    value={bands[0] ?? 1}
+                                    onChange={(event) =>
+                                      updateRasterState(raster.id, {
+                                        bands: [Number(event.target.value)],
+                                      })
+                                    }
+                                    className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-800"
+                                  >
+                                    {bandOptions.map((band) => (
+                                      <option key={band} value={band}>
+                                        Banda {band}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              )}
+                            </div>
+
+                            {mode === "single" && (
+                              <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50/60 p-2 dark:border-violet-900 dark:bg-violet-950/20">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div>
+                                    <span className="block text-[9px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">
+                                      Classificação Raster
+                                    </span>
+                                    <span className="text-[9px] text-slate-400">
+                                      Classes discretas e legenda persistente
+                                    </span>
+                                  </div>
+                                  <label className="flex items-center gap-1.5 text-[9px] font-semibold text-slate-600 dark:text-slate-300">
+                                    <input
+                                      type="checkbox"
+                                      checked={symbology?.classified === true}
+                                      disabled={!stats}
+                                      onChange={(event) => {
+                                        if (!stats) return;
+                                        if (!event.target.checked) {
+                                          updateRasterSymbology(
+                                            raster.id,
+                                            symbology
+                                              ? { ...symbology, classified: false }
+                                              : undefined
+                                          );
+                                          return;
+                                        }
+                                        const next = symbology
+                                          ? { ...symbology, classified: true }
+                                          : {
+                                              ...defaultGISRasterSymbology(
+                                                stats,
+                                                colormap
+                                              ),
+                                              classified: true,
+                                            };
+                                        updateRasterSymbology(raster.id, next);
+                                        updateRasterState(raster.id, {
+                                          mode: "single",
+                                          bands: [statsBand],
+                                          rescale: [[stats.min, stats.max]],
+                                        });
+                                      }}
+                                    />
+                                    Classificar
+                                  </label>
+                                </div>
+
+                                {!stats && (
+                                  <div className="text-[9px] text-slate-400">
+                                    As estatísticas da banda são necessárias antes de criar classes.
+                                  </div>
+                                )}
+
+                                {stats && symbology?.classified && (
+                                  <>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <label className="space-y-1">
+                                        <span className="text-[9px] font-semibold text-slate-500">
+                                          Método
+                                        </span>
+                                        <select
+                                          value={symbology.method}
+                                          onChange={(event) => {
+                                            const method = event.target.value as
+                                              | "equal-interval"
+                                              | "quantile"
+                                              | "manual";
+                                            updateRasterSymbology(raster.id, {
+                                              ...symbology,
+                                              method,
+                                              breaks: computeGISRasterBreaks(
+                                                method,
+                                                stats,
+                                                symbology.classCount,
+                                                symbology.breaks
+                                              ),
+                                            });
+                                          }}
+                                          className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-900"
+                                        >
+                                          <option value="equal-interval">
+                                            Intervalos iguais
+                                          </option>
+                                          <option value="quantile">Quantis</option>
+                                          <option value="manual">Manual</option>
+                                        </select>
+                                      </label>
+
+                                      <label className="space-y-1">
+                                        <span className="text-[9px] font-semibold text-slate-500">
+                                          Classes
+                                        </span>
+                                        <input
+                                          type="number"
+                                          min={2}
+                                          max={12}
+                                          value={symbology.classCount}
+                                          onChange={(event) => {
+                                            const classCount = Math.max(
+                                              2,
+                                              Math.min(
+                                                12,
+                                                Number(event.target.value) || 2
+                                              )
+                                            );
+                                            updateRasterSymbology(raster.id, {
+                                              ...symbology,
+                                              classCount,
+                                              customColors: undefined,
+                                              breaks: computeGISRasterBreaks(
+                                                symbology.method,
+                                                stats,
+                                                classCount,
+                                                symbology.breaks
+                                              ),
+                                            });
+                                          }}
+                                          className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-900"
+                                        />
+                                      </label>
+                                    </div>
+
+                                    {symbology.method === "manual" && (
+                                      <div className="space-y-1">
+                                        <span className="text-[9px] font-semibold text-slate-500">
+                                          Limites das classes
+                                        </span>
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                          {symbology.breaks.map((value, index) => (
+                                            <input
+                                              key={index}
+                                              type="number"
+                                              step="any"
+                                              value={value}
+                                              onChange={(event) => {
+                                                const nextValue = Number(
+                                                  event.target.value
+                                                );
+                                                if (!Number.isFinite(nextValue)) return;
+                                                const breaks = [...symbology.breaks];
+                                                breaks[index] = nextValue;
+                                                const sorted = [...breaks].sort(
+                                                  (a, b) => a - b
+                                                );
+                                                updateRasterSymbology(raster.id, {
+                                                  ...symbology,
+                                                  breaks: sorted,
+                                                });
+                                                updateRasterState(raster.id, {
+                                                  rescale: [
+                                                    [
+                                                      sorted[0],
+                                                      sorted[sorted.length - 1],
+                                                    ],
+                                                  ],
+                                                });
+                                              }}
+                                              className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[9px] dark:border-slate-700 dark:bg-slate-900"
+                                              aria-label={`Limite ${index + 1}`}
+                                            />
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    <div className="space-y-1.5">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-[9px] font-semibold text-slate-500">
+                                          Legenda
+                                        </span>
+                                        {symbology.customColors && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              updateRasterSymbology(raster.id, {
+                                                ...symbology,
+                                                customColors: undefined,
+                                              })
+                                            }
+                                            className="text-[9px] font-semibold text-violet-600 hover:underline dark:text-violet-300"
+                                          >
+                                            Repor paleta
+                                          </button>
+                                        )}
+                                      </div>
+                                      <div className="max-h-44 space-y-1 overflow-auto pr-0.5">
+                                        {symbology.breaks
+                                          .slice(0, -1)
+                                          .map((lower, index) => {
+                                            const upper =
+                                              symbology.breaks[index + 1];
+                                            return (
+                                              <div
+                                                key={index}
+                                                className="flex items-center gap-2 rounded-md bg-white px-1.5 py-1 dark:bg-slate-900"
+                                              >
+                                                <input
+                                                  type="color"
+                                                  value={
+                                                    classColors[index] ??
+                                                    "#2563eb"
+                                                  }
+                                                  onChange={(event) => {
+                                                    const colors = [
+                                                      ...classColors,
+                                                    ];
+                                                    colors[index] =
+                                                      event.target.value;
+                                                    updateRasterSymbology(
+                                                      raster.id,
+                                                      {
+                                                        ...symbology,
+                                                        customColors: colors,
+                                                      }
+                                                    );
+                                                  }}
+                                                  className="h-5 w-6 cursor-pointer rounded border-0 bg-transparent p-0"
+                                                  aria-label={`Cor da classe ${index + 1}`}
+                                                />
+                                                <span className="min-w-0 flex-1 truncate text-[9px] text-slate-600 dark:text-slate-300">
+                                                  {formatRasterValue(lower)} –{" "}
+                                                  {formatRasterValue(upper)}
+                                                </span>
+                                              </div>
+                                            );
+                                          })}
+                                      </div>
+                                    </div>
+
+                                    <div className="rounded-md border border-violet-200/70 bg-white px-2 py-1.5 text-[9px] text-slate-500 dark:border-violet-900 dark:bg-slate-900 dark:text-slate-400">
+                                      A classificação usa o motor GPU Deck.gl apenas
+                                      quando está ativa; o restante raster continua no
+                                      renderer padrão do Workspace.
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            )}
+
+                            {mode === "rgb" && (
+                              <div className="grid grid-cols-3 gap-1.5">
+                                {(["R", "G", "B"] as const).map((channel, index) => (
+                                  <label key={channel} className="space-y-1">
+                                    <span className="text-[9px] font-semibold text-slate-500">
+                                      {channel}
+                                    </span>
+                                    <select
+                                      value={bands[index] ?? Math.min(index + 1, bandCount)}
+                                      onChange={(event) => {
+                                        const nextBands = [...bands];
+                                        while (nextBands.length < 3) {
+                                          nextBands.push(Math.min(nextBands.length + 1, bandCount));
+                                        }
+                                        nextBands[index] = Number(event.target.value);
+                                        updateRasterState(raster.id, { bands: nextBands });
+                                      }}
+                                      className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-800"
+                                    >
+                                      {bandOptions.map((band) => (
+                                        <option key={band} value={band}>
+                                          {band}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+
+                            {mode === "single" && (
+                              <div className="grid grid-cols-2 gap-2">
+                                <label className="space-y-1">
+                                  <span className="text-[9px] font-semibold text-slate-500">
+                                    Paleta
+                                  </span>
+                                  <select
+                                    value={colormap}
+                                    onChange={(event) =>
+                                      updateRasterState(raster.id, {
+                                        colormap: event.target.value,
+                                      })
+                                    }
+                                    className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-800"
+                                  >
+                                    <option value="viridis">Viridis</option>
+                                    <option value="terrain">Terrain</option>
+                                    <option value="turbo">Turbo</option>
+                                    <option value="magma">Magma</option>
+                                    <option value="plasma">Plasma</option>
+                                    <option value="gray">Grayscale</option>
+                                  </select>
+                                </label>
+                                <label className="space-y-1">
+                                  <span className="text-[9px] font-semibold text-slate-500">
+                                    Stretch
+                                  </span>
+                                  <select
+                                    value={stretch}
+                                    onChange={(event) =>
+                                      updateRasterState(raster.id, {
+                                        stretch: event.target.value as
+                                          | "linear"
+                                          | "log"
+                                          | "sqrt",
+                                      })
+                                    }
+                                    className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-800"
+                                  >
+                                    <option value="linear">Linear</option>
+                                    <option value="sqrt">Raiz quadrada</option>
+                                    <option value="log">Logarítmico</option>
+                                  </select>
+                                </label>
+                              </div>
+                            )}
+
+                            {mode === "single" && (
+                              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2 dark:border-slate-700 dark:bg-slate-800/60">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                                      Histograma · Banda {statsBand}
+                                    </span>
+                                    <span className="text-[9px] text-slate-400">
+                                      {savedRange ? "Range fixado" : "Auto stretch 2–98%"}
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const controller = new AbortController();
+                                      void loadRasterBandStats(raster, statsBand, controller.signal);
+                                    }}
+                                    className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-sky-600 dark:hover:bg-slate-700"
+                                    title="Recalcular estatísticas"
+                                  >
+                                    <RefreshCw
+                                      size={11}
+                                      className={statsLoading ? "animate-spin" : ""}
+                                    />
+                                  </button>
+                                </div>
+
+                                {statsLoading && !stats && (
+                                  <div className="flex h-12 items-center justify-center text-[9px] text-slate-400">
+                                    <RefreshCw size={11} className="mr-1.5 animate-spin" />
+                                    A calcular distribuição raster…
+                                  </div>
+                                )}
+
+                                {stats && (
+                                  <>
+                                    <div className="flex h-12 items-end gap-px overflow-hidden rounded-md bg-white px-1 pt-1 dark:bg-slate-900">
+                                      {stats.histogram.map((count, index) => (
+                                        <span
+                                          key={index}
+                                          className="min-w-px flex-1 rounded-t-[1px] bg-sky-500/70"
+                                          style={{
+                                            height: `${Math.max(
+                                              2,
+                                              (count / histogramPeak) * 100
+                                            )}%`,
+                                          }}
+                                          title={`${count} amostras`}
+                                        />
+                                      ))}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 text-[9px]">
+                                      <div className="rounded-md bg-white px-2 py-1 dark:bg-slate-900">
+                                        <span className="text-slate-400">Mínimo</span>
+                                        <span className="block font-semibold text-slate-700 dark:text-slate-200">
+                                          {formatRasterValue(stats.min)}
+                                        </span>
+                                      </div>
+                                      <div className="rounded-md bg-white px-2 py-1 dark:bg-slate-900">
+                                        <span className="text-slate-400">Máximo</span>
+                                        <span className="block font-semibold text-slate-700 dark:text-slate-200">
+                                          {formatRasterValue(stats.max)}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {effectiveRange && (
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <label className="space-y-1">
+                                          <span className="text-[9px] font-semibold text-slate-500">
+                                            Stretch mín.
+                                          </span>
+                                          <input
+                                            type="number"
+                                            value={effectiveRange[0]}
+                                            step="any"
+                                            onChange={(event) => {
+                                              const low = Number(event.target.value);
+                                              const high = effectiveRange[1];
+                                              if (Number.isFinite(low) && low < high) {
+                                                updateRasterState(raster.id, {
+                                                  rescale: [[low, high]],
+                                                });
+                                              }
+                                            }}
+                                            className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-900"
+                                          />
+                                        </label>
+                                        <label className="space-y-1">
+                                          <span className="text-[9px] font-semibold text-slate-500">
+                                            Stretch máx.
+                                          </span>
+                                          <input
+                                            type="number"
+                                            value={effectiveRange[1]}
+                                            step="any"
+                                            onChange={(event) => {
+                                              const high = Number(event.target.value);
+                                              const low = effectiveRange[0];
+                                              if (Number.isFinite(high) && high > low) {
+                                                updateRasterState(raster.id, {
+                                                  rescale: [[low, high]],
+                                                });
+                                              }
+                                            }}
+                                            className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-900"
+                                          />
+                                        </label>
+                                      </div>
+                                    )}
+
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          updateRasterState(raster.id, { rescale: null })
+                                        }
+                                        className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[9px] font-semibold text-slate-600 hover:border-sky-300 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                                      >
+                                        Auto 2–98%
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={!autoRange}
+                                        onClick={() => {
+                                          if (!autoRange) return;
+                                          updateRasterState(raster.id, {
+                                            rescale: [[autoRange[0], autoRange[1]]],
+                                          });
+                                        }}
+                                        className="rounded-lg bg-sky-600 px-2 py-1.5 text-[9px] font-bold text-white hover:bg-sky-700 disabled:opacity-50"
+                                      >
+                                        Fixar range atual
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+
+                                {statsError && !statsLoading && (
+                                  <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[9px] text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                                    Estatísticas indisponíveis: {statsError}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {mode === "rgb" && (
+                              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2 dark:border-slate-700 dark:bg-slate-800/60">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                                    Estatísticas RGB
+                                  </span>
+                                  <span className="text-[9px] text-slate-400">
+                                    {state.rescale ? "Range fixado" : "Auto 2–98%"}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                  {(["R", "G", "B"] as const).map((channel, index) => {
+                                    const channelStats = rgbStats[index];
+                                    return (
+                                      <div
+                                        key={channel}
+                                        className="rounded-md bg-white px-1.5 py-1.5 text-[9px] dark:bg-slate-900"
+                                      >
+                                        <span className="font-bold text-slate-500">{channel}</span>
+                                        <span className="block truncate text-slate-400">
+                                          B{rgbBands[index]}
+                                        </span>
+                                        {channelStats ? (
+                                          <span className="block font-semibold text-slate-700 dark:text-slate-200">
+                                            {formatRasterValue(channelStats.min)} –{" "}
+                                            {formatRasterValue(channelStats.max)}
+                                          </span>
+                                        ) : (
+                                          <span className="block text-slate-400">a calcular…</span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateRasterState(raster.id, { rescale: null })
+                                    }
+                                    className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[9px] font-semibold text-slate-600 hover:border-sky-300 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                                  >
+                                    Auto RGB
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={!rgbStatsReady}
+                                    onClick={() => {
+                                      if (!rgbStatsReady) return;
+                                      updateRasterState(raster.id, {
+                                        rescale: rgbAutoRanges as [number, number][],
+                                      });
+                                    }}
+                                    className="rounded-lg bg-sky-600 px-2 py-1.5 text-[9px] font-bold text-white hover:bg-sky-700 disabled:opacity-50"
+                                  >
+                                    Fixar 2–98%
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="space-y-1">
+                                <span className="text-[9px] font-semibold text-slate-500">
+                                  NoData
+                                </span>
+                                <select
+                                  value={typeof nodata === "number" ? "custom" : nodata}
+                                  onChange={(event) => {
+                                    const value = event.target.value;
+                                    updateRasterState(raster.id, {
+                                      nodata:
+                                        value === "off"
+                                          ? "off"
+                                          : value === "custom"
+                                            ? 0
+                                            : "auto",
+                                    });
+                                  }}
+                                  className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-800"
+                                >
+                                  <option value="auto">Automático</option>
+                                  <option value="off">Não aplicar</option>
+                                  <option value="custom">Valor definido</option>
+                                </select>
+                              </label>
+                              {typeof nodata === "number" ? (
+                                <label className="space-y-1">
+                                  <span className="text-[9px] font-semibold text-slate-500">
+                                    Valor NoData
+                                  </span>
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    value={nodata}
+                                    onChange={(event) => {
+                                      const value = Number(event.target.value);
+                                      if (Number.isFinite(value)) {
+                                        updateRasterState(raster.id, { nodata: value });
+                                      }
+                                    }}
+                                    className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-800"
+                                  />
+                                </label>
+                              ) : (
+                                <div className="rounded-lg border border-dashed border-slate-200 px-2 py-1.5 text-[9px] text-slate-400 dark:border-slate-700">
+                                  {nodata === "auto"
+                                    ? "Usa o NoData definido no GeoTIFF."
+                                    : "Todos os valores permanecem visíveis."}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <span className="w-12 text-[9px] font-semibold text-slate-500">
+                                Gamma
+                              </span>
+                              <input
+                                type="range"
+                                min={0.2}
+                                max={3}
+                                step={0.1}
+                                value={gamma}
+                                onChange={(event) =>
+                                  updateRasterState(raster.id, {
+                                    gamma: Number(event.target.value),
+                                  })
+                                }
+                                className="w-full accent-sky-600"
+                              />
+                              <span className="w-8 text-right text-[9px] font-semibold text-slate-500">
+                                {Number(gamma).toFixed(1)}
+                              </span>
+                            </div>
+
+                            {mode === "single" && (
+                              <label className="flex items-center gap-2 text-[10px] text-slate-600 dark:text-slate-300">
+                                <input
+                                  type="checkbox"
+                                  checked={state.reversed === true}
+                                  onChange={(event) =>
+                                    updateRasterState(raster.id, {
+                                      reversed: event.target.checked,
+                                    })
+                                  }
+                                />
+                                Inverter paleta
+                              </label>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                    {raster.error && (
+                      <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-[10px] text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
+                        {raster.error}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {layers.length > 0 && rasterLayers.length > 0 && (
+              <div className="flex items-center gap-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <Layers size={12} />
+                <span>Vetores</span>
+              </div>
+            )}
 
             <div className="space-y-2">
               {layers.map((l) => (
@@ -1415,7 +3720,7 @@ export default function GeoProcessamento({
         {desktopSidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
       </button>
 
-      {/* ── Main Leaflet Map View ─────────────────────────────────────────── */}
+      {/* ── Main MapLibre GIS Workspace View ─────────────────────────────── */}
       <div className="flex-1 relative flex flex-col" ref={mapContainerRef}>
         {/* Mobile floating toggle */}
         <button
@@ -1427,96 +3732,25 @@ export default function GeoProcessamento({
           <span>Ferramentas</span>
         </button>
 
-        <MapContainer
-          center={[-18.5, 35.5]}
-          zoom={6}
-          style={{ height: "100%", width: "100%" }}
-          zoomControl={false}
-        >
-          {/* Base Map */}
-          <TileLayer
-            key={basemap}
-            crossOrigin="anonymous"
-            url={GOOGLE_BASEMAPS[basemap].url}
-            subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
-            attribution={GOOGLE_BASEMAPS[basemap].attribution}
-            maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
-          />
-
-          <ScaleControl position="bottomright" imperial={false} />
-          <ZoomControl position="topright" />
-
-          {/* Area Select */}
-          <AreaSelect
-            province={province}
-            district={district}
-            onProvinceChange={(p) => {
-              onProvinceChange(p);
-              onDistrictChange(null);
-            }}
-            onDistrictChange={onDistrictChange}
-            accent="#4f46e5"
-          />
-
-          {/* Auto Fit to active layer */}
-          {activeLayer && <FitToLayer fc={activeLayer.geojson} />}
-
-          {/* Render Active User Layers */}
-          {layers.map(
-            (layer) =>
-              layer.visible && (
-                <LeafletGeoJSON
-                  key={`${layer.id}_${layer.featureCount}`}
-                  data={layer.geojson}
-                  style={() => ({
-                    color: layer.color,
-                    weight: 2.5,
-                    opacity: 0.9,
-                    fillColor: layer.color,
-                    fillOpacity: 0.35,
-                  })}
-                  pointToLayer={(feature, latlng) =>
-                    L.circleMarker(latlng, {
-                      radius: 6,
-                      fillColor: layer.color,
-                      color: "#ffffff",
-                      weight: 1.5,
-                      opacity: 1,
-                      fillOpacity: 0.85,
-                    })
-                  }
-                  onEachFeature={(feature, leafletLayer) => {
-                    const props = feature.properties || {};
-                    const entries = Object.entries(props).filter(([k]) => !k.startsWith("_"));
-                    const html = `
-                    <div style="font-size: 11px; max-width: 240px; font-family: sans-serif;">
-                      <div style="font-weight: bold; color: ${layer.color}; margin-bottom: 4px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">
-                        ${layer.name}
-                      </div>
-                      ${entries
-                        .slice(0, 6)
-                        .map(([k, v]) => `<div><strong>${k}:</strong> ${v}</div>`)
-                        .join("")}
-                    </div>
-                  `;
-                    leafletLayer.bindPopup(html);
-                  }}
-                />
-              )
-          )}
-
-          <MapTools />
-          <MapDraw
-            enabled={drawingEnabled}
-            hasDrawnAOI={aoi.source === "draw"}
-            onClearAOI={() => onAOIChange(GLOBAL_AOI)}
-            onDrawComplete={(geom, label) => {
-              setDrawingEnabled(false);
-              onAOIChange(customAOI(geom, label, "draw"));
-            }}
-            onCancel={() => setDrawingEnabled(false)}
-          />
-        </MapContainer>
+        <GISWorkspaceMapLibre
+          layers={layers}
+          rasterLayers={rasterLayers}
+          activeLayerId={selectedLayerId}
+          activeRasterId={selectedWhiteboxRasterId}
+          basemap={basemap}
+          aoiGeometry={aoi.source !== "global" ? aoi.geometry : null}
+          drawingEnabled={drawingEnabled}
+          onSelectLayer={setSelectedLayerId}
+          onDrawComplete={(geometry, label) => {
+            setDrawingEnabled(false);
+            onAOIChange(customAOI(geometry, label, "draw"));
+          }}
+          onDrawCancel={() => {
+            setDrawingEnabled(false);
+          }}
+          onRasterMetadata={handleRasterMetadata}
+          onRasterError={handleRasterError}
+        />
 
         {/* ── Swipe Vertical Divider ──────────────────────────────────────── */}
         {activeTab === "swipe" && (

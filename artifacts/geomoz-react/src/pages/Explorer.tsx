@@ -29,7 +29,6 @@ import MapView from "@/components/MapView";
 import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
 import DashboardPanel from "@/components/DashboardPanel";
-import GISWorkspacePanel from "@/components/GISWorkspacePanel";
 import {
   LazyGeoAnalises,
   LazyHidroGeoMoz,
@@ -48,11 +47,6 @@ import { useProject } from "@/context/ProjectContext";
 import ProjectWorkspaceModal from "@/components/ProjectWorkspaceModal";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { mozambiqueAOI, GLOBAL_AOI, customAOI } from "@/lib/aoi";
-import type {
-  WorkspaceFocusRequest,
-  WorkspaceLayer,
-  WorkspaceSelection,
-} from "@/lib/gis-workspace";
 
 interface NominatimResult {
   place_id: number;
@@ -71,7 +65,6 @@ type Tab =
   | "Bacias Hidrográficas"
   | "Água Subterrânea"
   | "Geoperigos"
-  | "GeoProcessamento"
   | "GeoMoz AI"
   | "Exportar";
 
@@ -89,10 +82,6 @@ export default function Explorer() {
     districts: false,
     geology: false, // Security constraint: default false
   });
-  const [workspaceLayers, setWorkspaceLayers] = useState<WorkspaceLayer[]>([]);
-  const [workspaceSelection, setWorkspaceSelection] = useState<WorkspaceSelection | null>(null);
-  const [workspaceFocusRequest, setWorkspaceFocusRequest] =
-    useState<WorkspaceFocusRequest | null>(null);
 
   const getInitialTab = (): Tab => {
     if (typeof window === "undefined") return "Dashboard";
@@ -116,7 +105,14 @@ export default function Explorer() {
     if (path.includes("ai") || hash.includes("ai") || tabParam?.includes("ai")) {
       return "GeoMoz AI";
     }
-    if (path.includes("gis-workspace") || hash.includes("gis-workspace") || tabParam?.includes("gis-workspace")) {
+    if (
+      path.includes("gis-workspace") ||
+      path.includes("geoprocessamento") ||
+      hash.includes("gis-workspace") ||
+      hash.includes("geoprocessamento") ||
+      tabParam?.includes("gis-workspace") ||
+      tabParam?.includes("geoprocessamento")
+    ) {
       return "GIS Workspace";
     }
     if (path.includes("mapa") || hash.includes("mapa") || tabParam?.includes("mapa")) {
@@ -142,7 +138,6 @@ export default function Explorer() {
         "Bacias Hidrográficas": "hidrografia",
         "Água Subterrânea": "agua-subterranea",
         Geoperigos: "geoperigos",
-        GeoProcessamento: "geoprocessamento",
         "GeoMoz AI": "geomoz-ai",
         Exportar: "exportar",
       };
@@ -223,18 +218,6 @@ export default function Explorer() {
     } catch {}
   };
 
-  const handleOpenWorkspaceMap = (layerId: string, featureIndex?: number) => {
-    if (typeof featureIndex === "number") {
-      setWorkspaceSelection({ layerId, featureIndex });
-    }
-    setWorkspaceFocusRequest((previous) => ({
-      layerId,
-      featureIndex,
-      requestId: (previous?.requestId ?? 0) + 1,
-    }));
-    handleGlobalViewModeChange("2d");
-    setActiveTab("Mapa");
-  };
 
   useEffect(() => {
     const handleCustom = (e: Event) => {
@@ -400,9 +383,9 @@ export default function Explorer() {
         };
       case "GIS Workspace":
         return {
-          icon: <Layers size={18} className="text-sky-500 shrink-0" />,
+          icon: <Cpu size={18} className="text-indigo-500 shrink-0" />,
           title: "GIS Workspace",
-          subtitle: "Adicionar dados, gerir camadas e explorar atributos",
+          subtitle: "Mapa GIS · Toolbox · Model Builder · Spatial SQL · Histórico",
         };
       case "GeoAnálises":
         return {
@@ -427,12 +410,6 @@ export default function Explorer() {
           icon: <AlertTriangle size={18} className="text-amber-500 shrink-0" />,
           title: "Geoperigos & Riscos",
           subtitle: "Deteção SAR de Cheias & Erosão",
-        };
-      case "GeoProcessamento":
-        return {
-          icon: <Cpu size={18} className="text-indigo-500 shrink-0" />,
-          title: "GeoProcessamento Avançado",
-          subtitle: "WASM In-Browser, Cortina Temporal & Spatial SQL",
         };
       case "GeoMoz AI":
         return {
@@ -742,21 +719,25 @@ export default function Explorer() {
               }}
               viewMode={globalViewMode}
               onViewModeChange={handleGlobalViewModeChange}
-              workspaceLayers={workspaceLayers}
-              workspaceSelection={workspaceSelection}
-              workspaceFocusRequest={workspaceFocusRequest}
-              onWorkspaceSelect={setWorkspaceSelection}
             />
           )}
 
           {activeTab === "GIS Workspace" && (
-            <GISWorkspacePanel
-              layers={workspaceLayers}
-              onLayersChange={setWorkspaceLayers}
-              selection={workspaceSelection}
-              onSelectionChange={setWorkspaceSelection}
-              onOpenMap={handleOpenWorkspaceMap}
-            />
+            <Suspense fallback={<LoadingSkeleton label="GIS Workspace" />}>
+              <LazyGeoProcessamento
+                aoi={aoi}
+                province={province}
+                district={district}
+                onProvinceChange={(p) => {
+                  setProvince(p);
+                  setDistrict(null);
+                }}
+                onDistrictChange={setDistrict}
+                onAOIChange={handleAOIChange}
+                viewMode="2d"
+                onViewModeChange={() => {}}
+              />
+            </Suspense>
           )}
 
           {activeTab === "GeoAnálises" && (
@@ -831,23 +812,6 @@ export default function Explorer() {
             </Suspense>
           )}
 
-          {activeTab === "GeoProcessamento" && (
-            <Suspense fallback={<LoadingSkeleton label="GeoProcessamento" />}>
-              <LazyGeoProcessamento
-                aoi={aoi}
-                province={province}
-                district={district}
-                onProvinceChange={(p) => {
-                  setProvince(p);
-                  setDistrict(null);
-                }}
-                onDistrictChange={setDistrict}
-                onAOIChange={handleAOIChange}
-                viewMode={globalViewMode}
-                onViewModeChange={handleGlobalViewModeChange}
-              />
-            </Suspense>
-          )}
 
           {activeTab === "GeoMoz AI" && (
             <Suspense fallback={<LoadingSkeleton label="GeoMoz AI" />}>
