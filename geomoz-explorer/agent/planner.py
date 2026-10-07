@@ -35,27 +35,177 @@ class GeoMozAgent:
         user_message: str,
         current_map_state: Dict[str, Any],
         chat_history: Optional[List[Dict[str, str]]] = None,
-        gemini_api_key: Optional[str] = None
+        gemini_api_key: Optional[str] = None,
+        openai_api_key: Optional[str] = None,
+        provider: Optional[str] = "auto",
+        model: Optional[str] = None
     ) -> Dict[str, Any]:
         """Orchestrate plan, execute tools, and return map actions and synthesis."""
-        raw_key = gemini_api_key or os.getenv("GEMINI_API_KEY") or ""
-        clean_key = raw_key.strip().strip("`").strip('"').strip("'")
+        clean_openai = (openai_api_key or os.getenv("OPENAI_API_KEY") or "").strip().strip("`").strip('"').strip("'")
+        clean_gemini = (gemini_api_key or os.getenv("GEMINI_API_KEY") or "").strip().strip("`").strip('"').strip("'")
+        chosen_provider = (provider or "auto").lower()
 
-        if clean_key and clean_key != "SUA_CHAVE_AQUI":
+        # 1. Explicit or auto-detected OpenAI
+        if chosen_provider == "openai" or (chosen_provider == "auto" and clean_openai and (clean_openai.startswith("sk-") or not clean_gemini)):
+            if clean_openai and clean_openai != "SUA_CHAVE_AQUI":
+                try:
+                    return await cls._run_openai_react_loop(
+                        user_message=user_message,
+                        current_map_state=current_map_state,
+                        api_key=clean_openai,
+                        chat_history=chat_history,
+                        model=model
+                    )
+                except Exception as exc:
+                    logger.warning("OpenAI API call failed (%s). Falling back.", exc)
+
+        # 2. Explicit or fallback Gemini
+        if clean_gemini and clean_gemini != "SUA_CHAVE_AQUI":
             try:
-                return await cls._run_gemini_react_loop(user_message, current_map_state, clean_key)
+                return await cls._run_gemini_react_loop(
+                    user_message=user_message,
+                    current_map_state=current_map_state,
+                    api_key=clean_gemini,
+                    chat_history=chat_history
+                )
             except Exception as exc:
                 logger.warning("Gemini API call failed (%s). Falling back to spatial heuristic planner.", exc)
 
-        # Resilient heuristic planner
+        # 3. Resilient heuristic planner (zero API key / offline fallback)
         return await cls._run_heuristic_planner(user_message, current_map_state)
+
+    @classmethod
+    async def _run_openai_react_loop(
+        cls,
+        user_message: str,
+        current_map_state: Dict[str, Any],
+        api_key: str,
+        chat_history: Optional[List[Dict[str, str]]] = None,
+        model: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Execute ReAct cycle via OpenAI API using native Function Calling / Tools."""
+        import openai
+        client = openai.AsyncOpenAI(api_key=api_key)
+        chosen_model = model or "gpt-4o"
+
+        aoi = current_map_state.get("aoi", {})
+        aoi_label = aoi.get("label") or "Moçambique (Geral)"
+        temporal = current_map_state.get("temporalWindow", {})
+        context_str = f"Contexto Atual do Mapa: AOI='{aoi_label}', Período={temporal}"
+
+        openai_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": decl["name"],
+                    "description": decl["description"],
+                    "parameters": decl["parameters"],
+                }
+            }
+            for decl in TOOL_DECLARATIONS
+        ]
+
+        messages: List[Dict[str, Any]] = [
+            {"role": "system", "content": SYSTEM_PROMPT}
+        ]
+
+        # Multi-turn context memory
+        if chat_history:
+            for h in chat_history:
+                role = "user" if (h.get("role") == "user" or h.get("sender") == "user") else "assistant"
+                txt = h.get("content") or h.get("text") or ""
+                if txt:
+                    messages.append({"role": role, "content": txt})
+
+        messages.append({
+            "role": "user",
+            "content": f"{context_str}\n\nInstrução do Utilizador:\n{user_message}"
+        })
+
+        steps_log = []
+        map_actions = []
+        executed_runs = []
+
+        for turn in range(5):
+            response = await client.chat.completions.create(
+                model=chosen_model,
+                messages=messages,
+                tools=openai_tools,
+                tool_choice="auto",
+                temperature=0.2,
+            )
+
+            choice = response.choices[0]
+            msg = choice.message
+
+            if not msg.tool_calls:
+                final_text = msg.content or "Análise geoespacial concluída com sucesso."
+                return {
+                    "status": "completed",
+                    "provider": "openai",
+                    "model": response.model,
+                    "plan": [s["name"] for s in steps_log],
+                    "steps": steps_log,
+                    "map_actions": map_actions,
+                    "runs": executed_runs,
+                    "synthesis": final_text
+                }
+
+            # Append the assistant's tool-calls message
+            messages.append(msg)
+
+            for tool_call in msg.tool_calls:
+                tool_name = tool_call.function.name
+                try:
+                    tool_args = json.loads(tool_call.function.arguments or "{}")
+                except Exception:
+                    tool_args = {}
+
+                step_entry = {
+                    "id": f"step_{len(steps_log)+1}",
+                    "name": f"Executar {tool_name.replace('_', ' ').title()}",
+                    "status": "running"
+                }
+                steps_log.append(step_entry)
+
+                tool_output = await ToolDispatcher.execute(tool_name, tool_args, current_map_state)
+                step_entry["status"] = "completed"
+                step_entry["resultSummary"] = str(
+                    tool_output.get("mean")
+                    or tool_output.get("areaKm2")
+                    or tool_output.get("meanSoilMoisture")
+                    or tool_output.get("meanSoilLoss")
+                    or "Concluído"
+                )
+
+                if "map_action" in tool_output:
+                    map_actions.append(tool_output["map_action"])
+                executed_runs.append({"tool": tool_name, "output": tool_output})
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(tool_output, ensure_ascii=False)
+                })
+
+        return {
+            "status": "completed",
+            "provider": "openai",
+            "model": chosen_model,
+            "plan": [s["name"] for s in steps_log],
+            "steps": steps_log,
+            "map_actions": map_actions,
+            "runs": executed_runs,
+            "synthesis": "Análise geoespacial multi-critério processada pelo GeoMoz Agent."
+        }
 
     @classmethod
     async def _run_gemini_react_loop(
         cls,
         user_message: str,
         current_map_state: Dict[str, Any],
-        api_key: str
+        api_key: str,
+        chat_history: Optional[List[Dict[str, str]]] = None
     ) -> Dict[str, Any]:
         """Execute ReAct cycle via Gemini API using Function Calling."""
         clean_key = (api_key or "").strip().strip("`").strip('"').strip("'")
@@ -65,9 +215,16 @@ class GeoMozAgent:
         aoi_label = aoi.get("label") or "Moçambique (Geral)"
         context_str = f"Contexto Atual do Mapa: AOI='{aoi_label}', Período='{current_map_state.get('temporalWindow', {})}'"
 
-        contents = [
+        contents = []
+        if chat_history:
+            for h in chat_history:
+                role = "user" if (h.get("role") == "user" or h.get("sender") == "user") else "model"
+                txt = h.get("content") or h.get("text") or ""
+                if txt:
+                    contents.append({"role": role, "parts": [{"text": txt}]})
+        contents.append(
             {"role": "user", "parts": [{"text": f"{context_str}\n\nInstrução do Utilizador:\n{user_message}"}]}
-        ]
+        )
 
         gemini_tools = [{"function_declarations": TOOL_DECLARATIONS}]
 

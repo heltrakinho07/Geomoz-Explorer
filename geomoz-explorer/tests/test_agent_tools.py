@@ -86,6 +86,59 @@ class TestGeoMozAgent(unittest.TestCase):
                 self.assertEqual(change_res["status"], "success")
                 self.assertIn("agent_change_ndvi", change_res["map_action"]["id"])
 
+                # 6. SMAP Soil Moisture
+                mock_gee.compute_soil_moisture_smap.return_value = {
+                    "tileUrl": "https://earthengine.googleapis.com/v1/projects/mock/smap",
+                    "stats": {"mean": 0.284, "p50": 0.280}
+                }
+                smap_res = await ToolDispatcher.execute("get_soil_moisture_smap", {"depth": "rootzone"}, {})
+                self.assertEqual(smap_res["status"], "success")
+                self.assertIn("agent_smap_rootzone", smap_res["map_action"]["id"])
+                self.assertEqual(smap_res["depth"], "rootzone")
+
+                # 7. RUSLE Water Erosion
+                mock_gee.compute_erosion_rusle.return_value = {
+                    "tileUrl": "https://earthengine.googleapis.com/v1/projects/mock/rusle",
+                    "stats": {"meanSoilLossTha": 14.8}
+                }
+                rusle_res = await ToolDispatcher.execute("get_water_erosion_rusle", {"year": 2023}, {})
+                self.assertEqual(rusle_res["status"], "success")
+                self.assertIn("agent_erosion_rusle_2023", rusle_res["map_action"]["id"])
+
+                # 8. Wildfire Activity
+                mock_gee.compute_wildfire.return_value = {
+                    "tileUrl": "https://earthengine.googleapis.com/v1/projects/mock/fire",
+                    "stats": {"firePixels": 42}
+                }
+                fire_res = await ToolDispatcher.execute("get_wildfire_activity", {"start_date": "2024-01-01", "end_date": "2024-12-31"}, {})
+                self.assertEqual(fire_res["status"], "success")
+                self.assertEqual(fire_res["firePixelsCount"], 42)
+
+        asyncio.run(_test())
+
+    def test_agent_openai_routing(self):
+        """Test agent routes to OpenAI when sk- key is provided."""
+        async def _test():
+            map_state = {"aoi": {"label": "Tete"}}
+            mock_res = {
+                "status": "completed",
+                "provider": "openai",
+                "model": "gpt-4o",
+                "plan": ["Delimitar AOI", "Calcular SMAP"],
+                "steps": [],
+                "map_actions": [],
+                "runs": [],
+                "synthesis": "Análise gerada pelo GPT-4o."
+            }
+            with patch.object(GeoMozAgent, "_run_openai_react_loop", return_value=mock_res) as mock_loop:
+                res = await GeoMozAgent.process_user_request(
+                    "Avalia o stress hídrico",
+                    map_state,
+                    openai_api_key="sk-test-key-12345"
+                )
+                self.assertEqual(res["provider"], "openai")
+                self.assertEqual(res["model"], "gpt-4o")
+                mock_loop.assert_called_once()
         asyncio.run(_test())
 
 

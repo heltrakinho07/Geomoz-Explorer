@@ -26,14 +26,19 @@ TOOL_DECLARATIONS = [
     },
     {
         "name": "calculate_index",
-        "description": "Calcula um índice biofísico ou mineral de satélite via Google Earth Engine (Sentinel-2 / Landsat).",
+        "description": "Calcula um índice biofísico, mineral ou climático de satélite via Google Earth Engine (Sentinel-2 / Landsat 8 / MODIS).",
         "parameters": {
             "type": "object",
             "properties": {
                 "index": {
                     "type": "string",
-                    "description": "Código do índice. Opções: 'ndvi' (vegetação), 'ndwi' (água/humidade), 'mndwi' (água modificada/cheias), 'clay' (argilas/alteração hidrotermal), 'fe_oxide' (óxidos de ferro), 'gossan' (chapéu de ferro), 'hydrothermal' (alteração geral)",
-                    "enum": ["ndvi", "ndwi", "mndwi", "clay", "fe_oxide", "gossan", "hydrothermal", "ndbi"]
+                    "description": "Código do índice. Opções: 'ndvi' (vigor vegetal), 'ndwi' (água/humidade), 'mndwi' (água modificada), 'clay' (argilas S2), 'fe_oxide' (óxidos de ferro S2), 'gossan' (chapéu de ferro), 'hydrothermal' (alteração geral), 'clay_l8' (argilas Landsat 8), 'fe_oxide_l8' (óxidos de ferro L8), 'hydrothermal_l8' (alteração hidrotermal Sabins L8), 'ferrous_l8' (minerais ferrosos L8), 'silica_l8' (silicificação L8), 'carbonate_chlorite_l8' (carbonatos L8), 'gossan_l8' (gossan L8), 'evi' (vegetação melhorada), 'savi' (solo ajustado), 'ndmi' (humidade foliar), 'lai' (área foliar), 'cwsi' (stress hídrico), 'spei' (seca climática), 'vci' (condição vegetal), 'vhi' (saúde vegetal), 'precipitation' (chuva CHIRPS), 'temperature_lst' (temperatura superficial MODIS), 'cyclone_risk' (risco de ciclones)",
+                    "enum": [
+                        "ndvi", "ndwi", "mndwi", "clay", "fe_oxide", "gossan", "hydrothermal", "ndbi",
+                        "clay_l8", "fe_oxide_l8", "hydrothermal_l8", "ferrous_l8", "gossan_l8", "carbonate_chlorite_l8", "silica_l8",
+                        "evi", "savi", "ndmi", "lai", "cwsi", "spei", "vci", "tci", "vhi", "ndti",
+                        "precipitation", "temperature_lst", "cyclone_risk", "forest_loss", "burned_area"
+                    ]
                 },
                 "start_date": {"type": "string", "description": "Data inicial YYYY-MM-DD (padrão: 2024-01-01)"},
                 "end_date": {"type": "string", "description": "Data final YYYY-MM-DD (padrão: 2024-12-31)"}
@@ -189,6 +194,45 @@ TOOL_DECLARATIONS = [
                 "end_date_1": {"type": "string", "description": "Fim do período 1 (YYYY-MM-DD)", "default": "2020-12-31"},
                 "start_date_2": {"type": "string", "description": "Início do período 2 (YYYY-MM-DD)", "default": "2024-01-01"},
                 "end_date_2": {"type": "string", "description": "Fim do período 2 (YYYY-MM-DD)", "default": "2024-12-31"}
+            }
+        }
+    },
+    {
+        "name": "get_soil_moisture_smap",
+        "description": "Obtém dados de humidade do solo e seca agrícola via NASA-USDA SMAP 9km (nível superficial ou zona radicular 'rootzone').",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "depth": {
+                    "type": "string",
+                    "description": "Profundidade: 'rootzone' (zona radicular 0-100cm) ou 'surface' (superficial 0-5cm)",
+                    "enum": ["rootzone", "surface"],
+                    "default": "rootzone"
+                },
+                "start_date": {"type": "string", "description": "Data inicial YYYY-MM-DD (padrão: 2024-01-01)"},
+                "end_date": {"type": "string", "description": "Data final YYYY-MM-DD (padrão: 2024-12-31)"}
+            }
+        }
+    },
+    {
+        "name": "get_water_erosion_rusle",
+        "description": "Modela o risco e taxa de perda de solo por erosão hídrica em t/ha/ano via equação universal RUSLE (relevo DEM, chuva CHIRPS e coberto vegetal).",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "year": {"type": "integer", "description": "Ano de referência (padrão 2023)", "default": 2023}
+            }
+        }
+    },
+    {
+        "name": "get_wildfire_activity",
+        "description": "Mapeia focos de queimadas ativas e atividade de fogo via satélite NASA FIRMS VIIRS / MODIS.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "description": "Data inicial YYYY-MM-DD"},
+                "end_date": {"type": "string", "description": "Data final YYYY-MM-DD"},
+                "min_confidence": {"type": "integer", "description": "Confiança mínima (0 a 100, padrão 50)", "default": 50}
             }
         }
     }
@@ -603,6 +647,89 @@ class ToolDispatcher:
                         "name": f"Dinâmica Temporal {idx.upper()} ({d1_start[:4]} → {d2_start[:4]})",
                         "tileUrl": result.get("tileUrl"),
                         "opacity": 0.85
+                    }
+                }
+
+            elif tool_name == "get_soil_moisture_smap":
+                import gee_module
+                import api
+                _ensure_gee()
+                depth = args.get("depth", "rootzone")
+                region = api._region_geojson(province=province, district=district, geometry=region_geom)
+                result = gee_module.compute_soil_moisture_smap(
+                    region_geojson=region,
+                    start_date=start_date,
+                    end_date=end_date,
+                    depth=depth
+                )
+                mean_sm = result.get("stats", {}).get("mean") or result.get("stats", {}).get("p50")
+                summary_val = f"{float(mean_sm):.3f} m³/m³" if mean_sm is not None else "N/D"
+                depth_label = "Zona Radicular (0-100cm)" if depth == "rootzone" else "Superficial (0-5cm)"
+                return {
+                    "status": "success",
+                    "depth": depth,
+                    "depthLabel": depth_label,
+                    "meanSoilMoisture": summary_val,
+                    "tileUrl": result.get("tileUrl"),
+                    "droughtCategory": "Alerta de Stress Hídrico" if (mean_sm and float(mean_sm) < 0.15) else "Humidade Adequada",
+                    "map_action": {
+                        "type": "ADD_LAYER",
+                        "id": f"agent_smap_{depth}",
+                        "name": f"Humidade do Solo NASA SMAP — {depth_label}",
+                        "tileUrl": result.get("tileUrl"),
+                        "opacity": 0.8
+                    }
+                }
+
+            elif tool_name == "get_water_erosion_rusle":
+                import gee_module
+                import api
+                _ensure_gee()
+                year = int(args.get("year", 2023))
+                region = api._region_geojson(province=province, district=district, geometry=region_geom)
+                result = gee_module.compute_erosion_rusle(region_geojson=region, year=year)
+                stats = result.get("stats", {})
+                mean_loss = stats.get("meanSoilLossTha", stats.get("mean"))
+                summary_val = f"{float(mean_loss):.1f} t/ha/ano" if mean_loss is not None else "N/D"
+                return {
+                    "status": "success",
+                    "year": year,
+                    "meanSoilLoss": summary_val,
+                    "tileUrl": result.get("tileUrl"),
+                    "map_action": {
+                        "type": "ADD_LAYER",
+                        "id": f"agent_erosion_rusle_{year}",
+                        "name": f"Perda de Solo RUSLE ({year})",
+                        "tileUrl": result.get("tileUrl"),
+                        "opacity": 0.85
+                    }
+                }
+
+            elif tool_name == "get_wildfire_activity":
+                import gee_module
+                import api
+                _ensure_gee()
+                region = api._region_geojson(province=province, district=district, geometry=region_geom)
+                min_conf = int(args.get("min_confidence", 50))
+                result = gee_module.compute_wildfire(
+                    region_geojson=region,
+                    start_date=start_date,
+                    end_date=end_date,
+                    min_confidence=min_conf
+                )
+                stats = result.get("stats", {})
+                fire_count = stats.get("firePixels", stats.get("count", 0))
+                return {
+                    "status": "success",
+                    "firePixelsCount": fire_count,
+                    "tileUrl": result.get("tileUrl"),
+                    "burnedTileUrl": result.get("burnedTileUrl"),
+                    "map_action": {
+                        "type": "ADD_LAYER",
+                        "id": "agent_wildfire",
+                        "name": f"Focos de Incêndio VIIRS ({fire_count} focos)",
+                        "tileUrl": result.get("tileUrl"),
+                        "opacity": 0.9
                     }
                 }
 

@@ -765,6 +765,9 @@ class AgentChatRequest(BaseModel):
     current_map_state: Optional[dict] = None
     chat_history: Optional[list] = None
     gemini_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    provider: Optional[str] = "auto"
+    model: Optional[str] = None
 
 class GEEIndexRequest(BaseModel):
     index:      str
@@ -1142,7 +1145,10 @@ async def agent_chat(req: AgentChatRequest):
             user_message=req.message,
             current_map_state=req.current_map_state or {},
             chat_history=req.chat_history or [],
-            gemini_api_key=req.gemini_api_key
+            gemini_api_key=req.gemini_api_key,
+            openai_api_key=req.openai_api_key,
+            provider=req.provider or "auto",
+            model=req.model
         )
         return result
     except Exception as exc:
