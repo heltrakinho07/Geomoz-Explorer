@@ -609,6 +609,49 @@ export default function GeoProcessamento({
     selectedWhiteboxRaster,
   ]);
 
+  const openTerrainWhiteboxTool = useCallback(
+    async (toolId: "hillshade" | "slope" | "aspect", rasterId: string) => {
+      try {
+        let tools = whiteboxTools;
+        if (tools.length === 0) {
+          setWhiteboxLoading(true);
+          tools = await listWhiteboxWasmManifests();
+          setWhiteboxTools(tools);
+        }
+
+        const tool = tools.find((candidate) => candidate.id === toolId);
+        if (!tool || !whiteboxRasterSupport(tool).supported) {
+          throw new Error(
+            `A ferramenta ${toolId} não está disponível no runtime Whitebox atual.`
+          );
+        }
+
+        setSelectedWhiteboxRasterId(rasterId);
+        setSelectedWhiteboxToolId(tool.id);
+        setWhiteboxParams(whiteboxManifestDefaults(tool));
+        setToolSearch("");
+        setToolCategoryFilter("all");
+        setActiveTab("whitebox_toolbox");
+        setSidebarOpen(true);
+
+        toast({
+          title: `${whiteboxManifestName(tool)} preparado`,
+          description:
+            "O DEM já está selecionado. Confirme os parâmetros e execute no Whitebox WASM.",
+        });
+      } catch (error) {
+        toast({
+          title: "Ferramenta de terreno indisponível",
+          description: error instanceof Error ? error.message : String(error),
+          variant: "destructive",
+        });
+      } finally {
+        setWhiteboxLoading(false);
+      }
+    },
+    [toast, whiteboxTools]
+  );
+
   const filteredWhiteboxTools = useMemo(() => {
     const needle = toolSearch.trim().toLowerCase();
     return whiteboxTools.filter((tool) => {
@@ -2757,6 +2800,57 @@ export default function GeoProcessamento({
                         {Math.round(raster.opacity * 100)}%
                       </span>
                     </div>
+                    {selectedWhiteboxRasterId === raster.id && (
+                      <div className="mt-2 rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-2 dark:border-emerald-900 dark:bg-emerald-950/20">
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <div>
+                            <span className="block text-[9px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                              Análise de Terreno
+                            </span>
+                            <span className="text-[9px] text-slate-400">
+                              DEM → derivados Whitebox WASM
+                            </span>
+                          </div>
+                          <Mountain size={13} className="text-emerald-600" />
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <button
+                            type="button"
+                            disabled={whiteboxLoading || isExecuting}
+                            onClick={() =>
+                              void openTerrainWhiteboxTool("hillshade", raster.id)
+                            }
+                            className="flex flex-col items-center gap-1 rounded-lg border border-emerald-200 bg-white px-1.5 py-2 text-[9px] font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-700 disabled:opacity-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-slate-300"
+                          >
+                            <Sparkles size={12} />
+                            Hillshade
+                          </button>
+                          <button
+                            type="button"
+                            disabled={whiteboxLoading || isExecuting}
+                            onClick={() =>
+                              void openTerrainWhiteboxTool("slope", raster.id)
+                            }
+                            className="flex flex-col items-center gap-1 rounded-lg border border-emerald-200 bg-white px-1.5 py-2 text-[9px] font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-700 disabled:opacity-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-slate-300"
+                          >
+                            <Mountain size={12} />
+                            Declive
+                          </button>
+                          <button
+                            type="button"
+                            disabled={whiteboxLoading || isExecuting}
+                            onClick={() =>
+                              void openTerrainWhiteboxTool("aspect", raster.id)
+                            }
+                            className="flex flex-col items-center gap-1 rounded-lg border border-emerald-200 bg-white px-1.5 py-2 text-[9px] font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-700 disabled:opacity-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-slate-300"
+                          >
+                            <Compass size={12} />
+                            Aspeto
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {selectedWhiteboxRasterId === raster.id &&
                       (() => {
                         const state = raster.rasterState ?? {};
