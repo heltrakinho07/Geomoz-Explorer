@@ -64,6 +64,7 @@ export interface CloudGISRasterLayerManifest {
   bandCount?: number | null;
   bounds?: [number, number, number, number] | null;
   rasterState?: Record<string, unknown>;
+  rasterSymbology?: Record<string, unknown>;
   isResult?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -234,6 +235,7 @@ async function uploadRasterIfChanged(
       bandCount: layer.bandCount ?? existing?.bandCount ?? null,
       bounds: layer.bounds ?? existing?.bounds ?? null,
       rasterState: layer.rasterState ?? existing?.rasterState,
+      rasterSymbology: layer.rasterSymbology ?? existing?.rasterSymbology,
       isResult: layer.isResult,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
@@ -286,6 +288,7 @@ async function uploadRasterIfChanged(
     bandCount: layer.bandCount ?? existing?.bandCount ?? null,
     bounds: layer.bounds ?? existing?.bounds ?? null,
     rasterState: layer.rasterState ?? existing?.rasterState,
+    rasterSymbology: layer.rasterSymbology ?? existing?.rasterSymbology,
     isResult: layer.isResult,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
@@ -416,6 +419,7 @@ async function restoreRasterLayer(
     bandCount: manifest.bandCount ?? null,
     bounds: manifest.bounds ?? null,
     rasterState: manifest.rasterState,
+    rasterSymbology: manifest.rasterSymbology as GISWorkspaceRasterLayer["rasterSymbology"],
     isResult: manifest.isResult,
   };
 }
