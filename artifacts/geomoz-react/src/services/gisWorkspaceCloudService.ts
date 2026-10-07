@@ -202,12 +202,14 @@ async function uploadRasterIfChanged(
       : null;
   const now = new Date().toISOString();
 
+  const remoteUrl =
+    typeof layer.remoteUrl === "string" ? layer.remoteUrl : undefined;
   const isExternalUrl =
     layer.sourceType === "url" &&
-    typeof layer.remoteUrl === "string" &&
-    /^https?:\/\//i.test(layer.remoteUrl);
+    typeof remoteUrl === "string" &&
+    /^https?:\/\//i.test(remoteUrl);
 
-  if (isExternalUrl) {
+  if (isExternalUrl && remoteUrl) {
     if (existing?.sourceType !== "url" && existing?.objectPath) {
       try {
         await deleteObject(storageRef(storage, existing.objectPath));
@@ -221,9 +223,9 @@ async function uploadRasterIfChanged(
       sourceType: "url",
       id: layer.id,
       name: layer.name,
-      remoteUrl: layer.remoteUrl,
+      remoteUrl,
       format: "GeoTIFF",
-      contentHash: await sha256Hex(layer.remoteUrl),
+      contentHash: await sha256Hex(remoteUrl),
       fileName: layer.fileName,
       mimeType: layer.mimeType || "image/tiff",
       sizeBytes: layer.sizeBytes ?? 0,
@@ -443,7 +445,8 @@ export async function loadGISWorkspaceFromCloud(
   );
   const rasterManifests = manifests.filter(
     (manifest): manifest is CloudGISRasterLayerManifest =>
-      manifest.kind === "raster" || manifest.format === "GeoTIFF"
+      manifest.kind === "raster" ||
+      (manifest as { format?: string }).format === "GeoTIFF"
   );
   const [downloaded, restoredRasters] = await Promise.all([
     Promise.all(vectorManifests.map(downloadVectorLayer)),
