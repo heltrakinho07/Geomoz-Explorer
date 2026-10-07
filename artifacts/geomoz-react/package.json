@@ -90,6 +90,7 @@
     "@duckdb/duckdb-wasm": "1.33.1-dev57.0",
     "@turf/turf": "^7.4.0",
     "shpjs": "^6.2.0",
+    "geolibre-wasm": "^1.5.5",
     "firebase": "^11.0.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
