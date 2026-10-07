@@ -10,7 +10,6 @@ import type {
   GeoMozWhiteboxWorkerRequest,
   GeoMozWhiteboxWorkerResponse,
 } from "@/workers/whitebox-wasm.worker";
-import { convertGeoTiffToCog } from "@/lib/cog-convert";
 
 export interface WhiteboxWasmParameter {
   name: string;
@@ -586,11 +585,10 @@ export async function runWhiteboxRasterTool(params: {
   for (const [parameter, fileName] of outputFiles.entries()) {
     const bytes = result.files[fileName];
     if (!bytes?.length) continue;
-    const cogBytes = await convertGeoTiffToCog(bytes);
     outputs.push({
       parameter,
       fileName: fileName.replace(/\.tif$/i, ".cog.tif"),
-      bytes: cogBytes,
+      bytes,
     });
   }
 
