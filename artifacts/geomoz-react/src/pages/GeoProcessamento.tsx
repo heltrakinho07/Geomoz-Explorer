@@ -559,11 +559,16 @@ export default function GeoProcessamento({
   React.useEffect(() => {
     if (!selectedWhiteboxRaster) return;
     const mode = selectedWhiteboxRaster.rasterState?.mode ?? "single";
-    if (mode !== "single") return;
-
-    const band = selectedWhiteboxRaster.rasterState?.bands?.[0] ?? 1;
-    const key = rasterStatsKey(selectedWhiteboxRaster.id, band);
-    if (rasterBandStats[key] || rasterStatsLoadingKey === key) return;
+    const configuredBands = selectedWhiteboxRaster.rasterState?.bands?.length
+      ? selectedWhiteboxRaster.rasterState.bands
+      : [1];
+    const bands =
+      mode === "rgb" ? configuredBands.slice(0, 3) : [configuredBands[0] ?? 1];
+    const band = bands.find((candidate) => {
+      const key = rasterStatsKey(selectedWhiteboxRaster.id, candidate);
+      return !rasterBandStats[key] && rasterStatsLoadingKey !== key;
+    });
+    if (!band) return;
 
     const controller = new AbortController();
     void loadRasterBandStats(selectedWhiteboxRaster, band, controller.signal);
@@ -2754,6 +2759,24 @@ export default function GeoProcessamento({
                         const histogramPeak = stats
                           ? Math.max(1, ...stats.histogram)
                           : 1;
+                        const rgbBands = [
+                          bands[0] ?? 1,
+                          bands[1] ?? Math.min(2, bandCount),
+                          bands[2] ?? Math.min(3, bandCount),
+                        ];
+                        const rgbStats = rgbBands.map(
+                          (band) => rasterBandStats[rasterStatsKey(raster.id, band)] ?? null
+                        );
+                        const rgbAutoRanges = rgbStats.map((channelStats) =>
+                          channelStats ? autoGISRasterStretch(channelStats) : null
+                        );
+                        const rgbStatsReady = rgbAutoRanges.every(
+                          (range): range is [number, number] => range !== null
+                        );
+                        const nodata =
+                          state.nodata === "off" || typeof state.nodata === "number"
+                            ? state.nodata
+                            : "auto";
 
                         return (
                           <div
@@ -3044,6 +3067,119 @@ export default function GeoProcessamento({
                                 )}
                               </div>
                             )}
+
+                            {mode === "rgb" && (
+                              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2 dark:border-slate-700 dark:bg-slate-800/60">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                                    Estatísticas RGB
+                                  </span>
+                                  <span className="text-[9px] text-slate-400">
+                                    {state.rescale ? "Range fixado" : "Auto 2–98%"}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                  {(["R", "G", "B"] as const).map((channel, index) => {
+                                    const channelStats = rgbStats[index];
+                                    return (
+                                      <div
+                                        key={channel}
+                                        className="rounded-md bg-white px-1.5 py-1.5 text-[9px] dark:bg-slate-900"
+                                      >
+                                        <span className="font-bold text-slate-500">{channel}</span>
+                                        <span className="block truncate text-slate-400">
+                                          B{rgbBands[index]}
+                                        </span>
+                                        {channelStats ? (
+                                          <span className="block font-semibold text-slate-700 dark:text-slate-200">
+                                            {formatRasterValue(channelStats.min)} –{" "}
+                                            {formatRasterValue(channelStats.max)}
+                                          </span>
+                                        ) : (
+                                          <span className="block text-slate-400">a calcular…</span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateRasterState(raster.id, { rescale: null })
+                                    }
+                                    className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[9px] font-semibold text-slate-600 hover:border-sky-300 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                                  >
+                                    Auto RGB
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={!rgbStatsReady}
+                                    onClick={() => {
+                                      if (!rgbStatsReady) return;
+                                      updateRasterState(raster.id, {
+                                        rescale: rgbAutoRanges as [number, number][],
+                                      });
+                                    }}
+                                    className="rounded-lg bg-sky-600 px-2 py-1.5 text-[9px] font-bold text-white hover:bg-sky-700 disabled:opacity-50"
+                                  >
+                                    Fixar 2–98%
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="space-y-1">
+                                <span className="text-[9px] font-semibold text-slate-500">
+                                  NoData
+                                </span>
+                                <select
+                                  value={typeof nodata === "number" ? "custom" : nodata}
+                                  onChange={(event) => {
+                                    const value = event.target.value;
+                                    updateRasterState(raster.id, {
+                                      nodata:
+                                        value === "off"
+                                          ? "off"
+                                          : value === "custom"
+                                            ? 0
+                                            : "auto",
+                                    });
+                                  }}
+                                  className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-800"
+                                >
+                                  <option value="auto">Automático</option>
+                                  <option value="off">Não aplicar</option>
+                                  <option value="custom">Valor definido</option>
+                                </select>
+                              </label>
+                              {typeof nodata === "number" ? (
+                                <label className="space-y-1">
+                                  <span className="text-[9px] font-semibold text-slate-500">
+                                    Valor NoData
+                                  </span>
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    value={nodata}
+                                    onChange={(event) => {
+                                      const value = Number(event.target.value);
+                                      if (Number.isFinite(value)) {
+                                        updateRasterState(raster.id, { nodata: value });
+                                      }
+                                    }}
+                                    className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-800"
+                                  />
+                                </label>
+                              ) : (
+                                <div className="rounded-lg border border-dashed border-slate-200 px-2 py-1.5 text-[9px] text-slate-400 dark:border-slate-700">
+                                  {nodata === "auto"
+                                    ? "Usa o NoData definido no GeoTIFF."
+                                    : "Todos os valores permanecem visíveis."}
+                                </div>
+                              )}
+                            </div>
 
                             <div className="flex items-center gap-2">
                               <span className="w-12 text-[9px] font-semibold text-slate-500">
