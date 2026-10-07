@@ -1,3 +1,4 @@
+import type { GISRasterSymbology } from "@/lib/gis-raster-classification";
 import type { FeatureCollection } from "geojson";
 
 const DB_NAME = "geomoz-gis-workspace";
@@ -31,7 +32,7 @@ export interface PersistedGISRasterLayer {
   bandCount?: number | null;
   bounds?: [number, number, number, number] | null;
   rasterState?: Record<string, unknown>;
-  rasterSymbology?: Record<string, unknown>;
+  rasterSymbology?: GISRasterSymbology;
   error?: string | null;
   remoteUrl?: string;
   sourceType?: "storage" | "url";
