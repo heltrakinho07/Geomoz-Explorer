@@ -56,6 +56,7 @@ import {
   Mountain,
   Waves,
   Cpu,
+  Link2,
 } from "lucide-react";
 import {
   BarChart,
@@ -230,6 +231,8 @@ export default function GeoProcessamento({
   // User Layers
   const [layers, setLayers] = useState<UserLayer[]>([]);
   const [rasterLayers, setRasterLayers] = useState<GISWorkspaceRasterLayer[]>([]);
+  const [rasterUrl, setRasterUrl] = useState("");
+  const [showRasterUrlInput, setShowRasterUrlInput] = useState(false);
   const [selectedLayerId, setSelectedLayerId] = useState<string>("");
   const [secondLayerId, setSecondLayerId] = useState<string>("");
   const [tableLayerId, setTableLayerId] = useState<string | null>(null);
@@ -313,6 +316,7 @@ export default function GeoProcessamento({
                 name: raster.name,
                 file,
                 remoteUrl: raster.remoteUrl,
+                sourceType: raster.sourceType,
                 fileName: raster.fileName,
                 mimeType: raster.mimeType || "image/tiff",
                 sizeBytes: file?.size ?? raster.sizeBytes ?? 0,
@@ -388,6 +392,7 @@ export default function GeoProcessamento({
         error: raster.error ?? null,
         rasterState: raster.rasterState ? { ...raster.rasterState } : undefined,
         remoteUrl: raster.remoteUrl,
+        sourceType: raster.sourceType,
       }));
 
       const snapshot = {
@@ -626,6 +631,82 @@ export default function GeoProcessamento({
     }
   }, [layers, sqlQuery]);
 
+  const handleAddRasterUrl = useCallback(() => {
+    const raw = rasterUrl.trim();
+    if (!raw) {
+      toast({
+        title: "Introduza um URL",
+        description: "Cole o endereço HTTP/HTTPS de um GeoTIFF ou COG remoto.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      toast({
+        title: "URL inválido",
+        description: "Use um endereço completo iniciado por http:// ou https://.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      toast({
+        title: "Protocolo não suportado",
+        description: "O GIS Workspace aceita rasters remotos por HTTP ou HTTPS.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const lastSegment = decodeURIComponent(
+      parsed.pathname.split("/").filter(Boolean).pop() || "raster-remoto.tif"
+    );
+    const fileName = /\.tiff?$/i.test(lastSegment)
+      ? lastSegment
+      : `${lastSegment || "raster-remoto"}.tif`;
+    const name = fileName.replace(/\.[^/.]+$/, "");
+
+    const raster: GISWorkspaceRasterLayer = {
+      id: `raster_url_${crypto.randomUUID().slice(0, 12)}`,
+      name,
+      remoteUrl: parsed.toString(),
+      sourceType: "url",
+      fileName,
+      mimeType: "image/tiff",
+      sizeBytes: 0,
+      visible: true,
+      opacity: 1,
+      bandCount: null,
+      bounds: null,
+      error: null,
+      rasterState: {
+        mode: "single",
+        bands: [1],
+        colormap: "viridis",
+        reversed: false,
+        rescale: null,
+        nodata: "auto",
+        stretch: "linear",
+        gamma: 1,
+      },
+    };
+
+    setRasterLayers((previous) => [raster, ...previous]);
+    setSelectedWhiteboxRasterId(raster.id);
+    setRasterUrl("");
+    setShowRasterUrlInput(false);
+    toast({
+      title: "COG remoto adicionado",
+      description:
+        "O raster será lido diretamente por HTTP Range quando o servidor suportar pedidos parciais.",
+    });
+  }, [rasterUrl, toast]);
+
   // ── Handle File Upload ───────────────────────────────────────────────────
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -645,6 +726,7 @@ export default function GeoProcessamento({
             id: `raster_${crypto.randomUUID().slice(0, 12)}`,
             name: file.name.replace(/\.[^/.]+$/, ""),
             file,
+            sourceType: "storage",
             fileName: file.name,
             mimeType: file.type || "image/tiff",
             sizeBytes: file.size,
@@ -665,6 +747,7 @@ export default function GeoProcessamento({
             },
           };
           setRasterLayers((previous) => [raster, ...previous]);
+          setSelectedWhiteboxRasterId(raster.id);
           toast({
             title: "Raster adicionado",
             description: `${raster.name} será lido como GeoTIFF/COG no mapa do GIS Workspace.`,
@@ -1051,6 +1134,7 @@ export default function GeoProcessamento({
             id: `whitebox_raster_${crypto.randomUUID().slice(0, 12)}`,
             name: `${whiteboxManifestName(selectedWhiteboxTool)} — ${output.parameter}`,
             file,
+            sourceType: "storage",
             fileName: file.name,
             mimeType: "image/tiff",
             sizeBytes: file.size,
@@ -2250,17 +2334,56 @@ export default function GeoProcessamento({
         {/* ── Sub-Section 7: Camadas ───────────────────────────────────────── */}
         {activeTab === "layers" && (
           <div className="p-3 space-y-3 flex-1">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
                 Camadas no Mapa ({layers.length + rasterLayers.length})
               </span>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="py-1 px-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer"
-              >
-                <Upload size={11} /> Importar
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setShowRasterUrlInput((value) => !value)}
+                  className="py-1 px-2 bg-sky-50 dark:bg-sky-950/50 hover:bg-sky-100 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                  title="Adicionar GeoTIFF/COG por URL"
+                >
+                  <Link2 size={11} /> URL
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="py-1 px-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                >
+                  <Upload size={11} /> Importar
+                </button>
+              </div>
             </div>
+
+            {showRasterUrlInput && (
+              <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-2.5 dark:border-sky-900 dark:bg-sky-950/20">
+                <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300">
+                  <Link2 size={11} />
+                  GeoTIFF / COG remoto
+                </div>
+                <div className="flex gap-1.5">
+                  <input
+                    type="url"
+                    value={rasterUrl}
+                    onChange={(event) => setRasterUrl(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") handleAddRasterUrl();
+                    }}
+                    placeholder="https://servidor/dados/raster.tif"
+                    className="min-w-0 flex-1 rounded-lg border border-sky-200 bg-white px-2 py-1.5 text-[10px] text-slate-700 outline-none focus:ring-2 focus:ring-sky-400 dark:border-sky-900 dark:bg-slate-900 dark:text-slate-200"
+                  />
+                  <button
+                    onClick={handleAddRasterUrl}
+                    className="rounded-lg bg-gradient-to-r from-sky-600 to-indigo-600 px-2.5 py-1.5 text-[10px] font-bold text-white hover:from-sky-700 hover:to-indigo-700"
+                  >
+                    Adicionar
+                  </button>
+                </div>
+                <p className="mt-1.5 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">
+                  Para melhor desempenho, use COG com CORS e suporte a HTTP Range.
+                </p>
+              </div>
+            )}
 
             {rasterLayers.length > 0 && (
               <div className="space-y-2">
