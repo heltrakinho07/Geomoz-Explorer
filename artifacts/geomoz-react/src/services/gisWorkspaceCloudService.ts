@@ -208,6 +208,14 @@ async function uploadRasterIfChanged(
     /^https?:\/\//i.test(layer.remoteUrl);
 
   if (isExternalUrl) {
+    if (existing?.sourceType !== "url" && existing?.objectPath) {
+      try {
+        await deleteObject(storageRef(storage, existing.objectPath));
+      } catch {
+        // A previous project-owned raster may already have been removed.
+      }
+    }
+
     const manifest: CloudGISRasterLayerManifest = {
       kind: "raster",
       sourceType: "url",
