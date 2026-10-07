@@ -113,6 +113,15 @@ import {
   loadGISWorkspaceSnapshot,
   saveGISWorkspaceSnapshot,
 } from "@/lib/gis-workspace-persistence";
+import {
+  listWhiteboxWasmManifests,
+  runWhiteboxVectorTool,
+  whiteboxManifestDefaults,
+  whiteboxManifestName,
+  whiteboxParamKind,
+  whiteboxVectorSupport,
+  type WhiteboxWasmManifest,
+} from "@/lib/whitebox-wasm";
 
 export interface UserLayer {
   id: string;
@@ -224,6 +233,13 @@ export default function GeoProcessamento({
     highQuality: true,
   });
   const [isExecuting, setIsExecuting] = useState(false);
+
+  // Real Whitebox / GeoLibre WASM catalog (lazy-loaded only when the tab opens).
+  const [whiteboxTools, setWhiteboxTools] = useState<WhiteboxWasmManifest[]>([]);
+  const [whiteboxLoading, setWhiteboxLoading] = useState(false);
+  const [whiteboxError, setWhiteboxError] = useState<string | null>(null);
+  const [selectedWhiteboxToolId, setSelectedWhiteboxToolId] = useState("");
+  const [whiteboxParams, setWhiteboxParams] = useState<Record<string, unknown>>({});
 
   // Processing History
   const [history, setHistory] = useState<ProcessingHistoryEntry[]>([]);
@@ -377,6 +393,79 @@ export default function GeoProcessamento({
       return matchSearch && matchCat;
     });
   }, [toolSearch, toolCategoryFilter]);
+
+  const selectedWhiteboxTool = useMemo(
+    () => whiteboxTools.find((tool) => tool.id === selectedWhiteboxToolId) ?? null,
+    [whiteboxTools, selectedWhiteboxToolId]
+  );
+
+  const selectedWhiteboxSupport = useMemo(
+    () => (selectedWhiteboxTool ? whiteboxVectorSupport(selectedWhiteboxTool) : null),
+    [selectedWhiteboxTool]
+  );
+
+  const filteredWhiteboxTools = useMemo(() => {
+    const needle = toolSearch.trim().toLowerCase();
+    return whiteboxTools.filter((tool) => {
+      const category = (tool.category ?? "Outras").toLowerCase();
+      const matchesCategory =
+        toolCategoryFilter === "all" || category === toolCategoryFilter.toLowerCase();
+      const text = [
+        tool.id,
+        whiteboxManifestName(tool),
+        tool.summary ?? "",
+        tool.category ?? "",
+        tool.source ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return matchesCategory && (!needle || text.includes(needle));
+    });
+  }, [whiteboxTools, toolSearch, toolCategoryFilter]);
+
+  const whiteboxCategories = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          whiteboxTools
+            .map((tool) => tool.category)
+            .filter((category): category is string => Boolean(category))
+        )
+      )
+        .sort((a, b) => a.localeCompare(b))
+        .slice(0, 24),
+    [whiteboxTools]
+  );
+
+  React.useEffect(() => {
+    if (activeTab !== "whitebox_toolbox" || whiteboxTools.length > 0 || whiteboxLoading) return;
+
+    let cancelled = false;
+    setWhiteboxLoading(true);
+    setWhiteboxError(null);
+
+    void listWhiteboxWasmManifests()
+      .then((tools) => {
+        if (cancelled) return;
+        setWhiteboxTools(tools);
+        const first = tools.find((tool) => whiteboxVectorSupport(tool).supported) ?? tools[0];
+        if (first) {
+          setSelectedWhiteboxToolId(first.id);
+          setWhiteboxParams(whiteboxManifestDefaults(first));
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setWhiteboxError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (!cancelled) setWhiteboxLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, whiteboxTools.length, whiteboxLoading]);
 
   // Synchronize drawn AOI as a layer
   React.useEffect(() => {
@@ -653,6 +742,108 @@ export default function GeoProcessamento({
       }
     }, 30);
   }, [activeLayer, modelNodes, executeToolById, toast]);
+
+  const handleRunWhitebox = useCallback(async () => {
+    if (!selectedWhiteboxTool || !selectedWhiteboxSupport?.supported) {
+      toast({
+        title: "Ferramenta ainda não ligada ao tipo de camada",
+        description:
+          selectedWhiteboxSupport?.reason ||
+          "Selecione uma ferramenta Whitebox vetorial compatível.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!activeLayer) {
+      toast({
+        title: "Selecione uma camada",
+        description: "A ferramenta Whitebox precisa de uma camada vetorial de entrada.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (selectedWhiteboxSupport.vectorInputs.length > 1 && !secondaryLayer) {
+      toast({
+        title: "Segunda camada necessária",
+        description: "Esta ferramenta Whitebox declara duas entradas vetoriais.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsExecuting(true);
+    try {
+      const result = await runWhiteboxVectorTool({
+        manifest: selectedWhiteboxTool,
+        primaryLayer: activeLayer.geojson,
+        secondaryLayer: secondaryLayer?.geojson,
+        parameters: whiteboxParams,
+      });
+
+      const generated: UserLayer[] = result.outputs.map((output, index) => {
+        const geojson = output.geojson;
+        return {
+          id: `whitebox_${Date.now()}_${index}`,
+          name: `${whiteboxManifestName(selectedWhiteboxTool)} — ${output.parameter}`,
+          geojson,
+          featureCount: geojson.features.length,
+          geometryType: geojson.features[0]?.geometry?.type ?? "Geometry",
+          fields: geojson.features[0]?.properties
+            ? Object.keys(geojson.features[0].properties)
+            : [],
+          color: PALETTE[(layers.length + index + 1) % PALETTE.length],
+          visible: true,
+          isResult: true,
+        };
+      });
+
+      setLayers((previous) => [...generated, ...previous]);
+      if (generated[0]) setSelectedLayerId(generated[0].id);
+
+      const outputCount = generated.reduce(
+        (total, layer) => total + layer.featureCount,
+        0
+      );
+      setHistory((previous) => [
+        {
+          id: `hist_whitebox_${Date.now()}`,
+          toolId: selectedWhiteboxTool.id,
+          toolName: whiteboxManifestName(selectedWhiteboxTool),
+          engine: "WASM",
+          timestamp: new Date().toLocaleTimeString("pt-PT"),
+          durationMs: result.executionTimeMs,
+          inputLayerName: [activeLayer.name, secondaryLayer?.name]
+            .filter(Boolean)
+            .join(", "),
+          outputCount,
+          status: "success",
+          parameters: { ...whiteboxParams },
+        },
+        ...previous,
+      ]);
+
+      toast({
+        title: "Whitebox WASM concluído",
+        description: `${whiteboxManifestName(selectedWhiteboxTool)} gerou ${outputCount} feições em ${result.executionTimeMs}ms.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Whitebox WASM falhou",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setIsExecuting(false);
+    }
+  }, [
+    activeLayer,
+    layers.length,
+    secondaryLayer,
+    selectedWhiteboxSupport,
+    selectedWhiteboxTool,
+    toast,
+    whiteboxParams,
+  ]);
 
   // ── Execute Spatial SQL (DuckDB-WASM Spatial real) ────────────────────────
   const handleExecuteSql = useCallback(async () => {
