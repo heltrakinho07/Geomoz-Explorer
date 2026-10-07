@@ -1,9 +1,6 @@
 /**
  * GeoMoz DuckDB-WASM Spatial runtime.
  *
- * Architecture adapted from GeoLibre's DuckDB-WASM approach (MIT):
- * https://github.com/opengeos/GeoLibre
- *
  * GeoMoz keeps a dedicated lazy DuckDB instance for the GIS Workspace. Loaded
  * vector layers are registered as temporary ST_Read() tables for each query.
  */
