@@ -19,6 +19,7 @@ export interface GISWorkspaceRasterLayer {
   name: string;
   file?: File;
   remoteUrl?: string;
+  sourceType?: "storage" | "url";
   fileName: string;
   mimeType: string;
   sizeBytes: number;
