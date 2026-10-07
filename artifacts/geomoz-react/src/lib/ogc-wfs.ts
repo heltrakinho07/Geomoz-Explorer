@@ -1,11 +1,8 @@
 /**
  * GeoMoz WFS client for the GIS Workspace.
  *
- * Architecture adapted from GeoLibre's WFS source/axis-order handling (MIT):
- * https://github.com/opengeos/GeoLibre
- *
- * GeoMoz keeps its own Add Data UX and imports WFS features into the same
- * FeatureCollection layer model used by DuckDB Spatial, styling and Whitebox.
+ * The client discovers WFS FeatureTypes, requests GeoJSON and normalizes axis
+ * order before importing features into the GeoMoz workspace layer model.
  */
 import type { Feature, FeatureCollection, Geometry, Position } from "geojson";
 
