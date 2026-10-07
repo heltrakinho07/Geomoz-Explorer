@@ -15,6 +15,11 @@
 
 import React, { useState, useRef, useMemo, useCallback } from "react";
 import GISWorkspaceMapLibre from "@/components/GISWorkspaceMapLibre";
+import {
+  fetchWfsCapabilities,
+  importWfsFeatureType,
+  type WfsFeatureType,
+} from "@/lib/ogc-wfs";
 import type {
   GISWorkspaceRasterLayer,
   GISWorkspaceRasterMetadata,
@@ -57,6 +62,7 @@ import {
   Waves,
   Cpu,
   Link2,
+  Globe2,
 } from "lucide-react";
 import {
   BarChart,
@@ -233,6 +239,12 @@ export default function GeoProcessamento({
   const [rasterLayers, setRasterLayers] = useState<GISWorkspaceRasterLayer[]>([]);
   const [rasterUrl, setRasterUrl] = useState("");
   const [showRasterUrlInput, setShowRasterUrlInput] = useState(false);
+  const [showWfsInput, setShowWfsInput] = useState(false);
+  const [wfsEndpoint, setWfsEndpoint] = useState("");
+  const [wfsVersion, setWfsVersion] = useState("2.0.0");
+  const [wfsFeatureTypes, setWfsFeatureTypes] = useState<WfsFeatureType[]>([]);
+  const [selectedWfsType, setSelectedWfsType] = useState("");
+  const [wfsLoading, setWfsLoading] = useState(false);
   const [selectedLayerId, setSelectedLayerId] = useState<string>("");
   const [secondLayerId, setSecondLayerId] = useState<string>("");
   const [tableLayerId, setTableLayerId] = useState<string | null>(null);
@@ -630,6 +642,119 @@ export default function GeoProcessamento({
       setSqlQuery(`SELECT * FROM ${sanitizeDuckDbTableName(layers[0].name)} LIMIT 50`);
     }
   }, [layers, sqlQuery]);
+
+  const handleRetrieveWfs = useCallback(async () => {
+    const endpoint = wfsEndpoint.trim();
+    if (!endpoint) {
+      toast({
+        title: "Introduza o endpoint WFS",
+        description: "Use o URL base do serviço WFS ou um URL GetCapabilities.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const parsed = new URL(endpoint);
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        throw new Error("Use um endpoint HTTP ou HTTPS.");
+      }
+    } catch (error) {
+      toast({
+        title: "Endpoint WFS inválido",
+        description: error instanceof Error ? error.message : "URL inválido.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setWfsLoading(true);
+    try {
+      const capabilities = await fetchWfsCapabilities(endpoint, {
+        version: wfsVersion,
+      });
+      setWfsVersion(capabilities.version);
+      setWfsFeatureTypes(capabilities.featureTypes);
+      setSelectedWfsType((current) =>
+        capabilities.featureTypes.some((item) => item.name === current)
+          ? current
+          : capabilities.featureTypes[0]?.name ?? ""
+      );
+      toast({
+        title: "WFS ligado",
+        description: `${capabilities.featureTypes.length} FeatureType(s) encontrados · WFS ${capabilities.version}.`,
+      });
+    } catch (error) {
+      setWfsFeatureTypes([]);
+      setSelectedWfsType("");
+      toast({
+        title: "Falha ao consultar WFS",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setWfsLoading(false);
+    }
+  }, [toast, wfsEndpoint, wfsVersion]);
+
+  const handleImportWfs = useCallback(async () => {
+    const featureType = wfsFeatureTypes.find(
+      (item) => item.name === selectedWfsType
+    );
+    if (!featureType) {
+      toast({
+        title: "Selecione um FeatureType",
+        description: "Consulte o GetCapabilities e escolha a camada a importar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setWfsLoading(true);
+    try {
+      const parsed = await importWfsFeatureType({
+        endpoint: wfsEndpoint,
+        version: wfsVersion,
+        typeName: featureType.name,
+        title: featureType.title,
+        wgs84Bounds: featureType.wgs84Bounds,
+        maxFeatures: 5000,
+      });
+
+      const newLayer: UserLayer = {
+        id: `wfs_${crypto.randomUUID().slice(0, 12)}`,
+        name: parsed.name,
+        geojson: parsed.geojson,
+        featureCount: parsed.featureCount,
+        geometryType: parsed.geometryType,
+        fields: parsed.fields,
+        color: PALETTE[layers.length % PALETTE.length],
+        visible: true,
+      };
+
+      setLayers((previous) => [newLayer, ...previous]);
+      setSelectedLayerId(newLayer.id);
+      toast({
+        title: "WFS importado",
+        description: `${parsed.name}: ${parsed.featureCount} feições adicionadas ao Workspace.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Falha ao importar WFS",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setWfsLoading(false);
+    }
+  }, [
+    layers.length,
+    selectedWfsType,
+    toast,
+    wfsEndpoint,
+    wfsFeatureTypes,
+    wfsVersion,
+  ]);
 
   const handleAddRasterUrl = useCallback(() => {
     const raw = rasterUrl.trim();
@@ -2340,11 +2465,24 @@ export default function GeoProcessamento({
               </span>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => setShowRasterUrlInput((value) => !value)}
+                  onClick={() => {
+                    setShowRasterUrlInput((value) => !value);
+                    setShowWfsInput(false);
+                  }}
                   className="py-1 px-2 bg-sky-50 dark:bg-sky-950/50 hover:bg-sky-100 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer"
                   title="Adicionar GeoTIFF/COG por URL"
                 >
                   <Link2 size={11} /> URL
+                </button>
+                <button
+                  onClick={() => {
+                    setShowWfsInput((value) => !value);
+                    setShowRasterUrlInput(false);
+                  }}
+                  className="py-1 px-2 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                  title="Adicionar camada de um serviço WFS"
+                >
+                  <Globe2 size={11} /> WFS
                 </button>
                 <button
                   onClick={() => fileInputRef.current?.click()}
@@ -2382,6 +2520,71 @@ export default function GeoProcessamento({
                 <p className="mt-1.5 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">
                   Para melhor desempenho, use COG com CORS e suporte a HTTP Range.
                 </p>
+              </div>
+            )}
+
+            {showWfsInput && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 dark:border-emerald-900 dark:bg-emerald-950/20">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                    <Globe2 size={11} />
+                    Serviço WFS
+                  </div>
+                  <span className="text-[9px] text-slate-400">GeoJSON · até 5.000 feições</span>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex gap-1.5">
+                    <input
+                      type="url"
+                      value={wfsEndpoint}
+                      onChange={(event) => {
+                        setWfsEndpoint(event.target.value);
+                        setWfsFeatureTypes([]);
+                        setSelectedWfsType("");
+                      }}
+                      placeholder="https://servidor/geoserver/wfs"
+                      className="min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-2 py-1.5 text-[10px] text-slate-700 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-emerald-900 dark:bg-slate-900 dark:text-slate-200"
+                    />
+                    <button
+                      onClick={handleRetrieveWfs}
+                      disabled={wfsLoading || !wfsEndpoint.trim()}
+                      className="rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-emerald-300"
+                    >
+                      {wfsLoading ? "A consultar…" : "Listar"}
+                    </button>
+                  </div>
+
+                  {wfsFeatureTypes.length > 0 && (
+                    <div className="grid grid-cols-[1fr_auto] gap-1.5">
+                      <select
+                        value={selectedWfsType}
+                        onChange={(event) => setSelectedWfsType(event.target.value)}
+                        className="min-w-0 rounded-lg border border-emerald-200 bg-white p-1.5 text-[10px] dark:border-emerald-900 dark:bg-slate-900"
+                      >
+                        {wfsFeatureTypes.map((featureType) => (
+                          <option key={featureType.name} value={featureType.name}>
+                            {featureType.title === featureType.name
+                              ? featureType.name
+                              : `${featureType.title} (${featureType.name})`}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={handleImportWfs}
+                        disabled={wfsLoading || !selectedWfsType}
+                        className="rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-2.5 py-1.5 text-[10px] font-bold text-white hover:from-emerald-700 hover:to-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Importar
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-[9px] text-slate-500 dark:text-slate-400">
+                    <span>WFS {wfsVersion}</span>
+                    <span>A camada entra no DuckDB, tabela e geoprocessamento.</span>
+                  </div>
+                </div>
               </div>
             )}
 
