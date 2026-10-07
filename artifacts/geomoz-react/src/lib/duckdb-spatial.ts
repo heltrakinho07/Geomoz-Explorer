@@ -336,3 +336,167 @@ export async function executeDuckDbSpatialQuery(
     );
   }
 }
+
+
+export interface ImportedDuckDbVector {
+  name: string;
+  geojson: FeatureCollection;
+  featureCount: number;
+  geometryType: string;
+  fields: string[];
+}
+
+function baseName(fileName: string): string {
+  return fileName.replace(/\.[^.]+$/, "");
+}
+
+function extensionOf(fileName: string): string {
+  return fileName.split(".").pop()?.toLowerCase() ?? "";
+}
+
+function featureCollectionFromRows(
+  rows: Record<string, unknown>[],
+  geometryColumn: string
+): FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: rowsToFeatures(rows, geometryColumn),
+  };
+}
+
+async function importOgrVector(
+  file: File
+): Promise<ImportedDuckDbVector> {
+  const db = await getDuckDbSpatialDatabase();
+  const connection = await db.connect();
+  const extension = extensionOf(file.name);
+  const registeredName = `geomoz_import_${Date.now()}_${Math.random()
+    .toString(36)
+    .slice(2)}.${extension || "data"}`;
+
+  try {
+    await ensureSpatial(db, connection);
+    await db.registerFileBuffer(
+      registeredName,
+      new Uint8Array(await file.arrayBuffer())
+    );
+
+    const sourceSql = `ST_Read(${quoteString(registeredName)})`;
+    const described = rowsFromArrow(
+      await connection.query(`DESCRIBE SELECT * FROM ${sourceSql}`)
+    );
+    const geometryRow = described.find((row) =>
+      String(row.column_type ?? "").toUpperCase().includes("GEOMETRY")
+    );
+    const geometryColumn =
+      typeof geometryRow?.column_name === "string" ? geometryRow.column_name : null;
+
+    if (!geometryColumn) {
+      throw new Error(
+        `O formato .${extension} foi aberto, mas não foi encontrada uma coluna geométrica.`
+      );
+    }
+
+    const arrow = await connection.query(
+      `SELECT *, ST_AsGeoJSON(${quoteIdentifier(geometryColumn)}) AS ` +
+        `${quoteIdentifier(GEOMETRY_JSON_COLUMN)} FROM ${sourceSql}`
+    );
+    const rows = rowsFromArrow(arrow);
+    const geojson = featureCollectionFromRows(rows, geometryColumn);
+    if (!geojson.features.length) {
+      throw new Error("O ficheiro não contém feições vetoriais legíveis.");
+    }
+
+    const fields =
+      arrow?.schema?.fields
+        ?.map((field: { name: string }) => field.name)
+        .filter(
+          (name: string) =>
+            name !== GEOMETRY_JSON_COLUMN && name !== geometryColumn
+        ) ?? [];
+
+    return {
+      name: baseName(file.name),
+      geojson,
+      featureCount: geojson.features.length,
+      geometryType: geojson.features[0]?.geometry?.type ?? "Geometry",
+      fields,
+    };
+  } finally {
+    await connection.close();
+    try {
+      await db.dropFile(registeredName);
+    } catch {}
+  }
+}
+
+async function importZippedShapefile(file: File): Promise<ImportedDuckDbVector> {
+  const shpModule = await import("shpjs");
+  const parseShp = (shpModule as any).default ?? shpModule;
+  const parsed = await parseShp(await file.arrayBuffer());
+
+  const candidate = Array.isArray(parsed) ? parsed[0] : parsed;
+  const geojson: FeatureCollection =
+    candidate?.type === "FeatureCollection"
+      ? candidate
+      : {
+          type: "FeatureCollection",
+          features: candidate?.features ?? [],
+        };
+
+  if (!geojson.features.length) {
+    throw new Error("O ZIP não contém um Shapefile vetorial válido.");
+  }
+
+  const fields = Array.from(
+    new Set(
+      geojson.features
+        .slice(0, 250)
+        .flatMap((feature) => Object.keys(feature.properties ?? {}))
+    )
+  );
+
+  return {
+    name: baseName(file.name),
+    geojson,
+    featureCount: geojson.features.length,
+    geometryType: geojson.features[0]?.geometry?.type ?? "Geometry",
+    fields,
+  };
+}
+
+export async function importVectorFileWithDuckDb(
+  file: File
+): Promise<ImportedDuckDbVector> {
+  const extension = extensionOf(file.name);
+
+  if (extension === "zip") {
+    return importZippedShapefile(file);
+  }
+
+  const ogrExtensions = new Set([
+    "gpkg",
+    "fgb",
+    "kml",
+    "gml",
+    "geojson",
+    "json",
+    "shp",
+    "dxf",
+  ]);
+
+  if (ogrExtensions.has(extension)) {
+    return importOgrVector(file);
+  }
+
+  if (extension === "parquet" || extension === "geoparquet" || extension === "pq") {
+    // DuckDB Spatial's GDAL reader supports GeoParquet builds with spatial
+    // metadata. A clear error is returned when the selected Parquet is tabular
+    // only or lacks a geometry encoding.
+    return importOgrVector(file);
+  }
+
+  throw new Error(
+    `Formato .${extension || "desconhecido"} ainda não está ligado ao importador DuckDB Spatial.`
+  );
+}
