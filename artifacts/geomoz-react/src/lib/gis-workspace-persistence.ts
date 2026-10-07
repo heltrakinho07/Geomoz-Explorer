@@ -44,6 +44,7 @@ export interface PersistedProcessingHistoryEntry {
   durationMs: number;
   inputLayerName: string;
   outputCount: number;
+  outputLabel?: string;
   status: "success" | "error";
   parameters: Record<string, unknown>;
 }
