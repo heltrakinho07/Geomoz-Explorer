@@ -289,7 +289,7 @@ export default function GISWorkspaceMapLibre({
       style: basemapStyle(basemap),
       center: [35.5, -18.5],
       zoom: 5.5,
-      attributionControl: true,
+      attributionControl: { compact: true },
     });
     mapRef.current = map;
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
