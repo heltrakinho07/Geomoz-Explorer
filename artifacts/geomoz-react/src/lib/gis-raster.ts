@@ -28,6 +28,7 @@ export interface GISWorkspaceRasterLayer {
   bandCount?: number | null;
   bounds?: [number, number, number, number] | null;
   error?: string | null;
+  rasterState?: Partial<RasterLayerState>;
 }
 
 export interface GISWorkspaceRasterMetadata {
@@ -35,6 +36,7 @@ export interface GISWorkspaceRasterMetadata {
   bandCount: number | null;
   bounds: [number, number, number, number] | null;
   error: string | null;
+  rasterState: Partial<RasterLayerState>;
 }
 
 type RasterControlConstructor = new (options?: Record<string, unknown>) => RasterControl;
@@ -52,11 +54,13 @@ function rasterBounds(info: RasterLayerInfo): [number, number, number, number] |
 }
 
 function metadataFromInfo(info: RasterLayerInfo): GISWorkspaceRasterMetadata {
+  const { visible: _visible, opacity: _opacity, ...rasterState } = info.state;
   return {
     id: info.id,
     bandCount: info.bandCount ?? null,
     bounds: rasterBounds(info),
     error: info.error?.message ?? null,
+    rasterState,
   };
 }
 
@@ -111,6 +115,7 @@ async function addRaster(
     name: layer.name,
     zoomTo: false,
     state: {
+      ...layer.rasterState,
       visible: layer.visible,
       opacity: layer.opacity,
     } as Partial<RasterLayerState>,
@@ -150,7 +155,10 @@ export async function syncGISWorkspaceRasters(
       }
 
       control.setVisible(layer.id, layer.visible);
-      control.setRasterState(layer.id, { opacity: layer.opacity });
+      control.setRasterState(layer.id, {
+        ...layer.rasterState,
+        opacity: layer.opacity,
+      });
 
       const refreshed = control.getRaster(layer.id) ?? info;
       if (refreshed) callbacks.onMetadata?.(metadataFromInfo(refreshed));
@@ -173,6 +181,9 @@ export async function refreshGISWorkspaceRasters(
   for (const layer of layers) {
     if (!control.getRaster(layer.id)) continue;
     control.setVisible(layer.id, layer.visible);
-    control.setRasterState(layer.id, { opacity: layer.opacity });
+    control.setRasterState(layer.id, {
+      ...layer.rasterState,
+      opacity: layer.opacity,
+    });
   }
 }
