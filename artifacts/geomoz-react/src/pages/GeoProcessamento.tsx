@@ -322,6 +322,7 @@ export default function GeoProcessamento({
                 bandCount: raster.bandCount ?? null,
                 bounds: raster.bounds ?? null,
                 error: raster.error ?? null,
+                rasterState: raster.rasterState as GISWorkspaceRasterLayer["rasterState"],
               } satisfies GISWorkspaceRasterLayer,
             ];
           })
@@ -385,6 +386,7 @@ export default function GeoProcessamento({
         bandCount: raster.bandCount ?? null,
         bounds: raster.bounds ?? null,
         error: raster.error ?? null,
+        rasterState: raster.rasterState ? { ...raster.rasterState } : undefined,
         remoteUrl: raster.remoteUrl,
       }));
 
@@ -651,6 +653,16 @@ export default function GeoProcessamento({
             bandCount: null,
             bounds: null,
             error: null,
+            rasterState: {
+              mode: "single",
+              bands: [1],
+              colormap: "viridis",
+              reversed: false,
+              rescale: null,
+              nodata: "auto",
+              stretch: "linear",
+              gamma: 1,
+            },
           };
           setRasterLayers((previous) => [raster, ...previous]);
           toast({
@@ -717,6 +729,28 @@ export default function GeoProcessamento({
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const updateRasterState = useCallback(
+    (
+      rasterId: string,
+      patch: NonNullable<GISWorkspaceRasterLayer["rasterState"]>
+    ) => {
+      setRasterLayers((previous) =>
+        previous.map((layer) =>
+          layer.id === rasterId
+            ? {
+                ...layer,
+                rasterState: {
+                  ...layer.rasterState,
+                  ...patch,
+                },
+              }
+            : layer
+        )
+      );
+    },
+    []
+  );
+
   const handleRasterMetadata = useCallback(
     (metadata: GISWorkspaceRasterMetadata) => {
       setRasterLayers((previous) => {
@@ -725,9 +759,13 @@ export default function GeoProcessamento({
           if (layer.id !== metadata.id) return layer;
           const sameBounds =
             JSON.stringify(layer.bounds ?? null) === JSON.stringify(metadata.bounds ?? null);
+          const sameRasterState =
+            JSON.stringify(layer.rasterState ?? {}) ===
+            JSON.stringify(metadata.rasterState ?? {});
           if (
             layer.bandCount === metadata.bandCount &&
             sameBounds &&
+            sameRasterState &&
             (layer.error ?? null) === (metadata.error ?? null)
           ) {
             return layer;
@@ -738,6 +776,7 @@ export default function GeoProcessamento({
             bandCount: metadata.bandCount,
             bounds: metadata.bounds,
             error: metadata.error,
+            rasterState: metadata.rasterState,
           };
         });
         return changed ? next : previous;
@@ -1021,6 +1060,16 @@ export default function GeoProcessamento({
             bandCount: null,
             bounds: null,
             error: null,
+            rasterState: {
+              mode: "single",
+              bands: [1],
+              colormap: "viridis",
+              reversed: false,
+              rescale: null,
+              nodata: "auto",
+              stretch: "linear",
+              gamma: 1,
+            },
           };
         });
 
