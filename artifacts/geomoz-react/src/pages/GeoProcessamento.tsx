@@ -215,6 +215,7 @@ export default function GeoProcessamento({
       : null;
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const rasterErrorToastRef = useRef(new Set<string>());
 
   // Main UI Navigation
   const [activeTab, setActiveTab] = useState<MainTab>("geolibre_toolbox");
@@ -581,6 +582,25 @@ export default function GeoProcessamento({
         const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
         if (shapefileSidecars.has(extension)) continue;
 
+        if (extension === "tif" || extension === "tiff") {
+          const raster: GISWorkspaceRasterLayer = {
+            id: `raster_${crypto.randomUUID().slice(0, 12)}`,
+            name: file.name.replace(/\.[^/.]+$/, ""),
+            file,
+            visible: true,
+            opacity: 1,
+            bandCount: null,
+            bounds: null,
+            error: null,
+          };
+          setRasterLayers((previous) => [raster, ...previous]);
+          toast({
+            title: "Raster adicionado",
+            description: `${raster.name} será lido como GeoTIFF/COG no mapa do GIS Workspace.`,
+          });
+          continue;
+        }
+
         const duckDbFormats = new Set([
           "gpkg",
           "geoparquet",
@@ -637,6 +657,52 @@ export default function GeoProcessamento({
 
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
+
+  const handleRasterMetadata = useCallback(
+    (metadata: GISWorkspaceRasterMetadata) => {
+      setRasterLayers((previous) => {
+        let changed = false;
+        const next = previous.map((layer) => {
+          if (layer.id !== metadata.id) return layer;
+          const sameBounds =
+            JSON.stringify(layer.bounds ?? null) === JSON.stringify(metadata.bounds ?? null);
+          if (
+            layer.bandCount === metadata.bandCount &&
+            sameBounds &&
+            (layer.error ?? null) === (metadata.error ?? null)
+          ) {
+            return layer;
+          }
+          changed = true;
+          return {
+            ...layer,
+            bandCount: metadata.bandCount,
+            bounds: metadata.bounds,
+            error: metadata.error,
+          };
+        });
+        return changed ? next : previous;
+      });
+    },
+    []
+  );
+
+  const handleRasterError = useCallback(
+    (layerId: string, message: string) => {
+      setRasterLayers((previous) =>
+        previous.map((layer) => (layer.id === layerId ? { ...layer, error: message } : layer))
+      );
+      const key = `${layerId}:${message}`;
+      if (rasterErrorToastRef.current.has(key)) return;
+      rasterErrorToastRef.current.add(key);
+      toast({
+        title: "Falha ao abrir raster",
+        description: message,
+        variant: "destructive",
+      });
+    },
+    [toast]
+  );
 
   // ── Run Geoprocessing Tool ───────────────────────────────────────────────
   const executeToolById = useCallback(
@@ -1062,7 +1128,7 @@ export default function GeoProcessamento({
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".geojson,.json,.csv,.kml,.gml,.gpkg,.parquet,.geoparquet,.pq,.fgb,.dxf,.shp,.dbf,.shx,.prj,.cpg,.zip"
+        accept=".geojson,.json,.csv,.kml,.gml,.gpkg,.parquet,.geoparquet,.pq,.fgb,.dxf,.shp,.dbf,.shx,.prj,.cpg,.zip,.tif,.tiff"
         className="hidden"
         onChange={handleFileUpload}
       />
@@ -1913,7 +1979,7 @@ export default function GeoProcessamento({
           <div className="p-3 space-y-3 flex-1">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                Camadas no Mapa ({layers.length})
+                Camadas no Mapa ({layers.length + rasterLayers.length})
               </span>
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -1922,6 +1988,97 @@ export default function GeoProcessamento({
                 <Upload size={11} /> Importar
               </button>
             </div>
+
+            {rasterLayers.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <Mountain size={12} />
+                  <span>Raster / COG</span>
+                </div>
+                {rasterLayers.map((raster) => (
+                  <div
+                    key={raster.id}
+                    className="rounded-xl border border-sky-200/80 bg-sky-50/40 p-2.5 dark:border-sky-900/60 dark:bg-sky-950/20"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-semibold text-slate-800 dark:text-slate-200">
+                          {raster.name}
+                        </div>
+                        <div className="mt-0.5 text-[10px] text-slate-400">
+                          {raster.bandCount
+                            ? `${raster.bandCount} banda(s)`
+                            : "a ler metadados…"}{" "}
+                          · {(raster.file.size / (1024 * 1024)).toFixed(1)} MB
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() =>
+                            setRasterLayers((previous) =>
+                              previous.map((item) =>
+                                item.id === raster.id
+                                  ? { ...item, visible: !item.visible }
+                                  : item
+                              )
+                            )
+                          }
+                          className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                          title={raster.visible ? "Ocultar raster" : "Mostrar raster"}
+                        >
+                          {raster.visible ? <Eye size={13} /> : <EyeOff size={13} />}
+                        </button>
+                        <button
+                          onClick={() =>
+                            setRasterLayers((previous) =>
+                              previous.filter((item) => item.id !== raster.id)
+                            )
+                          }
+                          className="p-1 text-slate-400 hover:text-red-600"
+                          title="Remover raster"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="w-12 text-[10px] text-slate-400">Opacidade</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={raster.opacity}
+                        onChange={(event) => {
+                          const opacity = Number(event.target.value);
+                          setRasterLayers((previous) =>
+                            previous.map((item) =>
+                              item.id === raster.id ? { ...item, opacity } : item
+                            )
+                          );
+                        }}
+                        className="w-full accent-sky-600"
+                      />
+                      <span className="w-8 text-right text-[10px] font-semibold text-slate-500">
+                        {Math.round(raster.opacity * 100)}%
+                      </span>
+                    </div>
+                    {raster.error && (
+                      <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-[10px] text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
+                        {raster.error}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {layers.length > 0 && rasterLayers.length > 0 && (
+              <div className="flex items-center gap-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <Layers size={12} />
+                <span>Vetores</span>
+              </div>
+            )}
 
             <div className="space-y-2">
               {layers.map((l) => (
@@ -2050,6 +2207,7 @@ export default function GeoProcessamento({
 
         <GISWorkspaceMapLibre
           layers={layers}
+          rasterLayers={rasterLayers}
           activeLayerId={selectedLayerId}
           basemap={basemap}
           aoiGeometry={aoi.source !== "global" ? aoi.geometry : null}
@@ -2062,6 +2220,8 @@ export default function GeoProcessamento({
           onDrawCancel={() => {
             setDrawingEnabled(false);
           }}
+          onRasterMetadata={handleRasterMetadata}
+          onRasterError={handleRasterError}
         />
 
         {/* ── Swipe Vertical Divider ──────────────────────────────────────── */}
