@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { runTool } from "geolibre-wasm/tools";
+import { runTool } from "whitebox-wasm/tools";
 
 export interface GeoMozWhiteboxWorkerRequest {
   tool: string;
