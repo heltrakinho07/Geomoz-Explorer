@@ -23,6 +23,7 @@ interface Props {
   layers: GISWorkspaceMapLayer[];
   rasterLayers?: GISWorkspaceRasterLayer[];
   activeLayerId?: string;
+  activeRasterId?: string;
   basemap: BasemapType;
   aoiGeometry?: GeoJSON.GeoJSON | null;
   drawingEnabled?: boolean;
@@ -111,6 +112,7 @@ export default function GISWorkspaceMapLibre({
   layers,
   rasterLayers = [],
   activeLayerId,
+  activeRasterId,
   basemap,
   aoiGeometry,
   drawingEnabled = false,
@@ -413,6 +415,26 @@ export default function GISWorkspaceMapLibre({
       onError: (layerId, message) => onRasterErrorRef.current?.(layerId, message),
     });
   }, [rasterLayers]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !activeRasterId) return;
+    const active = rasterLayers.find((layer) => layer.id === activeRasterId);
+    const bounds = active?.bounds;
+    if (!bounds || bounds.length !== 4 || bounds.some((value) => !Number.isFinite(value))) return;
+    const [west, south, east, north] = bounds;
+    if (west === east && south === north) {
+      map.easeTo({ center: [west, south], zoom: Math.max(map.getZoom(), 13) });
+      return;
+    }
+    map.fitBounds(
+      [
+        [west, south],
+        [east, north],
+      ],
+      { padding: 64, maxZoom: 16, duration: 650 }
+    );
+  }, [activeRasterId, rasterLayers]);
 
   useEffect(() => {
     const map = mapRef.current;
