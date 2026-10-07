@@ -1385,6 +1385,15 @@ export default function GeoProcessamento({
           parameters: whiteboxParams,
         });
 
+        const preferredRasterColormap =
+          selectedWhiteboxTool.id === "hillshade"
+            ? "gray"
+            : selectedWhiteboxTool.id === "slope"
+              ? "terrain"
+              : selectedWhiteboxTool.id === "aspect"
+                ? "turbo"
+                : "viridis";
+
         const generated: GISWorkspaceRasterLayer[] = result.outputs.map((output) => {
           const buffer = new Uint8Array(output.bytes).buffer;
           const file = new File([buffer], output.fileName, { type: "image/tiff" });
@@ -1405,7 +1414,7 @@ export default function GeoProcessamento({
             rasterState: {
               mode: "single",
               bands: [1],
-              colormap: "viridis",
+              colormap: preferredRasterColormap,
               reversed: false,
               rescale: null,
               nodata: "auto",
