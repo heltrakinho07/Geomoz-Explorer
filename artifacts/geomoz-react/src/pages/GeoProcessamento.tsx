@@ -2222,7 +2222,12 @@ export default function GeoProcessamento({
                 {rasterLayers.map((raster) => (
                   <div
                     key={raster.id}
-                    className="rounded-xl border border-sky-200/80 bg-sky-50/40 p-2.5 dark:border-sky-900/60 dark:bg-sky-950/20"
+                    onClick={() => setSelectedWhiteboxRasterId(raster.id)}
+                    className={`rounded-xl border p-2.5 transition-all cursor-pointer ${
+                      selectedWhiteboxRasterId === raster.id
+                        ? "border-sky-400 bg-sky-100/70 ring-1 ring-sky-300/60 dark:border-sky-700 dark:bg-sky-950/40"
+                        : "border-sky-200/80 bg-sky-50/40 hover:border-sky-300 dark:border-sky-900/60 dark:bg-sky-950/20"
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -2433,6 +2438,7 @@ export default function GeoProcessamento({
           layers={layers}
           rasterLayers={rasterLayers}
           activeLayerId={selectedLayerId}
+          activeRasterId={selectedWhiteboxRasterId}
           basemap={basemap}
           aoiGeometry={aoi.source !== "global" ? aoi.geometry : null}
           drawingEnabled={drawingEnabled}
