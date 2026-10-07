@@ -17,7 +17,11 @@ import type {
 export interface GISWorkspaceRasterLayer {
   id: string;
   name: string;
-  file: File;
+  file?: File;
+  remoteUrl?: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
   visible: boolean;
   opacity: number;
   isResult?: boolean;
@@ -97,7 +101,12 @@ async function addRaster(
   control: RasterControl,
   layer: GISWorkspaceRasterLayer
 ): Promise<RasterLayerInfo | null> {
-  await control.addRaster(layer.file, {
+  const source = layer.file ?? layer.remoteUrl;
+  if (!source) {
+    throw new Error(`A camada raster "${layer.name}" não tem ficheiro local nem URL cloud.`);
+  }
+
+  await control.addRaster(source, {
     id: layer.id,
     name: layer.name,
     zoomTo: false,
