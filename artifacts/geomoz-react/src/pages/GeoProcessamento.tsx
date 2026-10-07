@@ -101,6 +101,7 @@ import {
 import { exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-loader";
 import {
   executeDuckDbSpatialQuery,
+  importVectorFileWithDuckDb,
   sanitizeDuckDbTableName,
 } from "@/lib/duckdb-spatial";
 import {
@@ -458,7 +459,21 @@ export default function GeoProcessamento({
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
-        const parsed = await parseUserUploadedFile(file);
+        const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+        const duckDbFormats = new Set([
+          "gpkg",
+          "geoparquet",
+          "parquet",
+          "pq",
+          "fgb",
+          "gml",
+          "dxf",
+          "shp",
+          "zip",
+        ]);
+        const parsed = duckDbFormats.has(extension)
+          ? await importVectorFileWithDuckDb(file)
+          : await parseUserUploadedFile(file);
         const newLayer: UserLayer = {
           id: `layer_${Date.now()}_${i}`,
           name: parsed.name,
@@ -475,7 +490,9 @@ export default function GeoProcessamento({
 
         toast({
           title: "Ficheiro Carregado",
-          description: `${parsed.name} (${parsed.featureCount} elementos) adicionado ao projeto.`,
+          description: `${parsed.name} (${parsed.featureCount} elementos) · ${
+            duckDbFormats.has(extension) ? "DuckDB Spatial" : "parser local"
+          }.`,
         });
       } catch (err: any) {
         toast({
@@ -811,7 +828,7 @@ export default function GeoProcessamento({
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".geojson,.json,.csv,.kml"
+        accept=".geojson,.json,.csv,.kml,.gml,.gpkg,.parquet,.geoparquet,.pq,.fgb,.dxf,.shp,.zip"
         className="hidden"
         onChange={handleFileUpload}
       />
