@@ -2743,6 +2743,17 @@ export default function GeoProcessamento({
                         const colormap = state.colormap ?? "viridis";
                         const stretch = state.stretch ?? "linear";
                         const gamma = state.gamma ?? 1;
+                        const statsBand = bands[0] ?? 1;
+                        const currentStatsKey = rasterStatsKey(raster.id, statsBand);
+                        const stats = rasterBandStats[currentStatsKey];
+                        const statsLoading = rasterStatsLoadingKey === currentStatsKey;
+                        const statsError = rasterStatsErrors[currentStatsKey];
+                        const autoRange = stats ? autoGISRasterStretch(stats) : null;
+                        const savedRange = state.rescale?.[0] ?? null;
+                        const effectiveRange = savedRange ?? autoRange;
+                        const histogramPeak = stats
+                          ? Math.max(1, ...stats.histogram)
+                          : 1;
 
                         return (
                           <div
@@ -2884,6 +2895,153 @@ export default function GeoProcessamento({
                                     <option value="log">Logarítmico</option>
                                   </select>
                                 </label>
+                              </div>
+                            )}
+
+                            {mode === "single" && (
+                              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2 dark:border-slate-700 dark:bg-slate-800/60">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                                      Histograma · Banda {statsBand}
+                                    </span>
+                                    <span className="text-[9px] text-slate-400">
+                                      {savedRange ? "Range fixado" : "Auto stretch 2–98%"}
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const controller = new AbortController();
+                                      void loadRasterBandStats(raster, statsBand, controller.signal);
+                                    }}
+                                    className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-sky-600 dark:hover:bg-slate-700"
+                                    title="Recalcular estatísticas"
+                                  >
+                                    <RefreshCw
+                                      size={11}
+                                      className={statsLoading ? "animate-spin" : ""}
+                                    />
+                                  </button>
+                                </div>
+
+                                {statsLoading && !stats && (
+                                  <div className="flex h-12 items-center justify-center text-[9px] text-slate-400">
+                                    <RefreshCw size={11} className="mr-1.5 animate-spin" />
+                                    A calcular distribuição raster…
+                                  </div>
+                                )}
+
+                                {stats && (
+                                  <>
+                                    <div className="flex h-12 items-end gap-px overflow-hidden rounded-md bg-white px-1 pt-1 dark:bg-slate-900">
+                                      {stats.histogram.map((count, index) => (
+                                        <span
+                                          key={index}
+                                          className="min-w-px flex-1 rounded-t-[1px] bg-sky-500/70"
+                                          style={{
+                                            height: `${Math.max(
+                                              2,
+                                              (count / histogramPeak) * 100
+                                            )}%`,
+                                          }}
+                                          title={`${count} amostras`}
+                                        />
+                                      ))}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 text-[9px]">
+                                      <div className="rounded-md bg-white px-2 py-1 dark:bg-slate-900">
+                                        <span className="text-slate-400">Mínimo</span>
+                                        <span className="block font-semibold text-slate-700 dark:text-slate-200">
+                                          {formatRasterValue(stats.min)}
+                                        </span>
+                                      </div>
+                                      <div className="rounded-md bg-white px-2 py-1 dark:bg-slate-900">
+                                        <span className="text-slate-400">Máximo</span>
+                                        <span className="block font-semibold text-slate-700 dark:text-slate-200">
+                                          {formatRasterValue(stats.max)}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {effectiveRange && (
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <label className="space-y-1">
+                                          <span className="text-[9px] font-semibold text-slate-500">
+                                            Stretch mín.
+                                          </span>
+                                          <input
+                                            type="number"
+                                            value={effectiveRange[0]}
+                                            step="any"
+                                            onChange={(event) => {
+                                              const low = Number(event.target.value);
+                                              const high = effectiveRange[1];
+                                              if (Number.isFinite(low) && low < high) {
+                                                updateRasterState(raster.id, {
+                                                  rescale: [[low, high]],
+                                                });
+                                              }
+                                            }}
+                                            className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-900"
+                                          />
+                                        </label>
+                                        <label className="space-y-1">
+                                          <span className="text-[9px] font-semibold text-slate-500">
+                                            Stretch máx.
+                                          </span>
+                                          <input
+                                            type="number"
+                                            value={effectiveRange[1]}
+                                            step="any"
+                                            onChange={(event) => {
+                                              const high = Number(event.target.value);
+                                              const low = effectiveRange[0];
+                                              if (Number.isFinite(high) && high > low) {
+                                                updateRasterState(raster.id, {
+                                                  rescale: [[low, high]],
+                                                });
+                                              }
+                                            }}
+                                            className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-900"
+                                          />
+                                        </label>
+                                      </div>
+                                    )}
+
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          updateRasterState(raster.id, { rescale: null })
+                                        }
+                                        className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[9px] font-semibold text-slate-600 hover:border-sky-300 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                                      >
+                                        Auto 2–98%
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={!autoRange}
+                                        onClick={() => {
+                                          if (!autoRange) return;
+                                          updateRasterState(raster.id, {
+                                            rescale: [[autoRange[0], autoRange[1]]],
+                                          });
+                                        }}
+                                        className="rounded-lg bg-sky-600 px-2 py-1.5 text-[9px] font-bold text-white hover:bg-sky-700 disabled:opacity-50"
+                                      >
+                                        Fixar range atual
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+
+                                {statsError && !statsLoading && (
+                                  <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[9px] text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                                    Estatísticas indisponíveis: {statsError}
+                                  </div>
+                                )}
                               </div>
                             )}
 
