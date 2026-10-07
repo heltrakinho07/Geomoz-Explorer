@@ -620,10 +620,6 @@ export default function MapView({
 
             <ScaleControl position="bottomleft" imperial={false} />
             <MapStateTracker onMapState={onMapState} mapRef={mapRef} />
-            <WorkspaceFocusController
-              layers={workspaceLayers}
-              request={workspaceFocusRequest}
-            />
             <CoordTracker
               onMove={(lat, lng, ele) => {
                 if (lat !== null && lng !== null) {
@@ -639,15 +635,6 @@ export default function MapView({
                 }
               }}
             />
-
-            {workspaceLayers.map((workspaceLayer) => (
-              <WorkspaceVectorLayer
-                key={workspaceLayer.id}
-                layer={workspaceLayer}
-                selection={workspaceSelection}
-                onSelect={onWorkspaceSelect}
-              />
-            ))}
 
                         {/* Camada de geologia oculta para protecção de dados (preservada para reactivação futura) */}
             {false && layers.geology && province && geologyGeoJSON && (
@@ -680,6 +667,19 @@ export default function MapView({
             {aoi?.source !== "global" && aoi?.geometry && (
               <GeoJSON data={aoi.geometry as GeoJSON.FeatureCollection | GeoJSON.Feature} style={{ color: "#f43f5e", weight: 2, dashArray: "6 4", fillOpacity: 0.05 }} />
             )}
+
+            {workspaceLayers.map((workspaceLayer) => (
+              <WorkspaceVectorLayer
+                key={workspaceLayer.id}
+                layer={workspaceLayer}
+                selection={workspaceSelection}
+                onSelect={onWorkspaceSelect}
+              />
+            ))}
+            <WorkspaceFocusController
+              layers={workspaceLayers}
+              request={workspaceFocusRequest}
+            />
             <MapTools />
           </MapContainer>
         </>
