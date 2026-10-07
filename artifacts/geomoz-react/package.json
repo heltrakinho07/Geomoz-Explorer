@@ -113,6 +113,7 @@
     "react-error-boundary": "^4.1.2",
     "shpjs": "^6.2.0",
     "whitebox-wasm": "^0.6.0",
-    "zstddec": "^0.2.0"
+    "zstddec": "^0.2.0",
+    "@developmentseed/deck.gl-raster": "^0.8.1"
   }
 }
