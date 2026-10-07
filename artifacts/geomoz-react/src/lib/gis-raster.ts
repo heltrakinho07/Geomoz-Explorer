@@ -8,6 +8,10 @@
  * RasterControl only as a rendering/decoding engine for GeoTIFF/COG data.
  */
 import type { Map as MapLibreMap } from "maplibre-gl";
+import {
+  syncGISRasterClassification,
+  type GISRasterSymbology,
+} from "@/lib/gis-raster-classification";
 import type {
   RasterControl,
   AutoStats,
@@ -31,6 +35,7 @@ export interface GISWorkspaceRasterLayer {
   bounds?: [number, number, number, number] | null;
   error?: string | null;
   rasterState?: Partial<RasterLayerState>;
+  rasterSymbology?: GISRasterSymbology;
 }
 
 export interface GISRasterBandStats {
@@ -176,6 +181,8 @@ export async function syncGISWorkspaceRasters(
       callbacks.onError?.(layer.id, message);
     }
   }
+
+  syncGISRasterClassification(control, layers);
 }
 
 /**
@@ -195,6 +202,7 @@ export async function refreshGISWorkspaceRasters(
       opacity: layer.opacity,
     });
   }
+  syncGISRasterClassification(control, layers);
 }
 
 
