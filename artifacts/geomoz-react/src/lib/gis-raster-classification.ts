@@ -43,7 +43,7 @@ type RasterLayerManagerLike = {
   _renderTileFor?: (layer: RasterLayerLike) => RenderTileFn;
   _rebuild?: () => void;
 };
-type RasterControlLike = RasterControl & {
+type RasterControlLike = {
   _layerManager?: RasterLayerManagerLike;
   getEngine?: () => string;
   setEngine?: (engine: "maplibre-gl-raster" | "cog-tiler-wasm") => void;
@@ -318,7 +318,7 @@ export function syncGISRasterClassification(
   control: RasterControl,
   layers: GISWorkspaceRasterLayer[]
 ): void {
-  const typed = control as RasterControlLike;
+  const typed = control as unknown as RasterControlLike;
   const manager = typed._layerManager;
   const runtime = installClassificationPatch(typed);
   if (!manager || !runtime) return;
