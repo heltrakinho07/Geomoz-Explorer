@@ -1,16 +1,9 @@
 /**
- * GeoMoz GIS Workspace — Ambiente GIS Integrado e Persistente
- * Fiel à arquitetura e estrutura do GeoLibre (https://geolibre.app/user-guide/processing/):
+ * GeoMoz GIS Workspace — ambiente GIS integrado e persistente.
  *
- * 1. Whitebox Toolbox (1.000+ ferramentas categorizadas: Vector, Raster, Hydrology, Terrain, LiDAR, etc.)
- * 2. GeoLibre Toolbox (Ferramentas direcionadas: Geometria, Sobreposição, Junção, Seleção, Raster, Conversão, Estatística)
- * 3. Model Builder (Construção visual de pipelines encadeados de análise)
- * 4. SQL Workspace (DuckDB-WASM Spatial sobre as camadas do próprio utilizador)
- * 5. Dashboard Analítico (Histogramas, dispersão e indicadores de atributos via Recharts)
- * 6. Histórico de Processamento (Registo cronológico com Re-run e exportação de logs)
- * 7. Cortina Temporal Swipe & Mapa Interativo (Visualização sincronizada antes/depois)
- *
- * 100% Funcional e operando em DADOS PRÓPRIOS DO UTILIZADOR (sem mocks).
+ * Engines: Turf.js for verified vector tools, DuckDB-WASM Spatial for SQL,
+ * Whitebox WASM for a curated geoprocessing catalog, and MapLibre for mapping.
+ * The UI only exposes execution paths that GeoMoz can configure explicitly.
  */
 
 import React, { useState, useRef, useMemo, useCallback } from "react";
@@ -183,14 +176,14 @@ export interface ModelNode {
 }
 
 type MainTab =
-  | "geolibre_toolbox"
+  | "vector_toolbox"
   | "whitebox_toolbox"
   | "model_builder"
   | "sql_workspace"
   | "dashboard"
   | "history"
   | "layers"
-  | "swipe";
+;
 
 interface Props {
   aoi: AreaOfInterest;
@@ -248,7 +241,7 @@ export default function GeoProcessamento({
   const rasterErrorToastRef = useRef(new Set<string>());
 
   // Main UI Navigation
-  const [activeTab, setActiveTab] = useState<MainTab>("geolibre_toolbox");
+  const [activeTab, setActiveTab] = useState<MainTab>("vector_toolbox");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [basemap, setBasemap] = useState<BasemapType>("hybrid");
@@ -285,7 +278,7 @@ export default function GeoProcessamento({
   });
   const [isExecuting, setIsExecuting] = useState(false);
 
-  // Real Whitebox / GeoLibre WASM catalog (lazy-loaded only when the tab opens).
+  // Real Whitebox / Whitebox WASM catalog (lazy-loaded only when the tab opens).
   const [whiteboxTools, setWhiteboxTools] = useState<WhiteboxWasmManifest[]>([]);
   const [whiteboxLoading, setWhiteboxLoading] = useState(false);
   const [whiteboxError, setWhiteboxError] = useState<string | null>(null);
@@ -373,7 +366,13 @@ export default function GeoProcessamento({
         setTableLayerId(snapshot.tableLayerId || null);
         setHistory(snapshot.history as ProcessingHistoryEntry[]);
         setModelNodes(snapshot.modelNodes as ModelNode[]);
-        if (snapshot.activeTab) setActiveTab(snapshot.activeTab as MainTab);
+        if (snapshot.activeTab) {
+          setActiveTab(
+            snapshot.activeTab === "geolibre_toolbox"
+              ? "vector_toolbox"
+              : (snapshot.activeTab as MainTab)
+          );
+        }
         if (snapshot.basemap) setBasemap(snapshot.basemap as BasemapType);
 
         // Refresh the local offline cache when the cloud copy is newer.
@@ -483,10 +482,6 @@ export default function GeoProcessamento({
   // Spatial SQL Workspace
   const [sqlQuery, setSqlQuery] = useState<string>("");
   const [sqlResult, setSqlResult] = useState<QueryResult | null>(null);
-
-  // Swipe Comparator
-  const [swipePercent, setSwipePercent] = useState<number>(50);
-  const isDraggingRef = useRef(false);
 
   // Active layer references
   const activeLayer = useMemo(() => layers.find((l) => l.id === selectedLayerId), [layers, selectedLayerId]);
@@ -1634,7 +1629,7 @@ export default function GeoProcessamento({
     const ctx = createPDFContext(reportTitle);
     drawCover(
       ctx,
-      `GeoLibre Processing Engine — ${province ?? "Moçambique"} · Dados Próprios`,
+      `GeoMoz GIS Workspace — ${province ?? "Moçambique"} · Dados do Projeto`,
       [
         `Província: ${province ?? "Nacional"}`,
         `Camadas: ${layers.length}`,
@@ -1712,9 +1707,9 @@ export default function GeoProcessamento({
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Processing Tools</h2>
+                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Ferramentas GIS</h2>
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
-                  GeoLibre Core
+                  GeoMoz Core
                 </span>
               </div>
               <p className="text-[10px] text-slate-400">Mapa GIS · Toolbox · Model Builder · Spatial SQL · Histórico</p>
@@ -1731,17 +1726,17 @@ export default function GeoProcessamento({
 
         {/* Top Processing Menu Tabs */}
         <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40">
-          <div className="grid grid-cols-4 gap-1 text-[10px] font-semibold">
+          <div className="grid grid-cols-3 gap-1 text-[10px] font-semibold">
             <button
-              onClick={() => setActiveTab("geolibre_toolbox")}
+              onClick={() => setActiveTab("vector_toolbox")}
               className={`p-1.5 rounded-lg flex items-center justify-center gap-1 transition-all ${
-                activeTab === "geolibre_toolbox"
+                activeTab === "vector_toolbox"
                   ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs"
                   : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
               }`}
             >
               <Wrench size={12} />
-              <span>GeoLibre</span>
+              <span>Vetores</span>
             </button>
             <button
               onClick={() => setActiveTab("whitebox_toolbox")}
@@ -1812,22 +1807,12 @@ export default function GeoProcessamento({
               <History size={12} />
               <span>Histórico</span>
             </button>
-            <button
-              onClick={() => setActiveTab("swipe")}
-              className={`p-1.5 rounded-lg flex items-center justify-center gap-1 transition-all ${
-                activeTab === "swipe"
-                  ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs"
-                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
-              }`}
-            >
-              <Columns2 size={12} />
-              <span>Cortina</span>
-            </button>
+            
           </div>
         </div>
 
-        {/* ── Sub-Section 1: GeoLibre Toolbox ──────────────────────────────── */}
-        {activeTab === "geolibre_toolbox" && (
+        {/* ── Sub-Section 1: Ferramentas Vetoriais ──────────────────────────────── */}
+        {activeTab === "vector_toolbox" && (
           <div className="p-3 space-y-3 flex-1">
             {layers.length === 0 ? (
               <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl p-6 text-center space-y-3 bg-slate-50/50 dark:bg-slate-800/20">
@@ -1903,7 +1888,7 @@ export default function GeoProcessamento({
                 {/* Tool Selector */}
                 <div>
                   <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    Ferramenta GeoLibre
+                    Ferramenta Vetorial
                   </label>
                   <select
                     value={selectedToolId}
@@ -2030,15 +2015,15 @@ export default function GeoProcessamento({
           <div className="p-3 space-y-3 flex-1">
             <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/40 rounded-xl p-2.5 text-[11px] text-sky-900 dark:text-sky-300">
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold">Whitebox · GeoLibre WASM</span>
+                <span className="font-semibold">Whitebox WASM · Catálogo verificado</span>
                 <span className="text-[9px] font-bold rounded-full bg-white/80 dark:bg-slate-900/70 px-2 py-0.5 border border-sky-200 dark:border-sky-800">
-                  {whiteboxLoading ? "a carregar…" : `${whiteboxTools.length} tools reais`}
+                  {whiteboxLoading ? "a carregar…" : `${whiteboxTools.length} ferramentas verificadas`}
                 </span>
               </div>
               <p className="mt-1">
-                Catálogo e execução vêm diretamente do runtime <code>geolibre-wasm</code>.
-                Ferramentas vetoriais e raster compatíveis executam no browser; saídas
-                raster são normalizadas para COG e regressam ao mesmo Workspace.
+                O GeoMoz valida o catálogo contra <code>whitebox-wasm</code> no browser
+                e mostra apenas ferramentas com parâmetros definidos pela própria aplicação.
+                As saídas regressam ao mesmo Workspace.
               </p>
             </div>
 
@@ -3672,32 +3657,7 @@ export default function GeoProcessamento({
           </div>
         )}
 
-        {/* ── Sub-Section 8: Cortina Swipe ─────────────────────────────────── */}
-        {activeTab === "swipe" && (
-          <div className="p-3 space-y-3 flex-1">
-            <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/40 rounded-xl p-2.5 text-[11px] text-sky-900 dark:text-sky-300">
-              <span className="font-semibold block mb-0.5">Cortina Deslizante</span>
-              Arraste a linha no centro do mapa para comparar duas camadas sobrepostas.
-            </div>
-
-            <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
-              <div className="flex justify-between text-xs">
-                <span className="text-slate-600 dark:text-slate-300">Posição:</span>
-                <span className="font-bold text-sky-600 dark:text-sky-400">{swipePercent}%</span>
-              </div>
-              <input
-                type="range"
-                min={5}
-                max={95}
-                value={swipePercent}
-                onChange={(e) => setSwipePercent(+e.target.value)}
-                className="w-full accent-sky-500"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Footer: Export Dossiê PDF */}
+                {/* Footer: Export Dossiê PDF */}
         <div className="p-3 border-t border-slate-100 dark:border-slate-800">
           <button
             onClick={exportPdf}
@@ -3752,20 +3712,7 @@ export default function GeoProcessamento({
           onRasterError={handleRasterError}
         />
 
-        {/* ── Swipe Vertical Divider ──────────────────────────────────────── */}
-        {activeTab === "swipe" && (
-          <div
-            className="absolute top-0 bottom-0 z-[600] w-1 bg-white cursor-ew-resize select-none pointer-events-auto shadow-2xl flex items-center justify-center"
-            style={{ left: `${swipePercent}%` }}
-            onMouseDown={handleMouseDown}
-          >
-            <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-900 border-2 border-indigo-600 shadow-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 cursor-ew-resize">
-              <Columns2 size={16} />
-            </div>
-          </div>
-        )}
-
-        <BasemapSwitcher
+                <BasemapSwitcher
           current={basemap}
           onChange={setBasemap}
           className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
