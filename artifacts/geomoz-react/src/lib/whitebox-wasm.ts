@@ -12,6 +12,7 @@ import type {
   GeoMozWhiteboxWorkerRequest,
   GeoMozWhiteboxWorkerResponse,
 } from "@/workers/whitebox-wasm.worker";
+import { convertGeoTiffToCog } from "@/lib/cog-convert";
 
 export interface WhiteboxWasmParameter {
   name: string;
@@ -43,6 +44,21 @@ export interface WhiteboxVectorRunResult {
   outputs: Array<{
     parameter: string;
     geojson: FeatureCollection;
+  }>;
+  stdout: string[];
+  executionTimeMs: number;
+}
+
+export interface WhiteboxRasterInput {
+  name: string;
+  bytes: Uint8Array;
+}
+
+export interface WhiteboxRasterRunResult {
+  outputs: Array<{
+    parameter: string;
+    fileName: string;
+    bytes: Uint8Array;
   }>;
   stdout: string[];
   executionTimeMs: number;
@@ -159,6 +175,64 @@ export function whiteboxVectorSupport(manifest: WhiteboxWasmManifest): {
   }
 
   return { supported: true, vectorInputs, vectorOutputs };
+}
+
+export function whiteboxRasterSupport(manifest: WhiteboxWasmManifest): {
+  supported: boolean;
+  reason?: string;
+  rasterInputs: WhiteboxWasmParameter[];
+  rasterOutputs: WhiteboxWasmParameter[];
+} {
+  const parameters = manifest.params ?? [];
+  const rasterInputs = parameters.filter(
+    (parameter) => whiteboxParamKind(parameter) === "raster_in"
+  );
+  const rasterOutputs = parameters.filter(
+    (parameter) => whiteboxParamKind(parameter) === "raster_out"
+  );
+  const unsupportedDataset = parameters.find((parameter) => {
+    const kind = whiteboxParamKind(parameter);
+    return (
+      (kind.endsWith("_in") || kind.endsWith("_out")) &&
+      kind !== "raster_in" &&
+      kind !== "raster_out"
+    );
+  });
+
+  if (unsupportedDataset) {
+    return {
+      supported: false,
+      reason: `Combina ${whiteboxParamKind(unsupportedDataset).replace("_", " ")} com raster; este fluxo misto entra numa etapa posterior.`,
+      rasterInputs,
+      rasterOutputs,
+    };
+  }
+  if (!rasterInputs.length) {
+    return {
+      supported: false,
+      reason: "Esta ferramenta não declara uma entrada raster utilizável.",
+      rasterInputs,
+      rasterOutputs,
+    };
+  }
+  if (!rasterOutputs.length) {
+    return {
+      supported: false,
+      reason: "Esta ferramenta não declara uma saída raster para adicionar ao mapa.",
+      rasterInputs,
+      rasterOutputs,
+    };
+  }
+  if (rasterInputs.length > 2) {
+    return {
+      supported: false,
+      reason: "Esta ferramenta requer mais de duas entradas raster; o seletor multi-input ainda será ligado.",
+      rasterInputs,
+      rasterOutputs,
+    };
+  }
+
+  return { supported: true, rasterInputs, rasterOutputs };
 }
 
 export async function listWhiteboxWasmManifests(): Promise<WhiteboxWasmManifest[]> {
@@ -334,6 +408,104 @@ export async function runWhiteboxVectorTool(params: {
   if (!outputs.length) {
     throw new Error(
       "A ferramenta terminou, mas não produziu uma saída GeoJSON vetorial legível."
+    );
+  }
+
+  return {
+    outputs,
+    stdout: result.stdout,
+    executionTimeMs: Math.round(performance.now() - started),
+  };
+}
+
+function rasterOutputFileName(toolId: string, parameterName: string): string {
+  const safe = `${toolId}_${parameterName}`.replace(/[^a-zA-Z0-9_-]+/g, "_");
+  return `${safe}.tif`;
+}
+
+export async function runWhiteboxRasterTool(params: {
+  manifest: WhiteboxWasmManifest;
+  primaryRaster: WhiteboxRasterInput;
+  secondaryRaster?: WhiteboxRasterInput;
+  parameters?: Record<string, unknown>;
+}): Promise<WhiteboxRasterRunResult> {
+  const started = performance.now();
+  const support = whiteboxRasterSupport(params.manifest);
+  if (!support.supported) {
+    throw new Error(support.reason || "Ferramenta raster não suportada pelo workspace atual.");
+  }
+
+  const input: Record<string, Uint8Array> = {};
+  const args: string[] = [];
+  const outputFiles = new Map<string, string>();
+
+  support.rasterInputs.forEach((parameter, index) => {
+    const raster = index === 0 ? params.primaryRaster : params.secondaryRaster;
+    if (!raster) {
+      throw new Error(
+        `A ferramenta requer uma ${index === 0 ? "camada raster principal" : "segunda camada raster"} para "${parameter.name}".`
+      );
+    }
+    const file = `${parameter.name}_${index + 1}.tif`;
+    input[file] = raster.bytes;
+    args.push(`--${parameter.name}=/work/${file}`);
+  });
+
+  for (const parameter of params.manifest.params ?? []) {
+    const kind = whiteboxParamKind(parameter);
+    if (kind === "raster_in") continue;
+
+    if (kind === "raster_out") {
+      const file = rasterOutputFileName(params.manifest.id, parameter.name);
+      outputFiles.set(parameter.name, file);
+      args.push(`--${parameter.name}=/work/${file}`);
+      continue;
+    }
+
+    if (kind.endsWith("_in") || kind.endsWith("_out")) continue;
+
+    const value = scalarValue(
+      params.manifest,
+      parameter,
+      params.parameters ?? {}
+    );
+    if (value === undefined || value === null || value === "") {
+      if (parameter.required) {
+        throw new Error(`O parâmetro obrigatório "${parameter.name}" está vazio.`);
+      }
+      continue;
+    }
+    args.push(`--${parameter.name}=${String(value)}`);
+  }
+
+  const result = await runWorker({
+    tool: params.manifest.id,
+    args,
+    input,
+  });
+
+  if (result.exitCode !== 0) {
+    throw new Error(
+      result.stdout.join("\n").trim() ||
+        `Whitebox terminou com código ${result.exitCode}.`
+    );
+  }
+
+  const outputs: WhiteboxRasterRunResult["outputs"] = [];
+  for (const [parameter, fileName] of outputFiles.entries()) {
+    const bytes = result.files[fileName];
+    if (!bytes?.length) continue;
+    const cogBytes = await convertGeoTiffToCog(bytes);
+    outputs.push({
+      parameter,
+      fileName: fileName.replace(/\.tif$/i, ".cog.tif"),
+      bytes: cogBytes,
+    });
+  }
+
+  if (!outputs.length) {
+    throw new Error(
+      "A ferramenta terminou, mas não produziu uma saída raster GeoTIFF legível."
     );
   }
 
