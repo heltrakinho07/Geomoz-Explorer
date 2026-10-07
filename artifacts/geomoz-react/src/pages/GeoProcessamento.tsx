@@ -115,6 +115,11 @@ import {
 } from "@/lib/pdf-export";
 import type { FeatureCollection, Feature } from "geojson";
 import { useProject } from "@/context/ProjectContext";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  loadGISWorkspaceFromCloud,
+  syncGISWorkspaceToCloud,
+} from "@/services/gisWorkspaceCloudService";
 import {
   loadGISWorkspaceSnapshot,
   saveGISWorkspaceSnapshot,
@@ -212,7 +217,12 @@ export default function GeoProcessamento({
 }: Props) {
   const { toast } = useToast();
   const { activeProject } = useProject();
+  const { user } = useAuth();
   const workspaceProjectId = activeProject?.id ?? "session-default";
+  const cloudUid =
+    user?.uid && user.uid !== "guest_user" && !user.uid.startsWith("guest_")
+      ? user.uid
+      : null;
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -253,14 +263,33 @@ export default function GeoProcessamento({
     { id: "node_2", toolId: "vector_dissolve", name: "Dissolve", parameters: { propertyName: "" } },
   ]);
 
-  // Restore the GIS workspace for the active GeoMoz project.
+  // Restore the newest available workspace snapshot. IndexedDB is the fast
+  // offline cache; authenticated projects additionally use Firestore + Storage.
   React.useEffect(() => {
     let cancelled = false;
     setWorkspaceHydrated(false);
     hydratedProjectRef.current = null;
 
-    void loadGISWorkspaceSnapshot(workspaceProjectId).then((snapshot) => {
+    const load = async () => {
+      const localPromise = loadGISWorkspaceSnapshot(workspaceProjectId);
+      const cloudPromise =
+        cloudUid && activeProject?.id
+          ? loadGISWorkspaceFromCloud(cloudUid, workspaceProjectId).catch((error) => {
+              console.warn("GIS Workspace: cloud restore unavailable, using local cache:", error);
+              return null;
+            })
+          : Promise.resolve(null);
+
+      const [localSnapshot, cloudSnapshot] = await Promise.all([
+        localPromise,
+        cloudPromise,
+      ]);
       if (cancelled) return;
+
+      const localTime = localSnapshot ? Date.parse(localSnapshot.updatedAt) || 0 : 0;
+      const cloudTime = cloudSnapshot ? Date.parse(cloudSnapshot.updatedAt) || 0 : 0;
+      const snapshot =
+        cloudSnapshot && cloudTime > localTime ? cloudSnapshot : localSnapshot ?? cloudSnapshot;
 
       if (snapshot) {
         setLayers(snapshot.layers as UserLayer[]);
@@ -271,6 +300,21 @@ export default function GeoProcessamento({
         setModelNodes(snapshot.modelNodes as ModelNode[]);
         if (snapshot.activeTab) setActiveTab(snapshot.activeTab as MainTab);
         if (snapshot.basemap) setBasemap(snapshot.basemap as BasemapType);
+
+        // Refresh the local offline cache when the cloud copy is newer.
+        if (snapshot === cloudSnapshot) {
+          void saveGISWorkspaceSnapshot({
+            projectId: workspaceProjectId,
+            layers: snapshot.layers,
+            selectedLayerId: snapshot.selectedLayerId,
+            secondLayerId: snapshot.secondLayerId,
+            tableLayerId: snapshot.tableLayerId,
+            history: snapshot.history,
+            modelNodes: snapshot.modelNodes,
+            activeTab: snapshot.activeTab,
+            basemap: snapshot.basemap,
+          });
+        }
       } else {
         setLayers([]);
         setSelectedLayerId("");
@@ -281,19 +325,20 @@ export default function GeoProcessamento({
 
       hydratedProjectRef.current = workspaceProjectId;
       setWorkspaceHydrated(true);
-    });
+    };
 
+    void load();
     return () => {
       cancelled = true;
     };
-  }, [workspaceProjectId]);
+  }, [workspaceProjectId, cloudUid, activeProject?.id]);
 
   // Persist project workspace changes without blocking map interaction.
   React.useEffect(() => {
     if (!workspaceHydrated || hydratedProjectRef.current !== workspaceProjectId) return;
 
     const timer = window.setTimeout(() => {
-      void saveGISWorkspaceSnapshot({
+      const snapshot = {
         projectId: workspaceProjectId,
         layers,
         selectedLayerId,
@@ -303,13 +348,23 @@ export default function GeoProcessamento({
         modelNodes,
         activeTab,
         basemap,
-      });
-    }, 650);
+      };
+
+      void saveGISWorkspaceSnapshot(snapshot);
+
+      if (cloudUid && activeProject?.id) {
+        void syncGISWorkspaceToCloud(cloudUid, snapshot).catch((error) => {
+          console.warn("GIS Workspace: cloud sync deferred; local copy is safe:", error);
+        });
+      }
+    }, 900);
 
     return () => window.clearTimeout(timer);
   }, [
     workspaceHydrated,
     workspaceProjectId,
+    cloudUid,
+    activeProject?.id,
     layers,
     selectedLayerId,
     secondLayerId,
