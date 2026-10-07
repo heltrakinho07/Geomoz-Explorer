@@ -2341,6 +2341,203 @@ export default function GeoProcessamento({
                         {Math.round(raster.opacity * 100)}%
                       </span>
                     </div>
+                    {selectedWhiteboxRasterId === raster.id &&
+                      (() => {
+                        const state = raster.rasterState ?? {};
+                        const mode = state.mode === "rgb" ? "rgb" : "single";
+                        const bands = state.bands?.length ? state.bands : [1];
+                        const bandCount = Math.max(raster.bandCount ?? 1, 1);
+                        const bandOptions = Array.from(
+                          { length: bandCount },
+                          (_, index) => index + 1
+                        );
+                        const colormap = state.colormap ?? "viridis";
+                        const stretch = state.stretch ?? "linear";
+                        const gamma = state.gamma ?? 1;
+
+                        return (
+                          <div
+                            className="mt-2 space-y-2 rounded-xl border border-sky-200/80 bg-white/80 p-2 dark:border-sky-900 dark:bg-slate-900/70"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300">
+                                Visualização Raster
+                              </span>
+                              <span className="text-[9px] text-slate-400">
+                                {mode === "rgb" ? "Composição RGB" : "Banda única"}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="space-y-1">
+                                <span className="text-[9px] font-semibold text-slate-500">
+                                  Modo
+                                </span>
+                                <select
+                                  value={mode}
+                                  onChange={(event) => {
+                                    const nextMode = event.target.value as "single" | "rgb";
+                                    updateRasterState(raster.id, {
+                                      mode: nextMode,
+                                      bands:
+                                        nextMode === "rgb"
+                                          ? [
+                                              1,
+                                              Math.min(2, bandCount),
+                                              Math.min(3, bandCount),
+                                            ]
+                                          : [bands[0] ?? 1],
+                                    });
+                                  }}
+                                  className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-800"
+                                >
+                                  <option value="single">Banda única</option>
+                                  {bandCount >= 3 && <option value="rgb">RGB</option>}
+                                </select>
+                              </label>
+
+                              {mode === "single" && (
+                                <label className="space-y-1">
+                                  <span className="text-[9px] font-semibold text-slate-500">
+                                    Banda
+                                  </span>
+                                  <select
+                                    value={bands[0] ?? 1}
+                                    onChange={(event) =>
+                                      updateRasterState(raster.id, {
+                                        bands: [Number(event.target.value)],
+                                      })
+                                    }
+                                    className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-800"
+                                  >
+                                    {bandOptions.map((band) => (
+                                      <option key={band} value={band}>
+                                        Banda {band}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              )}
+                            </div>
+
+                            {mode === "rgb" && (
+                              <div className="grid grid-cols-3 gap-1.5">
+                                {(["R", "G", "B"] as const).map((channel, index) => (
+                                  <label key={channel} className="space-y-1">
+                                    <span className="text-[9px] font-semibold text-slate-500">
+                                      {channel}
+                                    </span>
+                                    <select
+                                      value={bands[index] ?? Math.min(index + 1, bandCount)}
+                                      onChange={(event) => {
+                                        const nextBands = [...bands];
+                                        while (nextBands.length < 3) {
+                                          nextBands.push(Math.min(nextBands.length + 1, bandCount));
+                                        }
+                                        nextBands[index] = Number(event.target.value);
+                                        updateRasterState(raster.id, { bands: nextBands });
+                                      }}
+                                      className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-800"
+                                    >
+                                      {bandOptions.map((band) => (
+                                        <option key={band} value={band}>
+                                          {band}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+
+                            {mode === "single" && (
+                              <div className="grid grid-cols-2 gap-2">
+                                <label className="space-y-1">
+                                  <span className="text-[9px] font-semibold text-slate-500">
+                                    Paleta
+                                  </span>
+                                  <select
+                                    value={colormap}
+                                    onChange={(event) =>
+                                      updateRasterState(raster.id, {
+                                        colormap: event.target.value,
+                                      })
+                                    }
+                                    className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-800"
+                                  >
+                                    <option value="viridis">Viridis</option>
+                                    <option value="terrain">Terrain</option>
+                                    <option value="turbo">Turbo</option>
+                                    <option value="magma">Magma</option>
+                                    <option value="plasma">Plasma</option>
+                                    <option value="grayscale">Grayscale</option>
+                                  </select>
+                                </label>
+                                <label className="space-y-1">
+                                  <span className="text-[9px] font-semibold text-slate-500">
+                                    Stretch
+                                  </span>
+                                  <select
+                                    value={stretch}
+                                    onChange={(event) =>
+                                      updateRasterState(raster.id, {
+                                        stretch: event.target.value as
+                                          | "linear"
+                                          | "log"
+                                          | "sqrt",
+                                      })
+                                    }
+                                    className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-800"
+                                  >
+                                    <option value="linear">Linear</option>
+                                    <option value="sqrt">Raiz quadrada</option>
+                                    <option value="log">Logarítmico</option>
+                                  </select>
+                                </label>
+                              </div>
+                            )}
+
+                            <div className="flex items-center gap-2">
+                              <span className="w-12 text-[9px] font-semibold text-slate-500">
+                                Gamma
+                              </span>
+                              <input
+                                type="range"
+                                min={0.2}
+                                max={3}
+                                step={0.1}
+                                value={gamma}
+                                onChange={(event) =>
+                                  updateRasterState(raster.id, {
+                                    gamma: Number(event.target.value),
+                                  })
+                                }
+                                className="w-full accent-sky-600"
+                              />
+                              <span className="w-8 text-right text-[9px] font-semibold text-slate-500">
+                                {Number(gamma).toFixed(1)}
+                              </span>
+                            </div>
+
+                            {mode === "single" && (
+                              <label className="flex items-center gap-2 text-[10px] text-slate-600 dark:text-slate-300">
+                                <input
+                                  type="checkbox"
+                                  checked={state.reversed === true}
+                                  onChange={(event) =>
+                                    updateRasterState(raster.id, {
+                                      reversed: event.target.checked,
+                                    })
+                                  }
+                                />
+                                Inverter paleta
+                              </label>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                     {raster.error && (
                       <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-[10px] text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
                         {raster.error}
