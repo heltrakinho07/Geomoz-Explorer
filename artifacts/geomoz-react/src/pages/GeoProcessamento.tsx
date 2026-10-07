@@ -1335,70 +1335,278 @@ export default function GeoProcessamento({
         {activeTab === "whitebox_toolbox" && (
           <div className="p-3 space-y-3 flex-1">
             <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/40 rounded-xl p-2.5 text-[11px] text-sky-900 dark:text-sky-300">
-              <span className="font-semibold block mb-0.5">Catálogo Whitebox Tools</span>
-              Navegue pelas centenas de algoritmos disponíveis para hidrologia, relevo, sensoriamento e conversão.
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold">Whitebox · GeoLibre WASM</span>
+                <span className="text-[9px] font-bold rounded-full bg-white/80 dark:bg-slate-900/70 px-2 py-0.5 border border-sky-200 dark:border-sky-800">
+                  {whiteboxLoading ? "a carregar…" : `${whiteboxTools.length} tools reais`}
+                </span>
+              </div>
+              <p className="mt-1">
+                Catálogo e execução vêm diretamente do runtime <code>geolibre-wasm</code>.
+                Ferramentas vetoriais compatíveis já executam no browser; raster/LiDAR
+                serão ativadas com o respetivo layer store.
+              </p>
             </div>
 
-            {/* Search Box */}
+            {whiteboxError && (
+              <div className="rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 p-2.5 text-[11px] text-rose-700 dark:text-rose-300">
+                <strong>Runtime indisponível:</strong> {whiteboxError}
+              </div>
+            )}
+
             <div className="relative">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 value={toolSearch}
                 onChange={(e) => setToolSearch(e.target.value)}
-                placeholder="Pesquisar ferramentas Whitebox..."
+                placeholder="Pesquisar nos manifests Whitebox…"
                 className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
 
-            {/* Category Filter */}
             <div className="flex gap-1 overflow-x-auto pb-1 text-[10px]">
-              {[
-                { id: "all", label: "Todas" },
-                { id: "vector_geom", label: "Vetor" },
-                { id: "terrain", label: "Terreno" },
-                { id: "hydrology", label: "Hidrologia" },
-                { id: "spectral", label: "Radar/Sensoriamento" },
-              ].map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => setToolCategoryFilter(c.id)}
-                  className={`px-2 py-1 rounded-md shrink-0 transition-colors ${
-                    toolCategoryFilter === c.id
-                      ? "bg-indigo-600 text-white font-bold"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-                  }`}
-                >
-                  {c.label}
-                </button>
-              ))}
+              <button
+                onClick={() => setToolCategoryFilter("all")}
+                className={`px-2 py-1 rounded-md shrink-0 transition-colors ${
+                  toolCategoryFilter === "all"
+                    ? "bg-indigo-600 text-white font-bold"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                }`}
+              >
+                Todas
+              </button>
+              {whiteboxCategories.map((category) => {
+                const id = category.toLowerCase();
+                return (
+                  <button
+                    key={category}
+                    onClick={() => setToolCategoryFilter(id)}
+                    className={`px-2 py-1 rounded-md shrink-0 transition-colors ${
+                      toolCategoryFilter === id
+                        ? "bg-indigo-600 text-white font-bold"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                    }`}
+                  >
+                    {category}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Filtered Tools List */}
-            <div className="space-y-1.5 max-h-72 overflow-y-auto">
-              {filteredTools.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => {
-                    setSelectedToolId(t.id);
-                    setActiveTab("geolibre_toolbox");
-                  }}
-                  className={`w-full text-left p-2 rounded-xl border transition-all cursor-pointer ${
-                    selectedToolId === t.id
-                      ? "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-700"
-                      : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">{t.name}</span>
-                    <span className={`text-[9px] px-1 rounded ${t.implemented === false ? "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300" : "bg-slate-100 dark:bg-slate-700 text-slate-500"}`}>
-                      {t.implemented === false ? "Requer raster" : t.categoryLabel}
+            {whiteboxLoading ? (
+              <div className="py-8 text-center text-xs text-slate-400">
+                <RefreshCw size={18} className="animate-spin mx-auto mb-2" />
+                A inicializar manifests Whitebox WASM…
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                  <span>{filteredWhiteboxTools.length} correspondência(s)</span>
+                  {filteredWhiteboxTools.length > 250 && <span>a mostrar primeiras 250</span>}
+                </div>
+                <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                  {filteredWhiteboxTools.slice(0, 250).map((tool) => {
+                    const support = whiteboxVectorSupport(tool);
+                    return (
+                      <button
+                        key={tool.id}
+                        onClick={() => {
+                          setSelectedWhiteboxToolId(tool.id);
+                          setWhiteboxParams(whiteboxManifestDefaults(tool));
+                        }}
+                        className={`w-full text-left p-2 rounded-xl border transition-all cursor-pointer ${
+                          selectedWhiteboxToolId === tool.id
+                            ? "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-700"
+                            : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                            {whiteboxManifestName(tool)}
+                          </span>
+                          <span
+                            className={`text-[9px] px-1.5 py-0.5 rounded shrink-0 ${
+                              support.supported
+                                ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300"
+                                : "bg-slate-100 dark:bg-slate-700 text-slate-500"
+                            }`}
+                          >
+                            {support.supported ? "WASM vetorial" : tool.category ?? "WASM"}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 line-clamp-2 mt-0.5">
+                          {tool.summary || tool.id}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {selectedWhiteboxTool && (
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 space-y-3 shadow-xs">
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-xs font-extrabold text-slate-900 dark:text-slate-100">
+                      {whiteboxManifestName(selectedWhiteboxTool)}
+                    </h4>
+                    <span className="text-[9px] font-mono text-slate-400">
+                      {selectedWhiteboxTool.id}
                     </span>
                   </div>
-                  <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">{t.description}</p>
+                  <p className="mt-1 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+                    {selectedWhiteboxTool.summary || "Ferramenta declarada pelo runtime Whitebox WASM."}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                    Camada principal
+                  </label>
+                  <select
+                    value={selectedLayerId}
+                    onChange={(e) => setSelectedLayerId(e.target.value)}
+                    className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                  >
+                    <option value="">Selecione…</option>
+                    {layers.map((layer) => (
+                      <option key={layer.id} value={layer.id}>
+                        {layer.name} ({layer.featureCount})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {(selectedWhiteboxSupport?.vectorInputs.length ?? 0) > 1 && (
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                      Segunda camada
+                    </label>
+                    <select
+                      value={secondLayerId}
+                      onChange={(e) => setSecondLayerId(e.target.value)}
+                      className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                    >
+                      <option value="">Selecione…</option>
+                      {layers
+                        .filter((layer) => layer.id !== selectedLayerId)
+                        .map((layer) => (
+                          <option key={layer.id} value={layer.id}>
+                            {layer.name} ({layer.featureCount})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+
+                {(selectedWhiteboxTool.params ?? [])
+                  .filter((parameter) => {
+                    const kind = whiteboxParamKind(parameter);
+                    return !kind.endsWith("_in") && !kind.endsWith("_out");
+                  })
+                  .map((parameter) => {
+                    const kind = whiteboxParamKind(parameter);
+                    const options = parameter.schema?.options ?? [];
+                    const fallback = selectedWhiteboxTool.defaults?.[parameter.name] ?? "";
+                    const value = whiteboxParams[parameter.name] ?? fallback;
+                    const numeric = /^(int|integer|double|float|number)$/i.test(kind);
+                    const boolean = /^bool(ean)?$/i.test(kind);
+
+                    return (
+                      <div key={parameter.name} className="space-y-1">
+                        <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                          {parameter.name}
+                          {parameter.required ? " *" : ""}
+                        </label>
+                        {parameter.description && (
+                          <p className="text-[9px] text-slate-400">{parameter.description}</p>
+                        )}
+                        {boolean ? (
+                          <label className="flex items-center gap-2 text-xs">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(value)}
+                              onChange={(e) =>
+                                setWhiteboxParams((previous) => ({
+                                  ...previous,
+                                  [parameter.name]: e.target.checked,
+                                }))
+                              }
+                            />
+                            <span>{Boolean(value) ? "true" : "false"}</span>
+                          </label>
+                        ) : options.length > 0 ? (
+                          <select
+                            value={String(value)}
+                            onChange={(e) =>
+                              setWhiteboxParams((previous) => ({
+                                ...previous,
+                                [parameter.name]: e.target.value,
+                              }))
+                            }
+                            className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5"
+                          >
+                            <option value="">Selecione…</option>
+                            {options.map((option, index) => (
+                              <option key={index} value={String(option.value ?? "")}>
+                                {option.label ?? String(option.value ?? "")}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type={numeric ? "number" : "text"}
+                            value={String(value)}
+                            onChange={(e) =>
+                              setWhiteboxParams((previous) => ({
+                                ...previous,
+                                [parameter.name]: numeric
+                                  ? e.target.value === ""
+                                    ? ""
+                                    : Number(e.target.value)
+                                  : e.target.value,
+                              }))
+                            }
+                            className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+
+                {!selectedWhiteboxSupport?.supported && (
+                  <div className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 p-2 text-[10px] text-amber-700 dark:text-amber-300">
+                    {selectedWhiteboxSupport?.reason ||
+                      "Esta ferramenta ainda não está ligada ao tipo de camada atual."}
+                  </div>
+                )}
+
+                <button
+                  onClick={() => void handleRunWhitebox()}
+                  disabled={
+                    isExecuting ||
+                    !activeLayer ||
+                    !selectedWhiteboxSupport?.supported ||
+                    ((selectedWhiteboxSupport?.vectorInputs.length ?? 0) > 1 && !secondaryLayer)
+                  }
+                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isExecuting ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      A executar Whitebox WASM…
+                    </>
+                  ) : (
+                    <>
+                      <Play size={14} />
+                      Executar no browser
+                    </>
+                  )}
                 </button>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
