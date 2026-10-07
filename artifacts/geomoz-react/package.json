@@ -107,6 +107,10 @@
     "@luma.gl/shadertools": "^9.4.0",
     "geotiff": "^3.0.5",
     "geotiff-geokeys-to-proj4": "^2026.8.16",
-    "whitebox-wasm": "^0.6.0"
+    "whitebox-wasm": "^0.6.0",
+    "proj4": "^2.22.0",
+    "lerc": "^4.2.0",
+    "pako": "^2.1.0",
+    "zstddec": "^0.2.0"
   }
 }
