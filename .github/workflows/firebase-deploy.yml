@@ -59,8 +59,18 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
 
-      - name: Deploy Firestore and Storage rules
-        run: npx --yes firebase-tools@14.22.0 deploy --only firestore:rules,storage --project geoprocessamento-426809
+      - name: Deploy Firestore rules
+        run: npx --yes firebase-tools@14.22.0 deploy --only firestore:rules --project geoprocessamento-426809
+
+      - name: Deploy Storage rules
+        id: storage_rules
+        continue-on-error: true
+        run: npx --yes firebase-tools@14.22.0 deploy --only storage --project geoprocessamento-426809
+
+      - name: Warn when Firebase Storage API is unavailable
+        if: steps.storage_rules.outcome == 'failure'
+        run: |
+          echo "::warning::Firebase Storage rules were not deployed. Enable firebasestorage.googleapis.com for project geoprocessamento-426809, then rerun this workflow."
 
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
