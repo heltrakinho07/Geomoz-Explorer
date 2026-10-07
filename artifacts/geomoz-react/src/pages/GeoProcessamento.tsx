@@ -28,6 +28,12 @@ import {
   type GISWorkspaceRasterMetadata,
 } from "@/lib/gis-raster";
 import {
+  computeGISRasterBreaks,
+  defaultGISRasterSymbology,
+  rasterClassColors,
+  type GISRasterSymbology,
+} from "@/lib/gis-raster-classification";
+import {
   Wrench,
   Boxes,
   Workflow,
@@ -356,6 +362,8 @@ export default function GeoProcessamento({
                 bounds: raster.bounds ?? null,
                 error: raster.error ?? null,
                 rasterState: raster.rasterState as GISWorkspaceRasterLayer["rasterState"],
+                rasterSymbology:
+                  raster.rasterSymbology as GISWorkspaceRasterLayer["rasterSymbology"],
               } satisfies GISWorkspaceRasterLayer,
             ];
           })
@@ -420,6 +428,9 @@ export default function GeoProcessamento({
         bounds: raster.bounds ?? null,
         error: raster.error ?? null,
         rasterState: raster.rasterState ? { ...raster.rasterState } : undefined,
+        rasterSymbology: raster.rasterSymbology
+          ? { ...raster.rasterSymbology }
+          : undefined,
         remoteUrl: raster.remoteUrl,
         sourceType: raster.sourceType,
       }));
@@ -1021,6 +1032,17 @@ export default function GeoProcessamento({
                 },
               }
             : layer
+        )
+      );
+    },
+    []
+  );
+
+  const updateRasterSymbology = useCallback(
+    (rasterId: string, symbology: GISRasterSymbology | undefined) => {
+      setRasterLayers((previous) =>
+        previous.map((layer) =>
+          layer.id === rasterId ? { ...layer, rasterSymbology: symbology } : layer
         )
       );
     },
@@ -2777,6 +2799,10 @@ export default function GeoProcessamento({
                           state.nodata === "off" || typeof state.nodata === "number"
                             ? state.nodata
                             : "auto";
+                        const symbology = raster.rasterSymbology;
+                        const classColors = symbology
+                          ? rasterClassColors(symbology)
+                          : [];
 
                         return (
                           <div
@@ -2843,6 +2869,246 @@ export default function GeoProcessamento({
                                 </label>
                               )}
                             </div>
+
+                            {mode === "single" && (
+                              <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50/60 p-2 dark:border-violet-900 dark:bg-violet-950/20">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div>
+                                    <span className="block text-[9px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">
+                                      Classificação Raster
+                                    </span>
+                                    <span className="text-[9px] text-slate-400">
+                                      Classes discretas e legenda persistente
+                                    </span>
+                                  </div>
+                                  <label className="flex items-center gap-1.5 text-[9px] font-semibold text-slate-600 dark:text-slate-300">
+                                    <input
+                                      type="checkbox"
+                                      checked={symbology?.classified === true}
+                                      disabled={!stats}
+                                      onChange={(event) => {
+                                        if (!stats) return;
+                                        if (!event.target.checked) {
+                                          updateRasterSymbology(
+                                            raster.id,
+                                            symbology
+                                              ? { ...symbology, classified: false }
+                                              : undefined
+                                          );
+                                          return;
+                                        }
+                                        const next = symbology
+                                          ? { ...symbology, classified: true }
+                                          : {
+                                              ...defaultGISRasterSymbology(
+                                                stats,
+                                                colormap
+                                              ),
+                                              classified: true,
+                                            };
+                                        updateRasterSymbology(raster.id, next);
+                                        updateRasterState(raster.id, {
+                                          mode: "single",
+                                          bands: [statsBand],
+                                          rescale: [[stats.min, stats.max]],
+                                        });
+                                      }}
+                                    />
+                                    Classificar
+                                  </label>
+                                </div>
+
+                                {!stats && (
+                                  <div className="text-[9px] text-slate-400">
+                                    As estatísticas da banda são necessárias antes de criar classes.
+                                  </div>
+                                )}
+
+                                {stats && symbology?.classified && (
+                                  <>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <label className="space-y-1">
+                                        <span className="text-[9px] font-semibold text-slate-500">
+                                          Método
+                                        </span>
+                                        <select
+                                          value={symbology.method}
+                                          onChange={(event) => {
+                                            const method = event.target.value as
+                                              | "equal-interval"
+                                              | "quantile"
+                                              | "manual";
+                                            updateRasterSymbology(raster.id, {
+                                              ...symbology,
+                                              method,
+                                              breaks: computeGISRasterBreaks(
+                                                method,
+                                                stats,
+                                                symbology.classCount,
+                                                symbology.breaks
+                                              ),
+                                            });
+                                          }}
+                                          className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-900"
+                                        >
+                                          <option value="equal-interval">
+                                            Intervalos iguais
+                                          </option>
+                                          <option value="quantile">Quantis</option>
+                                          <option value="manual">Manual</option>
+                                        </select>
+                                      </label>
+
+                                      <label className="space-y-1">
+                                        <span className="text-[9px] font-semibold text-slate-500">
+                                          Classes
+                                        </span>
+                                        <input
+                                          type="number"
+                                          min={2}
+                                          max={12}
+                                          value={symbology.classCount}
+                                          onChange={(event) => {
+                                            const classCount = Math.max(
+                                              2,
+                                              Math.min(
+                                                12,
+                                                Number(event.target.value) || 2
+                                              )
+                                            );
+                                            updateRasterSymbology(raster.id, {
+                                              ...symbology,
+                                              classCount,
+                                              customColors: undefined,
+                                              breaks: computeGISRasterBreaks(
+                                                symbology.method,
+                                                stats,
+                                                classCount,
+                                                symbology.breaks
+                                              ),
+                                            });
+                                          }}
+                                          className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-900"
+                                        />
+                                      </label>
+                                    </div>
+
+                                    {symbology.method === "manual" && (
+                                      <div className="space-y-1">
+                                        <span className="text-[9px] font-semibold text-slate-500">
+                                          Limites das classes
+                                        </span>
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                          {symbology.breaks.map((value, index) => (
+                                            <input
+                                              key={index}
+                                              type="number"
+                                              step="any"
+                                              value={value}
+                                              onChange={(event) => {
+                                                const nextValue = Number(
+                                                  event.target.value
+                                                );
+                                                if (!Number.isFinite(nextValue)) return;
+                                                const breaks = [...symbology.breaks];
+                                                breaks[index] = nextValue;
+                                                const sorted = [...breaks].sort(
+                                                  (a, b) => a - b
+                                                );
+                                                updateRasterSymbology(raster.id, {
+                                                  ...symbology,
+                                                  breaks: sorted,
+                                                });
+                                                updateRasterState(raster.id, {
+                                                  rescale: [
+                                                    [
+                                                      sorted[0],
+                                                      sorted[sorted.length - 1],
+                                                    ],
+                                                  ],
+                                                });
+                                              }}
+                                              className="w-full rounded-lg border border-slate-200 bg-white p-1.5 text-[9px] dark:border-slate-700 dark:bg-slate-900"
+                                              aria-label={`Limite ${index + 1}`}
+                                            />
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    <div className="space-y-1.5">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-[9px] font-semibold text-slate-500">
+                                          Legenda
+                                        </span>
+                                        {symbology.customColors && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              updateRasterSymbology(raster.id, {
+                                                ...symbology,
+                                                customColors: undefined,
+                                              })
+                                            }
+                                            className="text-[9px] font-semibold text-violet-600 hover:underline dark:text-violet-300"
+                                          >
+                                            Repor paleta
+                                          </button>
+                                        )}
+                                      </div>
+                                      <div className="max-h-44 space-y-1 overflow-auto pr-0.5">
+                                        {symbology.breaks
+                                          .slice(0, -1)
+                                          .map((lower, index) => {
+                                            const upper =
+                                              symbology.breaks[index + 1];
+                                            return (
+                                              <div
+                                                key={index}
+                                                className="flex items-center gap-2 rounded-md bg-white px-1.5 py-1 dark:bg-slate-900"
+                                              >
+                                                <input
+                                                  type="color"
+                                                  value={
+                                                    classColors[index] ??
+                                                    "#2563eb"
+                                                  }
+                                                  onChange={(event) => {
+                                                    const colors = [
+                                                      ...classColors,
+                                                    ];
+                                                    colors[index] =
+                                                      event.target.value;
+                                                    updateRasterSymbology(
+                                                      raster.id,
+                                                      {
+                                                        ...symbology,
+                                                        customColors: colors,
+                                                      }
+                                                    );
+                                                  }}
+                                                  className="h-5 w-6 cursor-pointer rounded border-0 bg-transparent p-0"
+                                                  aria-label={`Cor da classe ${index + 1}`}
+                                                />
+                                                <span className="min-w-0 flex-1 truncate text-[9px] text-slate-600 dark:text-slate-300">
+                                                  {formatRasterValue(lower)} –{" "}
+                                                  {formatRasterValue(upper)}
+                                                </span>
+                                              </div>
+                                            );
+                                          })}
+                                      </div>
+                                    </div>
+
+                                    <div className="rounded-md border border-violet-200/70 bg-white px-2 py-1.5 text-[9px] text-slate-500 dark:border-violet-900 dark:bg-slate-900 dark:text-slate-400">
+                                      A classificação usa o motor GPU Deck.gl apenas
+                                      quando está ativa; o restante raster continua no
+                                      renderer padrão do Workspace.
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            )}
 
                             {mode === "rgb" && (
                               <div className="grid grid-cols-3 gap-1.5">
