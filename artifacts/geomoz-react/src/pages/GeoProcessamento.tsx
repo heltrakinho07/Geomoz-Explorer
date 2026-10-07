@@ -1715,7 +1715,7 @@ export default function GeoProcessamento({
 
         {/* Top Processing Menu Tabs */}
         <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40">
-          <div className="grid grid-cols-3 gap-1 text-[10px] font-semibold">
+          <div className="grid grid-cols-4 gap-1 text-[10px] font-semibold">
             <button
               onClick={() => setActiveTab("vector_toolbox")}
               className={`p-1.5 rounded-lg flex items-center justify-center gap-1 transition-all ${
@@ -1762,7 +1762,7 @@ export default function GeoProcessamento({
             </button>
           </div>
 
-          <div className="grid grid-cols-4 gap-1 mt-1 text-[10px] font-semibold">
+          <div className="grid grid-cols-3 gap-1 mt-1 text-[10px] font-semibold">
             <button
               onClick={() => setActiveTab("layers")}
               className={`p-1.5 rounded-lg flex items-center justify-center gap-1 transition-all ${
@@ -1813,7 +1813,7 @@ export default function GeoProcessamento({
                     Carregue os Seus Dados Para Processar
                   </h4>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                    GeoJSON (.geojson), CSV com coordenadas ou KML (.kml).
+                    GeoJSON, CSV lat/lon, Shapefile, GeoPackage, GeoParquet, KML e outros formatos suportados pelo importador.
                   </p>
                 </div>
                 <button
