@@ -127,13 +127,17 @@ class GeoMozAgent:
         executed_runs = []
 
         for turn in range(5):
-            response = await client.chat.completions.create(
-                model=chosen_model,
-                messages=messages,
-                tools=openai_tools,
-                tool_choice="auto",
-                temperature=0.2,
-            )
+            call_kwargs: Dict[str, Any] = {
+                "model": chosen_model,
+                "messages": messages,
+                "tools": openai_tools,
+                "tool_choice": "auto",
+            }
+            # Reasoning models (o1, o3-mini) do not accept temperature
+            if not chosen_model.startswith("o"):
+                call_kwargs["temperature"] = 0.2
+
+            response = await client.chat.completions.create(**call_kwargs)
 
             choice = response.choices[0]
             msg = choice.message
