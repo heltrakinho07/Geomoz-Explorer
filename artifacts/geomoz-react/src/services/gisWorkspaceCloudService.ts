@@ -20,6 +20,7 @@ import type {
   PersistedModelNode,
   PersistedProcessingHistoryEntry,
 } from "@/lib/gis-workspace-persistence";
+import { loadGISWorkspaceRasterFiles } from "@/lib/gis-workspace-persistence";
 
 const WORKSPACE_STATE_DOC = "state";
 const CLOUD_HISTORY_LIMIT = 100;
@@ -185,7 +186,8 @@ async function uploadLayerIfChanged(
 async function uploadRasterIfChanged(
   uid: string,
   projectId: string,
-  layer: PersistedGISRasterLayer
+  layer: PersistedGISRasterLayer,
+  file?: File
 ): Promise<CloudGISRasterLayerManifest | null> {
   const manifestRef = layerManifestRef(uid, projectId, layer.id);
   const current = await getDoc(manifestRef);
@@ -195,20 +197,18 @@ async function uploadRasterIfChanged(
       : null;
   const now = new Date().toISOString();
 
-  if (!layer.blob && !existing) {
-    // Remote-only rasters without a project-owned object remain local references
-    // until they are explicitly imported into project storage.
+  if (!file && !existing) {
     return null;
   }
 
-  const contentHash = layer.blob
-    ? await sha256Blob(layer.blob)
+  const contentHash = file
+    ? await sha256Blob(file)
     : existing?.contentHash ?? "";
   const objectPath =
     existing?.objectPath ?? `${workspaceRoot(uid, projectId)}/rasters/${layer.id}.tif`;
 
-  if (layer.blob && (!existing || existing.contentHash !== contentHash)) {
-    await uploadBytes(storageRef(storage, objectPath), layer.blob, {
+  if (file && (!existing || existing.contentHash !== contentHash)) {
+    await uploadBytes(storageRef(storage, objectPath), file, {
       contentType: layer.mimeType || "image/tiff",
       customMetadata: {
         projectId,
@@ -229,7 +229,7 @@ async function uploadRasterIfChanged(
     contentHash,
     fileName: layer.fileName,
     mimeType: layer.mimeType || "image/tiff",
-    sizeBytes: layer.blob?.size ?? layer.sizeBytes ?? existing?.sizeBytes ?? 0,
+    sizeBytes: file?.size ?? layer.sizeBytes ?? existing?.sizeBytes ?? 0,
     visible: layer.visible,
     opacity: layer.opacity,
     bandCount: layer.bandCount ?? existing?.bandCount ?? null,
@@ -275,14 +275,18 @@ export async function syncGISWorkspaceToCloud(
   const projectId = snapshot.projectId;
   if (!projectId || projectId === "session-default") return;
 
+  const rasterFiles = await loadGISWorkspaceRasterFiles(projectId).catch(() => new Map<string, File>());
+
   await Promise.all([
     ...snapshot.layers.map((layer) => uploadLayerIfChanged(uid, projectId, layer)),
-    ...snapshot.rasterLayers.map((layer) => uploadRasterIfChanged(uid, projectId, layer)),
+    ...snapshot.rasters.map((layer) =>
+      uploadRasterIfChanged(uid, projectId, layer, rasterFiles.get(layer.id))
+    ),
   ]);
 
   const layerIds = new Set([
     ...snapshot.layers.map((layer) => layer.id),
-    ...snapshot.rasterLayers.map((layer) => layer.id),
+    ...snapshot.rasters.map((layer) => layer.id),
   ]);
   await removeStaleCloudLayers(uid, projectId, layerIds);
 
@@ -290,7 +294,7 @@ export async function syncGISWorkspaceToCloud(
     version: 1,
     projectId,
     layerOrder: snapshot.layers.map((layer) => layer.id),
-    rasterLayerOrder: snapshot.rasterLayers.map((layer) => layer.id),
+    rasterLayerOrder: snapshot.rasters.map((layer) => layer.id),
     selectedLayerId: snapshot.selectedLayerId,
     secondLayerId: snapshot.secondLayerId,
     tableLayerId: snapshot.tableLayerId,
@@ -402,7 +406,7 @@ export async function loadGISWorkspaceFromCloud(
     version: state?.version ?? 1,
     projectId,
     layers: ordered as PersistedGISLayer[],
-    rasterLayers: orderedRasters as PersistedGISRasterLayer[],
+    rasters: orderedRasters as PersistedGISRasterLayer[],
     selectedLayerId: state?.selectedLayerId ?? ordered[0]?.id ?? "",
     secondLayerId: state?.secondLayerId ?? "",
     tableLayerId: state?.tableLayerId ?? null,
