@@ -19,9 +19,11 @@ import type {
   PersistedGISRasterLayer,
   PersistedModelNode,
   PersistedProcessingHistoryEntry,
-  GIS_WORKSPACE_SCHEMA_VERSION,
 } from "@/lib/gis-workspace-persistence";
-import { loadGISWorkspaceRasterFiles } from "@/lib/gis-workspace-persistence";
+import {
+  GIS_WORKSPACE_SCHEMA_VERSION,
+  loadGISWorkspaceRasterFiles,
+} from "@/lib/gis-workspace-persistence";
 
 const WORKSPACE_STATE_DOC = "state";
 const CLOUD_HISTORY_LIMIT = 100;
