@@ -430,6 +430,97 @@ async function importOgrVector(
   }
 }
 
+export async function importShapefileBundleWithDuckDb(
+  files: File[]
+): Promise<ImportedDuckDbVector> {
+  const shpFile = files.find((file) => extensionOf(file.name) === "shp");
+  if (!shpFile) {
+    throw new Error("Selecione pelo menos o ficheiro .shp.");
+  }
+
+  const stem = baseName(shpFile.name).toLowerCase();
+  const bundle = files.filter(
+    (file) =>
+      baseName(file.name).toLowerCase() === stem &&
+      ["shp", "dbf", "shx", "prj", "cpg"].includes(extensionOf(file.name))
+  );
+  const requiredDbf = bundle.some((file) => extensionOf(file.name) === "dbf");
+  if (!requiredDbf) {
+    throw new Error(
+      "Shapefile incompleto: selecione também o ficheiro .dbf (ou carregue um ZIP com todos os componentes)."
+    );
+  }
+
+  const db = await getDuckDbSpatialDatabase();
+  const connection = await db.connect();
+  const prefix = `geomoz_shp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const registeredNames: string[] = [];
+
+  try {
+    await ensureSpatial(db, connection);
+
+    for (const file of bundle) {
+      const registeredName = `${prefix}_${stem}.${extensionOf(file.name)}`;
+      await db.registerFileBuffer(
+        registeredName,
+        new Uint8Array(await file.arrayBuffer())
+      );
+      registeredNames.push(registeredName);
+    }
+
+    const registeredShp = registeredNames.find((name) => name.endsWith(".shp"));
+    if (!registeredShp) throw new Error("Não foi possível preparar o ficheiro .shp.");
+
+    const sourceSql = `ST_Read(${quoteString(registeredShp)})`;
+    const described = rowsFromArrow(
+      await connection.query(`DESCRIBE SELECT * FROM ${sourceSql}`)
+    );
+    const geometryRow = described.find((row) =>
+      String(row.column_type ?? "").toUpperCase().includes("GEOMETRY")
+    );
+    const geometryColumn =
+      typeof geometryRow?.column_name === "string" ? geometryRow.column_name : null;
+    if (!geometryColumn) {
+      throw new Error("O Shapefile foi aberto, mas não foi encontrada geometria.");
+    }
+
+    const arrow = await connection.query(
+      `SELECT *, ST_AsGeoJSON(${quoteIdentifier(geometryColumn)}) AS ` +
+        `${quoteIdentifier(GEOMETRY_JSON_COLUMN)} FROM ${sourceSql}`
+    );
+    const rows = rowsFromArrow(arrow);
+    const geojson = featureCollectionFromRows(rows, geometryColumn);
+    if (!geojson.features.length) {
+      throw new Error("O Shapefile não contém feições vetoriais legíveis.");
+    }
+
+    const fields =
+      arrow?.schema?.fields
+        ?.map((field: { name: string }) => field.name)
+        .filter(
+          (name: string) =>
+            name !== GEOMETRY_JSON_COLUMN && name !== geometryColumn
+        ) ?? [];
+
+    return {
+      name: baseName(shpFile.name),
+      geojson,
+      featureCount: geojson.features.length,
+      geometryType: geojson.features[0]?.geometry?.type ?? "Geometry",
+      fields,
+    };
+  } finally {
+    await connection.close();
+    await Promise.all(
+      registeredNames.map(async (registeredName) => {
+        try {
+          await db.dropFile(registeredName);
+        } catch {}
+      })
+    );
+  }
+}
+
 async function importZippedShapefile(file: File): Promise<ImportedDuckDbVector> {
   const shpModule = await import("shpjs");
   const parseShp = (shpModule as any).default ?? shpModule;
