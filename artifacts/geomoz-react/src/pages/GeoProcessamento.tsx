@@ -2471,7 +2471,7 @@ export default function GeoProcessamento({
                                     <option value="turbo">Turbo</option>
                                     <option value="magma">Magma</option>
                                     <option value="plasma">Plasma</option>
-                                    <option value="grayscale">Grayscale</option>
+                                    <option value="gray">Grayscale</option>
                                   </select>
                                 </label>
                                 <label className="space-y-1">
