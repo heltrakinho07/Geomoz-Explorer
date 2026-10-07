@@ -90,6 +90,7 @@ import { exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-lo
 import {
   executeDuckDbSpatialQuery,
   importVectorFileWithDuckDb,
+  importShapefileBundleWithDuckDb,
   sanitizeDuckDbTableName,
 } from "@/lib/duckdb-spatial";
 import {
@@ -517,10 +518,15 @@ export default function GeoProcessamento({
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    const selectedFiles = Array.from(files);
+    const shapefileSidecars = new Set(["dbf", "shx", "prj", "cpg"]);
+
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
       try {
         const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+        if (shapefileSidecars.has(extension)) continue;
+
         const duckDbFormats = new Set([
           "gpkg",
           "geoparquet",
@@ -528,13 +534,16 @@ export default function GeoProcessamento({
           "pq",
           "fgb",
           "gml",
+          "kml",
           "dxf",
-          "shp",
           "zip",
         ]);
-        const parsed = duckDbFormats.has(extension)
-          ? await importVectorFileWithDuckDb(file)
-          : await parseUserUploadedFile(file);
+        const parsed =
+          extension === "shp"
+            ? await importShapefileBundleWithDuckDb(selectedFiles)
+            : duckDbFormats.has(extension)
+              ? await importVectorFileWithDuckDb(file)
+              : await parseUserUploadedFile(file);
         const newLayer: UserLayer = {
           id: `layer_${Date.now()}_${i}`,
           name: parsed.name,
@@ -552,7 +561,9 @@ export default function GeoProcessamento({
         toast({
           title: "Ficheiro Carregado",
           description: `${parsed.name} (${parsed.featureCount} elementos) · ${
-            duckDbFormats.has(extension) ? "DuckDB Spatial" : "parser local"
+            extension === "shp" || duckDbFormats.has(extension)
+              ? "DuckDB Spatial"
+              : "parser local"
           }.`,
         });
       } catch (err: any) {
@@ -991,7 +1002,7 @@ export default function GeoProcessamento({
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".geojson,.json,.csv,.kml,.gml,.gpkg,.parquet,.geoparquet,.pq,.fgb,.dxf,.shp,.zip"
+        accept=".geojson,.json,.csv,.kml,.gml,.gpkg,.parquet,.geoparquet,.pq,.fgb,.dxf,.shp,.dbf,.shx,.prj,.cpg,.zip"
         className="hidden"
         onChange={handleFileUpload}
       />
