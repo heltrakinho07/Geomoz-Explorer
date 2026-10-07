@@ -51,7 +51,9 @@ export interface CloudGISRasterLayerManifest {
   kind: "raster";
   id: string;
   name: string;
-  objectPath: string;
+  sourceType?: "storage" | "url";
+  objectPath?: string;
+  remoteUrl?: string;
   format: "GeoTIFF";
   contentHash: string;
   fileName: string;
@@ -200,17 +202,52 @@ async function uploadRasterIfChanged(
       : null;
   const now = new Date().toISOString();
 
-  if (!file && !existing) {
+  const isExternalUrl =
+    layer.sourceType === "url" &&
+    typeof layer.remoteUrl === "string" &&
+    /^https?:\/\//i.test(layer.remoteUrl);
+
+  if (isExternalUrl) {
+    const manifest: CloudGISRasterLayerManifest = {
+      kind: "raster",
+      sourceType: "url",
+      id: layer.id,
+      name: layer.name,
+      remoteUrl: layer.remoteUrl,
+      format: "GeoTIFF",
+      contentHash: await sha256Hex(layer.remoteUrl),
+      fileName: layer.fileName,
+      mimeType: layer.mimeType || "image/tiff",
+      sizeBytes: layer.sizeBytes ?? 0,
+      visible: layer.visible,
+      opacity: layer.opacity,
+      bandCount: layer.bandCount ?? existing?.bandCount ?? null,
+      bounds: layer.bounds ?? existing?.bounds ?? null,
+      rasterState: layer.rasterState ?? existing?.rasterState,
+      isResult: layer.isResult,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    await setDoc(manifestRef, manifest);
+    return manifest;
+  }
+
+  if (!file && !existing?.objectPath) {
     return null;
   }
 
-  const contentHash = file
-    ? await sha256Blob(file)
-    : existing?.contentHash ?? "";
+  const contentHash = file ? await sha256Blob(file) : existing?.contentHash ?? "";
   const objectPath =
-    existing?.objectPath ?? `${workspaceRoot(uid, projectId)}/rasters/${layer.id}.tif`;
+    existing?.sourceType !== "url" && existing?.objectPath
+      ? existing.objectPath
+      : `${workspaceRoot(uid, projectId)}/rasters/${layer.id}.tif`;
 
-  if (file && (!existing || existing.contentHash !== contentHash)) {
+  if (
+    file &&
+    (!existing ||
+      existing.sourceType === "url" ||
+      existing.contentHash !== contentHash)
+  ) {
     await uploadBytes(storageRef(storage, objectPath), file, {
       contentType: layer.mimeType || "image/tiff",
       customMetadata: {
@@ -225,6 +262,7 @@ async function uploadRasterIfChanged(
 
   const manifest: CloudGISRasterLayerManifest = {
     kind: "raster",
+    sourceType: "storage",
     id: layer.id,
     name: layer.name,
     objectPath,
@@ -243,7 +281,7 @@ async function uploadRasterIfChanged(
     updatedAt: now,
   };
 
-  await setDoc(manifestRef, manifest, { merge: true });
+  await setDoc(manifestRef, manifest);
   return manifest;
 }
 
@@ -342,7 +380,19 @@ async function downloadVectorLayer(
 async function restoreRasterLayer(
   manifest: CloudGISRasterLayerManifest
 ): Promise<PersistedGISRasterLayer> {
-  const remoteUrl = await getDownloadURL(storageRef(storage, manifest.objectPath));
+  const sourceType =
+    manifest.sourceType === "url" && manifest.remoteUrl ? "url" : "storage";
+  const remoteUrl =
+    sourceType === "url"
+      ? manifest.remoteUrl
+      : manifest.objectPath
+        ? await getDownloadURL(storageRef(storage, manifest.objectPath))
+        : undefined;
+
+  if (!remoteUrl) {
+    throw new Error(`A camada raster cloud ${manifest.name} não possui fonte válida.`);
+  }
+
   return {
     id: manifest.id,
     name: manifest.name,
@@ -352,6 +402,7 @@ async function restoreRasterLayer(
     visible: manifest.visible ?? true,
     opacity: manifest.opacity ?? 1,
     remoteUrl,
+    sourceType,
     bandCount: manifest.bandCount ?? null,
     bounds: manifest.bounds ?? null,
     rasterState: manifest.rasterState,
