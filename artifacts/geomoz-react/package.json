@@ -87,6 +87,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@duckdb/duckdb-wasm": "1.33.1-dev57.0",
     "@turf/turf": "^7.4.0",
     "firebase": "^11.0.0",
     "html2canvas": "^1.4.1",
