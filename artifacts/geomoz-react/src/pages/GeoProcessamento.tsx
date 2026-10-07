@@ -297,16 +297,20 @@ export default function GeoProcessamento({
 
       if (snapshot) {
         setLayers(snapshot.layers as UserLayer[]);
-        const rasterMetadata = (localSnapshot?.rasters ?? snapshot.rasters ?? []) as PersistedGISRasterLayer[];
+        const rasterMetadata = (snapshot.rasters ?? []) as PersistedGISRasterLayer[];
         setRasterLayers(
           rasterMetadata.flatMap((raster) => {
             const file = rasterFiles.get(raster.id);
-            if (!file) return [];
+            if (!file && !raster.remoteUrl) return [];
             return [
               {
                 id: raster.id,
                 name: raster.name,
                 file,
+                remoteUrl: raster.remoteUrl,
+                fileName: raster.fileName,
+                mimeType: raster.mimeType || "image/tiff",
+                sizeBytes: file?.size ?? raster.sizeBytes ?? 0,
                 visible: raster.visible,
                 opacity: raster.opacity,
                 isResult: raster.isResult,
@@ -330,7 +334,7 @@ export default function GeoProcessamento({
           void saveGISWorkspaceSnapshot({
             projectId: workspaceProjectId,
             layers: snapshot.layers,
-            rasters: localSnapshot?.rasters ?? snapshot.rasters ?? [],
+            rasters: snapshot.rasters ?? [],
             selectedLayerId: snapshot.selectedLayerId,
             secondLayerId: snapshot.secondLayerId,
             tableLayerId: snapshot.tableLayerId,
@@ -367,15 +371,16 @@ export default function GeoProcessamento({
       const rasterSnapshot: PersistedGISRasterLayer[] = rasterLayers.map((raster) => ({
         id: raster.id,
         name: raster.name,
-        fileName: raster.file.name,
-        mimeType: raster.file.type || "image/tiff",
-        sizeBytes: raster.file.size,
+        fileName: raster.file?.name ?? raster.fileName,
+        mimeType: raster.file?.type || raster.mimeType || "image/tiff",
+        sizeBytes: raster.file?.size ?? raster.sizeBytes ?? 0,
         visible: raster.visible,
         opacity: raster.opacity,
         isResult: raster.isResult,
         bandCount: raster.bandCount ?? null,
         bounds: raster.bounds ?? null,
         error: raster.error ?? null,
+        remoteUrl: raster.remoteUrl,
       }));
 
       const snapshot = {
@@ -391,16 +396,18 @@ export default function GeoProcessamento({
         basemap,
       };
 
-      void saveGISWorkspaceSnapshot(snapshot);
-      void syncGISWorkspaceRasterFiles(workspaceProjectId, rasterLayers).catch((error) => {
-        console.warn("GIS Workspace: falha ao persistir rasters localmente:", error);
-      });
-
-      if (cloudUid && activeProject?.id) {
-        void syncGISWorkspaceToCloud(cloudUid, snapshot).catch((error) => {
-          console.warn("GIS Workspace: cloud sync deferred; local copy is safe:", error);
+      void (async () => {
+        await saveGISWorkspaceSnapshot(snapshot);
+        await syncGISWorkspaceRasterFiles(workspaceProjectId, rasterLayers).catch((error) => {
+          console.warn("GIS Workspace: falha ao persistir rasters localmente:", error);
         });
-      }
+
+        if (cloudUid && activeProject?.id) {
+          await syncGISWorkspaceToCloud(cloudUid, snapshot).catch((error) => {
+            console.warn("GIS Workspace: cloud sync deferred; local copy is safe:", error);
+          });
+        }
+      })();
     }, 900);
 
     return () => window.clearTimeout(timer);
@@ -587,6 +594,9 @@ export default function GeoProcessamento({
             id: `raster_${crypto.randomUUID().slice(0, 12)}`,
             name: file.name.replace(/\.[^/.]+$/, ""),
             file,
+            fileName: file.name,
+            mimeType: file.type || "image/tiff",
+            sizeBytes: file.size,
             visible: true,
             opacity: 1,
             bandCount: null,
@@ -2009,7 +2019,7 @@ export default function GeoProcessamento({
                           {raster.bandCount
                             ? `${raster.bandCount} banda(s)`
                             : "a ler metadados…"}{" "}
-                          · {(raster.file.size / (1024 * 1024)).toFixed(1)} MB
+                          · {(raster.sizeBytes / (1024 * 1024)).toFixed(1)} MB
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
