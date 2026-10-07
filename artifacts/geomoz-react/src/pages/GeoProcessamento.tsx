@@ -540,7 +540,13 @@ export default function GeoProcessamento({
         ]);
         const parsed =
           extension === "shp"
-            ? await importShapefileBundleWithDuckDb(selectedFiles)
+            ? await importShapefileBundleWithDuckDb(
+                selectedFiles.filter(
+                  (candidate) =>
+                    candidate.name.replace(/\.[^/.]+$/, "").toLowerCase() ===
+                    file.name.replace(/\.[^/.]+$/, "").toLowerCase()
+                )
+              )
             : duckDbFormats.has(extension)
               ? await importVectorFileWithDuckDb(file)
               : await parseUserUploadedFile(file);
