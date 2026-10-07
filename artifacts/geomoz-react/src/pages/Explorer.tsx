@@ -48,6 +48,11 @@ import { useProject } from "@/context/ProjectContext";
 import ProjectWorkspaceModal from "@/components/ProjectWorkspaceModal";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { mozambiqueAOI, GLOBAL_AOI, customAOI } from "@/lib/aoi";
+import type {
+  WorkspaceFocusRequest,
+  WorkspaceLayer,
+  WorkspaceSelection,
+} from "@/lib/gis-workspace";
 
 interface NominatimResult {
   place_id: number;
@@ -84,6 +89,10 @@ export default function Explorer() {
     districts: false,
     geology: false, // Security constraint: default false
   });
+  const [workspaceLayers, setWorkspaceLayers] = useState<WorkspaceLayer[]>([]);
+  const [workspaceSelection, setWorkspaceSelection] = useState<WorkspaceSelection | null>(null);
+  const [workspaceFocusRequest, setWorkspaceFocusRequest] =
+    useState<WorkspaceFocusRequest | null>(null);
 
   const getInitialTab = (): Tab => {
     if (typeof window === "undefined") return "Dashboard";
@@ -212,6 +221,19 @@ export default function Explorer() {
       localStorage.setItem("geomoz_view_mode", mode);
       window.dispatchEvent(new CustomEvent("geomoz_view_mode_changed", { detail: mode }));
     } catch {}
+  };
+
+  const handleOpenWorkspaceMap = (layerId: string, featureIndex?: number) => {
+    if (typeof featureIndex === "number") {
+      setWorkspaceSelection({ layerId, featureIndex });
+    }
+    setWorkspaceFocusRequest((previous) => ({
+      layerId,
+      featureIndex,
+      requestId: (previous?.requestId ?? 0) + 1,
+    }));
+    handleGlobalViewModeChange("2d");
+    setActiveTab("Mapa");
   };
 
   useEffect(() => {
@@ -720,10 +742,22 @@ export default function Explorer() {
               }}
               viewMode={globalViewMode}
               onViewModeChange={handleGlobalViewModeChange}
+              workspaceLayers={workspaceLayers}
+              workspaceSelection={workspaceSelection}
+              workspaceFocusRequest={workspaceFocusRequest}
+              onWorkspaceSelect={setWorkspaceSelection}
             />
           )}
 
-          {activeTab === "GIS Workspace" && <GISWorkspacePanel />}
+          {activeTab === "GIS Workspace" && (
+            <GISWorkspacePanel
+              layers={workspaceLayers}
+              onLayersChange={setWorkspaceLayers}
+              selection={workspaceSelection}
+              onSelectionChange={setWorkspaceSelection}
+              onOpenMap={handleOpenWorkspaceMap}
+            />
+          )}
 
           {activeTab === "GeoAnálises" && (
             <Suspense fallback={<LoadingSkeleton label="GeoAnálises" />}>
