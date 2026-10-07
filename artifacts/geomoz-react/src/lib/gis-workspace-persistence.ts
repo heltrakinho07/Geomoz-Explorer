@@ -33,6 +33,7 @@ export interface PersistedGISRasterLayer {
   rasterState?: Record<string, unknown>;
   error?: string | null;
   remoteUrl?: string;
+  sourceType?: "storage" | "url";
 }
 
 export interface PersistedProcessingHistoryEntry {
