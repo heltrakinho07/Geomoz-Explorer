@@ -5,7 +5,7 @@ const DB_VERSION = 2;
 const SNAPSHOT_STORE = "project-snapshots";
 const RASTER_FILE_STORE = "raster-files";
 
-export const GIS_WORKSPACE_SCHEMA_VERSION = 1;
+export const GIS_WORKSPACE_SCHEMA_VERSION = 2;
 
 export interface PersistedGISLayer {
   id: string;
@@ -16,6 +16,22 @@ export interface PersistedGISLayer {
   fields: string[];
   color: string;
   visible: boolean;
+  isResult?: boolean;
+}
+
+export interface PersistedGISRasterLayer {
+  id: string;
+  name: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  visible: boolean;
+  opacity: number;
+  blob?: Blob;
+  remoteUrl?: string;
+  bandCount?: number | null;
+  bounds?: [number, number, number, number] | null;
+  rasterState?: Record<string, unknown>;
   isResult?: boolean;
 }
 
@@ -119,8 +135,19 @@ export async function loadGISWorkspaceSnapshot(
       "readonly",
       (store) => store.get(projectId)
     );
-    if (!result || result.version !== GIS_WORKSPACE_SCHEMA_VERSION) return null;
-    return result;
+    if (!result) return null;
+    if (result.version === 1) {
+      return {
+        ...result,
+        version: GIS_WORKSPACE_SCHEMA_VERSION,
+        rasterLayers: [],
+      };
+    }
+    if (result.version !== GIS_WORKSPACE_SCHEMA_VERSION) return null;
+    return {
+      ...result,
+      rasterLayers: result.rasterLayers ?? [],
+    };
   } catch (error) {
     console.warn("GIS Workspace: falha ao restaurar snapshot local:", error);
     return null;
@@ -250,7 +277,15 @@ export function estimateGISWorkspaceSnapshotBytes(
   snapshot: Pick<GISWorkspaceSnapshot, "layers" | "history" | "modelNodes" | "rasters">
 ): number {
   try {
-    return new Blob([JSON.stringify(snapshot)]).size;
+    const rasterBytes = snapshot.rasterLayers.reduce(
+      (total, layer) => total + (layer.blob?.size ?? layer.sizeBytes ?? 0),
+      0
+    );
+    const metadataOnly = {
+      ...snapshot,
+      rasterLayers: snapshot.rasterLayers.map(({ blob: _blob, ...layer }) => layer),
+    };
+    return new Blob([JSON.stringify(metadataOnly)]).size + rasterBytes;
   } catch {
     return 0;
   }
