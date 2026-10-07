@@ -78,7 +78,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Run GIS processing smoke tests
-        run: pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/gis-workspace-processing.test.ts
+        run: pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/gis-workspace-processing.test.ts src/lib/__tests__/whitebox-runtime.test.ts
         env:
           CI: "true"
 
