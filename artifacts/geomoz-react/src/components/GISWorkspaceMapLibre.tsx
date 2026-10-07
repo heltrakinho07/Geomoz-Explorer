@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import maplibregl, { type Map as MapLibreMap, type StyleSpecification } from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
+import type { Map as MapLibreMap, MapMouseEvent, StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { bbox } from "@turf/turf";
-import type { Feature, FeatureCollection, GeoJsonProperties, Polygon } from "geojson";
+import type { Feature, FeatureCollection, Polygon } from "geojson";
 import { GOOGLE_BASEMAPS, type BasemapType } from "@/lib/basemaps";
 
 export interface GISWorkspaceMapLayer {
@@ -297,12 +298,12 @@ export default function GISWorkspaceMapLibre({
     map.on("load", () => {
       syncLayers(map);
     });
-    map.on("mousemove", (event) => {
+    map.on("mousemove", (event: MapMouseEvent) => {
       setCoords({ lng: event.lngLat.lng, lat: event.lngLat.lat });
     });
     map.on("mouseout", () => setCoords(null));
 
-    map.on("click", (event) => {
+    map.on("click", (event: MapMouseEvent) => {
       if (drawingRef.current) {
         drawCoordsRef.current = [
           ...drawCoordsRef.current,
@@ -329,7 +330,7 @@ export default function GISWorkspaceMapLibre({
       const title = document.createElement("strong");
       title.textContent = owner?.name ?? "Camada";
       popup.appendChild(title);
-      Object.entries((hit.properties ?? {}) as GeoJsonProperties)
+      Object.entries((hit.properties ?? {}) as Record<string, unknown>)
         .slice(0, 8)
         .forEach(([key, value]) => appendTextRow(popup, key, value));
 
@@ -339,7 +340,7 @@ export default function GISWorkspaceMapLibre({
         .addTo(map);
     });
 
-    map.on("dblclick", (event) => {
+    map.on("dblclick", (event: MapMouseEvent) => {
       if (!drawingRef.current) return;
       event.preventDefault();
       const feature = polygonFeature(drawCoordsRef.current);
