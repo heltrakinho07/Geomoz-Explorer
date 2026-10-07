@@ -10,6 +10,7 @@
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type {
   RasterControl,
+  AutoStats,
   RasterLayerInfo,
   RasterLayerState,
 } from "maplibre-gl-raster";
@@ -32,6 +33,12 @@ export interface GISWorkspaceRasterLayer {
   rasterState?: Partial<RasterLayerState>;
 }
 
+export interface GISRasterBandStats {
+  min: number;
+  max: number;
+  histogram: number[];
+}
+
 export interface GISWorkspaceRasterMetadata {
   id: string;
   bandCount: number | null;
@@ -43,6 +50,7 @@ export interface GISWorkspaceRasterMetadata {
 type RasterControlConstructor = new (options?: Record<string, unknown>) => RasterControl;
 
 const controls = new WeakMap<MapLibreMap, Promise<RasterControl>>();
+const statsCache = new Map<string, AutoStats>();
 
 function rasterBounds(info: RasterLayerInfo): [number, number, number, number] | null {
   if (!info.bounds) return null;
@@ -186,5 +194,95 @@ export async function refreshGISWorkspaceRasters(
       ...layer.rasterState,
       opacity: layer.opacity,
     });
+  }
+}
+
+
+function rasterStatsCacheKey(layer: GISWorkspaceRasterLayer): string {
+  if (layer.file) {
+    return `${layer.id}:file:${layer.file.size}:${layer.file.lastModified}`;
+  }
+  return `${layer.id}:url:${layer.remoteUrl ?? ""}`;
+}
+
+function bandStatsFromAutoStats(
+  stats: AutoStats,
+  band: number
+): GISRasterBandStats | null {
+  const candidate = stats.perBand ? stats.perBand.get(band) ?? null : stats.global;
+  if (!candidate) return null;
+  return {
+    min: candidate.min,
+    max: candidate.max,
+    histogram: [...candidate.histogram],
+  };
+}
+
+export async function getGISRasterBandStats(
+  layer: GISWorkspaceRasterLayer,
+  band: number,
+  signal?: AbortSignal
+): Promise<GISRasterBandStats | null> {
+  const key = rasterStatsCacheKey(layer);
+  const cached = statsCache.get(key);
+  if (cached) return bandStatsFromAutoStats(cached, band);
+
+  let objectUrl: string | null = null;
+  const source = layer.file
+    ? (objectUrl = URL.createObjectURL(layer.file))
+    : layer.remoteUrl;
+  if (!source) return null;
+
+  try {
+    const { computeAutoStats, loadGeoTIFF } = await import("maplibre-gl-raster");
+    const tiff = await loadGeoTIFF(source);
+    const controller = new AbortController();
+    if (signal) {
+      if (signal.aborted) controller.abort();
+      else signal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+    const stats = await computeAutoStats(tiff, controller.signal);
+    statsCache.set(key, stats);
+    return bandStatsFromAutoStats(stats, band);
+  } finally {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
+}
+
+export function rasterHistogramPercentile(
+  stats: GISRasterBandStats,
+  fraction: number
+): number {
+  const total = stats.histogram.reduce((sum, count) => sum + count, 0);
+  if (total === 0 || stats.max <= stats.min || stats.histogram.length === 0) {
+    return stats.min + (stats.max - stats.min) * fraction;
+  }
+
+  const target = total * Math.min(1, Math.max(0, fraction));
+  const width = (stats.max - stats.min) / stats.histogram.length;
+  let accumulated = 0;
+  for (let index = 0; index < stats.histogram.length; index += 1) {
+    const count = stats.histogram[index];
+    if (accumulated + count >= target) {
+      const within = count > 0 ? (target - accumulated) / count : 0;
+      return stats.min + (index + within) * width;
+    }
+    accumulated += count;
+  }
+  return stats.max;
+}
+
+export function autoGISRasterStretch(
+  stats: GISRasterBandStats
+): [number, number] {
+  return [
+    rasterHistogramPercentile(stats, 0.02),
+    rasterHistogramPercentile(stats, 0.98),
+  ];
+}
+
+export function clearGISRasterStats(layerId: string): void {
+  for (const key of statsCache.keys()) {
+    if (key.startsWith(`${layerId}:`)) statsCache.delete(key);
   }
 }
