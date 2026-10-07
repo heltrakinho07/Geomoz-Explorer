@@ -31,6 +31,7 @@ export interface PersistedGISRasterLayer {
   bandCount?: number | null;
   bounds?: [number, number, number, number] | null;
   rasterState?: Record<string, unknown>;
+  rasterSymbology?: Record<string, unknown>;
   error?: string | null;
   remoteUrl?: string;
   sourceType?: "storage" | "url";
