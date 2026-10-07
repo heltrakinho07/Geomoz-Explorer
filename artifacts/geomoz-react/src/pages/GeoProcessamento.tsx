@@ -15,6 +15,10 @@
 
 import React, { useState, useRef, useMemo, useCallback } from "react";
 import GISWorkspaceMapLibre from "@/components/GISWorkspaceMapLibre";
+import type {
+  GISWorkspaceRasterLayer,
+  GISWorkspaceRasterMetadata,
+} from "@/lib/gis-raster";
 import {
   Wrench,
   Boxes,
@@ -113,6 +117,9 @@ import {
 import {
   loadGISWorkspaceSnapshot,
   saveGISWorkspaceSnapshot,
+  loadGISWorkspaceRasterFiles,
+  syncGISWorkspaceRasterFiles,
+  type PersistedGISRasterLayer,
 } from "@/lib/gis-workspace-persistence";
 import {
   listWhiteboxWasmManifests,
@@ -218,6 +225,7 @@ export default function GeoProcessamento({
 
   // User Layers
   const [layers, setLayers] = useState<UserLayer[]>([]);
+  const [rasterLayers, setRasterLayers] = useState<GISWorkspaceRasterLayer[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState<string>("");
   const [secondLayerId, setSecondLayerId] = useState<string>("");
   const [tableLayerId, setTableLayerId] = useState<string | null>(null);
@@ -262,6 +270,10 @@ export default function GeoProcessamento({
 
     const load = async () => {
       const localPromise = loadGISWorkspaceSnapshot(workspaceProjectId);
+      const rasterFilesPromise = loadGISWorkspaceRasterFiles(workspaceProjectId).catch((error) => {
+        console.warn("GIS Workspace: raster cache indisponível:", error);
+        return new Map<string, File>();
+      });
       const cloudPromise =
         cloudUid && activeProject?.id
           ? loadGISWorkspaceFromCloud(cloudUid, workspaceProjectId).catch((error) => {
@@ -270,8 +282,9 @@ export default function GeoProcessamento({
             })
           : Promise.resolve(null);
 
-      const [localSnapshot, cloudSnapshot] = await Promise.all([
+      const [localSnapshot, rasterFiles, cloudSnapshot] = await Promise.all([
         localPromise,
+        rasterFilesPromise,
         cloudPromise,
       ]);
       if (cancelled) return;
@@ -283,6 +296,26 @@ export default function GeoProcessamento({
 
       if (snapshot) {
         setLayers(snapshot.layers as UserLayer[]);
+        const rasterMetadata = (localSnapshot?.rasters ?? snapshot.rasters ?? []) as PersistedGISRasterLayer[];
+        setRasterLayers(
+          rasterMetadata.flatMap((raster) => {
+            const file = rasterFiles.get(raster.id);
+            if (!file) return [];
+            return [
+              {
+                id: raster.id,
+                name: raster.name,
+                file,
+                visible: raster.visible,
+                opacity: raster.opacity,
+                isResult: raster.isResult,
+                bandCount: raster.bandCount ?? null,
+                bounds: raster.bounds ?? null,
+                error: raster.error ?? null,
+              } satisfies GISWorkspaceRasterLayer,
+            ];
+          })
+        );
         setSelectedLayerId(snapshot.selectedLayerId || snapshot.layers[0]?.id || "");
         setSecondLayerId(snapshot.secondLayerId || "");
         setTableLayerId(snapshot.tableLayerId || null);
@@ -296,6 +329,7 @@ export default function GeoProcessamento({
           void saveGISWorkspaceSnapshot({
             projectId: workspaceProjectId,
             layers: snapshot.layers,
+            rasters: localSnapshot?.rasters ?? snapshot.rasters ?? [],
             selectedLayerId: snapshot.selectedLayerId,
             secondLayerId: snapshot.secondLayerId,
             tableLayerId: snapshot.tableLayerId,
@@ -307,6 +341,7 @@ export default function GeoProcessamento({
         }
       } else {
         setLayers([]);
+        setRasterLayers([]);
         setSelectedLayerId("");
         setSecondLayerId("");
         setTableLayerId(null);
@@ -328,9 +363,24 @@ export default function GeoProcessamento({
     if (!workspaceHydrated || hydratedProjectRef.current !== workspaceProjectId) return;
 
     const timer = window.setTimeout(() => {
+      const rasterSnapshot: PersistedGISRasterLayer[] = rasterLayers.map((raster) => ({
+        id: raster.id,
+        name: raster.name,
+        fileName: raster.file.name,
+        mimeType: raster.file.type || "image/tiff",
+        sizeBytes: raster.file.size,
+        visible: raster.visible,
+        opacity: raster.opacity,
+        isResult: raster.isResult,
+        bandCount: raster.bandCount ?? null,
+        bounds: raster.bounds ?? null,
+        error: raster.error ?? null,
+      }));
+
       const snapshot = {
         projectId: workspaceProjectId,
         layers,
+        rasters: rasterSnapshot,
         selectedLayerId,
         secondLayerId,
         tableLayerId,
@@ -341,6 +391,9 @@ export default function GeoProcessamento({
       };
 
       void saveGISWorkspaceSnapshot(snapshot);
+      void syncGISWorkspaceRasterFiles(workspaceProjectId, rasterLayers).catch((error) => {
+        console.warn("GIS Workspace: falha ao persistir rasters localmente:", error);
+      });
 
       if (cloudUid && activeProject?.id) {
         void syncGISWorkspaceToCloud(cloudUid, snapshot).catch((error) => {
@@ -356,6 +409,7 @@ export default function GeoProcessamento({
     cloudUid,
     activeProject?.id,
     layers,
+    rasterLayers,
     selectedLayerId,
     secondLayerId,
     tableLayerId,
