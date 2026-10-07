@@ -1,6 +1,13 @@
 import type { Feature, FeatureCollection, GeoJsonProperties, Geometry } from "geojson";
 
 export type WorkspaceLayerKind = "vector" | "raster" | "service";
+export type WorkspaceStyleMode = "single" | "categorized" | "graduated";
+
+export interface WorkspaceStyle {
+  mode: WorkspaceStyleMode;
+  field?: string;
+  color: string;
+}
 
 export interface WorkspaceLayer {
   id: string;
@@ -12,7 +19,19 @@ export interface WorkspaceLayer {
   format: string;
   featureCount?: number;
   geojson?: FeatureCollection;
+  style: WorkspaceStyle;
   createdAt: string;
+}
+
+export interface WorkspaceSelection {
+  layerId: string;
+  featureIndex: number;
+}
+
+export interface WorkspaceFocusRequest {
+  layerId: string;
+  featureIndex?: number;
+  requestId: number;
 }
 
 export interface ParsedWorkspaceFile {
@@ -20,6 +39,30 @@ export interface ParsedWorkspaceFile {
   format: string;
   geojson: FeatureCollection;
 }
+
+export const DEFAULT_WORKSPACE_STYLE: WorkspaceStyle = {
+  mode: "single",
+  color: "#0ea5e9",
+};
+
+export const WORKSPACE_CATEGORY_PALETTE = [
+  "#0ea5e9",
+  "#8b5cf6",
+  "#14b8a6",
+  "#f59e0b",
+  "#ef4444",
+  "#22c55e",
+  "#ec4899",
+  "#6366f1",
+];
+
+export const WORKSPACE_GRADUATED_PALETTE = [
+  "#e0f2fe",
+  "#7dd3fc",
+  "#38bdf8",
+  "#0284c7",
+  "#075985",
+];
 
 function asFeatureCollection(value: unknown): FeatureCollection {
   if (!value || typeof value !== "object") {
@@ -78,13 +121,23 @@ export async function parseWorkspaceFile(file: File): Promise<ParsedWorkspaceFil
   const text = await file.text();
 
   if (extension === "geojson" || extension === "json") {
-    return { name: file.name.replace(/\.[^.]+$/, ""), format: "GeoJSON", geojson: asFeatureCollection(JSON.parse(text)) };
+    return {
+      name: file.name.replace(/\.[^.]+$/, ""),
+      format: "GeoJSON",
+      geojson: asFeatureCollection(JSON.parse(text)),
+    };
   }
   if (extension === "csv") {
-    return { name: file.name.replace(/\.[^.]+$/, ""), format: "CSV", geojson: parseCsv(text) };
+    return {
+      name: file.name.replace(/\.[^.]+$/, ""),
+      format: "CSV",
+      geojson: parseCsv(text),
+    };
   }
 
-  throw new Error("Nesta primeira fase use GeoJSON/JSON ou CSV. Shapefile, GeoPackage, KML e rasters entram no próximo adaptador.");
+  throw new Error(
+    "Nesta primeira fase use GeoJSON/JSON ou CSV. Shapefile, GeoPackage, KML e rasters entram no próximo adaptador."
+  );
 }
 
 export function workspaceColumns(layer: WorkspaceLayer): string[] {
@@ -94,4 +147,59 @@ export function workspaceColumns(layer: WorkspaceLayer): string[] {
     Object.keys(feature.properties ?? {}).forEach((key) => keys.add(key));
   });
   return Array.from(keys);
+}
+
+export function workspaceNumericColumns(layer: WorkspaceLayer): string[] {
+  if (!layer.geojson) return [];
+  return workspaceColumns(layer).filter((key) =>
+    layer.geojson!.features.some((feature) => {
+      const value = Number(feature.properties?.[key]);
+      return Number.isFinite(value);
+    })
+  );
+}
+
+export function workspaceNumericRange(
+  layer: WorkspaceLayer,
+  field?: string
+): [number, number] | null {
+  if (!layer.geojson || !field) return null;
+  const values = layer.geojson.features
+    .map((feature) => Number(feature.properties?.[field]))
+    .filter((value) => Number.isFinite(value));
+  if (!values.length) return null;
+  return [Math.min(...values), Math.max(...values)];
+}
+
+function hashString(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+export function workspaceFeatureColor(
+  layer: WorkspaceLayer,
+  feature: Feature,
+  numericRange?: [number, number] | null
+): string {
+  if (layer.style.mode === "single" || !layer.style.field) {
+    return layer.style.color;
+  }
+
+  const raw = feature.properties?.[layer.style.field];
+  if (layer.style.mode === "categorized") {
+    const index = hashString(String(raw ?? "Sem valor")) % WORKSPACE_CATEGORY_PALETTE.length;
+    return WORKSPACE_CATEGORY_PALETTE[index];
+  }
+
+  const numeric = Number(raw);
+  const range = numericRange ?? workspaceNumericRange(layer, layer.style.field);
+  if (!Number.isFinite(numeric) || !range) return "#94a3b8";
+  const [min, max] = range;
+  if (max <= min) return WORKSPACE_GRADUATED_PALETTE[2];
+  const normalized = Math.max(0, Math.min(0.999, (numeric - min) / (max - min)));
+  const index = Math.floor(normalized * WORKSPACE_GRADUATED_PALETTE.length);
+  return WORKSPACE_GRADUATED_PALETTE[index];
 }
