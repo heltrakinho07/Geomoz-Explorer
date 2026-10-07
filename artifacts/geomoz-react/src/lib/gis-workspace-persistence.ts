@@ -1,8 +1,9 @@
 import type { FeatureCollection } from "geojson";
 
 const DB_NAME = "geomoz-gis-workspace";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const SNAPSHOT_STORE = "project-snapshots";
+const RASTER_FILE_STORE = "raster-files";
 
 export const GIS_WORKSPACE_SCHEMA_VERSION = 1;
 
@@ -16,6 +17,20 @@ export interface PersistedGISLayer {
   color: string;
   visible: boolean;
   isResult?: boolean;
+}
+
+export interface PersistedGISRasterLayer {
+  id: string;
+  name: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  visible: boolean;
+  opacity: number;
+  isResult?: boolean;
+  bandCount?: number | null;
+  bounds?: [number, number, number, number] | null;
+  error?: string | null;
 }
 
 export interface PersistedProcessingHistoryEntry {
@@ -42,6 +57,7 @@ export interface GISWorkspaceSnapshot {
   version: number;
   projectId: string;
   layers: PersistedGISLayer[];
+  rasters?: PersistedGISRasterLayer[];
   selectedLayerId: string;
   secondLayerId: string;
   tableLayerId: string | null;
@@ -65,6 +81,9 @@ function openWorkspaceDb(): Promise<IDBDatabase> {
       const db = request.result;
       if (!db.objectStoreNames.contains(SNAPSHOT_STORE)) {
         db.createObjectStore(SNAPSHOT_STORE, { keyPath: "projectId" });
+      }
+      if (!db.objectStoreNames.contains(RASTER_FILE_STORE)) {
+        db.createObjectStore(RASTER_FILE_STORE, { keyPath: "key" });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -133,8 +152,102 @@ export async function deleteGISWorkspaceSnapshot(projectId: string): Promise<voi
   }
 }
 
+
+interface RasterFileRecord {
+  key: string;
+  projectId: string;
+  rasterId: string;
+  fileName: string;
+  mimeType: string;
+  blob: Blob;
+}
+
+function rasterFileKey(projectId: string, rasterId: string): string {
+  return `${projectId}:${rasterId}`;
+}
+
+async function withRasterStore<T>(
+  mode: IDBTransactionMode,
+  operation: (store: IDBObjectStore) => IDBRequest<T>
+): Promise<T> {
+  const db = await openWorkspaceDb();
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      const transaction = db.transaction(RASTER_FILE_STORE, mode);
+      const store = transaction.objectStore(RASTER_FILE_STORE);
+      const request = operation(store);
+      request.onerror = () => reject(request.error ?? new Error("Operação raster IndexedDB falhou."));
+      request.onsuccess = () => resolve(request.result);
+      transaction.onerror = () =>
+        reject(transaction.error ?? new Error("Transação raster IndexedDB falhou."));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function saveGISWorkspaceRasterFile(
+  projectId: string,
+  rasterId: string,
+  file: File
+): Promise<void> {
+  if (!projectId || !rasterId) return;
+  const record: RasterFileRecord = {
+    key: rasterFileKey(projectId, rasterId),
+    projectId,
+    rasterId,
+    fileName: file.name,
+    mimeType: file.type || "image/tiff",
+    blob: file,
+  };
+  await withRasterStore<IDBValidKey>("readwrite", (store) => store.put(record));
+}
+
+export async function loadGISWorkspaceRasterFiles(
+  projectId: string
+): Promise<Map<string, File>> {
+  const records = await withRasterStore<RasterFileRecord[]>("readonly", (store) =>
+    store.getAll()
+  );
+  const result = new Map<string, File>();
+  for (const record of records) {
+    if (record.projectId !== projectId) continue;
+    result.set(
+      record.rasterId,
+      new File([record.blob], record.fileName, {
+        type: record.mimeType || record.blob.type || "image/tiff",
+      })
+    );
+  }
+  return result;
+}
+
+export async function syncGISWorkspaceRasterFiles(
+  projectId: string,
+  rasters: Array<{ id: string; file: File }>
+): Promise<void> {
+  if (!projectId) return;
+  const desired = new Set(rasters.map((raster) => raster.id));
+  await Promise.all(
+    rasters.map((raster) =>
+      saveGISWorkspaceRasterFile(projectId, raster.id, raster.file)
+    )
+  );
+
+  const records = await withRasterStore<RasterFileRecord[]>("readonly", (store) =>
+    store.getAll()
+  );
+  await Promise.all(
+    records
+      .filter((record) => record.projectId === projectId && !desired.has(record.rasterId))
+      .map((record) =>
+        withRasterStore<undefined>("readwrite", (store) => store.delete(record.key))
+      )
+  );
+}
+
 export function estimateGISWorkspaceSnapshotBytes(
-  snapshot: Pick<GISWorkspaceSnapshot, "layers" | "history" | "modelNodes">
+  snapshot: Pick<GISWorkspaceSnapshot, "layers" | "history" | "modelNodes" | "rasters">
 ): number {
   try {
     return new Blob([JSON.stringify(snapshot)]).size;
