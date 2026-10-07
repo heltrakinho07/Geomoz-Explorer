@@ -1637,8 +1637,8 @@ export default function GeoProcessamento({
               </div>
               <p className="mt-1">
                 Catálogo e execução vêm diretamente do runtime <code>geolibre-wasm</code>.
-                Ferramentas vetoriais compatíveis já executam no browser; raster/LiDAR
-                serão ativadas com o respetivo layer store.
+                Ferramentas vetoriais e raster compatíveis executam no browser; saídas
+                raster são normalizadas para COG e regressam ao mesmo Workspace.
               </p>
             </div>
 
@@ -1701,7 +1701,13 @@ export default function GeoProcessamento({
                 </div>
                 <div className="space-y-1.5 max-h-64 overflow-y-auto">
                   {filteredWhiteboxTools.slice(0, 250).map((tool) => {
-                    const support = whiteboxVectorSupport(tool);
+                    const vectorSupport = whiteboxVectorSupport(tool);
+                    const rasterSupport = whiteboxRasterSupport(tool);
+                    const mode = vectorSupport.supported
+                      ? "vector"
+                      : rasterSupport.supported
+                        ? "raster"
+                        : null;
                     return (
                       <button
                         key={tool.id}
@@ -1721,12 +1727,18 @@ export default function GeoProcessamento({
                           </span>
                           <span
                             className={`text-[9px] px-1.5 py-0.5 rounded shrink-0 ${
-                              support.supported
+                              mode === "vector"
                                 ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300"
-                                : "bg-slate-100 dark:bg-slate-700 text-slate-500"
+                                : mode === "raster"
+                                  ? "bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300"
+                                  : "bg-slate-100 dark:bg-slate-700 text-slate-500"
                             }`}
                           >
-                            {support.supported ? "WASM vetorial" : tool.category ?? "WASM"}
+                            {mode === "vector"
+                              ? "WASM vetorial"
+                              : mode === "raster"
+                                ? "WASM raster"
+                                : tool.category ?? "WASM"}
                           </span>
                         </div>
                         <p className="text-[10px] text-slate-400 line-clamp-2 mt-0.5">
