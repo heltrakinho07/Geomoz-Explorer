@@ -1,7 +1,6 @@
 /**
- * Client-Side Geospatial Processing Engine for GEOLITHICA / GeoMoz
- * Directly inspired by GeoLibre's @geolibre/processing architecture.
- * Executes genuine vector and raster geoprocessing operations in the browser on user data.
+ * Client-side geospatial processing engine for GEOLITHICA / GeoMoz.
+ * Executes verified vector geoprocessing operations in the browser on user data.
  */
 
 import * as turf from "@turf/turf";
