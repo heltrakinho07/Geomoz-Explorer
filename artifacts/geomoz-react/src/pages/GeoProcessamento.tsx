@@ -1767,46 +1767,94 @@ export default function GeoProcessamento({
                   </p>
                 </div>
 
-                <div>
-                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                    Camada principal
-                  </label>
-                  <select
-                    value={selectedLayerId}
-                    onChange={(e) => setSelectedLayerId(e.target.value)}
-                    className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
-                  >
-                    <option value="">Selecione…</option>
-                    {layers.map((layer) => (
-                      <option key={layer.id} value={layer.id}>
-                        {layer.name} ({layer.featureCount})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {(selectedWhiteboxSupport?.vectorInputs.length ?? 0) > 1 && (
-                  <div>
-                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                      Segunda camada
-                    </label>
-                    <select
-                      value={secondLayerId}
-                      onChange={(e) => setSecondLayerId(e.target.value)}
-                      className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
-                    >
-                      <option value="">Selecione…</option>
-                      {layers
-                        .filter((layer) => layer.id !== selectedLayerId)
-                        .map((layer) => (
+                {selectedWhiteboxMode === "vector" && (
+                  <>
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                        Camada vetorial principal
+                      </label>
+                      <select
+                        value={selectedLayerId}
+                        onChange={(e) => setSelectedLayerId(e.target.value)}
+                        className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                      >
+                        <option value="">Selecione…</option>
+                        {layers.map((layer) => (
                           <option key={layer.id} value={layer.id}>
                             {layer.name} ({layer.featureCount})
                           </option>
                         ))}
-                    </select>
-                  </div>
+                      </select>
+                    </div>
+
+                    {(selectedWhiteboxVectorSupport?.vectorInputs.length ?? 0) > 1 && (
+                      <div>
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                          Segunda camada vetorial
+                        </label>
+                        <select
+                          value={secondLayerId}
+                          onChange={(e) => setSecondLayerId(e.target.value)}
+                          className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                        >
+                          <option value="">Selecione…</option>
+                          {layers
+                            .filter((layer) => layer.id !== selectedLayerId)
+                            .map((layer) => (
+                              <option key={layer.id} value={layer.id}>
+                                {layer.name} ({layer.featureCount})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+                  </>
                 )}
 
+                {selectedWhiteboxMode === "raster" && (
+                  <>
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                        Raster principal
+                      </label>
+                      <select
+                        value={selectedWhiteboxRasterId}
+                        onChange={(e) => setSelectedWhiteboxRasterId(e.target.value)}
+                        className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                      >
+                        <option value="">Selecione…</option>
+                        {rasterLayers.map((layer) => (
+                          <option key={layer.id} value={layer.id}>
+                            {layer.name}
+                            {layer.bandCount ? ` · ${layer.bandCount} banda(s)` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {(selectedWhiteboxRasterSupport?.rasterInputs.length ?? 0) > 1 && (
+                      <div>
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                          Segundo raster
+                        </label>
+                        <select
+                          value={secondWhiteboxRasterId}
+                          onChange={(e) => setSecondWhiteboxRasterId(e.target.value)}
+                          className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                        >
+                          <option value="">Selecione…</option>
+                          {rasterLayers
+                            .filter((layer) => layer.id !== selectedWhiteboxRasterId)
+                            .map((layer) => (
+                              <option key={layer.id} value={layer.id}>
+                                {layer.name}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+                  </>
+                )}
                 {(selectedWhiteboxTool.params ?? [])
                   .filter((parameter) => {
                     const kind = whiteboxParamKind(parameter);
@@ -1882,9 +1930,10 @@ export default function GeoProcessamento({
                     );
                   })}
 
-                {!selectedWhiteboxSupport?.supported && (
+                {!selectedWhiteboxMode && (
                   <div className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 p-2 text-[10px] text-amber-700 dark:text-amber-300">
-                    {selectedWhiteboxSupport?.reason ||
+                    {selectedWhiteboxRasterSupport?.reason ||
+                      selectedWhiteboxVectorSupport?.reason ||
                       "Esta ferramenta ainda não está ligada ao tipo de camada atual."}
                   </div>
                 )}
@@ -1893,9 +1942,15 @@ export default function GeoProcessamento({
                   onClick={() => void handleRunWhitebox()}
                   disabled={
                     isExecuting ||
-                    !activeLayer ||
-                    !selectedWhiteboxSupport?.supported ||
-                    ((selectedWhiteboxSupport?.vectorInputs.length ?? 0) > 1 && !secondaryLayer)
+                    !selectedWhiteboxMode ||
+                    (selectedWhiteboxMode === "vector" &&
+                      (!activeLayer ||
+                        ((selectedWhiteboxVectorSupport?.vectorInputs.length ?? 0) > 1 &&
+                          !secondaryLayer))) ||
+                    (selectedWhiteboxMode === "raster" &&
+                      (!selectedWhiteboxRaster ||
+                        ((selectedWhiteboxRasterSupport?.rasterInputs.length ?? 0) > 1 &&
+                          !secondaryWhiteboxRaster)))
                   }
                   className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -2134,7 +2189,7 @@ export default function GeoProcessamento({
                       <span>{h.timestamp}</span>
                     </div>
                     <div className="text-[10px] text-slate-400">
-                      Gerou {h.outputCount} feições via {h.engine}
+                      Gerou {h.outputCount} {h.outputLabel ?? "feições"} via {h.engine}
                     </div>
                   </div>
                 ))}
