@@ -98,7 +98,11 @@ import {
   runVectorDifference,
   runVectorPointsInPolygon,
 } from "@/lib/wasm-geoprocessing";
-import { executeSpatialQuery, exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-loader";
+import { exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-loader";
+import {
+  executeDuckDbSpatialQuery,
+  sanitizeDuckDbTableName,
+} from "@/lib/duckdb-spatial";
 import {
   createPDFContext,
   drawCover,
@@ -387,7 +391,7 @@ export default function GeoProcessamento({
   // Default SQL when layer loads
   React.useEffect(() => {
     if (layers.length > 0 && !sqlQuery) {
-      setSqlQuery(`SELECT * FROM ${layers[0].name.toLowerCase().replace(/[^a-z0-9_]/g, "_")} LIMIT 50`);
+      setSqlQuery(`SELECT * FROM ${sanitizeDuckDbTableName(layers[0].name)} LIMIT 50`);
     }
   }, [layers, sqlQuery]);
 
@@ -606,30 +610,39 @@ export default function GeoProcessamento({
     }, 30);
   }, [activeLayer, modelNodes, executeToolById, toast]);
 
-  // ── Execute Spatial SQL ──────────────────────────────────────────────────
-  const handleExecuteSql = useCallback(() => {
-    if (!activeLayer) {
+  // ── Execute Spatial SQL (DuckDB-WASM Spatial real) ────────────────────────
+  const handleExecuteSql = useCallback(async () => {
+    if (layers.length === 0) {
       toast({
-        title: "Selecione uma Camada",
-        description: "Escolha uma camada alvo para consultar via SQL.",
+        title: "Adicione Dados",
+        description: "Carregue pelo menos uma camada vetorial antes de executar SQL espacial.",
         variant: "destructive",
       });
       return;
     }
 
+    setIsExecuting(true);
+    const startedAt = performance.now();
     try {
-      const res = executeSpatialQuery(activeLayer.geojson.features, sqlQuery);
+      const res = await executeDuckDbSpatialQuery(
+        layers.map((layer) => ({
+          id: layer.id,
+          name: layer.name,
+          geojson: layer.geojson,
+        })),
+        sqlQuery
+      );
       setSqlResult(res);
 
       if (res.features && res.features.length > 0) {
         const sqlLayerId = `sql_${Date.now()}`;
         const newLayer: UserLayer = {
           id: sqlLayerId,
-          name: `SQL: ${activeLayer.name} (${res.rows.length})`,
+          name: `SQL Spatial (${res.features.length})`,
           geojson: { type: "FeatureCollection", features: res.features },
           featureCount: res.features.length,
-          geometryType: res.features[0]?.geometry?.type || "Point",
-          fields: res.columns,
+          geometryType: res.features[0]?.geometry?.type || "Geometry",
+          fields: res.columns.filter((column) => column.toLowerCase() !== "geom"),
           color: "#0891b2",
           visible: true,
           isResult: true,
@@ -638,18 +651,34 @@ export default function GeoProcessamento({
         setSelectedLayerId(sqlLayerId);
       }
 
+      const historyEntry: ProcessingHistoryEntry = {
+        id: `hist_sql_${Date.now()}`,
+        toolId: "duckdb_spatial_sql",
+        toolName: "DuckDB Spatial SQL",
+        engine: "DuckDB Spatial",
+        timestamp: new Date().toLocaleTimeString("pt-PT"),
+        durationMs: Math.round(performance.now() - startedAt),
+        inputLayerName: layers.map((layer) => layer.name).join(", "),
+        outputCount: res.features?.length ?? res.rows.length,
+        status: "success",
+        parameters: { sql: sqlQuery },
+      };
+      setHistory((prev) => [historyEntry, ...prev]);
+
       toast({
-        title: "Consulta SQL Concluída",
-        description: `${res.rows.length} linhas obtidas em ${res.executionTimeMs}ms.`,
+        title: "DuckDB Spatial concluído",
+        description: `${res.rows.length} linhas em ${res.executionTimeMs}ms · ${res.tableNames.length} tabela(s) disponíveis.`,
       });
     } catch (err: any) {
       toast({
-        title: "Erro na Sintaxe SQL",
-        description: err.message,
+        title: "Erro no DuckDB Spatial",
+        description: err?.message || "Não foi possível executar a consulta espacial.",
         variant: "destructive",
       });
+    } finally {
+      setIsExecuting(false);
     }
-  }, [activeLayer, sqlQuery, toast]);
+  }, [layers, sqlQuery, toast]);
 
   // ── Swipe Drag Handler ───────────────────────────────────────────────────
   const handleMouseDown = useCallback(() => {
@@ -1202,8 +1231,8 @@ export default function GeoProcessamento({
         {activeTab === "sql_workspace" && (
           <div className="p-3 space-y-3 flex-1">
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40 rounded-xl p-2.5 text-[11px] text-amber-900 dark:text-amber-300">
-              <span className="font-semibold block mb-0.5">DuckDB Spatial Workspace</span>
-              Escreva instruções SQL completas diretamente sobre os atributos e geometrias da camada ativa.
+              <span className="font-semibold block mb-0.5">DuckDB-WASM Spatial · Motor real</span>
+              Todas as camadas carregadas são tabelas SQL. Use funções ST_* para análise espacial, joins e geometrias derivadas.
             </div>
 
             <div>
@@ -1219,11 +1248,12 @@ export default function GeoProcessamento({
             </div>
 
             <button
-              onClick={handleExecuteSql}
-              className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+              onClick={() => void handleExecuteSql()}
+              disabled={isExecuting || layers.length === 0}
+              className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Play size={13} />
-              <span>Executar Query SQL</span>
+              {isExecuting ? <RefreshCw size={13} className="animate-spin" /> : <Play size={13} />}
+              <span>{isExecuting ? "A executar DuckDB…" : "Executar DuckDB Spatial"}</span>
             </button>
 
             {sqlResult && (
