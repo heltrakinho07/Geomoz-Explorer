@@ -5,6 +5,11 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { bbox } from "@turf/turf";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
 import { GOOGLE_BASEMAPS, type BasemapType } from "@/lib/basemaps";
+import {
+  syncGISWorkspaceRasters,
+  type GISWorkspaceRasterLayer,
+  type GISWorkspaceRasterMetadata,
+} from "@/lib/gis-raster";
 
 export interface GISWorkspaceMapLayer {
   id: string;
@@ -16,6 +21,7 @@ export interface GISWorkspaceMapLayer {
 
 interface Props {
   layers: GISWorkspaceMapLayer[];
+  rasterLayers?: GISWorkspaceRasterLayer[];
   activeLayerId?: string;
   basemap: BasemapType;
   aoiGeometry?: GeoJSON.GeoJSON | null;
@@ -23,6 +29,8 @@ interface Props {
   onSelectLayer?: (layerId: string) => void;
   onDrawComplete?: (geometry: GeoJSON.GeoJSON, label: string) => void;
   onDrawCancel?: () => void;
+  onRasterMetadata?: (metadata: GISWorkspaceRasterMetadata) => void;
+  onRasterError?: (layerId: string, message: string) => void;
 }
 
 const AOI_SOURCE = "__geomoz_aoi";
@@ -101,6 +109,7 @@ function polygonFeature(coords: [number, number][]): Feature<Polygon> | null {
 
 export default function GISWorkspaceMapLibre({
   layers,
+  rasterLayers = [],
   activeLayerId,
   basemap,
   aoiGeometry,
@@ -108,25 +117,38 @@ export default function GISWorkspaceMapLibre({
   onSelectLayer,
   onDrawComplete,
   onDrawCancel,
+  onRasterMetadata,
+  onRasterError,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const layersRef = useRef(layers);
+  const rasterLayersRef = useRef(rasterLayers);
   const drawingRef = useRef(drawingEnabled);
   const drawCoordsRef = useRef<[number, number][]>([]);
   const onSelectLayerRef = useRef(onSelectLayer);
   const onDrawCompleteRef = useRef(onDrawComplete);
   const onDrawCancelRef = useRef(onDrawCancel);
+  const onRasterMetadataRef = useRef(onRasterMetadata);
+  const onRasterErrorRef = useRef(onRasterError);
   const renderedLayerLookupRef = useRef(new Map<string, string>());
   const [coords, setCoords] = useState<{ lng: number; lat: number } | null>(null);
 
   layersRef.current = layers;
+  rasterLayersRef.current = rasterLayers;
   drawingRef.current = drawingEnabled;
   onSelectLayerRef.current = onSelectLayer;
   onDrawCompleteRef.current = onDrawComplete;
   onDrawCancelRef.current = onDrawCancel;
+  onRasterMetadataRef.current = onRasterMetadata;
+  onRasterErrorRef.current = onRasterError;
 
-  const visibleCount = useMemo(() => layers.filter((layer) => layer.visible).length, [layers]);
+  const visibleCount = useMemo(
+    () =>
+      layers.filter((layer) => layer.visible).length +
+      rasterLayers.filter((layer) => layer.visible).length,
+    [layers, rasterLayers]
+  );
 
   const syncAoi = (map: MapLibreMap) => {
     if (!map.isStyleLoaded()) return;
@@ -297,6 +319,10 @@ export default function GISWorkspaceMapLibre({
 
     map.on("load", () => {
       syncLayers(map);
+      void syncGISWorkspaceRasters(map, rasterLayersRef.current, {
+        onMetadata: (metadata) => onRasterMetadataRef.current?.(metadata),
+        onError: (layerId, message) => onRasterErrorRef.current?.(layerId, message),
+      });
     });
     map.on("mousemove", (event: MapMouseEvent) => {
       setCoords({ lng: event.lngLat.lng, lat: event.lngLat.lat });
@@ -362,7 +388,13 @@ export default function GISWorkspaceMapLibre({
     const map = mapRef.current;
     if (!map) return;
     map.setStyle(basemapStyle(basemap));
-    map.once("style.load", () => syncLayers(map));
+    map.once("style.load", () => {
+      syncLayers(map);
+      void syncGISWorkspaceRasters(map, rasterLayersRef.current, {
+        onMetadata: (metadata) => onRasterMetadataRef.current?.(metadata),
+        onError: (layerId, message) => onRasterErrorRef.current?.(layerId, message),
+      });
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [basemap]);
 
@@ -372,6 +404,15 @@ export default function GISWorkspaceMapLibre({
     syncLayers(map);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layers, aoiGeometry]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    void syncGISWorkspaceRasters(map, rasterLayers, {
+      onMetadata: (metadata) => onRasterMetadataRef.current?.(metadata),
+      onError: (layerId, message) => onRasterErrorRef.current?.(layerId, message),
+    });
+  }, [rasterLayers]);
 
   useEffect(() => {
     const map = mapRef.current;
