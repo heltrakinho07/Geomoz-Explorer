@@ -123,10 +123,12 @@ import {
 } from "@/lib/gis-workspace-persistence";
 import {
   listWhiteboxWasmManifests,
+  runWhiteboxRasterTool,
   runWhiteboxVectorTool,
   whiteboxManifestDefaults,
   whiteboxManifestName,
   whiteboxParamKind,
+  whiteboxRasterSupport,
   whiteboxVectorSupport,
   type WhiteboxWasmManifest,
 } from "@/lib/whitebox-wasm";
@@ -152,6 +154,7 @@ export interface ProcessingHistoryEntry {
   durationMs: number;
   inputLayerName: string;
   outputCount: number;
+  outputLabel?: string;
   status: "success" | "error";
   parameters: Record<string, any>;
 }
@@ -250,6 +253,8 @@ export default function GeoProcessamento({
   const [whiteboxError, setWhiteboxError] = useState<string | null>(null);
   const [selectedWhiteboxToolId, setSelectedWhiteboxToolId] = useState("");
   const [whiteboxParams, setWhiteboxParams] = useState<Record<string, unknown>>({});
+  const [selectedWhiteboxRasterId, setSelectedWhiteboxRasterId] = useState("");
+  const [secondWhiteboxRasterId, setSecondWhiteboxRasterId] = useState("");
 
   // Processing History
   const [history, setHistory] = useState<ProcessingHistoryEntry[]>([]);
@@ -462,10 +467,49 @@ export default function GeoProcessamento({
     [whiteboxTools, selectedWhiteboxToolId]
   );
 
-  const selectedWhiteboxSupport = useMemo(
+  const selectedWhiteboxVectorSupport = useMemo(
     () => (selectedWhiteboxTool ? whiteboxVectorSupport(selectedWhiteboxTool) : null),
     [selectedWhiteboxTool]
   );
+
+  const selectedWhiteboxRasterSupport = useMemo(
+    () => (selectedWhiteboxTool ? whiteboxRasterSupport(selectedWhiteboxTool) : null),
+    [selectedWhiteboxTool]
+  );
+
+  const selectedWhiteboxMode = useMemo<"vector" | "raster" | null>(() => {
+    if (selectedWhiteboxVectorSupport?.supported) return "vector";
+    if (selectedWhiteboxRasterSupport?.supported) return "raster";
+    return null;
+  }, [selectedWhiteboxVectorSupport, selectedWhiteboxRasterSupport]);
+
+  const selectedWhiteboxRaster = useMemo(
+    () => rasterLayers.find((layer) => layer.id === selectedWhiteboxRasterId) ?? null,
+    [rasterLayers, selectedWhiteboxRasterId]
+  );
+
+  const secondaryWhiteboxRaster = useMemo(
+    () => rasterLayers.find((layer) => layer.id === secondWhiteboxRasterId) ?? null,
+    [rasterLayers, secondWhiteboxRasterId]
+  );
+
+  React.useEffect(() => {
+    if (selectedWhiteboxMode !== "raster") return;
+    if (!selectedWhiteboxRaster && rasterLayers[0]) {
+      setSelectedWhiteboxRasterId(rasterLayers[0].id);
+    }
+    if (
+      secondWhiteboxRasterId &&
+      !rasterLayers.some((layer) => layer.id === secondWhiteboxRasterId)
+    ) {
+      setSecondWhiteboxRasterId("");
+    }
+  }, [
+    rasterLayers,
+    secondWhiteboxRasterId,
+    selectedWhiteboxMode,
+    selectedWhiteboxRaster,
+  ]);
 
   const filteredWhiteboxTools = useMemo(() => {
     const needle = toolSearch.trim().toLowerCase();
@@ -511,7 +555,12 @@ export default function GeoProcessamento({
       .then((tools) => {
         if (cancelled) return;
         setWhiteboxTools(tools);
-        const first = tools.find((tool) => whiteboxVectorSupport(tool).supported) ?? tools[0];
+        const first =
+          tools.find(
+            (tool) =>
+              whiteboxVectorSupport(tool).supported ||
+              whiteboxRasterSupport(tool).supported
+          ) ?? tools[0];
         if (first) {
           setSelectedWhiteboxToolId(first.id);
           setWhiteboxParams(whiteboxManifestDefaults(first));
