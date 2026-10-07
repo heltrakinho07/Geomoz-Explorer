@@ -18,6 +18,7 @@ import {
   BrainCircuit,
   Menu,
   FileText,
+  BookOpen,
   Layers,
   Cpu,
 } from "lucide-react";
@@ -36,6 +37,7 @@ import {
   LazyAguaSubterranea,
   LazyGeoMozAI,
   LazyGeoProcessamento,
+  LazyDocumentation,
 } from "@/lib/lazy-pages";
 import { apiFetch } from "@/lib/api";
 import SettingsDialog from "@/components/SettingsDialog";
@@ -66,7 +68,8 @@ type Tab =
   | "Água Subterrânea"
   | "Geoperigos"
   | "GeoMoz AI"
-  | "Exportar";
+  | "Exportar"
+  | "Documentação";
 
 export default function Explorer() {
   const { toast } = useToast();
@@ -118,6 +121,14 @@ export default function Explorer() {
     if (path.includes("mapa") || hash.includes("mapa") || tabParam?.includes("mapa")) {
       return "Mapa";
     }
+    if (
+      path.includes("document") ||
+      path.includes("ajuda") ||
+      hash.includes("document") ||
+      tabParam?.includes("document")
+    ) {
+      return "Documentação";
+    }
     if (path.includes("export") || hash.includes("export") || tabParam?.includes("export")) {
       return "Exportar";
     }
@@ -140,6 +151,7 @@ export default function Explorer() {
         Geoperigos: "geoperigos",
         "GeoMoz AI": "geomoz-ai",
         Exportar: "exportar",
+        Documentação: "documentacao",
       };
       const slug = slugMap[tab];
       const newUrl = slug ? `/${slug}` : "/app";
@@ -422,6 +434,12 @@ export default function Explorer() {
           icon: <FileText size={18} className="text-emerald-500 shrink-0" />,
           title: "Dossiê do Estudo & Exportação",
           subtitle: "Relatórios Técnicos PDF, HTML & GeoTIFF",
+        };
+      case "Documentação":
+        return {
+          icon: <BookOpen size={18} className="text-indigo-500 shrink-0" />,
+          title: "Documentação do GeoMoz",
+          subtitle: "Funcionalidades, formatos, motores, limitações e roadmap",
         };
       case "Análise":
       default:
@@ -828,6 +846,12 @@ export default function Explorer() {
               mapCenter={mapCenter}
               mapZoom={mapZoom}
             />
+          )}
+
+          {activeTab === "Documentação" && (
+            <Suspense fallback={<LoadingSkeleton label="Documentação" />}>
+              <LazyDocumentation />
+            </Suspense>
           )}
 
           {activeTab === "Análise" && (

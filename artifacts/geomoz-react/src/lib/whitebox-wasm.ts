@@ -1,18 +1,15 @@
 /**
- * GeoMoz adapter for GeoLibre's published Whitebox/GeoLibre WebAssembly runtime.
+ * GeoMoz adapter for the independent whitebox-wasm WebAssembly runtime.
  *
- * The runtime package is MIT-licensed and originates from:
- * https://github.com/opengeos/GeoLibre
- *
- * This adapter keeps GeoMoz's own layer/project model while using the real
- * geolibre-wasm tool manifests and WASI execution engine.
+ * GeoMoz exposes a curated set of Whitebox tools with parameter schemas owned
+ * by this project. At runtime, listTools() verifies that each curated tool is
+ * actually present before it appears in the interface.
  */
 import type { FeatureCollection } from "geojson";
 import type {
   GeoMozWhiteboxWorkerRequest,
   GeoMozWhiteboxWorkerResponse,
 } from "@/workers/whitebox-wasm.worker";
-import { convertGeoTiffToCog } from "@/lib/cog-convert";
 
 export interface WhiteboxWasmParameter {
   name: string;
@@ -65,8 +62,94 @@ export interface WhiteboxRasterRunResult {
 }
 
 interface ToolsModule {
-  listManifests: () => Promise<WhiteboxWasmManifest[]>;
+  listTools: () => Promise<string[]>;
 }
+
+const CURATED_WHITEBOX_MANIFESTS: WhiteboxWasmManifest[] = [
+  {
+    id: "slope",
+    display_name: "Declive (Slope)",
+    summary: "Calcula o declive topográfico a partir de um modelo digital de elevação.",
+    category: "Terreno",
+    source: "whitebox-wasm",
+    defaults: { units: "degrees" },
+    params: [
+      { name: "input", description: "DEM de entrada", required: true, io_role: "input", data_kind: "raster" },
+      { name: "output", description: "Raster de declive", required: true, io_role: "output", data_kind: "raster" },
+      {
+        name: "units",
+        description: "Unidades do declive",
+        schema: {
+          kind: "select",
+          options: [
+            { value: "degrees", label: "Graus" },
+            { value: "percent", label: "Percentagem" },
+          ],
+        },
+      },
+    ],
+  },
+  {
+    id: "aspect",
+    display_name: "Aspeto (Aspect)",
+    summary: "Calcula a orientação azimutal das encostas a partir de um DEM.",
+    category: "Terreno",
+    source: "whitebox-wasm",
+    params: [
+      { name: "input", description: "DEM de entrada", required: true, io_role: "input", data_kind: "raster" },
+      { name: "output", description: "Raster de aspeto", required: true, io_role: "output", data_kind: "raster" },
+    ],
+  },
+  {
+    id: "hillshade",
+    display_name: "Sombreamento (Hillshade)",
+    summary: "Gera relevo sombreado a partir de um DEM.",
+    category: "Terreno",
+    source: "whitebox-wasm",
+    defaults: { azimuth: 315, altitude: 45 },
+    params: [
+      { name: "input", description: "DEM de entrada", required: true, io_role: "input", data_kind: "raster" },
+      { name: "output", description: "Hillshade de saída", required: true, io_role: "output", data_kind: "raster" },
+      { name: "azimuth", description: "Azimute solar em graus", schema: { kind: "number" } },
+      { name: "altitude", description: "Altitude solar em graus", schema: { kind: "number" } },
+    ],
+  },
+  {
+    id: "fill_depressions",
+    display_name: "Preencher Depressões",
+    summary: "Preenche depressões espúrias num DEM para preparar análises hidrológicas.",
+    category: "Hidrologia",
+    source: "whitebox-wasm",
+    params: [
+      { name: "input", description: "DEM de entrada", required: true, io_role: "input", data_kind: "raster" },
+      { name: "output", description: "DEM corrigido", required: true, io_role: "output", data_kind: "raster" },
+    ],
+  },
+  {
+    id: "buffer_vector",
+    display_name: "Buffer Vetorial",
+    summary: "Cria uma zona de amortecimento em torno de feições vetoriais.",
+    category: "Vetor",
+    source: "whitebox-wasm",
+    defaults: { distance: 100 },
+    params: [
+      { name: "input", description: "Camada vetorial de entrada", required: true, io_role: "input", data_kind: "vector" },
+      { name: "output", description: "Camada vetorial resultante", required: true, io_role: "output", data_kind: "vector" },
+      { name: "distance", description: "Distância do buffer", required: true, schema: { kind: "number" } },
+    ],
+  },
+  {
+    id: "minimum_convex_hull",
+    display_name: "Envelope Convexo Mínimo",
+    summary: "Gera o menor envelope convexo que contém as feições de entrada.",
+    category: "Vetor",
+    source: "whitebox-wasm",
+    params: [
+      { name: "input", description: "Camada vetorial de entrada", required: true, io_role: "input", data_kind: "vector" },
+      { name: "output", description: "Envelope convexo", required: true, io_role: "output", data_kind: "vector" },
+    ],
+  },
+];
 
 let manifestsPromise: Promise<WhiteboxWasmManifest[]> | null = null;
 let warmWorker: Worker | null = null;
@@ -238,11 +321,18 @@ export function whiteboxRasterSupport(manifest: WhiteboxWasmManifest): {
 export async function listWhiteboxWasmManifests(): Promise<WhiteboxWasmManifest[]> {
   if (!manifestsPromise) {
     manifestsPromise = (async () => {
-      const tools = (await import("geolibre-wasm/tools")) as unknown as ToolsModule;
-      const manifests = await tools.listManifests();
-      return manifests
-        .filter((manifest) => manifest?.id)
-        .sort((a, b) => whiteboxManifestName(a).localeCompare(whiteboxManifestName(b)));
+      const tools = (await import("whitebox-wasm/tools")) as unknown as ToolsModule;
+      const available = new Set(await tools.listTools());
+      const manifests = CURATED_WHITEBOX_MANIFESTS.filter((manifest) =>
+        available.has(manifest.id)
+      ).sort((a, b) => whiteboxManifestName(a).localeCompare(whiteboxManifestName(b)));
+
+      if (!manifests.length) {
+        throw new Error(
+          "O runtime Whitebox WASM carregou, mas nenhuma ferramenta verificada do GeoMoz foi encontrada."
+        );
+      }
+      return manifests;
     })().catch((error) => {
       manifestsPromise = null;
       throw error;
@@ -495,11 +585,10 @@ export async function runWhiteboxRasterTool(params: {
   for (const [parameter, fileName] of outputFiles.entries()) {
     const bytes = result.files[fileName];
     if (!bytes?.length) continue;
-    const cogBytes = await convertGeoTiffToCog(bytes);
     outputs.push({
       parameter,
       fileName: fileName.replace(/\.tif$/i, ".cog.tif"),
-      bytes: cogBytes,
+      bytes,
     });
   }
 

@@ -1,11 +1,8 @@
 /**
  * GeoMoz GIS Workspace raster runtime.
  *
- * Architecture inspired by GeoLibre's maplibre-gl-raster integration (MIT):
- * https://github.com/opengeos/GeoLibre
- *
- * GeoMoz deliberately keeps its own workspace state/UI and uses the upstream
- * RasterControl only as a rendering/decoding engine for GeoTIFF/COG data.
+ * GeoMoz keeps its own workspace state/UI and uses the upstream RasterControl
+ * as the rendering/decoding engine for GeoTIFF/COG data.
  */
 import type { Map as MapLibreMap } from "maplibre-gl";
 import {

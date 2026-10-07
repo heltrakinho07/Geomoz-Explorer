@@ -1,9 +1,8 @@
 /**
  * GeoMoz raster classification runtime.
  *
- * The discrete-class GPU injection follows the same rendering strategy used by
- * GeoLibre (MIT): it reuses maplibre-gl-raster's existing nodata/rescale/
- * stretch/gamma pipeline and replaces only the final colormap texture.
+ * Discrete classes reuse maplibre-gl-raster's nodata/rescale/stretch/gamma
+ * pipeline and replace only the final colormap texture.
  *
  * Kept isolated because it touches private LayerManager internals. Every access
  * is feature-detected; if an upstream release changes those internals, GeoMoz
