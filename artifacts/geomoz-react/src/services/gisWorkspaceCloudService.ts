@@ -19,6 +19,7 @@ import type {
   PersistedGISRasterLayer,
   PersistedModelNode,
   PersistedProcessingHistoryEntry,
+  GIS_WORKSPACE_SCHEMA_VERSION,
 } from "@/lib/gis-workspace-persistence";
 import { loadGISWorkspaceRasterFiles } from "@/lib/gis-workspace-persistence";
 
@@ -291,7 +292,7 @@ export async function syncGISWorkspaceToCloud(
   await removeStaleCloudLayers(uid, projectId, layerIds);
 
   const state: CloudWorkspaceState = {
-    version: 1,
+    version: GIS_WORKSPACE_SCHEMA_VERSION,
     projectId,
     layerOrder: snapshot.layers.map((layer) => layer.id),
     rasterLayerOrder: snapshot.rasters.map((layer) => layer.id),
@@ -403,7 +404,7 @@ export async function loadGISWorkspaceFromCloud(
     : restoredRasters;
 
   return {
-    version: state?.version ?? 1,
+    version: state?.version ?? GIS_WORKSPACE_SCHEMA_VERSION,
     projectId,
     layers: ordered as PersistedGISLayer[],
     rasters: orderedRasters as PersistedGISRasterLayer[],
