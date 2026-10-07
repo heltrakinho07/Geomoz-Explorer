@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useProject } from "../context/ProjectContext";
 import { apiFetch } from "@/lib/api";
-import { aoiToAPI } from "@/lib/aoi";
+import { aoiToAPI, mozambiqueAOI, GLOBAL_AOI, type AreaOfInterest } from "@/lib/aoi";
+import { useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
+import AreaSelect from "./AreaSelect";
 import {
   Sparkles,
   Play,
@@ -30,6 +32,9 @@ import {
   TrendingUp,
   Cpu,
   Flame,
+  Square,
+  Globe,
+  RefreshCw,
 } from "lucide-react";
 import { MapContainer, TileLayer, ScaleControl } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -144,7 +149,86 @@ const SUGGESTED_PROMPTS = [
 ];
 
 export default function GeoMozAIAgentTab() {
-  const { activeProject, saveRunToActiveProject } = useProject();
+  const { activeProject, updateProject, saveRunToActiveProject } = useProject();
+
+  // Area of Interest (AOI) state
+  const [selectedProvince, setSelectedProvince] = useState<string | null>(() => {
+    if (activeProject?.aoi?.source === "mozambique") {
+      return activeProject.aoi.province || null;
+    }
+    return null;
+  });
+
+  const [selectedDistrict, setSelectedDistrict] = useState<string | null>(() => {
+    if (activeProject?.aoi?.source === "mozambique") {
+      return activeProject.aoi.district || null;
+    }
+    return null;
+  });
+
+  const [currentAoi, setCurrentAoi] = useState<AreaOfInterest>(() => {
+    return activeProject?.aoi || mozambiqueAOI(null, null);
+  });
+
+  const [showAoiSelector, setShowAoiSelector] = useState(false);
+
+  // Province and District data hooks
+  const { data: provData } = useProvinceNames();
+  const provinceList = provData?.names || [];
+  const { data: distData } = useDistrictNames(selectedProvince);
+  const districtList = distData?.names || [];
+
+  // Sync AOI if activeProject changes externally
+  useEffect(() => {
+    if (activeProject?.aoi) {
+      setCurrentAoi(activeProject.aoi);
+      if (activeProject.aoi.source === "mozambique") {
+        setSelectedProvince(activeProject.aoi.province || null);
+        setSelectedDistrict(activeProject.aoi.district || null);
+      } else if (activeProject.aoi.source === "global") {
+        setSelectedProvince(null);
+        setSelectedDistrict(null);
+      }
+    }
+  }, [activeProject?.aoi]);
+
+  const handleProvinceChange = async (prov: string | null) => {
+    setSelectedProvince(prov);
+    setSelectedDistrict(null);
+    const newAoi = prov ? mozambiqueAOI(prov, null) : mozambiqueAOI(null, null);
+    setCurrentAoi(newAoi);
+    if (activeProject) {
+      try {
+        await updateProject(activeProject.id, { aoi: newAoi });
+      } catch {}
+    }
+  };
+
+  const handleDistrictChange = async (dist: string | null) => {
+    setSelectedDistrict(dist);
+    const newAoi = mozambiqueAOI(selectedProvince, dist);
+    setCurrentAoi(newAoi);
+    if (activeProject) {
+      try {
+        await updateProject(activeProject.id, { aoi: newAoi });
+      } catch {}
+    }
+  };
+
+  const handleSelectGlobal = async () => {
+    setSelectedProvince(null);
+    setSelectedDistrict(null);
+    setCurrentAoi(GLOBAL_AOI);
+    if (activeProject) {
+      try {
+        await updateProject(activeProject.id, { aoi: GLOBAL_AOI });
+      } catch {}
+    }
+  };
+
+  const handleSelectMozambiqueFull = async () => {
+    handleProvinceChange(null);
+  };
 
   const [prompt, setPrompt] = useState("");
   const [isRunning, setIsRunning] = useState(false);
@@ -155,6 +239,20 @@ export default function GeoMozAIAgentTab() {
   const [completedRuns, setCompletedRuns] = useState<any[]>([]);
   const [selectedLayerIndex, setSelectedLayerIndex] = useState<number>(0);
   const [layerOpacity, setLayerOpacity] = useState<number>(0.85);
+
+  // Abort controller reference for cancelling runs
+  const abortRef = useRef<AbortController | null>(null);
+
+  const handleCancelRunning = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setIsRunning(false);
+    setSteps((prev) =>
+      prev.map((s) => (s.status === "running" ? { ...s, status: "error", resultSummary: "Interrompido pelo utilizador" } : s))
+    );
+  };
 
   // Chat conversation history
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -243,11 +341,17 @@ export default function GeoMozAIAgentTab() {
 
   // Execute quick predefined workflow
   const runWorkflow = async (workflow: QuickWorkflow) => {
-    const aoiLabel = activeProject?.aoi?.label || "Moçambique (Geral)";
+    const aoiLabel = currentAoi?.label || "Moçambique (Geral)";
     setIsRunning(true);
     setSynthesis(null);
     setCompletedRuns([]);
     setActiveTileUrl(null);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 75000);
 
     const initialSteps: WorkflowStep[] = [
       { id: "aoi", name: `Delimitação da AOI: ${aoiLabel}`, status: "pending" },
@@ -261,7 +365,7 @@ export default function GeoMozAIAgentTab() {
     ];
     setSteps(initialSteps);
 
-    const aoiPayload = activeProject ? aoiToAPI(activeProject.aoi) : { province: null, district: null, geometry: null };
+    const aoiPayload = aoiToAPI(currentAoi);
     const startDate = activeProject?.period?.startDate || "2024-01-01";
     const endDate = activeProject?.period?.endDate || "2024-12-31";
 
@@ -273,6 +377,8 @@ export default function GeoMozAIAgentTab() {
       );
 
       for (let i = 0; i < workflow.indices.length; i++) {
+        if (controller.signal.aborted) break;
+
         const stepIdx = i + 1;
         const targetIdx = workflow.indices[i];
         setSteps((prev) =>
@@ -284,6 +390,7 @@ export default function GeoMozAIAgentTab() {
           if (targetIdx.code === "alphaearth_pca") {
             res = await apiFetch("/geomoz-api/gee/embedding", {
               method: "POST",
+              signal: controller.signal,
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 year: Number(endDate.slice(0, 4)) || 2024,
@@ -295,6 +402,7 @@ export default function GeoMozAIAgentTab() {
           } else if (targetIdx.code === "smap_rootzone") {
             res = await apiFetch("/geomoz-api/gee/soil-moisture", {
               method: "POST",
+              signal: controller.signal,
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 depth: "rootzone",
@@ -308,6 +416,7 @@ export default function GeoMozAIAgentTab() {
           } else if (targetIdx.code === "erosion_rusle") {
             res = await apiFetch("/geomoz-api/gee/erosion", {
               method: "POST",
+              signal: controller.signal,
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 year: Number(endDate.slice(0, 4)) || 2023,
@@ -319,6 +428,7 @@ export default function GeoMozAIAgentTab() {
           } else {
             res = await apiFetch("/geomoz-api/gee/index", {
               method: "POST",
+              signal: controller.signal,
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 index: targetIdx.code,
@@ -365,9 +475,13 @@ export default function GeoMozAIAgentTab() {
             setActiveTileName(runObj.name);
           }
         } catch (err: any) {
+          const isAborted = controller.signal.aborted;
+          const errDetail = isAborted
+            ? "Tempo limite (75 s) ou cancelado. Dica: selecione uma província/distrito."
+            : err.message;
           setSteps((prev) =>
             prev.map((s, idx) =>
-              idx === stepIdx ? { ...s, status: "error", resultSummary: err.message } : s
+              idx === stepIdx ? { ...s, status: "error", resultSummary: errDetail } : s
             )
           );
         }
@@ -385,6 +499,7 @@ export default function GeoMozAIAgentTab() {
       try {
         const synthRes = await apiFetch("/geomoz-api/ai/synthesize-study", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             projectName: activeProject?.name || workflow.title,
@@ -437,6 +552,8 @@ export default function GeoMozAIAgentTab() {
         },
       ]);
     } finally {
+      clearTimeout(timeoutId);
+      abortRef.current = null;
       setIsRunning(false);
     }
   };
@@ -449,6 +566,12 @@ export default function GeoMozAIAgentTab() {
     if (!customText) setPrompt("");
     setIsRunning(true);
     setSynthesis(null);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 75000);
 
     const userMsg: ChatMessage = {
       id: `usr_${Date.now()}`,
@@ -467,10 +590,10 @@ export default function GeoMozAIAgentTab() {
     setSteps([initialRunningStep]);
 
     try {
-      const aoiPayload = activeProject ? aoiToAPI(activeProject.aoi) : {};
+      const aoiPayload = aoiToAPI(currentAoi);
       const currentMapState = {
         aoi: {
-          label: activeProject?.aoi?.label || "Moçambique",
+          label: currentAoi.label || "Moçambique",
           province: aoiPayload.province || null,
           district: aoiPayload.district || null,
           geometry: aoiPayload.geometry || null,
@@ -488,6 +611,7 @@ export default function GeoMozAIAgentTab() {
 
       const res = await apiFetch("/geomoz-api/ai/agent-chat", {
         method: "POST",
+        signal: controller.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: textToSend,
@@ -557,14 +681,21 @@ export default function GeoMozAIAgentTab() {
 
       setMessages((prev) => [...prev, agentMsg]);
     } catch (err: any) {
+      const isAborted = controller.signal.aborted;
+      const errorText = isAborted
+        ? "A operação foi interrompida ou atingiu o tempo limite (75 s). Dica: selecione uma província ou distrito específico na Área de Estudo para acelerar o processamento das cenas de satélite."
+        : `Falha na execução do agente: ${err.message}`;
+
       const errMsg: ChatMessage = {
         id: `err_${Date.now()}`,
         sender: "agent",
-        text: `Falha na execução do agente: ${err.message}`,
+        text: errorText,
         timestamp: new Date().toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }),
       };
       setMessages((prev) => [...prev, errMsg]);
     } finally {
+      clearTimeout(timeoutId);
+      abortRef.current = null;
       setIsRunning(false);
     }
   };
@@ -721,15 +852,130 @@ export default function GeoMozAIAgentTab() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-xs text-slate-300">
-            <div className="flex items-center gap-1.5 truncate">
-              <MapPin size={12} className="text-sky-400 shrink-0" />
-              <span className="truncate">{activeProject?.aoi?.label || "Moçambique (Geral)"}</span>
-            </div>
-            {activeProject && (
-              <span className="text-[10px] text-slate-400 truncate">
-                Projeto: <strong className="text-slate-200">{activeProject.name}</strong>
+          {/* Dedicated AOI Selector Section */}
+          <div className="pt-2.5 border-t border-slate-800/80 space-y-1.5">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-slate-400 font-medium flex items-center gap-1">
+                <MapPin size={11} className="text-sky-400" /> Área de Estudo:
               </span>
+              <button
+                type="button"
+                onClick={() => setShowAoiSelector(!showAoiSelector)}
+                className="text-[10px] px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 hover:bg-sky-500/30 border border-sky-500/40 font-semibold cursor-pointer transition-colors"
+              >
+                {showAoiSelector ? "Fechar Seletor" : "Alterar Área"}
+              </button>
+            </div>
+
+            {/* Active AOI Summary Pill */}
+            <div className="flex items-center justify-between text-xs bg-slate-950/60 border border-slate-800 rounded-lg px-2.5 py-1.5">
+              <span className="text-slate-200 font-medium truncate">
+                {currentAoi.label || "Moçambique (Geral)"}
+              </span>
+              {activeProject && (
+                <span className="text-[10px] text-slate-400 shrink-0 ml-2">
+                  Proj: <strong className="text-slate-300">{activeProject.name}</strong>
+                </span>
+              )}
+            </div>
+
+            {/* If AOI is Global, show a helpful warning banner */}
+            {(currentAoi.source === "global" || currentAoi.label === "Mundo (Global)") && (
+              <div className="p-2 bg-amber-950/40 border border-amber-800/60 rounded-lg space-y-1 text-[10px] text-amber-200">
+                <div className="flex items-start gap-1.5">
+                  <AlertTriangle size={12} className="text-amber-400 shrink-0 mt-0.5" />
+                  <p className="leading-tight">
+                    A área está como <strong>Mundo (Global)</strong>. Para evitar lentidão e bloqueios no cálculo dos satélites, selecione uma província ou distrito de Moçambique:
+                  </p>
+                </div>
+                <div className="flex gap-1.5 pt-0.5 pl-4 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => handleProvinceChange("Gaza")}
+                    className="px-1.5 py-0.5 rounded bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 text-[9px] font-semibold"
+                  >
+                    Gaza
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleProvinceChange("Tete")}
+                    className="px-1.5 py-0.5 rounded bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 text-[9px] font-semibold"
+                  >
+                    Tete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleProvinceChange("Cabo Delgado")}
+                    className="px-1.5 py-0.5 rounded bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 text-[9px] font-semibold"
+                  >
+                    Cabo Delgado
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSelectMozambiqueFull}
+                    className="px-1.5 py-0.5 rounded bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 text-[9px] font-semibold"
+                  >
+                    Nacional
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Expanded AOI Selector Dropdowns */}
+            {showAoiSelector && (
+              <div className="p-2.5 bg-slate-900 border border-slate-700/80 rounded-xl space-y-2 mt-1 shadow-lg">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-400 block mb-1">
+                      Província
+                    </label>
+                    <select
+                      value={selectedProvince || ""}
+                      onChange={(e) => handleProvinceChange(e.target.value || null)}
+                      className="w-full px-2 py-1 text-xs rounded-lg bg-slate-800 border border-slate-700 text-slate-200 focus:outline-none focus:border-sky-500 cursor-pointer"
+                    >
+                      <option value="">Moçambique (Geral)</option>
+                      {provinceList.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-400 block mb-1">
+                      Distrito
+                    </label>
+                    <select
+                      value={selectedDistrict || ""}
+                      disabled={!selectedProvince}
+                      onChange={(e) => handleDistrictChange(e.target.value || null)}
+                      className="w-full px-2 py-1 text-xs rounded-lg bg-slate-800 border border-slate-700 text-slate-200 focus:outline-none focus:border-sky-500 disabled:opacity-40 cursor-pointer"
+                    >
+                      <option value="">Todos os Distritos</option>
+                      {districtList.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={handleSelectGlobal}
+                    className="text-[10px] text-slate-400 hover:text-slate-200 cursor-pointer"
+                  >
+                    Repor Global
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAoiSelector(false)}
+                    className="px-2.5 py-0.5 bg-sky-600 hover:bg-sky-700 text-white text-[10px] font-semibold rounded cursor-pointer"
+                  >
+                    Concluído
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -961,9 +1207,20 @@ export default function GeoMozAIAgentTab() {
           {/* Running Status Tracker */}
           {isRunning && (
             <div className="p-3 bg-violet-50/50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800 rounded-xl space-y-2">
-              <div className="flex items-center gap-2 text-xs font-semibold text-violet-700 dark:text-violet-300">
-                <Loader2 size={13} className="animate-spin" />
-                <span>Orquestração em curso ({activeProviderLabel})…</span>
+              <div className="flex items-center justify-between text-xs font-semibold text-violet-700 dark:text-violet-300">
+                <div className="flex items-center gap-2">
+                  <Loader2 size={13} className="animate-spin" />
+                  <span>Orquestração em curso ({activeProviderLabel})…</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCancelRunning}
+                  className="px-2 py-0.5 text-[10px] font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                  title="Interromper execução em curso"
+                >
+                  <Square size={9} fill="currentColor" />
+                  <span>Cancelar</span>
+                </button>
               </div>
               <div className="space-y-1">
                 {steps.map((s, idx) => (
@@ -1106,6 +1363,17 @@ export default function GeoMozAIAgentTab() {
               subdomains={GOOGLE_BASEMAPS.hybrid.subdomains}
               attribution={GOOGLE_BASEMAPS.hybrid.attribution}
               maxZoom={GOOGLE_BASEMAPS.hybrid.maxZoom}
+            />
+
+            {/* Interactive Province & District boundary visualization & selection */}
+            <AreaSelect
+              province={selectedProvince}
+              district={selectedDistrict}
+              onProvinceChange={handleProvinceChange}
+              onDistrictChange={handleDistrictChange}
+              selectable={true}
+              fit={true}
+              accent="#8b5cf6"
             />
 
             {activeTileUrl && (

@@ -1688,10 +1688,11 @@ def compute_index_tile(
             .combine(ee.Reducer.percentile([2, 10, 25, 50, 75, 90, 98]), "", True)
             .combine(ee.Reducer.minMax(), "", True)
         )
+        dyn_scale = _compute_dynamic_scale(region)
         raw_stats = idx_img.reduceRegion(
             reducer=stats_reducer,
             geometry=region,
-            scale=150,
+            scale=dyn_scale,
             maxPixels=1e9,
             bestEffort=True,
             tileScale=4,
