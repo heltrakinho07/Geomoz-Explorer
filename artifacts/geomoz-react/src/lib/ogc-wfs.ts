@@ -147,24 +147,26 @@ export async function fetchWfsCapabilities(
 
   const root = document.documentElement;
   const version = normalizeVersion(root.getAttribute("version") || options.version || "2.0.0");
-  const featureTypes = descendants(root, "FeatureType")
-    .map((featureType) => {
+  const featureTypes: WfsFeatureType[] = descendants(root, "FeatureType").flatMap(
+    (featureType) => {
       const name = text(child(featureType, "Name"));
-      if (!name) return null;
+      if (!name) return [];
       const title = text(child(featureType, "Title")) || name;
       const defaultCrs =
         text(child(featureType, "DefaultCRS")) ||
         text(child(featureType, "DefaultSRS")) ||
         text(child(featureType, "SRS")) ||
         undefined;
-      return {
-        name,
-        title,
-        defaultCrs,
-        wgs84Bounds: parseBounds(featureType),
-      } satisfies WfsFeatureType;
-    })
-    .filter((item): item is WfsFeatureType => Boolean(item));
+      return [
+        {
+          name,
+          title,
+          defaultCrs,
+          wgs84Bounds: parseBounds(featureType),
+        },
+      ];
+    }
+  );
 
   if (!featureTypes.length) {
     const exception =
