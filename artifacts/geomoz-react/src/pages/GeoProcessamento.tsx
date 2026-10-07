@@ -1,5 +1,5 @@
 /**
- * GeoProcessamento Avançado — Suite Completa de Geoprocessamento
+ * GeoMoz GIS Workspace — Ambiente GIS Integrado e Persistente
  * Fiel à arquitetura e estrutura do GeoLibre (https://geolibre.app/user-guide/processing/):
  *
  * 1. Whitebox Toolbox (1.000+ ferramentas categorizadas: Vector, Raster, Hydrology, Terrain, LiDAR, etc.)
@@ -110,6 +110,11 @@ import {
   CONTENT_W,
 } from "@/lib/pdf-export";
 import type { FeatureCollection, Feature } from "geojson";
+import { useProject } from "@/context/ProjectContext";
+import {
+  loadGISWorkspaceSnapshot,
+  saveGISWorkspaceSnapshot,
+} from "@/lib/gis-workspace-persistence";
 
 // Auto fit-bounds component
 function FitToLayer({ fc }: { fc?: FeatureCollection }) {
@@ -202,6 +207,8 @@ export default function GeoProcessamento({
   onAOIChange,
 }: Props) {
   const { toast } = useToast();
+  const { activeProject } = useProject();
+  const workspaceProjectId = activeProject?.id ?? "session-default";
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -233,12 +240,82 @@ export default function GeoProcessamento({
 
   // Processing History
   const [history, setHistory] = useState<ProcessingHistoryEntry[]>([]);
+  const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
+  const hydratedProjectRef = useRef<string | null>(null);
 
   // Model Builder
   const [modelNodes, setModelNodes] = useState<ModelNode[]>([
     { id: "node_1", toolId: "vector_buffer", name: "Buffer", parameters: { distance: 1500, units: "meters", dissolve: false } },
     { id: "node_2", toolId: "vector_dissolve", name: "Dissolve", parameters: { propertyName: "" } },
   ]);
+
+  // Restore the GIS workspace for the active GeoMoz project.
+  React.useEffect(() => {
+    let cancelled = false;
+    setWorkspaceHydrated(false);
+    hydratedProjectRef.current = null;
+
+    void loadGISWorkspaceSnapshot(workspaceProjectId).then((snapshot) => {
+      if (cancelled) return;
+
+      if (snapshot) {
+        setLayers(snapshot.layers as UserLayer[]);
+        setSelectedLayerId(snapshot.selectedLayerId || snapshot.layers[0]?.id || "");
+        setSecondLayerId(snapshot.secondLayerId || "");
+        setTableLayerId(snapshot.tableLayerId || null);
+        setHistory(snapshot.history as ProcessingHistoryEntry[]);
+        setModelNodes(snapshot.modelNodes as ModelNode[]);
+        if (snapshot.activeTab) setActiveTab(snapshot.activeTab as MainTab);
+        if (snapshot.basemap) setBasemap(snapshot.basemap as BasemapType);
+      } else {
+        setLayers([]);
+        setSelectedLayerId("");
+        setSecondLayerId("");
+        setTableLayerId(null);
+        setHistory([]);
+      }
+
+      hydratedProjectRef.current = workspaceProjectId;
+      setWorkspaceHydrated(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceProjectId]);
+
+  // Persist project workspace changes without blocking map interaction.
+  React.useEffect(() => {
+    if (!workspaceHydrated || hydratedProjectRef.current !== workspaceProjectId) return;
+
+    const timer = window.setTimeout(() => {
+      void saveGISWorkspaceSnapshot({
+        projectId: workspaceProjectId,
+        layers,
+        selectedLayerId,
+        secondLayerId,
+        tableLayerId,
+        history,
+        modelNodes,
+        activeTab,
+        basemap,
+      });
+    }, 650);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    workspaceHydrated,
+    workspaceProjectId,
+    layers,
+    selectedLayerId,
+    secondLayerId,
+    tableLayerId,
+    history,
+    modelNodes,
+    activeTab,
+    basemap,
+  ]);
+
 
   // Spatial SQL Workspace
   const [sqlQuery, setSqlQuery] = useState<string>("");
@@ -682,7 +759,7 @@ export default function GeoProcessamento({
                   GeoLibre Core
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400">Whitebox · GeoLibre Toolbox · Model Builder · SQL</p>
+              <p className="text-[10px] text-slate-400">Mapa GIS · Toolbox · Model Builder · Spatial SQL · Histórico</p>
             </div>
           </div>
           <button
