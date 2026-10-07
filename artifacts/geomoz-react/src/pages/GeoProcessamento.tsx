@@ -14,16 +14,7 @@
  */
 
 import React, { useState, useRef, useMemo, useCallback } from "react";
-import {
-  MapContainer,
-  TileLayer,
-  GeoJSON as LeafletGeoJSON,
-  ScaleControl,
-  ZoomControl,
-  useMap,
-} from "react-leaflet";
-import "leaflet/dist/leaflet.css";
-import L from "leaflet";
+import GISWorkspaceMapLibre from "@/components/GISWorkspaceMapLibre";
 import {
   Wrench,
   Boxes,
@@ -74,11 +65,8 @@ import {
   Cell,
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
-import AreaSelect from "@/components/AreaSelect";
 import BasemapSwitcher from "@/components/BasemapSwitcher";
-import MapTools from "@/components/MapTools";
-import MapDraw from "@/components/MapDraw";
-import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
+import { BasemapType } from "@/lib/basemaps";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { GLOBAL_AOI, customAOI } from "@/lib/aoi";
 import {
@@ -125,22 +113,6 @@ import {
   loadGISWorkspaceSnapshot,
   saveGISWorkspaceSnapshot,
 } from "@/lib/gis-workspace-persistence";
-
-// Auto fit-bounds component
-function FitToLayer({ fc }: { fc?: FeatureCollection }) {
-  const map = useMap();
-  React.useEffect(() => {
-    if (!fc || fc.features.length === 0) return;
-    try {
-      const geoLayer = L.geoJSON(fc);
-      const bounds = geoLayer.getBounds();
-      if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
-      }
-    } catch {}
-  }, [fc, map]);
-  return null;
-}
 
 export interface UserLayer {
   id: string;
@@ -1594,7 +1566,7 @@ export default function GeoProcessamento({
         {desktopSidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
       </button>
 
-      {/* ── Main Leaflet Map View ─────────────────────────────────────────── */}
+      {/* ── Main MapLibre GIS Workspace View ─────────────────────────────── */}
       <div className="flex-1 relative flex flex-col" ref={mapContainerRef}>
         {/* Mobile floating toggle */}
         <button
@@ -1606,96 +1578,21 @@ export default function GeoProcessamento({
           <span>Ferramentas</span>
         </button>
 
-        <MapContainer
-          center={[-18.5, 35.5]}
-          zoom={6}
-          style={{ height: "100%", width: "100%" }}
-          zoomControl={false}
-        >
-          {/* Base Map */}
-          <TileLayer
-            key={basemap}
-            crossOrigin="anonymous"
-            url={GOOGLE_BASEMAPS[basemap].url}
-            subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
-            attribution={GOOGLE_BASEMAPS[basemap].attribution}
-            maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
-          />
-
-          <ScaleControl position="bottomright" imperial={false} />
-          <ZoomControl position="topright" />
-
-          {/* Area Select */}
-          <AreaSelect
-            province={province}
-            district={district}
-            onProvinceChange={(p) => {
-              onProvinceChange(p);
-              onDistrictChange(null);
-            }}
-            onDistrictChange={onDistrictChange}
-            accent="#4f46e5"
-          />
-
-          {/* Auto Fit to active layer */}
-          {activeLayer && <FitToLayer fc={activeLayer.geojson} />}
-
-          {/* Render Active User Layers */}
-          {layers.map(
-            (layer) =>
-              layer.visible && (
-                <LeafletGeoJSON
-                  key={`${layer.id}_${layer.featureCount}`}
-                  data={layer.geojson}
-                  style={() => ({
-                    color: layer.color,
-                    weight: 2.5,
-                    opacity: 0.9,
-                    fillColor: layer.color,
-                    fillOpacity: 0.35,
-                  })}
-                  pointToLayer={(feature, latlng) =>
-                    L.circleMarker(latlng, {
-                      radius: 6,
-                      fillColor: layer.color,
-                      color: "#ffffff",
-                      weight: 1.5,
-                      opacity: 1,
-                      fillOpacity: 0.85,
-                    })
-                  }
-                  onEachFeature={(feature, leafletLayer) => {
-                    const props = feature.properties || {};
-                    const entries = Object.entries(props).filter(([k]) => !k.startsWith("_"));
-                    const html = `
-                    <div style="font-size: 11px; max-width: 240px; font-family: sans-serif;">
-                      <div style="font-weight: bold; color: ${layer.color}; margin-bottom: 4px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">
-                        ${layer.name}
-                      </div>
-                      ${entries
-                        .slice(0, 6)
-                        .map(([k, v]) => `<div><strong>${k}:</strong> ${v}</div>`)
-                        .join("")}
-                    </div>
-                  `;
-                    leafletLayer.bindPopup(html);
-                  }}
-                />
-              )
-          )}
-
-          <MapTools />
-          <MapDraw
-            enabled={drawingEnabled}
-            hasDrawnAOI={aoi.source === "draw"}
-            onClearAOI={() => onAOIChange(GLOBAL_AOI)}
-            onDrawComplete={(geom, label) => {
-              setDrawingEnabled(false);
-              onAOIChange(customAOI(geom, label, "draw"));
-            }}
-            onCancel={() => setDrawingEnabled(false)}
-          />
-        </MapContainer>
+        <GISWorkspaceMapLibre
+          layers={layers}
+          activeLayerId={selectedLayerId}
+          basemap={basemap}
+          aoiGeometry={aoi.source !== "global" ? aoi.geometry : null}
+          drawingEnabled={drawingEnabled}
+          onSelectLayer={setSelectedLayerId}
+          onDrawComplete={(geometry, label) => {
+            setDrawingEnabled(false);
+            onAOIChange(customAOI(geometry, label, "draw"));
+          }}
+          onDrawCancel={() => {
+            setDrawingEnabled(false);
+          }}
+        />
 
         {/* ── Swipe Vertical Divider ──────────────────────────────────────── */}
         {activeTab === "swipe" && (
