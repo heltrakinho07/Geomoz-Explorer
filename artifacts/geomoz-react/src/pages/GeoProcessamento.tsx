@@ -236,7 +236,6 @@ export default function GeoProcessamento({
     user?.uid && user.uid !== "guest_user" && !user.uid.startsWith("guest_")
       ? user.uid
       : null;
-  const mapContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const rasterErrorToastRef = useRef(new Set<string>());
 
@@ -367,10 +366,19 @@ export default function GeoProcessamento({
         setHistory(snapshot.history as ProcessingHistoryEntry[]);
         setModelNodes(snapshot.modelNodes as ModelNode[]);
         if (snapshot.activeTab) {
+          const supportedTabs: MainTab[] = [
+            "vector_toolbox",
+            "whitebox_toolbox",
+            "model_builder",
+            "sql_workspace",
+            "dashboard",
+            "history",
+            "layers",
+          ];
           setActiveTab(
-            snapshot.activeTab === "geolibre_toolbox"
-              ? "vector_toolbox"
-              : (snapshot.activeTab as MainTab)
+            supportedTabs.includes(snapshot.activeTab as MainTab)
+              ? (snapshot.activeTab as MainTab)
+              : "vector_toolbox"
           );
         }
         if (snapshot.basemap) setBasemap(snapshot.basemap as BasemapType);
@@ -1603,25 +1611,6 @@ export default function GeoProcessamento({
       setIsExecuting(false);
     }
   }, [layers, sqlQuery, toast]);
-
-  // ── Swipe Drag Handler ───────────────────────────────────────────────────
-  const handleMouseDown = useCallback(() => {
-    isDraggingRef.current = true;
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isDraggingRef.current || !mapContainerRef.current) return;
-      const rect = mapContainerRef.current.getBoundingClientRect();
-      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-      const pct = Math.round((x / rect.width) * 100);
-      setSwipePercent(pct);
-    };
-    const onMouseUp = () => {
-      isDraggingRef.current = false;
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    };
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-  }, []);
 
   // ── Export PDF Report ────────────────────────────────────────────────────
   const exportPdf = () => {
@@ -3681,7 +3670,7 @@ export default function GeoProcessamento({
       </button>
 
       {/* ── Main MapLibre GIS Workspace View ─────────────────────────────── */}
-      <div className="flex-1 relative flex flex-col" ref={mapContainerRef}>
+      <div className="flex-1 relative flex flex-col">
         {/* Mobile floating toggle */}
         <button
           type="button"
