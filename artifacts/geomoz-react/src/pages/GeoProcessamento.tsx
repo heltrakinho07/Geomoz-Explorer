@@ -20,9 +20,12 @@ import {
   importWfsFeatureType,
   type WfsFeatureType,
 } from "@/lib/ogc-wfs";
-import type {
-  GISWorkspaceRasterLayer,
-  GISWorkspaceRasterMetadata,
+import {
+  autoGISRasterStretch,
+  getGISRasterBandStats,
+  type GISRasterBandStats,
+  type GISWorkspaceRasterLayer,
+  type GISWorkspaceRasterMetadata,
 } from "@/lib/gis-raster";
 import {
   Wrench,
@@ -205,6 +208,17 @@ const PALETTE = [
   "#db2777",
 ];
 
+function rasterStatsKey(layerId: string, band: number): string {
+  return `${layerId}:${band}`;
+}
+
+function formatRasterValue(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  const abs = Math.abs(value);
+  if ((abs > 0 && abs < 0.001) || abs >= 1_000_000) return value.toExponential(3);
+  return Number(value.toPrecision(6)).toLocaleString("pt-PT");
+}
+
 export default function GeoProcessamento({
   aoi,
   province,
@@ -239,6 +253,9 @@ export default function GeoProcessamento({
   const [rasterLayers, setRasterLayers] = useState<GISWorkspaceRasterLayer[]>([]);
   const [rasterUrl, setRasterUrl] = useState("");
   const [showRasterUrlInput, setShowRasterUrlInput] = useState(false);
+  const [rasterBandStats, setRasterBandStats] = useState<Record<string, GISRasterBandStats>>({});
+  const [rasterStatsLoadingKey, setRasterStatsLoadingKey] = useState<string | null>(null);
+  const [rasterStatsErrors, setRasterStatsErrors] = useState<Record<string, string>>({});
   const [showWfsInput, setShowWfsInput] = useState(false);
   const [wfsEndpoint, setWfsEndpoint] = useState("");
   const [wfsVersion, setWfsVersion] = useState("2.0.0");
@@ -502,6 +519,33 @@ export default function GeoProcessamento({
     return null;
   }, [selectedWhiteboxVectorSupport, selectedWhiteboxRasterSupport]);
 
+  const loadRasterBandStats = useCallback(
+    async (layer: GISWorkspaceRasterLayer, band: number, signal?: AbortSignal) => {
+      const key = rasterStatsKey(layer.id, band);
+      setRasterStatsLoadingKey(key);
+      setRasterStatsErrors((previous) => {
+        if (!previous[key]) return previous;
+        const next = { ...previous };
+        delete next[key];
+        return next;
+      });
+      try {
+        const stats = await getGISRasterBandStats(layer, band, signal);
+        if (!stats) throw new Error("Não foi possível calcular estatísticas desta banda.");
+        setRasterBandStats((previous) => ({ ...previous, [key]: stats }));
+      } catch (error) {
+        if (signal?.aborted) return;
+        setRasterStatsErrors((previous) => ({
+          ...previous,
+          [key]: error instanceof Error ? error.message : String(error),
+        }));
+      } finally {
+        setRasterStatsLoadingKey((current) => (current === key ? null : current));
+      }
+    },
+    []
+  );
+
   const selectedWhiteboxRaster = useMemo(
     () => rasterLayers.find((layer) => layer.id === selectedWhiteboxRasterId) ?? null,
     [rasterLayers, selectedWhiteboxRasterId]
@@ -511,6 +555,25 @@ export default function GeoProcessamento({
     () => rasterLayers.find((layer) => layer.id === secondWhiteboxRasterId) ?? null,
     [rasterLayers, secondWhiteboxRasterId]
   );
+
+  React.useEffect(() => {
+    if (!selectedWhiteboxRaster) return;
+    const mode = selectedWhiteboxRaster.rasterState?.mode ?? "single";
+    if (mode !== "single") return;
+
+    const band = selectedWhiteboxRaster.rasterState?.bands?.[0] ?? 1;
+    const key = rasterStatsKey(selectedWhiteboxRaster.id, band);
+    if (rasterBandStats[key] || rasterStatsLoadingKey === key) return;
+
+    const controller = new AbortController();
+    void loadRasterBandStats(selectedWhiteboxRaster, band, controller.signal);
+    return () => controller.abort();
+  }, [
+    loadRasterBandStats,
+    rasterBandStats,
+    rasterStatsLoadingKey,
+    selectedWhiteboxRaster,
+  ]);
 
   React.useEffect(() => {
     if (selectedWhiteboxMode !== "raster") return;
