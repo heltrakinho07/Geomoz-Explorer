@@ -16,6 +16,7 @@ import { db, storage } from "@/lib/firebase";
 import type {
   GISWorkspaceSnapshot,
   PersistedGISLayer,
+  PersistedGISRasterLayer,
   PersistedModelNode,
   PersistedProcessingHistoryEntry,
 } from "@/lib/gis-workspace-persistence";
@@ -24,7 +25,8 @@ const WORKSPACE_STATE_DOC = "state";
 const CLOUD_HISTORY_LIMIT = 100;
 const CLOUD_MODEL_LIMIT = 100;
 
-export interface CloudGISLayerManifest {
+export interface CloudGISVectorLayerManifest {
+  kind?: "vector";
   id: string;
   name: string;
   objectPath: string;
@@ -41,10 +43,35 @@ export interface CloudGISLayerManifest {
   updatedAt: string;
 }
 
+export interface CloudGISRasterLayerManifest {
+  kind: "raster";
+  id: string;
+  name: string;
+  objectPath: string;
+  format: "GeoTIFF";
+  contentHash: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  visible: boolean;
+  opacity: number;
+  bandCount?: number | null;
+  bounds?: [number, number, number, number] | null;
+  rasterState?: Record<string, unknown>;
+  isResult?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CloudGISLayerManifest =
+  | CloudGISVectorLayerManifest
+  | CloudGISRasterLayerManifest;
+
 interface CloudWorkspaceState {
   version: number;
   projectId: string;
   layerOrder: string[];
+  rasterLayerOrder: string[];
   selectedLayerId: string;
   secondLayerId: string;
   tableLayerId: string | null;
@@ -56,6 +83,7 @@ interface CloudWorkspaceState {
 }
 
 const hashCache = new WeakMap<object, string>();
+const blobHashCache = new WeakMap<Blob, string>();
 
 function workspaceRoot(uid: string, projectId: string): string {
   return `users/${uid}/projects/${projectId}`;
@@ -79,6 +107,17 @@ async function sha256Hex(text: string): Promise<string> {
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+async function sha256Blob(blob: Blob): Promise<string> {
+  const cached = blobHashCache.get(blob);
+  if (cached) return cached;
+  const digest = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+  const hash = Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  blobHashCache.set(blob, hash);
+  return hash;
 }
 
 async function serializeLayer(layer: PersistedGISLayer): Promise<{
@@ -121,7 +160,8 @@ async function uploadLayerIfChanged(
     });
   }
 
-  const manifest: CloudGISLayerManifest = {
+  const manifest: CloudGISVectorLayerManifest = {
+    kind: "vector",
     id: layer.id,
     name: layer.name,
     objectPath,
@@ -133,6 +173,68 @@ async function uploadLayerIfChanged(
     fields: layer.fields,
     color: layer.color,
     visible: layer.visible,
+    isResult: layer.isResult,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
+
+  await setDoc(manifestRef, manifest, { merge: true });
+  return manifest;
+}
+
+async function uploadRasterIfChanged(
+  uid: string,
+  projectId: string,
+  layer: PersistedGISRasterLayer
+): Promise<CloudGISRasterLayerManifest | null> {
+  const manifestRef = layerManifestRef(uid, projectId, layer.id);
+  const current = await getDoc(manifestRef);
+  const existing =
+    current.exists() && current.data().kind === "raster"
+      ? (current.data() as CloudGISRasterLayerManifest)
+      : null;
+  const now = new Date().toISOString();
+
+  if (!layer.blob && !existing) {
+    // Remote-only rasters without a project-owned object remain local references
+    // until they are explicitly imported into project storage.
+    return null;
+  }
+
+  const contentHash = layer.blob
+    ? await sha256Blob(layer.blob)
+    : existing?.contentHash ?? "";
+  const objectPath =
+    existing?.objectPath ?? `${workspaceRoot(uid, projectId)}/rasters/${layer.id}.tif`;
+
+  if (layer.blob && (!existing || existing.contentHash !== contentHash)) {
+    await uploadBytes(storageRef(storage, objectPath), layer.blob, {
+      contentType: layer.mimeType || "image/tiff",
+      customMetadata: {
+        projectId,
+        layerId: layer.id,
+        contentHash,
+        source: layer.isResult ? "derived" : "input",
+        layerKind: "raster",
+      },
+    });
+  }
+
+  const manifest: CloudGISRasterLayerManifest = {
+    kind: "raster",
+    id: layer.id,
+    name: layer.name,
+    objectPath,
+    format: "GeoTIFF",
+    contentHash,
+    fileName: layer.fileName,
+    mimeType: layer.mimeType || "image/tiff",
+    sizeBytes: layer.blob?.size ?? layer.sizeBytes ?? existing?.sizeBytes ?? 0,
+    visible: layer.visible,
+    opacity: layer.opacity,
+    bandCount: layer.bandCount ?? existing?.bandCount ?? null,
+    bounds: layer.bounds ?? existing?.bounds ?? null,
+    rasterState: layer.rasterState ?? existing?.rasterState,
     isResult: layer.isResult,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
@@ -173,17 +275,22 @@ export async function syncGISWorkspaceToCloud(
   const projectId = snapshot.projectId;
   if (!projectId || projectId === "session-default") return;
 
-  await Promise.all(
-    snapshot.layers.map((layer) => uploadLayerIfChanged(uid, projectId, layer))
-  );
+  await Promise.all([
+    ...snapshot.layers.map((layer) => uploadLayerIfChanged(uid, projectId, layer)),
+    ...snapshot.rasterLayers.map((layer) => uploadRasterIfChanged(uid, projectId, layer)),
+  ]);
 
-  const layerIds = new Set(snapshot.layers.map((layer) => layer.id));
+  const layerIds = new Set([
+    ...snapshot.layers.map((layer) => layer.id),
+    ...snapshot.rasterLayers.map((layer) => layer.id),
+  ]);
   await removeStaleCloudLayers(uid, projectId, layerIds);
 
   const state: CloudWorkspaceState = {
     version: 1,
     projectId,
     layerOrder: snapshot.layers.map((layer) => layer.id),
+    rasterLayerOrder: snapshot.rasterLayers.map((layer) => layer.id),
     selectedLayerId: snapshot.selectedLayerId,
     secondLayerId: snapshot.secondLayerId,
     tableLayerId: snapshot.tableLayerId,
@@ -196,7 +303,9 @@ export async function syncGISWorkspaceToCloud(
   await setDoc(workspaceStateRef(uid, projectId), state, { merge: true });
 }
 
-async function downloadLayer(manifest: CloudGISLayerManifest): Promise<PersistedGISLayer> {
+async function downloadVectorLayer(
+  manifest: CloudGISVectorLayerManifest
+): Promise<PersistedGISLayer> {
   const url = await getDownloadURL(storageRef(storage, manifest.objectPath));
   const response = await fetch(url);
   if (!response.ok) {
@@ -223,6 +332,26 @@ async function downloadLayer(manifest: CloudGISLayerManifest): Promise<Persisted
   };
 }
 
+async function restoreRasterLayer(
+  manifest: CloudGISRasterLayerManifest
+): Promise<PersistedGISRasterLayer> {
+  const remoteUrl = await getDownloadURL(storageRef(storage, manifest.objectPath));
+  return {
+    id: manifest.id,
+    name: manifest.name,
+    fileName: manifest.fileName || `${manifest.name}.tif`,
+    mimeType: manifest.mimeType || "image/tiff",
+    sizeBytes: manifest.sizeBytes ?? 0,
+    visible: manifest.visible ?? true,
+    opacity: manifest.opacity ?? 1,
+    remoteUrl,
+    bandCount: manifest.bandCount ?? null,
+    bounds: manifest.bounds ?? null,
+    rasterState: manifest.rasterState,
+    isResult: manifest.isResult,
+  };
+}
+
 export async function loadGISWorkspaceFromCloud(
   uid: string,
   projectId: string
@@ -242,7 +371,18 @@ export async function loadGISWorkspaceFromCloud(
   const manifests = layerSnaps.docs.map(
     (layerDoc) => layerDoc.data() as CloudGISLayerManifest
   );
-  const downloaded = await Promise.all(manifests.map(downloadLayer));
+  const vectorManifests = manifests.filter(
+    (manifest): manifest is CloudGISVectorLayerManifest =>
+      manifest.kind !== "raster" && manifest.format === "GeoJSON"
+  );
+  const rasterManifests = manifests.filter(
+    (manifest): manifest is CloudGISRasterLayerManifest =>
+      manifest.kind === "raster" || manifest.format === "GeoTIFF"
+  );
+  const [downloaded, restoredRasters] = await Promise.all([
+    Promise.all(vectorManifests.map(downloadVectorLayer)),
+    Promise.all(rasterManifests.map(restoreRasterLayer)),
+  ]);
   const byId = new Map(downloaded.map((layer) => [layer.id, layer]));
   const ordered = state?.layerOrder?.length
     ? [
@@ -250,11 +390,19 @@ export async function loadGISWorkspaceFromCloud(
         ...downloaded.filter((layer) => !state.layerOrder.includes(layer.id)),
       ]
     : downloaded;
+  const rasterById = new Map(restoredRasters.map((layer) => [layer.id, layer]));
+  const orderedRasters = state?.rasterLayerOrder?.length
+    ? [
+        ...state.rasterLayerOrder.map((id) => rasterById.get(id)).filter(Boolean),
+        ...restoredRasters.filter((layer) => !state.rasterLayerOrder.includes(layer.id)),
+      ]
+    : restoredRasters;
 
   return {
     version: state?.version ?? 1,
     projectId,
     layers: ordered as PersistedGISLayer[],
+    rasterLayers: orderedRasters as PersistedGISRasterLayer[],
     selectedLayerId: state?.selectedLayerId ?? ordered[0]?.id ?? "",
     secondLayerId: state?.secondLayerId ?? "",
     tableLayerId: state?.tableLayerId ?? null,
