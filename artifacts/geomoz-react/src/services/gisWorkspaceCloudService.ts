@@ -24,6 +24,7 @@ import {
   GIS_WORKSPACE_SCHEMA_VERSION,
   loadGISWorkspaceRasterFiles,
 } from "@/lib/gis-workspace-persistence";
+import type { GISWorkspaceRasterLayer } from "@/lib/gis-raster";
 
 const WORKSPACE_STATE_DOC = "state";
 const CLOUD_HISTORY_LIMIT = 100;
