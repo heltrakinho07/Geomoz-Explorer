@@ -939,29 +939,33 @@ export default function GeoProcessamento({
     }, 30);
   }, [activeLayer, modelNodes, executeToolById, toast]);
 
+  const readRasterBytes = useCallback(
+    async (layer: GISWorkspaceRasterLayer): Promise<Uint8Array> => {
+      if (layer.file) {
+        return new Uint8Array(await layer.file.arrayBuffer());
+      }
+      if (layer.remoteUrl) {
+        const response = await fetch(layer.remoteUrl);
+        if (!response.ok) {
+          throw new Error(
+            `Não foi possível transferir "${layer.name}" da cloud (HTTP ${response.status}).`
+          );
+        }
+        return new Uint8Array(await response.arrayBuffer());
+      }
+      throw new Error(`A camada raster "${layer.name}" não possui bytes acessíveis.`);
+    },
+    []
+  );
+
   const handleRunWhitebox = useCallback(async () => {
-    if (!selectedWhiteboxTool || !selectedWhiteboxSupport?.supported) {
+    if (!selectedWhiteboxTool || !selectedWhiteboxMode) {
       toast({
         title: "Ferramenta ainda não ligada ao tipo de camada",
         description:
-          selectedWhiteboxSupport?.reason ||
-          "Selecione uma ferramenta Whitebox vetorial compatível.",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (!activeLayer) {
-      toast({
-        title: "Selecione uma camada",
-        description: "A ferramenta Whitebox precisa de uma camada vetorial de entrada.",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (selectedWhiteboxSupport.vectorInputs.length > 1 && !secondaryLayer) {
-      toast({
-        title: "Segunda camada necessária",
-        description: "Esta ferramenta Whitebox declara duas entradas vetoriais.",
+          selectedWhiteboxRasterSupport?.reason ||
+          selectedWhiteboxVectorSupport?.reason ||
+          "Selecione uma ferramenta Whitebox compatível.",
         variant: "destructive",
       });
       return;
@@ -969,6 +973,94 @@ export default function GeoProcessamento({
 
     setIsExecuting(true);
     try {
+      if (selectedWhiteboxMode === "raster") {
+        if (!selectedWhiteboxRaster) {
+          throw new Error("Selecione uma camada raster de entrada.");
+        }
+        if (
+          (selectedWhiteboxRasterSupport?.rasterInputs.length ?? 0) > 1 &&
+          !secondaryWhiteboxRaster
+        ) {
+          throw new Error("Esta ferramenta Whitebox requer uma segunda camada raster.");
+        }
+
+        const primaryBytes = await readRasterBytes(selectedWhiteboxRaster);
+        const secondaryBytes = secondaryWhiteboxRaster
+          ? await readRasterBytes(secondaryWhiteboxRaster)
+          : undefined;
+
+        const result = await runWhiteboxRasterTool({
+          manifest: selectedWhiteboxTool,
+          primaryRaster: {
+            name: selectedWhiteboxRaster.name,
+            bytes: primaryBytes,
+          },
+          secondaryRaster:
+            secondaryWhiteboxRaster && secondaryBytes
+              ? {
+                  name: secondaryWhiteboxRaster.name,
+                  bytes: secondaryBytes,
+                }
+              : undefined,
+          parameters: whiteboxParams,
+        });
+
+        const generated: GISWorkspaceRasterLayer[] = result.outputs.map((output) => {
+          const buffer = new Uint8Array(output.bytes).buffer;
+          const file = new File([buffer], output.fileName, { type: "image/tiff" });
+          return {
+            id: `whitebox_raster_${crypto.randomUUID().slice(0, 12)}`,
+            name: `${whiteboxManifestName(selectedWhiteboxTool)} — ${output.parameter}`,
+            file,
+            fileName: file.name,
+            mimeType: "image/tiff",
+            sizeBytes: file.size,
+            visible: true,
+            opacity: 1,
+            isResult: true,
+            bandCount: null,
+            bounds: null,
+            error: null,
+          };
+        });
+
+        setRasterLayers((previous) => [...generated, ...previous]);
+        setHistory((previous) => [
+          {
+            id: `hist_whitebox_raster_${Date.now()}`,
+            toolId: selectedWhiteboxTool.id,
+            toolName: whiteboxManifestName(selectedWhiteboxTool),
+            engine: "WASM",
+            timestamp: new Date().toLocaleTimeString("pt-PT"),
+            durationMs: result.executionTimeMs,
+            inputLayerName: [selectedWhiteboxRaster.name, secondaryWhiteboxRaster?.name]
+              .filter(Boolean)
+              .join(", "),
+            outputCount: generated.length,
+            outputLabel: generated.length === 1 ? "raster" : "rasters",
+            status: "success",
+            parameters: { ...whiteboxParams },
+          },
+          ...previous,
+        ]);
+
+        toast({
+          title: "Whitebox Raster concluído",
+          description: `${whiteboxManifestName(selectedWhiteboxTool)} gerou ${generated.length} COG raster em ${result.executionTimeMs}ms.`,
+        });
+        return;
+      }
+
+      if (!activeLayer) {
+        throw new Error("Selecione uma camada vetorial de entrada.");
+      }
+      if (
+        (selectedWhiteboxVectorSupport?.vectorInputs.length ?? 0) > 1 &&
+        !secondaryLayer
+      ) {
+        throw new Error("Esta ferramenta Whitebox requer uma segunda camada vetorial.");
+      }
+
       const result = await runWhiteboxVectorTool({
         manifest: selectedWhiteboxTool,
         primaryLayer: activeLayer.geojson,
@@ -1012,6 +1104,7 @@ export default function GeoProcessamento({
             .filter(Boolean)
             .join(", "),
           outputCount,
+          outputLabel: "feições",
           status: "success",
           parameters: { ...whiteboxParams },
         },
@@ -1034,9 +1127,14 @@ export default function GeoProcessamento({
   }, [
     activeLayer,
     layers.length,
+    readRasterBytes,
     secondaryLayer,
-    selectedWhiteboxSupport,
+    secondaryWhiteboxRaster,
+    selectedWhiteboxMode,
+    selectedWhiteboxRaster,
+    selectedWhiteboxRasterSupport,
     selectedWhiteboxTool,
+    selectedWhiteboxVectorSupport,
     toast,
     whiteboxParams,
   ]);
