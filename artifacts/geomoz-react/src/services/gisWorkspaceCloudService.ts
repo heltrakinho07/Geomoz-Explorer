@@ -502,11 +502,12 @@ export async function loadGISWorkspaceFromCloud(
         String((node as { kind?: unknown }).kind)
       )
   );
-  const restoredModel =
+  const restoredGraph =
     (state?.version ?? 0) >= 4 || hasGraphNodes
       ? {
-          modelNodes: rawModelNodes,
-          modelEdges: state?.modelEdges ?? [],
+          version: 1 as const,
+          nodes: rawModelNodes,
+          edges: state?.modelEdges ?? [],
         }
       : migrateLinearModelNodes(
           rawModelNodes as unknown as Array<{
@@ -527,8 +528,8 @@ export async function loadGISWorkspaceFromCloud(
     secondLayerId: state?.secondLayerId ?? "",
     tableLayerId: state?.tableLayerId ?? null,
     history: state?.history ?? [],
-    modelNodes: restoredModel.modelNodes,
-    modelEdges: restoredModel.modelEdges,
+    modelNodes: restoredGraph.nodes,
+    modelEdges: restoredGraph.edges,
     activeTab: state?.activeTab ?? "geolibre_toolbox",
     basemap: state?.basemap ?? "hybrid",
     updatedAt: state?.updatedAt ?? new Date(0).toISOString(),
