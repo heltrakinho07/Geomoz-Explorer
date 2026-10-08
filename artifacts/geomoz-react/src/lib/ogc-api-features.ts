@@ -231,15 +231,15 @@ export async function importOgcApiFeatures(
 
   while (next && features.length < maxFeatures && !visited.has(next)) {
     visited.add(next);
-    const document = await fetchJson<Record<string, unknown>>(
+    const pageDoc: Record<string, unknown> = await fetchJson<Record<string, unknown>>(
       next,
       options.signal
     );
-    const page = normalizeFeatureCollection(document);
+    const page = normalizeFeatureCollection(pageDoc);
     features.push(
       ...(page.features.slice(0, maxFeatures - features.length) as Feature[])
     );
-    next = links((document as any).links, next).find(
+    next = links(pageDoc.links, next).find(
       (link) => link.rel === "next"
     )?.href;
   }
