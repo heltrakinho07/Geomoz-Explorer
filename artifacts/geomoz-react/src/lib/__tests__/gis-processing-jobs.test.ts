@@ -109,6 +109,41 @@ describe("GIS heavy processing client", () => {
     expect(file.size).toBe(3);
   });
 
+  it("stops polling immediately after cancellation", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          job: {
+            id: "job-cancel",
+            tool: "slope",
+            status: "running",
+            created_at: 1,
+            updated_at: 1,
+            input_name: "dem.tif",
+            progress: 25,
+            message: "A processar.",
+            parameters: {},
+          },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      waitForGISHeavyJob({
+        jobId: "job-cancel",
+        signal: controller.signal,
+        onProgress: () => controller.abort(),
+      })
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("surfaces backend detail errors", async () => {
     vi.stubGlobal(
       "fetch",
