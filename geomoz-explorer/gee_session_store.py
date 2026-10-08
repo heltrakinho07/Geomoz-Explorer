@@ -60,7 +60,9 @@ def get_token(uid: str) -> Optional[dict]:
     _require_uid(uid)
     db = _get_db()
     if db is None:
-        return dict(_test_sessions.get(uid, {})) or None if _MEMORY_ONLY else None
+        if not _MEMORY_ONLY:
+            raise RuntimeError("Firestore Admin indisponível: credenciais GEE não podem ser lidas.")
+        return dict(_test_sessions.get(uid, {})) or None
     snapshot = _private_ref(db, uid).get()
     if snapshot.exists:
         return snapshot.to_dict() or None
