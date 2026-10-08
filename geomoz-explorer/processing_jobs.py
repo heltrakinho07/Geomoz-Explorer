@@ -29,6 +29,7 @@ _executor = ThreadPoolExecutor(max_workers=_MAX_WORKERS, thread_name_prefix="geo
 _lock = threading.Lock()
 _jobs: Dict[str, "ProcessingJob"] = {}
 _futures: Dict[str, Future] = {}
+_processes: Dict[str, subprocess.Popen] = {}
 
 
 @dataclass
@@ -169,27 +170,55 @@ def _gdal_tool_command(
 
 def _run_job(job_id: str, input_path: Path, output_path: Path) -> None:
     with _lock:
-        job = _jobs[job_id]
+        job = _jobs.get(job_id)
+        if not job:
+            return
         parameters = dict(job.parameters)
         tool = job.tool
 
     _set_job(job_id, status="running", progress=10, message="A preparar GDAL.")
+    process: Optional[subprocess.Popen] = None
     try:
         cmd = _gdal_tool_command(tool, input_path, output_path, parameters)
         _set_job(job_id, progress=25, message="A executar processamento geoespacial.")
-        completed = subprocess.run(
+        process = subprocess.Popen(
             cmd,
-            check=False,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=int(parameters.get("timeout_seconds", 1800)),
+            shell=False,
         )
-        if completed.returncode != 0:
-            detail = (completed.stderr or completed.stdout or "GDAL falhou.").strip()
+        with _lock:
+            if job_id not in _jobs:
+                process.terminate()
+                return
+            _processes[job_id] = process
+
+        try:
+            stdout, stderr = process.communicate(
+                timeout=int(parameters.get("timeout_seconds", 1800))
+            )
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                stdout, stderr = process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                stdout, stderr = process.communicate()
+            raise
+
+        with _lock:
+            if job_id not in _jobs:
+                return
+
+        if process.returncode != 0:
+            detail = (stderr or stdout or "GDAL falhou.").strip()
             raise RuntimeError(detail[-4000:])
 
         if not output_path.exists() or output_path.stat().st_size <= 0:
-            raise RuntimeError("O processamento terminou sem produzir um ficheiro de saída.")
+            raise RuntimeError(
+                "O processamento terminou sem produzir um ficheiro de saída."
+            )
 
         _set_job(
             job_id,
@@ -215,7 +244,10 @@ def _run_job(job_id: str, input_path: Path, output_path: Path) -> None:
             error=str(exc),
             message="Falha no processamento.",
         )
-
+    finally:
+        with _lock:
+            if _processes.get(job_id) is process:
+                _processes.pop(job_id, None)
 
 def create_processing_job(
     *,
@@ -285,7 +317,16 @@ def delete_processing_job(job_id: str, uid: str) -> bool:
         if not job or job.uid != uid:
             return False
         future = _futures.pop(job_id, None)
+        process = _processes.pop(job_id, None)
         _jobs.pop(job_id, None)
+
+    if process and process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
 
     if future and not future.done():
         future.cancel()
