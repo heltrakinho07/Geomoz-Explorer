@@ -52,61 +52,78 @@ except ImportError:
     firebase_auth = None
 
 def _extract_uid_from_header(auth_header: str) -> Optional[str]:
+    """Return a UID only after Firebase Admin verifies the token signature.
+
+    Never use the unverified JWT payload for user identity or GEE storage.
+    """
     if not auth_header or not auth_header.startswith("Bearer "):
         return None
     token = auth_header.removeprefix("Bearer ").strip()
-    if not token:
+    if not token or firebase_auth is None:
         return None
-    if firebase_auth:
-        try:
-            decoded = firebase_auth.verify_id_token(token)
-            return decoded.get("uid")
-        except Exception:
-            pass
     try:
-        import base64, json
-        parts = token.split(".")
-        if len(parts) >= 2:
-            padding = 4 - (len(parts[1]) % 4)
-            payload_b64 = parts[1] + ("=" * padding if padding != 4 else "")
-            payload = json.loads(base64.urlsafe_b64decode(payload_b64.encode()))
-            return payload.get("user_id") or payload.get("sub")
+        decoded = firebase_auth.verify_id_token(token)
+        uid = decoded.get("uid")
+        return str(uid) if uid else None
     except Exception:
-        pass
-    return None
+        return None
+
 
 async def require_firebase_auth(request: Request) -> str:
-    auth_header = request.headers.get("Authorization", "")
-    uid = _extract_uid_from_header(auth_header)
+    uid = _extract_uid_from_header(request.headers.get("Authorization", ""))
     if not uid:
-        return "geomoz-user"
+        raise HTTPException(status_code=401, detail="Autenticação Firebase necessária.")
     return uid
 
+
 async def require_gee_auth(request: Request) -> str:
+    """Permit authenticated BYO-GEE or explicitly configured public demo access."""
     auth_header = request.headers.get("Authorization", "")
     uid = _extract_uid_from_header(auth_header)
     gee_project = request.headers.get("X-GEE-Project", "").strip() or None
     gee_token = request.headers.get("X-GEE-Token", "").strip() or None
 
+    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower() == "true"
+    has_server_credentials = bool(
+        os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
+        or os.environ.get("GEE_SERVICE_ACCOUNT_FILE", "").strip()
+        or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+    )
+
+    # Explicitly invalid identity is never treated as an anonymous guest.
+    if auth_header and not uid:
+        raise HTTPException(status_code=401, detail="Token Firebase inválido.")
+
+    if not uid:
+        # Guests must never supply personal GEE credentials or access stored
+        # tokens belonging to the historical shared 'default' identity.
+        if gee_project or gee_token or not (allow_server and has_server_credentials):
+            raise HTTPException(status_code=401, detail="Inicie sessão para utilizar o Google Earth Engine.")
+        from gee_module import _init_gee
+        try:
+            _init_gee(uid=None, project=None, token=None)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return ""
+
     import gee_session_store
-    user_token = gee_session_store.get_token(uid) if uid else None
-    has_sa = bool(os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip())
-    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
-    if not gee_token and not gee_project and not user_token and not allow_server and not has_sa:
+    user_token = gee_session_store.get_token(uid)
+    if not gee_token and not gee_project and not user_token and not (allow_server and has_server_credentials):
         raise HTTPException(
             status_code=403,
-            detail="É necessário conectar a sua conta do Google Earth Engine nas opções para utilizar a sua própria cota."
+            detail="Conecte a sua conta Earth Engine ou peça acesso à quota da plataforma.",
         )
 
     from gee_module import _init_gee
     try:
-        _init_gee(uid=uid or "default", project=gee_project, token=gee_token)
-    except RuntimeError as e:
-        err_msg = str(e)
-        if "expirou" in err_msg or "necessary fields" in err_msg or "refresh" in err_msg:
-            raise HTTPException(status_code=401, detail=err_msg)
-        raise HTTPException(status_code=403, detail=err_msg)
-    return uid or "default"
+        _init_gee(uid=uid, project=gee_project, token=gee_token)
+    except RuntimeError as exc:
+        msg = str(exc)
+        if "expirou" in msg or "necessary fields" in msg or "refresh" in msg.lower():
+            raise HTTPException(status_code=401, detail=msg) from exc
+        raise HTTPException(status_code=403, detail=msg) from exc
+    return uid
+
 
 def handle_gee_api_error(exc: Exception, prefix: str = "Cálculo GEE", uid: str = None):
     msg = str(exc)
@@ -205,12 +222,31 @@ _thread_pool_executor = ThreadPoolExecutor(max_workers=4)
 
 app = FastAPI(title="GeoMoz API", version="2.1.0")
 
-# CORS configuration - allow all origins (localhost, 127.0.0.1, 192.168.*, null/electron)
+# CORS: accept only explicitly configured origins (production) or known local
+# development/Electron origins. Never combine wildcard origins with credentials.
+_default_cors_origins = [
+    "https://geomoz.geolithica.com",
+    "https://geoprocessamento-426809.web.app",
+    "https://geoprocessamento-426809.firebaseapp.com",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "null",  # Electron file:// pages on the local development API
+]
+_configured_cors_origins = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
+if "*" in _configured_cors_origins:
+    logger.warning("CORS_ORIGINS='*' refused; using explicit known origins.")
+    _configured_cors_origins = []
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r".*",
+    allow_origins=_configured_cors_origins or _default_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -674,7 +710,7 @@ def _update_env_file(updates: dict):
 
 
 @app.post("/geomoz-api/gee/configure")
-def gee_configure(req: GEEServiceAccountKeyRequest, request: Request):
+def gee_configure(req: GEEServiceAccountKeyRequest, uid: str = Depends(require_firebase_auth)):
     """
     Update GEE credentials for the active authenticated user and reinitialize.
     Accepts service_account_key (JSON string), project_id, and/or account.
@@ -682,9 +718,6 @@ def gee_configure(req: GEEServiceAccountKeyRequest, request: Request):
     """
     import gee_session_store
     from gee_module import reset_gee, _init_gee, gee_status as _gee_status
-
-    auth_header = request.headers.get("Authorization", "")
-    uid = _extract_uid_from_header(auth_header) or "default"
 
     changed = False
     user_data = gee_session_store.get_token(uid) or {}
@@ -998,13 +1031,15 @@ async def gee_status_endpoint(request: Request):
     import gee_session_store
     auth_header = request.headers.get("Authorization", "")
     uid = _extract_uid_from_header(auth_header)
-    gee_project = request.headers.get("X-GEE-Project", "").strip() or None
-    gee_token = request.headers.get("X-GEE-Token", "").strip() or None
+    # Never initialize Earth Engine with caller-provided credentials until
+    # the caller has proven ownership of a Firebase user identity.
+    gee_project = (request.headers.get("X-GEE-Project", "").strip() or None) if uid else None
+    gee_token = (request.headers.get("X-GEE-Token", "").strip() or None) if uid else None
 
     from gee_module import gee_status
     st = gee_status(uid=uid, project=gee_project, token=gee_token)
     has_sa = bool(os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip())
-    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
+    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower() == "true"
     user_token = gee_session_store.get_token(uid) if uid else None
 
     from gee_presets import INDEX_REGISTRY
@@ -1584,23 +1619,10 @@ async def gee_basin_report(req: GEEBasinStatsRequest, uid: str = Depends(require
 
 
 @app.post("/geomoz-api/gee/refresh-basin-tiles")
-async def gee_refresh_basin_tiles(req: GEEBasinStatsRequest, request: Request):
-    """Regenerate active GEE tile URLs for an existing basin polygon.
-    Only creates visualization map IDs (<1s, zero reductions).
-    Publicly accessible so shared links and saved analyses can refresh expired tiles.
-    """
+async def gee_refresh_basin_tiles(req: GEEBasinStatsRequest, uid: str = Depends(require_gee_auth)):
+    """Regenerate active GEE tile URLs with verified user or explicit demo access."""
     import asyncio
-    from gee_module import refresh_basin_tiles, _init_gee
-
-    # Ensure GEE initialized (uses server fallback if no user auth header present)
-    try:
-        auth_header = request.headers.get("Authorization", "")
-        uid = _extract_uid_from_header(auth_header)
-        gee_project = request.headers.get("X-GEE-Project", "").strip() or None
-        gee_token = request.headers.get("X-GEE-Token", "").strip() or None
-        _init_gee(uid=uid or "default", project=gee_project, token=gee_token)
-    except Exception:
-        pass
+    from gee_module import refresh_basin_tiles
 
     loop = asyncio.get_event_loop()
     try:
@@ -2539,6 +2561,22 @@ async def get_shared_analysis(share_id: str):
 SAVED_ANALYSES_DIR = os.path.join(os.path.dirname(__file__), "data", "saved_analyses")
 os.makedirs(SAVED_ANALYSES_DIR, exist_ok=True)
 
+def _saved_analysis_dir_for_user(uid: str) -> str:
+    """Return private on-disk namespace, never a caller-controlled path."""
+    import hashlib
+    uid_hash = hashlib.sha256(uid.encode("utf-8")).hexdigest()[:32]
+    directory = os.path.join(SAVED_ANALYSES_DIR, uid_hash)
+    os.makedirs(directory, exist_ok=True)
+    return directory
+
+
+def _saved_analysis_file(uid: str, analysis_id: str) -> str:
+    import re
+    if not re.fullmatch(r"[a-zA-Z0-9_-]{4,64}", analysis_id):
+        raise HTTPException(400, "Identificador de análise inválido.")
+    return os.path.join(_saved_analysis_dir_for_user(uid), f"{analysis_id}.json")
+
+
 class SaveAnalysisRequest(BaseModel):
     id: Optional[str] = None
     title: str
@@ -2547,7 +2585,7 @@ class SaveAnalysisRequest(BaseModel):
     metadata: Optional[dict] = None
 
 @app.post("/geomoz-api/analyses/save")
-async def save_analysis(req: SaveAnalysisRequest):
+async def save_analysis(req: SaveAnalysisRequest, uid: str = Depends(require_firebase_auth)):
     """
     Save an analysis snapshot permanently on the server.
     Prevents duplicate or overlapping studies with the same name.
@@ -2555,11 +2593,12 @@ async def save_analysis(req: SaveAnalysisRequest):
     import secrets
     title_clean = req.title.strip()
     existing_id = None
+    user_directory = _saved_analysis_dir_for_user(uid)
 
-    if os.path.exists(SAVED_ANALYSES_DIR):
-        for fname in os.listdir(SAVED_ANALYSES_DIR):
+    if os.path.exists(user_directory):
+        for fname in os.listdir(user_directory):
             if fname.endswith(".json"):
-                fpath = os.path.join(SAVED_ANALYSES_DIR, fname)
+                fpath = os.path.join(user_directory, fname)
                 try:
                     with open(fpath, "r", encoding="utf-8") as f:
                         existing_item = json.load(f)
@@ -2570,7 +2609,7 @@ async def save_analysis(req: SaveAnalysisRequest):
                     pass
 
     analysis_id = existing_id or req.id or secrets.token_hex(6)
-    file_path = os.path.join(SAVED_ANALYSES_DIR, f"{analysis_id}.json")
+    file_path = _saved_analysis_file(uid, analysis_id)
     payload = {
         "id": analysis_id,
         "title": title_clean,
@@ -2588,14 +2627,15 @@ async def save_analysis(req: SaveAnalysisRequest):
     return {"id": analysis_id, "title": title_clean, "saved_at": payload["saved_at"]}
 
 @app.get("/geomoz-api/analyses")
-async def list_saved_analyses():
+async def list_saved_analyses(uid: str = Depends(require_firebase_auth)):
     """List all saved analyses with summaries (no heavy geojson in list)."""
     analyses = []
-    if not os.path.exists(SAVED_ANALYSES_DIR):
+    user_directory = _saved_analysis_dir_for_user(uid)
+    if not os.path.exists(user_directory):
         return []
-    for fname in os.listdir(SAVED_ANALYSES_DIR):
+    for fname in os.listdir(user_directory):
         if fname.endswith(".json"):
-            fpath = os.path.join(SAVED_ANALYSES_DIR, fname)
+            fpath = os.path.join(user_directory, fname)
             try:
                 with open(fpath, "r", encoding="utf-8") as f:
                     item = json.load(f)
@@ -2612,12 +2652,9 @@ async def list_saved_analyses():
     return analyses
 
 @app.get("/geomoz-api/analyses/{analysis_id}")
-async def get_saved_analysis(analysis_id: str):
-    """Retrieve full saved analysis by ID."""
-    import re
-    if not re.match(r"^[a-zA-Z0-9_-]{4,64}$", analysis_id):
-        raise HTTPException(400, "Identificador inválido.")
-    fpath = os.path.join(SAVED_ANALYSES_DIR, f"{analysis_id}.json")
+async def get_saved_analysis(analysis_id: str, uid: str = Depends(require_firebase_auth)):
+    """Return only an authenticated user's saved analysis."""
+    fpath = _saved_analysis_file(uid, analysis_id)
     if not os.path.exists(fpath):
         raise HTTPException(404, "Análise não encontrada.")
     try:
@@ -2627,9 +2664,9 @@ async def get_saved_analysis(analysis_id: str):
         raise HTTPException(500, f"Falha ao ler análise: {exc}")
 
 @app.delete("/geomoz-api/analyses/{analysis_id}")
-async def delete_saved_analysis(analysis_id: str):
-    """Delete a saved analysis by ID."""
-    fpath = os.path.join(SAVED_ANALYSES_DIR, f"{analysis_id}.json")
+async def delete_saved_analysis(analysis_id: str, uid: str = Depends(require_firebase_auth)):
+    """Delete only an authenticated user's saved analysis."""
+    fpath = _saved_analysis_file(uid, analysis_id)
     if os.path.exists(fpath):
         try:
             os.remove(fpath)

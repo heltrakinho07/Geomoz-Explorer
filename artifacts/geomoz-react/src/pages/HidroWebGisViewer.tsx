@@ -368,7 +368,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
     } catch {}
   }, [sharedData]);
 
-  const report = sharedData?.basinReport || (sharedData as any)?.data?.basinReport;
+  const report: BasinReport | null = sharedData?.basinReport || (sharedData as { data?: { basinReport?: BasinReport } } | null)?.data?.basinReport || null;
   const wsData = sharedData?.watershedData || (sharedData as any)?.data?.watershedData;
   const wsStats = sharedData?.wsStats || (sharedData as any)?.data?.wsStats;
   const PP = sharedData?.pourPoint || (sharedData as any)?.data?.pourPoint;

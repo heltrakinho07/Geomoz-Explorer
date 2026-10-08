@@ -106,12 +106,15 @@ class TestGeeIndicesAPI:
             assert "formula" in idx
 
     def test_total_index_count(self, client: TestClient) -> None:
-        """The API should report the expected total number of indices."""
+        """The API must expose the entire current registry with unique IDs."""
+        from gee_presets import INDEX_REGISTRY
+
         resp = client.get("/geomoz-api/gee/indices")
         data = resp.json()
-        assert len(data["indices"]) == 53, (
-            f"Expected 53 indices, got {len(data['indices'])}"
-        )
+        ids = [item["id"] for item in data["indices"]]
+        assert len(ids) >= 53, "Previously available GEE indices disappeared"
+        assert len(ids) == len(set(ids)), "Duplicate GEE index IDs in response"
+        assert set(ids) == set(INDEX_REGISTRY), "API and index registry disagree"
 
 
 class TestGeeMineralPresets:

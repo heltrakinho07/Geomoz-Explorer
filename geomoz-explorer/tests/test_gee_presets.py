@@ -34,7 +34,7 @@ class TestIndexRegistry:
         valid_groups = {
             "spectral", "landsat", "terrain", "agriculture", "drought",
             "fire", "coastal", "climate", "urban", "health",
-            "water", "biophysical",
+            "water", "biophysical", "minerals",
         }
         for idx_id, cfg in INDEX_REGISTRY.items():
             assert cfg["group"] in valid_groups, (
@@ -274,7 +274,7 @@ class TestCrossModuleConsistency:
         known_groups = {
             "spectral", "landsat", "terrain", "agriculture", "drought",
             "fire", "coastal", "climate", "urban", "health",
-            "water", "biophysical",
+            "water", "biophysical", "minerals",
         }
         for idx_id, cfg in INDEX_REGISTRY.items():
             assert cfg["group"] in known_groups, (
@@ -291,12 +291,18 @@ class TestCrossModuleConsistency:
             assert all(isinstance(k, str) for k in cfg["weights"])
 
     def test_total_index_count(self) -> None:
-        """Sanity check on total number of registered indices."""
+        """Retain legacy indices while allowing the mineral/remote sensing catalog to grow."""
         from gee_presets import INDEX_REGISTRY
-        # 8 spectral + 1 landsat + 5 terrain + 7 agriculture + 6 drought
-        # + 6 fire + 7 water + 5 climate + 4 urban + 4 health
-        # + 2 biophysical
-        # = 55 total
-        assert len(INDEX_REGISTRY) == 55, (
-            f"Expected 55 indices, got {len(INDEX_REGISTRY)}"
+
+        # Earlier releases exposed at least 55 indices. New Landsat mineral
+        # indices have increased the registry to 62; the catalog is extensible.
+        assert len(INDEX_REGISTRY) >= 55, (
+            f"Expected at least 55 indices, got {len(INDEX_REGISTRY)}"
+        )
+        expected_mineral_indices = {
+            "fe_oxide_l8", "clay_l8", "ferrous_l8", "hydrothermal_l8",
+            "gossan_l8", "carbonate_chlorite_l8", "silica_l8",
+        }
+        assert expected_mineral_indices.issubset(INDEX_REGISTRY), (
+            f"Missing mineral indices: {expected_mineral_indices - INDEX_REGISTRY.keys()}"
         )

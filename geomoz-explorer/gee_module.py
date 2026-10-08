@@ -261,7 +261,7 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
                 logger.debug("Local EE user credentials init failed for project '%s': %s", effective_project, e)
 
         # 4. Fallback to server credentials if allowed and user has not configured custom credentials
-        allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
+        allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower() == "true"
         sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
         sa_file = os.environ.get("GEE_SERVICE_ACCOUNT_FILE", "").strip() or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
         if not sa_file:

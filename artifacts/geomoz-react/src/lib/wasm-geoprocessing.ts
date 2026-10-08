@@ -270,7 +270,10 @@ export function runVectorBuffer(
 
   if (dissolve && bufferedFeatures.length > 1) {
     try {
-      const dissolved = turf.dissolve(finalFc);
+      const polygonFeatures = turf.flatten(finalFc).features.filter(
+        (feature): feature is Feature<Polygon> => feature.geometry?.type === "Polygon"
+      );
+      const dissolved = turf.dissolve(turf.featureCollection(polygonFeatures));
       if (dissolved && dissolved.features.length > 0) {
         finalFc = dissolved;
       }
@@ -393,7 +396,23 @@ export function runVectorDissolve(
   let dissolved: FeatureCollection;
 
   try {
-    dissolved = turf.dissolve(fc, { propertyName: propertyName || undefined });
+    // Turf dissolve accepts polygons only. Flatten MultiPolygons and preserve
+    // any non-polygon geometries without treating them as polygon features.
+    const flattened = turf.flatten(fc);
+    const polygons = flattened.features.filter(
+      (feature): feature is Feature<Polygon> => feature.geometry?.type === "Polygon"
+    );
+    const otherFeatures = flattened.features.filter(
+      (feature) => feature.geometry?.type !== "Polygon"
+    );
+    if (polygons.length === 0) {
+      dissolved = fc;
+    } else {
+      const polygonResult = turf.dissolve(turf.featureCollection(polygons), {
+        propertyName: propertyName || undefined,
+      });
+      dissolved = turf.featureCollection([...polygonResult.features, ...otherFeatures]);
+    }
   } catch (err) {
     console.warn("Turf dissolve error:", err);
     dissolved = fc;
