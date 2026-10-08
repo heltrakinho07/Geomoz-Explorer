@@ -222,12 +222,31 @@ _thread_pool_executor = ThreadPoolExecutor(max_workers=4)
 
 app = FastAPI(title="GeoMoz API", version="2.1.0")
 
-# CORS configuration - allow all origins (localhost, 127.0.0.1, 192.168.*, null/electron)
+# CORS: accept only explicitly configured origins (production) or known local
+# development/Electron origins. Never combine wildcard origins with credentials.
+_default_cors_origins = [
+    "https://geomoz.geolithica.com",
+    "https://geoprocessamento-426809.web.app",
+    "https://geoprocessamento-426809.firebaseapp.com",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "null",  # Electron file:// pages on the local development API
+]
+_configured_cors_origins = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
+if "*" in _configured_cors_origins:
+    logger.warning("CORS_ORIGINS='*' refused; using explicit known origins.")
+    _configured_cors_origins = []
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r".*",
+    allow_origins=_configured_cors_origins or _default_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
