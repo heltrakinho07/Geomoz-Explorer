@@ -92,6 +92,11 @@ async def require_gee_auth(request: Request) -> str:
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Armazenamento privado GEE indisponível.") from exc
 
+    if not user_credentials.get("project"):
+        raise HTTPException(
+            status_code=403,
+            detail="Configure o ID do seu próprio projeto Google Cloud antes de utilizar GEE.",
+        )
     if not any(user_credentials.get(k) for k in
                ("refresh_token", "access_token", "service_account_key")):
         raise HTTPException(
@@ -1081,14 +1086,17 @@ async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_fir
         return {"message": "Credenciais GEE desligadas.", "connected": False}
     if not req.access_token:
         raise HTTPException(status_code=400, detail="Token GEE vazio.")
+    user_project = req.project or (gee_session_store.get_token(uid) or {}).get("project")
+    if not user_project:
+        raise HTTPException(status_code=400, detail="Indique o ID do seu projeto Google Cloud.")
     gee_session_store.set_token(uid, {
         "access_token": req.access_token,
-        "project": req.project,
+        "project": user_project,
     })
     try:
         from gee_module import reset_gee, _init_gee
         reset_gee()
-        _init_gee(uid=uid, project=req.project, token=req.access_token)
+        _init_gee(uid=uid, project=user_project, token=req.access_token)
         return {
             "message": "Credenciais GEE verificadas para a conta autenticada.",
             "connected": True,
