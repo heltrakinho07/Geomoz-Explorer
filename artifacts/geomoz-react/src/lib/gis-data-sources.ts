@@ -8,8 +8,14 @@
 
 import type { Feature, FeatureCollection } from "geojson";
 import type { Map as MapLibreMap } from "maplibre-gl";
+import { ensureRemotePMTiles, normalizePMTilesUrl } from "@/lib/gis-pmtiles";
 
-export type GISWorkspaceServiceType = "xyz" | "wms" | "wmts";
+export type GISWorkspaceServiceType =
+  | "xyz"
+  | "wms"
+  | "wmts"
+  | "pmtiles-raster"
+  | "pmtiles-vector";
 
 export interface GISWorkspaceServiceLayer {
   id: string;
@@ -30,6 +36,9 @@ export interface GISWorkspaceServiceLayer {
     wmtsLayer?: string;
     tileMatrixSet?: string;
     sourceLabel?: string;
+    pmtilesSourceLayers?: string[];
+    pmtilesBounds?: [number, number, number, number];
+    pmtilesEncoding?: "mvt" | "mlt";
   };
 }
 
@@ -585,8 +594,135 @@ export function syncGISWorkspaceServiceLayers(
   for (const service of services) {
     const ids = serviceIds(service.id);
     desiredSources.add(ids.source);
-    desiredLayers.add(ids.layer);
 
+    if (service.type === "pmtiles-vector" || service.type === "pmtiles-raster") {
+      ensureRemotePMTiles(service.endpoint);
+      const sourceUrl = normalizePMTilesUrl(service.endpoint);
+
+      if (!map.getSource(ids.source)) {
+        if (service.type === "pmtiles-vector") {
+          map.addSource(ids.source, {
+            type: "vector",
+            url: sourceUrl,
+            minzoom: service.minZoom,
+            maxzoom: service.maxZoom,
+          });
+        } else {
+          map.addSource(ids.source, {
+            type: "raster",
+            url: sourceUrl,
+            tileSize: service.tileSize || 256,
+            minzoom: service.minZoom,
+            maxzoom: service.maxZoom,
+            attribution: service.attribution,
+          });
+        }
+      }
+
+      if (service.type === "pmtiles-raster") {
+        desiredLayers.add(ids.layer);
+        if (!map.getLayer(ids.layer)) {
+          map.addLayer({
+            id: ids.layer,
+            type: "raster",
+            source: ids.source,
+            layout: {
+              visibility: service.visible ? "visible" : "none",
+            },
+            paint: { "raster-opacity": service.opacity },
+          });
+        } else {
+          map.setLayoutProperty(
+            ids.layer,
+            "visibility",
+            service.visible ? "visible" : "none"
+          );
+          map.setPaintProperty(ids.layer, "raster-opacity", service.opacity);
+        }
+        continue;
+      }
+
+      const sourceLayers = service.metadata?.pmtilesSourceLayers ?? [];
+      sourceLayers.forEach((sourceLayer, index) => {
+        const base = `${ids.layer}-${safeServiceId(sourceLayer)}`;
+        const fill = `${base}-fill`;
+        const line = `${base}-line`;
+        const point = `${base}-point`;
+        [fill, line, point].forEach((id) => desiredLayers.add(id));
+
+        if (!map.getLayer(fill)) {
+          map.addLayer({
+            id: fill,
+            type: "fill",
+            source: ids.source,
+            "source-layer": sourceLayer,
+            filter: ["==", ["geometry-type"], "Polygon"],
+            layout: { visibility: service.visible ? "visible" : "none" },
+            paint: {
+              "fill-color": index % 2 === 0 ? "#2563eb" : "#7c3aed",
+              "fill-opacity": Math.min(0.65, service.opacity * 0.55),
+            },
+          });
+        }
+        if (!map.getLayer(line)) {
+          map.addLayer({
+            id: line,
+            type: "line",
+            source: ids.source,
+            "source-layer": sourceLayer,
+            filter: ["==", ["geometry-type"], "LineString"],
+            layout: { visibility: service.visible ? "visible" : "none" },
+            paint: {
+              "line-color": index % 2 === 0 ? "#1d4ed8" : "#6d28d9",
+              "line-width": 2,
+              "line-opacity": service.opacity,
+            },
+          });
+        }
+        if (!map.getLayer(point)) {
+          map.addLayer({
+            id: point,
+            type: "circle",
+            source: ids.source,
+            "source-layer": sourceLayer,
+            filter: ["==", ["geometry-type"], "Point"],
+            layout: { visibility: service.visible ? "visible" : "none" },
+            paint: {
+              "circle-radius": 5,
+              "circle-color": index % 2 === 0 ? "#2563eb" : "#7c3aed",
+              "circle-opacity": service.opacity,
+              "circle-stroke-color": "#ffffff",
+              "circle-stroke-width": 1,
+            },
+          });
+        }
+
+        [fill, line, point].forEach((id) => {
+          if (!map.getLayer(id)) return;
+          map.setLayoutProperty(
+            id,
+            "visibility",
+            service.visible ? "visible" : "none"
+          );
+        });
+        if (map.getLayer(fill)) {
+          map.setPaintProperty(
+            fill,
+            "fill-opacity",
+            Math.min(0.65, service.opacity * 0.55)
+          );
+        }
+        if (map.getLayer(line)) {
+          map.setPaintProperty(line, "line-opacity", service.opacity);
+        }
+        if (map.getLayer(point)) {
+          map.setPaintProperty(point, "circle-opacity", service.opacity);
+        }
+      });
+      continue;
+    }
+
+    desiredLayers.add(ids.layer);
     if (!map.getSource(ids.source)) {
       map.addSource(ids.source, {
         type: "raster",
@@ -622,11 +758,21 @@ export function syncGISWorkspaceServiceLayers(
 
   const style = map.getStyle();
   for (const layer of style.layers ?? []) {
-    if (!layer.id.startsWith(SERVICE_LAYER_PREFIX) || desiredLayers.has(layer.id)) continue;
+    if (
+      !layer.id.startsWith(SERVICE_LAYER_PREFIX) ||
+      desiredLayers.has(layer.id)
+    ) {
+      continue;
+    }
     if (map.getLayer(layer.id)) map.removeLayer(layer.id);
   }
   for (const sourceId of Object.keys(style.sources ?? {})) {
-    if (!sourceId.startsWith(SERVICE_SOURCE_PREFIX) || desiredSources.has(sourceId)) continue;
+    if (
+      !sourceId.startsWith(SERVICE_SOURCE_PREFIX) ||
+      desiredSources.has(sourceId)
+    ) {
+      continue;
+    }
     if (map.getSource(sourceId)) map.removeSource(sourceId);
   }
 }
