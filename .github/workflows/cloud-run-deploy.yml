@@ -13,6 +13,10 @@ concurrency:
   group: geomoz-cloudrun-production
   cancel-in-progress: true
 
+concurrency:
+  group: cloud-run-production-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: europe-west1
@@ -68,13 +72,27 @@ jobs:
             --region ${{ env.REGION }} \
             --allow-unauthenticated \
             --port 5003 \
-            --memory 512Mi \
+            --memory 1Gi \
             --cpu 1 \
             --max-instances 10 \
             --min-instances 0 \
             --timeout 300s \
             --set-env-vars="^@^PYTHONUNBUFFERED=1@FIREBASE_PROJECT_ID=geoprocessamento-426809@ALLOW_SERVER_GEE_FALLBACK=true@CORS_ORIGINS=https://geoprocessamento-426809.web.app,https://geoprocessamento-426809.firebaseapp.com,https://geomoz.geolithica.com" \
             --set-secrets=GEE_SERVICE_ACCOUNT_KEY=geomoz-gee-key:latest
+
+      - name: Collect startup diagnostics on deploy failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "::group::Cloud Run revision status"
+          gcloud run revisions list --service="${{ env.SERVICE_NAME }}" --region="${{ env.REGION }}" --limit=3 --format="table(metadata.name,status.conditions[0].type,status.conditions[0].status,status.conditions[0].message)" || true
+          echo "::endgroup::"
+          echo "::group::Sanitised revision error signatures"
+          gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="geomoz-explorer-api" AND severity>=ERROR' \
+            --project="${{ env.PROJECT_ID }}" --freshness=20m --limit=30 --format='value(textPayload)' 2>&1 \
+            | grep -E -i 'ModuleNotFoundError|ImportError|Memory limit|OOM|SIGKILL|Traceback|Killed|No module named|failed to start|Failed to allocate|permission denied|unknown|denied' \
+            | head -30 || true
+          echo "::endgroup::"
 
       - name: Get Service URL
         id: service-url
