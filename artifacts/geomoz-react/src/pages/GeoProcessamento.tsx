@@ -23,8 +23,21 @@ import {
   type WmsCapabilities,
 } from "@/lib/gis-data-sources";
 import {
+  EARTH_SEARCH_STAC,
+  PLANETARY_COMPUTER_STAC,
+  connectStacApi,
+  searchStacItems,
+  stacItemDate,
+  stacRasterAssets,
+  type GISStacAsset,
+  type GISStacConnection,
+  type GISStacItem,
+} from "@/lib/stac-client";
+import { bbox as turfBbox } from "@turf/turf";
+import {
   autoGISRasterStretch,
   getGISRasterBandStats,
+  resolveGISRasterRemoteUrl,
   type GISRasterBandStats,
   type GISWorkspaceRasterLayer,
   type GISWorkspaceRasterMetadata,
@@ -276,6 +289,15 @@ export default function GeoProcessamento({
   const [wmsSelectedLayer, setWmsSelectedLayer] = useState("");
   const [wmsStyle, setWmsStyle] = useState("");
   const [wmsLoading, setWmsLoading] = useState(false);
+  const [stacEndpoint, setStacEndpoint] = useState(PLANETARY_COMPUTER_STAC);
+  const [stacConnection, setStacConnection] = useState<GISStacConnection | null>(null);
+  const [stacCollection, setStacCollection] = useState("");
+  const [stacStartDate, setStacStartDate] = useState("");
+  const [stacEndDate, setStacEndDate] = useState("");
+  const [stacUseAoi, setStacUseAoi] = useState(true);
+  const [stacItems, setStacItems] = useState<GISStacItem[]>([]);
+  const [stacAssetChoice, setStacAssetChoice] = useState<Record<string, string>>({});
+  const [stacLoading, setStacLoading] = useState(false);
   const [showWfsInput, setShowWfsInput] = useState(false);
   const [wfsEndpoint, setWfsEndpoint] = useState("");
   const [wfsVersion, setWfsVersion] = useState("2.0.0");
@@ -367,6 +389,7 @@ export default function GeoProcessamento({
                 file,
                 remoteUrl: raster.remoteUrl,
                 sourceType: raster.sourceType,
+                stacSource: raster.stacSource,
                 fileName: raster.fileName,
                 mimeType: raster.mimeType || "image/tiff",
                 sizeBytes: file?.size ?? raster.sizeBytes ?? 0,
@@ -466,6 +489,7 @@ export default function GeoProcessamento({
           : undefined,
         remoteUrl: raster.remoteUrl,
         sourceType: raster.sourceType,
+        stacSource: raster.stacSource,
       }));
 
       const snapshot = {
@@ -908,6 +932,173 @@ export default function GeoProcessamento({
     wfsFeatureTypes,
     wfsVersion,
   ]);
+
+  const currentAoiBbox = useCallback((): [number, number, number, number] | undefined => {
+    if (!stacUseAoi || aoi.source === "global" || !aoi.geometry) return undefined;
+    try {
+      const bounds = turfBbox({
+        type: "Feature",
+        properties: {},
+        geometry: aoi.geometry as GeoJSON.Geometry,
+      });
+      if (bounds.length < 4 || bounds.some((value) => !Number.isFinite(value))) {
+        return undefined;
+      }
+      return [bounds[0], bounds[1], bounds[2], bounds[3]];
+    } catch {
+      return undefined;
+    }
+  }, [aoi, stacUseAoi]);
+
+  const handleConnectStac = useCallback(async () => {
+    const endpoint = stacEndpoint.trim();
+    if (!endpoint) {
+      toast({
+        title: "Introduza um STAC API",
+        description: "Use Planetary Computer, Earth Search ou um endpoint STAC compatível.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setStacLoading(true);
+    try {
+      const connection = await connectStacApi(endpoint);
+      setStacConnection(connection);
+      setStacCollection(connection.collections[0]?.id ?? "");
+      setStacItems([]);
+      setStacAssetChoice({});
+      toast({
+        title: "STAC ligado",
+        description: `${connection.title} · ${connection.collections.length} coleção(ões) descobertas.`,
+      });
+    } catch (error) {
+      setStacConnection(null);
+      toast({
+        title: "Falha ao ligar STAC",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setStacLoading(false);
+    }
+  }, [stacEndpoint, toast]);
+
+  const handleSearchStac = useCallback(async () => {
+    if (!stacConnection) {
+      toast({
+        title: "Ligue primeiro o catálogo STAC",
+        description: "Carregue as coleções antes de pesquisar cenas.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const datetime =
+      stacStartDate || stacEndDate
+        ? `${stacStartDate ? `${stacStartDate}T00:00:00Z` : ".."}/${
+            stacEndDate ? `${stacEndDate}T23:59:59Z` : ".."
+          }`
+        : undefined;
+
+    setStacLoading(true);
+    try {
+      const items = await searchStacItems(stacConnection, {
+        collection: stacCollection || undefined,
+        bbox: currentAoiBbox(),
+        datetime,
+        limit: 24,
+      });
+      const rasterItems = items.filter((item) => stacRasterAssets(item).length > 0);
+      setStacItems(rasterItems);
+      setStacAssetChoice(
+        Object.fromEntries(
+          rasterItems.flatMap((item) => {
+            const asset = stacRasterAssets(item)[0];
+            return asset ? [[item.id, asset.key]] : [];
+          })
+        )
+      );
+      toast({
+        title: "Pesquisa STAC concluída",
+        description: `${rasterItems.length} item(ns) com GeoTIFF/COG prontos para adicionar.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Falha na pesquisa STAC",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setStacLoading(false);
+    }
+  }, [
+    currentAoiBbox,
+    stacCollection,
+    stacConnection,
+    stacEndDate,
+    stacStartDate,
+    toast,
+  ]);
+
+  const handleAddStacAsset = useCallback(
+    (item: GISStacItem, asset: GISStacAsset) => {
+      if (!stacConnection) return;
+      const collectionId = item.collection || stacCollection || undefined;
+      const date = stacItemDate(item);
+      const label = [
+        collectionId,
+        item.id,
+        asset.title || asset.key,
+        date ? date.slice(0, 10) : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      const raster: GISWorkspaceRasterLayer = {
+        id: `stac_raster_${crypto.randomUUID().slice(0, 12)}`,
+        name: label,
+        remoteUrl: asset.href,
+        sourceType: "stac",
+        stacSource: {
+          catalogUrl: stacConnection.url,
+          collectionId,
+          itemId: item.id,
+          assetKey: asset.key,
+          href: asset.href,
+        },
+        fileName: `${item.id}_${asset.key}.tif`.replace(/[^a-zA-Z0-9._-]+/g, "_"),
+        mimeType: asset.type || "image/tiff",
+        sizeBytes: 0,
+        visible: true,
+        opacity: 1,
+        bandCount: null,
+        bounds:
+          item.bbox && item.bbox.length >= 4
+            ? [item.bbox[0], item.bbox[1], item.bbox[item.bbox.length - 2], item.bbox[item.bbox.length - 1]]
+            : null,
+        error: null,
+        rasterState: {
+          mode: "single",
+          bands: [1],
+          colormap: "viridis",
+          reversed: false,
+          rescale: null,
+          nodata: "auto",
+          stretch: "linear",
+          gamma: 1,
+        },
+      };
+
+      setRasterLayers((previous) => [raster, ...previous]);
+      setSelectedWhiteboxRasterId(raster.id);
+      toast({
+        title: "Asset STAC adicionado",
+        description:
+          "O GeoMoz guardou a identidade original do asset; credenciais temporárias serão renovadas quando necessário.",
+      });
+    },
+    [stacCollection, stacConnection, toast]
+  );
 
   const handleImportRemoteGeoJson = useCallback(async () => {
     const raw = remoteGeoJsonUrl.trim();
@@ -1509,11 +1700,12 @@ export default function GeoProcessamento({
       if (layer.file) {
         return new Uint8Array(await layer.file.arrayBuffer());
       }
-      if (layer.remoteUrl) {
-        const response = await fetch(layer.remoteUrl);
+      const remoteUrl = await resolveGISRasterRemoteUrl(layer);
+      if (remoteUrl) {
+        const response = await fetch(remoteUrl);
         if (!response.ok) {
           throw new Error(
-            `Não foi possível transferir "${layer.name}" da cloud (HTTP ${response.status}).`
+            `Não foi possível transferir "${layer.name}" da fonte remota (HTTP ${response.status}).`
           );
         }
         return new Uint8Array(await response.arrayBuffer());
@@ -2104,6 +2296,194 @@ export default function GeoProcessamento({
                     Importar
                   </button>
                 </div>
+              )}
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-blue-200 bg-blue-50/40 p-2.5 dark:border-blue-900 dark:bg-blue-950/20">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Globe2 size={14} className="text-blue-600" />
+                  <span className="text-xs font-bold">STAC · Earth Observation</span>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStacEndpoint(PLANETARY_COMPUTER_STAC);
+                      setStacConnection(null);
+                    }}
+                    className="rounded-md border border-blue-200 bg-white px-1.5 py-1 text-[9px] font-semibold text-blue-700 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-300"
+                  >
+                    Planetary
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStacEndpoint(EARTH_SEARCH_STAC);
+                      setStacConnection(null);
+                    }}
+                    className="rounded-md border border-blue-200 bg-white px-1.5 py-1 text-[9px] font-semibold text-blue-700 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-300"
+                  >
+                    Earth Search
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-1.5">
+                <input
+                  value={stacEndpoint}
+                  onChange={(event) => {
+                    setStacEndpoint(event.target.value);
+                    setStacConnection(null);
+                  }}
+                  placeholder="https://.../stac/v1"
+                  className="min-w-0 flex-1 rounded-lg border border-blue-200 bg-white p-2 font-mono text-[9px] dark:border-blue-900 dark:bg-slate-900"
+                />
+                <button
+                  onClick={() => void handleConnectStac()}
+                  disabled={stacLoading || !stacEndpoint.trim()}
+                  className="rounded-lg border border-blue-200 bg-white px-3 text-[10px] font-bold text-blue-700 disabled:opacity-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-300"
+                >
+                  {stacLoading ? "A ligar…" : "Ligar"}
+                </button>
+              </div>
+
+              {stacConnection && (
+                <>
+                  <div className="rounded-md bg-white/80 px-2 py-1.5 text-[9px] text-slate-500 dark:bg-slate-900/70 dark:text-slate-400">
+                    <strong>{stacConnection.title}</strong>
+                    {stacConnection.description && (
+                      <span className="ml-1 line-clamp-1">{stacConnection.description}</span>
+                    )}
+                  </div>
+
+                  {stacConnection.collections.length > 0 ? (
+                    <select
+                      value={stacCollection}
+                      onChange={(event) => setStacCollection(event.target.value)}
+                      className="w-full rounded-lg border border-blue-200 bg-white p-2 text-[10px] dark:border-blue-900 dark:bg-slate-900"
+                    >
+                      <option value="">Todas as coleções</option>
+                      {stacConnection.collections.map((collection) => (
+                        <option key={collection.id} value={collection.id}>
+                          {collection.title
+                            ? `${collection.title} (${collection.id})`
+                            : collection.id}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={stacCollection}
+                      onChange={(event) => setStacCollection(event.target.value)}
+                      placeholder="Collection ID (opcional)"
+                      className="w-full rounded-lg border border-blue-200 bg-white p-2 text-[10px] dark:border-blue-900 dark:bg-slate-900"
+                    />
+                  )}
+
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <label className="space-y-1">
+                      <span className="text-[9px] font-semibold text-slate-500">De</span>
+                      <input
+                        type="date"
+                        value={stacStartDate}
+                        onChange={(event) => setStacStartDate(event.target.value)}
+                        className="w-full rounded-lg border border-blue-200 bg-white p-1.5 text-[9px] dark:border-blue-900 dark:bg-slate-900"
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-[9px] font-semibold text-slate-500">Até</span>
+                      <input
+                        type="date"
+                        value={stacEndDate}
+                        onChange={(event) => setStacEndDate(event.target.value)}
+                        className="w-full rounded-lg border border-blue-200 bg-white p-1.5 text-[9px] dark:border-blue-900 dark:bg-slate-900"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="flex items-center gap-2 text-[9px] text-slate-600 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={stacUseAoi}
+                      disabled={aoi.source === "global"}
+                      onChange={(event) => setStacUseAoi(event.target.checked)}
+                    />
+                    Limitar à AOI atual
+                    {aoi.source === "global" && (
+                      <span className="text-slate-400">(desenhe/seleccione uma AOI)</span>
+                    )}
+                  </label>
+
+                  <button
+                    onClick={() => void handleSearchStac()}
+                    disabled={stacLoading}
+                    className="w-full rounded-lg bg-blue-600 px-3 py-2 text-[10px] font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {stacLoading ? "A pesquisar…" : "Pesquisar cenas STAC"}
+                  </button>
+
+                  {stacItems.length > 0 && (
+                    <div className="max-h-72 space-y-1.5 overflow-auto pr-0.5">
+                      {stacItems.map((item) => {
+                        const assets = stacRasterAssets(item);
+                        const assetKey =
+                          stacAssetChoice[item.id] || assets[0]?.key || "";
+                        const selectedAsset = assets.find(
+                          (asset) => asset.key === assetKey
+                        );
+                        return (
+                          <div
+                            key={item.id}
+                            className="rounded-lg border border-blue-100 bg-white p-2 dark:border-blue-900 dark:bg-slate-900"
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate text-[10px] font-bold text-slate-700 dark:text-slate-200">
+                                {item.id}
+                              </div>
+                              <div className="text-[9px] text-slate-400">
+                                {item.collection || stacCollection || "STAC"}
+                                {stacItemDate(item)
+                                  ? ` · ${stacItemDate(item).slice(0, 10)}`
+                                  : ""}
+                              </div>
+                            </div>
+                            <div className="mt-1.5 flex gap-1.5">
+                              <select
+                                value={assetKey}
+                                onChange={(event) =>
+                                  setStacAssetChoice((previous) => ({
+                                    ...previous,
+                                    [item.id]: event.target.value,
+                                  }))
+                                }
+                                className="min-w-0 flex-1 rounded-md border border-blue-100 bg-white p-1.5 text-[9px] dark:border-blue-900 dark:bg-slate-800"
+                              >
+                                {assets.map((asset) => (
+                                  <option key={asset.key} value={asset.key}>
+                                    {asset.title || asset.key}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                disabled={!selectedAsset}
+                                onClick={() => {
+                                  if (selectedAsset) {
+                                    handleAddStacAsset(item, selectedAsset);
+                                  }
+                                }}
+                                className="rounded-md bg-blue-600 px-2.5 text-[9px] font-bold text-white disabled:opacity-50"
+                              >
+                                Adicionar
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
