@@ -272,14 +272,21 @@ export default function GeoProcessamento({
   React.useEffect(() => {
     if (aoi && aoi.source === "draw" && aoi.geometry) {
       const drawnId = "drawn_aoi_layer";
-      const drawnGeometry = aoi.geometry;
+      const inputGeometry = aoi.geometry;
+      const drawnGeometry =
+        inputGeometry.type === "Feature"
+          ? inputGeometry.geometry
+          : inputGeometry.type === "FeatureCollection"
+            ? inputGeometry.features[0]?.geometry
+            : inputGeometry;
+      if (!drawnGeometry) return;
       const fc: FeatureCollection = {
         type: "FeatureCollection",
         features: [
           {
             type: "Feature",
             properties: { nome: aoi.label || "Área Desenhada" },
-            geometry: aoi.geometry,
+            geometry: drawnGeometry,
           },
         ],
       };
