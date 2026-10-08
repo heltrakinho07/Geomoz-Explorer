@@ -6,6 +6,10 @@ import { bbox } from "@turf/turf";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
 import { GOOGLE_BASEMAPS, type BasemapType } from "@/lib/basemaps";
 import {
+  syncGISWorkspaceServiceLayers,
+  type GISWorkspaceServiceLayer,
+} from "@/lib/gis-data-sources";
+import {
   syncGISWorkspaceRasters,
   type GISWorkspaceRasterLayer,
   type GISWorkspaceRasterMetadata,
@@ -22,6 +26,7 @@ export interface GISWorkspaceMapLayer {
 interface Props {
   layers: GISWorkspaceMapLayer[];
   rasterLayers?: GISWorkspaceRasterLayer[];
+  serviceLayers?: GISWorkspaceServiceLayer[];
   activeLayerId?: string;
   activeRasterId?: string;
   basemap: BasemapType;
@@ -111,6 +116,7 @@ function polygonFeature(coords: [number, number][]): Feature<Polygon> | null {
 export default function GISWorkspaceMapLibre({
   layers,
   rasterLayers = [],
+  serviceLayers = [],
   activeLayerId,
   activeRasterId,
   basemap,
@@ -126,6 +132,7 @@ export default function GISWorkspaceMapLibre({
   const mapRef = useRef<MapLibreMap | null>(null);
   const layersRef = useRef(layers);
   const rasterLayersRef = useRef(rasterLayers);
+  const serviceLayersRef = useRef(serviceLayers);
   const drawingRef = useRef(drawingEnabled);
   const drawCoordsRef = useRef<[number, number][]>([]);
   const onSelectLayerRef = useRef(onSelectLayer);
@@ -138,6 +145,7 @@ export default function GISWorkspaceMapLibre({
 
   layersRef.current = layers;
   rasterLayersRef.current = rasterLayers;
+  serviceLayersRef.current = serviceLayers;
   drawingRef.current = drawingEnabled;
   onSelectLayerRef.current = onSelectLayer;
   onDrawCompleteRef.current = onDrawComplete;
@@ -148,8 +156,9 @@ export default function GISWorkspaceMapLibre({
   const visibleCount = useMemo(
     () =>
       layers.filter((layer) => layer.visible).length +
-      rasterLayers.filter((layer) => layer.visible).length,
-    [layers, rasterLayers]
+      rasterLayers.filter((layer) => layer.visible).length +
+      serviceLayers.filter((layer) => layer.visible).length,
+    [layers, rasterLayers, serviceLayers]
   );
 
   const syncAoi = (map: MapLibreMap) => {
@@ -321,6 +330,7 @@ export default function GISWorkspaceMapLibre({
 
     map.on("load", () => {
       syncLayers(map);
+      syncGISWorkspaceServiceLayers(map, serviceLayersRef.current);
       void syncGISWorkspaceRasters(map, rasterLayersRef.current, {
         onMetadata: (metadata) => onRasterMetadataRef.current?.(metadata),
         onError: (layerId, message) => onRasterErrorRef.current?.(layerId, message),
@@ -392,6 +402,7 @@ export default function GISWorkspaceMapLibre({
     map.setStyle(basemapStyle(basemap));
     map.once("style.load", () => {
       syncLayers(map);
+      syncGISWorkspaceServiceLayers(map, serviceLayersRef.current);
       void syncGISWorkspaceRasters(map, rasterLayersRef.current, {
         onMetadata: (metadata) => onRasterMetadataRef.current?.(metadata),
         onError: (layerId, message) => onRasterErrorRef.current?.(layerId, message),
@@ -415,6 +426,12 @@ export default function GISWorkspaceMapLibre({
       onError: (layerId, message) => onRasterErrorRef.current?.(layerId, message),
     });
   }, [rasterLayers]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    syncGISWorkspaceServiceLayers(map, serviceLayers);
+  }, [serviceLayers]);
 
   useEffect(() => {
     const map = mapRef.current;

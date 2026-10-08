@@ -6,6 +6,10 @@
  */
 import type { Map as MapLibreMap } from "maplibre-gl";
 import {
+  resolveStacAssetHref,
+  type GISStacRasterSource,
+} from "@/lib/stac-client";
+import {
   syncGISRasterClassification,
   type GISRasterSymbology,
 } from "@/lib/gis-raster-classification";
@@ -21,7 +25,8 @@ export interface GISWorkspaceRasterLayer {
   name: string;
   file?: File;
   remoteUrl?: string;
-  sourceType?: "storage" | "url";
+  sourceType?: "storage" | "url" | "stac";
+  stacSource?: GISStacRasterSource;
   fileName: string;
   mimeType: string;
   sizeBytes: number;
@@ -112,13 +117,22 @@ function sourceIds(control: RasterControl): Set<string> {
   return new Set(control.getRasters().map((raster) => raster.id));
 }
 
+export async function resolveGISRasterRemoteUrl(
+  layer: GISWorkspaceRasterLayer
+): Promise<string | undefined> {
+  if (layer.sourceType === "stac" && layer.stacSource) {
+    return resolveStacAssetHref(layer.stacSource);
+  }
+  return layer.remoteUrl;
+}
+
 async function addRaster(
   control: RasterControl,
   layer: GISWorkspaceRasterLayer
 ): Promise<RasterLayerInfo | null> {
-  const source = layer.file ?? layer.remoteUrl;
+  const source = layer.file ?? (await resolveGISRasterRemoteUrl(layer));
   if (!source) {
-    throw new Error(`A camada raster "${layer.name}" não tem ficheiro local nem URL cloud.`);
+    throw new Error(`A camada raster "${layer.name}" não tem ficheiro local nem URL remoto.`);
   }
 
   await control.addRaster(source, {
@@ -235,7 +249,7 @@ export async function getGISRasterBandStats(
   let objectUrl: string | null = null;
   const source = layer.file
     ? (objectUrl = URL.createObjectURL(layer.file))
-    : layer.remoteUrl;
+    : await resolveGISRasterRemoteUrl(layer);
   if (!source) return null;
 
   try {
