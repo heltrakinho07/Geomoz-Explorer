@@ -495,11 +495,18 @@ export async function loadGISWorkspaceFromCloud(
     : restoredRasters;
 
   const rawModelNodes = state?.modelNodes ?? [];
+  const hasGraphNodes = rawModelNodes.some(
+    (node) =>
+      typeof (node as { kind?: unknown }).kind === "string" &&
+      ["input", "tool", "output"].includes(
+        String((node as { kind?: unknown }).kind)
+      )
+  );
   const restoredModel =
-    state?.modelEdges && state.modelEdges.length > 0
+    (state?.version ?? 0) >= 4 || hasGraphNodes
       ? {
           modelNodes: rawModelNodes,
-          modelEdges: state.modelEdges,
+          modelEdges: state?.modelEdges ?? [],
         }
       : migrateLinearModelNodes(
           rawModelNodes as unknown as Array<{
