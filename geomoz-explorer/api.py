@@ -82,6 +82,36 @@ async def require_firebase_auth(request: Request) -> str:
         return "geomoz-user"
     return uid
 
+
+async def require_verified_firebase_auth(request: Request) -> str:
+    """Require a cryptographically verified Firebase ID token.
+
+    Heavy processing can consume substantial CPU/memory, so these endpoints do
+    not use the legacy anonymous fallback accepted by general public routes.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Autenticação Firebase necessária.")
+
+    token = auth_header.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Token Firebase ausente.")
+    if not firebase_auth:
+        raise HTTPException(
+            status_code=503,
+            detail="Verificação Firebase indisponível no backend.",
+        )
+
+    try:
+        decoded = firebase_auth.verify_id_token(token)
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Token Firebase inválido ou expirado.") from exc
+
+    uid = decoded.get("uid")
+    if not uid:
+        raise HTTPException(status_code=401, detail="Token Firebase sem uid.")
+    return str(uid)
+
 async def require_gee_auth(request: Request) -> str:
     auth_header = request.headers.get("Authorization", "")
     uid = _extract_uid_from_header(auth_header)
@@ -255,7 +285,7 @@ SUPPORTED_HEAVY_GIS_TOOLS = {
 
 
 @app.get("/geomoz-api/processing/tools")
-async def processing_tools(uid: str = Depends(require_firebase_auth)):
+async def processing_tools(uid: str = Depends(require_verified_firebase_auth)):
     """Return the allowlisted backend processing tools."""
     return {
         "tools": [
@@ -272,7 +302,7 @@ async def create_processing_job_endpoint(
     tool: str = Form(...),
     parameters: str = Form("{}"),
     input_file: UploadFile = File(...),
-    uid: str = Depends(require_firebase_auth),
+    uid: str = Depends(require_verified_firebase_auth),
 ):
     """Queue a heavy raster job and return immediately with a job id."""
     cleanup_expired_jobs()
@@ -308,7 +338,7 @@ async def create_processing_job_endpoint(
 @app.get("/geomoz-api/processing/jobs/{job_id}")
 async def processing_job_status(
     job_id: str,
-    uid: str = Depends(require_firebase_auth),
+    uid: str = Depends(require_verified_firebase_auth),
 ):
     """Read progress/status for one processing job owned by the caller."""
     cleanup_expired_jobs()
@@ -321,7 +351,7 @@ async def processing_job_status(
 @app.get("/geomoz-api/processing/jobs/{job_id}/result")
 async def processing_job_result(
     job_id: str,
-    uid: str = Depends(require_firebase_auth),
+    uid: str = Depends(require_verified_firebase_auth),
 ):
     """Download the GeoTIFF output after a job reaches completed state."""
     job = get_processing_job(job_id, uid)
@@ -349,7 +379,7 @@ async def processing_job_result(
 @app.delete("/geomoz-api/processing/jobs/{job_id}", status_code=204)
 async def processing_job_delete(
     job_id: str,
-    uid: str = Depends(require_firebase_auth),
+    uid: str = Depends(require_verified_firebase_auth),
 ):
     """Delete a queued/completed job and its temporary files."""
     if not delete_processing_job(job_id, uid):
