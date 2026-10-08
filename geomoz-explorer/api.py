@@ -15,10 +15,10 @@ from concurrent.futures import ThreadPoolExecutor
 import geopandas as gpd
 from shapely.errors import TopologicalError, GEOSException
 
-from fastapi import FastAPI, Query, HTTPException, Request, File, UploadFile, Depends
+from fastapi import FastAPI, Query, HTTPException, Request, File, UploadFile, Depends, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
 # Automatic .env discovery
 for _env_candidate in [
     os.path.join(os.path.dirname(__file__), ".env"),
@@ -140,6 +140,15 @@ def handle_gee_api_error(exc: Exception, prefix: str = "Cálculo GEE", uid: str 
     raise HTTPException(500, f"{prefix} falhou: {exc}")
 from pydantic import BaseModel, field_validator, constr
 
+from processing_jobs import (
+    cleanup_expired_jobs,
+    create_processing_job,
+    delete_processing_job,
+    get_processing_job,
+    get_processing_job_output,
+    parse_job_parameters,
+)
+
 # ── Package imports ────────────────────────────────────────────────────────
 # These modules are siblings of api.py in the geomoz-explorer directory.
 # Because the directory name contains a hyphen, it cannot be a valid Python
@@ -234,6 +243,119 @@ async def rate_limit_middleware(request: Request, call_next):
         )
     
     return await call_next(request)
+
+# ── Heavy GIS processing jobs ────────────────────────────────────────────────
+
+SUPPORTED_HEAVY_GIS_TOOLS = {
+    "hillshade": "GDAL DEM hillshade",
+    "slope": "GDAL DEM slope",
+    "aspect": "GDAL DEM aspect",
+    "cog": "Cloud Optimized GeoTIFF conversion",
+}
+
+
+@app.get("/geomoz-api/processing/tools")
+async def processing_tools(uid: str = Depends(require_firebase_auth)):
+    """Return the allowlisted backend processing tools."""
+    return {
+        "tools": [
+            {"id": tool_id, "name": name}
+            for tool_id, name in SUPPORTED_HEAVY_GIS_TOOLS.items()
+        ],
+        "execution": "async",
+        "input": "GeoTIFF/COG",
+    }
+
+
+@app.post("/geomoz-api/processing/jobs", status_code=202)
+async def create_processing_job_endpoint(
+    tool: str = Form(...),
+    parameters: str = Form("{}"),
+    input_file: UploadFile = File(...),
+    uid: str = Depends(require_firebase_auth),
+):
+    """Queue a heavy raster job and return immediately with a job id."""
+    cleanup_expired_jobs()
+    tool_id = tool.strip().lower()
+    if tool_id not in SUPPORTED_HEAVY_GIS_TOOLS:
+        raise HTTPException(
+            status_code=400,
+            detail=f'Ferramenta "{tool_id}" não suportada. Use: {", ".join(SUPPORTED_HEAVY_GIS_TOOLS)}.',
+        )
+
+    try:
+        parsed_parameters = parse_job_parameters(parameters)
+        payload = await input_file.read()
+        job = create_processing_job(
+            uid=uid,
+            tool=tool_id,
+            input_name=input_file.filename or "input.tif",
+            input_bytes=payload,
+            parameters=parsed_parameters,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        await input_file.close()
+
+    return {
+        "job": job.public_dict(),
+        "status_url": f"/geomoz-api/processing/jobs/{job.id}",
+        "result_url": f"/geomoz-api/processing/jobs/{job.id}/result",
+    }
+
+
+@app.get("/geomoz-api/processing/jobs/{job_id}")
+async def processing_job_status(
+    job_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Read progress/status for one processing job owned by the caller."""
+    cleanup_expired_jobs()
+    job = get_processing_job(job_id, uid)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
+    return {"job": job.public_dict()}
+
+
+@app.get("/geomoz-api/processing/jobs/{job_id}/result")
+async def processing_job_result(
+    job_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Download the GeoTIFF output after a job reaches completed state."""
+    job = get_processing_job(job_id, uid)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
+    if job.status == "failed":
+        raise HTTPException(status_code=409, detail=job.error or "O job falhou.")
+    if job.status != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail=f'O job ainda está em estado "{job.status}".',
+        )
+
+    output = get_processing_job_output(job_id, uid)
+    if not output:
+        raise HTTPException(status_code=410, detail="Resultado já não está disponível.")
+
+    return FileResponse(
+        path=str(output),
+        media_type="image/tiff",
+        filename=job.output_name or f"{job.tool}.tif",
+    )
+
+
+@app.delete("/geomoz-api/processing/jobs/{job_id}", status_code=204)
+async def processing_job_delete(
+    job_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Delete a queued/completed job and its temporary files."""
+    if not delete_processing_job(job_id, uid):
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
+    return Response(status_code=204)
+
 
 # ── data loaders (cached) ──────────────────────────────────────────────────────
 
