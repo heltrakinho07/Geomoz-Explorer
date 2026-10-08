@@ -19,6 +19,7 @@ from fastapi import FastAPI, Query, HTTPException, Request, File, UploadFile, De
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import Response, FileResponse
+from starlette.concurrency import run_in_threadpool
 # Automatic .env discovery
 for _env_candidate in [
     os.path.join(os.path.dirname(__file__), ".env"),
@@ -321,12 +322,14 @@ async def create_processing_job_endpoint(
 
     try:
         parsed_parameters = parse_job_parameters(parameters)
-        payload = await input_file.read()
-        job = create_processing_job(
+        # The UploadFile spool is copied in bounded chunks on a worker thread:
+        # never materialize a large DEM as one Python bytes object.
+        job = await run_in_threadpool(
+            create_processing_job,
             uid=uid,
             tool=tool_id,
             input_name=input_file.filename or "input.tif",
-            input_bytes=payload,
+            input_stream=input_file.file,
             parameters=parsed_parameters,
         )
     except ValueError as exc:
