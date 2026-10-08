@@ -48,7 +48,12 @@ export interface PersistedProcessingHistoryEntry {
   id: string;
   toolId: string;
   toolName: string;
-  engine: "Client (Turf.js)" | "WASM" | "DuckDB Spatial" | "Hybrid Model";
+  engine:
+    | "Client (Turf.js)"
+    | "WASM"
+    | "DuckDB Spatial"
+    | "Hybrid Model"
+    | "Backend GDAL";
   timestamp: string;
   durationMs: number;
   inputLayerName: string;
