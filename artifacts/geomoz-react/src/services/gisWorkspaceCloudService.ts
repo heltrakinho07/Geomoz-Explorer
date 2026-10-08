@@ -345,7 +345,9 @@ export async function syncGISWorkspaceToCloud(
   const projectId = snapshot.projectId;
   if (!projectId || projectId === "session-default") return;
 
-  const rasterFiles = await loadGISWorkspaceRasterFiles(projectId).catch(() => new Map<string, File>());
+  const rasterFiles = await loadGISWorkspaceRasterFiles(
+    uid + "::" + projectId
+  ).catch(() => new Map<string, File>());
 
   await Promise.all([
     ...snapshot.layers.map((layer) => uploadLayerIfChanged(uid, projectId, layer)),
