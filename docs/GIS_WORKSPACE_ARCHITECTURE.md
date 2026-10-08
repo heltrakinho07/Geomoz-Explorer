@@ -342,3 +342,47 @@ disponibilidade de CPU. Para garantir execução durável em escala, será
 necessário usar Cloud Storage + uma fila durável/Cloud Run Jobs + Firestore
 para estados e autorização por utilizador. Não apresentar os jobs atuais
 como duráveis ou distribuídos.
+
+
+## Autenticação e isolamento das credenciais Earth Engine
+
+**Firebase Auth (GeoMoz) e Google Earth Engine (GEE) são autorizações distintas.**
+Entrar com uma conta Google na aplicação não concede automaticamente acesso GEE.
+Cada utilizador autenticado deve introduzir o **seu Google Cloud project ID**
+e autorizar explicitamente GEE através de OAuth ou da própria conta de serviço.
+
+- O backend verifica a assinatura do ID token Firebase com Admin SDK e obtém o UID.
+- Os projetos, workspaces e ficheiros ficam em `users/{uid}/projects/{projectId}`.
+- Os dados do IndexedDB são separados por `{uid}::{projectId}`;
+  não são carregados por outro utilizador que partilhe o mesmo browser.
+- Tokens OAuth, refresh tokens e chaves de contas de serviço ficam apenas no
+  documento `geePrivateSessions/{uid}`, acessível pelo Firebase Admin SDK.
+- As regras Firestore negam acesso client-side à coleção privada e impedem
+  armazenar campos secretos em `users/{uid}/settings/gee`.
+- A migração do formato antigo é executada no primeiro acesso autenticado:
+  copia as credenciais existentes para a coleção privada e remove os campos
+  secretos de `settings/gee`. Documentos antigos nunca acedidos devem ser
+  tratados por uma migração administrativa separada.
+- O backend **não usa GEE_SERVICE_ACCOUNT_KEY, credenciais do contentor,
+  ADC ou a quota da plataforma como fallback** para uma conta sem credenciais
+  pessoais. Até mesmo o modo convidado precisa autenticar-se antes de usar GEE.
+- Não aceitar `X-GEE-Token` como substituto das credenciais privadas do UID.
+- O SDK `ee.Initialize` partilha estado global no processo. Todos os endpoints
+  `/geomoz-api/gee/*` são serializados por um lock assíncrono que cobre
+  autenticação e execução; cache de imagens é limpo na troca de UID.
+
+**Limitação:** o isolamento no mesmo processo através do lock é conservador
+e pode reduzir a concorrência. Uma arquitetura futura de workers/processos
+por utilizador ou jobs isolados é recomendada para maior escala. A proteção
+Firestore depende da publicação efetiva das regras no projeto Firebase.
+
+**Operação e migração:** revogar tokens/chaves expostos se houver suspeita de
+compromisso; eliminar dados locais legados, incluindo qualquer
+`.gee_sessions.json` histórico, após migração verificada. Nunca fazer commit
+de chaves de conta de serviço ou refresh tokens. OAuth com código de autorização
+é preferível a chaves JSON distribuídas.
+
+**Configuração:** o OAuth Code Flow backend exige `GOOGLE_CLIENT_ID` e,
+para clientes OAuth do tipo Web Application, `GOOGLE_CLIENT_SECRET` em
+Secret Manager/ambiente do backend. Não configurar estas credenciais no
+bundle do frontend. O front só recebe o ID público do cliente OAuth.

@@ -61,12 +61,10 @@ jobs:
 
       - name: Deploy Firestore rules
         id: firestore_rules
-        continue-on-error: true
         run: npx --yes firebase-tools@14.22.0 deploy --only firestore:rules --project geoprocessamento-426809
 
       - name: Deploy Storage rules
         id: storage_rules
-        continue-on-error: true
         run: npx --yes firebase-tools@14.22.0 deploy --only storage --project geoprocessamento-426809
 
       - name: Warn when Firebase data APIs are unavailable

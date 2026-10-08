@@ -26,4 +26,4 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope("https://www.googleapis.com/auth/earthengine");
+// GeoMoz Firebase login and user-granted Earth Engine OAuth are separate flows.
