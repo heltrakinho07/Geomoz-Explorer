@@ -37,6 +37,10 @@ import {
   type GISStacConnection,
   type GISStacItem,
 } from "@/lib/stac-client";
+import {
+  inspectRemotePMTiles,
+  type GISPMTilesInfo,
+} from "@/lib/gis-pmtiles";
 import { bbox as turfBbox } from "@turf/turf";
 import {
   autoGISRasterStretch,
@@ -288,6 +292,11 @@ export default function GeoProcessamento({
   const [tileServiceName, setTileServiceName] = useState("");
   const [tileServiceUrl, setTileServiceUrl] = useState("");
   const [tileServiceAttribution, setTileServiceAttribution] = useState("");
+  const [pmtilesUrl, setPmtilesUrl] = useState("");
+  const [pmtilesName, setPmtilesName] = useState("");
+  const [pmtilesInfo, setPmtilesInfo] = useState<GISPMTilesInfo | null>(null);
+  const [pmtilesSourceLayersText, setPmtilesSourceLayersText] = useState("");
+  const [pmtilesLoading, setPmtilesLoading] = useState(false);
   const [wmsEndpoint, setWmsEndpoint] = useState("");
   const [wmsCapabilities, setWmsCapabilities] = useState<WmsCapabilities | null>(null);
   const [wmsSelectedLayer, setWmsSelectedLayer] = useState("");
@@ -1248,6 +1257,109 @@ export default function GeoProcessamento({
       setRemoteVectorLoading(false);
     }
   }, [layers.length, remoteGeoJsonUrl, toast]);
+
+  const handleInspectPmtiles = useCallback(async () => {
+    const raw = pmtilesUrl.trim();
+    if (!raw) {
+      toast({
+        title: "Introduza um URL PMTiles",
+        description: "Use um arquivo .pmtiles remoto servido com HTTP Range.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setPmtilesLoading(true);
+    try {
+      const info = await inspectRemotePMTiles(raw);
+      setPmtilesInfo(info);
+      setPmtilesSourceLayersText(info.sourceLayers.join(", "));
+      if (!pmtilesName.trim()) {
+        try {
+          const url = new URL(raw);
+          const file = decodeURIComponent(
+            url.pathname.split("/").filter(Boolean).pop() || "PMTiles"
+          );
+          setPmtilesName(file.replace(/\.pmtiles$/i, "") || "PMTiles");
+        } catch {
+          setPmtilesName("PMTiles");
+        }
+      }
+      toast({
+        title: "PMTiles inspecionado",
+        description:
+          info.tileType === "vector"
+            ? `Vector · ${info.sourceLayers.length} source layer(s) · z${info.minZoom}–${info.maxZoom}`
+            : `Raster · z${info.minZoom}–${info.maxZoom}`,
+      });
+    } catch (error) {
+      setPmtilesInfo(null);
+      toast({
+        title: "Falha ao abrir PMTiles",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setPmtilesLoading(false);
+    }
+  }, [pmtilesName, pmtilesUrl, toast]);
+
+  const handleAddPmtiles = useCallback(() => {
+    if (!pmtilesInfo || !pmtilesUrl.trim()) return;
+    const sourceLayers =
+      pmtilesInfo.tileType === "vector"
+        ? pmtilesSourceLayersText
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean)
+        : [];
+    if (pmtilesInfo.tileType === "vector" && !sourceLayers.length) {
+      toast({
+        title: "Source layer necessária",
+        description:
+          "Este PMTiles vetorial não anunciou vector_layers; indique pelo menos uma source layer.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const endpoint = pmtilesUrl.trim();
+    const service = createServiceLayer({
+      name: pmtilesName.trim() || "PMTiles",
+      type:
+        pmtilesInfo.tileType === "vector"
+          ? "pmtiles-vector"
+          : "pmtiles-raster",
+      endpoint,
+      tileUrl: `pmtiles://${endpoint}`,
+      minZoom: pmtilesInfo.minZoom,
+      maxZoom: pmtilesInfo.maxZoom,
+      tileSize: 256,
+      metadata: {
+        sourceLabel: "PMTiles · HTTP Range",
+        pmtilesSourceLayers: sourceLayers,
+        pmtilesBounds: pmtilesInfo.bounds,
+        pmtilesEncoding: pmtilesInfo.encoding,
+      },
+    });
+    setServiceLayers((previous) => [service, ...previous]);
+    setPmtilesUrl("");
+    setPmtilesName("");
+    setPmtilesInfo(null);
+    setPmtilesSourceLayersText("");
+    toast({
+      title: "PMTiles adicionado",
+      description:
+        pmtilesInfo.tileType === "vector"
+          ? `${sourceLayers.length} source layer(s) serão renderizadas diretamente do arquivo.`
+          : "O arquivo raster será servido diretamente via HTTP Range.",
+    });
+  }, [
+    pmtilesInfo,
+    pmtilesName,
+    pmtilesSourceLayersText,
+    pmtilesUrl,
+    toast,
+  ]);
 
   const handleAddTileService = useCallback(() => {
     try {
@@ -2769,6 +2881,86 @@ export default function GeoProcessamento({
                     className="w-full rounded-lg bg-fuchsia-600 px-3 py-2 text-[10px] font-bold text-white hover:bg-fuchsia-700 disabled:opacity-50"
                   >
                     Adicionar WMTS descoberto
+                  </button>
+                </>
+              )}
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-orange-200 bg-orange-50/40 p-2.5 dark:border-orange-900 dark:bg-orange-950/20">
+              <div className="flex items-center gap-2">
+                <Database size={14} className="text-orange-600" />
+                <span className="text-xs font-bold">PMTiles · Cloud-native archive</span>
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  value={pmtilesUrl}
+                  onChange={(event) => {
+                    setPmtilesUrl(event.target.value);
+                    setPmtilesInfo(null);
+                  }}
+                  placeholder="https://.../dataset.pmtiles"
+                  className="min-w-0 flex-1 rounded-lg border border-orange-200 bg-white p-2 font-mono text-[9px] dark:border-orange-900 dark:bg-slate-900"
+                />
+                <button
+                  onClick={() => void handleInspectPmtiles()}
+                  disabled={pmtilesLoading || !pmtilesUrl.trim()}
+                  className="rounded-lg border border-orange-200 bg-white px-3 text-[10px] font-bold text-orange-700 disabled:opacity-50 dark:border-orange-900 dark:bg-slate-900 dark:text-orange-300"
+                >
+                  {pmtilesLoading ? "A ler…" : "Inspecionar"}
+                </button>
+              </div>
+
+              {pmtilesInfo && (
+                <>
+                  <div className="grid grid-cols-3 gap-1.5 text-[9px]">
+                    <div className="rounded-md bg-white px-2 py-1.5 dark:bg-slate-900">
+                      <span className="block text-slate-400">Tipo</span>
+                      <strong>{pmtilesInfo.tileType}</strong>
+                    </div>
+                    <div className="rounded-md bg-white px-2 py-1.5 dark:bg-slate-900">
+                      <span className="block text-slate-400">Zoom</span>
+                      <strong>
+                        {pmtilesInfo.minZoom}–{pmtilesInfo.maxZoom}
+                      </strong>
+                    </div>
+                    <div className="rounded-md bg-white px-2 py-1.5 dark:bg-slate-900">
+                      <span className="block text-slate-400">Layers</span>
+                      <strong>
+                        {pmtilesInfo.tileType === "vector"
+                          ? pmtilesInfo.sourceLayers.length || "manual"
+                          : "raster"}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <input
+                    value={pmtilesName}
+                    onChange={(event) => setPmtilesName(event.target.value)}
+                    placeholder="Nome da camada"
+                    className="w-full rounded-lg border border-orange-200 bg-white p-2 text-[10px] dark:border-orange-900 dark:bg-slate-900"
+                  />
+
+                  {pmtilesInfo.tileType === "vector" && (
+                    <label className="space-y-1">
+                      <span className="text-[9px] font-semibold text-slate-500">
+                        Source layers (separadas por vírgula)
+                      </span>
+                      <input
+                        value={pmtilesSourceLayersText}
+                        onChange={(event) =>
+                          setPmtilesSourceLayersText(event.target.value)
+                        }
+                        placeholder="buildings, roads, water"
+                        className="w-full rounded-lg border border-orange-200 bg-white p-2 text-[10px] dark:border-orange-900 dark:bg-slate-900"
+                      />
+                    </label>
+                  )}
+
+                  <button
+                    onClick={handleAddPmtiles}
+                    className="w-full rounded-lg bg-orange-600 px-3 py-2 text-[10px] font-bold text-white hover:bg-orange-700"
+                  >
+                    Adicionar PMTiles ao projeto
                   </button>
                 </>
               )}
