@@ -213,6 +213,250 @@ export function createWmsTileUrl(options: {
   ]);
 }
 
+
+export interface WmtsLayerOption {
+  identifier: string;
+  title: string;
+  formats: string[];
+  styles: Array<{ identifier: string; title: string; isDefault: boolean }>;
+  tileMatrixSets: string[];
+  resourceTemplates: Array<{ template: string; format?: string; resourceType?: string }>;
+}
+
+export interface WmtsTileMatrixSet {
+  identifier: string;
+  supportedCrs: string;
+  matrices: string[];
+}
+
+export interface WmtsCapabilities {
+  endpoint: string;
+  title: string;
+  version: "1.0.0";
+  layers: WmtsLayerOption[];
+  matrixSets: WmtsTileMatrixSet[];
+}
+
+const WMTS_OPERATION_PARAMS = new Set([
+  "service",
+  "request",
+  "version",
+  "layer",
+  "style",
+  "format",
+  "tilematrixset",
+  "tilematrix",
+  "tilerow",
+  "tilecol",
+]);
+
+export function stripWmtsOperationParams(endpoint: string): string {
+  const url = new URL(endpoint);
+  for (const key of Array.from(url.searchParams.keys())) {
+    if (WMTS_OPERATION_PARAMS.has(key.toLowerCase())) url.searchParams.delete(key);
+  }
+  return url.toString();
+}
+
+function wmtsCapabilitiesUrl(endpoint: string): string {
+  const url = new URL(stripWmtsOperationParams(endpoint));
+  url.searchParams.set("SERVICE", "WMTS");
+  url.searchParams.set("REQUEST", "GetCapabilities");
+  url.searchParams.set("VERSION", "1.0.0");
+  return url.toString();
+}
+
+function directChildren(element: Element, name: string): Element[] {
+  return xmlChildren(element).filter((child) => xmlLocalName(child) === name);
+}
+
+function wmtsLayerFromElement(element: Element): WmtsLayerOption | null {
+  const identifier = xmlText(xmlChild(element, "Identifier"));
+  if (!identifier) return null;
+  const styles = directChildren(element, "Style").flatMap((style) => {
+    const styleId = xmlText(xmlChild(style, "Identifier"));
+    if (!styleId) return [];
+    return [{
+      identifier: styleId,
+      title: xmlText(xmlChild(style, "Title")) || styleId,
+      isDefault: style.getAttribute("isDefault")?.toLowerCase() === "true",
+    }];
+  });
+  const tileMatrixSets = directChildren(element, "TileMatrixSetLink")
+    .map((link) => xmlText(xmlChild(link, "TileMatrixSet")))
+    .filter(Boolean);
+  const resourceTemplates = directChildren(element, "ResourceURL").flatMap((resource) => {
+    const template = resource.getAttribute("template") || "";
+    if (!template) return [];
+    return [{
+      template,
+      format: resource.getAttribute("format") || undefined,
+      resourceType: resource.getAttribute("resourceType") || undefined,
+    }];
+  });
+  return {
+    identifier,
+    title: xmlText(xmlChild(element, "Title")) || identifier,
+    formats: directChildren(element, "Format").map(xmlText).filter(Boolean),
+    styles,
+    tileMatrixSets,
+    resourceTemplates,
+  };
+}
+
+function wmtsMatrixSetFromElement(element: Element): WmtsTileMatrixSet | null {
+  const identifier = xmlText(xmlChild(element, "Identifier"));
+  if (!identifier) return null;
+  return {
+    identifier,
+    supportedCrs: xmlText(xmlChild(element, "SupportedCRS")),
+    matrices: directChildren(element, "TileMatrix")
+      .map((matrix) => xmlText(xmlChild(matrix, "Identifier")))
+      .filter(Boolean),
+  };
+}
+
+export async function fetchWmtsCapabilities(
+  endpoint: string,
+  signal?: AbortSignal
+): Promise<WmtsCapabilities> {
+  const url = wmtsCapabilitiesUrl(endpoint);
+  const response = await fetch(url, {
+    signal,
+    headers: { Accept: "application/xml,text/xml,*/*" },
+  });
+  if (!response.ok) {
+    throw new Error(`WMTS GetCapabilities falhou: HTTP ${response.status}.`);
+  }
+  const xml = await response.text();
+  const document = new DOMParser().parseFromString(xml, "application/xml");
+  if (document.querySelector("parsererror")) {
+    throw new Error("O servidor WMTS devolveu XML inválido.");
+  }
+
+  const root = document.documentElement;
+  const serviceIdentification = xmlDescendants(root, "ServiceIdentification")[0];
+  const contents = xmlDescendants(root, "Contents")[0];
+  const layers = contents
+    ? directChildren(contents, "Layer")
+        .map(wmtsLayerFromElement)
+        .filter((layer): layer is WmtsLayerOption => Boolean(layer))
+    : [];
+  const matrixSets = contents
+    ? directChildren(contents, "TileMatrixSet")
+        .map(wmtsMatrixSetFromElement)
+        .filter((set): set is WmtsTileMatrixSet => Boolean(set))
+    : [];
+
+  if (!layers.length) {
+    throw new Error("O WMTS não anunciou layers utilizáveis.");
+  }
+  return {
+    endpoint: stripWmtsOperationParams(endpoint),
+    title:
+      serviceIdentification
+        ? xmlText(xmlChild(serviceIdentification, "Title")) || "WMTS"
+        : "WMTS",
+    version: "1.0.0",
+    layers,
+    matrixSets,
+  };
+}
+
+function isWebMercatorMatrixSet(matrixSet: WmtsTileMatrixSet): boolean {
+  const crs = matrixSet.supportedCrs.toLowerCase();
+  return (
+    crs.includes("3857") ||
+    crs.includes("900913") ||
+    crs.includes("googlemapscompatible") ||
+    matrixSet.identifier.toLowerCase().includes("googlemapscompatible")
+  );
+}
+
+function matrixTemplate(matrixSet: WmtsTileMatrixSet): string {
+  if (!matrixSet.matrices.length) return "{z}";
+  const parsed = matrixSet.matrices.map((identifier) => {
+    const match = identifier.match(/^(.*?)(\d+)$/);
+    return match ? { prefix: match[1], zoom: Number(match[2]) } : null;
+  });
+  if (parsed.every(Boolean)) {
+    const valid = parsed as Array<{ prefix: string; zoom: number }>;
+    const prefix = valid[0].prefix;
+    if (
+      valid.every((entry) => entry.prefix === prefix) &&
+      valid.every((entry, index) => entry.zoom === index)
+    ) {
+      return `${prefix}{z}`;
+    }
+  }
+  if (matrixSet.matrices.every((identifier, index) => identifier === String(index))) {
+    return "{z}";
+  }
+  throw new Error(
+    `O TileMatrixSet "${matrixSet.identifier}" usa identificadores de zoom que não podem ser convertidos automaticamente para MapLibre.`
+  );
+}
+
+export function compatibleWmtsMatrixSets(
+  capabilities: WmtsCapabilities,
+  layer: WmtsLayerOption
+): WmtsTileMatrixSet[] {
+  const linked = new Set(layer.tileMatrixSets);
+  const candidates = capabilities.matrixSets.filter((set) => linked.has(set.identifier));
+  const mercator = candidates.filter(isWebMercatorMatrixSet);
+  return mercator.length ? mercator : candidates.filter((set) => {
+    try {
+      matrixTemplate(set);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+export function createWmtsTileUrl(options: {
+  capabilities: WmtsCapabilities;
+  layer: WmtsLayerOption;
+  matrixSet: WmtsTileMatrixSet;
+  style?: string;
+  format?: string;
+}): string {
+  const style =
+    options.style ||
+    options.layer.styles.find((candidate) => candidate.isDefault)?.identifier ||
+    options.layer.styles[0]?.identifier ||
+    "default";
+  const format = options.format || options.layer.formats[0] || "image/png";
+  const matrix = matrixTemplate(options.matrixSet);
+
+  const resource = options.layer.resourceTemplates.find(
+    (candidate) =>
+      (candidate.resourceType || "").toLowerCase() === "tile" &&
+      (!candidate.format || candidate.format === format)
+  );
+  if (resource) {
+    return resource.template
+      .replace(/\{TileMatrixSet\}/gi, options.matrixSet.identifier)
+      .replace(/\{TileMatrix\}/gi, matrix)
+      .replace(/\{TileRow\}/gi, "{y}")
+      .replace(/\{TileCol\}/gi, "{x}")
+      .replace(/\{Style\}/gi, style);
+  }
+
+  return appendQuery(options.capabilities.endpoint, [
+    ["SERVICE", "WMTS"],
+    ["REQUEST", "GetTile"],
+    ["VERSION", "1.0.0"],
+    ["LAYER", options.layer.identifier],
+    ["STYLE", style],
+    ["FORMAT", format],
+    ["TILEMATRIXSET", options.matrixSet.identifier],
+    ["TILEMATRIX", matrix],
+    ["TILEROW", "{y}"],
+    ["TILECOL", "{x}"],
+  ]);
+}
+
 export function validateXyzTemplate(value: string): string {
   const url = new URL(value);
   if (!["http:", "https:"].includes(url.protocol)) {
