@@ -26,6 +26,8 @@ import { useToast } from "@/hooks/use-toast";
 import L from "leaflet";
 import Sidebar, { LayerState } from "@/components/Sidebar";
 import MapView from "@/components/MapView";
+import GISWorkspacePanel from "@/components/GISWorkspacePanel";
+import type { WorkspaceLayer } from "@/lib/gis-workspace";
 import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
 import DashboardPanel from "@/components/DashboardPanel";
@@ -59,6 +61,7 @@ interface NominatimResult {
 type Tab =
   | "Dashboard"
   | "Mapa"
+  | "GIS Workspace"
   | "Análise"
   | "GeoAnálises"
   | "Bacias Hidrográficas"
@@ -77,6 +80,7 @@ export default function Explorer() {
   const [province, setProvince] = useState<string | null>(null);
   const [district, setDistrict] = useState<string | null>(null);
   const [colorBy, setColorBy] = useState("code2006");
+  const [workspaceLayers, setWorkspaceLayers] = useState<WorkspaceLayer[]>([]);
   const [layers, setLayers] = useState<LayerState>({
     provinces: true,
     districts: false,
@@ -102,6 +106,9 @@ export default function Explorer() {
     if (path.includes("perigo") || hash.includes("perigo") || tabParam?.includes("perigo")) {
       return "Geoperigos";
     }
+    if (path.includes("gis-workspace") || hash.includes("gis-workspace") || tabParam?.includes("gis-workspace")) {
+      return "GIS Workspace";
+    }
     if (path.includes("ai") || hash.includes("ai") || tabParam?.includes("ai")) {
       return "GeoMoz AI";
     }
@@ -122,6 +129,7 @@ export default function Explorer() {
       const slugMap: Record<Tab, string> = {
         Dashboard: "dashboard",
         Mapa: "mapa",
+        "GIS Workspace": "gis-workspace",
         Análise: "estatisticas",
         GeoAnálises: "analises",
         "Bacias Hidrográficas": "hidrografia",
@@ -710,6 +718,8 @@ export default function Explorer() {
               onViewModeChange={handleGlobalViewModeChange}
             />
           )}
+
+          {activeTab === "GIS Workspace" && <GISWorkspacePanel layers={workspaceLayers} setLayers={setWorkspaceLayers} />}
 
           {activeTab === "GeoAnálises" && (
             <Suspense fallback={<LoadingSkeleton label="GeoAnálises" />}>
