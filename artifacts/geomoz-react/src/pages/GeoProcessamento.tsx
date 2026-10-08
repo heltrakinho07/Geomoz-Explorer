@@ -14,6 +14,15 @@ import {
   type WfsFeatureType,
 } from "@/lib/ogc-wfs";
 import {
+  createServiceLayer,
+  createWmsTileUrl,
+  fetchRemoteGeoJson,
+  fetchWmsCapabilities,
+  validateXyzTemplate,
+  type GISWorkspaceServiceLayer,
+  type WmsCapabilities,
+} from "@/lib/gis-data-sources";
+import {
   autoGISRasterStretch,
   getGISRasterBandStats,
   type GISRasterBandStats,
@@ -176,6 +185,7 @@ export interface ModelNode {
 }
 
 type MainTab =
+  | "data_sources"
   | "vector_toolbox"
   | "whitebox_toolbox"
   | "model_builder"
@@ -254,6 +264,18 @@ export default function GeoProcessamento({
   const [rasterBandStats, setRasterBandStats] = useState<Record<string, GISRasterBandStats>>({});
   const [rasterStatsLoadingKey, setRasterStatsLoadingKey] = useState<string | null>(null);
   const [rasterStatsErrors, setRasterStatsErrors] = useState<Record<string, string>>({});
+  const [serviceLayers, setServiceLayers] = useState<GISWorkspaceServiceLayer[]>([]);
+  const [remoteGeoJsonUrl, setRemoteGeoJsonUrl] = useState("");
+  const [remoteVectorLoading, setRemoteVectorLoading] = useState(false);
+  const [tileServiceType, setTileServiceType] = useState<"xyz" | "wmts">("xyz");
+  const [tileServiceName, setTileServiceName] = useState("");
+  const [tileServiceUrl, setTileServiceUrl] = useState("");
+  const [tileServiceAttribution, setTileServiceAttribution] = useState("");
+  const [wmsEndpoint, setWmsEndpoint] = useState("");
+  const [wmsCapabilities, setWmsCapabilities] = useState<WmsCapabilities | null>(null);
+  const [wmsSelectedLayer, setWmsSelectedLayer] = useState("");
+  const [wmsStyle, setWmsStyle] = useState("");
+  const [wmsLoading, setWmsLoading] = useState(false);
   const [showWfsInput, setShowWfsInput] = useState(false);
   const [wfsEndpoint, setWfsEndpoint] = useState("");
   const [wfsVersion, setWfsVersion] = useState("2.0.0");
@@ -332,6 +354,7 @@ export default function GeoProcessamento({
 
       if (snapshot) {
         setLayers(snapshot.layers as UserLayer[]);
+        setServiceLayers(snapshot.services ?? []);
         const rasterMetadata = (snapshot.rasters ?? []) as PersistedGISRasterLayer[];
         setRasterLayers(
           rasterMetadata.flatMap((raster) => {
@@ -367,6 +390,7 @@ export default function GeoProcessamento({
         setModelNodes(snapshot.modelNodes as ModelNode[]);
         if (snapshot.activeTab) {
           const supportedTabs: MainTab[] = [
+            "data_sources",
             "vector_toolbox",
             "whitebox_toolbox",
             "model_builder",
@@ -389,6 +413,7 @@ export default function GeoProcessamento({
             projectId: workspaceProjectId,
             layers: snapshot.layers,
             rasters: snapshot.rasters ?? [],
+            services: snapshot.services ?? [],
             selectedLayerId: snapshot.selectedLayerId,
             secondLayerId: snapshot.secondLayerId,
             tableLayerId: snapshot.tableLayerId,
@@ -401,6 +426,7 @@ export default function GeoProcessamento({
       } else {
         setLayers([]);
         setRasterLayers([]);
+        setServiceLayers([]);
         setSelectedLayerId("");
         setSecondLayerId("");
         setTableLayerId(null);
@@ -446,6 +472,7 @@ export default function GeoProcessamento({
         projectId: workspaceProjectId,
         layers,
         rasters: rasterSnapshot,
+        services: serviceLayers,
         selectedLayerId,
         secondLayerId,
         tableLayerId,
@@ -477,6 +504,7 @@ export default function GeoProcessamento({
     activeProject?.id,
     layers,
     rasterLayers,
+    serviceLayers,
     selectedLayerId,
     secondLayerId,
     tableLayerId,
@@ -880,6 +908,160 @@ export default function GeoProcessamento({
     wfsFeatureTypes,
     wfsVersion,
   ]);
+
+  const handleImportRemoteGeoJson = useCallback(async () => {
+    const raw = remoteGeoJsonUrl.trim();
+    if (!raw) {
+      toast({
+        title: "Introduza um URL GeoJSON",
+        description: "Cole um endpoint HTTP/HTTPS que devolva FeatureCollection ou Feature.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setRemoteVectorLoading(true);
+    try {
+      const parsed = await fetchRemoteGeoJson(raw);
+      const layer: UserLayer = {
+        id: `remote_geojson_${crypto.randomUUID().slice(0, 12)}`,
+        name: parsed.name,
+        geojson: parsed.geojson,
+        featureCount: parsed.geojson.features.length,
+        geometryType: parsed.geometryType,
+        fields: parsed.fields,
+        color: PALETTE[layers.length % PALETTE.length],
+        visible: true,
+      };
+      setLayers((previous) => [layer, ...previous]);
+      setSelectedLayerId(layer.id);
+      setRemoteGeoJsonUrl("");
+      toast({
+        title: "GeoJSON remoto importado",
+        description: `${layer.name}: ${layer.featureCount} feições disponíveis no mapa, SQL e processamento.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Falha ao importar GeoJSON remoto",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setRemoteVectorLoading(false);
+    }
+  }, [layers.length, remoteGeoJsonUrl, toast]);
+
+  const handleAddTileService = useCallback(() => {
+    try {
+      const tileUrl = validateXyzTemplate(tileServiceUrl.trim());
+      const service = createServiceLayer({
+        name:
+          tileServiceName.trim() ||
+          (tileServiceType === "wmts" ? "WMTS remoto" : "XYZ remoto"),
+        type: tileServiceType,
+        endpoint: tileUrl,
+        tileUrl,
+        attribution: tileServiceAttribution.trim() || undefined,
+        tileSize: 256,
+        metadata: {
+          sourceLabel: tileServiceType === "wmts" ? "WMTS template" : "XYZ template",
+        },
+      });
+      setServiceLayers((previous) => [service, ...previous]);
+      setTileServiceName("");
+      setTileServiceUrl("");
+      setTileServiceAttribution("");
+      toast({
+        title: `${tileServiceType.toUpperCase()} adicionado`,
+        description: "A fonte foi guardada no projeto e será restaurada automaticamente.",
+      });
+    } catch (error) {
+      toast({
+        title: "Template de tiles inválido",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    }
+  }, [
+    tileServiceAttribution,
+    tileServiceName,
+    tileServiceType,
+    tileServiceUrl,
+    toast,
+  ]);
+
+  const handleRetrieveWms = useCallback(async () => {
+    const endpoint = wmsEndpoint.trim();
+    if (!endpoint) {
+      toast({
+        title: "Introduza o endpoint WMS",
+        description: "Use o URL base do serviço WMS ou um GetCapabilities.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setWmsLoading(true);
+    try {
+      const capabilities = await fetchWmsCapabilities(endpoint);
+      setWmsCapabilities(capabilities);
+      const first = capabilities.layers[0];
+      setWmsSelectedLayer(first?.name ?? "");
+      setWmsStyle(first?.styles[0]?.name ?? "");
+      toast({
+        title: "WMS descoberto",
+        description: `${capabilities.title}: ${capabilities.layers.length} camada(s) disponíveis.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Falha no WMS GetCapabilities",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setWmsLoading(false);
+    }
+  }, [toast, wmsEndpoint]);
+
+  const handleAddWms = useCallback(() => {
+    if (!wmsCapabilities || !wmsSelectedLayer) {
+      toast({
+        title: "Selecione uma camada WMS",
+        description: "Consulte primeiro o GetCapabilities e escolha uma camada.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const selected = wmsCapabilities.layers.find(
+      (layer) => layer.name === wmsSelectedLayer
+    );
+    const tileUrl = createWmsTileUrl({
+      endpoint: wmsCapabilities.endpoint,
+      layer: wmsSelectedLayer,
+      style: wmsStyle,
+      version: wmsCapabilities.version,
+      format: "image/png",
+      transparent: true,
+      tileSize: 256,
+    });
+    const service = createServiceLayer({
+      name: selected?.title || wmsSelectedLayer,
+      type: "wms",
+      endpoint: wmsCapabilities.endpoint,
+      tileUrl,
+      tileSize: 256,
+      metadata: {
+        wmsLayer: wmsSelectedLayer,
+        wmsVersion: wmsCapabilities.version,
+        wmsFormat: "image/png",
+        sourceLabel: wmsCapabilities.title,
+      },
+    });
+    setServiceLayers((previous) => [service, ...previous]);
+    toast({
+      title: "WMS adicionado",
+      description: `${service.name} foi registado como camada persistente do projeto.`,
+    });
+  }, [toast, wmsCapabilities, wmsSelectedLayer, wmsStyle]);
 
   const handleAddRasterUrl = useCallback(() => {
     const raw = rasterUrl.trim();
@@ -1762,7 +1944,18 @@ export default function GeoProcessamento({
             </button>
           </div>
 
-          <div className="grid grid-cols-3 gap-1 mt-1 text-[10px] font-semibold">
+          <div className="grid grid-cols-4 gap-1 mt-1 text-[10px] font-semibold">
+            <button
+              onClick={() => setActiveTab("data_sources")}
+              className={`p-1.5 rounded-lg flex items-center justify-center gap-1 transition-all ${
+                activeTab === "data_sources"
+                  ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs"
+                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
+              }`}
+            >
+              <Globe2 size={12} />
+              <span>Dados</span>
+            </button>
             <button
               onClick={() => setActiveTab("layers")}
               className={`p-1.5 rounded-lg flex items-center justify-center gap-1 transition-all ${
@@ -1772,7 +1965,7 @@ export default function GeoProcessamento({
               }`}
             >
               <Layers size={12} />
-              <span>Camadas ({layers.length})</span>
+              <span>Camadas ({layers.length + rasterLayers.length + serviceLayers.length})</span>
             </button>
             <button
               onClick={() => setActiveTab("dashboard")}
@@ -1799,6 +1992,236 @@ export default function GeoProcessamento({
             
           </div>
         </div>
+
+        {/* ── Data Sources: local, URL and OGC services ─────────────────── */}
+        {activeTab === "data_sources" && (
+          <div className="p-3 space-y-3 flex-1">
+            <div className="rounded-xl border border-cyan-100 bg-cyan-50 p-2.5 text-[11px] text-cyan-900 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-300">
+              <span className="font-semibold block mb-0.5">Data Sources do projeto</span>
+              Adicione ficheiros, dados cloud-native e serviços OGC. As fontes ficam
+              persistidas com o GIS Workspace.
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-indigo-300 dark:border-slate-700 dark:bg-slate-800"
+              >
+                <Upload size={16} className="mb-1.5 text-indigo-600" />
+                <span className="block text-xs font-bold">Ficheiro local</span>
+                <span className="text-[9px] text-slate-400">Vector · GeoTIFF/COG</span>
+              </button>
+              <button
+                onClick={() => setShowRasterUrlInput((value) => !value)}
+                className="rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-sky-300 dark:border-slate-700 dark:bg-slate-800"
+              >
+                <Mountain size={16} className="mb-1.5 text-sky-600" />
+                <span className="block text-xs font-bold">COG remoto</span>
+                <span className="text-[9px] text-slate-400">HTTP Range · GeoTIFF</span>
+              </button>
+            </div>
+
+            {showRasterUrlInput && (
+              <div className="space-y-2 rounded-xl border border-sky-200 bg-sky-50/50 p-2.5 dark:border-sky-900 dark:bg-sky-950/20">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300">
+                  URL do COG / GeoTIFF
+                </label>
+                <input
+                  value={rasterUrl}
+                  onChange={(event) => setRasterUrl(event.target.value)}
+                  placeholder="https://.../raster.tif"
+                  className="w-full rounded-lg border border-sky-200 bg-white p-2 text-[10px] dark:border-sky-900 dark:bg-slate-900"
+                />
+                <button
+                  onClick={handleAddRasterUrl}
+                  className="w-full rounded-lg bg-sky-600 px-3 py-2 text-[10px] font-bold text-white hover:bg-sky-700"
+                >
+                  Adicionar COG remoto
+                </button>
+              </div>
+            )}
+
+            <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/40 p-2.5 dark:border-emerald-900 dark:bg-emerald-950/20">
+              <div className="flex items-center gap-2">
+                <FileCode size={14} className="text-emerald-600" />
+                <span className="text-xs font-bold">GeoJSON por URL</span>
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  value={remoteGeoJsonUrl}
+                  onChange={(event) => setRemoteGeoJsonUrl(event.target.value)}
+                  placeholder="https://.../data.geojson"
+                  className="min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white p-2 text-[10px] dark:border-emerald-900 dark:bg-slate-900"
+                />
+                <button
+                  onClick={() => void handleImportRemoteGeoJson()}
+                  disabled={remoteVectorLoading || !remoteGeoJsonUrl.trim()}
+                  className="rounded-lg bg-emerald-600 px-3 text-[10px] font-bold text-white disabled:opacity-50"
+                >
+                  {remoteVectorLoading ? "A ler…" : "Importar"}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-teal-200 bg-teal-50/40 p-2.5 dark:border-teal-900 dark:bg-teal-950/20">
+              <div className="flex items-center gap-2">
+                <Globe2 size={14} className="text-teal-600" />
+                <span className="text-xs font-bold">WFS · Features</span>
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  value={wfsEndpoint}
+                  onChange={(event) => setWfsEndpoint(event.target.value)}
+                  placeholder="https://.../wfs"
+                  className="min-w-0 flex-1 rounded-lg border border-teal-200 bg-white p-2 text-[10px] dark:border-teal-900 dark:bg-slate-900"
+                />
+                <button
+                  onClick={() => void handleRetrieveWfs()}
+                  disabled={wfsLoading || !wfsEndpoint.trim()}
+                  className="rounded-lg border border-teal-200 bg-white px-3 text-[10px] font-bold text-teal-700 disabled:opacity-50 dark:border-teal-900 dark:bg-slate-900 dark:text-teal-300"
+                >
+                  {wfsLoading ? "A consultar…" : "Listar"}
+                </button>
+              </div>
+              {wfsFeatureTypes.length > 0 && (
+                <div className="flex gap-1.5">
+                  <select
+                    value={selectedWfsType}
+                    onChange={(event) => setSelectedWfsType(event.target.value)}
+                    className="min-w-0 flex-1 rounded-lg border border-teal-200 bg-white p-2 text-[10px] dark:border-teal-900 dark:bg-slate-900"
+                  >
+                    {wfsFeatureTypes.map((featureType) => (
+                      <option key={featureType.name} value={featureType.name}>
+                        {featureType.title}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => void handleImportWfs()}
+                    disabled={wfsLoading || !selectedWfsType}
+                    className="rounded-lg bg-teal-600 px-3 text-[10px] font-bold text-white disabled:opacity-50"
+                  >
+                    Importar
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-violet-200 bg-violet-50/40 p-2.5 dark:border-violet-900 dark:bg-violet-950/20">
+              <div className="flex items-center gap-2">
+                <Waves size={14} className="text-violet-600" />
+                <span className="text-xs font-bold">WMS · GetCapabilities</span>
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  value={wmsEndpoint}
+                  onChange={(event) => setWmsEndpoint(event.target.value)}
+                  placeholder="https://.../wms"
+                  className="min-w-0 flex-1 rounded-lg border border-violet-200 bg-white p-2 text-[10px] dark:border-violet-900 dark:bg-slate-900"
+                />
+                <button
+                  onClick={() => void handleRetrieveWms()}
+                  disabled={wmsLoading || !wmsEndpoint.trim()}
+                  className="rounded-lg border border-violet-200 bg-white px-3 text-[10px] font-bold text-violet-700 disabled:opacity-50 dark:border-violet-900 dark:bg-slate-900 dark:text-violet-300"
+                >
+                  {wmsLoading ? "A consultar…" : "Listar"}
+                </button>
+              </div>
+              {wmsCapabilities && (
+                <>
+                  <select
+                    value={wmsSelectedLayer}
+                    onChange={(event) => {
+                      const layerName = event.target.value;
+                      setWmsSelectedLayer(layerName);
+                      const layer = wmsCapabilities.layers.find(
+                        (candidate) => candidate.name === layerName
+                      );
+                      setWmsStyle(layer?.styles[0]?.name ?? "");
+                    }}
+                    className="w-full rounded-lg border border-violet-200 bg-white p-2 text-[10px] dark:border-violet-900 dark:bg-slate-900"
+                  >
+                    {wmsCapabilities.layers.map((layer) => (
+                      <option key={layer.name} value={layer.name}>
+                        {layer.title} ({layer.name})
+                      </option>
+                    ))}
+                  </select>
+                  {(
+                    wmsCapabilities.layers.find(
+                      (layer) => layer.name === wmsSelectedLayer
+                    )?.styles.length ?? 0
+                  ) > 0 && (
+                    <select
+                      value={wmsStyle}
+                      onChange={(event) => setWmsStyle(event.target.value)}
+                      className="w-full rounded-lg border border-violet-200 bg-white p-2 text-[10px] dark:border-violet-900 dark:bg-slate-900"
+                    >
+                      <option value="">Estilo default</option>
+                      {wmsCapabilities.layers
+                        .find((layer) => layer.name === wmsSelectedLayer)
+                        ?.styles.map((style) => (
+                          <option key={style.name} value={style.name}>
+                            {style.title}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                  <button
+                    onClick={handleAddWms}
+                    className="w-full rounded-lg bg-violet-600 px-3 py-2 text-[10px] font-bold text-white hover:bg-violet-700"
+                  >
+                    Adicionar WMS ao mapa
+                  </button>
+                </>
+              )}
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/40 p-2.5 dark:border-amber-900 dark:bg-amber-950/20">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Link2 size={14} className="text-amber-600" />
+                  <span className="text-xs font-bold">Tiles XYZ / WMTS</span>
+                </div>
+                <select
+                  value={tileServiceType}
+                  onChange={(event) =>
+                    setTileServiceType(event.target.value as "xyz" | "wmts")
+                  }
+                  className="rounded-md border border-amber-200 bg-white px-1.5 py-1 text-[9px] dark:border-amber-900 dark:bg-slate-900"
+                >
+                  <option value="xyz">XYZ</option>
+                  <option value="wmts">WMTS REST</option>
+                </select>
+              </div>
+              <input
+                value={tileServiceName}
+                onChange={(event) => setTileServiceName(event.target.value)}
+                placeholder="Nome da camada"
+                className="w-full rounded-lg border border-amber-200 bg-white p-2 text-[10px] dark:border-amber-900 dark:bg-slate-900"
+              />
+              <input
+                value={tileServiceUrl}
+                onChange={(event) => setTileServiceUrl(event.target.value)}
+                placeholder="https://.../{z}/{x}/{y}.png"
+                className="w-full rounded-lg border border-amber-200 bg-white p-2 font-mono text-[10px] dark:border-amber-900 dark:bg-slate-900"
+              />
+              <input
+                value={tileServiceAttribution}
+                onChange={(event) => setTileServiceAttribution(event.target.value)}
+                placeholder="Atribuição / copyright (opcional)"
+                className="w-full rounded-lg border border-amber-200 bg-white p-2 text-[10px] dark:border-amber-900 dark:bg-slate-900"
+              />
+              <button
+                onClick={handleAddTileService}
+                disabled={!tileServiceUrl.trim()}
+                className="w-full rounded-lg bg-amber-600 px-3 py-2 text-[10px] font-bold text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                Adicionar tiles persistentes
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── Sub-Section 1: Ferramentas Vetoriais ──────────────────────────────── */}
         {activeTab === "vector_toolbox" && (
@@ -2704,6 +3127,82 @@ export default function GeoProcessamento({
               </div>
             )}
 
+            {serviceLayers.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <Globe2 size={12} />
+                  <span>Serviços remotos</span>
+                </div>
+                {serviceLayers.map((service) => (
+                  <div
+                    key={service.id}
+                    className="rounded-xl border border-cyan-200/80 bg-cyan-50/40 p-2.5 dark:border-cyan-900/60 dark:bg-cyan-950/20"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-semibold text-slate-800 dark:text-slate-200">
+                          {service.name}
+                        </div>
+                        <div className="mt-0.5 truncate text-[9px] text-slate-400">
+                          {service.type.toUpperCase()} · {service.metadata?.sourceLabel || service.endpoint}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() =>
+                            setServiceLayers((previous) =>
+                              previous.map((item) =>
+                                item.id === service.id
+                                  ? { ...item, visible: !item.visible }
+                                  : item
+                              )
+                            )
+                          }
+                          className="p-1 text-slate-400 hover:text-slate-700"
+                          title={service.visible ? "Ocultar serviço" : "Mostrar serviço"}
+                        >
+                          {service.visible ? <Eye size={13} /> : <EyeOff size={13} />}
+                        </button>
+                        <button
+                          onClick={() =>
+                            setServiceLayers((previous) =>
+                              previous.filter((item) => item.id !== service.id)
+                            )
+                          }
+                          className="p-1 text-slate-400 hover:text-red-600"
+                          title="Remover serviço"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="w-12 text-[10px] text-slate-400">Opacidade</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={service.opacity}
+                        onChange={(event) => {
+                          const opacity = Number(event.target.value);
+                          setServiceLayers((previous) =>
+                            previous.map((item) =>
+                              item.id === service.id ? { ...item, opacity } : item
+                            )
+                          );
+                        }}
+                        className="w-full accent-cyan-600"
+                      />
+                      <span className="w-8 text-right text-[10px] font-semibold text-slate-500">
+                        {Math.round(service.opacity * 100)}%
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {rasterLayers.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
@@ -3574,7 +4073,7 @@ export default function GeoProcessamento({
               </div>
             )}
 
-            {layers.length > 0 && rasterLayers.length > 0 && (
+            {layers.length > 0 && (rasterLayers.length > 0 || serviceLayers.length > 0) && (
               <div className="flex items-center gap-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 <Layers size={12} />
                 <span>Vetores</span>
@@ -3684,6 +4183,7 @@ export default function GeoProcessamento({
         <GISWorkspaceMapLibre
           layers={layers}
           rasterLayers={rasterLayers}
+          serviceLayers={serviceLayers}
           activeLayerId={selectedLayerId}
           activeRasterId={selectedWhiteboxRasterId}
           basemap={basemap}
