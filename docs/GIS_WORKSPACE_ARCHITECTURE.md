@@ -123,3 +123,67 @@ Componentes e ideias que podem ser portados/adaptados:
 
 Código reutilizado substancialmente do GeoLibre deve manter os avisos de licença
 MIT e atribuição ao projeto original.
+
+
+## Data Sources e camadas remotas
+
+O GIS Workspace mantém três classes de dados no mesmo projeto:
+
+| Classe | Exemplos | Persistência | Renderização / processamento |
+|---|---|---|---|
+| Vetor materializado | GeoJSON, CSV, KML, GPKG, GeoParquet, FGB, Shapefile, WFS, OGC API Features | GeoJSON no cache/Storage + manifesto Firestore | MapLibre GeoJSON, Turf, DuckDB Spatial, Whitebox vector |
+| Raster | GeoTIFF/COG local, COG URL, assets STAC | ficheiro local/Storage ou identidade remota + manifesto | maplibre-gl-raster / cog-tiler-wasm, estatísticas, simbologia, Whitebox raster |
+| Serviço/archive remoto | WMS, WMTS, XYZ, PMTiles | definição pequena no estado do projeto | MapLibre tiles/protocolos por HTTP Range |
+
+### Fontes suportadas no painel Data Sources
+
+- ficheiros locais vetoriais e GeoTIFF/COG;
+- GeoJSON por URL;
+- WFS GetCapabilities + GetFeature;
+- OGC API - Features com paginação e filtro pela AOI;
+- WMS GetCapabilities + descoberta de layer/style;
+- WMTS GetCapabilities + descoberta de TileMatrixSet;
+- XYZ e WMTS REST templates;
+- STAC API genérico, com Planetary Computer e Earth Search como presets;
+- PMTiles remoto, raster ou vector, via HTTP Range;
+- COG/GeoTIFF remoto via HTTP Range.
+
+### STAC e credenciais temporárias
+
+Um raster STAC guarda no projeto a identidade estável do asset:
+
+```
+catalogUrl
+collectionId
+itemId
+assetKey
+href original
+```
+
+URLs SAS temporárias **não** são persistidas. Para assets do Microsoft Planetary
+Computer, o GeoMoz solicita/renova a assinatura quando o raster precisa ser
+renderizado, inspecionado ou enviado ao Whitebox WASM. Isso evita projetos
+quebrados depois da expiração de uma credencial.
+
+### Serviços OGC e tiles
+
+WMS/WMTS/XYZ são guardados como definições declarativas pequenas no manifesto do
+workspace. O MapLibre é um renderer desse estado, não a fonte de verdade. Assim:
+
+- ocultar, alterar opacidade ou remover atualiza o projeto;
+- recarregar o browser restaura os serviços;
+- sincronização cloud restaura as mesmas fontes noutro dispositivo;
+- nenhum tile é copiado para Firestore ou Firebase Storage.
+
+PMTiles segue o mesmo modelo, mas usa o protocolo `pmtiles://` e Range Requests
+para ler apenas header, metadata e tiles necessários. Vector PMTiles usa as
+`vector_layers` anunciadas pelo archive; raster PMTiles é desenhado como raster
+source.
+
+### Separação de responsabilidades
+
+O separador **Data Sources** é o único ponto de entrada para adicionar dados.
+O separador **Camadas** gere visibilidade, opacidade, simbologia, atributos,
+remoção e ações de processamento das fontes já adicionadas. Esta separação evita
+duplicação de formulários e mantém o GIS Workspace próximo do fluxo de um desktop
+GIS moderno.
