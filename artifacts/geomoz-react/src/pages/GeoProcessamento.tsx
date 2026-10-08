@@ -14,6 +14,11 @@ import {
   type WfsFeatureType,
 } from "@/lib/ogc-wfs";
 import {
+  connectOgcApiFeatures,
+  importOgcApiFeatures,
+  type OgcApiFeaturesConnection,
+} from "@/lib/ogc-api-features";
+import {
   compatibleWmtsMatrixSets,
   createServiceLayer,
   createWmsTileUrl,
@@ -322,6 +327,12 @@ export default function GeoProcessamento({
   const [wfsFeatureTypes, setWfsFeatureTypes] = useState<WfsFeatureType[]>([]);
   const [selectedWfsType, setSelectedWfsType] = useState("");
   const [wfsLoading, setWfsLoading] = useState(false);
+  const [ogcApiEndpoint, setOgcApiEndpoint] = useState("");
+  const [ogcApiConnection, setOgcApiConnection] =
+    useState<OgcApiFeaturesConnection | null>(null);
+  const [ogcApiCollection, setOgcApiCollection] = useState("");
+  const [ogcApiUseAoi, setOgcApiUseAoi] = useState(true);
+  const [ogcApiLoading, setOgcApiLoading] = useState(false);
   const [selectedLayerId, setSelectedLayerId] = useState<string>("");
   const [secondLayerId, setSecondLayerId] = useState<string>("");
   const [tableLayerId, setTableLayerId] = useState<string | null>(null);
@@ -967,6 +978,111 @@ export default function GeoProcessamento({
       return undefined;
     }
   }, [aoi, stacUseAoi]);
+
+  const handleConnectOgcApi = useCallback(async () => {
+    const endpoint = ogcApiEndpoint.trim();
+    if (!endpoint) {
+      toast({
+        title: "Introduza um OGC API - Features",
+        description: "Pode colar a landing page, /collections, uma coleção ou até /items.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setOgcApiLoading(true);
+    try {
+      const connection = await connectOgcApiFeatures(endpoint);
+      setOgcApiConnection(connection);
+      setOgcApiCollection(
+        connection.focusCollection || connection.collections[0]?.id || ""
+      );
+      toast({
+        title: "OGC API ligado",
+        description: `${connection.title}: ${connection.collections.length} coleção(ões) disponíveis.`,
+      });
+    } catch (error) {
+      setOgcApiConnection(null);
+      toast({
+        title: "Falha no OGC API - Features",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setOgcApiLoading(false);
+    }
+  }, [ogcApiEndpoint, toast]);
+
+  const handleImportOgcApi = useCallback(async () => {
+    if (!ogcApiConnection || !ogcApiCollection) {
+      toast({
+        title: "Selecione uma coleção",
+        description: "Ligue o OGC API e escolha a coleção a importar.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const collection = ogcApiConnection.collections.find(
+      (candidate) => candidate.id === ogcApiCollection
+    );
+    if (!collection) return;
+
+    let bbox: [number, number, number, number] | undefined;
+    if (ogcApiUseAoi && aoi.source !== "global" && aoi.geometry) {
+      try {
+        const bounds = turfBbox({
+          type: "Feature",
+          properties: {},
+          geometry: aoi.geometry as GeoJSON.Geometry,
+        });
+        if (bounds.length >= 4 && bounds.every(Number.isFinite)) {
+          bbox = [bounds[0], bounds[1], bounds[2], bounds[3]];
+        }
+      } catch {
+        bbox = undefined;
+      }
+    }
+
+    setOgcApiLoading(true);
+    try {
+      const result = await importOgcApiFeatures(collection, {
+        bbox,
+        limit: 1000,
+        maxFeatures: 5000,
+      });
+      const layer: UserLayer = {
+        id: `ogcapi_${crypto.randomUUID().slice(0, 12)}`,
+        name: collection.title,
+        geojson: result.geojson,
+        featureCount: result.geojson.features.length,
+        geometryType: result.geometryType,
+        fields: result.fields,
+        color: PALETTE[layers.length % PALETTE.length],
+        visible: true,
+      };
+      setLayers((previous) => [layer, ...previous]);
+      setSelectedLayerId(layer.id);
+      toast({
+        title: "OGC API importado",
+        description: `${layer.name}: ${layer.featureCount} feições adicionadas ao workspace.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Falha ao importar OGC API",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setOgcApiLoading(false);
+    }
+  }, [
+    aoi,
+    layers.length,
+    ogcApiCollection,
+    ogcApiConnection,
+    ogcApiUseAoi,
+    toast,
+  ]);
 
   const handleRetrieveWmts = useCallback(async () => {
     const endpoint = wmtsEndpoint.trim();
@@ -2515,6 +2631,63 @@ export default function GeoProcessamento({
                     Importar
                   </button>
                 </div>
+              )}
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-lime-200 bg-lime-50/40 p-2.5 dark:border-lime-900 dark:bg-lime-950/20">
+              <div className="flex items-center gap-2">
+                <Globe2 size={14} className="text-lime-700" />
+                <span className="text-xs font-bold">OGC API - Features</span>
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  value={ogcApiEndpoint}
+                  onChange={(event) => {
+                    setOgcApiEndpoint(event.target.value);
+                    setOgcApiConnection(null);
+                  }}
+                  placeholder="https://.../api ou .../collections/roads/items"
+                  className="min-w-0 flex-1 rounded-lg border border-lime-200 bg-white p-2 text-[10px] dark:border-lime-900 dark:bg-slate-900"
+                />
+                <button
+                  onClick={() => void handleConnectOgcApi()}
+                  disabled={ogcApiLoading || !ogcApiEndpoint.trim()}
+                  className="rounded-lg border border-lime-200 bg-white px-3 text-[10px] font-bold text-lime-700 disabled:opacity-50 dark:border-lime-900 dark:bg-slate-900 dark:text-lime-300"
+                >
+                  {ogcApiLoading ? "A ligar…" : "Ligar"}
+                </button>
+              </div>
+
+              {ogcApiConnection && (
+                <>
+                  <select
+                    value={ogcApiCollection}
+                    onChange={(event) => setOgcApiCollection(event.target.value)}
+                    className="w-full rounded-lg border border-lime-200 bg-white p-2 text-[10px] dark:border-lime-900 dark:bg-slate-900"
+                  >
+                    {ogcApiConnection.collections.map((collection) => (
+                      <option key={collection.id} value={collection.id}>
+                        {collection.title} ({collection.id})
+                      </option>
+                    ))}
+                  </select>
+                  <label className="flex items-center gap-2 text-[9px] text-slate-600 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={ogcApiUseAoi}
+                      disabled={aoi.source === "global"}
+                      onChange={(event) => setOgcApiUseAoi(event.target.checked)}
+                    />
+                    Aplicar bbox da AOI atual
+                  </label>
+                  <button
+                    onClick={() => void handleImportOgcApi()}
+                    disabled={ogcApiLoading || !ogcApiCollection}
+                    className="w-full rounded-lg bg-lime-700 px-3 py-2 text-[10px] font-bold text-white hover:bg-lime-800 disabled:opacity-50"
+                  >
+                    {ogcApiLoading ? "A importar…" : "Importar features"}
+                  </button>
+                </>
               )}
             </div>
 
