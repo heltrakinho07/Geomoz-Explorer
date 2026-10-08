@@ -1,32 +1,20 @@
-import os
-import json
+"""Server-only GEE credential storage scoped to the verified Firebase UID.
+
+Credential documents are outside client-readable `users/{uid}` paths. The
+Firebase Admin SDK is the only writer/reader. Do not persist service-account
+keys or refresh tokens to browser-accessible Firestore documents or local disk.
+"""
+
 import logging
-import threading
+import os
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+_PRIVATE_COLLECTION = "geePrivateSessions"
+_SENSITIVE_FIELDS = ("access_token", "refresh_token", "service_account_key")
+_MEMORY_ONLY = os.getenv("GEOMOZ_GEE_MEMORY_STORE_FOR_TESTS", "false").lower() == "true"
+_test_sessions: dict[str, dict] = {}
 
-_sessions_file = os.path.join(os.path.dirname(__file__), ".gee_sessions.json")
-_lock = threading.Lock()
-
-def _load_disk_cache() -> dict:
-    if os.path.exists(_sessions_file):
-        try:
-            with open(_sessions_file, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {}
-
-def _save_disk_cache(data: dict) -> None:
-    try:
-        with open(_sessions_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-    except Exception as e:
-        logger.warning("Failed to save local session cache: %s", e)
-
-# In-memory session cache initialized from persistent disk cache
-_user_sessions = _load_disk_cache()
 
 def _get_db():
     try:
@@ -35,49 +23,79 @@ def _get_db():
     except Exception:
         return None
 
-def set_token(uid: str, token_data: dict) -> None:
-    """Store GEE token data for a user in memory and local file, and sync to Firestore asynchronously."""
-    with _lock:
-        if uid in _user_sessions:
-            _user_sessions[uid].update(token_data)
-        else:
-            _user_sessions[uid] = dict(token_data)
-        _save_disk_cache(_user_sessions)
-    logger.info("GEE credentials stored for user: %s", uid)
 
-    # Asynchronously sync to Firestore in a daemon thread so it never blocks the HTTP request
-    def _bg_sync():
-        db = _get_db()
-        if db:
-            try:
-                db.collection("users").document(uid).collection("settings").document("gee").set(token_data, merge=True)
-                logger.info("GEE credentials synced to Firestore for user: %s", uid)
-            except Exception as e:
-                logger.debug("Background Firestore sync skipped/failed: %s", e)
+def _require_uid(uid: str) -> None:
+    if not isinstance(uid, str) or not uid.strip() or "/" in uid or uid in ("default", "guest_user"):
+        raise ValueError("GEE requer um Firebase UID autenticado.")
 
-    threading.Thread(target=_bg_sync, daemon=True).start()
+
+def _private_ref(db, uid: str):
+    return db.collection(_PRIVATE_COLLECTION).document(uid)
+
+
+def _migrate_legacy(db, uid: str) -> Optional[dict]:
+    """One-time migration from an old user-readable settings document.
+
+    Move credential fields to server-only storage and delete the former fields.
+    A failed cleanup prevents returning credentials so the issue is visible.
+    """
+    from firebase_admin import firestore
+    old_ref = db.collection("users").document(uid).collection("settings").document("gee")
+    snapshot = old_ref.get()
+    if not snapshot.exists:
+        return None
+    legacy = snapshot.to_dict() or {}
+    migrated = {name: legacy[name] for name in
+                (*_SENSITIVE_FIELDS, "project", "account", "expires_in", "updated_at")
+                if name in legacy}
+    if not any(migrated.get(name) for name in _SENSITIVE_FIELDS):
+        return None
+    _private_ref(db, uid).set(migrated, merge=True)
+    old_ref.update({field: firestore.DELETE_FIELD for field in _SENSITIVE_FIELDS if field in legacy})
+    logger.info("Legacy GEE credentials migrated to private storage for authenticated UID.")
+    return migrated
+
 
 def get_token(uid: str) -> Optional[dict]:
-    """Retrieve GEE token data for a user instantly from memory or local cache."""
-    with _lock:
-        if uid in _user_sessions:
-            return _user_sessions[uid]
-    return None
+    _require_uid(uid)
+    db = _get_db()
+    if db is None:
+        return dict(_test_sessions.get(uid, {})) or None if _MEMORY_ONLY else None
+    snapshot = _private_ref(db, uid).get()
+    if snapshot.exists:
+        return snapshot.to_dict() or None
+    return _migrate_legacy(db, uid)
+
+
+def set_token(uid: str, token_data: dict) -> None:
+    _require_uid(uid)
+    if not isinstance(token_data, dict):
+        raise ValueError("Os dados GEE devem ser um objeto.")
+    db = _get_db()
+    if db is None:
+        if not _MEMORY_ONLY:
+            raise RuntimeError("Firestore Admin indisponível: credenciais GEE não foram guardadas.")
+        existing = _test_sessions.get(uid, {})
+        _test_sessions[uid] = {**existing, **token_data}
+        return
+    _private_ref(db, uid).set(token_data, merge=True)
+
 
 def clear_token(uid: str) -> None:
-    """Clear GEE token data for a user."""
-    with _lock:
-        if uid in _user_sessions:
-            del _user_sessions[uid]
-            _save_disk_cache(_user_sessions)
-
-    def _bg_clear():
-        db = _get_db()
-        if db:
-            try:
-                db.collection("users").document(uid).collection("settings").document("gee").delete()
-            except Exception:
-                pass
-
-    threading.Thread(target=_bg_clear, daemon=True).start()
-    logger.info("GEE token cleared for user: %s", uid)
+    _require_uid(uid)
+    db = _get_db()
+    if db is None:
+        if not _MEMORY_ONLY:
+            raise RuntimeError("Firestore Admin indisponível: não foi possível desligar GEE.")
+        _test_sessions.pop(uid, None)
+        return
+    _private_ref(db, uid).delete()
+    # Also scrub any historic browser-visible credentials for this UID.
+    from firebase_admin import firestore
+    old_ref = db.collection("users").document(uid).collection("settings").document("gee")
+    old = old_ref.get()
+    if old.exists:
+        fields = old.to_dict() or {}
+        remove = {name: firestore.DELETE_FIELD for name in _SENSITIVE_FIELDS if name in fields}
+        if remove:
+            old_ref.update(remove)
