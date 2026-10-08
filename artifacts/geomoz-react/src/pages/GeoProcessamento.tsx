@@ -308,7 +308,6 @@ export default function GeoProcessamento({
   const [stacItems, setStacItems] = useState<GISStacItem[]>([]);
   const [stacAssetChoice, setStacAssetChoice] = useState<Record<string, string>>({});
   const [stacLoading, setStacLoading] = useState(false);
-  const [showWfsInput, setShowWfsInput] = useState(false);
   const [wfsEndpoint, setWfsEndpoint] = useState("");
   const [wfsVersion, setWfsVersion] = useState("2.0.0");
   const [wfsFeatureTypes, setWfsFeatureTypes] = useState<WfsFeatureType[]>([]);
@@ -3598,132 +3597,15 @@ export default function GeoProcessamento({
           <div className="p-3 space-y-3 flex-1">
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                Camadas no Mapa ({layers.length + rasterLayers.length})
+                Camadas no Mapa ({layers.length + rasterLayers.length + serviceLayers.length})
               </span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => {
-                    setShowRasterUrlInput((value) => !value);
-                    setShowWfsInput(false);
-                  }}
-                  className="py-1 px-2 bg-sky-50 dark:bg-sky-950/50 hover:bg-sky-100 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer"
-                  title="Adicionar GeoTIFF/COG por URL"
-                >
-                  <Link2 size={11} /> URL
-                </button>
-                <button
-                  onClick={() => {
-                    setShowWfsInput((value) => !value);
-                    setShowRasterUrlInput(false);
-                  }}
-                  className="py-1 px-2 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer"
-                  title="Adicionar camada de um serviço WFS"
-                >
-                  <Globe2 size={11} /> WFS
-                </button>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="py-1 px-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer"
-                >
-                  <Upload size={11} /> Importar
-                </button>
-              </div>
+              <button
+                onClick={() => setActiveTab("data_sources")}
+                className="py-1 px-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                <Plus size={11} /> Adicionar dados
+              </button>
             </div>
-
-            {showRasterUrlInput && (
-              <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-2.5 dark:border-sky-900 dark:bg-sky-950/20">
-                <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300">
-                  <Link2 size={11} />
-                  GeoTIFF / COG remoto
-                </div>
-                <div className="flex gap-1.5">
-                  <input
-                    type="url"
-                    value={rasterUrl}
-                    onChange={(event) => setRasterUrl(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") handleAddRasterUrl();
-                    }}
-                    placeholder="https://servidor/dados/raster.tif"
-                    className="min-w-0 flex-1 rounded-lg border border-sky-200 bg-white px-2 py-1.5 text-[10px] text-slate-700 outline-none focus:ring-2 focus:ring-sky-400 dark:border-sky-900 dark:bg-slate-900 dark:text-slate-200"
-                  />
-                  <button
-                    onClick={handleAddRasterUrl}
-                    className="rounded-lg bg-gradient-to-r from-sky-600 to-indigo-600 px-2.5 py-1.5 text-[10px] font-bold text-white hover:from-sky-700 hover:to-indigo-700"
-                  >
-                    Adicionar
-                  </button>
-                </div>
-                <p className="mt-1.5 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">
-                  Para melhor desempenho, use COG com CORS e suporte a HTTP Range.
-                </p>
-              </div>
-            )}
-
-            {showWfsInput && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 dark:border-emerald-900 dark:bg-emerald-950/20">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                    <Globe2 size={11} />
-                    Serviço WFS
-                  </div>
-                  <span className="text-[9px] text-slate-400">GeoJSON · até 5.000 feições</span>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex gap-1.5">
-                    <input
-                      type="url"
-                      value={wfsEndpoint}
-                      onChange={(event) => {
-                        setWfsEndpoint(event.target.value);
-                        setWfsFeatureTypes([]);
-                        setSelectedWfsType("");
-                      }}
-                      placeholder="https://servidor/geoserver/wfs"
-                      className="min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-2 py-1.5 text-[10px] text-slate-700 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-emerald-900 dark:bg-slate-900 dark:text-slate-200"
-                    />
-                    <button
-                      onClick={handleRetrieveWfs}
-                      disabled={wfsLoading || !wfsEndpoint.trim()}
-                      className="rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-emerald-300"
-                    >
-                      {wfsLoading ? "A consultar…" : "Listar"}
-                    </button>
-                  </div>
-
-                  {wfsFeatureTypes.length > 0 && (
-                    <div className="grid grid-cols-[1fr_auto] gap-1.5">
-                      <select
-                        value={selectedWfsType}
-                        onChange={(event) => setSelectedWfsType(event.target.value)}
-                        className="min-w-0 rounded-lg border border-emerald-200 bg-white p-1.5 text-[10px] dark:border-emerald-900 dark:bg-slate-900"
-                      >
-                        {wfsFeatureTypes.map((featureType) => (
-                          <option key={featureType.name} value={featureType.name}>
-                            {featureType.title === featureType.name
-                              ? featureType.name
-                              : `${featureType.title} (${featureType.name})`}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={handleImportWfs}
-                        disabled={wfsLoading || !selectedWfsType}
-                        className="rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-2.5 py-1.5 text-[10px] font-bold text-white hover:from-emerald-700 hover:to-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Importar
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between text-[9px] text-slate-500 dark:text-slate-400">
-                    <span>WFS {wfsVersion}</span>
-                    <span>A camada entra no DuckDB, tabela e geoprocessamento.</span>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {serviceLayers.length > 0 && (
               <div className="space-y-2">
