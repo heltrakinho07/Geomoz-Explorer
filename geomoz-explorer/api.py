@@ -2489,6 +2489,22 @@ async def get_shared_analysis(share_id: str):
 SAVED_ANALYSES_DIR = os.path.join(os.path.dirname(__file__), "data", "saved_analyses")
 os.makedirs(SAVED_ANALYSES_DIR, exist_ok=True)
 
+def _saved_analysis_dir_for_user(uid: str) -> str:
+    """Return private on-disk namespace, never a caller-controlled path."""
+    import hashlib
+    uid_hash = hashlib.sha256(uid.encode("utf-8")).hexdigest()[:32]
+    directory = os.path.join(SAVED_ANALYSES_DIR, uid_hash)
+    os.makedirs(directory, exist_ok=True)
+    return directory
+
+
+def _saved_analysis_file(uid: str, analysis_id: str) -> str:
+    import re
+    if not re.fullmatch(r"[a-zA-Z0-9_-]{4,64}", analysis_id):
+        raise HTTPException(400, "Identificador de análise inválido.")
+    return os.path.join(_saved_analysis_dir_for_user(uid), f"{analysis_id}.json")
+
+
 class SaveAnalysisRequest(BaseModel):
     id: Optional[str] = None
     title: str
@@ -2497,7 +2513,7 @@ class SaveAnalysisRequest(BaseModel):
     metadata: Optional[dict] = None
 
 @app.post("/geomoz-api/analyses/save")
-async def save_analysis(req: SaveAnalysisRequest):
+async def save_analysis(req: SaveAnalysisRequest, uid: str = Depends(require_firebase_auth)):
     """
     Save an analysis snapshot permanently on the server.
     Prevents duplicate or overlapping studies with the same name.
@@ -2505,11 +2521,12 @@ async def save_analysis(req: SaveAnalysisRequest):
     import secrets
     title_clean = req.title.strip()
     existing_id = None
+    user_directory = _saved_analysis_dir_for_user(uid)
 
-    if os.path.exists(SAVED_ANALYSES_DIR):
-        for fname in os.listdir(SAVED_ANALYSES_DIR):
+    if os.path.exists(user_directory):
+        for fname in os.listdir(user_directory):
             if fname.endswith(".json"):
-                fpath = os.path.join(SAVED_ANALYSES_DIR, fname)
+                fpath = os.path.join(user_directory, fname)
                 try:
                     with open(fpath, "r", encoding="utf-8") as f:
                         existing_item = json.load(f)
@@ -2520,7 +2537,7 @@ async def save_analysis(req: SaveAnalysisRequest):
                     pass
 
     analysis_id = existing_id or req.id or secrets.token_hex(6)
-    file_path = os.path.join(SAVED_ANALYSES_DIR, f"{analysis_id}.json")
+    file_path = _saved_analysis_file(uid, analysis_id)
     payload = {
         "id": analysis_id,
         "title": title_clean,
@@ -2538,14 +2555,15 @@ async def save_analysis(req: SaveAnalysisRequest):
     return {"id": analysis_id, "title": title_clean, "saved_at": payload["saved_at"]}
 
 @app.get("/geomoz-api/analyses")
-async def list_saved_analyses():
+async def list_saved_analyses(uid: str = Depends(require_firebase_auth)):
     """List all saved analyses with summaries (no heavy geojson in list)."""
     analyses = []
-    if not os.path.exists(SAVED_ANALYSES_DIR):
+    user_directory = _saved_analysis_dir_for_user(uid)
+    if not os.path.exists(user_directory):
         return []
-    for fname in os.listdir(SAVED_ANALYSES_DIR):
+    for fname in os.listdir(user_directory):
         if fname.endswith(".json"):
-            fpath = os.path.join(SAVED_ANALYSES_DIR, fname)
+            fpath = os.path.join(user_directory, fname)
             try:
                 with open(fpath, "r", encoding="utf-8") as f:
                     item = json.load(f)
@@ -2562,12 +2580,9 @@ async def list_saved_analyses():
     return analyses
 
 @app.get("/geomoz-api/analyses/{analysis_id}")
-async def get_saved_analysis(analysis_id: str):
-    """Retrieve full saved analysis by ID."""
-    import re
-    if not re.match(r"^[a-zA-Z0-9_-]{4,64}$", analysis_id):
-        raise HTTPException(400, "Identificador inválido.")
-    fpath = os.path.join(SAVED_ANALYSES_DIR, f"{analysis_id}.json")
+async def get_saved_analysis(analysis_id: str, uid: str = Depends(require_firebase_auth)):
+    """Return only an authenticated user's saved analysis."""
+    fpath = _saved_analysis_file(uid, analysis_id)
     if not os.path.exists(fpath):
         raise HTTPException(404, "Análise não encontrada.")
     try:
@@ -2577,9 +2592,9 @@ async def get_saved_analysis(analysis_id: str):
         raise HTTPException(500, f"Falha ao ler análise: {exc}")
 
 @app.delete("/geomoz-api/analyses/{analysis_id}")
-async def delete_saved_analysis(analysis_id: str):
-    """Delete a saved analysis by ID."""
-    fpath = os.path.join(SAVED_ANALYSES_DIR, f"{analysis_id}.json")
+async def delete_saved_analysis(analysis_id: str, uid: str = Depends(require_firebase_auth)):
+    """Delete only an authenticated user's saved analysis."""
+    fpath = _saved_analysis_file(uid, analysis_id)
     if os.path.exists(fpath):
         try:
             os.remove(fpath)
