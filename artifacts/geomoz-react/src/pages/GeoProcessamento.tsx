@@ -8,6 +8,7 @@
 
 import React, { useState, useRef, useMemo, useCallback } from "react";
 import GISWorkspaceMapLibre from "@/components/GISWorkspaceMapLibre";
+import GISModelBuilderPanel from "@/components/GISModelBuilderPanel";
 import {
   fetchWfsCapabilities,
   importWfsFeatureType,
@@ -176,6 +177,14 @@ import {
   whiteboxVectorSupport,
   type WhiteboxWasmManifest,
 } from "@/lib/whitebox-wasm";
+import {
+  buildGISModelToolCatalog,
+  createDefaultGISModelGraph,
+  runGISModelGraph,
+  validateGISModelGraph,
+  type GISModelGraph,
+  type GISModelValue,
+} from "@/lib/gis-model-graph";
 
 export interface UserLayer {
   id: string;
@@ -193,20 +202,13 @@ export interface ProcessingHistoryEntry {
   id: string;
   toolId: string;
   toolName: string;
-  engine: "Client (Turf.js)" | "WASM" | "DuckDB Spatial";
+  engine: "Client (Turf.js)" | "WASM" | "DuckDB Spatial" | "Hybrid Model";
   timestamp: string;
   durationMs: number;
   inputLayerName: string;
   outputCount: number;
   outputLabel?: string;
   status: "success" | "error";
-  parameters: Record<string, any>;
-}
-
-export interface ModelNode {
-  id: string;
-  toolId: string;
-  name: string;
   parameters: Record<string, any>;
 }
 
@@ -364,11 +366,14 @@ export default function GeoProcessamento({
   const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
   const hydratedProjectRef = useRef<string | null>(null);
 
-  // Model Builder
-  const [modelNodes, setModelNodes] = useState<ModelNode[]>([
-    { id: "node_1", toolId: "vector_buffer", name: "Buffer", parameters: { distance: 1500, units: "meters", dissolve: false } },
-    { id: "node_2", toolId: "vector_dissolve", name: "Dissolve", parameters: { propertyName: "" } },
-  ]);
+  // Model Builder — typed DAG (vector + raster).
+  const [modelGraph, setModelGraph] = useState<GISModelGraph>(
+    createDefaultGISModelGraph
+  );
+  const [modelNodeStatus, setModelNodeStatus] = useState<
+    Record<string, "running" | "done" | "error">
+  >({});
+  const [modelLog, setModelLog] = useState<string[]>([]);
 
   // Restore the newest available workspace snapshot. IndexedDB is the fast
   // offline cache; authenticated projects additionally use Firestore + Storage.
@@ -439,7 +444,15 @@ export default function GeoProcessamento({
         setSecondLayerId(snapshot.secondLayerId || "");
         setTableLayerId(snapshot.tableLayerId || null);
         setHistory(snapshot.history as ProcessingHistoryEntry[]);
-        setModelNodes(snapshot.modelNodes as ModelNode[]);
+        setModelGraph(
+          snapshot.modelNodes.length || snapshot.modelEdges.length
+            ? {
+                version: 1,
+                nodes: snapshot.modelNodes,
+                edges: snapshot.modelEdges,
+              }
+            : createDefaultGISModelGraph()
+        );
         if (snapshot.activeTab) {
           const supportedTabs: MainTab[] = [
             "data_sources",
@@ -471,6 +484,7 @@ export default function GeoProcessamento({
             tableLayerId: snapshot.tableLayerId,
             history: snapshot.history,
             modelNodes: snapshot.modelNodes,
+            modelEdges: snapshot.modelEdges,
             activeTab: snapshot.activeTab,
             basemap: snapshot.basemap,
           });
@@ -483,6 +497,9 @@ export default function GeoProcessamento({
         setSecondLayerId("");
         setTableLayerId(null);
         setHistory([]);
+        setModelGraph(createDefaultGISModelGraph());
+        setModelNodeStatus({});
+        setModelLog([]);
       }
 
       hydratedProjectRef.current = workspaceProjectId;
@@ -530,7 +547,8 @@ export default function GeoProcessamento({
         secondLayerId,
         tableLayerId,
         history,
-        modelNodes,
+        modelNodes: modelGraph.nodes,
+        modelEdges: modelGraph.edges,
         activeTab,
         basemap,
       };
@@ -562,7 +580,7 @@ export default function GeoProcessamento({
     secondLayerId,
     tableLayerId,
     history,
-    modelNodes,
+    modelGraph,
     activeTab,
     basemap,
   ]);
@@ -769,8 +787,18 @@ export default function GeoProcessamento({
     [whiteboxTools]
   );
 
+  const modelCatalog = useMemo(
+    () => buildGISModelToolCatalog(GEOPROCESSING_TOOLS_CATALOG, whiteboxTools),
+    [whiteboxTools]
+  );
+
   React.useEffect(() => {
-    if (activeTab !== "whitebox_toolbox" || whiteboxTools.length > 0 || whiteboxLoading) return;
+    if (
+      !["whitebox_toolbox", "model_builder"].includes(activeTab) ||
+      whiteboxTools.length > 0
+    ) {
+      return;
+    }
 
     let cancelled = false;
     setWhiteboxLoading(true);
@@ -802,7 +830,7 @@ export default function GeoProcessamento({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, whiteboxTools.length, whiteboxLoading]);
+  }, [activeTab, whiteboxTools.length]);
 
   // Synchronize drawn AOI as a layer
   React.useEffect(() => {
@@ -1975,61 +2003,6 @@ export default function GeoProcessamento({
     }, 25);
   }, [activeLayer, secondaryLayer, currentTool, selectedToolId, toolParams, layers, executeToolById, toast]);
 
-  // ── Run Model Builder Chain ──────────────────────────────────────────────
-  const handleRunModel = useCallback(() => {
-    if (!activeLayer) {
-      toast({
-        title: "Camada de Entrada Necessária",
-        description: "Selecione a camada inicial para alimentar o fluxo do modelo.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsExecuting(true);
-    setTimeout(() => {
-      let currentFc = activeLayer.geojson;
-      const t0 = performance.now();
-
-      try {
-        for (const node of modelNodes) {
-          const { result } = executeToolById(node.toolId, currentFc, node.parameters);
-          currentFc = result;
-        }
-
-        const duration = Math.round(performance.now() - t0);
-        const resultId = `model_result_${Date.now()}`;
-        const newLayer: UserLayer = {
-          id: resultId,
-          name: `Modelo Encadeado (${modelNodes.length} passos) — ${activeLayer.name}`,
-          geojson: currentFc,
-          featureCount: currentFc.features.length,
-          geometryType: currentFc.features[0]?.geometry?.type || "Polygon",
-          fields: currentFc.features[0]?.properties ? Object.keys(currentFc.features[0].properties) : [],
-          color: "#9333ea",
-          visible: true,
-          isResult: true,
-        };
-
-        setLayers((prev) => [newLayer, ...prev]);
-        setSelectedLayerId(resultId);
-
-        toast({
-          title: "Fluxo do Modelo Executado com Sucesso",
-          description: `${modelNodes.length} etapas processadas em sequência em ${duration}ms.`,
-        });
-      } catch (err: any) {
-        toast({
-          title: "Falha na Execução do Modelo",
-          description: err.message,
-          variant: "destructive",
-        });
-      } finally {
-        setIsExecuting(false);
-      }
-    }, 30);
-  }, [activeLayer, modelNodes, executeToolById, toast]);
-
   const readRasterBytes = useCallback(
     async (layer: GISWorkspaceRasterLayer): Promise<Uint8Array> => {
       if (layer.file) {
@@ -2049,6 +2022,299 @@ export default function GeoProcessamento({
     },
     []
   );
+
+  const handleRunModel = useCallback(async () => {
+    const availableLayerIds = new Set([
+      ...layers.map((layer) => layer.id),
+      ...rasterLayers.map((layer) => layer.id),
+    ]);
+    const issues = validateGISModelGraph(
+      modelGraph,
+      modelCatalog,
+      availableLayerIds
+    );
+    if (issues.length > 0) {
+      toast({
+        title: "Modelo ainda não executável",
+        description: issues[0].message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsExecuting(true);
+    setModelNodeStatus({});
+    setModelLog([]);
+    const started = performance.now();
+    const emittedNames: string[] = [];
+    let emittedVectorFeatures = 0;
+    let emittedRasters = 0;
+
+    try {
+      const result = await runGISModelGraph(modelGraph, {
+        catalog: modelCatalog,
+        resolveInput: async (node): Promise<GISModelValue | null> => {
+          if (!node.layerId) return null;
+          if (node.dataKind === "raster") {
+            const raster = rasterLayers.find((layer) => layer.id === node.layerId);
+            if (!raster) return null;
+            return {
+              kind: "raster",
+              bytes: await readRasterBytes(raster),
+              name: raster.name,
+              fileName: raster.file?.name ?? raster.fileName,
+            };
+          }
+
+          const vector = layers.find((layer) => layer.id === node.layerId);
+          if (!vector) return null;
+          return {
+            kind: "vector",
+            geojson: vector.geojson,
+            name: vector.name,
+          };
+        },
+        executeTool: async ({ node, descriptor, inputs }) => {
+          if (descriptor.provider === "turf") {
+            const primary = inputs.input;
+            if (!primary || primary.kind !== "vector") {
+              throw new Error(`${descriptor.name} requer uma entrada vetorial.`);
+            }
+            const overlay = inputs.overlay;
+            if (overlay && overlay.kind !== "vector") {
+              throw new Error(`${descriptor.name} recebeu uma sobreposição não vetorial.`);
+            }
+            const { result } = executeToolById(
+              descriptor.toolId,
+              primary.geojson,
+              node.parameters,
+              overlay?.kind === "vector" ? overlay.geojson : undefined
+            );
+            return {
+              output: {
+                kind: "vector" as const,
+                geojson: result,
+                name: descriptor.name,
+              },
+            };
+          }
+
+          const manifest = descriptor.native as WhiteboxWasmManifest | undefined;
+          if (!manifest) {
+            throw new Error(`O manifesto Whitebox de "${descriptor.name}" não está disponível.`);
+          }
+
+          const vectorSupport = whiteboxVectorSupport(manifest);
+          if (vectorSupport.supported) {
+            const vectorInputs = vectorSupport.vectorInputs.map(
+              (parameter) => inputs[parameter.name]
+            );
+            const first = vectorInputs[0];
+            const second = vectorInputs[1];
+            if (!first || first.kind !== "vector") {
+              throw new Error(`${descriptor.name} requer uma camada vetorial principal.`);
+            }
+            if (second && second.kind !== "vector") {
+              throw new Error(`${descriptor.name} recebeu uma segunda entrada incompatível.`);
+            }
+            const result = await runWhiteboxVectorTool({
+              manifest,
+              primaryLayer: first.geojson,
+              secondaryLayer: second?.kind === "vector" ? second.geojson : undefined,
+              parameters: node.parameters,
+            });
+            return Object.fromEntries(
+              result.outputs.map((output) => [
+                output.parameter,
+                {
+                  kind: "vector" as const,
+                  geojson: output.geojson,
+                  name: `${descriptor.name} — ${output.parameter}`,
+                },
+              ])
+            );
+          }
+
+          const rasterSupport = whiteboxRasterSupport(manifest);
+          if (rasterSupport.supported) {
+            const rasterInputs = rasterSupport.rasterInputs.map(
+              (parameter) => inputs[parameter.name]
+            );
+            const first = rasterInputs[0];
+            const second = rasterInputs[1];
+            if (!first || first.kind !== "raster") {
+              throw new Error(`${descriptor.name} requer um raster principal.`);
+            }
+            if (second && second.kind !== "raster") {
+              throw new Error(`${descriptor.name} recebeu um segundo raster incompatível.`);
+            }
+
+            const result = await runWhiteboxRasterTool({
+              manifest,
+              primaryRaster: {
+                name: first.name || "input.tif",
+                bytes: first.bytes,
+              },
+              secondaryRaster:
+                second?.kind === "raster"
+                  ? {
+                      name: second.name || "secondary.tif",
+                      bytes: second.bytes,
+                    }
+                  : undefined,
+              parameters: node.parameters,
+            });
+            return Object.fromEntries(
+              result.outputs.map((output) => [
+                output.parameter,
+                {
+                  kind: "raster" as const,
+                  bytes: output.bytes,
+                  name: `${descriptor.name} — ${output.parameter}`,
+                  fileName: output.fileName,
+                },
+              ])
+            );
+          }
+
+          throw new Error(
+            `A ferramenta Whitebox "${descriptor.name}" não possui um adapter vetorial/raster compatível.`
+          );
+        },
+        emitOutput: async (node, value) => {
+          if (value.kind === "vector") {
+            const geojson = value.geojson;
+            const id = `model_vector_${crypto.randomUUID().slice(0, 12)}`;
+            const layer: UserLayer = {
+              id,
+              name: node.name.trim() || value.name || "Resultado do modelo",
+              geojson,
+              featureCount: geojson.features.length,
+              geometryType: geojson.features[0]?.geometry?.type ?? "Geometry",
+              fields: geojson.features[0]?.properties
+                ? Object.keys(geojson.features[0].properties)
+                : [],
+              color: PALETTE[(layers.length + emittedNames.length + 1) % PALETTE.length],
+              visible: true,
+              isResult: true,
+            };
+            emittedNames.push(layer.name);
+            emittedVectorFeatures += layer.featureCount;
+            setLayers((previous) => [layer, ...previous]);
+            setSelectedLayerId(id);
+            return;
+          }
+
+          const fileName =
+            value.fileName ||
+            `${(node.name || "model_raster").replace(/[^a-zA-Z0-9_-]+/g, "_")}.tif`;
+          const bytes = new Uint8Array(value.bytes);
+          const file = new File([bytes.buffer], fileName, { type: "image/tiff" });
+          const raster: GISWorkspaceRasterLayer = {
+            id: `model_raster_${crypto.randomUUID().slice(0, 12)}`,
+            name: node.name.trim() || value.name || "Resultado raster do modelo",
+            file,
+            sourceType: "storage",
+            fileName,
+            mimeType: "image/tiff",
+            sizeBytes: file.size,
+            visible: true,
+            opacity: 1,
+            isResult: true,
+            bandCount: null,
+            bounds: null,
+            error: null,
+            rasterState: {
+              mode: "single",
+              bands: [1],
+              colormap: "viridis",
+              reversed: false,
+              rescale: null,
+              nodata: "auto",
+              stretch: "linear",
+              gamma: 1,
+            },
+          };
+          emittedNames.push(raster.name);
+          emittedRasters += 1;
+          setRasterLayers((previous) => [raster, ...previous]);
+          setSelectedWhiteboxRasterId(raster.id);
+        },
+        onNodeStatus: (nodeId, status) =>
+          setModelNodeStatus((previous) => ({
+            ...previous,
+            [nodeId]: status,
+          })),
+        log: (line) => setModelLog((previous) => [...previous, line]),
+      });
+
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
+
+      const durationMs = Math.round(performance.now() - started);
+      setHistory((previous) => [
+        {
+          id: `hist_model_${Date.now()}`,
+          toolId: "hybrid_model_graph",
+          toolName: "Model Builder híbrido",
+          engine: "Hybrid Model",
+          timestamp: new Date().toLocaleTimeString("pt-PT"),
+          durationMs,
+          inputLayerName: modelGraph.nodes
+            .filter((node) => node.kind === "input")
+            .map((node) => {
+              const vector = layers.find((layer) => layer.id === node.layerId);
+              const raster = rasterLayers.find((layer) => layer.id === node.layerId);
+              return vector?.name || raster?.name || node.name;
+            })
+            .join(", "),
+          outputCount:
+            emittedVectorFeatures > 0 && emittedRasters > 0
+              ? emittedNames.length
+              : emittedRasters > 0
+                ? emittedRasters
+                : emittedVectorFeatures,
+          outputLabel:
+            emittedVectorFeatures > 0 && emittedRasters > 0
+              ? "saídas (vetor + raster)"
+              : emittedRasters > 0
+                ? emittedRasters === 1
+                  ? "raster"
+                  : "rasters"
+                : "feições",
+          status: "success",
+          parameters: {
+            nodes: modelGraph.nodes.length,
+            edges: modelGraph.edges.length,
+            outputs: emittedNames,
+          },
+        },
+        ...previous,
+      ]);
+
+      toast({
+        title: "Modelo híbrido concluído",
+        description: `${modelGraph.nodes.length} nós executados em ${durationMs}ms · ${emittedNames.length} saída(s) materializadas.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Falha no Model Builder",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setIsExecuting(false);
+    }
+  }, [
+    executeToolById,
+    layers,
+    modelCatalog,
+    modelGraph,
+    rasterLayers,
+    readRasterBytes,
+    toast,
+  ]);
 
   const handleRunWhitebox = useCallback(async () => {
     if (!selectedWhiteboxTool || !selectedWhiteboxMode) {
@@ -2395,7 +2661,13 @@ export default function GeoProcessamento({
       <div
         className={`fixed md:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-        } ${desktopSidebarOpen ? "md:w-96 overflow-y-auto" : "md:w-0 overflow-hidden md:border-r-0"}`}
+        } ${
+          desktopSidebarOpen
+            ? activeTab === "model_builder"
+              ? "md:w-[min(72vw,980px)] overflow-y-auto"
+              : "md:w-96 overflow-y-auto"
+            : "md:w-0 overflow-hidden md:border-r-0"
+        }`}
       >
         {/* Processing Header */}
         <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
@@ -3730,63 +4002,33 @@ export default function GeoProcessamento({
           </div>
         )}
 
-        {/* ── Sub-Section 3: Model Builder ─────────────────────────────────── */}
+        {/* ── Sub-Section 3: Model Builder híbrido ─────────────────────────── */}
         {activeTab === "model_builder" && (
-          <div className="p-3 space-y-3 flex-1">
-            <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-100 dark:border-purple-900/40 rounded-xl p-2.5 text-[11px] text-purple-900 dark:text-purple-300">
-              <span className="font-semibold block mb-0.5">Model Builder (Fluxo em Cadeia)</span>
-              Encadeie operações em sequência para execução automatizada sobre a camada de entrada.
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 p-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300">
-                <Layers size={14} className="text-indigo-600" />
-                <span>Entrada: {activeLayer?.name || "Nenhuma camada selecionada"}</span>
+          <div className="p-3 flex-1 min-w-0">
+            {whiteboxLoading && whiteboxTools.length === 0 ? (
+              <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-center text-xs text-sky-700 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-300">
+                <RefreshCw size={16} className="mx-auto mb-2 animate-spin" />
+                A carregar catálogo Whitebox WASM para o Model Builder…
               </div>
-
-              {modelNodes.map((node, idx) => (
-                <div key={node.id} className="relative flex flex-col items-center">
-                  <div className="w-0.5 h-3 bg-slate-300 dark:bg-slate-700" />
-                  <div className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xs">
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-200">
-                      <span>Passo {idx + 1}: {node.name}</span>
-                      <button
-                        onClick={() => setModelNodes((prev) => prev.filter((n) => n.id !== node.id))}
-                        className="text-slate-400 hover:text-red-600"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() =>
-                  setModelNodes((prev) => [
-                    ...prev,
-                    {
-                      id: `node_${Date.now()}`,
-                      toolId: "vector_simplify",
-                      name: "Simplificar Geometria",
-                      parameters: { tolerance: 0.005 },
-                    },
-                  ])
-                }
-                className="flex-1 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer"
-              >
-                <Plus size={12} /> Adicionar Etapa
-              </button>
-              <button
-                onClick={handleRunModel}
-                disabled={isExecuting || !activeLayer}
-                className="flex-1 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
-              >
-                <Play size={12} /> Executar Fluxo
-              </button>
-            </div>
+            ) : (
+              <GISModelBuilderPanel
+                graph={modelGraph}
+                onGraphChange={setModelGraph}
+                catalog={modelCatalog}
+                vectorLayers={layers.map((layer) => ({
+                  id: layer.id,
+                  name: layer.name,
+                }))}
+                rasterLayers={rasterLayers.map((layer) => ({
+                  id: layer.id,
+                  name: layer.name,
+                }))}
+                running={isExecuting}
+                nodeStatus={modelNodeStatus}
+                log={modelLog}
+                onRun={() => void handleRunModel()}
+              />
+            )}
           </div>
         )}
 
@@ -5006,7 +5248,13 @@ export default function GeoProcessamento({
       <button
         type="button"
         onClick={() => setDesktopSidebarOpen((v) => !v)}
-        style={{ left: desktopSidebarOpen ? "24rem" : "0px" }}
+        style={{
+          left: desktopSidebarOpen
+            ? activeTab === "model_builder"
+              ? "min(72vw, 980px)"
+              : "24rem"
+            : "0px",
+        }}
         title={desktopSidebarOpen ? "Recolher painel" : "Expandir painel"}
         className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-l-0 border-slate-200 dark:border-slate-700 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
       >

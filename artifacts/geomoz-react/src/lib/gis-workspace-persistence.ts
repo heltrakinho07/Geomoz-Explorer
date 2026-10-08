@@ -2,13 +2,14 @@ import type { GISRasterSymbology } from "@/lib/gis-raster-classification";
 import type { GISWorkspaceServiceLayer } from "@/lib/gis-data-sources";
 import type { FeatureCollection } from "geojson";
 import type { GISStacRasterSource } from "@/lib/stac-client";
+import type { GISModelEdge, GISModelNode } from "@/lib/gis-model-graph";
 
 const DB_NAME = "geomoz-gis-workspace";
 const DB_VERSION = 2;
 const SNAPSHOT_STORE = "project-snapshots";
 const RASTER_FILE_STORE = "raster-files";
 
-export const GIS_WORKSPACE_SCHEMA_VERSION = 3;
+export const GIS_WORKSPACE_SCHEMA_VERSION = 4;
 
 export interface PersistedGISLayer {
   id: string;
@@ -47,7 +48,7 @@ export interface PersistedProcessingHistoryEntry {
   id: string;
   toolId: string;
   toolName: string;
-  engine: "Client (Turf.js)" | "WASM" | "DuckDB Spatial";
+  engine: "Client (Turf.js)" | "WASM" | "DuckDB Spatial" | "Hybrid Model";
   timestamp: string;
   durationMs: number;
   inputLayerName: string;
@@ -57,11 +58,79 @@ export interface PersistedProcessingHistoryEntry {
   parameters: Record<string, unknown>;
 }
 
-export interface PersistedModelNode {
+export type PersistedModelNode = GISModelNode;
+export type PersistedModelEdge = GISModelEdge;
+
+interface LegacyPersistedModelNode {
   id: string;
   toolId: string;
   name: string;
   parameters: Record<string, unknown>;
+}
+
+function migrateLegacyModelNodes(
+  nodes: LegacyPersistedModelNode[] | undefined
+): { modelNodes: PersistedModelNode[]; modelEdges: PersistedModelEdge[] } {
+  const legacy = Array.isArray(nodes) ? nodes : [];
+  if (!legacy.length) {
+    return { modelNodes: [], modelEdges: [] };
+  }
+
+  const inputId = "model_input";
+  const outputId = "model_output";
+  const modelNodes: PersistedModelNode[] = [
+    {
+      id: inputId,
+      kind: "input",
+      name: "Dados de entrada",
+      x: 24,
+      y: 72,
+      dataKind: "vector",
+      parameters: {},
+    },
+    ...legacy.map((node, index) => ({
+      id: node.id,
+      kind: "tool" as const,
+      name: node.name,
+      x: 230 + index * 230,
+      y: 72,
+      provider: "turf" as const,
+      toolId: node.toolId,
+      parameters: { ...(node.parameters ?? {}) },
+    })),
+    {
+      id: outputId,
+      kind: "output",
+      name: "Resultado do modelo",
+      x: 230 + legacy.length * 230,
+      y: 72,
+      parameters: {},
+    },
+  ];
+
+  const modelEdges: PersistedModelEdge[] = [];
+  let previous = inputId;
+  let previousPort = "out";
+  for (const node of legacy) {
+    modelEdges.push({
+      id: `edge_${previous}_${node.id}`,
+      from: previous,
+      fromPort: previousPort,
+      to: node.id,
+      toPort: "input",
+    });
+    previous = node.id;
+    previousPort = "output";
+  }
+  modelEdges.push({
+    id: `edge_${previous}_${outputId}`,
+    from: previous,
+    fromPort: previousPort,
+    to: outputId,
+    toPort: "in",
+  });
+
+  return { modelNodes, modelEdges };
 }
 
 export interface GISWorkspaceSnapshot {
@@ -75,6 +144,7 @@ export interface GISWorkspaceSnapshot {
   tableLayerId: string | null;
   history: PersistedProcessingHistoryEntry[];
   modelNodes: PersistedModelNode[];
+  modelEdges: PersistedModelEdge[];
   activeTab: string;
   basemap: string;
   updatedAt: string;
@@ -137,21 +207,16 @@ export async function loadGISWorkspaceSnapshot(
     );
     if (!result) return null;
 
-    if (result.version === 1) {
+    if (result.version === 1 || result.version === 2 || result.version === 3) {
+      const migratedModel = migrateLegacyModelNodes(
+        result.modelNodes as unknown as LegacyPersistedModelNode[]
+      );
       return {
         ...result,
         version: GIS_WORKSPACE_SCHEMA_VERSION,
-        rasters: [],
-        services: [],
-      };
-    }
-
-    if (result.version === 2) {
-      return {
-        ...result,
-        version: GIS_WORKSPACE_SCHEMA_VERSION,
-        rasters: result.rasters ?? [],
-        services: [],
+        rasters: result.version === 1 ? [] : result.rasters ?? [],
+        services: result.version <= 2 ? [] : result.services ?? [],
+        ...migratedModel,
       };
     }
 
@@ -160,6 +225,8 @@ export async function loadGISWorkspaceSnapshot(
       ...result,
       rasters: result.rasters ?? [],
       services: result.services ?? [],
+      modelNodes: result.modelNodes ?? [],
+      modelEdges: result.modelEdges ?? [],
     };
   } catch (error) {
     console.warn("GIS Workspace: falha ao restaurar snapshot local:", error);
@@ -175,6 +242,8 @@ export async function saveGISWorkspaceSnapshot(
     ...snapshot,
     rasters: snapshot.rasters ?? [],
     services: snapshot.services ?? [],
+    modelNodes: snapshot.modelNodes ?? [],
+    modelEdges: snapshot.modelEdges ?? [],
     version: GIS_WORKSPACE_SCHEMA_VERSION,
     updatedAt: new Date().toISOString(),
   };
@@ -291,7 +360,7 @@ export async function syncGISWorkspaceRasterFiles(
 export function estimateGISWorkspaceSnapshotBytes(
   snapshot: Pick<
     GISWorkspaceSnapshot,
-    "layers" | "rasters" | "services" | "history" | "modelNodes"
+    "layers" | "rasters" | "services" | "history" | "modelNodes" | "modelEdges"
   >
 ): number {
   try {

@@ -17,6 +17,7 @@ import type {
   GISWorkspaceSnapshot,
   PersistedGISLayer,
   PersistedGISRasterLayer,
+  PersistedModelEdge,
   PersistedModelNode,
   PersistedProcessingHistoryEntry,
 } from "@/lib/gis-workspace-persistence";
@@ -26,6 +27,7 @@ import {
 } from "@/lib/gis-workspace-persistence";
 import type { GISWorkspaceRasterLayer } from "@/lib/gis-raster";
 import type { GISStacRasterSource } from "@/lib/stac-client";
+import { migrateLinearModelNodes } from "@/lib/gis-model-graph";
 
 const WORKSPACE_STATE_DOC = "state";
 const CLOUD_HISTORY_LIMIT = 100;
@@ -88,6 +90,7 @@ interface CloudWorkspaceState {
   tableLayerId: string | null;
   history: PersistedProcessingHistoryEntry[];
   modelNodes: PersistedModelNode[];
+  modelEdges: PersistedModelEdge[];
   activeTab: string;
   basemap: string;
   updatedAt: string;
@@ -368,6 +371,7 @@ export async function syncGISWorkspaceToCloud(
     tableLayerId: snapshot.tableLayerId,
     history: snapshot.history.slice(0, CLOUD_HISTORY_LIMIT),
     modelNodes: snapshot.modelNodes.slice(0, CLOUD_MODEL_LIMIT),
+    modelEdges: snapshot.modelEdges.slice(0, CLOUD_MODEL_LIMIT * 2),
     activeTab: snapshot.activeTab,
     basemap: snapshot.basemap,
     updatedAt: new Date().toISOString(),
@@ -490,8 +494,32 @@ export async function loadGISWorkspaceFromCloud(
       ]
     : restoredRasters;
 
+  const rawModelNodes = state?.modelNodes ?? [];
+  const hasGraphNodes = rawModelNodes.some(
+    (node) =>
+      typeof (node as { kind?: unknown }).kind === "string" &&
+      ["input", "tool", "output"].includes(
+        String((node as { kind?: unknown }).kind)
+      )
+  );
+  const restoredGraph =
+    (state?.version ?? 0) >= 4 || hasGraphNodes
+      ? {
+          version: 1 as const,
+          nodes: rawModelNodes,
+          edges: state?.modelEdges ?? [],
+        }
+      : migrateLinearModelNodes(
+          rawModelNodes as unknown as Array<{
+            id: string;
+            toolId: string;
+            name: string;
+            parameters: Record<string, unknown>;
+          }>
+        );
+
   return {
-    version: state?.version ?? GIS_WORKSPACE_SCHEMA_VERSION,
+    version: GIS_WORKSPACE_SCHEMA_VERSION,
     projectId,
     layers: ordered as PersistedGISLayer[],
     rasters: orderedRasters as PersistedGISRasterLayer[],
@@ -500,7 +528,8 @@ export async function loadGISWorkspaceFromCloud(
     secondLayerId: state?.secondLayerId ?? "",
     tableLayerId: state?.tableLayerId ?? null,
     history: state?.history ?? [],
-    modelNodes: state?.modelNodes ?? [],
+    modelNodes: restoredGraph.nodes,
+    modelEdges: restoredGraph.edges,
     activeTab: state?.activeTab ?? "geolibre_toolbox",
     basemap: state?.basemap ?? "hybrid",
     updatedAt: state?.updatedAt ?? new Date(0).toISOString(),
