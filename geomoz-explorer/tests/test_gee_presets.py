@@ -34,7 +34,7 @@ class TestIndexRegistry:
         valid_groups = {
             "spectral", "landsat", "terrain", "agriculture", "drought",
             "fire", "coastal", "climate", "urban", "health",
-            "water", "biophysical",
+            "water", "biophysical", "minerals",
         }
         for idx_id, cfg in INDEX_REGISTRY.items():
             assert cfg["group"] in valid_groups, (
@@ -274,7 +274,7 @@ class TestCrossModuleConsistency:
         known_groups = {
             "spectral", "landsat", "terrain", "agriculture", "drought",
             "fire", "coastal", "climate", "urban", "health",
-            "water", "biophysical",
+            "water", "biophysical", "minerals",
         }
         for idx_id, cfg in INDEX_REGISTRY.items():
             assert cfg["group"] in known_groups, (
