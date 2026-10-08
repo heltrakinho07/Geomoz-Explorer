@@ -7,7 +7,7 @@
 - Mapa Leaflet interactivo, com basemap OSM, ajuste automático para a camada seleccionada, escala e controlo de visibilidade/opacidade.
 - Tabela de atributos com pesquisa, suportando CSV com campos entre aspas, vírgula, ponto-e-vírgula ou tabulação.
 - Limites explícitos por ficheiro: **8 MB** e **5 000 feições**; validação de coordenadas WGS84.
-- Os ficheiros não são enviados ao backend nem persistidos. Os dados desaparecem ao actualizar a página.
+- Os ficheiros não são enviados ao backend nem persistidos. As camadas permanecem ao mudar de separador dentro do Explorer, mas desaparecem ao actualizar a página.
 
 ## Limitações conhecidas
 
