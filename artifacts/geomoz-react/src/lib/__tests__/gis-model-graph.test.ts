@@ -3,6 +3,7 @@ import type { FeatureCollection } from "geojson";
 import {
   GIS_MODEL_INPUT_PORT,
   GIS_MODEL_OUTPUT_PORT,
+  backendGISModelToolDescriptors,
   migrateLinearModelNodes,
   runGISModelGraph,
   topologicalOrderGISModel,
@@ -213,6 +214,79 @@ describe("GIS hybrid model graph", () => {
     expect(executeTool).toHaveBeenCalledTimes(1);
     expect(emitOutput).toHaveBeenCalledTimes(1);
     expect(result.outputs.output.kind).toBe("vector");
+  });
+
+  it("exposes Backend GDAL as typed raster-to-raster tools", () => {
+    const backend = backendGISModelToolDescriptors();
+    const hillshade = backend.find((tool) => tool.toolId === "hillshade");
+    const cog = backend.find((tool) => tool.toolId === "cog");
+
+    expect(hillshade).toMatchObject({
+      provider: "backend-gdal",
+      inputs: [{ id: "input", kind: "raster", required: true }],
+      outputs: [{ id: "output", kind: "raster" }],
+    });
+    expect(cog?.parameters.some((parameter) => parameter.name === "compression")).toBe(true);
+  });
+
+  it("validates a Backend GDAL raster chain as a runnable DAG", () => {
+    const hillshade = backendGISModelToolDescriptors().find(
+      (tool) => tool.toolId === "hillshade"
+    )!;
+    const graph: GISModelGraph = {
+      version: 1,
+      nodes: [
+        {
+          id: "dem",
+          kind: "input",
+          name: "DEM",
+          x: 0,
+          y: 0,
+          layerId: "dem-a",
+          dataKind: "raster",
+          parameters: {},
+        },
+        {
+          id: "hillshade",
+          kind: "tool",
+          name: hillshade.name,
+          x: 200,
+          y: 0,
+          provider: "backend-gdal",
+          toolId: "hillshade",
+          parameters: { azimuth: 315, altitude: 45, z_factor: 1 },
+        },
+        {
+          id: "result",
+          kind: "output",
+          name: "Hillshade final",
+          x: 400,
+          y: 0,
+          dataKind: "raster",
+          parameters: {},
+        },
+      ],
+      edges: [
+        {
+          id: "e-dem",
+          from: "dem",
+          fromPort: GIS_MODEL_INPUT_PORT,
+          to: "hillshade",
+          toPort: "input",
+        },
+        {
+          id: "e-result",
+          from: "hillshade",
+          fromPort: "output",
+          to: "result",
+          toPort: GIS_MODEL_OUTPUT_PORT,
+        },
+      ],
+    };
+
+    expect(
+      validateGISModelGraph(graph, [hillshade], new Set(["dem-a"]))
+    ).toEqual([]);
   });
 
   it("migrates the legacy linear model into a connected graph", () => {
