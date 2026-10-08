@@ -310,3 +310,35 @@ bytes à próxima edge. O ficheiro só entra no layer store quando alcança um n
 
 Como o provider é apenas mais um adapter do grafo, esta extensão não exige nova
 versão do schema do Workspace.
+
+
+## Limites operacionais do backend GDAL
+
+O GeoMoz oferece GDAL remoto para Hillshade, Slope, Aspect e conversão COG.
+A API recebe GeoTIFF/COG em blocos de 1 MiB, valida a assinatura TIFF/BigTIFF,
+limita a dimensão do upload e cria um job isolado por UID Firebase verificado.
+
+Parâmetros configuráveis do processo FastAPI:
+
+| Variável | Default | Propósito |
+| --- | --- | --- |
+| `GEOMOZ_JOB_MAX_UPLOAD_BYTES` | 268435456 (256 MiB) | Limite máximo por GeoTIFF |
+| `GEOMOZ_JOB_WORKERS` | 2 | Subprocessos GDAL concorrentes |
+| `GEOMOZ_JOB_MAX_ACTIVE_GLOBAL` | 4 | Tarefas ativas em fila/executadas |
+| `GEOMOZ_JOB_MAX_ACTIVE_PER_USER` | 2 | Isolamento de recursos por utilizador |
+| `GEOMOZ_JOB_MAX_TIMEOUT_SECONDS` | 1800 | Limite absoluto de execução |
+| `GEOMOZ_JOB_TTL_SECONDS` | 7200 | Retenção de resultados terminados |
+| `GEOMOZ_JOB_ROOT` | `/tmp/geomoz-processing-jobs` | Armazenamento temporário |
+
+O `DELETE /geomoz-api/processing/jobs/{id}` cancela subprocessos em curso.
+Ficheiros temporários só são eliminados depois do processo terminar.
+Jobs ativos não expiram automaticamente por TTL.
+
+**Limitação de produção:** a fila e os resultados atuais residem no
+filesystem/memória de **uma instância FastAPI**. Não constituem uma fila
+distribuída; podem desaparecer em restart, deploy ou encaminhamento para outra
+réplica. Em Cloud Run, execução assíncrona pós-resposta também depende da
+disponibilidade de CPU. Para garantir execução durável em escala, será
+necessário usar Cloud Storage + uma fila durável/Cloud Run Jobs + Firestore
+para estados e autorização por utilizador. Não apresentar os jobs atuais
+como duráveis ou distribuídos.
