@@ -39,7 +39,6 @@ def _migrate_legacy(db, uid: str) -> Optional[dict]:
     Move credential fields to server-only storage and delete the former fields.
     A failed cleanup prevents returning credentials so the issue is visible.
     """
-    from firebase_admin import firestore
     old_ref = db.collection("users").document(uid).collection("settings").document("gee")
     snapshot = old_ref.get()
     if not snapshot.exists:
@@ -50,6 +49,7 @@ def _migrate_legacy(db, uid: str) -> Optional[dict]:
                 if name in legacy}
     if not any(migrated.get(name) for name in _SENSITIVE_FIELDS):
         return None
+    from firebase_admin import firestore
     _private_ref(db, uid).set(migrated, merge=True)
     old_ref.update({field: firestore.DELETE_FIELD for field in _SENSITIVE_FIELDS if field in legacy})
     logger.info("Legacy GEE credentials migrated to private storage for authenticated UID.")
@@ -93,11 +93,13 @@ def clear_token(uid: str) -> None:
         return
     _private_ref(db, uid).delete()
     # Also scrub any historic browser-visible credentials for this UID.
-    from firebase_admin import firestore
     old_ref = db.collection("users").document(uid).collection("settings").document("gee")
     old = old_ref.get()
     if old.exists:
         fields = old.to_dict() or {}
-        remove = {name: firestore.DELETE_FIELD for name in _SENSITIVE_FIELDS if name in fields}
-        if remove:
-            old_ref.update(remove)
+        if any(name in fields for name in _SENSITIVE_FIELDS):
+            from firebase_admin import firestore
+            old_ref.update({
+                name: firestore.DELETE_FIELD
+                for name in _SENSITIVE_FIELDS if name in fields
+            })
