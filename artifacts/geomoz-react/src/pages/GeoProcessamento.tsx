@@ -2652,7 +2652,13 @@ export default function GeoProcessamento({
       <div
         className={`fixed md:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-        } ${desktopSidebarOpen ? "md:w-96 overflow-y-auto" : "md:w-0 overflow-hidden md:border-r-0"}`}
+        } ${
+          desktopSidebarOpen
+            ? activeTab === "model_builder"
+              ? "md:w-[min(72vw,980px)] overflow-y-auto"
+              : "md:w-96 overflow-y-auto"
+            : "md:w-0 overflow-hidden md:border-r-0"
+        }`}
       >
         {/* Processing Header */}
         <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
