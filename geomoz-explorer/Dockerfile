@@ -41,6 +41,8 @@ COPY api.py .
 COPY gee_module.py .
 COPY gee_session_store.py .
 COPY gee_presets.py .
+COPY processing_jobs.py .
+COPY agent/ agent/
 COPY utils/ utils/
 
 # ── Health check ─────────────────────────────────────────────────────────────
