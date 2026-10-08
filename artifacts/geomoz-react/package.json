@@ -106,6 +106,7 @@
     "jspdf": "^4.2.1",
     "lerc": "^4.2.0",
     "maplibre-gl": "^6.9.0",
+    "pmtiles": "^4.5.0",
     "maplibre-gl-raster": "^0.14.15",
     "pako": "^2.1.0",
     "proj4": "^2.22.0",
