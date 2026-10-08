@@ -3,7 +3,15 @@ name: Deploy to Google Cloud Run
 on:
   push:
     branches: [main]
+    paths:
+      - "geomoz-explorer/**"
+      - ".github/workflows/cloud-run-deploy.yml"
   workflow_dispatch:
+
+# A previous push must never roll back a newer Cloud Run revision.
+concurrency:
+  group: geomoz-cloudrun-production
+  cancel-in-progress: true
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -42,6 +50,10 @@ jobs:
           docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
             -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.SERVICE_NAME }}:latest \
             geomoz-explorer/
+
+      - name: Smoke check production image imports
+        run: |
+          docker run --rm --entrypoint python ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}             -c "import api; import processing_jobs; print('GeoMoz API image imports OK')"
 
       - name: Push Docker image to Artifact Registry
         run: |
