@@ -130,11 +130,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const clearError = () => setError(null);
 
   const continueAsGuest = () => {
-    try {
-      localStorage.setItem(GUEST_STORAGE_KEY, "true");
-    } catch {}
-    setUser(GUEST_USER);
-    setError(null);
+    const activateGuest = () => {
+      try {
+        localStorage.setItem(GUEST_STORAGE_KEY, "true");
+      } catch {}
+      setUser(GUEST_USER);
+      setError(null);
+    };
+    // Never display guest mode while Firebase still holds another user's
+    // authentication token (apiFetch would otherwise use that principal).
+    if (auth?.currentUser) {
+      void firebaseSignOut(auth)
+        .then(activateGuest)
+        .catch((err) => setError(formatAuthError(err)));
+    } else {
+      activateGuest();
+    }
   };
 
   // Firebase handles the redirect sign-in via onAuthStateChanged.
