@@ -316,8 +316,13 @@ def list_jobs(uid: str, project_id: str, limit: int = 25) -> list[dict[str, Any]
                 .document(project_id)
                 .collection(GIS_JOB_COLLECTION)
             )
-            docs = ref.order_by("created_at", direction="DESCENDING").limit(limit).stream()
+            docs = ref.limit(100).stream()
             jobs = [doc.to_dict() for doc in docs]
+            jobs.sort(
+                key=lambda item: item.get("created_at", ""),
+                reverse=True,
+            )
+            jobs = jobs[:limit]
         except Exception as exc:
             logger.warning("GIS jobs: Firestore list failed: %s", exc)
 
@@ -502,31 +507,47 @@ def _run_command(
     job_id: str,
 ) -> None:
     logger.info("GIS job %s command: %s", job_id, " ".join(command[:3]))
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    output_lines: list[str] = []
-    while process.poll() is None:
-        if _cancelled(uid, project_id, job_id):
-            process.terminate()
+    with tempfile.NamedTemporaryFile(
+        mode="w+", encoding="utf-8", suffix=".log", delete=False
+    ) as log_file:
+        log_path = Path(log_file.name)
+        process = subprocess.Popen(
+            command,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+
+    last_heartbeat = 0.0
+    try:
+        while process.poll() is None:
+            if _cancelled(uid, project_id, job_id):
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                raise InterruptedError("Job cancelado pelo utilizador.")
+
+            now = time.monotonic()
+            if now - last_heartbeat >= 5:
+                _patch_job(uid, project_id, job_id, heartbeat_at=utc_now())
+                last_heartbeat = now
+            time.sleep(0.5)
+
+        if process.returncode != 0:
             try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-            raise InterruptedError("Job cancelado pelo utilizador.")
-        line = process.stdout.readline() if process.stdout else ""
-        if line:
-            output_lines.append(line.rstrip())
-        _patch_job(uid, project_id, job_id, heartbeat_at=utc_now())
-        time.sleep(0.25)
-    if process.stdout:
-        output_lines.extend(line.rstrip() for line in process.stdout.readlines())
-    if process.returncode != 0:
-        tail = "\n".join(output_lines[-20:]).strip()
-        raise RuntimeError(tail or f"GDAL terminou com código {process.returncode}.")
+                output_lines = log_path.read_text(
+                    encoding="utf-8", errors="replace"
+                ).splitlines()
+            except Exception:
+                output_lines = []
+            tail = "\n".join(output_lines[-20:]).strip()
+            raise RuntimeError(
+                tail or f"GDAL terminou com código {process.returncode}."
+            )
+    finally:
+        log_path.unlink(missing_ok=True)
 
 
 def _run_raster_tool(
