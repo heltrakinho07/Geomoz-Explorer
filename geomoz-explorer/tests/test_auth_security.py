@@ -133,7 +133,7 @@ def test_valid_firebase_user_can_use_own_gee_credentials(monkeypatch):
     init.assert_called_once_with(uid="verified-user", project=None, token=None)
 
 
-def test_public_gee_status_does_not_use_unverified_personal_headers(monkeypatch):
+def test_unverified_status_headers_are_rejected_without_loading_any_secrets(monkeypatch):
     import api
     import gee_module
     import gee_session_store
@@ -145,15 +145,45 @@ def test_public_gee_status_does_not_use_unverified_personal_headers(monkeypatch)
     monkeypatch.setattr(gee_module, "gee_status", status)
     monkeypatch.setattr(gee_session_store, "get_token", store)
 
-    result = asyncio.run(api.gee_status_endpoint(_request({
-        "Authorization": "Bearer invalid-token",
-        "X-GEE-Token": "secret-from-request",
-        "X-GEE-Project": "someone-elses-project",
-    })))
-    assert result["user_connected"] is False
-    assert result["server_connected"] is False
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(api.gee_status_endpoint(_request({
+            "Authorization": "Bearer invalid-token",
+            "X-GEE-Token": "secret-from-request",
+            "X-GEE-Project": "someone-elses-project",
+        })))
+    assert error.value.status_code == 401
     status.assert_not_called()
     store.assert_not_called()
+
+
+def test_concurrent_gee_requests_do_not_overlap_global_sdk_sessions():
+    import api
+
+    active = 0
+    maximum = 0
+
+    async def fake_call_next(request):
+        nonlocal active, maximum
+        active += 1
+        maximum = max(maximum, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return request.url.path
+
+    async def verify():
+        from fastapi import Request
+        a = _request()
+        b = _request()
+        a.scope["path"] = "/geomoz-api/gee/index"
+        b.scope["path"] = "/geomoz-api/gee/composite"
+        result = await asyncio.gather(
+            api.isolate_gee_requests(a, fake_call_next),
+            api.isolate_gee_requests(b, fake_call_next),
+        )
+        assert result == ["/geomoz-api/gee/index", "/geomoz-api/gee/composite"]
+
+    asyncio.run(verify())
+    assert maximum == 1
 
 
 def test_personal_gee_requires_real_credentials_not_just_a_project(monkeypatch):
