@@ -843,16 +843,21 @@ def gee_configure(req: GEEServiceAccountKeyRequest, uid: str = Depends(require_f
 
     if req.service_account_key is not None and req.service_account_key.strip():
         raw_sa = req.service_account_key.strip()
-        user_data["service_account_key"] = raw_sa
-        changed = True
         try:
             sa_dict = json.loads(raw_sa)
-            if not req.project_id and sa_dict.get("project_id"):
-                req.project_id = sa_dict.get("project_id")
-            if not req.account and sa_dict.get("client_email"):
-                req.account = sa_dict.get("client_email")
-        except Exception as sa_err:
-            logger.warning("Could not parse service account JSON for user '%s': %s", uid, sa_err)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(400, "JSON de conta de serviço inválido.") from exc
+        if not isinstance(sa_dict, dict) or not all(
+            isinstance(sa_dict.get(name), str) and sa_dict[name].strip()
+            for name in ("client_email", "private_key", "project_id")
+        ):
+            raise HTTPException(400, "A chave GEE necessita client_email, private_key e project_id.")
+        user_data["service_account_key"] = raw_sa
+        changed = True
+        if not req.project_id:
+            req.project_id = sa_dict["project_id"]
+        if not req.account:
+            req.account = sa_dict["client_email"]
 
     if req.project_id is not None and req.project_id.strip():
         user_data["project"] = req.project_id.strip()
@@ -1121,7 +1126,9 @@ async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(requ
 
     access_token = token_response.get("access_token")
     refresh_token = token_response.get("refresh_token")
-    project = req.project or "geoprocessamento-426809"
+    project = req.project or (gee_session_store.get_token(uid) or {}).get("project")
+    if not project:
+        raise HTTPException(status_code=400, detail="Indique o projeto Google Cloud da sua conta GEE.")
 
     user_data = gee_session_store.get_token(uid) or {}
     user_data["access_token"] = access_token
@@ -1160,7 +1167,10 @@ async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(requ
 async def gee_status_endpoint(request: Request):
     from gee_presets import INDEX_REGISTRY
 
-    uid = _extract_uid_from_header(request.headers.get("Authorization", ""))
+    authorization = request.headers.get("Authorization", "")
+    uid = _extract_uid_from_header(authorization)
+    if authorization and not uid:
+        raise HTTPException(status_code=401, detail="Token Firebase inválido.")
     if not uid:
         return {
             "connected": False,
