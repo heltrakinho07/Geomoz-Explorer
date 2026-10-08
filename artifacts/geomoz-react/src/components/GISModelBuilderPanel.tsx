@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Boxes,
   Database,
+  Download,
   GitBranch,
   Layers,
   LayoutGrid,
@@ -10,6 +11,7 @@ import {
   Plus,
   Search,
   Trash2,
+  Upload,
   Workflow,
 } from "lucide-react";
 import {
@@ -139,6 +141,8 @@ export default function GISModelBuilderPanel({
     startX: number;
     startY: number;
   } | null>(null);
+  const importRef = useRef<HTMLInputElement>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const availableLayerIds = useMemo(
     () =>
@@ -247,6 +251,85 @@ export default function GISModelBuilderPanel({
       ),
     });
     if (selectedNodeId === nodeId) setSelectedNodeId(null);
+  };
+
+  const exportModel = () => {
+    const payload = JSON.stringify(
+      {
+        schema: "https://geolithica.com/schemas/geomoz-gis-model-v1.json",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        graph,
+      },
+      null,
+      2
+    );
+    const blob = new Blob([payload], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "geomoz-model.json";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const importModelFile = async (file: File) => {
+    setFileError(null);
+    try {
+      if (file.size > 4 * 1024 * 1024) {
+        throw new Error("O modelo excede o limite de 4 MB.");
+      }
+      const parsed = JSON.parse(await file.text()) as {
+        schema?: unknown;
+        version?: unknown;
+        graph?: unknown;
+      };
+      const candidate = parsed.graph as Partial<GISModelGraph> | undefined;
+      if (
+        !candidate ||
+        candidate.version !== 1 ||
+        !Array.isArray(candidate.nodes) ||
+        !Array.isArray(candidate.edges)
+      ) {
+        throw new Error("O ficheiro não contém um grafo GeoMoz v1 válido.");
+      }
+      if (candidate.nodes.length > 500 || candidate.edges.length > 1000) {
+        throw new Error("O modelo excede o limite de 500 nós / 1000 ligações.");
+      }
+
+      const validNodes = candidate.nodes.every(
+        (node) =>
+          node &&
+          typeof node.id === "string" &&
+          ["input", "tool", "output"].includes(node.kind) &&
+          typeof node.name === "string" &&
+          Number.isFinite(node.x) &&
+          Number.isFinite(node.y) &&
+          node.parameters &&
+          typeof node.parameters === "object"
+      );
+      const validEdges = candidate.edges.every(
+        (edge) =>
+          edge &&
+          typeof edge.id === "string" &&
+          typeof edge.from === "string" &&
+          typeof edge.fromPort === "string" &&
+          typeof edge.to === "string" &&
+          typeof edge.toPort === "string"
+      );
+      if (!validNodes || !validEdges) {
+        throw new Error("O ficheiro possui nós ou ligações inválidas.");
+      }
+
+      onGraphChange(candidate as GISModelGraph);
+      setSelectedNodeId(null);
+    } catch (error) {
+      setFileError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (importRef.current) importRef.current.value = "";
+    }
   };
 
   const addInput = (kind: "vector" | "raster") => {
@@ -425,6 +508,39 @@ export default function GISModelBuilderPanel({
           <LayoutGrid size={11} /> Auto layout
         </button>
       </div>
+
+      <div className="grid grid-cols-2 gap-1.5">
+        <input
+          ref={importRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void importModelFile(file);
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => importRef.current?.click()}
+          className="flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white py-1.5 text-[10px] font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+        >
+          <Upload size={11} /> Importar modelo
+        </button>
+        <button
+          type="button"
+          onClick={exportModel}
+          className="flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white py-1.5 text-[10px] font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+        >
+          <Download size={11} /> Exportar modelo
+        </button>
+      </div>
+
+      {fileError && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-[9px] text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
+          {fileError}
+        </div>
+      )}
 
       <div className="relative">
         <Search
