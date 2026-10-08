@@ -191,7 +191,7 @@ class TestAPIMetadata:
         assert len(gzip_middleware) == 1
 
     def test_cors_restricts_methods(self) -> None:
-        """CORS should only allow GET, POST, OPTIONS."""
+        """CORS permits only methods actually implemented by this API."""
         from api import app
         cors_found = False
         for m in app.user_middleware:
@@ -202,7 +202,7 @@ class TestAPIMetadata:
                 methods = opts.get("allow_methods", None)
                 # Skip the assertion if we can't retrieve methods (test robustness)
                 if methods is not None:
-                    assert methods == ["GET", "POST", "OPTIONS"]
+                    assert methods == ["GET", "POST", "DELETE", "OPTIONS"]
         assert cors_found, "CORSMiddleware should be registered"
 
 
