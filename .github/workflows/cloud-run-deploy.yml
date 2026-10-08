@@ -102,6 +102,27 @@ jobs:
           echo "❌ Health check failed after 5 attempts"
           exit 1
 
+      - name: Diagnose failed Cloud Run startup
+        if: failure()
+        continue-on-error: true
+        run: |
+          echo "Cloud Run revision status:"
+          REVISION=$(gcloud run revisions list \
+            --service "$SERVICE_NAME" --region "$REGION" \
+            --sort-by='~metadata.creationTimestamp' --limit=1 \
+            --format='value(metadata.name)' 2>/dev/null || true)
+          if [ -n "$REVISION" ]; then
+            gcloud run revisions describe "$REVISION" --region "$REGION" \
+              --format='yaml(status.conditions)' || true
+          fi
+          echo "Recent Cloud Run ERROR logs (sanitized):"
+          gcloud logging read \
+            'resource.type="cloud_run_revision" AND resource.labels.service_name="geomoz-explorer-api" AND severity>=ERROR' \
+            --project "$PROJECT_ID" --freshness=20m --limit=20 \
+            --format='value(textPayload)' 2>&1 \
+            | sed -E 's/(Bearer )[A-Za-z0-9._-]+/\1[REDACTED]/g' \
+            | tail -80 || true
+
       - name: Comment PR with deployment URL
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
