@@ -3,6 +3,7 @@ GeoMoz FastAPI backend — serves geomoz data as REST/GeoJSON endpoints.
 Run: uvicorn api:app --host 0.0.0.0 --port 5001
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -78,51 +79,31 @@ async def require_firebase_auth(request: Request) -> str:
 
 
 async def require_gee_auth(request: Request) -> str:
-    """Permit authenticated BYO-GEE or explicitly configured public demo access."""
-    auth_header = request.headers.get("Authorization", "")
-    uid = _extract_uid_from_header(auth_header)
-    gee_project = request.headers.get("X-GEE-Project", "").strip() or None
-    gee_token = request.headers.get("X-GEE-Token", "").strip() or None
+    """Require a verified Firebase UID with that UID's own GEE credentials.
 
-    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower() == "true"
-    has_server_credentials = bool(
-        os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
-        or os.environ.get("GEE_SERVICE_ACCOUNT_FILE", "").strip()
-        or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
-    )
-
-    # Explicitly invalid identity is never treated as an anonymous guest.
-    if auth_header and not uid:
-        raise HTTPException(status_code=401, detail="Token Firebase inválido.")
-
-    if not uid:
-        # Guests must never supply personal GEE credentials or access stored
-        # tokens belonging to the historical shared 'default' identity.
-        if gee_project or gee_token or not (allow_server and has_server_credentials):
-            raise HTTPException(status_code=401, detail="Inicie sessão para utilizar o Google Earth Engine.")
-        from gee_module import _init_gee
-        try:
-            _init_gee(uid=None, project=None, token=None)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        return ""
-
+    Never accept the X-GEE-Token request header as an alternative principal.
+    A Google Cloud project alone does not establish Earth Engine access.
+    """
+    uid = await require_firebase_auth(request)
     import gee_session_store
-    user_token = gee_session_store.get_token(uid)
-    if not gee_token and not gee_project and not user_token and not (allow_server and has_server_credentials):
+
+    try:
+        user_credentials = gee_session_store.get_token(uid) or {}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Armazenamento privado GEE indisponível.") from exc
+
+    if not any(user_credentials.get(k) for k in
+               ("refresh_token", "access_token", "service_account_key")):
         raise HTTPException(
             status_code=403,
-            detail="Conecte a sua conta Earth Engine ou peça acesso à quota da plataforma.",
+            detail="Ligue as suas próprias credenciais Google Earth Engine antes de executar análises.",
         )
 
     from gee_module import _init_gee
     try:
-        _init_gee(uid=uid, project=gee_project, token=gee_token)
+        _init_gee(uid=uid, project=None, token=None)
     except RuntimeError as exc:
-        msg = str(exc)
-        if "expirou" in msg or "necessary fields" in msg or "refresh" in msg.lower():
-            raise HTTPException(status_code=401, detail=msg) from exc
-        raise HTTPException(status_code=403, detail=msg) from exc
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return uid
 
 
@@ -231,6 +212,19 @@ def _check_rate_limit(client_ip: str) -> bool:
 _thread_pool_executor = ThreadPoolExecutor(max_workers=4)
 
 app = FastAPI(title="GeoMoz API", version="2.1.0")
+
+# ee.Initialize mutates global Earth Engine SDK state. Serialize the complete
+# authentication + computation lifecycle of GEE requests in each Python worker.
+# Each request initializes using the Firebase-authenticated user's own credentials.
+_gee_request_lock = asyncio.Lock()
+
+@app.middleware("http")
+async def isolate_gee_requests(request: Request, call_next):
+    if request.url.path.startswith("/geomoz-api/gee/"):
+        async with _gee_request_lock:
+            return await call_next(request)
+    return await call_next(request)
+
 
 # CORS: accept only explicitly configured origins (production) or known local
 # development/Electron origins. Never combine wildcard origins with credentials.
@@ -1074,9 +1068,17 @@ class OAuthCodeRequest(BaseModel):
 @app.post("/geomoz-api/gee/oauth-token")
 async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_firebase_auth)):
     import gee_session_store
+    # An empty token/project is the explicit disconnect operation.
+    if not req.access_token and not req.project:
+        gee_session_store.clear_token(uid)
+        from gee_module import reset_gee
+        reset_gee()
+        return {"message": "Credenciais GEE desligadas.", "connected": False}
+    if not req.access_token:
+        raise HTTPException(status_code=400, detail="Token GEE vazio.")
     gee_session_store.set_token(uid, {
         "access_token": req.access_token,
-        "project": req.project
+        "project": req.project,
     })
     if req.access_token or req.project:
         try:
@@ -1156,32 +1158,43 @@ async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(requ
 
 @app.get("/geomoz-api/gee/status")
 async def gee_status_endpoint(request: Request):
-    import gee_session_store
-    auth_header = request.headers.get("Authorization", "")
-    uid = _extract_uid_from_header(auth_header)
-    # Never initialize Earth Engine with caller-provided credentials until
-    # the caller has proven ownership of a Firebase user identity.
-    gee_project = (request.headers.get("X-GEE-Project", "").strip() or None) if uid else None
-    gee_token = (request.headers.get("X-GEE-Token", "").strip() or None) if uid else None
+    from gee_presets import INDEX_REGISTRY
+
+    uid = _extract_uid_from_header(request.headers.get("Authorization", ""))
+    if not uid:
+        return {
+            "connected": False,
+            "user_connected": False,
+            "server_connected": False,
+            "allow_server_fallback": False,
+            "auth_type": "none",
+            "project": None,
+            "is_permanent": False,
+            "has_refresh_token": False,
+            "message": "Inicie sessão e conecte a sua própria conta Earth Engine.",
+            "indices": list(INDEX_REGISTRY.keys()),
+        }
 
     from gee_module import gee_status
-    st = gee_status(uid=uid, project=gee_project, token=gee_token)
-    has_sa = bool(os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip())
-    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
-    user_token = gee_session_store.get_token(uid) if uid else None
+    import gee_session_store
+    try:
+        user_token = gee_session_store.get_token(uid) or {}
+        st = gee_status(uid=uid)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Estado GEE indisponível.") from exc
 
-    from gee_presets import INDEX_REGISTRY
     return {
-        "connected": st.get("connected", False),
-        "project": st.get("project") or gee_project,
+        "connected": bool(st.get("connected")),
+        "user_connected": bool(st.get("connected")),
+        "server_connected": False,
+        "allow_server_fallback": False,
         "auth_type": st.get("auth_type"),
+        "project": st.get("project"),
+        "account": st.get("account"),
         "is_permanent": st.get("is_permanent", False),
-        "has_refresh_token": st.get("has_refresh_token", False),
-        "user_connected": bool(gee_token or gee_project or (user_token.get("access_token") if user_token else None) or (user_token.get("refresh_token") if user_token else None)),
-        "server_connected": st.get("auth_type") in ("service_account", "adc") or has_sa,
-        "allow_server_fallback": allow_server,
+        "has_refresh_token": bool(user_token.get("refresh_token")),
         "message": st.get("message"),
-        "indices": list(INDEX_REGISTRY.keys())
+        "indices": list(INDEX_REGISTRY.keys()),
     }
 
 @app.post("/geomoz-api/gee/index")
