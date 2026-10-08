@@ -795,9 +795,10 @@ export default function GeoProcessamento({
   React.useEffect(() => {
     if (
       !["whitebox_toolbox", "model_builder"].includes(activeTab) ||
-      whiteboxTools.length > 0 ||
-      whiteboxLoading
-    ) return;
+      whiteboxTools.length > 0
+    ) {
+      return;
+    }
 
     let cancelled = false;
     setWhiteboxLoading(true);
@@ -829,7 +830,7 @@ export default function GeoProcessamento({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, whiteboxTools.length, whiteboxLoading]);
+  }, [activeTab, whiteboxTools.length]);
 
   // Synchronize drawn AOI as a layer
   React.useEffect(() => {
