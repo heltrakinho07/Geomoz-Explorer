@@ -26,7 +26,8 @@ import type { LayerState } from "./Sidebar";
 import { apiUrl, apiFetch } from "@/lib/api";
 import { useProject } from "../context/ProjectContext";
 import type { GeoMozProject, StudyRun } from "../types/project";
-import { aoiToAPI } from "@/lib/aoi";
+import { aoiToAPI, aoiToMapBounds } from "@/lib/aoi";
+import { fetchMapImage } from "@/lib/pdf-export";
 import { buildProjectMetricsCsv, buildProjectAOIGeoJSON, safeReportFilename, escapeReportHtml, printableMetric } from "@/lib/report-export";
 
 interface ExportPanelProps {
@@ -44,6 +45,7 @@ function generateProjectStudyPdf(
   project: GeoMozProject,
   runs: StudyRun[],
   date: string,
+  mapDataUrl?: string,
 ) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const W = doc.internal.pageSize.getWidth();
@@ -243,10 +245,43 @@ function generateProjectStudyPdf(
   doc.setTextColor(51, 65, 85);
   const notesText =
     project.description ||
-    "Os indicadores espectrais e topográficos foram computados com dados do programa espacial Copernicus (constelação Sentinel-2 MSI e modelo de elevação GLO-30m) integrados via Google Earth Engine. A metodologia aplicada garante repetibilidade e consistência estatística zonal para monitorização territorial.";
+    "Este dossiê resume os registos das análises efectivamente guardadas. Verifique em cada execução o sensor, as datas, as unidades, os algoritmos e os critérios de qualidade antes de interpretar os resultados.";
 
-  const splitNotes = doc.splitTextToSize(notesText, CONTENT_W - 8);
-  doc.text(splitNotes, MARGIN + 4, y);
+  const splitNotes: string[] = doc.splitTextToSize(notesText, CONTENT_W - 8);
+  for (const line of splitNotes) {
+    if (y > H - FOOTER_H - 8) {
+      addFooter();
+      doc.addPage();
+      pageNum++;
+      y = 20;
+    }
+    doc.text(line, MARGIN + 4, y);
+    y += 4.5;
+  }
+
+  if (mapDataUrl) {
+    addFooter();
+    doc.addPage();
+    pageNum++;
+    doc.setFillColor(15, 23, 42);
+    doc.rect(0, 0, W, 16, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10.5);
+    doc.setFont("helvetica", "bold");
+    doc.text("4. MAPA DE LOCALIZAÇÃO DA ÁREA DE ESTUDO", MARGIN, 11);
+
+    // Match backend width_mm/height_mm precisely: never stretch a geographic map.
+    doc.addImage(mapDataUrl, "PNG", MARGIN, 28, CONTENT_W, 105);
+    doc.setTextColor(71, 85, 105);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    const caption = doc.splitTextToSize(
+      "Enquadramento geográfico: " + project.aoi.label +
+      ". Este mapa representa a localização/limites da AOI, não a interpretação temática dos índices.",
+      CONTENT_W,
+    );
+    doc.text(caption, MARGIN, 142);
+  }
 
   addFooter();
   return doc;
@@ -388,20 +423,38 @@ export default function ExportPanel({
   }
 
   // 1. Export PDF Dossier
-  const handleExportProjectPdf = () => {
+  const handleExportProjectPdf = async () => {
     if (!activeProject) return;
     setBusy("project-pdf");
+    setExportError(null);
     try {
       const date = new Date().toLocaleDateString("pt-PT", {
         day: "2-digit",
         month: "long",
         year: "numeric",
       });
-      const doc = generateProjectStudyPdf(activeProject, activeRuns, date);
+      // A geographic map is included only for a real AOI. It never substitutes
+      // a synthetic point for an administrative label with unknown geometry.
+      let mapDataUrl: string | undefined;
+      if (activeProject.aoi.geometry || activeProject.aoi.bounds) {
+        try {
+          mapDataUrl = await fetchMapImage(aoiToMapBounds(activeProject.aoi), {
+            title: `Localização da AOI — ${activeProject.aoi.label}`.slice(0, 180),
+            overlayGeojson: buildProjectAOIGeoJSON(activeProject) ?? undefined,
+            overlayLabel: "Área de estudo",
+            widthMm: 182,
+            heightMm: 105,
+            dpi: 180,
+          });
+        } catch {
+          setExportError("O PDF foi gerado sem mapa: o serviço cartográfico não está disponível ou exige autenticação GEE.");
+        }
+      }
+      const doc = generateProjectStudyPdf(activeProject, activeRuns, date, mapDataUrl);
       doc.save(`GeoMoz_Dossie_${safeReportFilename(activeProject.name)}_${new Date().toISOString().slice(0, 10)}.pdf`);
       flash("project-pdf");
-    } catch (e: any) {
-      setExportError(e.message || "Erro ao gerar PDF.");
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Erro ao gerar PDF.");
     } finally {
       setBusy(null);
     }
@@ -644,7 +697,7 @@ export default function ExportPanel({
                 Dossiê Técnico em PDF Institucional
               </h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Relatório A4 formal com cabeçalho institucional, enquadramento geográfico, tabela analítica de métricas zonais e notas metodológicas.
+                Relatório A4 com métricas e proveniência das análises guardadas. Inclui mapa cartográfico apenas quando a AOI tem geometria ou limites definidos e o serviço está disponível.
               </p>
             </div>
             <button
