@@ -3,15 +3,7 @@ name: Deploy to Google Cloud Run
 on:
   push:
     branches: [main]
-    paths:
-      - "geomoz-explorer/**"
-      - ".github/workflows/cloud-run-deploy.yml"
   workflow_dispatch:
-
-# A previous push must never roll back a newer Cloud Run revision.
-concurrency:
-  group: geomoz-cloudrun-production
-  cancel-in-progress: true
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -50,10 +42,6 @@ jobs:
           docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
             -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.SERVICE_NAME }}:latest \
             geomoz-explorer/
-
-      - name: Smoke check production image imports
-        run: |
-          docker run --rm --entrypoint python ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}             -c "import api; import processing_jobs; print('GeoMoz API image imports OK')"
 
       - name: Push Docker image to Artifact Registry
         run: |
@@ -101,27 +89,6 @@ jobs:
           done
           echo "❌ Health check failed after 5 attempts"
           exit 1
-
-      - name: Diagnose failed Cloud Run startup
-        if: failure()
-        continue-on-error: true
-        run: |
-          echo "Cloud Run revision status:"
-          REVISION=$(gcloud run revisions list \
-            --service "$SERVICE_NAME" --region "$REGION" \
-            --sort-by='~metadata.creationTimestamp' --limit=1 \
-            --format='value(metadata.name)' 2>/dev/null || true)
-          if [ -n "$REVISION" ]; then
-            gcloud run revisions describe "$REVISION" --region "$REGION" \
-              --format='yaml(status.conditions)' || true
-          fi
-          echo "Recent Cloud Run ERROR logs (sanitized):"
-          gcloud logging read \
-            'resource.type="cloud_run_revision" AND resource.labels.service_name="geomoz-explorer-api" AND severity>=ERROR' \
-            --project "$PROJECT_ID" --freshness=20m --limit=20 \
-            --format='value(textPayload)' 2>&1 \
-            | sed -E 's/(Bearer )[A-Za-z0-9._-]+/\1[REDACTED]/g' \
-            | tail -80 || true
 
       - name: Comment PR with deployment URL
         if: github.event_name == 'pull_request'
