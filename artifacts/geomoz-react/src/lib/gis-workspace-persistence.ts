@@ -1,4 +1,5 @@
 import type { GISRasterSymbology } from "@/lib/gis-raster-classification";
+import type { GISWorkspaceServiceLayer } from "@/lib/gis-data-sources";
 import type { FeatureCollection } from "geojson";
 
 const DB_NAME = "geomoz-gis-workspace";
@@ -6,7 +7,7 @@ const DB_VERSION = 2;
 const SNAPSHOT_STORE = "project-snapshots";
 const RASTER_FILE_STORE = "raster-files";
 
-export const GIS_WORKSPACE_SCHEMA_VERSION = 2;
+export const GIS_WORKSPACE_SCHEMA_VERSION = 3;
 
 export interface PersistedGISLayer {
   id: string;
@@ -38,6 +39,8 @@ export interface PersistedGISRasterLayer {
   sourceType?: "storage" | "url";
 }
 
+export type PersistedGISServiceLayer = GISWorkspaceServiceLayer;
+
 export interface PersistedProcessingHistoryEntry {
   id: string;
   toolId: string;
@@ -64,6 +67,7 @@ export interface GISWorkspaceSnapshot {
   projectId: string;
   layers: PersistedGISLayer[];
   rasters: PersistedGISRasterLayer[];
+  services: PersistedGISServiceLayer[];
   selectedLayerId: string;
   secondLayerId: string;
   tableLayerId: string | null;
@@ -136,6 +140,16 @@ export async function loadGISWorkspaceSnapshot(
         ...result,
         version: GIS_WORKSPACE_SCHEMA_VERSION,
         rasters: [],
+        services: [],
+      };
+    }
+
+    if (result.version === 2) {
+      return {
+        ...result,
+        version: GIS_WORKSPACE_SCHEMA_VERSION,
+        rasters: result.rasters ?? [],
+        services: [],
       };
     }
 
@@ -143,6 +157,7 @@ export async function loadGISWorkspaceSnapshot(
     return {
       ...result,
       rasters: result.rasters ?? [],
+      services: result.services ?? [],
     };
   } catch (error) {
     console.warn("GIS Workspace: falha ao restaurar snapshot local:", error);
@@ -157,6 +172,7 @@ export async function saveGISWorkspaceSnapshot(
   const payload: GISWorkspaceSnapshot = {
     ...snapshot,
     rasters: snapshot.rasters ?? [],
+    services: snapshot.services ?? [],
     version: GIS_WORKSPACE_SCHEMA_VERSION,
     updatedAt: new Date().toISOString(),
   };
@@ -273,7 +289,7 @@ export async function syncGISWorkspaceRasterFiles(
 export function estimateGISWorkspaceSnapshotBytes(
   snapshot: Pick<
     GISWorkspaceSnapshot,
-    "layers" | "rasters" | "history" | "modelNodes"
+    "layers" | "rasters" | "services" | "history" | "modelNodes"
   >
 ): number {
   try {
