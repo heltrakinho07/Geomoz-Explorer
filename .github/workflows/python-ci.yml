@@ -136,7 +136,7 @@ jobs:
       - name: Confirm API starts and serves health endpoint
         run: |
           set -euo pipefail
-          docker run -d --name geomoz-api-smoke -p 127.0.0.1:5003:5003 \
+          docker run -d --name geomoz-api-smoke --memory=1g --memory-swap=1g -p 127.0.0.1:5003:5003 \
             -e PORT=5003 -e DISABLE_RATE_LIMIT=true geomoz-api-smoke
           trap 'docker logs geomoz-api-smoke --tail 60 || true; docker rm -f geomoz-api-smoke >/dev/null 2>&1 || true' EXIT
           for attempt in $(seq 1 45); do
