@@ -52,61 +52,78 @@ except ImportError:
     firebase_auth = None
 
 def _extract_uid_from_header(auth_header: str) -> Optional[str]:
+    """Return a UID only after Firebase Admin verifies the token signature.
+
+    Never use the unverified JWT payload for user identity or GEE storage.
+    """
     if not auth_header or not auth_header.startswith("Bearer "):
         return None
     token = auth_header.removeprefix("Bearer ").strip()
-    if not token:
+    if not token or firebase_auth is None:
         return None
-    if firebase_auth:
-        try:
-            decoded = firebase_auth.verify_id_token(token)
-            return decoded.get("uid")
-        except Exception:
-            pass
     try:
-        import base64, json
-        parts = token.split(".")
-        if len(parts) >= 2:
-            padding = 4 - (len(parts[1]) % 4)
-            payload_b64 = parts[1] + ("=" * padding if padding != 4 else "")
-            payload = json.loads(base64.urlsafe_b64decode(payload_b64.encode()))
-            return payload.get("user_id") or payload.get("sub")
+        decoded = firebase_auth.verify_id_token(token)
+        uid = decoded.get("uid")
+        return str(uid) if uid else None
     except Exception:
-        pass
-    return None
+        return None
+
 
 async def require_firebase_auth(request: Request) -> str:
-    auth_header = request.headers.get("Authorization", "")
-    uid = _extract_uid_from_header(auth_header)
+    uid = _extract_uid_from_header(request.headers.get("Authorization", ""))
     if not uid:
-        return "geomoz-user"
+        raise HTTPException(status_code=401, detail="Autenticação Firebase necessária.")
     return uid
 
+
 async def require_gee_auth(request: Request) -> str:
+    """Permit authenticated BYO-GEE or explicitly configured public demo access."""
     auth_header = request.headers.get("Authorization", "")
     uid = _extract_uid_from_header(auth_header)
     gee_project = request.headers.get("X-GEE-Project", "").strip() or None
     gee_token = request.headers.get("X-GEE-Token", "").strip() or None
 
+    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower() == "true"
+    has_server_credentials = bool(
+        os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
+        or os.environ.get("GEE_SERVICE_ACCOUNT_FILE", "").strip()
+        or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+    )
+
+    # Explicitly invalid identity is never treated as an anonymous guest.
+    if auth_header and not uid:
+        raise HTTPException(status_code=401, detail="Token Firebase inválido.")
+
+    if not uid:
+        # Guests must never supply personal GEE credentials or access stored
+        # tokens belonging to the historical shared 'default' identity.
+        if gee_project or gee_token or not (allow_server and has_server_credentials):
+            raise HTTPException(status_code=401, detail="Inicie sessão para utilizar o Google Earth Engine.")
+        from gee_module import _init_gee
+        try:
+            _init_gee(uid=None, project=None, token=None)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return ""
+
     import gee_session_store
-    user_token = gee_session_store.get_token(uid) if uid else None
-    has_sa = bool(os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip())
-    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
-    if not gee_token and not gee_project and not user_token and not allow_server and not has_sa:
+    user_token = gee_session_store.get_token(uid)
+    if not gee_token and not gee_project and not user_token and not (allow_server and has_server_credentials):
         raise HTTPException(
             status_code=403,
-            detail="É necessário conectar a sua conta do Google Earth Engine nas opções para utilizar a sua própria cota."
+            detail="Conecte a sua conta Earth Engine ou peça acesso à quota da plataforma.",
         )
 
     from gee_module import _init_gee
     try:
-        _init_gee(uid=uid or "default", project=gee_project, token=gee_token)
-    except RuntimeError as e:
-        err_msg = str(e)
-        if "expirou" in err_msg or "necessary fields" in err_msg or "refresh" in err_msg:
-            raise HTTPException(status_code=401, detail=err_msg)
-        raise HTTPException(status_code=403, detail=err_msg)
-    return uid or "default"
+        _init_gee(uid=uid, project=gee_project, token=gee_token)
+    except RuntimeError as exc:
+        msg = str(exc)
+        if "expirou" in msg or "necessary fields" in msg or "refresh" in msg.lower():
+            raise HTTPException(status_code=401, detail=msg) from exc
+        raise HTTPException(status_code=403, detail=msg) from exc
+    return uid
+
 
 def handle_gee_api_error(exc: Exception, prefix: str = "Cálculo GEE", uid: str = None):
     msg = str(exc)
@@ -674,7 +691,7 @@ def _update_env_file(updates: dict):
 
 
 @app.post("/geomoz-api/gee/configure")
-def gee_configure(req: GEEServiceAccountKeyRequest, request: Request):
+def gee_configure(req: GEEServiceAccountKeyRequest, uid: str = Depends(require_firebase_auth)):
     """
     Update GEE credentials for the active authenticated user and reinitialize.
     Accepts service_account_key (JSON string), project_id, and/or account.
@@ -682,9 +699,6 @@ def gee_configure(req: GEEServiceAccountKeyRequest, request: Request):
     """
     import gee_session_store
     from gee_module import reset_gee, _init_gee, gee_status as _gee_status
-
-    auth_header = request.headers.get("Authorization", "")
-    uid = _extract_uid_from_header(auth_header) or "default"
 
     changed = False
     user_data = gee_session_store.get_token(uid) or {}
@@ -998,8 +1012,10 @@ async def gee_status_endpoint(request: Request):
     import gee_session_store
     auth_header = request.headers.get("Authorization", "")
     uid = _extract_uid_from_header(auth_header)
-    gee_project = request.headers.get("X-GEE-Project", "").strip() or None
-    gee_token = request.headers.get("X-GEE-Token", "").strip() or None
+    # Never initialize Earth Engine with caller-provided credentials until
+    # the caller has proven ownership of a Firebase user identity.
+    gee_project = (request.headers.get("X-GEE-Project", "").strip() or None) if uid else None
+    gee_token = (request.headers.get("X-GEE-Token", "").strip() or None) if uid else None
 
     from gee_module import gee_status
     st = gee_status(uid=uid, project=gee_project, token=gee_token)
@@ -1584,23 +1600,10 @@ async def gee_basin_report(req: GEEBasinStatsRequest, uid: str = Depends(require
 
 
 @app.post("/geomoz-api/gee/refresh-basin-tiles")
-async def gee_refresh_basin_tiles(req: GEEBasinStatsRequest, request: Request):
-    """Regenerate active GEE tile URLs for an existing basin polygon.
-    Only creates visualization map IDs (<1s, zero reductions).
-    Publicly accessible so shared links and saved analyses can refresh expired tiles.
-    """
+async def gee_refresh_basin_tiles(req: GEEBasinStatsRequest, uid: str = Depends(require_gee_auth)):
+    """Regenerate active GEE tile URLs with verified user or explicit demo access."""
     import asyncio
-    from gee_module import refresh_basin_tiles, _init_gee
-
-    # Ensure GEE initialized (uses server fallback if no user auth header present)
-    try:
-        auth_header = request.headers.get("Authorization", "")
-        uid = _extract_uid_from_header(auth_header)
-        gee_project = request.headers.get("X-GEE-Project", "").strip() or None
-        gee_token = request.headers.get("X-GEE-Token", "").strip() or None
-        _init_gee(uid=uid or "default", project=gee_project, token=gee_token)
-    except Exception:
-        pass
+    from gee_module import refresh_basin_tiles
 
     loop = asyncio.get_event_loop()
     try:
