@@ -21,7 +21,7 @@ import {
 } from "@/lib/whitebox-wasm";
 
 export type GISModelPortKind = "vector" | "raster" | "any";
-export type GISModelProvider = "turf" | "whitebox";
+export type GISModelProvider = "turf" | "whitebox" | "backend-gdal";
 export type GISModelNodeKind = "input" | "tool" | "output";
 
 export interface GISModelToolPort {
@@ -322,6 +322,183 @@ function whiteboxToolDescriptor(
   return null;
 }
 
+export function backendGISModelToolDescriptors(): GISModelToolDescriptor[] {
+  return [
+    {
+      key: "backend-gdal:hillshade",
+      provider: "backend-gdal",
+      toolId: "hillshade",
+      name: "Hillshade · Backend GDAL",
+      group: "Backend GDAL · Terreno",
+      description:
+        "Gera relevo sombreado no backend GDAL para DEMs maiores, mantendo o browser livre.",
+      inputs: [
+        {
+          id: "input",
+          label: "DEM",
+          kind: "raster",
+          required: true,
+        },
+      ],
+      outputs: [
+        {
+          id: "output",
+          label: "Hillshade",
+          kind: "raster",
+        },
+      ],
+      parameters: [
+        {
+          name: "azimuth",
+          label: "Azimute",
+          type: "number",
+          default: 315,
+          min: 0,
+          max: 360,
+          step: 5,
+        },
+        {
+          name: "altitude",
+          label: "Altitude solar",
+          type: "number",
+          default: 45,
+          min: 1,
+          max: 90,
+          step: 5,
+        },
+        {
+          name: "z_factor",
+          label: "Fator Z",
+          type: "number",
+          default: 1,
+          min: 0.0001,
+          step: 0.1,
+        },
+      ],
+    },
+    {
+      key: "backend-gdal:slope",
+      provider: "backend-gdal",
+      toolId: "slope",
+      name: "Slope · Backend GDAL",
+      group: "Backend GDAL · Terreno",
+      description:
+        "Calcula declive com GDAL no servidor e devolve GeoTIFF ao fluxo.",
+      inputs: [
+        {
+          id: "input",
+          label: "DEM",
+          kind: "raster",
+          required: true,
+        },
+      ],
+      outputs: [
+        {
+          id: "output",
+          label: "Slope",
+          kind: "raster",
+        },
+      ],
+      parameters: [
+        {
+          name: "scale",
+          label: "Escala Z/XY",
+          type: "number",
+          default: 1,
+          min: 0.0001,
+          step: 0.1,
+        },
+        {
+          name: "percent",
+          label: "Declive em percentagem",
+          type: "boolean",
+          default: false,
+        },
+      ],
+    },
+    {
+      key: "backend-gdal:aspect",
+      provider: "backend-gdal",
+      toolId: "aspect",
+      name: "Aspect · Backend GDAL",
+      group: "Backend GDAL · Terreno",
+      description:
+        "Calcula a orientação das vertentes no backend GDAL.",
+      inputs: [
+        {
+          id: "input",
+          label: "DEM",
+          kind: "raster",
+          required: true,
+        },
+      ],
+      outputs: [
+        {
+          id: "output",
+          label: "Aspect",
+          kind: "raster",
+        },
+      ],
+      parameters: [
+        {
+          name: "zero_for_flat",
+          label: "Áreas planas = 0",
+          type: "boolean",
+          default: true,
+        },
+      ],
+    },
+    {
+      key: "backend-gdal:cog",
+      provider: "backend-gdal",
+      toolId: "cog",
+      name: "Converter para COG · Backend GDAL",
+      group: "Backend GDAL · Raster",
+      description:
+        "Converte um GeoTIFF para Cloud Optimized GeoTIFF no servidor.",
+      inputs: [
+        {
+          id: "input",
+          label: "GeoTIFF",
+          kind: "raster",
+          required: true,
+        },
+      ],
+      outputs: [
+        {
+          id: "output",
+          label: "COG",
+          kind: "raster",
+        },
+      ],
+      parameters: [
+        {
+          name: "compression",
+          label: "Compressão",
+          type: "select",
+          default: "DEFLATE",
+          options: [
+            { value: "DEFLATE", label: "DEFLATE" },
+            { value: "LZW", label: "LZW" },
+            { value: "ZSTD", label: "ZSTD" },
+            { value: "JPEG", label: "JPEG" },
+            { value: "WEBP", label: "WEBP" },
+          ],
+        },
+        {
+          name: "blocksize",
+          label: "Block size",
+          type: "number",
+          default: 512,
+          min: 128,
+          max: 4096,
+          step: 128,
+        },
+      ],
+    },
+  ];
+}
+
 export function buildGISModelToolCatalog(
   vectorTools: ToolDefinition[],
   whiteboxTools: WhiteboxWasmManifest[]
@@ -332,7 +509,7 @@ export function buildGISModelToolCatalog(
   const whitebox = whiteboxTools
     .map(whiteboxToolDescriptor)
     .filter((tool): tool is GISModelToolDescriptor => Boolean(tool));
-  return [...vector, ...whitebox];
+  return [...vector, ...whitebox, ...backendGISModelToolDescriptors()];
 }
 
 export function resolveGISModelDescriptor(

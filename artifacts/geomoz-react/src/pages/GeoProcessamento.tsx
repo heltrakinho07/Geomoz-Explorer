@@ -2096,7 +2096,7 @@ export default function GeoProcessamento({
             name: vector.name,
           };
         },
-        executeTool: async ({ node, descriptor, inputs }) => {
+        executeTool: async ({ node, descriptor, inputs, signal }) => {
           if (descriptor.provider === "turf") {
             const primary = inputs.input;
             if (!primary || primary.kind !== "vector") {
@@ -2119,6 +2119,64 @@ export default function GeoProcessamento({
                 name: descriptor.name,
               },
             };
+          }
+
+          if (descriptor.provider === "backend-gdal") {
+            const input = inputs.input;
+            if (!input || input.kind !== "raster") {
+              throw new Error(descriptor.name + " requer uma entrada raster.");
+            }
+
+            const tool = descriptor.toolId as GISHeavyToolId;
+            const inputBytes = new Uint8Array(input.bytes).buffer;
+            const inputFile = new File(
+              [inputBytes],
+              input.fileName ||
+                (input.name || "model-input").replace(/[^a-zA-Z0-9._-]+/g, "_") +
+                  ".tif",
+              { type: "image/tiff" }
+            );
+
+            const created = await createGISHeavyJob({
+              tool,
+              file: inputFile,
+              parameters: node.parameters,
+              signal,
+            });
+
+            try {
+              const completed = await waitForGISHeavyJob({
+                jobId: created.job.id,
+                signal,
+                onProgress: (job) => {
+                  setModelLog((previous) => {
+                    const line =
+                      descriptor.name +
+                      ": " +
+                      job.progress +
+                      "% · " +
+                      (job.message || job.status);
+                    if (previous[previous.length - 1] === line) return previous;
+                    return [...previous, line];
+                  });
+                },
+              });
+
+              const resultFile = await downloadGISHeavyJobResult(
+                completed.id,
+                signal
+              );
+              return {
+                output: {
+                  kind: "raster" as const,
+                  bytes: new Uint8Array(await resultFile.arrayBuffer()),
+                  name: descriptor.name,
+                  fileName: resultFile.name,
+                },
+              };
+            } finally {
+              void deleteGISHeavyJob(created.job.id).catch(() => undefined);
+            }
           }
 
           const manifest = descriptor.native as WhiteboxWasmManifest | undefined;

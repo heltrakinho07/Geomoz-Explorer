@@ -110,6 +110,9 @@ function nodeTone(node: GISModelNode): string {
   if (node.provider === "whitebox") {
     return "border-sky-300 bg-sky-50/95 dark:border-sky-800 dark:bg-sky-950/40";
   }
+  if (node.provider === "backend-gdal") {
+    return "border-orange-300 bg-orange-50/95 dark:border-orange-800 dark:bg-orange-950/40";
+  }
   return "border-indigo-300 bg-indigo-50/95 dark:border-indigo-800 dark:bg-indigo-950/40";
 }
 
@@ -584,10 +587,16 @@ export default function GISModelBuilderPanel({
                   className={`shrink-0 rounded px-1.5 py-0.5 text-[8px] font-bold ${
                     tool.provider === "whitebox"
                       ? "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300"
-                      : "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
+                      : tool.provider === "backend-gdal"
+                        ? "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300"
+                        : "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
                   }`}
                 >
-                  {tool.provider === "whitebox" ? "WASM" : "Turf"}
+                  {tool.provider === "whitebox"
+                    ? "WASM"
+                    : tool.provider === "backend-gdal"
+                      ? "GDAL"
+                      : "Turf"}
                 </span>
               </button>
             ))
@@ -671,6 +680,8 @@ export default function GISModelBuilderPanel({
                         <GitBranch size={12} />
                       ) : node.provider === "whitebox" ? (
                         <Boxes size={12} />
+                      ) : node.provider === "backend-gdal" ? (
+                        <Database size={12} />
                       ) : (
                         <Workflow size={12} />
                       )}

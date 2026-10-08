@@ -287,3 +287,26 @@ primeira versão funcional liga portas por seletores de upstream compatíveis e
 desenha as edges no canvas. O formato do grafo já suporta futuramente
 drag-to-connect, branching visual avançado e execução remota sem nova migração de
 dados.
+
+
+### Backend GDAL no Model Builder
+
+Além de `turf` e `whitebox`, o grafo aceita o provider
+`backend-gdal`. Este provider mantém exatamente o mesmo contrato de portas do
+Model Builder e executa jobs assíncronos no FastAPI.
+
+Ferramentas disponíveis inicialmente:
+
+- `backend-gdal:hillshade`;
+- `backend-gdal:slope`;
+- `backend-gdal:aspect`;
+- `backend-gdal:cog`.
+
+Todas recebem uma porta raster e devolvem uma porta raster. Durante a execução,
+os bytes produzidos pelo nó upstream são enviados ao endpoint de jobs, o
+frontend acompanha o estado até `completed`, descarrega o GeoTIFF e entrega os
+bytes à próxima edge. O ficheiro só entra no layer store quando alcança um nó
+`output`.
+
+Como o provider é apenas mais um adapter do grafo, esta extensão não exige nova
+versão do schema do Workspace.
