@@ -467,17 +467,25 @@ export function createWmtsTileUrl(options: {
 }
 
 export function validateXyzTemplate(value: string): string {
-  const url = new URL(value);
-  if (!["http:", "https:"].includes(url.protocol)) {
-    throw new Error("Use um template HTTP ou HTTPS.");
-  }
-  const normalized = url.toString();
+  const normalized = value.trim();
   if (
     !normalized.includes("{z}") ||
     !normalized.includes("{x}") ||
     !(normalized.includes("{y}") || normalized.includes("{-y}"))
   ) {
     throw new Error("O template XYZ/WMTS deve conter {z}, {x} e {y} (ou {-y}).");
+  }
+
+  // URL() percent-encodes braces, so validate a token-substituted copy but
+  // return the original template intact for MapLibre placeholder expansion.
+  const validationUrl = normalized
+    .replaceAll("{z}", "0")
+    .replaceAll("{x}", "0")
+    .replaceAll("{y}", "0")
+    .replaceAll("{-y}", "0");
+  const url = new URL(validationUrl);
+  if (!["http:", "https:"].includes(url.protocol)) {
+    throw new Error("Use um template HTTP ou HTTPS.");
   }
   return normalized;
 }
