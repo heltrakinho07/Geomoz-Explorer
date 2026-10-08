@@ -1020,7 +1020,7 @@ async def gee_status_endpoint(request: Request):
     from gee_module import gee_status
     st = gee_status(uid=uid, project=gee_project, token=gee_token)
     has_sa = bool(os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip())
-    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "true").strip().lower() == "true"
+    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower() == "true"
     user_token = gee_session_store.get_token(uid) if uid else None
 
     from gee_presets import INDEX_REGISTRY
