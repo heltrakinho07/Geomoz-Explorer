@@ -535,3 +535,79 @@ export async function loadGISWorkspaceFromCloud(
     updatedAt: state?.updatedAt ?? new Date(0).toISOString(),
   };
 }
+
+
+export async function ensureGISVectorProcessingStorage(
+  uid: string,
+  projectId: string,
+  layer: PersistedGISLayer
+): Promise<string> {
+  if (!uid || !projectId || projectId === "session-default") {
+    throw new Error("O processamento cloud requer um projeto autenticado.");
+  }
+  const manifest = await uploadLayerIfChanged(uid, projectId, layer);
+  return manifest.objectPath;
+}
+
+export async function ensureGISRasterProcessingSource(
+  uid: string,
+  projectId: string,
+  layer: GISWorkspaceRasterLayer
+): Promise<
+  | { kind: "url"; url: string; name: string }
+  | { kind: "storage"; storage_path: string; name: string }
+> {
+  if (!uid || !projectId || projectId === "session-default") {
+    throw new Error("O processamento cloud requer um projeto autenticado.");
+  }
+
+  if (
+    (layer.sourceType === "url" || layer.sourceType === "stac") &&
+    typeof layer.remoteUrl === "string" &&
+    /^https?:\/\//i.test(layer.remoteUrl)
+  ) {
+    return {
+      kind: "url",
+      url: layer.remoteUrl,
+      name: layer.fileName || layer.name,
+    };
+  }
+
+  const persisted: PersistedGISRasterLayer = {
+    id: layer.id,
+    name: layer.name,
+    fileName: layer.file?.name ?? layer.fileName,
+    mimeType: layer.file?.type || layer.mimeType || "image/tiff",
+    sizeBytes: layer.file?.size ?? layer.sizeBytes ?? 0,
+    visible: layer.visible,
+    opacity: layer.opacity,
+    isResult: layer.isResult,
+    bandCount: layer.bandCount ?? null,
+    bounds: layer.bounds ?? null,
+    rasterState: layer.rasterState ? { ...layer.rasterState } : undefined,
+    rasterSymbology: layer.rasterSymbology
+      ? { ...layer.rasterSymbology }
+      : undefined,
+    error: layer.error ?? null,
+    remoteUrl: layer.remoteUrl,
+    sourceType: layer.sourceType,
+    stacSource: layer.stacSource,
+  };
+
+  const manifest = await uploadRasterIfChanged(
+    uid,
+    projectId,
+    persisted,
+    layer.file
+  );
+  if (!manifest?.objectPath) {
+    throw new Error(
+      "Não foi possível preparar o raster no Firebase Storage para processamento cloud."
+    );
+  }
+  return {
+    kind: "storage",
+    storage_path: manifest.objectPath,
+    name: manifest.fileName || layer.name,
+  };
+}

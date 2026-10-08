@@ -82,6 +82,38 @@ async def require_firebase_auth(request: Request) -> str:
         return "geomoz-user"
     return uid
 
+
+async def require_gis_job_auth(request: Request) -> str:
+    """Strict Firebase auth for resource-intensive GIS processing endpoints."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Autenticação Firebase necessária.")
+
+    token = auth_header.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Token Firebase ausente.")
+
+    if firebase_auth:
+        try:
+            decoded = firebase_auth.verify_id_token(token)
+            uid = decoded.get("uid")
+            if uid:
+                return str(uid)
+        except Exception as exc:
+            if os.getenv("ALLOW_INSECURE_GIS_AUTH", "false").lower() != "true":
+                logger.warning("GIS job auth rejected token: %s", exc)
+                raise HTTPException(status_code=401, detail="Token Firebase inválido.")
+
+    if os.getenv("ALLOW_INSECURE_GIS_AUTH", "false").lower() == "true":
+        uid = _extract_uid_from_header(auth_header)
+        if uid:
+            return uid
+
+    raise HTTPException(
+        status_code=503,
+        detail="Verificação Firebase indisponível para processamento GIS.",
+    )
+
 async def require_gee_auth(request: Request) -> str:
     auth_header = request.headers.get("Authorization", "")
     uid = _extract_uid_from_header(auth_header)
@@ -139,6 +171,15 @@ def handle_gee_api_error(exc: Exception, prefix: str = "Cálculo GEE", uid: str 
         )
     raise HTTPException(500, f"{prefix} falhou: {exc}")
 from pydantic import BaseModel, field_validator, constr
+from gis_processing_jobs import (
+    GISJobCreateRequest,
+    GIS_TOOL_CATALOG,
+    cancel_job as cancel_gis_job,
+    get_job as get_gis_job,
+    list_jobs as list_gis_jobs,
+    read_job_result as read_gis_job_result,
+    submit_job as submit_gis_job,
+)
 
 # ── Package imports ────────────────────────────────────────────────────────
 # These modules are siblings of api.py in the geomoz-explorer directory.
@@ -413,6 +454,95 @@ def _province_summary_cached():
 @app.get("/geomoz-api/health")
 def health():
     return {"status": "ok", "version": "2.1.0"}
+
+
+@app.get("/geomoz-api/gis/tools")
+async def gis_processing_tools(uid: str = Depends(require_gis_job_auth)):
+    """Server-side tools suitable for large/long GIS processing."""
+    return {
+        "engine": "GeoMoz Cloud GIS",
+        "runtime": "GDAL + GeoPandas",
+        "tools": GIS_TOOL_CATALOG,
+    }
+
+
+@app.post("/geomoz-api/gis/jobs", status_code=202)
+async def create_gis_processing_job(
+    req: GISJobCreateRequest,
+    uid: str = Depends(require_gis_job_auth),
+):
+    """Queue a heavy GIS job and return immediately with its durable job id."""
+    try:
+        return submit_gis_job(uid, req)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Could not submit GIS processing job")
+        raise HTTPException(status_code=500, detail=f"Falha ao criar job GIS: {exc}") from exc
+
+
+@app.get("/geomoz-api/gis/jobs")
+async def get_gis_processing_jobs(
+    project_id: str = Query(..., min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._-]+$"),
+    limit: int = Query(25, ge=1, le=100),
+    uid: str = Depends(require_gis_job_auth),
+):
+    """List the authenticated user's recent jobs for one GeoMoz project."""
+    return {"jobs": list_gis_jobs(uid, project_id, limit)}
+
+
+@app.get("/geomoz-api/gis/jobs/{job_id}")
+async def get_gis_processing_job(
+    job_id: str,
+    project_id: str = Query(..., min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._-]+$"),
+    uid: str = Depends(require_gis_job_auth),
+):
+    job = get_gis_job(uid, project_id, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job GIS não encontrado.")
+    return job
+
+
+@app.delete("/geomoz-api/gis/jobs/{job_id}")
+async def delete_gis_processing_job(
+    job_id: str,
+    project_id: str = Query(..., min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._-]+$"),
+    uid: str = Depends(require_gis_job_auth),
+):
+    try:
+        return cancel_gis_job(uid, project_id, job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Job GIS não encontrado.") from exc
+
+
+@app.get("/geomoz-api/gis/jobs/{job_id}/result")
+async def get_gis_processing_job_result(
+    job_id: str,
+    project_id: str = Query(..., min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._-]+$"),
+    uid: str = Depends(require_gis_job_auth),
+):
+    job = get_gis_job(uid, project_id, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job GIS não encontrado.")
+    if job.get("status") != "succeeded":
+        raise HTTPException(
+            status_code=409,
+            detail=f"O resultado ainda não está disponível (estado: {job.get('status')}).",
+        )
+
+    result = read_gis_job_result(uid, project_id, job_id)
+    if result is None:
+        raise HTTPException(status_code=410, detail="O resultado do job já não está disponível.")
+
+    content, content_type, file_name = result
+    safe_name = "".join(
+        char for char in file_name if char.isalnum() or char in "._-"
+    ) or "result.bin"
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
+    )
 
 
 @app.get("/geomoz-api/provinces")

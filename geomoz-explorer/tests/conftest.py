@@ -104,7 +104,7 @@ def _mock_shapely_ops() -> Generator[None, None, None]:
 @pytest.fixture
 def client() -> Generator[TestClient, None, None]:
     """Create a FastAPI TestClient with mocked dependencies."""
-    from api import app, require_firebase_auth, require_gee_auth
+    from api import app, require_firebase_auth, require_gee_auth, require_gis_job_auth
 
     def override_require_firebase_auth():
         return "test-uid-123"
@@ -112,8 +112,12 @@ def client() -> Generator[TestClient, None, None]:
     def override_require_gee_auth():
         return "test-uid-123"
 
+    def override_require_gis_job_auth():
+        return "test-uid-123"
+
     app.dependency_overrides[require_firebase_auth] = override_require_firebase_auth
     app.dependency_overrides[require_gee_auth] = override_require_gee_auth
+    app.dependency_overrides[require_gis_job_auth] = override_require_gis_job_auth
 
     with TestClient(app) as c:
         yield c
