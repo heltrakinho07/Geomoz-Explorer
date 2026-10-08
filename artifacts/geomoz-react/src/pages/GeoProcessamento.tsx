@@ -2269,11 +2269,20 @@ export default function GeoProcessamento({
               return vector?.name || raster?.name || node.name;
             })
             .join(", "),
-          outputCount: emittedVectorFeatures + emittedRasters,
+          outputCount:
+            emittedVectorFeatures > 0 && emittedRasters > 0
+              ? emittedNames.length
+              : emittedRasters > 0
+                ? emittedRasters
+                : emittedVectorFeatures,
           outputLabel:
-            emittedRasters > 0
-              ? `${emittedVectorFeatures} feições · ${emittedRasters} raster(s)`
-              : "feições",
+            emittedVectorFeatures > 0 && emittedRasters > 0
+              ? "saídas (vetor + raster)"
+              : emittedRasters > 0
+                ? emittedRasters === 1
+                  ? "raster"
+                  : "rasters"
+                : "feições",
           status: "success",
           parameters: {
             nodes: modelGraph.nodes.length,
