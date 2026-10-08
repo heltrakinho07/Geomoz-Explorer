@@ -1,6 +1,7 @@
 import type { GISRasterSymbology } from "@/lib/gis-raster-classification";
 import type { GISWorkspaceServiceLayer } from "@/lib/gis-data-sources";
 import type { FeatureCollection } from "geojson";
+import type { GISStacRasterSource } from "@/lib/stac-client";
 
 const DB_NAME = "geomoz-gis-workspace";
 const DB_VERSION = 2;
@@ -36,7 +37,8 @@ export interface PersistedGISRasterLayer {
   rasterSymbology?: GISRasterSymbology;
   error?: string | null;
   remoteUrl?: string;
-  sourceType?: "storage" | "url";
+  sourceType?: "storage" | "url" | "stac";
+  stacSource?: GISStacRasterSource;
 }
 
 export type PersistedGISServiceLayer = GISWorkspaceServiceLayer;
