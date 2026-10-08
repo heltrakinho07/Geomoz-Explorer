@@ -166,7 +166,7 @@ def test_stream_upload_checks_magic_and_owner_isolation(
 
     monkeypatch.setattr(jobs, "JOB_ROOT", tmp_path)
     monkeypatch.setattr(jobs, "_executor", DeferredExecutor())
-    source = io.BytesIO(b"II*\\x00" + b"raster-data")
+    source = io.BytesIO(b"II*\x00" + b"raster-data")
     job = jobs.create_processing_job(
         uid="municipio-a",
         tool="hillshade",
@@ -176,7 +176,7 @@ def test_stream_upload_checks_magic_and_owner_isolation(
     )
     assert job.status == "queued"
     assert job.input_name == "dem.tif"
-    assert (tmp_path / job.id / "dem.tif").read_bytes() == b"II*\\x00raster-data"
+    assert (tmp_path / job.id / "dem.tif").read_bytes() == b"II*\x00raster-data"
     assert jobs.get_processing_job(job.id, "municipio-a") is not None
     assert jobs.get_processing_job(job.id, "municipio-b") is None
     assert jobs.get_processing_job_output(job.id, "municipio-b") is None
@@ -197,7 +197,7 @@ def test_bounded_upload_rejects_oversize_and_releases_reservation(
     with pytest.raises(ValueError, match="limite"):
         jobs.create_processing_job(
             uid="stream-user", tool="aspect", input_name="test.tif",
-            input_stream=io.BytesIO(b"II*\\x00" + b"x" * 30),
+            input_stream=io.BytesIO(b"II*\x00" + b"x" * 30),
         )
     assert set(jobs._jobs) == old_ids
     assert list(tmp_path.iterdir()) == []
@@ -213,18 +213,18 @@ def test_quotas_and_timeout_reject_unbounded_work(
     monkeypatch.setattr(jobs, "_MAX_ACTIVE_PER_USER", 1)
     first = jobs.create_processing_job(
         uid="quota-user", tool="slope", input_name="dem.tif",
-        input_bytes=b"II*\\x00" + b"small-raster",
+        input_bytes=b"II*\x00" + b"small-raster",
     )
     try:
         with pytest.raises(ValueError, match="por utilizador"):
             jobs.create_processing_job(
                 uid="quota-user", tool="slope", input_name="dem.tif",
-                input_bytes=b"II*\\x00" + b"small-raster",
+                input_bytes=b"II*\x00" + b"small-raster",
             )
         with pytest.raises(ValueError, match="timeout_seconds"):
             jobs.create_processing_job(
                 uid="quota-user-2", tool="hillshade", input_name="dem.tif",
-                input_bytes=b"II*\\x00" + b"small-raster",
+                input_bytes=b"II*\x00" + b"small-raster",
                 parameters={"timeout_seconds": jobs.MAX_TIMEOUT_SECONDS + 1},
             )
     finally:
@@ -240,7 +240,7 @@ def test_cannot_expire_active_jobs_or_accept_unbounded_numeric_parameters(
     monkeypatch.setattr(jobs, "_executor", DeferredExecutor())
     job = jobs.create_processing_job(
         uid="ttl-user", tool="aspect", input_name="dem.tif",
-        input_bytes=b"II*\\x00" + b"small-raster",
+        input_bytes=b"II*\x00" + b"small-raster",
     )
     try:
         assert jobs.cleanup_expired_jobs(now=job.updated_at + jobs.JOB_TTL_SECONDS + 1) == 0
@@ -267,7 +267,7 @@ def test_running_job_delete_terminates_process_before_file_cleanup(
     monkeypatch.setattr(jobs, "_executor", DeferredExecutor())
     job = jobs.create_processing_job(
         uid="cancel-user", tool="slope", input_name="dem.tif",
-        input_bytes=b"II*\\x00" + b"small-raster",
+        input_bytes=b"II*\x00" + b"small-raster",
     )
     process = MagicMock()
     process.poll.return_value = None
