@@ -121,12 +121,21 @@ export async function waitForGISHeavyJob(options: {
     }
 
     await new Promise<void>((resolve, reject) => {
-      const timer = window.setTimeout(resolve, pollMs);
+      const signal = options.signal;
+      if (signal?.aborted) {
+        reject(new DOMException("Operação cancelada.", "AbortError"));
+        return;
+      }
       const onAbort = () => {
-        window.clearTimeout(timer);
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
         reject(new DOMException("Operação cancelada.", "AbortError"));
       };
-      options.signal?.addEventListener("abort", onAbort, { once: true });
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, pollMs);
+      signal?.addEventListener("abort", onAbort, { once: true });
     });
   }
 }

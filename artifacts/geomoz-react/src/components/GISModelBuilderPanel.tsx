@@ -43,6 +43,7 @@ interface Props {
   nodeStatus: Record<string, "running" | "done" | "error">;
   log: string[];
   onRun: () => void;
+  onCancel: () => void;
 }
 
 const CARD_W = 220;
@@ -133,6 +134,7 @@ export default function GISModelBuilderPanel({
   nodeStatus,
   log,
   onRun,
+  onCancel,
 }: Props) {
   const [search, setSearch] = useState("");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -905,6 +907,15 @@ export default function GISModelBuilderPanel({
         <Play size={14} />
         {running ? "A executar grafo…" : "Executar modelo híbrido"}
       </button>
+      {running && (
+        <button
+          type="button"
+          onClick={onCancel}
+          className="w-full rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300"
+        >
+          Cancelar execução do modelo
+        </button>
+      )}
     </div>
   );
 }

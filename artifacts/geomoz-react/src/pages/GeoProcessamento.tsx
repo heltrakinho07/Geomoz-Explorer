@@ -389,6 +389,7 @@ export default function GeoProcessamento({
     Record<string, "running" | "done" | "error">
   >({});
   const [modelLog, setModelLog] = useState<string[]>([]);
+  const modelAbortRef = useRef<AbortController | null>(null);
 
   // Restore the newest available workspace snapshot. IndexedDB is the fast
   // offline cache; authenticated projects additionally use Firestore + Storage.
@@ -2046,6 +2047,8 @@ export default function GeoProcessamento({
   );
 
   const handleRunModel = useCallback(async () => {
+    const controller = new AbortController();
+    modelAbortRef.current = controller;
     const availableLayerIds = new Set([
       ...layers.map((layer) => layer.id),
       ...rasterLayers.map((layer) => layer.id),
@@ -2075,6 +2078,7 @@ export default function GeoProcessamento({
     try {
       const result = await runGISModelGraph(modelGraph, {
         catalog: modelCatalog,
+        signal: controller.signal,
         resolveInput: async (node): Promise<GISModelValue | null> => {
           if (!node.layerId) return null;
           if (node.dataKind === "raster") {
@@ -2378,12 +2382,20 @@ export default function GeoProcessamento({
         description: `${modelGraph.nodes.length} nós executados em ${durationMs}ms · ${emittedNames.length} saída(s) materializadas.`,
       });
     } catch (error) {
-      toast({
-        title: "Falha no Model Builder",
-        description: error instanceof Error ? error.message : String(error),
-        variant: "destructive",
-      });
+      if (controller.signal.aborted) {
+        toast({
+          title: "Modelo cancelado",
+          description: "A execução foi interrompida pelo utilizador.",
+        });
+      } else {
+        toast({
+          title: "Falha no Model Builder",
+          description: error instanceof Error ? error.message : String(error),
+          variant: "destructive",
+        });
+      }
     } finally {
+      if (modelAbortRef.current === controller) modelAbortRef.current = null;
       setIsExecuting(false);
     }
   }, [
@@ -4258,6 +4270,17 @@ export default function GeoProcessamento({
                       >
                         {isExecuting && heavyJob ? "A processar no servidor…" : "Executar no Backend GDAL"}
                       </button>
+                      {isExecuting &&
+                        heavyJob &&
+                        (heavyJob.status === "queued" || heavyJob.status === "running") && (
+                          <button
+                            type="button"
+                            onClick={() => heavyJobAbortRef.current?.abort()}
+                            className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-[10px] font-bold text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:bg-slate-900 dark:text-rose-300"
+                          >
+                            Cancelar job GDAL
+                          </button>
+                        )}
                     </div>
                   )}
 
@@ -4319,6 +4342,7 @@ export default function GeoProcessamento({
                 nodeStatus={modelNodeStatus}
                 log={modelLog}
                 onRun={() => void handleRunModel()}
+                onCancel={() => modelAbortRef.current?.abort()}
               />
             )}
           </div>
