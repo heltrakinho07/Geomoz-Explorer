@@ -2364,7 +2364,8 @@ export default function GeoProcessamento({
           selectedWhiteboxRaster.fileName ||
           selectedWhiteboxRaster.name.replace(/[^a-zA-Z0-9._-]+/g, "_") +
             ".tif";
-        inputFile = new File([bytes], name, { type: "image/tiff" });
+        const uploadBuffer = new Uint8Array(bytes).buffer;
+        inputFile = new File([uploadBuffer], name, { type: "image/tiff" });
       }
 
       const params: Record<string, unknown> = {};
