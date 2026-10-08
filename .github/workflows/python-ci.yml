@@ -71,6 +71,37 @@ jobs:
           DISABLE_RATE_LIMIT: "true"
           CI: "true"
 
+
+  docker-startup-smoke:
+    name: Cloud Run container startup smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Cloud Run image
+        run: docker build -f geomoz-explorer/Dockerfile -t geomoz-api-smoke:ci geomoz-explorer
+
+      - name: Verify FastAPI launches and binds port 5003
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name geomoz-api-smoke -p 18083:5003 -e PORT=5003 geomoz-api-smoke:ci
+          trap 'docker logs geomoz-api-smoke || true; docker rm -f geomoz-api-smoke || true' EXIT
+          for n in $(seq 1 36); do
+            if curl --silent --show-error --fail http://127.0.0.1:18083/geomoz-api/health; then
+              echo "Cloud Run image bound PORT=5003 successfully"
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' geomoz-api-smoke)" != "true" ]; then
+              echo "::error::API process exited during container startup"
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "::error::FastAPI failed to listen on PORT=5003"
+          exit 1
+
   lint:
     name: Lint (ruff)
     runs-on: ubuntu-latest
