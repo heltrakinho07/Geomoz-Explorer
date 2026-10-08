@@ -5239,7 +5239,13 @@ export default function GeoProcessamento({
       <button
         type="button"
         onClick={() => setDesktopSidebarOpen((v) => !v)}
-        style={{ left: desktopSidebarOpen ? "24rem" : "0px" }}
+        style={{
+          left: desktopSidebarOpen
+            ? activeTab === "model_builder"
+              ? "min(72vw, 980px)"
+              : "24rem"
+            : "0px",
+        }}
         title={desktopSidebarOpen ? "Recolher painel" : "Expandir painel"}
         className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-l-0 border-slate-200 dark:border-slate-700 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
       >
