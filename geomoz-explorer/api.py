@@ -2327,24 +2327,96 @@ class GEEMapImageRequest(BaseModel):
     dpi: int = 200
     title: Optional[str] = None
 
-    @field_validator('bounds')
+    @field_validator("bounds")
     @classmethod
-    def validate_bounds(cls, v):
-        required = {"south", "north", "west", "east"}
-        if not isinstance(v, dict) or not required.issubset(v.keys()):
-            raise ValueError(f'bounds must contain {required}')
-        if v["south"] >= v["north"]:
-            raise ValueError('south must be < north')
-        if v["west"] >= v["east"]:
-            raise ValueError('west must be < east')
-        return v
+    def validate_bounds(cls, value):
+        import math
 
-    @field_validator('dpi')
+        required = {"south", "north", "west", "east"}
+        if not isinstance(value, dict) or not required.issubset(value.keys()):
+            raise ValueError(f"bounds must contain {required}")
+
+        try:
+            bounds = {key: float(value[key]) for key in required}
+        except (TypeError, ValueError) as exc:
+            raise ValueError("bounds values must be numeric") from exc
+
+        if not all(math.isfinite(item) for item in bounds.values()):
+            raise ValueError("bounds values must be finite")
+        if not -90 <= bounds["south"] < bounds["north"] <= 90:
+            raise ValueError("latitude bounds must satisfy -90 <= south < north <= 90")
+        if not -180 <= bounds["west"] < bounds["east"] <= 180:
+            raise ValueError("longitude bounds must satisfy -180 <= west < east <= 180")
+        return bounds
+
+    @field_validator("tile_url")
     @classmethod
-    def validate_dpi(cls, v):
-        if not 72 <= v <= 600:
-            raise ValueError('dpi must be between 72 and 600')
-        return v
+    def validate_tile_url(cls, value):
+        if value is None:
+            return None
+
+        from urllib.parse import urlparse
+
+        value = value.strip()
+        if not value:
+            return None
+        parsed = urlparse(value)
+
+        allowed_hosts = {
+            "earthengine.googleapis.com",
+            "earthengine-highvolume.googleapis.com",
+        }
+        if parsed.scheme != "https" or parsed.hostname not in allowed_hosts:
+            raise ValueError("tile_url must use an authorised Earth Engine HTTPS host")
+        if parsed.username or parsed.password:
+            raise ValueError("tile_url credentials are not allowed")
+        if not all(token in value for token in ("{z}", "{x}", "{y}")):
+            raise ValueError("tile_url must be an XYZ tile template")
+        if len(value) > 4096:
+            raise ValueError("tile_url is too long")
+        return value
+
+    @field_validator("overlay_geojson")
+    @classmethod
+    def validate_overlay_geojson(cls, value):
+        if value is None:
+            return None
+        encoded = json.dumps(value, separators=(",", ":"), default=str)
+        if len(encoded.encode("utf-8")) > 2_000_000:
+            raise ValueError("overlay_geojson exceeds the 2 MB limit")
+        return value
+
+    @field_validator("legend_items")
+    @classmethod
+    def validate_legend_items(cls, value):
+        if value is not None and len(value) > 30:
+            raise ValueError("legend_items supports at most 30 entries")
+        return value
+
+    @field_validator("width_mm", "height_mm")
+    @classmethod
+    def validate_map_dimensions(cls, value):
+        value = float(value)
+        if not 40 <= value <= 300:
+            raise ValueError("map dimensions must be between 40 and 300 mm")
+        return value
+
+    @field_validator("dpi")
+    @classmethod
+    def validate_dpi(cls, value):
+        if not 72 <= value <= 300:
+            raise ValueError("dpi must be between 72 and 300")
+        return value
+
+    @field_validator("title", "overlay_label")
+    @classmethod
+    def validate_map_text(cls, value):
+        if value is None:
+            return None
+        value = value.strip()
+        if len(value) > 180:
+            raise ValueError("map labels must be at most 180 characters")
+        return value
 
 
 @app.post("/geomoz-api/gee/map-image")

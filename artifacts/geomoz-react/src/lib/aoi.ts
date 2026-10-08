@@ -254,3 +254,64 @@ export function aoiToAPI(aoi: AreaOfInterest): {
   // Global / no region
   return { province: null, district: null, geometry: null };
 }
+
+
+export interface MapBounds {
+  south: number;
+  north: number;
+  west: number;
+  east: number;
+}
+
+export const MOZAMBIQUE_MAP_BOUNDS: MapBounds = {
+  south: -26.9,
+  north: -10.4,
+  west: 30.2,
+  east: 41.0,
+};
+
+export const WORLD_MAP_BOUNDS: MapBounds = {
+  south: -80,
+  north: 80,
+  west: -180,
+  east: 180,
+};
+
+/**
+ * Resolve a stable report/export extent from the current AOI.
+ *
+ * Custom, uploaded and country AOIs use their real bounds. Mozambique
+ * administrative AOIs currently fall back to the national extent unless
+ * explicit bounds are already attached to the AOI.
+ */
+export function aoiToMapBounds(
+  aoi: AreaOfInterest,
+  fallback: MapBounds = MOZAMBIQUE_MAP_BOUNDS,
+): MapBounds {
+  if (aoi.source === "global") {
+    return { ...WORLD_MAP_BOUNDS };
+  }
+
+  const bounds = aoi.bounds ?? (
+    aoi.geometry ? computeGeoJSONBounds(aoi.geometry) : null
+  );
+
+  if (!bounds) return { ...fallback };
+
+  const [[south, west], [north, east]] = bounds;
+  const values = [south, north, west, east];
+  if (!values.every(Number.isFinite) || south >= north || west >= east) {
+    return { ...fallback };
+  }
+
+  // Pad slightly so AOI boundaries and labels are not clipped in print maps.
+  const latPad = Math.max((north - south) * 0.04, 0.01);
+  const lonPad = Math.max((east - west) * 0.04, 0.01);
+
+  return {
+    south: Math.max(-90, south - latPad),
+    north: Math.min(90, north + latPad),
+    west: Math.max(-180, west - lonPad),
+    east: Math.min(180, east + lonPad),
+  };
+}
