@@ -150,3 +150,46 @@ def test_public_gee_status_does_not_use_unverified_personal_headers(monkeypatch)
     assert result["user_connected"] is False
     status.assert_called_once_with(uid=None, project=None, token=None)
     store.assert_not_called()
+
+
+def test_saved_analysis_routes_require_verified_identity():
+    import api
+
+    protected = {
+        "/geomoz-api/analyses/save",
+        "/geomoz-api/analyses",
+        "/geomoz-api/analyses/{analysis_id}",
+    }
+    for route in api.app.routes:
+        if getattr(route, "path", "") in protected:
+            assert any(dep.call is api.require_firebase_auth for dep in route.dependant.dependencies)
+
+
+def test_saved_analyses_are_isolated_by_user(client, monkeypatch, tmp_path):
+    import api
+
+    monkeypatch.setattr(api, "SAVED_ANALYSES_DIR", str(tmp_path))
+    saved = client.post(
+        "/geomoz-api/analyses/save",
+        json={"title": "Private study", "type": "hidro", "data": {"private": True}},
+    )
+    assert saved.status_code == 200
+    analysis_id = saved.json()["id"]
+    assert client.get(f"/geomoz-api/analyses/{analysis_id}").status_code == 200
+
+    # Switch only the verified user dependency. No data or filenames are shared.
+    api.app.dependency_overrides[api.require_firebase_auth] = lambda: "another-user"
+    assert client.get("/geomoz-api/analyses").json() == []
+    assert client.get(f"/geomoz-api/analyses/{analysis_id}").status_code == 404
+    assert client.delete(f"/geomoz-api/analyses/{analysis_id}").status_code == 404
+
+    api.app.dependency_overrides[api.require_firebase_auth] = lambda: "test-uid-123"
+    assert client.get(f"/geomoz-api/analyses/{analysis_id}").status_code == 200
+
+
+def test_saved_analysis_id_cannot_traverse_directories(client):
+    resp = client.post(
+        "/geomoz-api/analyses/save",
+        json={"id": "../private", "title": "bad-id", "data": {"x": 1}},
+    )
+    assert resp.status_code == 400
