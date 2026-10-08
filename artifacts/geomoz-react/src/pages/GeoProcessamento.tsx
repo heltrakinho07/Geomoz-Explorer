@@ -14,13 +14,17 @@ import {
   type WfsFeatureType,
 } from "@/lib/ogc-wfs";
 import {
+  compatibleWmtsMatrixSets,
   createServiceLayer,
   createWmsTileUrl,
+  createWmtsTileUrl,
   fetchRemoteGeoJson,
   fetchWmsCapabilities,
+  fetchWmtsCapabilities,
   validateXyzTemplate,
   type GISWorkspaceServiceLayer,
   type WmsCapabilities,
+  type WmtsCapabilities,
 } from "@/lib/gis-data-sources";
 import {
   EARTH_SEARCH_STAC,
@@ -289,6 +293,12 @@ export default function GeoProcessamento({
   const [wmsSelectedLayer, setWmsSelectedLayer] = useState("");
   const [wmsStyle, setWmsStyle] = useState("");
   const [wmsLoading, setWmsLoading] = useState(false);
+  const [wmtsEndpoint, setWmtsEndpoint] = useState("");
+  const [wmtsCapabilities, setWmtsCapabilities] = useState<WmtsCapabilities | null>(null);
+  const [wmtsSelectedLayer, setWmtsSelectedLayer] = useState("");
+  const [wmtsSelectedMatrixSet, setWmtsSelectedMatrixSet] = useState("");
+  const [wmtsStyle, setWmtsStyle] = useState("");
+  const [wmtsLoading, setWmtsLoading] = useState(false);
   const [stacEndpoint, setStacEndpoint] = useState(PLANETARY_COMPUTER_STAC);
   const [stacConnection, setStacConnection] = useState<GISStacConnection | null>(null);
   const [stacCollection, setStacCollection] = useState("");
@@ -949,6 +959,104 @@ export default function GeoProcessamento({
       return undefined;
     }
   }, [aoi, stacUseAoi]);
+
+  const handleRetrieveWmts = useCallback(async () => {
+    const endpoint = wmtsEndpoint.trim();
+    if (!endpoint) {
+      toast({
+        title: "Introduza o endpoint WMTS",
+        description: "Use o URL base do serviço ou um GetCapabilities.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setWmtsLoading(true);
+    try {
+      const capabilities = await fetchWmtsCapabilities(endpoint);
+      setWmtsCapabilities(capabilities);
+      const firstLayer = capabilities.layers[0];
+      setWmtsSelectedLayer(firstLayer?.identifier ?? "");
+      setWmtsStyle(
+        firstLayer?.styles.find((style) => style.isDefault)?.identifier ??
+          firstLayer?.styles[0]?.identifier ??
+          ""
+      );
+      const compatible = firstLayer
+        ? compatibleWmtsMatrixSets(capabilities, firstLayer)
+        : [];
+      setWmtsSelectedMatrixSet(compatible[0]?.identifier ?? "");
+      toast({
+        title: "WMTS descoberto",
+        description: `${capabilities.title}: ${capabilities.layers.length} layer(s) disponíveis.`,
+      });
+    } catch (error) {
+      setWmtsCapabilities(null);
+      toast({
+        title: "Falha no WMTS GetCapabilities",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setWmtsLoading(false);
+    }
+  }, [toast, wmtsEndpoint]);
+
+  const handleAddWmts = useCallback(() => {
+    if (!wmtsCapabilities || !wmtsSelectedLayer || !wmtsSelectedMatrixSet) {
+      toast({
+        title: "WMTS incompleto",
+        description: "Selecione a layer e o TileMatrixSet antes de adicionar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const layer = wmtsCapabilities.layers.find(
+        (candidate) => candidate.identifier === wmtsSelectedLayer
+      );
+      if (!layer) throw new Error("A layer WMTS selecionada já não existe no catálogo.");
+      const matrixSet = wmtsCapabilities.matrixSets.find(
+        (candidate) => candidate.identifier === wmtsSelectedMatrixSet
+      );
+      if (!matrixSet) throw new Error("O TileMatrixSet selecionado já não existe.");
+      const tileUrl = createWmtsTileUrl({
+        capabilities: wmtsCapabilities,
+        layer,
+        matrixSet,
+        style: wmtsStyle,
+      });
+      const service = createServiceLayer({
+        name: layer.title || layer.identifier,
+        type: "wmts",
+        endpoint: wmtsCapabilities.endpoint,
+        tileUrl,
+        tileSize: 256,
+        metadata: {
+          wmtsLayer: layer.identifier,
+          tileMatrixSet: matrixSet.identifier,
+          sourceLabel: wmtsCapabilities.title,
+        },
+      });
+      setServiceLayers((previous) => [service, ...previous]);
+      toast({
+        title: "WMTS adicionado",
+        description: `${service.name} · ${matrixSet.identifier} foi registado no projeto.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Falha ao adicionar WMTS",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    }
+  }, [
+    toast,
+    wmtsCapabilities,
+    wmtsSelectedLayer,
+    wmtsSelectedMatrixSet,
+    wmtsStyle,
+  ]);
 
   const handleConnectStac = useCallback(async () => {
     const endpoint = stacEndpoint.trim();
@@ -2552,6 +2660,116 @@ export default function GeoProcessamento({
                     className="w-full rounded-lg bg-violet-600 px-3 py-2 text-[10px] font-bold text-white hover:bg-violet-700"
                   >
                     Adicionar WMS ao mapa
+                  </button>
+                </>
+              )}
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-fuchsia-200 bg-fuchsia-50/40 p-2.5 dark:border-fuchsia-900 dark:bg-fuchsia-950/20">
+              <div className="flex items-center gap-2">
+                <Layers size={14} className="text-fuchsia-600" />
+                <span className="text-xs font-bold">WMTS · GetCapabilities</span>
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  value={wmtsEndpoint}
+                  onChange={(event) => {
+                    setWmtsEndpoint(event.target.value);
+                    setWmtsCapabilities(null);
+                  }}
+                  placeholder="https://.../wmts"
+                  className="min-w-0 flex-1 rounded-lg border border-fuchsia-200 bg-white p-2 text-[10px] dark:border-fuchsia-900 dark:bg-slate-900"
+                />
+                <button
+                  onClick={() => void handleRetrieveWmts()}
+                  disabled={wmtsLoading || !wmtsEndpoint.trim()}
+                  className="rounded-lg border border-fuchsia-200 bg-white px-3 text-[10px] font-bold text-fuchsia-700 disabled:opacity-50 dark:border-fuchsia-900 dark:bg-slate-900 dark:text-fuchsia-300"
+                >
+                  {wmtsLoading ? "A consultar…" : "Listar"}
+                </button>
+              </div>
+
+              {wmtsCapabilities && (
+                <>
+                  <select
+                    value={wmtsSelectedLayer}
+                    onChange={(event) => {
+                      const id = event.target.value;
+                      setWmtsSelectedLayer(id);
+                      const layer = wmtsCapabilities.layers.find(
+                        (candidate) => candidate.identifier === id
+                      );
+                      setWmtsStyle(
+                        layer?.styles.find((style) => style.isDefault)?.identifier ??
+                          layer?.styles[0]?.identifier ??
+                          ""
+                      );
+                      const compatible = layer
+                        ? compatibleWmtsMatrixSets(wmtsCapabilities, layer)
+                        : [];
+                      setWmtsSelectedMatrixSet(compatible[0]?.identifier ?? "");
+                    }}
+                    className="w-full rounded-lg border border-fuchsia-200 bg-white p-2 text-[10px] dark:border-fuchsia-900 dark:bg-slate-900"
+                  >
+                    {wmtsCapabilities.layers.map((layer) => (
+                      <option key={layer.identifier} value={layer.identifier}>
+                        {layer.title} ({layer.identifier})
+                      </option>
+                    ))}
+                  </select>
+
+                  {(() => {
+                    const layer = wmtsCapabilities.layers.find(
+                      (candidate) => candidate.identifier === wmtsSelectedLayer
+                    );
+                    const sets = layer
+                      ? compatibleWmtsMatrixSets(wmtsCapabilities, layer)
+                      : [];
+                    return (
+                      <select
+                        value={wmtsSelectedMatrixSet}
+                        onChange={(event) =>
+                          setWmtsSelectedMatrixSet(event.target.value)
+                        }
+                        className="w-full rounded-lg border border-fuchsia-200 bg-white p-2 text-[10px] dark:border-fuchsia-900 dark:bg-slate-900"
+                      >
+                        <option value="">TileMatrixSet…</option>
+                        {sets.map((set) => (
+                          <option key={set.identifier} value={set.identifier}>
+                            {set.identifier} · {set.supportedCrs || "CRS não indicado"}
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  })()}
+
+                  {(
+                    wmtsCapabilities.layers.find(
+                      (layer) => layer.identifier === wmtsSelectedLayer
+                    )?.styles.length ?? 0
+                  ) > 0 && (
+                    <select
+                      value={wmtsStyle}
+                      onChange={(event) => setWmtsStyle(event.target.value)}
+                      className="w-full rounded-lg border border-fuchsia-200 bg-white p-2 text-[10px] dark:border-fuchsia-900 dark:bg-slate-900"
+                    >
+                      {wmtsCapabilities.layers
+                        .find((layer) => layer.identifier === wmtsSelectedLayer)
+                        ?.styles.map((style) => (
+                          <option key={style.identifier} value={style.identifier}>
+                            {style.title}
+                            {style.isDefault ? " · default" : ""}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+
+                  <button
+                    onClick={handleAddWmts}
+                    disabled={!wmtsSelectedMatrixSet}
+                    className="w-full rounded-lg bg-fuchsia-600 px-3 py-2 text-[10px] font-bold text-white hover:bg-fuchsia-700 disabled:opacity-50"
+                  >
+                    Adicionar WMTS descoberto
                   </button>
                 </>
               )}
