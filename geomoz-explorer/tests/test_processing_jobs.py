@@ -143,3 +143,106 @@ def test_completed_result_returns_geotiff(
     assert response.status_code == 200
     assert response.content == b"tiff-result"
     assert response.headers["content-type"].startswith("image/tiff")
+
+
+
+def test_verified_processing_auth_requires_real_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+    from starlette.requests import Request
+    import api
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/geomoz-api/processing/tools",
+        "headers": [],
+        "query_string": b"",
+        "server": ("testserver", 80),
+        "client": ("127.0.0.1", 12345),
+        "scheme": "http",
+        "http_version": "1.1",
+    }
+    request = Request(scope)
+
+    with pytest.raises(Exception) as missing:
+        asyncio.run(api.require_verified_firebase_auth(request))
+    assert getattr(missing.value, "status_code", None) == 401
+
+    verifier = MagicMock()
+    verifier.verify_id_token.return_value = {"uid": "secure-user"}
+    monkeypatch.setattr(api, "firebase_auth", verifier)
+    scope["headers"] = [(b"authorization", b"Bearer signed-token")]
+    request = Request(scope)
+
+    uid = asyncio.run(api.require_verified_firebase_auth(request))
+    assert uid == "secure-user"
+    verifier.verify_id_token.assert_called_once_with("signed-token")
+
+
+def test_delete_processing_job_terminates_active_process(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import processing_jobs
+
+    job_id = "job-active"
+    uid = "owner-1"
+    directory = tmp_path / job_id
+    directory.mkdir()
+
+    monkeypatch.setattr(processing_jobs, "JOB_ROOT", tmp_path)
+
+    fake_process = MagicMock()
+    fake_process.poll.return_value = None
+    fake_process.wait.return_value = 0
+    fake_future = MagicMock()
+    fake_future.done.return_value = False
+
+    job = processing_jobs.ProcessingJob(
+        id=job_id,
+        uid=uid,
+        tool="hillshade",
+        status="running",
+        created_at=1,
+        updated_at=1,
+        input_name="input.tif",
+    )
+
+    with processing_jobs._lock:
+        processing_jobs._jobs[job_id] = job
+        processing_jobs._processes[job_id] = fake_process
+        processing_jobs._futures[job_id] = fake_future
+
+    assert processing_jobs.delete_processing_job(job_id, uid) is True
+    fake_process.terminate.assert_called_once()
+    fake_process.wait.assert_called()
+    fake_future.cancel.assert_called_once()
+    assert not directory.exists()
+
+
+def test_delete_processing_job_does_not_cross_user_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import processing_jobs
+
+    monkeypatch.setattr(processing_jobs, "JOB_ROOT", tmp_path)
+    job_id = "job-private"
+    with processing_jobs._lock:
+        processing_jobs._jobs[job_id] = processing_jobs.ProcessingJob(
+            id=job_id,
+            uid="owner-a",
+            tool="slope",
+            status="queued",
+            created_at=1,
+            updated_at=1,
+            input_name="input.tif",
+        )
+
+    try:
+        assert processing_jobs.delete_processing_job(job_id, "owner-b") is False
+        assert processing_jobs.get_processing_job(job_id, "owner-a") is not None
+    finally:
+        processing_jobs.delete_processing_job(job_id, "owner-a")
