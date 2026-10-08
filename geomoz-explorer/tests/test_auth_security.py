@@ -95,7 +95,7 @@ def test_guest_access_requires_explicit_server_fallback(monkeypatch):
     gee_module._init_gee.assert_not_called()
 
 
-def test_explicit_guest_demo_never_loads_shared_default_credentials(monkeypatch):
+def test_even_enabled_server_fallback_cannot_authorize_a_guest(monkeypatch):
     import api
     import gee_module
     import gee_session_store
@@ -107,8 +107,10 @@ def test_explicit_guest_demo_never_loads_shared_default_credentials(monkeypatch)
     monkeypatch.setenv("ALLOW_SERVER_GEE_FALLBACK", "true")
     monkeypatch.setenv("GEE_SERVICE_ACCOUNT_KEY", "dummy-key")
 
-    assert asyncio.run(api.require_gee_auth(_request())) == ""
-    init.assert_called_once_with(uid=None, project=None, token=None)
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(api.require_gee_auth(_request()))
+    assert error.value.status_code == 401
+    init.assert_not_called()
     store.assert_not_called()
 
 
@@ -136,8 +138,9 @@ def test_public_gee_status_does_not_use_unverified_personal_headers(monkeypatch)
     import gee_module
     import gee_session_store
 
-    monkeypatch.setattr(api, "firebase_auth", SimpleNamespace(verify_id_token=MagicMock(side_effect=ValueError())))
-    status = MagicMock(return_value={"connected": False, "auth_type": "none"})
+    monkeypatch.setattr(api, "firebase_auth", SimpleNamespace(
+        verify_id_token=MagicMock(side_effect=ValueError())))
+    status = MagicMock()
     store = MagicMock()
     monkeypatch.setattr(gee_module, "gee_status", status)
     monkeypatch.setattr(gee_session_store, "get_token", store)
@@ -148,8 +151,70 @@ def test_public_gee_status_does_not_use_unverified_personal_headers(monkeypatch)
         "X-GEE-Project": "someone-elses-project",
     })))
     assert result["user_connected"] is False
-    status.assert_called_once_with(uid=None, project=None, token=None)
+    assert result["server_connected"] is False
+    status.assert_not_called()
     store.assert_not_called()
+
+
+def test_personal_gee_requires_real_credentials_not_just_a_project(monkeypatch):
+    import api
+    import gee_module
+    import gee_session_store
+
+    verifier = SimpleNamespace(verify_id_token=MagicMock(return_value={"uid": "alice"}))
+    monkeypatch.setattr(api, "firebase_auth", verifier)
+    monkeypatch.setattr(gee_session_store, "get_token",
+                        MagicMock(return_value={"project": "alice-project"}))
+    init = MagicMock()
+    monkeypatch.setattr(gee_module, "_init_gee", init)
+    monkeypatch.setenv("ALLOW_SERVER_GEE_FALLBACK", "true")
+    monkeypatch.setenv("GEE_SERVICE_ACCOUNT_KEY", "server-secret")
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(api.require_gee_auth(_request({
+            "Authorization": "Bearer alice-id-token",
+            "X-GEE-Token": "attacker-token",
+            "X-GEE-Project": "server-project",
+        })))
+    assert error.value.status_code == 403
+    init.assert_not_called()
+
+
+def test_two_users_cannot_receive_each_others_gee_credentials(monkeypatch):
+    import api
+    import gee_module
+    import gee_session_store
+
+    saved = {
+        "alice": {"access_token": "alice-token", "project": "alice-gee"},
+        "bob": {"access_token": "bob-token", "project": "bob-gee"},
+    }
+    def verify(token):
+        return {"uid": "alice" if token == "alice-id" else "bob"}
+    monkeypatch.setattr(api, "firebase_auth", SimpleNamespace(
+        verify_id_token=MagicMock(side_effect=verify)))
+    get_token = MagicMock(side_effect=lambda uid: saved.get(uid))
+    init = MagicMock()
+    monkeypatch.setattr(gee_session_store, "get_token", get_token)
+    monkeypatch.setattr(gee_module, "_init_gee", init)
+
+    for user in ("alice", "bob"):
+        uid = asyncio.run(api.require_gee_auth(
+            _request({"Authorization": "Bearer " + user + "-id",
+                      "X-GEE-Token": "another-user-token"})))
+        assert uid == user
+    assert get_token.call_args_list == [
+        __import__("unittest.mock", fromlist=["call"]).call("alice"),
+        __import__("unittest.mock", fromlist=["call"]).call("bob"),
+    ]
+    assert init.call_args_list == [
+        __import__("unittest.mock", fromlist=["call"]).call(
+            uid="alice", project=None, token=None),
+        __import__("unittest.mock", fromlist=["call"]).call(
+            uid="bob", project=None, token=None),
+    ]
+
+
 
 
 def test_saved_analysis_routes_require_verified_identity():
