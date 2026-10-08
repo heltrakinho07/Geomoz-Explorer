@@ -49,6 +49,14 @@ import {
 } from "@/lib/gis-pmtiles";
 import { bbox as turfBbox } from "@turf/turf";
 import {
+  createGISHeavyJob,
+  deleteGISHeavyJob,
+  downloadGISHeavyJobResult,
+  waitForGISHeavyJob,
+  type GISHeavyProcessingJob,
+  type GISHeavyToolId,
+} from "@/lib/gis-processing-jobs";
+import {
   autoGISRasterStretch,
   getGISRasterBandStats,
   resolveGISRasterRemoteUrl,
@@ -202,7 +210,12 @@ export interface ProcessingHistoryEntry {
   id: string;
   toolId: string;
   toolName: string;
-  engine: "Client (Turf.js)" | "WASM" | "DuckDB Spatial" | "Hybrid Model";
+  engine:
+    | "Client (Turf.js)"
+    | "WASM"
+    | "DuckDB Spatial"
+    | "Hybrid Model"
+    | "Backend GDAL";
   timestamp: string;
   durationMs: number;
   inputLayerName: string;
@@ -360,6 +373,8 @@ export default function GeoProcessamento({
   const [whiteboxParams, setWhiteboxParams] = useState<Record<string, unknown>>({});
   const [selectedWhiteboxRasterId, setSelectedWhiteboxRasterId] = useState("");
   const [secondWhiteboxRasterId, setSecondWhiteboxRasterId] = useState("");
+  const [heavyJob, setHeavyJob] = useState<GISHeavyProcessingJob | null>(null);
+  const heavyJobAbortRef = useRef<AbortController | null>(null);
 
   // Processing History
   const [history, setHistory] = useState<ProcessingHistoryEntry[]>([]);
@@ -631,6 +646,13 @@ export default function GeoProcessamento({
     if (selectedWhiteboxRasterSupport?.supported) return "raster";
     return null;
   }, [selectedWhiteboxVectorSupport, selectedWhiteboxRasterSupport]);
+
+  const selectedBackendRasterTool = useMemo<GISHeavyToolId | null>(() => {
+    const id = selectedWhiteboxTool?.id.toLowerCase();
+    return id === "hillshade" || id === "slope" || id === "aspect"
+      ? id
+      : null;
+  }, [selectedWhiteboxTool]);
 
   const loadRasterBandStats = useCallback(
     async (layer: GISWorkspaceRasterLayer, band: number, signal?: AbortSignal) => {
@@ -2316,6 +2338,170 @@ export default function GeoProcessamento({
     toast,
   ]);
 
+  const handleRunBackendRaster = useCallback(async () => {
+    if (!selectedBackendRasterTool || !selectedWhiteboxRaster) {
+      toast({
+        title: "Backend GDAL indisponível",
+        description: "Selecione Hillshade, Slope ou Aspect e uma camada raster.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    heavyJobAbortRef.current?.abort();
+    const controller = new AbortController();
+    heavyJobAbortRef.current = controller;
+    setIsExecuting(true);
+    setHeavyJob(null);
+    const started = performance.now();
+    let jobId: string | null = null;
+
+    try {
+      let inputFile = selectedWhiteboxRaster.file;
+      if (!inputFile) {
+        const bytes = await readRasterBytes(selectedWhiteboxRaster);
+        const name =
+          selectedWhiteboxRaster.fileName ||
+          selectedWhiteboxRaster.name.replace(/[^a-zA-Z0-9._-]+/g, "_") +
+            ".tif";
+        inputFile = new File([bytes], name, { type: "image/tiff" });
+      }
+
+      const params: Record<string, unknown> = {};
+      if (selectedBackendRasterTool === "hillshade") {
+        params.azimuth = Number(
+          whiteboxParams.azimuth ?? whiteboxParams.az ?? 315
+        );
+        params.altitude = Number(
+          whiteboxParams.altitude ?? whiteboxParams.alt ?? 45
+        );
+        params.z_factor = Number(
+          whiteboxParams.z_factor ?? whiteboxParams.zfactor ?? 1
+        );
+      } else if (selectedBackendRasterTool === "slope") {
+        params.scale = Number(whiteboxParams.scale ?? 1);
+        params.percent =
+          String(whiteboxParams.units ?? "").toLowerCase() === "percent" ||
+          Boolean(whiteboxParams.percent);
+      } else if (selectedBackendRasterTool === "aspect") {
+        params.zero_for_flat = true;
+      }
+
+      const created = await createGISHeavyJob({
+        tool: selectedBackendRasterTool,
+        file: inputFile,
+        parameters: params,
+        signal: controller.signal,
+      });
+      jobId = created.job.id;
+      setHeavyJob(created.job);
+
+      const completed = await waitForGISHeavyJob({
+        jobId,
+        signal: controller.signal,
+        onProgress: setHeavyJob,
+      });
+      const resultFile = await downloadGISHeavyJobResult(
+        completed.id,
+        controller.signal
+      );
+
+      const preferredRasterColormap =
+        selectedBackendRasterTool === "hillshade"
+          ? "gray"
+          : selectedBackendRasterTool === "slope"
+            ? "terrain"
+            : "turbo";
+      const raster: GISWorkspaceRasterLayer = {
+        id: "backend_raster_" + crypto.randomUUID().slice(0, 12),
+        name:
+          whiteboxManifestName(selectedWhiteboxTool!) +
+          " — Backend GDAL",
+        file: resultFile,
+        sourceType: "storage",
+        fileName: resultFile.name,
+        mimeType: resultFile.type || "image/tiff",
+        sizeBytes: resultFile.size,
+        visible: true,
+        opacity: 1,
+        isResult: true,
+        bandCount: null,
+        bounds: null,
+        error: null,
+        rasterState: {
+          mode: "single",
+          bands: [1],
+          colormap: preferredRasterColormap,
+          reversed: false,
+          rescale: null,
+          nodata: "auto",
+          stretch: "linear",
+          gamma: 1,
+        },
+      };
+
+      setRasterLayers((previous) => [raster, ...previous]);
+      setSelectedWhiteboxRasterId(raster.id);
+      const durationMs = Math.round(performance.now() - started);
+      setHistory((previous) => [
+        {
+          id: "hist_backend_gdal_" + Date.now(),
+          toolId: selectedBackendRasterTool,
+          toolName:
+            whiteboxManifestName(selectedWhiteboxTool!) + " · Backend GDAL",
+          engine: "Backend GDAL",
+          timestamp: new Date().toLocaleTimeString("pt-PT"),
+          durationMs,
+          inputLayerName: selectedWhiteboxRaster.name,
+          outputCount: 1,
+          outputLabel: "raster",
+          status: "success",
+          parameters: params,
+        },
+        ...previous,
+      ]);
+
+      toast({
+        title: "Backend GDAL concluído",
+        description:
+          whiteboxManifestName(selectedWhiteboxTool!) +
+          " processado no servidor em " +
+          durationMs +
+          " ms.",
+      });
+
+      void deleteGISHeavyJob(completed.id).catch(() => undefined);
+    } catch (error) {
+      if (controller.signal.aborted) {
+        toast({
+          title: "Job backend cancelado",
+          description: "A execução foi interrompida no cliente.",
+        });
+      } else {
+        toast({
+          title: "Backend GDAL falhou",
+          description: error instanceof Error ? error.message : String(error),
+          variant: "destructive",
+        });
+      }
+      if (jobId) {
+        void deleteGISHeavyJob(jobId).catch(() => undefined);
+      }
+    } finally {
+      if (heavyJobAbortRef.current === controller) {
+        heavyJobAbortRef.current = null;
+      }
+      setIsExecuting(false);
+    }
+  }, [
+    readRasterBytes,
+    selectedBackendRasterTool,
+    selectedWhiteboxRaster,
+    selectedWhiteboxTool,
+    toast,
+    whiteboxParams,
+  ]);
+
   const handleRunWhitebox = useCallback(async () => {
     if (!selectedWhiteboxTool || !selectedWhiteboxMode) {
       toast({
@@ -3968,6 +4154,53 @@ export default function GeoProcessamento({
                       "Esta ferramenta ainda não está ligada ao tipo de camada atual."}
                   </div>
                 )}
+
+                {selectedWhiteboxMode === "raster" &&
+                  selectedBackendRasterTool && (
+                    <div className="space-y-2 rounded-xl border border-orange-200 bg-orange-50/60 p-2.5 dark:border-orange-900 dark:bg-orange-950/20">
+                      <div className="flex items-center justify-between gap-2 text-[10px]">
+                        <div>
+                          <span className="font-bold text-orange-800 dark:text-orange-300">
+                            Backend GDAL
+                          </span>
+                          <p className="text-[9px] text-orange-700/80 dark:text-orange-400">
+                            Recomendado para DEMs grandes ou quando não quiser consumir memória do browser.
+                          </p>
+                        </div>
+                        {heavyJob && (
+                          <span className="shrink-0 font-mono font-bold text-orange-700 dark:text-orange-300">
+                            {heavyJob.progress}%
+                          </span>
+                        )}
+                      </div>
+
+                      {heavyJob && (
+                        <div>
+                          <div className="h-1.5 overflow-hidden rounded-full bg-orange-100 dark:bg-orange-950">
+                            <div
+                              className="h-full bg-orange-500 transition-all"
+                              style={{
+                                width: Math.max(2, Math.min(100, heavyJob.progress)) + "%",
+                              }}
+                            />
+                          </div>
+                          <div className="mt-1 flex justify-between gap-2 text-[8px] text-slate-500">
+                            <span>{heavyJob.message || heavyJob.status}</span>
+                            <span>{heavyJob.status}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => void handleRunBackendRaster()}
+                        disabled={isExecuting || !selectedWhiteboxRaster}
+                        className="w-full rounded-lg bg-orange-600 px-3 py-2 text-[10px] font-bold text-white hover:bg-orange-700 disabled:opacity-50"
+                      >
+                        {isExecuting && heavyJob ? "A processar no servidor…" : "Executar no Backend GDAL"}
+                      </button>
+                    </div>
+                  )}
 
                 <button
                   onClick={() => void handleRunWhitebox()}
