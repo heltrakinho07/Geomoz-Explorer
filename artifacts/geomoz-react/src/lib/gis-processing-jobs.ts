@@ -151,12 +151,12 @@ export async function downloadGISHeavyJobResult(
           ")."
     );
   }
-  const blob = await response.blob();
+  const buffer = await response.arrayBuffer();
   const disposition = response.headers.get("content-disposition") ?? "";
   const match = disposition.match(/filename="?([^";]+)"?/i);
   const fileName = match?.[1] || "geomoz-job-" + jobId + ".tif";
-  return new File([blob], fileName, {
-    type: blob.type || "image/tiff",
+  return new File([buffer], fileName, {
+    type: response.headers.get("content-type") || "image/tiff",
   });
 }
 
