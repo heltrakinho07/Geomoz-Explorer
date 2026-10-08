@@ -497,6 +497,9 @@ export default function GeoProcessamento({
         setSecondLayerId("");
         setTableLayerId(null);
         setHistory([]);
+        setModelGraph(createDefaultGISModelGraph());
+        setModelNodeStatus({});
+        setModelLog([]);
       }
 
       hydratedProjectRef.current = workspaceProjectId;
