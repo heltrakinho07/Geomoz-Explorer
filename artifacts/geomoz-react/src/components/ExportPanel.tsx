@@ -27,6 +27,7 @@ import { apiUrl, apiFetch } from "@/lib/api";
 import { useProject } from "../context/ProjectContext";
 import type { GeoMozProject, StudyRun } from "../types/project";
 import { aoiToAPI } from "@/lib/aoi";
+import { buildProjectMetricsCsv, buildProjectAOIGeoJSON, safeReportFilename, escapeReportHtml, printableMetric } from "@/lib/report-export";
 
 interface ExportPanelProps {
   province: string | null;
@@ -264,22 +265,23 @@ function buildProjectHtml(project: GeoMozProject, runs: StudyRun[]): string {
       (r, i) => `
     <tr>
       <td>${i + 1}</td>
-      <td><strong>${r.name}</strong></td>
-      <td>${r.sensor}</td>
-      <td>${r.dateRange.start} até ${r.dateRange.end}</td>
-      <td><span class="badge">${r.metrics?.mean !== undefined ? Number(r.metrics.mean).toFixed(3) : "—"}</span></td>
-      <td>${r.metrics?.min !== undefined ? Number(r.metrics.min).toFixed(3) : "—"}</td>
-      <td>${r.metrics?.max !== undefined ? Number(r.metrics.max).toFixed(3) : "—"}</td>
+      <td><strong>${escapeReportHtml(r.name)}</strong></td>
+      <td>${escapeReportHtml(r.sensor)}</td>
+      <td>${escapeReportHtml(r.dateRange.start)} até ${escapeReportHtml(r.dateRange.end)}</td>
+      <td><span class="badge">${printableMetric(r.metrics?.mean)}</span></td>
+      <td>${printableMetric(r.metrics?.min)}</td>
+      <td>${printableMetric(r.metrics?.max)}</td>
     </tr>
   `
     )
     .join("");
 
   return `<!DOCTYPE html>
-<html lang="pt">
+<html lang="pt-MZ">
 <head>
   <meta charset="utf-8">
-  <title>Dossiê do Estudo — ${project.name} | GeoMoz Explorer</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; style-src &#39;unsafe-inline&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;">
+  <title>Dossiê do Estudo — ${escapeReportHtml(project.name)} | GeoMoz Explorer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -293,7 +295,7 @@ function buildProjectHtml(project: GeoMozProject, runs: StudyRun[]): string {
     .card h2 { font-size: 16px; font-weight: bold; color: #0f172a; margin-bottom: 16px; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; }
     .meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 16px; }
     .meta-item label { display: block; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; }
-    .meta-item value { display: block; font-size: 14px; font-weight: 600; color: #0f172a; margin-top: 2px; }
+    .meta-item .meta-value { display: block; font-size: 14px; font-weight: 600; color: #0f172a; margin-top: 2px; }
     table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
     th { background: #f1f5f9; text-align: left; padding: 10px 12px; color: #475569; font-weight: 600; }
     td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; }
@@ -307,11 +309,11 @@ function buildProjectHtml(project: GeoMozProject, runs: StudyRun[]): string {
     <div class="header-content">
       <div>
         <div class="title">GeoMoz Explorer · Dossiê Técnico do Estudo</div>
-        <div class="subtitle">Ref: GEOMOZ-ESTUDO-${project.id.slice(0, 8).toUpperCase()} · Emitido em ${date}</div>
+        <div class="subtitle">Ref: GEOMOZ-ESTUDO-${escapeReportHtml(project.id.slice(0, 8).toUpperCase())} · Emitido em ${date}</div>
       </div>
       <div>
         <span style="background:#0284c7;color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:bold;">
-          ${project.category.toUpperCase()}
+          ${escapeReportHtml(project.category.toUpperCase())}
         </span>
       </div>
     </div>
@@ -320,12 +322,12 @@ function buildProjectHtml(project: GeoMozProject, runs: StudyRun[]): string {
     <div class="card">
       <h2>1. Identificação do Projeto</h2>
       <div class="meta-grid">
-        <div class="meta-item"><label>Nome do Projeto</label><value>${project.name}</value></div>
-        <div class="meta-item"><label>Área de Estudo (AOI)</label><value>${project.aoi.label}</value></div>
-        <div class="meta-item"><label>Período Temporal</label><value>${project.period.startDate} até ${project.period.endDate}</value></div>
-        <div class="meta-item"><label>Total de Análises</label><value>${runs.length} execuções persistidas</value></div>
+        <div class="meta-item"><label>Nome do Projeto</label><span class="meta-value">${escapeReportHtml(project.name)}</span></div>
+        <div class="meta-item"><label>Área de Estudo (AOI)</label><span class="meta-value">${escapeReportHtml(project.aoi.label)}</span></div>
+        <div class="meta-item"><label>Período Temporal</label><span class="meta-value">${escapeReportHtml(project.period.startDate)} até ${escapeReportHtml(project.period.endDate)}</span></div>
+        <div class="meta-item"><label>Total de Análises</label><span class="meta-value">${runs.length} execuções persistidas</span></div>
       </div>
-      ${project.description ? `<p style="font-size:13px;color:#475569;margin-top:10px;background:#f8fafc;padding:12px;border-radius:8px;">${project.description}</p>` : ""}
+      ${project.description ? `<p style="font-size:13px;color:#475569;margin-top:10px;background:#f8fafc;padding:12px;border-radius:8px;">${escapeReportHtml(project.description)}</p>` : ""}
     </div>
 
     <div class="card">
@@ -338,8 +340,8 @@ function buildProjectHtml(project: GeoMozProject, runs: StudyRun[]): string {
             <th>Sensor / Satélite</th>
             <th>Período Temporal</th>
             <th>Média Zonal</th>
-            <th>P10 (Min)</th>
-            <th>P90 (Max)</th>
+            <th>Mínimo</th>
+            <th>Máximo</th>
           </tr>
         </thead>
         <tbody>
@@ -351,7 +353,7 @@ function buildProjectHtml(project: GeoMozProject, runs: StudyRun[]): string {
     <div class="card">
       <h2>3. Metodologia & Rastreabilidade Científica</h2>
       <p style="font-size:13px;color:#475569;line-height:1.6;">
-        Este estudo foi estruturado sobre a infraestrutura em nuvem do GeoMoz Explorer, integrando coleções de reflectância de superfície Copernicus Sentinel-2 MSI (L2A) e o modelo altimétrico digital Copernicus GLO-30m processados no Google Earth Engine. A integridade dos dados é validada por recorte vetorial exato da Área de Interesse (AOI).
+        Este dossiê apresenta os metadados e resultados guardados no projecto. Os sensores, os períodos e os indicadores de cada execução estão discriminados na tabela acima. A metodologia, a precisão, o pré-processamento e a validação científica devem ser confirmados nos registos de cada análise.
       </p>
     </div>
   </div>
@@ -396,7 +398,7 @@ export default function ExportPanel({
         year: "numeric",
       });
       const doc = generateProjectStudyPdf(activeProject, activeRuns, date);
-      doc.save(`GeoMoz_Dossie_${activeProject.name.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.pdf`);
+      doc.save(`GeoMoz_Dossie_${safeReportFilename(activeProject.name)}_${new Date().toISOString().slice(0, 10)}.pdf`);
       flash("project-pdf");
     } catch (e: any) {
       setExportError(e.message || "Erro ao gerar PDF.");
@@ -415,7 +417,7 @@ export default function ExportPanel({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `GeoMoz_Dossie_${activeProject.name.replace(/\s+/g, "_")}.html`;
+      a.download = `GeoMoz_Dossie_${safeReportFilename(activeProject.name)}.html`;
       a.click();
       URL.revokeObjectURL(url);
       flash("project-html");
@@ -429,44 +431,12 @@ export default function ExportPanel({
     if (!activeProject) return;
     setBusy("project-csv");
     try {
-      const rows = [
-        [
-          "Projeto",
-          "Categoria",
-          "AOI",
-          "Analise",
-          "Sensor",
-          "Codigo",
-          "DataInicio",
-          "DataFim",
-          "Media",
-          "Min",
-          "Max",
-          "Nuvens_Pct",
-          "DataExecucao",
-        ],
-        ...activeRuns.map((r) => [
-          `"${activeProject.name}"`,
-          `"${activeProject.category}"`,
-          `"${activeProject.aoi.label}"`,
-          `"${r.name}"`,
-          `"${r.sensor}"`,
-          `"${r.code}"`,
-          r.dateRange.start,
-          r.dateRange.end,
-          r.metrics?.mean !== undefined ? Number(r.metrics.mean).toFixed(4) : "",
-          r.metrics?.min !== undefined ? Number(r.metrics.min).toFixed(4) : "",
-          r.metrics?.max !== undefined ? Number(r.metrics.max).toFixed(4) : "",
-          r.metrics?.cloudCoverPercentage ?? "",
-          r.createdAt,
-        ]),
-      ];
-      const csv = rows.map((r) => r.join(",")).join("\n");
-      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+      const csv = buildProjectMetricsCsv(activeProject, activeRuns);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `GeoMoz_Metricas_${activeProject.name.replace(/\s+/g, "_")}.csv`;
+      a.download = `GeoMoz_Metricas_${safeReportFilename(activeProject.name)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
       flash("project-csv");
@@ -480,31 +450,11 @@ export default function ExportPanel({
     if (!activeProject) return;
     setBusy("project-geojson");
     try {
-      const fc: GeoJSON.FeatureCollection = {
-        type: "FeatureCollection",
-        features: [
-          {
-            type: "Feature",
-            geometry: (activeProject.aoi.geometry as any) || {
-              type: "Point",
-              coordinates: [35.0, -18.0],
-            },
-            properties: {
-              projectId: activeProject.id,
-              name: activeProject.name,
-              category: activeProject.category,
-              aoiLabel: activeProject.aoi.label,
-              period: activeProject.period,
-              runsCount: activeRuns.length,
-              runs: activeRuns.map((r) => ({
-                code: r.code,
-                name: r.name,
-                mean: r.metrics?.mean,
-              })),
-            },
-          },
-        ],
-      };
+      const fc = buildProjectAOIGeoJSON(activeProject);
+      if (!fc) {
+        setExportError("Esta área de estudo não tem uma geometria cartográfica guardada. Desenhe ou importe um polígono/GeoJSON antes de exportar.");
+        return;
+      }
 
       const blob = new Blob([JSON.stringify(fc, null, 2)], {
         type: "application/geo+json",
@@ -512,7 +462,7 @@ export default function ExportPanel({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `GeoMoz_AOI_${activeProject.name.replace(/\s+/g, "_")}.geojson`;
+      a.download = `GeoMoz_AOI_${safeReportFilename(activeProject.name)}.geojson`;
       a.click();
       URL.revokeObjectURL(url);
       flash("project-geojson");
@@ -796,12 +746,12 @@ export default function ExportPanel({
                 Camada Vetorial SIG (GeoJSON)
               </h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Delimitação geográfica da AOI com tabela de atributos de todas as execuções do estudo, pronto para abrir no QGIS ou ArcGIS Pro.
+                Exporta apenas a geometria real da AOI para QGIS ou ArcGIS Pro. Para províncias/distritos sem polígono guardado, importe ou desenhe primeiro a delimitação.
               </p>
             </div>
             <button
               onClick={handleExportProjectGeoJSON}
-              disabled={!activeProject || busy === "project-geojson"}
+              disabled={!activeProject || !activeProject.aoi.geometry || busy === "project-geojson"}
               className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white text-xs font-semibold shadow-sm transition-all"
             >
               {busy === "project-geojson" ? (
