@@ -8,6 +8,10 @@ import pytest
 class FakeDoc:
     def __init__(self):
         self.data = None
+        self.collections = {}
+
+    def collection(self, name):
+        return self.collections.setdefault(name, FakeCollection())
 
     def get(self):
         snapshot = MagicMock()
