@@ -1085,13 +1085,22 @@ async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_fir
         "access_token": req.access_token,
         "project": req.project,
     })
-    if req.access_token or req.project:
-        try:
-            from gee_module import _init_gee
-            _init_gee(uid=uid, project=req.project, token=req.access_token or None)
-        except Exception as e:
-            logger.warning("Immediate GEE init attempt during oauth-token save: %s", e)
-    return {"message": "Token guardado com sucesso."}
+    try:
+        from gee_module import reset_gee, _init_gee
+        reset_gee()
+        _init_gee(uid=uid, project=req.project, token=req.access_token)
+        return {
+            "message": "Credenciais GEE verificadas para a conta autenticada.",
+            "connected": True,
+            "is_permanent": bool((gee_session_store.get_token(uid) or {}).get("refresh_token")),
+        }
+    except Exception as exc:
+        logger.warning("Personal GEE access-token validation failed for user '%s'", uid)
+        return {
+            "connected": False,
+            "message": "Token guardado, mas GEE recusou a autorização. "
+                       "Verifique o acesso Earth Engine e o projeto Google Cloud.",
+        }
 
 @app.post("/geomoz-api/gee/oauth/exchange-code")
 async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(require_firebase_auth)):
@@ -1126,6 +1135,8 @@ async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(requ
 
     access_token = token_response.get("access_token")
     refresh_token = token_response.get("refresh_token")
+    if not access_token:
+        raise HTTPException(400, "Google não devolveu um access_token válido.")
     project = req.project or (gee_session_store.get_token(uid) or {}).get("project")
     if not project:
         raise HTTPException(status_code=400, detail="Indique o projeto Google Cloud da sua conta GEE.")
