@@ -287,6 +287,10 @@ export default function GeoProcessamento({
     user?.uid && user.uid !== "guest_user" && !user.uid.startsWith("guest_")
       ? user.uid
       : null;
+  // IndexedDB belongs to the signed-in UID as well as the project. Two
+  // different users with the same project ID must never share offline data.
+  const workspaceCacheId =
+    (cloudUid ?? "guest") + "::" + workspaceProjectId;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const rasterErrorToastRef = useRef(new Set<string>());
 
@@ -399,8 +403,8 @@ export default function GeoProcessamento({
     hydratedProjectRef.current = null;
 
     const load = async () => {
-      const localPromise = loadGISWorkspaceSnapshot(workspaceProjectId);
-      const rasterFilesPromise = loadGISWorkspaceRasterFiles(workspaceProjectId).catch((error) => {
+      const localPromise = loadGISWorkspaceSnapshot(workspaceCacheId);
+      const rasterFilesPromise = loadGISWorkspaceRasterFiles(workspaceCacheId).catch((error) => {
         console.warn("GIS Workspace: raster cache indisponível:", error);
         return new Map<string, File>();
       });
@@ -491,7 +495,7 @@ export default function GeoProcessamento({
         // Refresh the local offline cache when the cloud copy is newer.
         if (snapshot === cloudSnapshot) {
           void saveGISWorkspaceSnapshot({
-            projectId: workspaceProjectId,
+            projectId: workspaceCacheId,
             layers: snapshot.layers,
             rasters: snapshot.rasters ?? [],
             services: snapshot.services ?? [],
@@ -518,7 +522,7 @@ export default function GeoProcessamento({
         setModelLog([]);
       }
 
-      hydratedProjectRef.current = workspaceProjectId;
+      hydratedProjectRef.current = workspaceCacheId;
       setWorkspaceHydrated(true);
     };
 
@@ -526,11 +530,11 @@ export default function GeoProcessamento({
     return () => {
       cancelled = true;
     };
-  }, [workspaceProjectId, cloudUid, activeProject?.id]);
+  }, [workspaceProjectId, workspaceCacheId, cloudUid, activeProject?.id]);
 
   // Persist project workspace changes without blocking map interaction.
   React.useEffect(() => {
-    if (!workspaceHydrated || hydratedProjectRef.current !== workspaceProjectId) return;
+    if (!workspaceHydrated || hydratedProjectRef.current !== workspaceCacheId) return;
 
     const timer = window.setTimeout(() => {
       const rasterSnapshot: PersistedGISRasterLayer[] = rasterLayers.map((raster) => ({
@@ -570,8 +574,8 @@ export default function GeoProcessamento({
       };
 
       void (async () => {
-        await saveGISWorkspaceSnapshot(snapshot);
-        await syncGISWorkspaceRasterFiles(workspaceProjectId, rasterLayers).catch((error) => {
+        await saveGISWorkspaceSnapshot({ ...snapshot, projectId: workspaceCacheId });
+        await syncGISWorkspaceRasterFiles(workspaceCacheId, rasterLayers).catch((error) => {
           console.warn("GIS Workspace: falha ao persistir rasters localmente:", error);
         });
 
@@ -587,6 +591,7 @@ export default function GeoProcessamento({
   }, [
     workspaceHydrated,
     workspaceProjectId,
+    workspaceCacheId,
     cloudUid,
     activeProject?.id,
     layers,
