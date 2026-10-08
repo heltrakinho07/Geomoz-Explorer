@@ -4,6 +4,11 @@ import { GeoJSON as VectorLayer, MapContainer, ScaleControl, TileLayer, useMap }
 import { Database, Eye, EyeOff, FileUp, Layers, Map as MapIcon, Search, Table2, Trash2 } from "lucide-react";
 import { parseWorkspaceFile, workspaceColumns, type WorkspaceLayer } from "@/lib/gis-workspace";
 
+interface Props {
+  layers: WorkspaceLayer[];
+  setLayers: React.Dispatch<React.SetStateAction<WorkspaceLayer[]>>;
+}
+
 function FitSelectedLayer({ layer }: { layer: WorkspaceLayer | null }) {
   const map = useMap();
   const lastId = useRef<string | null>(null);
@@ -20,9 +25,8 @@ function FitSelectedLayer({ layer }: { layer: WorkspaceLayer | null }) {
   return null;
 }
 
-export default function GISWorkspacePanel() {
+export default function GISWorkspacePanel({ layers, setLayers }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [layers, setLayers] = useState<WorkspaceLayer[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -92,7 +96,7 @@ export default function GISWorkspacePanel() {
             <input ref={inputRef} type="file" multiple
               accept=".geojson,.json,.csv,application/geo+json,application/json,text/csv"
               className="hidden" onChange={(e) => void importFiles(e.target.files)} />
-            <p className="mt-2 text-[10px] text-slate-500">GeoJSON/CSV · WGS84 · Até 8 MB e 5 000 feições por ficheiro. Dados não são enviados ao servidor.</p>
+            <p className="mt-2 text-[10px] text-slate-500">GeoJSON/CSV · WGS84 · Até 8 MB e 5 000 feições por ficheiro. Dados permanecem ao navegar entre módulos; não são enviados ao servidor.</p>
             {error && <p role="alert" className="mt-2 rounded-lg bg-rose-50 dark:bg-rose-950/30 p-2 text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
           </div>
           <div className="p-3 flex-1 overflow-y-auto">
