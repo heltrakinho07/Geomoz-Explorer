@@ -93,7 +93,7 @@ describe("GIS heavy processing client", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
-        new Response(new Uint8Array([9, 8, 7]), {
+        new Response(new Uint8Array([9, 8, 7]).buffer, {
           status: 200,
           headers: {
             "Content-Type": "image/tiff",
