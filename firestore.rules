@@ -41,7 +41,18 @@ service cloud.firestore {
 
       // User Settings & GEE preferences
       match /settings/{settingId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        // Legacy gee settings must never expose access/refresh tokens or
+        // service account private keys to the browser. Backend migration
+        // moves historical credentials into Admin-only geePrivateSessions.
+        allow read: if request.auth != null && request.auth.uid == userId
+          && (settingId != "gee" || resource.data.keys().hasOnly([
+            "project", "account", "connected", "connectedAt", "updatedAt"
+          ]));
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && (settingId != "gee" || request.resource.data.keys().hasOnly([
+            "project", "account", "connected", "connectedAt", "updatedAt"
+          ]));
+        allow delete: if request.auth != null && request.auth.uid == userId;
       }
     }
 
