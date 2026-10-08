@@ -2,14 +2,14 @@ name: Python Backend CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, fix/geology-invalid-geometry]
     paths:
       - "geomoz-explorer/**"
       - "pyproject.toml"
       - "requirements.txt"
       - ".github/workflows/python-ci.yml"
   pull_request:
-    branches: [main]
+    branches: [main, fix/geology-invalid-geometry]
     paths:
       - "geomoz-explorer/**"
       - "pyproject.toml"
