@@ -25,6 +25,7 @@ import {
   loadGISWorkspaceRasterFiles,
 } from "@/lib/gis-workspace-persistence";
 import type { GISWorkspaceRasterLayer } from "@/lib/gis-raster";
+import type { GISStacRasterSource } from "@/lib/stac-client";
 
 const WORKSPACE_STATE_DOC = "state";
 const CLOUD_HISTORY_LIMIT = 100;
@@ -52,9 +53,10 @@ export interface CloudGISRasterLayerManifest {
   kind: "raster";
   id: string;
   name: string;
-  sourceType?: "storage" | "url";
+  sourceType?: "storage" | "url" | "stac";
   objectPath?: string;
   remoteUrl?: string;
+  stacSource?: GISStacRasterSource;
   format: "GeoTIFF";
   contentHash: string;
   fileName: string;
@@ -208,12 +210,16 @@ async function uploadRasterIfChanged(
   const remoteUrl =
     typeof layer.remoteUrl === "string" ? layer.remoteUrl : undefined;
   const isExternalUrl =
-    layer.sourceType === "url" &&
+    (layer.sourceType === "url" || layer.sourceType === "stac") &&
     typeof remoteUrl === "string" &&
     /^https?:\/\//i.test(remoteUrl);
 
   if (isExternalUrl && remoteUrl) {
-    if (existing?.sourceType !== "url" && existing?.objectPath) {
+    if (
+      existing?.sourceType !== "url" &&
+      existing?.sourceType !== "stac" &&
+      existing?.objectPath
+    ) {
       try {
         await deleteObject(storageRef(storage, existing.objectPath));
       } catch {
@@ -223,12 +229,17 @@ async function uploadRasterIfChanged(
 
     const manifest: CloudGISRasterLayerManifest = {
       kind: "raster",
-      sourceType: "url",
+      sourceType: layer.sourceType === "stac" ? "stac" : "url",
       id: layer.id,
       name: layer.name,
       remoteUrl,
+      stacSource: layer.stacSource,
       format: "GeoTIFF",
-      contentHash: await sha256Hex(remoteUrl),
+      contentHash: await sha256Hex(
+        layer.sourceType === "stac" && layer.stacSource
+          ? JSON.stringify(layer.stacSource)
+          : remoteUrl
+      ),
       fileName: layer.fileName,
       mimeType: layer.mimeType || "image/tiff",
       sizeBytes: layer.sizeBytes ?? 0,
@@ -397,9 +408,13 @@ async function restoreRasterLayer(
   manifest: CloudGISRasterLayerManifest
 ): Promise<PersistedGISRasterLayer> {
   const sourceType =
-    manifest.sourceType === "url" && manifest.remoteUrl ? "url" : "storage";
+    manifest.sourceType === "stac" && manifest.remoteUrl && manifest.stacSource
+      ? "stac"
+      : manifest.sourceType === "url" && manifest.remoteUrl
+        ? "url"
+        : "storage";
   const remoteUrl =
-    sourceType === "url"
+    sourceType === "url" || sourceType === "stac"
       ? manifest.remoteUrl
       : manifest.objectPath
         ? await getDownloadURL(storageRef(storage, manifest.objectPath))
@@ -419,6 +434,7 @@ async function restoreRasterLayer(
     opacity: manifest.opacity ?? 1,
     remoteUrl,
     sourceType,
+    stacSource: manifest.stacSource,
     bandCount: manifest.bandCount ?? null,
     bounds: manifest.bounds ?? null,
     rasterState: manifest.rasterState,
