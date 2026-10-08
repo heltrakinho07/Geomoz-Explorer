@@ -138,9 +138,9 @@ async function loadCollections(
   while (next && pages < 30 && !visited.has(next)) {
     visited.add(next);
     pages += 1;
-    const document = await fetchJson<Record<string, unknown>>(next, { signal });
-    const rawCollections = Array.isArray(document.collections)
-      ? document.collections
+    const pageDoc: Record<string, unknown> = await fetchJson<Record<string, unknown>>(next, { signal });
+    const rawCollections = Array.isArray(pageDoc.collections)
+      ? pageDoc.collections
       : [];
     for (const raw of rawCollections) {
       if (!raw || typeof raw !== "object") continue;
@@ -156,7 +156,7 @@ async function loadCollections(
             : undefined,
       });
     }
-    next = links(document.links, next).find((link) => link.rel === "next")?.href;
+    next = links(pageDoc.links, next).find((link) => link.rel === "next")?.href;
   }
 
   return Array.from(
