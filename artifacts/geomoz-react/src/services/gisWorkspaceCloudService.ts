@@ -80,6 +80,7 @@ interface CloudWorkspaceState {
   projectId: string;
   layerOrder: string[];
   rasterLayerOrder: string[];
+  services: GISWorkspaceSnapshot["services"];
   selectedLayerId: string;
   secondLayerId: string;
   tableLayerId: string | null;
@@ -350,6 +351,7 @@ export async function syncGISWorkspaceToCloud(
     projectId,
     layerOrder: snapshot.layers.map((layer) => layer.id),
     rasterLayerOrder: snapshot.rasters.map((layer) => layer.id),
+    services: snapshot.services ?? [],
     selectedLayerId: snapshot.selectedLayerId,
     secondLayerId: snapshot.secondLayerId,
     tableLayerId: snapshot.tableLayerId,
@@ -477,6 +479,7 @@ export async function loadGISWorkspaceFromCloud(
     projectId,
     layers: ordered as PersistedGISLayer[],
     rasters: orderedRasters as PersistedGISRasterLayer[],
+    services: state?.services ?? [],
     selectedLayerId: state?.selectedLayerId ?? ordered[0]?.id ?? "",
     secondLayerId: state?.secondLayerId ?? "",
     tableLayerId: state?.tableLayerId ?? null,
