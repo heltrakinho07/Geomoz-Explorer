@@ -187,3 +187,103 @@ O separador **Camadas** gere visibilidade, opacidade, simbologia, atributos,
 remoção e ações de processamento das fontes já adicionadas. Esta separação evita
 duplicação de formulários e mantém o GIS Workspace próximo do fluxo de um desktop
 GIS moderno.
+
+
+## Model Builder híbrido
+
+O Model Builder deixa de ser uma lista linear de ferramentas e passa a ser um
+grafo dirigido acíclico (DAG) persistente.
+
+### Estrutura
+
+Cada projeto guarda:
+
+```ts
+{
+  modelNodes: GISModelNode[]
+  modelEdges: GISModelEdge[]
+}
+```
+
+Os nós têm três tipos:
+
+- `input`: referencia uma camada existente do workspace;
+- `tool`: referencia um provider e uma ferramenta;
+- `output`: materializa um resultado novamente no layer store.
+
+Os providers atualmente executáveis são:
+
+- `turf`: ferramentas vetoriais verificadas do GeoMoz;
+- `whitebox`: ferramentas Whitebox WASM vetoriais ou raster.
+
+### Tipos de porta
+
+Cada porta declara `vector`, `raster` ou `any`. Antes da execução o runtime
+valida:
+
+- ciclos;
+- layers de entrada removidas;
+- ferramentas desconhecidas;
+- portas obrigatórias sem ligação;
+- edges órfãs;
+- portas inexistentes;
+- duas edges para a mesma entrada;
+- incompatibilidade `vector → raster` ou `raster → vector`;
+- ausência de nós de saída.
+
+A ordenação é topológica. Uma ferramenta só executa depois de todas as
+dependências upstream estarem disponíveis.
+
+### Valores em trânsito
+
+O runtime não transforma dados apenas para atravessar uma edge:
+
+- vetor circula como `FeatureCollection`;
+- raster circula como `Uint8Array` GeoTIFF.
+
+Isto permite encadear Whitebox raster sem escrever resultados intermédios no
+Firebase e permite encadear Turf/Whitebox vector sem serializações desnecessárias.
+
+### Resolução de inputs raster
+
+Um input raster pode vir de:
+
+- GeoTIFF/COG local;
+- Firebase Storage;
+- URL COG remoto;
+- asset STAC.
+
+Antes de chegar ao Whitebox, o mesmo resolver usado no resto do GIS Workspace
+obtém os bytes. Para Planetary Computer, a assinatura SAS é renovada nessa
+altura, portanto um modelo guardado não depende de URLs temporárias.
+
+### Materialização de outputs
+
+Um nó `output` grava novamente no workspace:
+
+- `vector` → nova `UserLayer` persistente;
+- `raster` → novo GeoTIFF no raster store e, quando o projeto é sincronizado,
+  Firebase Storage.
+
+Resultados intermédios permanecem em memória e só são materializados quando uma
+saída explícita os recebe.
+
+### Persistência e migração
+
+O schema do workspace é v4. Projetos v1–v3 com o antigo `modelNodes[]` linear
+são migrados automaticamente para:
+
+```
+Input → Tool 1 → Tool 2 → … → Output
+```
+
+Após a migração, nodes e edges passam a ser sincronizados tanto no IndexedDB
+como no estado cloud.
+
+### UI
+
+O Model Builder usa um canvas largo no desktop mantendo o mapa visível. A
+primeira versão funcional liga portas por seletores de upstream compatíveis e
+desenha as edges no canvas. O formato do grafo já suporta futuramente
+drag-to-connect, branching visual avançado e execução remota sem nova migração de
+dados.
