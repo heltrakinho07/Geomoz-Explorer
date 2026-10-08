@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Boxes,
@@ -131,6 +131,14 @@ export default function GISModelBuilderPanel({
 }: Props) {
   const [search, setSearch] = useState("");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const dragRef = useRef<{
+    nodeId: string;
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
 
   const availableLayerIds = useMemo(
     () =>
@@ -178,6 +186,45 @@ export default function GISModelBuilderPanel({
       height: Math.max(440, maxY + 280),
     };
   }, [graph.nodes]);
+
+  const beginNodeDrag = (
+    event: React.PointerEvent<HTMLDivElement>,
+    node: GISModelNode
+  ) => {
+    if ((event.target as HTMLElement).closest("button,input,select,label")) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      nodeId: node.id,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startX: node.x,
+      startY: node.y,
+    };
+    setSelectedNodeId(node.id);
+  };
+
+  const moveNodeDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const nextX = Math.max(8, drag.startX + event.clientX - drag.startClientX);
+    const nextY = Math.max(8, drag.startY + event.clientY - drag.startClientY);
+    onGraphChange({
+      ...graph,
+      nodes: graph.nodes.map((node) =>
+        node.id === drag.nodeId ? { ...node, x: nextX, y: nextY } : node
+      ),
+    });
+  };
+
+  const endNodeDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
 
   const mutateNode = (
     nodeId: string,
@@ -344,7 +391,7 @@ export default function GISModelBuilderPanel({
         </div>
         <p className="mt-1">
           Encadeie dados vetoriais e raster com Turf.js e Whitebox WASM.
-          Ligações incompatíveis são bloqueadas pela validação antes da execução.
+          Arraste os nós para organizar o canvas. Ligações incompatíveis são bloqueadas pela validação antes da execução.
         </p>
       </div>
 
@@ -479,7 +526,11 @@ export default function GISModelBuilderPanel({
               <div
                 key={node.id}
                 onClick={() => setSelectedNodeId(node.id)}
-                className={`absolute rounded-xl border p-2.5 shadow-sm transition-shadow ${nodeTone(
+                onPointerDown={(event) => beginNodeDrag(event, node)}
+                onPointerMove={moveNodeDrag}
+                onPointerUp={endNodeDrag}
+                onPointerCancel={endNodeDrag}
+                className={`absolute touch-none cursor-grab active:cursor-grabbing rounded-xl border p-2.5 shadow-sm transition-shadow ${nodeTone(
                   node
                 )} ${statusRing(status)} ${
                   selected ? "shadow-lg ring-2 ring-indigo-400/70" : ""
