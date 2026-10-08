@@ -172,40 +172,91 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         throw new Error("Indique primeiro o seu projeto Google Cloud com Earth Engine ativa.");
       }
 
-      // GIS OAuth code flow keeps the GeoMoz Firebase principal unchanged.
-      // signInWithPopup(firebaseAuth) would replace the current GeoMoz user.
+      // Google OAuth is independent of Firebase login: never signInWithPopup
+      // using Firebase Auth to link a different Earth Engine principal.
       const oauth = (window as any).google?.accounts?.oauth2;
-      if (!oauth?.initCodeClient) {
-        throw new Error(
-          "A autorização Google não carregou. Ative o script Google Identity Services e tente novamente."
-        );
+      if (!oauth?.initCodeClient && !oauth?.initTokenClient) {
+        throw new Error("Google Identity Services indisponível para autorizar Earth Engine.");
       }
-      const code = await new Promise<string>((resolve, reject) => {
-        const client = oauth.initCodeClient({
-          client_id: GOOGLE_CLIENT_ID,
-          scope: GEE_SCOPE,
-          ux_mode: "popup",
-          select_account: true,
-          callback: (result: any) => {
-            if (result.code) resolve(result.code);
-            else reject(new Error(result.error_description || "Autorização GEE recusada."));
-          },
-          error_callback: (result: any) =>
-            reject(new Error(result?.message || "Não foi possível autorizar GEE.")),
+
+      let persistentError: Error | null = null;
+      let connected = false;
+
+      if (oauth.initCodeClient) {
+        try {
+          const code = await new Promise<string>((resolve, reject) => {
+            const client = oauth.initCodeClient({
+              client_id: GOOGLE_CLIENT_ID,
+              scope: GEE_SCOPE,
+              ux_mode: "popup",
+              select_account: true,
+              callback: (result: any) => {
+                if (result.code) resolve(result.code);
+                else reject(new Error(result.error_description || "Autorização GEE recusada."));
+              },
+              error_callback: (result: any) =>
+                reject(new Error(result?.message || "Falha na autorização GEE.")),
+            });
+            client.requestCode();
+          });
+          if (auth.currentUser?.uid !== requestingUid) {
+            throw new Error("A conta GeoMoz mudou durante a autorização.");
+          }
+          const result = await backendJson("/geomoz-api/gee/oauth/exchange-code", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              code,
+              redirect_uri: "postmessage",
+              project: chosenProject,
+            }),
+          });
+          connected = Boolean(result.connected);
+          if (!connected) {
+            persistentError = new Error(result.message || "OAuth GEE permanente não validado.");
+          }
+        } catch (caught) {
+          persistentError = caught instanceof Error ? caught : new Error("Falha OAuth GEE.");
+        }
+      }
+
+      // No client-secret is required for this temporary GIS token flow.
+      // The token lives only in the callback; the server validates and stores
+      // it within the signed-in Firebase user's private credential document.
+      if (!connected && oauth.initTokenClient) {
+        const accessToken = await new Promise<string>((resolve, reject) => {
+          const client = oauth.initTokenClient({
+            client_id: GOOGLE_CLIENT_ID,
+            scope: GEE_SCOPE,
+            prompt: "select_account",
+            callback: (result: any) => {
+              if (result.access_token) resolve(result.access_token);
+              else reject(new Error(result.error_description || "GEE não autorizou o acesso."));
+            },
+            error_callback: (result: any) =>
+              reject(new Error(result?.message || "Falha na autorização GEE.")),
+          });
+          client.requestAccessToken();
         });
-        client.requestCode();
-      });
-      if (!requestingUid || auth.currentUser?.uid !== requestingUid) {
-        throw new Error("A conta GeoMoz mudou durante a autorização. Repita o processo.");
+
+        if (auth.currentUser?.uid !== requestingUid) {
+          throw new Error("A conta GeoMoz mudou durante a autorização GEE.");
+        }
+        const result = await backendJson("/geomoz-api/gee/oauth-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ access_token: accessToken, project: chosenProject }),
+        });
+        connected = Boolean(result.connected);
+        if (!connected) {
+          throw new Error(result.message || "O token GEE foi recusado.");
+        }
       }
-      const data = await backendJson("/geomoz-api/gee/oauth/exchange-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, redirect_uri: "postmessage", project: chosenProject }),
-      });
-      if (!data.connected) {
-        throw new Error(data.message || "A autorização GEE não foi validada.");
+
+      if (!connected) {
+        throw persistentError || new Error("Não foi possível autorizar GEE.");
       }
+
       await fetchStatus();
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Falha OAuth GEE.";
