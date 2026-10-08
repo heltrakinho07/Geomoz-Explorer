@@ -7,6 +7,7 @@
  */
 
 import type { Feature, FeatureCollection } from "geojson";
+import type { Map as MapLibreMap } from "maplibre-gl";
 
 export type GISWorkspaceServiceType = "xyz" | "wms" | "wmts";
 
@@ -306,4 +307,82 @@ export async function fetchRemoteGeoJson(
     fields,
     geometryType: geojson.features[0]?.geometry?.type ?? "Geometry",
   };
+}
+
+
+const SERVICE_SOURCE_PREFIX = "geomoz-remote-service-source-";
+const SERVICE_LAYER_PREFIX = "geomoz-remote-service-layer-";
+
+function safeServiceId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function serviceIds(id: string) {
+  const safe = safeServiceId(id);
+  return {
+    source: `${SERVICE_SOURCE_PREFIX}${safe}`,
+    layer: `${SERVICE_LAYER_PREFIX}${safe}`,
+  };
+}
+
+/**
+ * Mirrors the persisted GeoMoz remote-service store into MapLibre.
+ * All service kinds are rendered as raster tiles; the semantic type is kept
+ * in project state for editing, provenance and future GetFeatureInfo support.
+ */
+export function syncGISWorkspaceServiceLayers(
+  map: MapLibreMap,
+  services: GISWorkspaceServiceLayer[]
+): void {
+  if (!map.isStyleLoaded()) return;
+  const desiredSources = new Set<string>();
+  const desiredLayers = new Set<string>();
+
+  for (const service of services) {
+    const ids = serviceIds(service.id);
+    desiredSources.add(ids.source);
+    desiredLayers.add(ids.layer);
+
+    if (!map.getSource(ids.source)) {
+      map.addSource(ids.source, {
+        type: "raster",
+        tiles: [service.tileUrl],
+        tileSize: service.tileSize || 256,
+        minzoom: service.minZoom,
+        maxzoom: service.maxZoom,
+        attribution: service.attribution,
+      });
+    }
+
+    if (!map.getLayer(ids.layer)) {
+      map.addLayer({
+        id: ids.layer,
+        type: "raster",
+        source: ids.source,
+        layout: {
+          visibility: service.visible ? "visible" : "none",
+        },
+        paint: {
+          "raster-opacity": service.opacity,
+        },
+      });
+    } else {
+      map.setLayoutProperty(
+        ids.layer,
+        "visibility",
+        service.visible ? "visible" : "none"
+      );
+      map.setPaintProperty(ids.layer, "raster-opacity", service.opacity);
+    }
+  }
+
+  const style = map.getStyle();
+  for (const layer of style.layers ?? []) {
+    if (!layer.id.startsWith(SERVICE_LAYER_PREFIX) || desiredLayers.has(layer.id)) continue;
+    if (map.getLayer(layer.id)) map.removeLayer(layer.id);
+  }
+  for (const sourceId of Object.keys(style.sources ?? {})) {
+    if (!sourceId.startsWith(SERVICE_SOURCE_PREFIX) || desiredSources.has(sourceId)) continue;
+    if (map.getSource(sourceId)) map.removeSource(sourceId);
+  }
 }
