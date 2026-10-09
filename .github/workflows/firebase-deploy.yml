@@ -52,32 +52,6 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
 
-      - name: Prepare Firebase service account
-        env:
-          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: |
-          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
-          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
-
-      - name: Deploy Firestore rules
-        id: firestore_rules
-        run: npx --yes firebase-tools@14.22.0 deploy --only firestore:rules --project geoprocessamento-426809
-
-      - name: Deploy Storage rules
-        id: storage_rules
-        run: npx --yes firebase-tools@14.22.0 deploy --only storage --project geoprocessamento-426809
-
-      - name: Warn when Firebase data APIs are unavailable
-        if: steps.firestore_rules.outcome == 'failure' || steps.storage_rules.outcome == 'failure'
-        run: |
-          if [ "${{ steps.firestore_rules.outcome }}" = "failure" ]; then
-            echo "::warning::Firestore rules were not deployed. Enable firestore.googleapis.com for project geoprocessamento-426809 and grant the deploy service account permission to update Firestore rules."
-          fi
-          if [ "${{ steps.storage_rules.outcome }}" = "failure" ]; then
-            echo "::warning::Storage rules were not deployed. Enable firebasestorage.googleapis.com for project geoprocessamento-426809 and grant the deploy service account permission to update Storage rules."
-          fi
-          echo "::warning::Firebase Hosting will still deploy the frontend; cloud GIS persistence remains limited until these APIs are enabled."
-
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
@@ -90,3 +64,44 @@ jobs:
         run: |
           echo "✅ Frontend deployed to Firebase Hosting"
           echo "URL: https://geoprocessamento-426809.web.app"
+
+  firebase-data-rules:
+    name: Enable Firebase data APIs and deploy security rules
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate deployment identity to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Enable Firestore and Firebase Storage APIs if permitted
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gcloud services enable firestore.googleapis.com firebasestorage.googleapis.com \
+            --project geoprocessamento-426809; then
+            echo "::error::The Google Cloud deployment identity cannot enable the Firebase data APIs. A project owner must enable firestore.googleapis.com and firebasestorage.googleapis.com (or grant the identity serviceusage.services.enable)."
+            echo "::error::https://console.cloud.google.com/apis/library/firestore.googleapis.com?project=geoprocessamento-426809"
+            exit 1
+          fi
+
+      - name: Prepare Firebase service account
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+
+      - name: Deploy Firestore and Storage security rules
+        run: npx --yes firebase-tools@14.22.0 deploy --only firestore:rules,storage --project geoprocessamento-426809
