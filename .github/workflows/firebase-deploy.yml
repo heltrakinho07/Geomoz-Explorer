@@ -65,40 +65,12 @@ jobs:
           echo "✅ Frontend deployed to Firebase Hosting"
           echo "URL: https://geoprocessamento-426809.web.app"
 
-  firebase-data-rules:
-    name: Enable Firebase data APIs and deploy security rules
+  firestore-security-rules:
+    name: Deploy Cloud Firestore security rules
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Authenticate deployment identity to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Attempt to enable Firebase data APIs
-        id: enable_data_apis
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          gcloud services enable firestore.googleapis.com firebasestorage.googleapis.com \
-            --project geoprocessamento-426809
-
-      - name: Explain missing Google Cloud API permissions
-        if: steps.enable_data_apis.outcome == 'failure'
-        run: |
-          echo "::warning::A project owner must enable the Firestore and Firebase Storage APIs if unavailable."
-          echo "::warning::https://console.cloud.google.com/apis/library/firestore.googleapis.com?project=geoprocessamento-426809"
 
       - name: Prepare Firebase service account
         env:
@@ -107,5 +79,22 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
 
-      - name: Deploy Firestore and Storage security rules
-        run: npx --yes firebase-tools@14.22.0 deploy --only firestore:rules,storage --project geoprocessamento-426809
+      - name: Deploy Firestore rules (required)
+        run: npx --yes firebase-tools@14.22.0 deploy --only firestore:rules --project geoprocessamento-426809
+
+  storage-security-rules:
+    name: Deploy Firebase Storage security rules
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare Firebase service account
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+
+      - name: Deploy Storage rules (required)
+        run: npx --yes firebase-tools@14.22.0 deploy --only storage --project geoprocessamento-426809
