@@ -85,16 +85,20 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Enable Firestore and Firebase Storage APIs if permitted
+      - name: Attempt to enable Firebase data APIs
+        id: enable_data_apis
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
-          if ! gcloud services enable firestore.googleapis.com firebasestorage.googleapis.com \
-            --project geoprocessamento-426809; then
-            echo "::error::The Google Cloud deployment identity cannot enable the Firebase data APIs. A project owner must enable firestore.googleapis.com and firebasestorage.googleapis.com (or grant the identity serviceusage.services.enable)."
-            echo "::error::https://console.cloud.google.com/apis/library/firestore.googleapis.com?project=geoprocessamento-426809"
-            exit 1
-          fi
+          gcloud services enable firestore.googleapis.com firebasestorage.googleapis.com \
+            --project geoprocessamento-426809
+
+      - name: Explain missing Google Cloud API permissions
+        if: steps.enable_data_apis.outcome == 'failure'
+        run: |
+          echo "::warning::A project owner must enable the Firestore and Firebase Storage APIs if unavailable."
+          echo "::warning::https://console.cloud.google.com/apis/library/firestore.googleapis.com?project=geoprocessamento-426809"
 
       - name: Prepare Firebase service account
         env:
