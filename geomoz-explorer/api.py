@@ -1121,48 +1121,81 @@ async def gee_download_url(req: GEEDownloadRequest, uid: str = Depends(require_g
 
 @app.post("/geomoz-api/ai/synthesize-study")
 async def synthesize_study(req: StudySynthesisRequest):
-    """
-    Generate an expert technical diagnostic and conclusion based on the study's quantitative runs.
-    """
-    run_summaries = []
-    for r in req.runs:
-        metrics = r.get("metrics", {})
-        mean_val = metrics.get("mean")
-        min_val = metrics.get("min")
-        max_val = metrics.get("max")
-        metric_str = f"Média={mean_val:.3f}" if isinstance(mean_val, (int, float)) else "Média=N/D"
-        if isinstance(min_val, (int, float)) and isinstance(max_val, (int, float)):
-            metric_str += f" (Min={min_val:.3f}, Max={max_val:.3f})"
-        run_summaries.append(f"- **{r.get('name', 'Análise')}** ({r.get('sensor', 'Satélite')}): {metric_str}")
+    """Summarize verified tool returns; never assert geological conclusions."""
+    import math
 
-    runs_text = "\n".join(run_summaries) if run_summaries else "Sem análises quantitativas computadas."
+    def number(value):
+        if isinstance(value, bool) or not isinstance(value, (float, int)):
+            return None
+        return float(value) if math.isfinite(value) else None
 
-    diagnostics = {
-        "agricultura": "A análise multiespectral demonstra diferenciação evidente de vigor vegetal e teor de humidade na área de estudo.",
-        "recursos_hidricos": "Os índices espectrais e hidrológicos indicam zonas com acumulação diferencial de fluxo e recarga hídrica.",
-        "ordenamento_territorial": "A caracterização morfológica e de uso do solo fornece subsídios para zonamento e delimitação de áreas seguras.",
-        "geoperigos": "A monitorização espacial aponta para setores suscetíveis a eventos extremos de precipitação e instabilidade.",
-        "conservacao_ambiental": "Os bioindicadores espectrais permitem quantificar a integridade do coberto vegetal e detetar focos de alteração ambiental.",
+    lines = []
+    warnings = []
+    counted = 0
+    sources = set()
+    for run in req.runs:
+        title = str(run.get("name") or "Análise")
+        sensor = str(run.get("sensor") or "Sensor não indicado")
+        if not (run.get("tileUrl") or run.get("tile_url")):
+            warnings.append("Resultado sem camada comprovada: " + title)
+            continue
+        counted += 1
+        sources.add(sensor)
+        metrics = run.get("metrics") or {}
+        mean = number(metrics.get("mean"))
+        low = number(metrics.get("min"))
+        high = number(metrics.get("max"))
+        stats = []
+        if mean is not None:
+            stats.append("média={:.4f}".format(mean))
+        if low is not None and high is not None:
+            stats.append("mín={:.4f}; máx={:.4f}".format(low, high))
+            if abs(low - high) < 1e-9:
+                warnings.append("{} apresenta amplitude zero; verificar máscaras, "
+                                "cobertura válida e estatísticas GEE.".format(title))
+        if mean is None:
+            stats.append("estatística indisponível")
+        lines.append("- **{}** ({}): {}.".format(title, sensor, "; ".join(stats)))
+
+    if not lines:
+        return {"status": "warning", "synthesis":
+                "Não foi possível elaborar um diagnóstico quantitativo: "
+                "nenhuma execução devolveu uma camada verificável. "
+                "Verifique autenticação GEE, datas, geometria e cobertura do sensor."}
+
+    category_notes = {
+        "agricultura": "O NDVI e índices de humidade são proxies biofísicos; não medem produtividade nem stress hídrico do solo directamente.",
+        "recursos_hidricos": "Distinguir humidade superficial, água aberta, humidade foliar e défice climático. Validar sazonalidade antes de inferir stress.",
+        "geologia": "Rácios espectrais são indicadores preliminares de alteração; não comprovam depósitos minerais, litologias ou estruturas.",
+        "geoperigos": "Índices espectrais e relevo não constituem, por si só, um modelo calibrado de risco.",
     }
-    diag = diagnostics.get(req.category, "O estudo multidisciplinar consolida evidências geoespaciais com elevado rigor técnico.")
+    note = category_notes.get(req.category,
+        "A interpretação requer validação geoespacial e conhecimento de campo; "
+        "o cálculo de um índice não comprova causalidade.")
+    caveats = "\\n".join("- " + w for w in warnings) if warnings else "Sem alertas automáticos adicionais."
+    synthesis = """### Diagnóstico técnico baseado em resultados
 
-    conclusion = f"""### Diagnóstico Técnico Consolidado
+**Área:** {}  
+**Período:** {} a {}  
+**Fonte(s):** {}  
+**Execuções com camada:** {}
 
-**Área de Estudo:** {req.aoiLabel}  
-**Domínio:** {req.category.replace('_', ' ').title()}  
-**Período Temporal:** {req.period.get('startDate', 'N/D')} até {req.period.get('endDate', 'N/D')}  
+#### Resultados obtidos
+{}
 
-#### Indicadores Processados ({len(req.runs)} execuções):
-{runs_text}
+#### Interpretação e limitações
+{}
 
-#### Parecer e Interpretação:
-{diag} Os dados processados com satélites Copernicus (Sentinel-2/DEM 30m) confirmam a consistência da metodologia aplicada para suporte à tomada de decisão técnica.
+#### Controlo de qualidade
+{}
 
-#### Recomendações Técnicas:
-1. Recomenda-se a continuidade da vigilância temporal periódica (cadência quinzenal a mensal) para avaliar flutuações sazonais.
-2. Integração destes resultados nos instrumentos municipais e de gestão territorial setorial.
-"""
-    return {"synthesis": conclusion}
+**Próximo passo:** comparar espacialmente os índices no mapa, validar a cobertura
+e recolher dados de campo antes de classificar zonas de favorabilidade.
+""".format(
+        req.aoiLabel, req.period.get("startDate", "N/D"),
+        req.period.get("endDate", "N/D"), ", ".join(sorted(sources)),
+        counted, "\\n".join(lines), note, caveats)
+    return {"status": "completed", "synthesis": synthesis}
 
 
 @app.post("/geomoz-api/ai/agent-chat")
