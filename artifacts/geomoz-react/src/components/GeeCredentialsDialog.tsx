@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { diagnoseGeeApi } from "@/lib/gee-connection-diagnostics";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +30,26 @@ export default function GeeCredentialsDialog({
 }) {
   const { user } = useAuth();
   const { geeConnected, oauthReady, loading, error, connectGee, disconnectGee, refreshStatus } = useGeeAuth();
-  const [projectInput, setProjectInput] = useState("");
+  const [projectInput, setProjectInput] = useState("geoprocessamento-426809");
+  const [checkingApi, setCheckingApi] = useState(false);
+  const [apiCheckResult, setApiCheckResult] = useState<{ connected: boolean; message: string } | null>(null);
+
+  const handleRetryApi = async () => {
+    setCheckingApi(true);
+    setApiCheckResult(null);
+    try {
+      const diagnostic = await diagnoseGeeApi();
+      setApiCheckResult({ connected: diagnostic.connected, message: diagnostic.message });
+      if (diagnostic.apiOnline) await refreshStatus();
+    } catch (err) {
+      setApiCheckResult({
+        connected: false,
+        message: err instanceof Error ? err.message : "Não foi possível verificar a API.",
+      });
+    } finally {
+      setCheckingApi(false);
+    }
+  };
 
   const handleConnect = async () => {
     try {
@@ -136,13 +156,29 @@ export default function GeeCredentialsDialog({
               {!oauthReady && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
                   <p>Pode tentar ligar a Conta Google. A verificação antecipada da API ainda não respondeu.</p>
-                  <button
+                  <Button
                     type="button"
-                    onClick={() => { void refreshStatus(); }}
-                    className="mt-2 font-semibold text-sky-700 underline underline-offset-2 dark:text-sky-300"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleRetryApi}
+                    disabled={checkingApi}
+                    className="mt-2 min-h-9 border-sky-300 bg-white font-semibold text-sky-700 dark:bg-slate-900 dark:text-sky-300"
                   >
-                    Voltar a verificar a API
-                  </button>
+                    {checkingApi ? <Loader2 size={13} className="mr-2 animate-spin" /> : null}
+                    {checkingApi ? "A verificar a API..." : "Voltar a verificar a API"}
+                  </Button>
+                </div>
+              )}
+
+              {apiCheckResult && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className={`rounded-xl border p-3 text-xs leading-relaxed ${apiCheckResult.connected
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"
+                    : "border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"}`}
+                >
+                  {apiCheckResult.message}
                 </div>
               )}
 
