@@ -36,11 +36,42 @@ import {
   Globe,
   RefreshCw,
 } from "lucide-react";
-import { MapContainer, TileLayer, ScaleControl } from "react-leaflet";
+import { GeoJSON, MapContainer, TileLayer, ScaleControl, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { GOOGLE_BASEMAPS } from "@/lib/basemaps";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+
+type AgentGeologyGeoJSON = GeoJSON.FeatureCollection & { bbox?: number[]; source?: string };
+
+function ZoomToGeology({ bounds }: { bounds?: number[] }) {
+  const map = useMap();
+  const boundsKey = bounds?.join(",") || "";
+  useEffect(() => {
+    if (!bounds || bounds.length !== 4 || !bounds.every(Number.isFinite)) return;
+    const [west, south, east, north] = bounds;
+    if (west >= east || south >= north) return;
+    map.fitBounds([[south, west], [north, east]], { padding: [24, 24], maxZoom: 11 });
+  }, [map, boundsKey]);
+  return null;
+}
+
+function showGeologicalFeature(feature: GeoJSON.Feature, layer: any) {
+  const props = feature.properties || {};
+  const content = document.createElement("div");
+  content.style.minWidth = "180px";
+  const title = document.createElement("strong");
+  title.textContent = String(props.unit || "Unidade sem identificação");
+  content.appendChild(title);
+  for (const [label, key] of [["Litologia", "lithology"], ["Era", "era"], ["Período", "period"]]) {
+    if (!props[key] || props[key] === "None") continue;
+    const line = document.createElement("div");
+    line.textContent = label + ": " + String(props[key]);
+    content.appendChild(line);
+  }
+  // DOM textContent prevents attributes supplied by the dataset becoming HTML.
+  layer.bindPopup(content);
+}
 
 interface WorkflowStep {
   id: string;
@@ -144,6 +175,9 @@ const SUGGESTED_PROMPTS = [
   "Avaliar o stress hídrico e humidade do solo NASA SMAP",
   "Identificar anomalias de alteração hidrotermal Landsat 8 para ouro",
   "Mapear setores com risco de erosão hídrica do solo RUSLE",
+  "Quais são as principais litologias na província de Manica? Mostra no mapa.",
+  "Identifica as formações geológicas e áreas aproximadas em Tete.",
+  "Mostra os granitos cartografados na área seleccionada.",
   "Detetar falhas, fraturas e lineamentos estruturais no relevo",
   "Delimitar zonas baixas e planícies com suscetibilidade a cheias",
 ];
@@ -235,6 +269,8 @@ export default function GeoMozAIAgentTab() {
   const [steps, setSteps] = useState<WorkflowStep[]>([]);
   const [synthesis, setSynthesis] = useState<string | null>(null);
   const [activeTileUrl, setActiveTileUrl] = useState<string | null>(null);
+  const [activeGeology, setActiveGeology] = useState<AgentGeologyGeoJSON | null>(null);
+  const [geologyNotice, setGeologyNotice] = useState<string | null>(null);
   const [activeTileName, setActiveTileName] = useState<string>("");
   const [completedRuns, setCompletedRuns] = useState<any[]>([]);
   const [selectedLayerIndex, setSelectedLayerIndex] = useState<number>(0);
@@ -636,35 +672,75 @@ export default function GeoMozAIAgentTab() {
       setSteps(finalSteps);
 
       const computedLayers: any[] = [];
-      if (data.map_actions && data.map_actions.length > 0) {
-        data.map_actions.forEach((act: any) => {
-          if (act.type === "ADD_LAYER" && act.tileUrl) {
-            computedLayers.push({
-              name: act.name || "Camada Calculada",
-              type: "remote_sensing",
-              sensor: "GeoMoz AI",
-              code: act.id,
-              dateRange: activeProject?.period,
-              metrics: {},
-              tileUrl: act.tileUrl,
+      const vectorWarnings: string[] = [];
+      for (const act of data.map_actions || []) {
+        if (act.type === "ADD_LAYER" && act.tileUrl) {
+          computedLayers.push({
+            name: act.name || "Camada Calculada",
+            type: "remote_sensing",
+            sensor: "GeoMoz AI",
+            code: act.id,
+            dateRange: activeProject?.period,
+            metrics: {},
+            tileUrl: act.tileUrl,
+          });
+        }
+        if (act.type === "ADD_GEOJSON_LAYER" && act.id === "agent_geology") {
+          try {
+            const geoResponse = await apiFetch("/geomoz-api/ai/geology-features", {
+              method: "POST",
+              signal: controller.signal,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                province: act.province || null,
+                district: act.district || null,
+                geometry: act.geometry || null,
+                filter_str: act.filter_str || null,
+              }),
             });
-          }
-        });
-
-        if (computedLayers.length > 0) {
-          setCompletedRuns((prev) => [...prev, ...computedLayers]);
-          setActiveTileUrl(computedLayers[0].tileUrl);
-          setActiveTileName(computedLayers[0].name);
-
-          if (activeProject) {
-            for (const r of computedLayers) {
-              await saveRunToActiveProject(r);
+            if (!geoResponse.ok) {
+              const problem = await geoResponse.json().catch(() => ({}));
+              throw new Error(problem.detail || "Não foi possível obter os polígonos.");
             }
+            const geojson = (await geoResponse.json()) as AgentGeologyGeoJSON;
+            if (geojson.type !== "FeatureCollection" || !Array.isArray(geojson.features)) {
+              throw new Error("A camada geológica devolveu dados inválidos.");
+            }
+            computedLayers.push({
+              name: act.name || "Geologia de Moçambique",
+              code: act.id,
+              type: "geology",
+              sensor: geojson.source || "GeoMoz",
+              geojson,
+            });
+          } catch (error) {
+            if (controller.signal.aborted) throw error;
+            const message = error instanceof Error ? error.message : "Erro de visualização.";
+            vectorWarnings.push(message);
           }
         }
       }
 
-      const finalSynthesis = data.synthesis || "Análise geoespacial concluída.";
+      if (computedLayers.length > 0) {
+        setSelectedLayerIndex(completedRuns.length);
+        setCompletedRuns((prev) => [...prev, ...computedLayers]);
+        const firstLayer = computedLayers[0];
+        setActiveTileUrl(firstLayer.tileUrl || null);
+        setActiveGeology(firstLayer.geojson || null);
+        setActiveTileName(firstLayer.name);
+        if (activeProject) {
+          for (const resultLayer of computedLayers) {
+            // Do not persist large inline GeoJSON as a project run.
+            if (resultLayer.tileUrl) await saveRunToActiveProject(resultLayer);
+          }
+        }
+      }
+      setGeologyNotice(vectorWarnings.join(" ") || null);
+
+      const answer = data.synthesis || "Análise geoespacial concluída.";
+      const finalSynthesis = vectorWarnings.length
+        ? answer + "\n\n**Mapa geológico:** " + vectorWarnings.join("; ")
+        : answer;
       setSynthesis(finalSynthesis);
 
       // Append Agent message to chat history
@@ -1187,7 +1263,8 @@ export default function GeoMozAIAgentTab() {
                             key={i}
                             type="button"
                             onClick={() => {
-                              setActiveTileUrl(r.tileUrl);
+                              setActiveTileUrl(r.tileUrl || null);
+                              setActiveGeology(r.geojson || null);
                               setActiveTileName(r.name);
                             }}
                             className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-700 hover:bg-violet-100 hover:text-violet-700 text-slate-700 dark:text-slate-300 transition-colors flex items-center gap-1 cursor-pointer"
@@ -1319,7 +1396,8 @@ export default function GeoMozAIAgentTab() {
                     type="button"
                     onClick={() => {
                       setSelectedLayerIndex(i);
-                      setActiveTileUrl(run.tileUrl);
+                      setActiveTileUrl(run.tileUrl || null);
+                      setActiveGeology(run.geojson || null);
                       setActiveTileName(run.name);
                     }}
                     className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all shrink-0 cursor-pointer ${
@@ -1354,6 +1432,11 @@ export default function GeoMozAIAgentTab() {
           </div>
         )}
 
+        {geologyNotice && (
+          <div role="status" className="px-3 py-2 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/20">
+            Camada geológica: {geologyNotice}
+          </div>
+        )}
         {/* Leaflet Map */}
         <div className="flex-1 relative">
           <MapContainer center={[-18.6, 35.5]} zoom={6} style={{ height: "100%", width: "100%" }}>
@@ -1383,6 +1466,22 @@ export default function GeoMozAIAgentTab() {
                 url={activeTileUrl}
                 opacity={layerOpacity}
               />
+            )}
+            {activeGeology && (
+              <>
+                <GeoJSON
+                  key={activeTileName + "-" + selectedLayerIndex}
+                  data={activeGeology}
+                  style={(feature) => ({
+                    color: "#475569",
+                    weight: 0.8,
+                    fillColor: String(feature?.properties?._color || "#7c8ca3"),
+                    fillOpacity: 0.7 * layerOpacity,
+                  })}
+                  onEachFeature={showGeologicalFeature}
+                />
+                <ZoomToGeology bounds={activeGeology.bbox} />
+              </>
             )}
             <ScaleControl position="bottomleft" />
           </MapContainer>

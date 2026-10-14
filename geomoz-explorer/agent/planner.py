@@ -23,6 +23,8 @@ Diretrizes:
 1. Respeita a Área de Estudo (AOI) e o contexto atual do mapa.
 2. Planeia a sequência de ferramentas lógicas (ex: Delimitação -> Satélite -> Terreno -> Multi-critério -> Estatísticas).
 3. Na conclusão técnica, apresenta o parecer científico fundamentado, citando valores calculados, litologias e recomendações.
+4. Consultas geológicas devem começar por get_geology_units; nunca afirmes a presença de uma litologia ou jazigo sem resultados dessa ferramenta. Se houver falha de leitura, informa-a sem fabricar números.
+5. Quando o utilizador pedir só unidades, litologias, formações ou geologia no mapa, não lances índices GEE ou targeting mineral desnecessários.
 """
 
 
@@ -368,6 +370,58 @@ class GeoMozAgent:
         steps_log = []
         map_actions = []
         executed_runs = []
+
+        # Direct geology catalogue queries must not depend on Google Earth Engine
+        # or accidentally trigger mineral-prospectivity models.
+        geology_terms = (
+            "geol", "litolog", "formac", "rocha", "granito", "basalto",
+            "gnaiss", "calcário", "calcario", "quartzito", "gabro", "xisto", "arenito"
+        )
+        targeting_terms = ("ouro", "cobre", "prospec", "mineraliza", "favorabil", "targeting")
+        if any(term in msg_lower for term in geology_terms) and not any(
+            term in msg_lower for term in targeting_terms
+        ):
+            import re
+            filter_match = re.search(
+                r"\b(granitos?|basaltos?|gnaiss(?:e|es)?|calcári(?:o|os)|calcari(?:o|os)|quartzitos?|gabros?|xistos?|arenitos?)\b",
+                msg_lower,
+            )
+            filter_str = filter_match.group(1).removesuffix("s") if filter_match else None
+            # A region explicitly named in the question takes precedence over
+            # the previously selected map AOI; a custom polygon otherwise wins.
+            mentioned_province = any(p in msg_lower for p in provinces_mz)
+            geo_context = dict(current_map_state)
+            if mentioned_province:
+                geo_context["aoi"] = {"province": province, "district": None}
+            result = await ToolDispatcher.execute(
+                "get_geology_units",
+                {"province": province if mentioned_province else aoi.get("province"),
+                 "district": None if mentioned_province else district,
+                 "filter_str": filter_str},
+                geo_context,
+            )
+            if result.get("status") != "success":
+                message = result.get("message", "O catálogo geológico está indisponível.")
+                return {
+                    "status": "error", "provider": "deterministic-geology",
+                    "plan": ["Consultar a base geológica do GeoMoz"],
+                    "steps": [{"id": "geology", "name": "Consulta ao catálogo geológico",
+                               "status": "error", "resultSummary": message}],
+                    "map_actions": [], "runs": [],
+                    "synthesis": message,
+                }
+            map_actions = [result["map_action"]] if result.get("map_action") else []
+            return {
+                "status": "completed", "provider": "deterministic-geology",
+                "plan": ["Consultar e quantificar unidades geológicas reais"],
+                "steps": [{"id": "geology", "name": "Consulta espacial à carta geológica",
+                           "status": "completed",
+                           "resultSummary": f'{result.get("unitsCount", 0)} polígonos reais'}],
+                "map_actions": map_actions,
+                "runs": [{"tool": "get_geology_units",
+                          "output": {k: v for k, v in result.items() if k != "map_action"}}],
+                "synthesis": result.get("summary", "Consulta geológica concluída."),
+            }
 
         # Step 1: AOI Validation
         aoi_res = await ToolDispatcher.execute("resolve_aoi", {"province": province, "district": district}, current_map_state)

@@ -1358,6 +1358,40 @@ async def agent_chat(req: AgentChatRequest):
         raise HTTPException(500, f"Erro na execução do agente GeoMoz: {exc}")
 
 
+class AgentGeologyFeaturesRequest(BaseModel):
+    province: Optional[str] = None
+    district: Optional[str] = None
+    filter_str: Optional[str] = None
+    geometry: Optional[dict] = None
+
+
+@app.post("/geomoz-api/ai/geology-features")
+async def agent_geology_features(req: AgentGeologyFeaturesRequest):
+    """Return real geology polygons separately from the AI text response.
+
+    This read-only dataset is already exposed through /geomoz-api/geology.
+    Keeping the feature payload out of LLM tool results avoids token bloat.
+    """
+    from agent.geology_data import geology_features
+
+    try:
+        return await run_in_threadpool(
+            geology_features,
+            province=req.province,
+            district=req.district,
+            filter_str=req.filter_str,
+            geometry=req.geometry,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("GeoMoz geology vector query failed: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Catálogo geológico temporariamente indisponível.",
+        ) from exc
+
+
 @app.post("/geomoz-api/gee/render")
 async def gee_render(req: GEERenderRequest, uid: str = Depends(require_gee_auth)):
     """
