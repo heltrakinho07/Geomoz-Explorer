@@ -413,7 +413,7 @@ class ToolDispatcher:
                     score_threshold=thresh
                 )
                 stats = result.get("stats", {})
-                fav_area = stats.get("favorableAreaKm2", 0.0)
+                fav_area = stats.get("favorableAreaKm2")
                 return {
                     "status": "success",
                     "mineral": mineral,
@@ -492,10 +492,12 @@ class ToolDispatcher:
 
             elif tool_name == "calculate_zonal_statistics":
                 return {
-                    "status": "success",
-                    "areaKm2": "Quantificação espacial concluída",
-                    "highExposureKm2": "34.7 km²",
-                    "mediumExposureKm2": "71.2 km²"
+                    "status": "warning",
+                    "message": "Estatística zonal indisponível: nenhuma máscara "
+                               "de classificação validada foi fornecida.",
+                    "areaKm2": None,
+                    "highExposureKm2": None,
+                    "mediumExposureKm2": None
                 }
 
             elif tool_name == "get_geology_units":
@@ -550,7 +552,8 @@ class ToolDispatcher:
                     "status": "success",
                     "name": "Suscetibilidade a Inundações & Cheias",
                     "tileUrl": result.get("tileUrl"),
-                    "highRiskClass": "Planície Baixa (< 5m) e Rede Hidrográfica",
+                    "highRiskClass": None,
+                    "method": "proxy_topographic_classification",
                     "map_action": {
                         "type": "ADD_LAYER",
                         "id": "agent_flood_susceptibility",
@@ -576,7 +579,8 @@ class ToolDispatcher:
                     "name": "Precipitação Anual Acumulada (CHIRPS)",
                     "tileUrl": result.get("tileUrl"),
                     "sensor": "UCSB CHIRPS 5km",
-                    "meanRainfallMm": "980 mm/ano",
+                    "meanRainfallMm": (result.get("stats") or {}).get("mean"),
+                    "stats": result.get("stats") or {},
                     "map_action": {
                         "type": "ADD_LAYER",
                         "id": "agent_precipitation_chirps",
@@ -613,7 +617,9 @@ class ToolDispatcher:
                     "theme": theme,
                     "name": title,
                     "tileUrl": result.get("tileUrl"),
-                    "suitabilityScore": "Elevada aptidão espacial mapeada",
+                    "suitabilityScore": None,
+                    "method": "single_index_proxy_not_ahp",
+                    "warning": "Este resultado é um indicador preliminar; não é AHP multicritério calibrado.",
                     "map_action": {
                         "type": "ADD_LAYER",
                         "id": f"agent_ahp_{theme}",
