@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Switch, Route } from "wouter";
 import { Toaster } from "@/components/ui/toaster";
 import LandingPage from "@/pages/LandingPage";
+import { PrivacyPolicy, TermsOfService } from "@/pages/LegalPages";
 import Explorer from "@/pages/Explorer";
 import HidroWebGisViewer from "@/pages/HidroWebGisViewer";
 import { AuthProvider } from "@/hooks/useAuth";
@@ -130,6 +131,8 @@ export default function App() {
             <ErrorBoundary FallbackComponent={ErrorFallback}>
               <Switch>
                 <Route path="/">{() => <LandingPage />}</Route>
+                <Route path="/privacy">{() => <PrivacyPolicy />}</Route>
+                <Route path="/terms">{() => <TermsOfService />}</Route>
                 <Route path="/login">{() => <LandingPage initialAuthMode="login" />}</Route>
                 <Route path="/register">{() => <LandingPage initialAuthMode="register" />}</Route>
                 <Route path="/view/hidro">{() => <HidroWebGisViewer />}</Route>

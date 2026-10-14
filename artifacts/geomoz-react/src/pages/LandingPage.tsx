@@ -2457,6 +2457,14 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
             }`}
           >
             <p>© {new Date().getFullYear()} {t.footer.rights}</p>
+            <nav aria-label={lang === "pt" ? "Informações legais" : "Legal information"} className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+              <Link href="/privacy" className="font-medium text-sky-700 hover:text-sky-800 hover:underline dark:text-sky-400 dark:hover:text-sky-300">
+                {lang === "pt" ? "Política de Privacidade" : "Privacy Policy"}
+              </Link>
+              <Link href="/terms" className="font-medium text-sky-700 hover:text-sky-800 hover:underline dark:text-sky-400 dark:hover:text-sky-300">
+                {lang === "pt" ? "Termos de Serviço" : "Terms of Service"}
+              </Link>
+            </nav>
             <p>{t.footer.mission}</p>
           </div>
         </div>
