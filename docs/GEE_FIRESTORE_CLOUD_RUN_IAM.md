@@ -8,17 +8,17 @@
 
 `Não foi possível consultar as credenciais GEE no Firestore` é uma falha **da identidade de execução do backend** ou da base de dados. Não significa que o utilizador não esteja registado no Google Earth Engine. O Firebase Admin SDK utiliza IAM para ler `geePrivateSessions/{Firebase UID}`, de forma inacessível ao cliente web.
 
-## Diagnóstico/auto-reparação
+## Diagnóstico automático (somente leitura)
 
-O workflow [Diagnose and Repair GeoMoz GEE Firestore Access](../.github/workflows/gee-firestore-remediation.yml) inicia quando o ficheiro é adicionado à `main` e pode ser executado manualmente pelo separador Actions.
+O workflow [Diagnose GeoMoz GEE Firestore Access](../.github/workflows/gee-firestore-remediation.yml) inicia quando o ficheiro é adicionado à `main` e pode ser executado manualmente pelo separador Actions.
 
 1. Usa o **Workload Identity Federation** existente, não chaves JSON públicas.
 2. Identifica a conta de serviço efectivamente configurada no Cloud Run (ou a conta padrão da Compute Engine, caso não exista uma explícita).
 3. Verifica a existência da base de dados Firestore `(default)`. **Não cria bases de dados**, porque a localização da base é uma escolha do proprietário.
-4. Tenta atribuir **apenas** `roles/datastore.user` à identidade efectiva do Cloud Run. A identidade do GitHub precisa de `resourcemanager.projects.setIamPolicy`. Se a permissão faltar, o workflow **falha** e apresenta o comando exacto que um administrador IAM pode executar. Não concede permissões adicionais ao GitHub nem aos utilizadores web.
+4. Consulta as políticas IAM em modo **somente leitura** para procurar uma atribuição explícita de `roles/datastore.user` à identidade efectiva do Cloud Run. Ausência dessa atribuição não exclui permissões herdadas. O workflow **não modifica** IAM nem concede permissões adicionais.
 5. Recolhe unicamente categorias de erros do Cloud Run, sem tokens, chaves ou documentos privados.
 
-Se o workflow falhar na verificação da base de dados, confirme-a em [Cloud Firestore](https://console.cloud.google.com/firestore/databases?project=geoprocessamento-426809). Se falhar na atribuição IAM, abra [IAM](https://console.cloud.google.com/iam-admin/iam?project=geoprocessamento-426809) e aplique a função `Cloud Datastore User` à conta de serviço **indicada nos logs do workflow**. Não use indiscriminadamente o e-mail de utilizador do Google Earth Engine ou a conta de serviço do Firebase Hosting.
+Se o workflow falhar na verificação da base de dados, confirme-a em [Cloud Firestore](https://console.cloud.google.com/firestore/databases?project=geoprocessamento-426809). Se identificar uma falha de autorização no Firestore, abra [IAM](https://console.cloud.google.com/iam-admin/iam?project=geoprocessamento-426809) com uma conta administradora e atribua a função `Cloud Datastore User` à conta de serviço **indicada nos logs do workflow**, após verificar as permissões existentes. Não use indiscriminadamente o e-mail de utilizador do Google Earth Engine ou a conta de serviço do Firebase Hosting.
 
 ## Teste depois da reparação
 
