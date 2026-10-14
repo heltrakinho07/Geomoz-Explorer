@@ -353,6 +353,41 @@ export default function GeoMozAIAgentTab() {
   const [tempGeminiKey, setTempGeminiKey] = useState<string>(geminiApiKey);
   const [tempProvider, setTempProvider] = useState<string>(provider);
   const [tempModel, setTempModel] = useState<string>(model);
+  const [verifiedModels, setVerifiedModels] = useState<{ provider: string; entries: { value: string; label: string }[] } | null>(null);
+  const [modelsBusy, setModelsBusy] = useState(false);
+  const [modelsMessage, setModelsMessage] = useState("");
+  const modelOptions = verifiedModels?.provider === tempProvider
+    ? verifiedModels.entries
+    : (AGENT_MODELS[tempProvider] || AGENT_MODELS.auto);
+
+  const refreshModels = async () => {
+    const apiKey = (tempProvider === "openai" ? tempOpenaiKey : tempGeminiKey).trim();
+    if (tempProvider === "auto" || !apiKey) {
+      setModelsMessage("Seleccione OpenAI ou Gemini e forneça a respectiva chave API.");
+      return;
+    }
+    setModelsBusy(true);
+    setModelsMessage("");
+    try {
+      const response = await apiFetch("/geomoz-api/ai/models", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: tempProvider, api_key: apiKey }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Falha na consulta de modelos.");
+      const entries = (data.models || []).map((entry: { id: string; label: string }) => ({
+        value: entry.id, label: entry.label,
+      }));
+      if (!entries.length) throw new Error("A chave não devolveu modelos compatíveis com consultas de texto e ferramentas.");
+      setVerifiedModels({ provider: tempProvider, entries });
+      setTempModel(entries[0].value);
+      setModelsMessage(`${entries.length} modelos visíveis nesta conta. O suporte a ferramentas será confirmado durante a execução.`);
+    } catch (e) {
+      setModelsMessage(e instanceof Error ? e.message : "Não foi possível consultar os modelos.");
+    } finally {
+      setModelsBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (chatScrollRef.current) {
@@ -366,7 +401,7 @@ export default function GeoMozAIAgentTab() {
     setOpenaiApiKey(oKey);
     setGeminiApiKey(gKey);
     setProvider(tempProvider);
-    const validModel = AGENT_MODELS[tempProvider]?.some(x => x.value === tempModel) ? tempModel : "";
+    const validModel = modelOptions.some(x => x.value === tempModel) ? tempModel : "";
     setModel(validModel);
 
     try {
@@ -1169,6 +1204,8 @@ export default function GeoMozAIAgentTab() {
                     value={tempProvider}
                     onChange={(e) => {
                         setTempProvider(e.target.value);
+                        setVerifiedModels(null);
+                        setModelsMessage("");
                         setTempModel(AGENT_MODELS[e.target.value]?.[0]?.value || "");
                       }
                     className="w-full px-2 py-1 text-xs rounded-lg bg-slate-900 border border-slate-700 text-slate-200 focus:outline-none focus:border-violet-500"
@@ -1186,11 +1223,19 @@ export default function GeoMozAIAgentTab() {
                     onChange={(e) => setTempModel(e.target.value)}
                     className="w-full px-2 py-1 text-xs rounded-lg bg-slate-900 border border-slate-700 text-slate-200 focus:outline-none focus:border-violet-500"
                   >
-                    {(AGENT_MODELS[tempProvider] || AGENT_MODELS.auto).map((entry) => (
+                    {modelOptions.map((entry) => (
                        <option key={entry.value} value={entry.value}>{entry.label}</option>
                      ))}
                   </select>
                 </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" disabled={modelsBusy || tempProvider === "auto"}
+                  onClick={() => void refreshModels()}
+                  className="rounded-md border border-violet-500/40 px-2.5 py-1 text-[11px] font-semibold text-violet-200 hover:bg-violet-500/20 disabled:opacity-40">
+                  {modelsBusy ? "A consultar modelos..." : "Consultar modelos disponíveis na minha API"}
+                </button>
+                {modelsMessage && <span role="status" className="text-[10px] text-slate-300">{modelsMessage}</span>}
               </div>
             </div>
 
