@@ -1249,9 +1249,28 @@ async def gee_status_endpoint(request: Request):
     import gee_session_store
     try:
         user_token = gee_session_store.get_token(uid) or {}
+    except Exception as exc:
+        # Log the exception class, not credentials or token payloads.
+        logger.error("GEE Firestore credential lookup unavailable: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Não foi possível consultar as credenciais GEE no Firestore. "
+                "Verifique a disponibilidade do Firestore e as permissões da "
+                "conta de serviço de execução do Cloud Run."
+            ),
+        ) from exc
+    try:
         st = gee_status(uid=uid)
     except Exception as exc:
-        raise HTTPException(status_code=503, detail="Estado GEE indisponível.") from exc
+        logger.error("GEE status evaluation unavailable: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Não foi possível avaliar a sessão Earth Engine. "
+                "Verifique as credenciais privadas e os registos do servidor Cloud Run."
+            ),
+        ) from exc
 
     return {
         "connected": bool(st.get("connected")),
