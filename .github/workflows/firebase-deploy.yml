@@ -70,6 +70,14 @@ jobs:
           channelId: live
           projectId: geoprocessamento-426809
 
+      - name: Verify Firebase to Cloud Run rewrite
+        run: |
+          HEALTH_URL="https://geoprocessamento-426809.web.app/geomoz-api/health"
+          echo "Testing same-origin API proxy: $HEALTH_URL"
+          RESPONSE=$(curl --fail --silent --show-error --max-time 45 --retry 2 "$HEALTH_URL")
+          echo "$RESPONSE" | python3 -c 'import sys,json; data=json.load(sys.stdin); assert data.get("status") == "ok", "Firebase served HTML or an unhealthy API instead of Cloud Run JSON"'
+          echo "Firebase Hosting forwards /geomoz-api/health to Cloud Run successfully"
+
       - name: Show deployed URL
         run: |
           echo "✅ Frontend deployed to Firebase Hosting"
