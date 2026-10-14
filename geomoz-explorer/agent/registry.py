@@ -137,7 +137,7 @@ TOOL_DECLARATIONS = [
     },
     {
         "name": "get_geology_units",
-        "description": "Consulta as unidades litológicas, tipos de rocha e formações da carta geológica oficial 1:1.000.000 de Moçambique.",
+        "description": "Consulta dados geológicos reais do GeoMoz por AOI, província, distrito ou litologia e calcula área e percentagem por unidade. Inclui acção para mostrar polígonos reais no mapa; não estima jazigos nem deve inventar litologias.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -492,47 +492,11 @@ class ToolDispatcher:
                 }
 
             elif tool_name == "get_geology_units":
-                import api
-                try:
-                    geo_gdf = api._geology()
-                    clipped = api._clip_geo(geo_gdf, province=province, district=district)
-                    if clipped is not None and not clipped.empty:
-                        from utils.common import find_col
-                        name_col = find_col(clipped, ["Lithology", "LITOLOGIA", "DESC_UNIDA", "DESCRICAO", "UNIT_NAME", "Formation", "FORMACAO", "Simbolo"])
-                        units_list = []
-                        if name_col:
-                            top_units = clipped[name_col].value_counts().head(5).to_dict()
-                            units_list = [f"{k} ({v} ocorrências)" for k, v in top_units.items()]
-                        total_units = len(clipped)
-                        summary = f"{total_units} polígonos litológicos mapeados. Principais unidades: {', '.join(units_list[:3])}"
-                        return {
-                            "status": "success",
-                            "unitsCount": total_units,
-                            "dominantUnits": units_list,
-                            "summary": summary,
-                            "map_action": {
-                                "type": "ADD_GEOJSON_LAYER",
-                                "id": "agent_geology",
-                                "name": f"Geologia 1:1M ({province or 'Moçambique'})",
-                                "province": province,
-                                "district": district
-                            }
-                        }
-                except Exception as g_err:
-                    logger.warning("Geology query notice: %s", g_err)
-                return {
-                    "status": "success",
-                    "unitsCount": 14,
-                    "dominantUnits": ["Complexos Gnáissico-Graníticos do Pré-Câmbrico", "Sedimentos Fluviais e Aluviões Recentes", "Rochas Vulcânicas do Karoo"],
-                    "summary": "Substrato caracterizado por terrenos cristalinos do Cinturão de Moçambique e bacias sedimentares costeiras.",
-                    "map_action": {
-                        "type": "ADD_GEOJSON_LAYER",
-                        "id": "agent_geology",
-                        "name": f"Geologia 1:1M ({province or 'Moçambique'})",
-                        "province": province,
-                        "district": district
-                    }
-                }
+                from agent.geology_data import summarize_geology
+                return summarize_geology(
+                    province=province, district=district,
+                    geometry=region_geom, filter_str=args.get("filter_str"),
+                )
 
             elif tool_name == "get_flood_susceptibility":
                 import gee_module
