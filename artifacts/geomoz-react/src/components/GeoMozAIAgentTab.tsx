@@ -293,22 +293,25 @@ export default function GeoMozAIAgentTab() {
           }),
         });
 
-        if (synthRes.ok) {
-          const synthData = await synthRes.json();
-          setSynthesis(synthData.synthesis);
-          setSteps((prev) =>
-            prev.map((s, idx) =>
-              idx === synthStepIdx
-                ? { ...s, status: "completed", resultSummary: "Diagnóstico gerado" }
-                : s
-            )
-          );
+        if (!synthRes.ok) {
+          throw new Error(`Síntese indisponível (HTTP ${synthRes.status})`);
         }
+        const synthData = await synthRes.json();
+        setSynthesis(synthData.synthesis);
+        const hasAnalysis = synthData.status === "completed";
+        setSteps((prev) =>
+          prev.map((s, idx) =>
+            idx === synthStepIdx
+              ? { ...s, status: hasAnalysis ? "completed" : "error",
+                  resultSummary: hasAnalysis ? "Diagnóstico baseado em dados" : "Sem resultados verificáveis" }
+              : s
+          )
+        );
       } catch (err: any) {
         setSteps((prev) =>
           prev.map((s, idx) =>
             idx === synthStepIdx
-              ? { ...s, status: "completed", resultSummary: "Síntese padrão concluída" }
+              ? { ...s, status: "error", resultSummary: err.message }
               : s
           )
         );
@@ -655,7 +658,7 @@ export default function GeoMozAIAgentTab() {
             <div className="p-4 bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl space-y-2">
               <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
                 <ShieldCheck size={15} />
-                <span>Síntese Técnica Concluída e Gravada no Estudo</span>
+                <span>Parecer técnico e estado da análise</span>
               </div>
               <div className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
                 {synthesis}
