@@ -386,7 +386,7 @@ class GeoMozAgent:
                 r"\b(granitos?|basaltos?|gnaiss(?:e|es)?|calcári(?:o|os)|calcari(?:o|os)|quartzitos?|gabros?|xistos?|arenitos?)\b",
                 msg_lower,
             )
-            filter_str = filter_match.group(1) if filter_match else None
+            filter_str = filter_match.group(1).removesuffix("s") if filter_match else None
             # A region explicitly named in the question takes precedence over
             # the previously selected map AOI; a custom polygon otherwise wins.
             mentioned_province = any(p in msg_lower for p in provinces_mz)
