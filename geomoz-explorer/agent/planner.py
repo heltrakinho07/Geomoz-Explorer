@@ -82,7 +82,7 @@ class GeoMozAgent:
         map_actions = []
         executed_runs = []
 
-        candidate_models = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"]
+        candidate_models = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash"]
         working_model = candidate_models[0]
 
         # Multi-turn tool calling loop (up to 5 iterations)
@@ -100,7 +100,7 @@ class GeoMozAgent:
             # Try working_model, or iterate through candidates if 404
             models_to_try = [working_model] + [m for m in candidate_models if m != working_model]
             for model_cand in models_to_try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_cand}:generateContent?key={clean_key}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_cand}:generateContent"
                 req = urllib.request.Request(
                     url,
                     data=json.dumps(payload).encode("utf-8"),
@@ -135,51 +135,50 @@ class GeoMozAgent:
             if not candidates:
                 break
 
-            part = candidates[0].get("content", {}).get("parts", [{}])[0]
-            func_call = part.get("functionCall")
-
-            if not func_call:
-                # Agent completed all tool calls and generated final textual synthesis
-                # Do not trust uncited free-form LLM numerical claims: rebuild
-                # narrative from the actual tool outputs, including failures.
+            content = candidates[0].get("content") or {}
+            calls = [p.get("functionCall") for p in content.get("parts", [])
+                     if isinstance(p, dict) and p.get("functionCall")]
+            if not calls:
+                # The model's prose may contain unsupported quantitative claims.
                 return cls._grounded_llm_summary(steps_log, executed_runs, map_actions)
 
-            # Handle Function Call
-            tool_name = func_call.get("name")
-            tool_args = func_call.get("args", {})
+            # Gemini may return parallel function calls and separate thinking parts.
+            contents.append(content)
+            tool_responses = []
+            for func_call in calls:
+                tool_name = func_call.get("name") or "unknown"
+                tool_args = func_call.get("args") or {}
+                step_entry = {
+                    "id": "step_{}".format(len(steps_log) + 1),
+                    "name": "Executar {}".format(tool_name.replace("_", " ").title()),
+                    "status": "running",
+                }
+                steps_log.append(step_entry)
+                try:
+                    tool_output = await ToolDispatcher.execute(tool_name, tool_args, current_map_state)
+                except Exception as exc:
+                    tool_output = {"status": "error", "message": str(exc)}
+                if not isinstance(tool_output, dict):
+                    tool_output = {"status": "error", "message": "Resposta inválida da ferramenta"}
+                ok = tool_output.get("status") == "success"
+                step_entry["status"] = "completed" if ok else "error"
+                numeric = tool_output.get("mean")
+                step_entry["resultSummary"] = (
+                    str(numeric) if isinstance(numeric, (float, int)) and not isinstance(numeric, bool)
+                    else tool_output.get("message") or ("Camada disponível" if ok else "Sem dados")
+                )
+                if ok and isinstance(tool_output.get("map_action"), dict):
+                    action = tool_output["map_action"]
+                    if action.get("type") != "ADD_LAYER" or action.get("tileUrl"):
+                        map_actions.append(action)
+                executed_runs.append({"tool": tool_name, "args": tool_args, "output": tool_output})
+                response = {"name": tool_name, "response": {"output": tool_output}}
+                if func_call.get("id"):
+                    response["id"] = func_call["id"]
+                tool_responses.append({"functionResponse": response})
 
-            step_entry = {
-                "id": f"step_{turn+1}",
-                "name": f"Executar {tool_name.replace('_', ' ').title()}",
-                "status": "running"
-            }
-            steps_log.append(step_entry)
-
-            tool_output = await ToolDispatcher.execute(tool_name, tool_args, current_map_state)
-            ok = tool_output.get("status") == "success"
-            step_entry["status"] = "completed" if ok else "error"
-            numeric = tool_output.get("mean")
-            step_entry["resultSummary"] = (
-                str(numeric) if isinstance(numeric, (float, int))
-                else tool_output.get("message") or ("Camada disponível" if ok else "Sem dados")
-            )
-            if ok and isinstance(tool_output.get("map_action"), dict):
-                action = tool_output["map_action"]
-                if action.get("type") != "ADD_LAYER" or action.get("tileUrl"):
-                    map_actions.append(action)
-            executed_runs.append({"tool": tool_name, "output": tool_output})
-
-            # Append model turn and function response
-            contents.append(candidates[0]["content"])
-            contents.append({
-                "role": "function",
-                "parts": [{
-                    "functionResponse": {
-                        "name": tool_name,
-                        "response": {"output": tool_output}
-                    }
-                }]
-            })
+            # Gemini's REST protocol requires functionResponse inside a user turn.
+            contents.append({"role": "user", "parts": tool_responses})
 
         # Fallback if loop finishes without text
         return cls._grounded_llm_summary(steps_log, executed_runs, map_actions)
