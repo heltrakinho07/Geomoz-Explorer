@@ -204,14 +204,13 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         throw new Error("Google Identity Services indisponível para autorizar Earth Engine.");
       }
 
-      // Test transport and server readiness BEFORE opening any Google dialog.
-      // This prevents users from authorizing Google when Cloud Run is offline.
-      const capabilities = oauthCapabilities;
-      if (!capabilities) {
-        throw new Error("Ainda não foi possível verificar a API GEE. Verifique a conexão ao servidor e tente novamente.");
-      }
+      // The authenticated capability check is advisory, not a prerequisite
+      // for a user gesture. If it failed or has not loaded yet, use the GIS
+      // temporary token flow instead of trapping the user behind a retry.
+      // Never await a network request before opening the GIS OAuth popup,
+      // otherwise browsers can reject it as not user-initiated.
       let connected = false;
-      if (capabilities.code_flow_ready && oauth.initCodeClient) {
+      if (oauthCapabilities?.code_flow_ready && oauth.initCodeClient) {
         const code = await new Promise<string>((resolve, reject) => {
           const client = oauth.initCodeClient({
             client_id: GOOGLE_CLIENT_ID,
@@ -243,7 +242,7 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         if (!connected) {
           throw new Error(result.message || "O Google Earth Engine não validou a autorização.");
         }
-      } else if (capabilities.token_flow_ready && oauth.initTokenClient) {
+      } else if (oauth.initTokenClient) {
         // The access-token flow cannot grant renewable/permanent access. We
         // explicitly report it as a temporary connection in the UI.
         const accessToken = await new Promise<string>((resolve, reject) => {
