@@ -446,9 +446,11 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                         <span>Ligar com a Conta Google</span>
                       </Button>
                       {!oauthReady && (
-                        <div className="flex flex-col gap-1.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
-                          <span>Não foi possível confirmar antecipadamente a disponibilidade do servidor. Pode tentar ligar a Conta Google; em caso de falha, será apresentado o erro.</span>
-                          <Button
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+                          Não foi possível confirmar antecipadamente a disponibilidade do servidor. Pode tentar ligar a Conta Google; em caso de falha, será apresentado o erro.
+                        </div>
+                      )}
+                      <Button
                             type="button"
                             variant="outline"
                             size="sm"
@@ -459,8 +461,6 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                             {checkingApi ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <RefreshCw size={14} className="mr-1.5" />}
                             {checkingApi ? "A verificar a API..." : "Voltar a verificar a API"}
                           </Button>
-                        </div>
-                      )}
                       {apiCheckResult && (
                         <div
                           role="status"
