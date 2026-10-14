@@ -1,4 +1,4 @@
-name: Diagnose and Repair GeoMoz GEE Firestore Access
+name: Diagnose GeoMoz GEE Firestore Access
 
 on:
   push:
@@ -22,7 +22,7 @@ env:
 
 jobs:
   firestore-runtime-access:
-    name: Confirm Cloud Run identity and repair Firestore data access
+    name: Inspect Cloud Run runtime Firestore prerequisites
     runs-on: ubuntu-latest
     steps:
       - name: Authenticate with existing deployment identity
@@ -65,25 +65,27 @@ jobs:
             exit 1
           fi
 
-      - name: Grant Firestore read/write only to Cloud Run runtime identity
+      - name: Inspect runtime service account Firestore role (read only)
         env:
           ACCOUNT: ${{ steps.runtime.outputs.runtime_account }}
         shell: bash
         run: |
           set -euo pipefail
-          echo "Ensuring roles/datastore.user for Cloud Run runtime service account, not the GitHub/Firebase deploy identity."
-          if ! gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-            --member="serviceAccount:$ACCOUNT" \
-            --role="roles/datastore.user" \
-            --condition=None \
-            --quiet \
-            --format='none'; then
-            echo "::error::The GitHub deployment identity cannot update Google Cloud project IAM. An owner or IAM administrator must grant roles/datastore.user to the Cloud Run runtime account."
-            echo "Command for an authorized GCP administrator:"
-            echo "gcloud projects add-iam-policy-binding $PROJECT_ID --member=serviceAccount:$ACCOUNT --role=roles/datastore.user --condition=None"
-            exit 1
+          echo "Checking whether Cloud Run runtime account has an explicit project-level roles/datastore.user grant."
+          BINDINGS=$(gcloud projects get-iam-policy "$PROJECT_ID" \
+            --flatten='bindings[].members' \
+            --filter="bindings.role=roles/datastore.user AND bindings.members=serviceAccount:$ACCOUNT" \
+            --format='value(bindings.role)' 2>&1) || {
+              echo "::warning::Unable to inspect IAM policy. Use a Google Cloud owner/IAM administrator to review the runtime identity."
+              exit 0
+            }
+          if [ -n "$BINDINGS" ]; then
+            echo "Explicit project-level roles/datastore.user binding is present."
+          else
+            echo "::warning::No explicit roles/datastore.user binding found for this Cloud Run runtime account. Inherited IAM roles may exist."
+            echo "An IAM administrator can grant Cloud Datastore User (roles/datastore.user) to the runtime account if needed."
+            echo "Project: $PROJECT_ID ; Cloud Run runtime account: $ACCOUNT"
           fi
-          echo "Firestore role binding successfully applied/confirmed for the runtime identity."
 
       - name: Recent sanitized GEE storage failures
         if: always()
@@ -100,6 +102,6 @@ jobs:
       - name: Explain remaining verification
         if: success()
         run: |
-          echo "Firestore runtime permission is granted. IAM propagation can take several minutes."
-          echo "Sign into GeoMoz, retry the authenticated GEE status request, then link the personal Google account."
-          echo "This job cannot verify a private user's tokens and does not grant OAuth consent."
+          echo "Read-only Firestore prerequisite diagnostics complete."
+          echo "No IAM policies, databases, service accounts or secrets were changed."
+          echo "After an administrator has verified the runtime IAM role, retry authenticated GEE status."
