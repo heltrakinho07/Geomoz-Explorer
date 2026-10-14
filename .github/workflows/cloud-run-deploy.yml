@@ -53,7 +53,7 @@ jobs:
 
       - name: Smoke check production image imports
         run: |
-          docker run --rm --entrypoint python ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}             -c "import api; import processing_jobs; print('GeoMoz API image imports OK')"
+          docker run --rm --entrypoint python ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}             -c "import api; import processing_jobs; from agent.planner import GeoMozAgent; from agent.registry import ToolDispatcher; from agent.geology_data import summarize_geology; print('GeoMoz API and GEOAGENTE runtime imports OK')"
 
       - name: Push Docker image to Artifact Registry
         run: |
