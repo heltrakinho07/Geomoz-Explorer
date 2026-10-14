@@ -104,7 +104,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Verify report export safety
-        run: pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/report-export.test.ts src/pages/__tests__/legal-pages.test.tsx
+        run: pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/report-export.test.ts src/pages/__tests__/legal-pages.test.tsx src/lib/__tests__/gee-connection-diagnostics.test.ts src/pages/__tests__/gee-auth-clickable.test.ts
         env:
           CI: "true"
 
