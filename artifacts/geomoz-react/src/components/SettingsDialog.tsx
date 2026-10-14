@@ -459,17 +459,17 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                             {checkingApi ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <RefreshCw size={14} className="mr-1.5" />}
                             {checkingApi ? "A verificar a API..." : "Voltar a verificar a API"}
                           </Button>
-                          {apiCheckResult && (
-                            <div
-                              role="status"
-                              aria-live="polite"
-                              className={`rounded-lg border p-2.5 text-[11px] leading-relaxed ${apiCheckResult.connected
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
-                                : "border-amber-300 bg-white text-amber-900 dark:bg-slate-900 dark:text-amber-200"}`}
-                            >
-                              {apiCheckResult.message}
-                            </div>
-                          )}
+                        </div>
+                      )}
+                      {apiCheckResult && (
+                        <div
+                          role="status"
+                          aria-live="polite"
+                          className={`rounded-lg border p-3 text-xs leading-relaxed ${apiCheckResult.connected
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+                            : "border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200"}`}
+                        >
+                          {apiCheckResult.message}
                         </div>
                       )}
                       <p className="text-center text-[11px] text-slate-500 dark:text-slate-400">
