@@ -37,9 +37,9 @@ def _select_geology(province=None, district=None, geometry=None, filter_str=None
             raise ValueError("A área de estudo deve ser GeoJSON válido.")
         if len(str(geometry)) > 300_000:
             raise ValueError("Área desenhada demasiado complexa: simplifique o polígono.")
-        selected_geometry = shape(geometry)
-        if selected_geometry.geom_type not in {"Polygon", "MultiPolygon"}:
+        if geometry.get("type") not in {"Polygon", "MultiPolygon"}:
             raise ValueError("A área de estudo tem de ser um polígono.")
+        selected_geometry = shape(geometry)
         if not selected_geometry.is_valid:
             selected_geometry = selected_geometry.buffer(0)
         if selected_geometry.is_empty:
