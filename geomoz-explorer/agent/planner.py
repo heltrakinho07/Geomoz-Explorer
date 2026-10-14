@@ -383,7 +383,7 @@ class GeoMozAgent:
         ):
             import re
             filter_match = re.search(
-                r"\\b(granito|basalto|gnaisse|gnaisse|calcário|calcario|quartzito|gabro|xisto|arenito)\\b",
+                r"\b(granitos?|basaltos?|gnaiss(?:e|es)?|calcári(?:o|os)|calcari(?:o|os)|quartzitos?|gabros?|xistos?|arenitos?)\b",
                 msg_lower,
             )
             filter_str = filter_match.group(1) if filter_match else None
