@@ -28,8 +28,8 @@ describe("GeoMoz public legal pages", () => {
   });
 
   it("keeps both routes outside authentication and links only in the landing footer", () => {
-    const app = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
-    const landing = readFileSync(new URL("../LandingPage.tsx", import.meta.url), "utf8");
+    const app = readFileSync("src/App.tsx", "utf8");
+    const landing = readFileSync("src/pages/LandingPage.tsx", "utf8");
     expect(app).toContain('<Route path="/privacy">{() => <PrivacyPolicy />}</Route>');
     expect(app).toContain('<Route path="/terms">{() => <TermsOfService />}</Route>');
     expect(app.indexOf('path="/privacy"')).toBeLessThan(app.indexOf('path="/app"'));
