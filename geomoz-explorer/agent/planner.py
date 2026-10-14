@@ -6,12 +6,39 @@ Uses Gemini 2.0 Flash Function Calling with fallback to deterministic spatial he
 import os
 import json
 import logging
+import unicodedata
 import urllib.request
 import urllib.error
 from typing import Dict, Any, List, Optional
 from agent.registry import TOOL_DECLARATIONS, ToolDispatcher
 
 logger = logging.getLogger(__name__)
+
+def _fold_text(value: str) -> str:
+    """Normalise Portuguese accents for routing and province recognition."""
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", value.casefold())
+        if not unicodedata.combining(c)
+    )
+
+
+def _is_catalogue_geology_request(message: str) -> bool:
+    """Route geology-only questions to verified data, not expensive GEE/LLM calls."""
+    text = _fold_text(message)
+    catalogue = (
+        "geol", "litolog", "formac", "rocha", "granito", "basalto", "gnaiss",
+        "calcario", "quartzito", "gabro", "xisto", "arenito", "litoestratigraf",
+    )
+    advanced = (
+        "ouro", "cobre", "mineraliza", "prospect", "prospec", "favorabil",
+        "targeting", "hidroterm", "indice", "espectral", "lineament",
+        "fractur", "falha", "tecton", "sismic", "anomalia",
+    )
+    return any(word in text for word in catalogue) and not any(
+        word in text for word in advanced
+    )
+
+
 
 SYSTEM_PROMPT = """És o GeoMoz Agent, a Inteligência Geoespacial da Geolithica especializada na geologia, 
 hidrologia e território de Moçambique.
@@ -43,6 +70,13 @@ class GeoMozAgent:
         model: Optional[str] = None
     ) -> Dict[str, Any]:
         """Orchestrate plan, execute tools, and return map actions and synthesis."""
+        current_map_state = current_map_state if isinstance(current_map_state, dict) else {}
+        # Published GeoMoz geology is a deterministic public catalogue. Even if
+        # an OpenAI/Gemini key is configured, catalogue-only questions must not
+        # depend on third-party model availability or Google Earth Engine login.
+        if _is_catalogue_geology_request(user_message):
+            return await cls._run_heuristic_planner(user_message, current_map_state)
+
         clean_openai = (openai_api_key or os.getenv("OPENAI_API_KEY") or "").strip().strip("`").strip('"').strip("'")
         clean_gemini = (gemini_api_key or os.getenv("GEMINI_API_KEY") or "").strip().strip("`").strip('"').strip("'")
         chosen_provider = (provider or "auto").lower()
@@ -90,7 +124,9 @@ class GeoMozAgent:
         client = openai.AsyncOpenAI(api_key=api_key)
         chosen_model = model or "gpt-4o"
 
-        aoi = current_map_state.get("aoi", {})
+        aoi = current_map_state.get("aoi") or {}
+        if not isinstance(aoi, dict):
+            aoi = {}
         aoi_label = aoi.get("label") or "Moçambique (Geral)"
         temporal = current_map_state.get("temporalWindow", {})
         context_str = f"Contexto Atual do Mapa: AOI='{aoi_label}', Período={temporal}"
@@ -217,7 +253,9 @@ class GeoMozAgent:
         clean_key = (api_key or "").strip().strip("`").strip('"').strip("'")
 
         # Context injection
-        aoi = current_map_state.get("aoi", {})
+        aoi = current_map_state.get("aoi") or {}
+        if not isinstance(aoi, dict):
+            aoi = {}
         aoi_label = aoi.get("label") or "Moçambique (Geral)"
         context_str = f"Contexto Atual do Mapa: AOI='{aoi_label}', Período='{current_map_state.get('temporalWindow', {})}'"
 
@@ -354,16 +392,19 @@ class GeoMozAgent:
         current_map_state: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Deterministic fallback planner when Gemini API key is unavailable."""
-        msg_lower = user_message.lower()
+        msg_lower = user_message.casefold()
+        folded_message = _fold_text(user_message)
 
-        aoi = current_map_state.get("aoi", {})
+        aoi = current_map_state.get("aoi") or {}
+        if not isinstance(aoi, dict):
+            aoi = {}
         province = aoi.get("province") or "Maputo"
         district = aoi.get("district")
 
         # Detect geographical mentions in prompt
         provinces_mz = ["maputo", "gaza", "inhambane", "sofala", "manica", "tete", "zambezia", "nampula", "cabo delgado", "niassa"]
         for p in provinces_mz:
-            if p in msg_lower:
+            if p in folded_message:
                 province = p.title()
                 break
 
@@ -378,9 +419,7 @@ class GeoMozAgent:
             "gnaiss", "calcário", "calcario", "quartzito", "gabro", "xisto", "arenito"
         )
         targeting_terms = ("ouro", "cobre", "prospec", "mineraliza", "favorabil", "targeting")
-        if any(term in msg_lower for term in geology_terms) and not any(
-            term in msg_lower for term in targeting_terms
-        ):
+        if _is_catalogue_geology_request(user_message):
             import re
             filter_match = re.search(
                 r"\b(granitos?|basaltos?|gnaiss(?:e|es)?|calcári(?:o|os)|calcari(?:o|os)|quartzitos?|gabros?|xistos?|arenitos?)\b",
