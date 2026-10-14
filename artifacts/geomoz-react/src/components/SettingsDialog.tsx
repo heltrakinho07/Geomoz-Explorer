@@ -31,6 +31,7 @@ import {
   Layers,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { diagnoseGeeApi } from "@/lib/gee-connection-diagnostics";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -70,10 +71,12 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const [savingSa, setSavingSa] = useState(false);
   const [testResult, setTestResult] = useState<{ connected: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
+  const [checkingApi, setCheckingApi] = useState(false);
+  const [apiCheckResult, setApiCheckResult] = useState<{ connected: boolean; message: string } | null>(null);
 
   // Sync inputs with active context and user profile
   React.useEffect(() => {
-    setProjectIdInput(geeProject || "geoprocessamento-426809");
+    setProjectIdInput(geeProject && geeProject !== "eengine-project" ? geeProject : "geoprocessamento-426809");
     setAccountInput(geeAccount || (user?.email || ""));
   }, [geeProject, geeAccount, user]);
 
@@ -150,6 +153,28 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
       });
     } finally {
       setConnectingGoogle(false);
+    }
+  };
+
+  const handleRetryApi = async () => {
+    setCheckingApi(true);
+    setApiCheckResult(null);
+    try {
+      const diagnostic = await diagnoseGeeApi();
+      setApiCheckResult({
+        connected: diagnostic.connected,
+        message: diagnostic.message,
+      });
+      if (diagnostic.apiOnline) {
+        await refreshStatus();
+      }
+    } catch (err) {
+      setApiCheckResult({
+        connected: false,
+        message: err instanceof Error ? err.message : "Não foi possível concluir o diagnóstico da API.",
+      });
+    } finally {
+      setCheckingApi(false);
     }
   };
 
@@ -423,13 +448,28 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       {!oauthReady && (
                         <div className="flex flex-col gap-1.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
                           <span>Não foi possível confirmar antecipadamente a disponibilidade do servidor. Pode tentar ligar a Conta Google; em caso de falha, será apresentado o erro.</span>
-                          <button
+                          <Button
                             type="button"
-                            onClick={() => { void refreshStatus(); }}
-                            className="self-start font-semibold text-sky-700 underline underline-offset-2 hover:text-sky-900 dark:text-sky-300"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleRetryApi}
+                            disabled={checkingApi}
+                            className="self-start min-h-9 border-sky-300 bg-white px-3 text-xs font-semibold text-sky-800 hover:bg-sky-50 dark:bg-slate-900 dark:text-sky-300"
                           >
-                            Voltar a verificar a API
-                          </button>
+                            {checkingApi ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <RefreshCw size={14} className="mr-1.5" />}
+                            {checkingApi ? "A verificar a API..." : "Voltar a verificar a API"}
+                          </Button>
+                          {apiCheckResult && (
+                            <div
+                              role="status"
+                              aria-live="polite"
+                              className={`rounded-lg border p-2.5 text-[11px] leading-relaxed ${apiCheckResult.connected
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+                                : "border-amber-300 bg-white text-amber-900 dark:bg-slate-900 dark:text-amber-200"}`}
+                            >
+                              {apiCheckResult.message}
+                            </div>
+                          )}
                         </div>
                       )}
                       <p className="text-center text-[11px] text-slate-500 dark:text-slate-400">
@@ -469,7 +509,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       ID do projeto GCP onde a API do Earth Engine está ativada (ex: <code>geoprocessamento-426809</code> ou o projeto indicado no <a href="https://code.earthengine.google.com" target="_blank" rel="noreferrer" className="text-sky-600 underline">Code Editor</a>).
                     </p>
                     <a
-                      href={`https://console.cloud.google.com/apis/library/earthengine.googleapis.com?project=${projectIdInput.trim() || "geoprocessamento-426809"}`}
+                      href={`https://console.cloud.google.com/apis/library/earthengine.googleapis.com?project=${projectIdInput.trim() && projectIdInput.trim() !== "eengine-project" ? projectIdInput.trim() : "geoprocessamento-426809"}`}
                       target="_blank"
                       rel="noreferrer"
                       className="text-[10px] text-sky-600 hover:underline inline-flex items-center gap-1"
