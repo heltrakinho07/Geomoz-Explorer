@@ -52,6 +52,15 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
 
+      - name: Validate crawlable OAuth legal pages
+        run: |
+          test -s artifacts/geomoz-react/dist/public/privacy.html
+          test -s artifacts/geomoz-react/dist/public/terms.html
+          grep -q 'Política de Privacidade' artifacts/geomoz-react/dist/public/privacy.html
+          grep -q 'Google Earth Engine' artifacts/geomoz-react/dist/public/privacy.html
+          grep -q 'href="/privacy"' artifacts/geomoz-react/dist/public/index.html
+          grep -q '"cleanUrls": true' firebase.json
+
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
