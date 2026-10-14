@@ -47,6 +47,20 @@ type AgentGeologyGeoJSON = GeoJSON.FeatureCollection & {
   bbox?: number[]; source?: string; generalized?: boolean; originalFeatureCount?: number;
 };
 type AgentScope = { domain: "geology"; province?: string | null; district?: string | null; filter_str?: string | null; geometry?: GeoJSON.Geometry | null; };
+const AGENT_MODELS: Record<string, { value: string; label: string }[]> = {
+  auto: [{ value: "", label: "Escolha automática" }],
+  openai: [
+    { value: "gpt-4o", label: "GPT-4o" }, { value: "gpt-4o-mini", label: "GPT-4o mini" },
+    { value: "gpt-4.1", label: "GPT-4.1" }, { value: "gpt-4.1-mini", label: "GPT-4.1 mini" },
+    { value: "o3", label: "o3" }, { value: "o4-mini", label: "o4-mini" },
+    { value: "gpt-5-mini", label: "GPT-5 mini" },
+  ],
+  gemini: [
+    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+    { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+    { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite" },
+  ],
+};
 
 function ZoomToGeology({ bounds }: { bounds?: number[] }) {
   const map = useMap();
@@ -328,9 +342,9 @@ export default function GeoMozAIAgentTab() {
 
   const [model, setModel] = useState<string>(() => {
     try {
-      return localStorage.getItem("geomoz_agent_model") || "gpt-4o";
+      return localStorage.getItem("geomoz_agent_model") || "";
     } catch {
-      return "gpt-4o";
+      return "";
     }
   });
 
@@ -352,7 +366,8 @@ export default function GeoMozAIAgentTab() {
     setOpenaiApiKey(oKey);
     setGeminiApiKey(gKey);
     setProvider(tempProvider);
-    setModel(tempModel);
+    const validModel = AGENT_MODELS[tempProvider]?.some(x => x.value === tempModel) ? tempModel : "";
+    setModel(validModel);
 
     try {
       if (oKey) localStorage.setItem("geomoz_openai_api_key", oKey);
@@ -362,7 +377,7 @@ export default function GeoMozAIAgentTab() {
       else localStorage.removeItem("geomoz_gemini_api_key");
 
       localStorage.setItem("geomoz_agent_provider", tempProvider);
-      localStorage.setItem("geomoz_agent_model", tempModel);
+      localStorage.setItem("geomoz_agent_model", validModel);
     } catch {}
 
     setShowConfigModal(false);
@@ -370,10 +385,10 @@ export default function GeoMozAIAgentTab() {
 
   const activeProviderLabel = (() => {
     if (provider === "openai" || (provider === "auto" && openaiApiKey.trim())) {
-      return `OpenAI (${model || "GPT-4o"})`;
+      return `OpenAI (${model || "automático"})`;
     }
     if (provider === "gemini" || (provider === "auto" && geminiApiKey.trim())) {
-      return "Google Gemini (2.0 Flash)";
+      return `Google Gemini (${model || "automático"})`;
     }
     return "Heurístico Spatial (Offline)";
   })();
@@ -662,7 +677,7 @@ export default function GeoMozAIAgentTab() {
           openai_api_key: openaiApiKey.trim() || undefined,
           gemini_api_key: geminiApiKey.trim() || undefined,
           provider: provider || "auto",
-          model: model || "gpt-4o",
+          model: model || undefined,
         }),
       });
 
@@ -782,7 +797,7 @@ export default function GeoMozAIAgentTab() {
         steps: finalSteps,
         runs: computedLayers,
         provider: data.provider || provider,
-        model: data.model || model,
+        model: data.model || (data.provider === "deterministic-geology" ? "Catálogo GeoMoz" : model),
       };
 
       setMessages((prev) => [...prev, agentMsg]);
@@ -1152,7 +1167,10 @@ export default function GeoMozAIAgentTab() {
                   <label className="text-[10px] font-semibold text-slate-400 block mb-1">Provedor Preferencial</label>
                   <select
                     value={tempProvider}
-                    onChange={(e) => setTempProvider(e.target.value)}
+                    onChange={(e) => {
+                        setTempProvider(e.target.value);
+                        setTempModel(AGENT_MODELS[e.target.value]?.[0]?.value || "");
+                      }
                     className="w-full px-2 py-1 text-xs rounded-lg bg-slate-900 border border-slate-700 text-slate-200 focus:outline-none focus:border-violet-500"
                   >
                     <option value="auto">Automático (Detecta Ativa)</option>
@@ -1162,15 +1180,15 @@ export default function GeoMozAIAgentTab() {
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-semibold text-slate-400 block mb-1">Modelo OpenAI</label>
+                  <label className="text-[10px] font-semibold text-slate-400 block mb-1">Modelo compatível</label>
                   <select
                     value={tempModel}
                     onChange={(e) => setTempModel(e.target.value)}
                     className="w-full px-2 py-1 text-xs rounded-lg bg-slate-900 border border-slate-700 text-slate-200 focus:outline-none focus:border-violet-500"
                   >
-                    <option value="gpt-4o">GPT-4o (Recomendado)</option>
-                    <option value="gpt-4o-mini">GPT-4o mini (Económico)</option>
-                    <option value="o3-mini">o3-mini (Raciocínio)</option>
+                    {(AGENT_MODELS[tempProvider] || AGENT_MODELS.auto).map((entry) => (
+                       <option key={entry.value} value={entry.value}>{entry.label}</option>
+                     ))}
                   </select>
                 </div>
               </div>
