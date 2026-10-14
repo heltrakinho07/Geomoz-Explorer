@@ -1107,6 +1107,9 @@ async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_fir
     user_project = req.project or (gee_session_store.get_token(uid) or {}).get("project")
     if not user_project:
         raise HTTPException(status_code=400, detail="Indique o ID do seu projeto Google Cloud.")
+    # Replace, never merge OAuth credentials. A previous Google account's
+    # refresh token must not survive a user switching to another Google account.
+    gee_session_store.clear_token(uid)
     gee_session_store.set_token(uid, {
         "access_token": req.access_token,
         "project": user_project,
@@ -1185,14 +1188,16 @@ async def gee_oauth_exchange_code(req: OAuthCodeRequest, request: Request, uid: 
     if not project:
         raise HTTPException(status_code=400, detail="Indique o projeto Google Cloud da sua conta GEE.")
 
-    user_data = gee_session_store.get_token(uid) or {}
-    user_data["access_token"] = access_token
-    if refresh_token:
-        user_data["refresh_token"] = refresh_token
-    user_data["project"] = project
-    user_data["updated_at"] = time.time()
-    user_data["expires_in"] = token_response.get("expires_in", 3600)
-
+    # Never reuse a refresh token from an earlier authorization: it could
+    # belong to a different Google account than this freshly issued code.
+    user_data = {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "project": project,
+        "updated_at": time.time(),
+        "expires_in": token_response.get("expires_in", 3600),
+    }
+    gee_session_store.clear_token(uid)
     gee_session_store.set_token(uid, user_data)
     logger.info("Permanent GEE OAuth credentials stored for user '%s': has_refresh_token=%s", uid, bool(refresh_token or user_data.get("refresh_token")))
 
