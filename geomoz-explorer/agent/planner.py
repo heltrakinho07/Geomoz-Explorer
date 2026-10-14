@@ -11,6 +11,7 @@ import urllib.request
 import urllib.error
 from typing import Dict, Any, List, Optional
 from agent.registry import TOOL_DECLARATIONS, ToolDispatcher
+from agent.geology_intent import is_catalogue_request, is_geology_followup, resolve_geology_scope
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,8 @@ class GeoMozAgent:
         # Published GeoMoz geology is a deterministic public catalogue. Even if
         # an OpenAI/Gemini key is configured, catalogue-only questions must not
         # depend on third-party model availability or Google Earth Engine login.
-        if _is_catalogue_geology_request(user_message):
+        context = current_map_state.get("agentContext")
+        if is_catalogue_request(user_message) or is_geology_followup(user_message, context):
             return await cls._run_heuristic_planner(user_message, current_map_state)
 
         clean_openai = (openai_api_key or os.getenv("OPENAI_API_KEY") or "").strip().strip("`").strip('"').strip("'")
@@ -102,7 +104,8 @@ class GeoMozAgent:
                     user_message=user_message,
                     current_map_state=current_map_state,
                     api_key=clean_gemini,
-                    chat_history=chat_history
+                    chat_history=chat_history,
+                    model=model
                 )
             except Exception as exc:
                 logger.warning("Gemini API call failed (%s). Falling back to spatial heuristic planner.", exc)
@@ -122,7 +125,7 @@ class GeoMozAgent:
         """Execute ReAct cycle via OpenAI API using native Function Calling / Tools."""
         import openai
         client = openai.AsyncOpenAI(api_key=api_key)
-        chosen_model = model or "gpt-4o"
+        chosen_model = model if model and model.startswith(("gpt-", "o3", "o4")) else "gpt-4o"
 
         aoi = current_map_state.get("aoi") or {}
         if not isinstance(aoi, dict):
@@ -172,7 +175,7 @@ class GeoMozAgent:
                 "tool_choice": "auto",
             }
             # Reasoning models (o1, o3-mini) do not accept temperature
-            if not chosen_model.startswith("o"):
+            if not chosen_model.startswith(("o", "gpt-5")):
                 call_kwargs["temperature"] = 0.2
 
             response = await client.chat.completions.create(**call_kwargs)
@@ -247,7 +250,8 @@ class GeoMozAgent:
         user_message: str,
         current_map_state: Dict[str, Any],
         api_key: str,
-        chat_history: Optional[List[Dict[str, str]]] = None
+        chat_history: Optional[List[Dict[str, str]]] = None,
+        model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute ReAct cycle via Gemini API using Function Calling."""
         clean_key = (api_key or "").strip().strip("`").strip('"').strip("'")
@@ -276,7 +280,10 @@ class GeoMozAgent:
         map_actions = []
         executed_runs = []
 
-        candidate_models = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"]
+        candidate_models = (
+            [model] if model and model.startswith("gemini-")
+            else ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"]
+        )
         working_model = candidate_models[0]
 
         # Multi-turn tool calling loop (up to 5 iterations)
@@ -294,7 +301,7 @@ class GeoMozAgent:
             # Try working_model, or iterate through candidates if 404
             models_to_try = [working_model] + [m for m in candidate_models if m != working_model]
             for model_cand in models_to_try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_cand}:generateContent?key={clean_key}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_cand}:generateContent"
                 req = urllib.request.Request(
                     url,
                     data=json.dumps(payload).encode("utf-8"),
@@ -412,31 +419,21 @@ class GeoMozAgent:
         map_actions = []
         executed_runs = []
 
-        # Direct geology catalogue queries must not depend on Google Earth Engine
-        # or accidentally trigger mineral-prospectivity models.
-        geology_terms = (
-            "geol", "litolog", "formac", "rocha", "granito", "basalto",
-            "gnaiss", "calcário", "calcario", "quartzito", "gabro", "xisto", "arenito"
-        )
-        targeting_terms = ("ouro", "cobre", "prospec", "mineraliza", "favorabil", "targeting")
-        if _is_catalogue_geology_request(user_message):
-            import re
-            filter_match = re.search(
-                r"\b(granitos?|basaltos?|gnaiss(?:e|es)?|calcári(?:o|os)|calcari(?:o|os)|quartzitos?|gabros?|xistos?|arenitos?)\b",
-                msg_lower,
-            )
-            filter_str = filter_match.group(1).removesuffix("s") if filter_match else None
-            # A region explicitly named in the question takes precedence over
-            # the previously selected map AOI; a custom polygon otherwise wins.
-            mentioned_province = any(p in msg_lower for p in provinces_mz)
+        # Follow-up commands retain the previous geological query instead of
+        # falling through to the default NDVI/agriculture workflow.
+        if is_catalogue_request(user_message) or is_geology_followup(
+            user_message, current_map_state.get("agentContext")
+        ):
+            scope = resolve_geology_scope(user_message, current_map_state)
             geo_context = dict(current_map_state)
-            if mentioned_province:
-                geo_context["aoi"] = {"province": province, "district": None}
+            geo_context["aoi"] = {
+                "province": scope["province"], "district": scope["district"],
+                "geometry": scope["geometry"],
+            }
             result = await ToolDispatcher.execute(
                 "get_geology_units",
-                {"province": province if mentioned_province else aoi.get("province"),
-                 "district": None if mentioned_province else district,
-                 "filter_str": filter_str},
+                {"province": scope["province"], "district": scope["district"],
+                 "filter_str": scope["filter_str"]},
                 geo_context,
             )
             if result.get("status") != "success":
@@ -446,19 +443,19 @@ class GeoMozAgent:
                     "plan": ["Consultar a base geológica do GeoMoz"],
                     "steps": [{"id": "geology", "name": "Consulta ao catálogo geológico",
                                "status": "error", "resultSummary": message}],
-                    "map_actions": [], "runs": [],
+                    "map_actions": [], "runs": [], "agent_context": scope,
                     "synthesis": message,
                 }
-            map_actions = [result["map_action"]] if result.get("map_action") else []
             return {
                 "status": "completed", "provider": "deterministic-geology",
                 "plan": ["Consultar e quantificar unidades geológicas reais"],
                 "steps": [{"id": "geology", "name": "Consulta espacial à carta geológica",
                            "status": "completed",
                            "resultSummary": f'{result.get("unitsCount", 0)} polígonos reais'}],
-                "map_actions": map_actions,
+                "map_actions": [result["map_action"]] if result.get("map_action") else [],
                 "runs": [{"tool": "get_geology_units",
                           "output": {k: v for k, v in result.items() if k != "map_action"}}],
+                "agent_context": scope,
                 "synthesis": result.get("summary", "Consulta geológica concluída."),
             }
 

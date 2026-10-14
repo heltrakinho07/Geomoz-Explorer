@@ -177,4 +177,17 @@ jobs:
           assert result.get("status") == "completed", result.get("synthesis") or result.get("status")
           assert result.get("map_actions"), "Geology summary failed to create map action"
           print("GEOAGENTE answered the real Manica geology query inside the Docker image")
+          vector_request = urllib.request.Request(
+              "http://127.0.0.1:5003/geomoz-api/ai/geology-features",
+              data=json.dumps({"province": "Manica"}).encode("utf-8"),
+              headers={"Content-Type": "application/json"}, method="POST",
+          )
+          with urllib.request.urlopen(vector_request, timeout=150) as response:
+              assert response.status == 200
+              vector = json.load(response)
+          assert vector["type"] == "FeatureCollection"
+          assert vector["features"], "Real Manica vectors missing"
+          assert len(vector["features"]) <= 700, "Vector layer exceeds map rendering budget"
+          assert vector.get("originalFeatureCount", 0) >= len(vector["features"])
+          print("Real Manica vector data is renderable within the feature budget")
           PY

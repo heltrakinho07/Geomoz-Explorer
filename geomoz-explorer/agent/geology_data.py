@@ -160,40 +160,86 @@ def summarize_geology(*, province=None, district=None, geometry=None, filter_str
 
 
 def geology_features(*, province=None, district=None, geometry=None, filter_str=None) -> dict[str, Any]:
-    """Return bounded GeoJSON for an interactive map, or a clear actionable error."""
+    """Render all mapped units through a bounded, zoom-friendly GeoJSON layer.
+
+    A province may have thousands of polygon parts. For visualization only,
+    merge parts by mapped unit then simplify at increasing tolerances until
+    the JSON fits the 3-MB budget. Statistics always use untouched polygons.
+    """
+    import json
+
+    import pandas as pd
     from shapely.geometry import mapping
     from utils.common import find_col, color_for
 
     frame, _ = _select_geology(province, district, geometry, filter_str)
-    if len(frame) > MAX_FEATURES:
-        raise ValueError(
-            f"A consulta encontrou {len(frame)} polígonos, acima do limite de "
-            f"{MAX_FEATURES} por visualização. Seleccione um distrito ou filtre uma litologia."
-        )
-    name_col = find_col(frame, ["Legend", "LEGEND", "Lithology", "LITOLOGIA", "DESC_UNIDA", "DESCRICAO", "UNIT_NAME", "Formation", "FORMACAO", "code2006", "Simbolo"])
+    original_count = len(frame)
+    if original_count == 0:
+        return {"type": "FeatureCollection", "features": [], "source": GEOLOGY_SOURCE,
+                "generalized": False, "originalFeatureCount": 0}
+
+    name_col = find_col(frame, ["Legend", "LEGEND", "Lithology", "LITOLOGIA",
+                                "DESC_UNIDA", "DESCRICAO", "UNIT_NAME",
+                                "Formation", "FORMACAO", "code2006", "Simbolo"])
     era_col = find_col(frame, ["ERA"])
     period_col = find_col(frame, ["PERIOD"])
-    litho_col = find_col(frame, ["Lithology", "LITOLOGIA", "LITOLOGIA_", "DESC_UNIDA"])
-    features = []
-    for _, row in frame.iterrows():
-        geom = row.geometry
-        if geom is None or geom.is_empty:
-            continue
-        unit = str(row[name_col]) if name_col and row[name_col] is not None else "Não identificada"
-        props = {
-            "unit": unit,
-            "_color": color_for(unit),
-            "lithology": str(row[litho_col]) if litho_col and row[litho_col] is not None else None,
-            "era": str(row[era_col]) if era_col and row[era_col] is not None else None,
-            "period": str(row[period_col]) if period_col and row[period_col] is not None else None,
-        }
-        features.append({"type": "Feature", "geometry": mapping(geom), "properties": props})
+    litho_col = find_col(frame, ["Lithology", "LITOLOGIA", "LITOLOGIA_",
+                                "DESC_UNIDA"])
 
-    import json
-    payload = {"type": "FeatureCollection", "features": features, "source": GEOLOGY_SOURCE}
-    if not frame.empty:
-        bounds = frame.total_bounds.tolist()
-        payload["bbox"] = [float(n) for n in bounds]
-    if len(json.dumps(payload, ensure_ascii=False)) > MAX_GEOJSON_BYTES:
-        raise ValueError("A camada é demasiado extensa. Seleccione uma área menor ou uma litologia.")
-    return payload
+    def clean(value):
+        return None if value is None or pd.isna(value) else str(value)
+
+    frame = frame.copy()
+    frame["_unit_label"] = (
+        frame[name_col].map(clean).fillna("Não identificada")
+        if name_col else "Não identificada"
+    )
+    generalized = original_count > MAX_FEATURES
+    if generalized:
+        # Dissolve is for drawing only: preserve original area calculations
+        # and metadata from the source data, never derive analytics from here.
+        frame = frame.dissolve(by="_unit_label", as_index=False, aggfunc="first")
+
+    def serialize(data, tolerance=0):
+        features = []
+        for _, row in data.iterrows():
+            geom = row.geometry
+            if geom is None or geom.is_empty:
+                continue
+            if tolerance:
+                geom = geom.simplify(tolerance, preserve_topology=True)
+            if geom.is_empty:
+                continue
+            unit = row["_unit_label"]
+            props = {
+                "unit": str(unit),
+                "_color": color_for(str(unit)),
+                "lithology": clean(row[litho_col]) if litho_col else None,
+                "era": clean(row[era_col]) if era_col else None,
+                "period": clean(row[period_col]) if period_col else None,
+            }
+            features.append({"type": "Feature", "geometry": mapping(geom),
+                             "properties": props})
+
+        payload = {
+            "type": "FeatureCollection", "features": features,
+            "source": GEOLOGY_SOURCE,
+            "generalized": generalized or tolerance > 0,
+            "originalFeatureCount": original_count,
+        }
+        bounds = data.total_bounds.tolist()
+        if all(pd.notna(item) for item in bounds):
+            payload["bbox"] = [float(item) for item in bounds]
+        return payload
+
+    # Keep maximum map fidelity whenever possible. Simplify only when needed.
+    for tolerance in ([0, 0.005, 0.01, 0.02, 0.04, 0.08] if generalized
+                      else [0, 0.002, 0.005, 0.01, 0.02, 0.04, 0.08]):
+        payload = serialize(frame, tolerance)
+        if (len(payload["features"]) <= MAX_FEATURES
+                and len(json.dumps(payload, ensure_ascii=False)) <= MAX_GEOJSON_BYTES):
+            return payload
+    raise ValueError(
+        "A camada excede o limite de visualização mesmo após generalização. "
+        "Seleccione um distrito ou filtre uma litologia."
+    )
