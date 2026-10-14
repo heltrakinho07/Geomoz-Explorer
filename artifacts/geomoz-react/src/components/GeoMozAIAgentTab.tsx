@@ -1207,7 +1207,7 @@ export default function GeoMozAIAgentTab() {
                         setVerifiedModels(null);
                         setModelsMessage("");
                         setTempModel(AGENT_MODELS[e.target.value]?.[0]?.value || "");
-                      }
+                      }}
                     className="w-full px-2 py-1 text-xs rounded-lg bg-slate-900 border border-slate-700 text-slate-200 focus:outline-none focus:border-violet-500"
                   >
                     <option value="auto">Automático (Detecta Ativa)</option>
