@@ -43,6 +43,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const { user, signOut } = useAuth();
   const {
     geeConnected,
+    oauthReady,
     geeProject,
     geeAccount,
     isPermanent,
@@ -395,7 +396,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                   ) : (
                     <div className="space-y-2">
                       <Button
-                        onClick={handleConnectGee}
+                        onClick={oauthReady ? handleConnectGee : () => { void refreshStatus(); }}
                         disabled={geeLoading}
                         className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl shadow-sm flex items-center justify-center gap-2.5 text-xs transition-all"
                       >
@@ -417,7 +418,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                             d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                           />
                         </svg>
-                        <span>Ligar com a Conta Google</span>
+                        <span>{oauthReady ? "Ligar com a Conta Google" : "Verificar disponibilidade do servidor GEE"}</span>
                       </Button>
                       <p className="text-center text-[11px] text-slate-500 dark:text-slate-400">
                         A autorização abre uma janela Google. Se for bloqueada, permita pop-ups para este site nas definições do navegador.
