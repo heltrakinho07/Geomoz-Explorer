@@ -1172,7 +1172,7 @@ async def synthesize_study(req: StudySynthesisRequest):
     note = category_notes.get(req.category,
         "A interpretação requer validação geoespacial e conhecimento de campo; "
         "o cálculo de um índice não comprova causalidade.")
-    caveats = "\\n".join("- " + w for w in warnings) if warnings else "Sem alertas automáticos adicionais."
+    caveats = "\n".join("- " + w for w in warnings) if warnings else "Sem alertas automáticos adicionais."
     synthesis = """### Diagnóstico técnico baseado em resultados
 
 **Área:** {}  
@@ -1194,7 +1194,7 @@ e recolher dados de campo antes de classificar zonas de favorabilidade.
 """.format(
         req.aoiLabel, req.period.get("startDate", "N/D"),
         req.period.get("endDate", "N/D"), ", ".join(sorted(sources)),
-        counted, "\\n".join(lines), note, caveats)
+        counted, "\n".join(lines), note, caveats)
     return {"status": "completed", "synthesis": synthesis}
 
 
