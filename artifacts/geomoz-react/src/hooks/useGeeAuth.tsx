@@ -21,6 +21,7 @@ const GEE_SCOPE =
 
 export interface GeeAuthContextType {
   geeConnected: boolean;
+  oauthReady: boolean;
   geeProject: string | null;
   geeAccount: string | null;
   isPermanent: boolean;
@@ -72,6 +73,7 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const uid = user?.uid !== "guest_user" ? user?.uid : undefined;
   const [geeConnected, setGeeConnected] = useState(false);
+  const [oauthCapabilities, setOauthCapabilities] = useState<{ code_flow_ready: boolean; token_flow_ready: boolean } | null>(null);
   const [geeProject, setGeeProject] = useState<string | null>(null);
   const [geeAccount, setGeeAccount] = useState<string | null>(null);
   const [isPermanent, setIsPermanent] = useState(false);
@@ -79,6 +81,29 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const generation = useRef(0);
+
+  // Preload the backend capability before any click: Google popup APIs need
+  // to be invoked synchronously from a real user gesture. Awaiting a network
+  // request inside the click handler would trigger browser popup blockers.
+  const refreshOAuthCapabilities = useCallback(async () => {
+    setOauthCapabilities(null);
+    if (!uid) return;
+    try {
+      const data = await backendJson("/geomoz-api/gee/oauth/capabilities");
+      if (auth.currentUser?.uid === uid) {
+        setOauthCapabilities({
+          code_flow_ready: Boolean(data.code_flow_ready),
+          token_flow_ready: Boolean(data.token_flow_ready),
+        });
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Servidor de autorização GEE indisponível.");
+    }
+  }, [uid]);
+
+  useEffect(() => {
+    void refreshOAuthCapabilities();
+  }, [refreshOAuthCapabilities]);
 
   const fetchStatus = useCallback(async () => {
     const requestedUid = uid;
@@ -179,51 +204,48 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         throw new Error("Google Identity Services indisponível para autorizar Earth Engine.");
       }
 
-      let persistentError: Error | null = null;
-      let connected = false;
-
-      if (oauth.initCodeClient) {
-        try {
-          const code = await new Promise<string>((resolve, reject) => {
-            const client = oauth.initCodeClient({
-              client_id: GOOGLE_CLIENT_ID,
-              scope: GEE_SCOPE,
-              ux_mode: "popup",
-              select_account: true,
-              callback: (result: any) => {
-                if (result.code) resolve(result.code);
-                else reject(new Error(result.error_description || "Autorização GEE recusada."));
-              },
-              error_callback: (result: any) =>
-                reject(new Error(result?.message || "Falha na autorização GEE.")),
-            });
-            client.requestCode();
-          });
-          if (auth.currentUser?.uid !== requestingUid) {
-            throw new Error("A conta GeoMoz mudou durante a autorização.");
-          }
-          const result = await backendJson("/geomoz-api/gee/oauth/exchange-code", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              code,
-              redirect_uri: "postmessage",
-              project: chosenProject,
-            }),
-          });
-          connected = Boolean(result.connected);
-          if (!connected) {
-            persistentError = new Error(result.message || "OAuth GEE permanente não validado.");
-          }
-        } catch (caught) {
-          persistentError = caught instanceof Error ? caught : new Error("Falha OAuth GEE.");
-        }
+      // Test transport and server readiness BEFORE opening any Google dialog.
+      // This prevents users from authorizing Google when Cloud Run is offline.
+      const capabilities = oauthCapabilities;
+      if (!capabilities) {
+        throw new Error("Ainda não foi possível verificar a API GEE. Verifique a conexão ao servidor e tente novamente.");
       }
-
-      // No client-secret is required for this temporary GIS token flow.
-      // The token lives only in the callback; the server validates and stores
-      // it within the signed-in Firebase user's private credential document.
-      if (!connected && oauth.initTokenClient) {
+      let connected = false;
+      if (capabilities.code_flow_ready && oauth.initCodeClient) {
+        const code = await new Promise<string>((resolve, reject) => {
+          const client = oauth.initCodeClient({
+            client_id: GOOGLE_CLIENT_ID,
+            scope: GEE_SCOPE,
+            ux_mode: "popup",
+            select_account: true,
+            callback: (result: any) => {
+              if (result.code) resolve(result.code);
+              else reject(new Error(result.error_description || "Autorização GEE recusada."));
+            },
+            error_callback: (result: any) =>
+              reject(new Error(result?.message || "A janela Google foi encerrada sem autorizar o Earth Engine.")),
+          });
+          client.requestCode();
+        });
+        if (auth.currentUser?.uid !== requestingUid) {
+          throw new Error("A conta GeoMoz mudou durante a autorização.");
+        }
+        const result = await backendJson("/geomoz-api/gee/oauth/exchange-code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            code,
+            redirect_uri: window.location.origin,
+            project: chosenProject,
+          }),
+        });
+        connected = Boolean(result.connected);
+        if (!connected) {
+          throw new Error(result.message || "O Google Earth Engine não validou a autorização.");
+        }
+      } else if (capabilities.token_flow_ready && oauth.initTokenClient) {
+        // The access-token flow cannot grant renewable/permanent access. We
+        // explicitly report it as a temporary connection in the UI.
         const accessToken = await new Promise<string>((resolve, reject) => {
           const client = oauth.initTokenClient({
             client_id: GOOGLE_CLIENT_ID,
@@ -234,11 +256,10 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
               else reject(new Error(result.error_description || "GEE não autorizou o acesso."));
             },
             error_callback: (result: any) =>
-              reject(new Error(result?.message || "Falha na autorização GEE.")),
+              reject(new Error(result?.message || "A janela Google foi encerrada sem autorizar o Earth Engine.")),
           });
           client.requestAccessToken();
         });
-
         if (auth.currentUser?.uid !== requestingUid) {
           throw new Error("A conta GeoMoz mudou durante a autorização GEE.");
         }
@@ -251,10 +272,13 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         if (!connected) {
           throw new Error(result.message || "O token GEE foi recusado.");
         }
+      } else {
+        throw new Error("Nenhum método de autorização Google está disponível nesta sessão.");
       }
-
-      if (!connected) {
-        throw persistentError || new Error("Não foi possível autorizar GEE.");
+      // A successful callback is not enough: the backend must confirm access.
+      const verification = await backendJson("/geomoz-api/gee/status");
+      if (!verification.connected || !verification.user_connected) {
+        throw new Error(verification.message || "A API GEE não confirmou a ligação.");
       }
 
       await fetchStatus();
@@ -267,8 +291,8 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Do not use Firebase signInWithRedirect here: it can silently switch users.
-  // Keep this legacy UI action functional through the safe GIS code flow.
+  // The legacy link used the same popup method and never redirected. Keep the
+  // API alias for existing consumers, but do not advertise a fake redirect UI.
   const connectGeeWithRedirect = connectGee;
 
   const disconnectGee = async () => {
@@ -299,6 +323,7 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
   return (
     <GeeAuthContext.Provider value={{
       geeConnected,
+      oauthReady: Boolean(oauthCapabilities),
       geeProject,
       geeAccount,
       isPermanent,
@@ -312,7 +337,9 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         await saveCredentials(project, account);
       },
       disconnectGee,
-      refreshStatus: fetchStatus,
+      refreshStatus: async () => {
+        await Promise.all([fetchStatus(), refreshOAuthCapabilities()]);
+      },
     }}>
       {children}
     </GeeAuthContext.Provider>

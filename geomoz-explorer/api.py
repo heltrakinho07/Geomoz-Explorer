@@ -1066,13 +1066,31 @@ class GEECompositeRequest(BaseModel):
 
 
 
+@app.get("/geomoz-api/gee/oauth/capabilities")
+async def gee_oauth_capabilities(uid: str = Depends(require_firebase_auth)):
+    """Let the client choose ONE Google consent flow, avoiding duplicate popups.
+
+    Only presence of server config is returned; secrets never leave Cloud Run.
+    """
+    from gee_module import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+    return {
+        "code_flow_ready": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET),
+        "token_flow_ready": True,
+        "message": (
+            "Autorização renovável disponível."
+            if GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET
+            else "A ligação temporária está disponível. Para acesso renovável, configure GOOGLE_CLIENT_SECRET no Cloud Run."
+        ),
+    }
+
+
 class OAuthTokenRequest(BaseModel):
     access_token: str
     project: Optional[str] = None
 
 class OAuthCodeRequest(BaseModel):
     code: str
-    redirect_uri: Optional[str] = "postmessage"
+    redirect_uri: Optional[str] = None
     project: Optional[str] = None
 
 @app.post("/geomoz-api/gee/oauth-token")
@@ -1089,6 +1107,9 @@ async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_fir
     user_project = req.project or (gee_session_store.get_token(uid) or {}).get("project")
     if not user_project:
         raise HTTPException(status_code=400, detail="Indique o ID do seu projeto Google Cloud.")
+    # Replace, never merge OAuth credentials. A previous Google account's
+    # refresh token must not survive a user switching to another Google account.
+    gee_session_store.clear_token(uid)
     gee_session_store.set_token(uid, {
         "access_token": req.access_token,
         "project": user_project,
@@ -1111,7 +1132,7 @@ async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_fir
         }
 
 @app.post("/geomoz-api/gee/oauth/exchange-code")
-async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(require_firebase_auth)):
+async def gee_oauth_exchange_code(req: OAuthCodeRequest, request: Request, uid: str = Depends(require_firebase_auth)):
     import urllib.request
     import urllib.parse
     import json
@@ -1119,12 +1140,30 @@ async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(requ
     import gee_session_store
     from gee_module import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, _init_gee, reset_gee
 
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=503,
+            detail="A autorização renovável não está configurada no servidor. Use a ligação temporária e contacte o administrador.",
+        )
+
+    # GIS popup code model binds the authorization code to the initiating
+    # page origin, not the legacy "postmessage" redirect URI.
+    allowed_origins = set(_configured_cors_origins or _default_cors_origins) - {"null"}
+    return_origin = (req.redirect_uri or "").strip().rstrip("/")
+    request_origin = request.headers.get("origin", "").strip().rstrip("/")
+    if (
+        not return_origin
+        or return_origin not in allowed_origins
+        or (request_origin and request_origin != return_origin)
+    ):
+        raise HTTPException(status_code=400, detail="Origem de autorização OAuth não permitida.")
+
     token_url = "https://oauth2.googleapis.com/token"
     post_data = urllib.parse.urlencode({
         "code": req.code,
         "client_id": GOOGLE_CLIENT_ID,
         "client_secret": GOOGLE_CLIENT_SECRET,
-        "redirect_uri": req.redirect_uri or "postmessage",
+        "redirect_uri": return_origin,
         "grant_type": "authorization_code",
     }).encode("utf-8")
 
@@ -1149,14 +1188,16 @@ async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(requ
     if not project:
         raise HTTPException(status_code=400, detail="Indique o projeto Google Cloud da sua conta GEE.")
 
-    user_data = gee_session_store.get_token(uid) or {}
-    user_data["access_token"] = access_token
-    if refresh_token:
-        user_data["refresh_token"] = refresh_token
-    user_data["project"] = project
-    user_data["updated_at"] = time.time()
-    user_data["expires_in"] = token_response.get("expires_in", 3600)
-
+    # Never reuse a refresh token from an earlier authorization: it could
+    # belong to a different Google account than this freshly issued code.
+    user_data = {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "project": project,
+        "updated_at": time.time(),
+        "expires_in": token_response.get("expires_in", 3600),
+    }
+    gee_session_store.clear_token(uid)
     gee_session_store.set_token(uid, user_data)
     logger.info("Permanent GEE OAuth credentials stored for user '%s': has_refresh_token=%s", uid, bool(refresh_token or user_data.get("refresh_token")))
 
@@ -1169,7 +1210,7 @@ async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(requ
             "is_permanent": bool(refresh_token or user_data.get("refresh_token")),
             "has_refresh_token": bool(refresh_token or user_data.get("refresh_token")),
             "project": project,
-            "message": "Google Earth Engine conectado permanentemente para a sua conta!",
+            "message": ("Google Earth Engine ligado com acesso renovável." if refresh_token or user_data.get("refresh_token") else "Google Earth Engine ligado apenas nesta sessão; não foi emitido token de renovação."),
         }
     except Exception as e:
         logger.warning("GEE init failed after code exchange for user '%s': %s", uid, e)

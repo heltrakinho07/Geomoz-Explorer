@@ -73,8 +73,8 @@ jobs:
             --max-instances 10 \
             --min-instances 0 \
             --timeout 300s \
-            --set-env-vars="^@^PYTHONUNBUFFERED=1@FIREBASE_PROJECT_ID=geoprocessamento-426809@CORS_ORIGINS=https://geoprocessamento-426809.web.app,https://geoprocessamento-426809.firebaseapp.com,https://geomoz.geolithica.com" \
-            --set-secrets=GEE_SERVICE_ACCOUNT_KEY=geomoz-gee-key:latest
+            --update-env-vars="^@^PYTHONUNBUFFERED=1@FIREBASE_PROJECT_ID=geoprocessamento-426809@GOOGLE_CLIENT_ID=628082413338-o588j9sajmpvd0se4rmahaqaddjlnkpk.apps.googleusercontent.com@CORS_ORIGINS=https://geoprocessamento-426809.web.app,https://geoprocessamento-426809.firebaseapp.com,https://geomoz.geolithica.com" \
+            --update-secrets=GEE_SERVICE_ACCOUNT_KEY=geomoz-gee-key:latest
 
       - name: Get Service URL
         id: service-url

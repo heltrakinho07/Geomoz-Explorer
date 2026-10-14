@@ -28,7 +28,7 @@ export default function GeeCredentialsDialog({
   onOpenChange: (o: boolean) => void;
 }) {
   const { user } = useAuth();
-  const { geeConnected, loading, error, connectGee, disconnectGee } = useGeeAuth();
+  const { geeConnected, oauthReady, loading, error, connectGee, disconnectGee, refreshStatus } = useGeeAuth();
   const [projectInput, setProjectInput] = useState("");
 
   const handleConnect = async () => {
@@ -135,7 +135,7 @@ export default function GeeCredentialsDialog({
 
               {/* Main Login / Connect Button */}
               <Button
-                onClick={handleConnect}
+                onClick={oauthReady ? handleConnect : () => { void refreshStatus(); }}
                 disabled={loading}
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 h-auto shadow-md shadow-indigo-100 transition-all flex items-center justify-center gap-2 text-sm"
               >
@@ -164,7 +164,7 @@ export default function GeeCredentialsDialog({
                         d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                       />
                     </svg>
-                    <span>Ligar com a Conta Google</span>
+                    <span>{oauthReady ? "Ligar com a Conta Google" : "Verificar disponibilidade da API GeoMoz"}</span>
                   </>
                 )}
               </Button>

@@ -43,6 +43,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const { user, signOut } = useAuth();
   const {
     geeConnected,
+    oauthReady,
     geeProject,
     geeAccount,
     isPermanent,
@@ -50,7 +51,6 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     loading: geeLoading,
     error:    geeError,
     connectGee,
-    connectGeeWithRedirect,
     setProjectOnly,
     saveCredentials,
     disconnectGee,
@@ -140,7 +140,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
       await connectGee(projectIdInput.trim() || undefined, accountInput.trim() || undefined);
       setTestResult({
         connected: true,
-        message: "Conta Google autenticada com sucesso no Earth Engine!",
+        message: "Conta Google autorizada e ligação verificada no Earth Engine. Consulte o estado da sessão acima.",
       });
     } catch (err: any) {
       console.error(err);
@@ -153,28 +153,6 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     }
   };
 
-  const handleConnectWithRedirect = async () => {
-    setConnectingGoogle(true);
-    setTestResult(null);
-    try {
-      await connectGeeWithRedirect(projectIdInput.trim() || undefined, accountInput.trim() || undefined);
-    } catch (err: any) {
-      setTestResult({
-        connected: false,
-        message: err?.message || "Erro ao redirecionar para a Google.",
-      });
-      setConnectingGoogle(false);
-    }
-  };
-
-  const handleCancelConnect = () => {
-    setConnectingGoogle(false);
-    setTestResult({
-      connected: false,
-      message: "Ligação cancelada pelo utilizador.",
-    });
-  };
-
   const handleTestConnection = async () => {
     setTesting(true);
     setTestResult(null);
@@ -185,7 +163,10 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
         },
       });
       const data = await res.json().catch(() => ({}));
-      if (data.connected) {
+      if (!res.ok) {
+        throw new Error(data.detail || data.message || `A API GeoMoz respondeu HTTP ${res.status}.`);
+      }
+      if (data.connected && data.user_connected) {
         setTestResult({
           connected: true,
           message: `Conexão ativa! Projeto: ${data.project || "Padrão"} (${data.auth_type || "Cota Verificada"}). ${data.message || ""}`,
@@ -312,8 +293,8 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                     >
                       {geeConnected
                         ? isPermanent
-                          ? "Google Earth Engine Conectado (Permanente - Não Expira)"
-                          : "Google Earth Engine Conectado (Ativo)"
+                          ? "Google Earth Engine Conectado (Acesso Renovável)"
+                          : "Google Earth Engine Conectado (Acesso Temporário)"
                         : "Credenciais GEE Pendentes / Não Ativas"}
                     </h4>
                     <p
@@ -322,7 +303,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       }`}
                     >
                       {geeConnected
-                        ? `Projeto vinculado: ${geeProject || "geoprocessamento-426809"} | Conta: ${geeAccount || "Quota Ativa"}`
+                        ? `Projeto vinculado: ${geeProject || "geoprocessamento-426809"} | Conta Google: ${geeAccount || "autorizada"}`
                         : `Projeto selecionado: ${geeProject || "geoprocessamento-426809"}. Conecte a sua conta Google com 1 clique abaixo para processar imagens.`}
                     </p>
                   </div>
@@ -360,7 +341,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                     )}
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                    Cada utilizador registado possui a sua própria conta e cota do Google Earth Engine. A sua sessão e quota ficam guardadas de forma segura e não interferem com outros utilizadores.
+                    Cada utilizador liga a própria conta Google ao Earth Engine. As quotas e permissões também dependem do projeto Google Cloud escolhido; a credencial de cada utilizador fica associada apenas à sua conta GeoMoz.
                   </p>
                 </div>
 
@@ -369,11 +350,11 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                   <div className="flex items-center justify-between">
                     <div>
                       <h5 className="text-xs font-semibold text-slate-900 dark:text-slate-100">
-                        {geeConnected ? "Sessão Google Vinculada" : "Autenticação Automática em 1 Clique"}
+                        {geeConnected ? "Conta Google Vinculada" : "Autenticação Google Earth Engine"}
                       </h5>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400">
                         {geeConnected
-                          ? `Conta ativa: ${geeAccount || user?.email || "Google Earth Engine"}. A sua conta já está ligada.`
+                          ? `Conta autorizada: ${geeAccount || "Google Earth Engine"}. ${isPermanent ? "Acesso renovável configurado." : "Autorização temporária; poderá precisar de reconectar."}`
                           : "Inicie sessão diretamente com a sua conta Google registada no Earth Engine."}
                       </p>
                     </div>
@@ -388,34 +369,14 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                   </div>
 
                   {connectingGoogle ? (
-                    <div className="space-y-2.5">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          disabled
-                          className="flex-1 bg-indigo-600/80 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 text-xs"
-                        >
-                          <Loader2 size={15} className="animate-spin" />
-                          <span>A autenticar com a Conta Google...</span>
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={handleCancelConnect}
-                          className="text-xs py-3 px-3 rounded-xl border-slate-300 text-slate-700 hover:bg-slate-100"
-                        >
-                          Cancelar
-                        </Button>
+                    <div className="space-y-2.5 p-3 bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 rounded-xl">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-sky-800 dark:text-sky-200">
+                        <Loader2 size={15} className="animate-spin" />
+                        A contactar o servidor e autenticar a Conta Google...
                       </div>
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-200">
-                        <span>A janela do Google não abriu?</span>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={handleConnectWithRedirect}
-                          className="text-xs bg-amber-200 hover:bg-amber-300 text-amber-900 border-0 h-7 px-3 shrink-0 font-medium"
-                        >
-                          Entrar em Ecrã Completo (Redirecionamento)
-                        </Button>
-                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Autorize o acesso na janela Google. Se não abrir, permita pop-ups de geomoz.geolithica.com no navegador e tente novamente.
+                      </p>
                     </div>
                   ) : geeConnected ? (
                     <div className="flex items-center justify-between p-2.5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-xl">
@@ -435,7 +396,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                   ) : (
                     <div className="space-y-2">
                       <Button
-                        onClick={handleConnectGee}
+                        onClick={oauthReady ? handleConnectGee : () => { void refreshStatus(); }}
                         disabled={geeLoading}
                         className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl shadow-sm flex items-center justify-center gap-2.5 text-xs transition-all"
                       >
@@ -457,15 +418,11 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                             d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                           />
                         </svg>
-                        <span>Ligar com a Conta Google (Acesso Permanente)</span>
+                        <span>{oauthReady ? "Ligar com a Conta Google" : "Verificar disponibilidade do servidor GEE"}</span>
                       </Button>
-                      <button
-                        type="button"
-                        onClick={handleConnectWithRedirect}
-                        className="w-full text-center text-[11px] text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 underline transition-colors cursor-pointer"
-                      >
-                        Problemas com a janela pop-up? Clique aqui para Autenticar por Redirecionamento (Ecrã Completo)
-                      </button>
+                      <p className="text-center text-[11px] text-slate-500 dark:text-slate-400">
+                        A autorização abre uma janela Google. Se for bloqueada, permita pop-ups para este site nas definições do navegador.
+                      </p>
                     </div>
                   )}
                 </div>
