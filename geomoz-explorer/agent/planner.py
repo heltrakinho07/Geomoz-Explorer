@@ -104,7 +104,8 @@ class GeoMozAgent:
                     user_message=user_message,
                     current_map_state=current_map_state,
                     api_key=clean_gemini,
-                    chat_history=chat_history
+                    chat_history=chat_history,
+                    model=model
                 )
             except Exception as exc:
                 logger.warning("Gemini API call failed (%s). Falling back to spatial heuristic planner.", exc)
@@ -124,7 +125,7 @@ class GeoMozAgent:
         """Execute ReAct cycle via OpenAI API using native Function Calling / Tools."""
         import openai
         client = openai.AsyncOpenAI(api_key=api_key)
-        chosen_model = model or "gpt-4o"
+        chosen_model = model if model and model.startswith(("gpt-", "o3", "o4")) else "gpt-4o"
 
         aoi = current_map_state.get("aoi") or {}
         if not isinstance(aoi, dict):
@@ -174,7 +175,7 @@ class GeoMozAgent:
                 "tool_choice": "auto",
             }
             # Reasoning models (o1, o3-mini) do not accept temperature
-            if not chosen_model.startswith("o"):
+            if not chosen_model.startswith(("o", "gpt-5")):
                 call_kwargs["temperature"] = 0.2
 
             response = await client.chat.completions.create(**call_kwargs)
@@ -249,7 +250,8 @@ class GeoMozAgent:
         user_message: str,
         current_map_state: Dict[str, Any],
         api_key: str,
-        chat_history: Optional[List[Dict[str, str]]] = None
+        chat_history: Optional[List[Dict[str, str]]] = None,
+        model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute ReAct cycle via Gemini API using Function Calling."""
         clean_key = (api_key or "").strip().strip("`").strip('"').strip("'")
@@ -278,7 +280,10 @@ class GeoMozAgent:
         map_actions = []
         executed_runs = []
 
-        candidate_models = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"]
+        candidate_models = (
+            [model] if model and model.startswith("gemini-")
+            else ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"]
+        )
         working_model = candidate_models[0]
 
         # Multi-turn tool calling loop (up to 5 iterations)
@@ -296,7 +301,7 @@ class GeoMozAgent:
             # Try working_model, or iterate through candidates if 404
             models_to_try = [working_model] + [m for m in candidate_models if m != working_model]
             for model_cand in models_to_try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_cand}:generateContent?key={clean_key}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_cand}:generateContent"
                 req = urllib.request.Request(
                     url,
                     data=json.dumps(payload).encode("utf-8"),
