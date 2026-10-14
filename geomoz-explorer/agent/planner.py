@@ -11,6 +11,7 @@ import urllib.request
 import urllib.error
 from typing import Dict, Any, List, Optional
 from agent.registry import TOOL_DECLARATIONS, ToolDispatcher
+from agent.geology_intent import is_catalogue_request, is_geology_followup, resolve_geology_scope
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,8 @@ class GeoMozAgent:
         # Published GeoMoz geology is a deterministic public catalogue. Even if
         # an OpenAI/Gemini key is configured, catalogue-only questions must not
         # depend on third-party model availability or Google Earth Engine login.
-        if _is_catalogue_geology_request(user_message):
+        context = current_map_state.get("agentContext")
+        if is_catalogue_request(user_message) or is_geology_followup(user_message, context):
             return await cls._run_heuristic_planner(user_message, current_map_state)
 
         clean_openai = (openai_api_key or os.getenv("OPENAI_API_KEY") or "").strip().strip("`").strip('"').strip("'")
@@ -412,31 +414,21 @@ class GeoMozAgent:
         map_actions = []
         executed_runs = []
 
-        # Direct geology catalogue queries must not depend on Google Earth Engine
-        # or accidentally trigger mineral-prospectivity models.
-        geology_terms = (
-            "geol", "litolog", "formac", "rocha", "granito", "basalto",
-            "gnaiss", "calcário", "calcario", "quartzito", "gabro", "xisto", "arenito"
-        )
-        targeting_terms = ("ouro", "cobre", "prospec", "mineraliza", "favorabil", "targeting")
-        if _is_catalogue_geology_request(user_message):
-            import re
-            filter_match = re.search(
-                r"\b(granitos?|basaltos?|gnaiss(?:e|es)?|calcári(?:o|os)|calcari(?:o|os)|quartzitos?|gabros?|xistos?|arenitos?)\b",
-                msg_lower,
-            )
-            filter_str = filter_match.group(1).removesuffix("s") if filter_match else None
-            # A region explicitly named in the question takes precedence over
-            # the previously selected map AOI; a custom polygon otherwise wins.
-            mentioned_province = any(p in msg_lower for p in provinces_mz)
+        # Follow-up commands retain the previous geological query instead of
+        # falling through to the default NDVI/agriculture workflow.
+        if is_catalogue_request(user_message) or is_geology_followup(
+            user_message, current_map_state.get("agentContext")
+        ):
+            scope = resolve_geology_scope(user_message, current_map_state)
             geo_context = dict(current_map_state)
-            if mentioned_province:
-                geo_context["aoi"] = {"province": province, "district": None}
+            geo_context["aoi"] = {
+                "province": scope["province"], "district": scope["district"],
+                "geometry": scope["geometry"],
+            }
             result = await ToolDispatcher.execute(
                 "get_geology_units",
-                {"province": province if mentioned_province else aoi.get("province"),
-                 "district": None if mentioned_province else district,
-                 "filter_str": filter_str},
+                {"province": scope["province"], "district": scope["district"],
+                 "filter_str": scope["filter_str"]},
                 geo_context,
             )
             if result.get("status") != "success":
@@ -446,19 +438,19 @@ class GeoMozAgent:
                     "plan": ["Consultar a base geológica do GeoMoz"],
                     "steps": [{"id": "geology", "name": "Consulta ao catálogo geológico",
                                "status": "error", "resultSummary": message}],
-                    "map_actions": [], "runs": [],
+                    "map_actions": [], "runs": [], "agent_context": scope,
                     "synthesis": message,
                 }
-            map_actions = [result["map_action"]] if result.get("map_action") else []
             return {
                 "status": "completed", "provider": "deterministic-geology",
                 "plan": ["Consultar e quantificar unidades geológicas reais"],
                 "steps": [{"id": "geology", "name": "Consulta espacial à carta geológica",
                            "status": "completed",
                            "resultSummary": f'{result.get("unitsCount", 0)} polígonos reais'}],
-                "map_actions": map_actions,
+                "map_actions": [result["map_action"]] if result.get("map_action") else [],
                 "runs": [{"tool": "get_geology_units",
                           "output": {k: v for k, v in result.items() if k != "map_action"}}],
+                "agent_context": scope,
                 "synthesis": result.get("summary", "Consulta geológica concluída."),
             }
 
