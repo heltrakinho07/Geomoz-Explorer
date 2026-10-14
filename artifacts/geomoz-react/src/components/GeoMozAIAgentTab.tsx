@@ -37,12 +37,16 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { GeoJSON, MapContainer, TileLayer, ScaleControl, useMap } from "react-leaflet";
+import { GeoAgentMarkdown } from "./GeoAgentMarkdown";
 import "leaflet/dist/leaflet.css";
 import { GOOGLE_BASEMAPS } from "@/lib/basemaps";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
-type AgentGeologyGeoJSON = GeoJSON.FeatureCollection & { bbox?: number[]; source?: string };
+type AgentGeologyGeoJSON = GeoJSON.FeatureCollection & {
+  bbox?: number[]; source?: string; generalized?: boolean; originalFeatureCount?: number;
+};
+type AgentScope = { domain: "geology"; province?: string | null; district?: string | null; filter_str?: string | null; geometry?: GeoJSON.Geometry | null; };
 
 function ZoomToGeology({ bounds }: { bounds?: number[] }) {
   const map = useMap();
@@ -271,6 +275,7 @@ export default function GeoMozAIAgentTab() {
   const [activeTileUrl, setActiveTileUrl] = useState<string | null>(null);
   const [activeGeology, setActiveGeology] = useState<AgentGeologyGeoJSON | null>(null);
   const [geologyNotice, setGeologyNotice] = useState<string | null>(null);
+  const [agentContext, setAgentContext] = useState<AgentScope | null>(null);
   const [activeTileName, setActiveTileName] = useState<string>("");
   const [completedRuns, setCompletedRuns] = useState<any[]>([]);
   const [selectedLayerIndex, setSelectedLayerIndex] = useState<number>(0);
@@ -637,6 +642,7 @@ export default function GeoMozAIAgentTab() {
         temporalWindow: activeProject?.period || { startDate: "2024-01-01", endDate: "2024-12-31" },
         gee_token: (typeof window !== "undefined" ? localStorage.getItem("geomoz_gee_token") : null) || undefined,
         gee_project: (typeof window !== "undefined" ? localStorage.getItem("geomoz_gee_project") : null) || "geoprocessamento-426809",
+        agentContext,
       };
 
       // Multi-turn message history conversion
@@ -681,6 +687,11 @@ export default function GeoMozAIAgentTab() {
       }
 
       const data = await res.json();
+      if (data.agent_context?.domain === "geology") {
+        setAgentContext(data.agent_context as AgentScope);
+      } else if (data.status === "completed") {
+        setAgentContext(null);
+      }
 
       const finalSteps: WorkflowStep[] = data.steps && data.steps.length > 0 ? data.steps : [
         { id: "exec", name: "Análise ReAct Processada", status: "completed", resultSummary: "Concluído" },
@@ -751,7 +762,10 @@ export default function GeoMozAIAgentTab() {
           }
         }
       }
-      setGeologyNotice(vectorWarnings.join(" ") || null);
+      const generalized = computedLayers.some((layer) => layer.geojson?.generalized);
+      setGeologyNotice(vectorWarnings.join(" ") || (generalized
+        ? "Camada geológica generalizada; estatísticas calculadas nos polígonos originais."
+        : null));
 
       const answer = data.synthesis || "Análise geoespacial concluída.";
       const finalSynthesis = vectorWarnings.length
@@ -934,6 +948,7 @@ export default function GeoMozAIAgentTab() {
                     setMessages([]);
                     setSteps([]);
                     setSynthesis(null);
+                    setAgentContext(null);
                   }}
                   className="p-1 rounded-full text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
                   title="Limpar Histórico de Mensagens"
@@ -970,6 +985,22 @@ export default function GeoMozAIAgentTab() {
                 </span>
               )}
             </div>
+
+            {agentContext?.domain === "geology" && agentContext.province && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-2.5 py-2 text-[11px] text-sky-100" role="status">
+                <span><strong>Área efectiva da consulta:</strong> {agentContext.district ? agentContext.district + ", " : ""}{agentContext.province}</span>
+                <button type="button" className="rounded border border-sky-400/40 px-2 py-1 font-semibold hover:bg-sky-500/20"
+                  onClick={() => {
+                    const prov = agentContext.province || null;
+                    const dist = agentContext.district || null;
+                    setSelectedProvince(prov);
+                    setSelectedDistrict(dist);
+                    const next = mozambiqueAOI(prov, dist);
+                    setCurrentAoi(next);
+                    if (activeProject) void updateProject(activeProject.id, { aoi: next });
+                  }}>Usar esta área no mapa</button>
+              </div>
+            )}
 
             {/* If AOI is Global, show a helpful warning banner */}
             {(currentAoi.source === "global" || currentAoi.label === "Mundo (Global)") && (
@@ -1267,9 +1298,7 @@ export default function GeoMozAIAgentTab() {
                     )}
 
                     {/* Text Synthesis */}
-                    <div className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
-                      {msg.text}
-                    </div>
+                    <GeoAgentMarkdown text={msg.text} />
 
                     {/* Layers generated buttons */}
                     {msg.runs && msg.runs.length > 0 && (
