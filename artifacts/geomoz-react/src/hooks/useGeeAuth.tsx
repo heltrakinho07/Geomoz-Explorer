@@ -21,6 +21,7 @@ const GEE_SCOPE =
 
 export interface GeeAuthContextType {
   geeConnected: boolean;
+  oauthReady: boolean;
   geeProject: string | null;
   geeAccount: string | null;
   isPermanent: boolean;
@@ -72,6 +73,7 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const uid = user?.uid !== "guest_user" ? user?.uid : undefined;
   const [geeConnected, setGeeConnected] = useState(false);
+  const [oauthCapabilities, setOauthCapabilities] = useState<{ code_flow_ready: boolean; token_flow_ready: boolean } | null>(null);
   const [geeProject, setGeeProject] = useState<string | null>(null);
   const [geeAccount, setGeeAccount] = useState<string | null>(null);
   const [isPermanent, setIsPermanent] = useState(false);
@@ -79,6 +81,29 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const generation = useRef(0);
+
+  // Preload the backend capability before any click: Google popup APIs need
+  // to be invoked synchronously from a real user gesture. Awaiting a network
+  // request inside the click handler would trigger browser popup blockers.
+  const refreshOAuthCapabilities = useCallback(async () => {
+    setOauthCapabilities(null);
+    if (!uid) return;
+    try {
+      const data = await backendJson("/geomoz-api/gee/oauth/capabilities");
+      if (auth.currentUser?.uid === uid) {
+        setOauthCapabilities({
+          code_flow_ready: Boolean(data.code_flow_ready),
+          token_flow_ready: Boolean(data.token_flow_ready),
+        });
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Servidor de autorização GEE indisponível.");
+    }
+  }, [uid]);
+
+  useEffect(() => {
+    void refreshOAuthCapabilities();
+  }, [refreshOAuthCapabilities]);
 
   const fetchStatus = useCallback(async () => {
     const requestedUid = uid;
@@ -181,7 +206,10 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
 
       // Test transport and server readiness BEFORE opening any Google dialog.
       // This prevents users from authorizing Google when Cloud Run is offline.
-      const capabilities = await backendJson("/geomoz-api/gee/oauth/capabilities");
+      const capabilities = oauthCapabilities;
+      if (!capabilities) {
+        throw new Error("Ainda não foi possível verificar a API GEE. Verifique a conexão ao servidor e tente novamente.");
+      }
       let connected = false;
       if (capabilities.code_flow_ready && oauth.initCodeClient) {
         const code = await new Promise<string>((resolve, reject) => {
@@ -295,6 +323,7 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
   return (
     <GeeAuthContext.Provider value={{
       geeConnected,
+      oauthReady: Boolean(oauthCapabilities),
       geeProject,
       geeAccount,
       isPermanent,
@@ -308,7 +337,9 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
         await saveCredentials(project, account);
       },
       disconnectGee,
-      refreshStatus: fetchStatus,
+      refreshStatus: async () => {
+        await Promise.all([fetchStatus(), refreshOAuthCapabilities()]);
+      },
     }}>
       {children}
     </GeeAuthContext.Provider>
