@@ -205,7 +205,7 @@ class GeoMozAgent:
                 item.get("tool", "Ferramenta"), output.get("message", "dados indisponíveis")))
         if not evidence:
             evidence = ["Nenhum cálculo geoespacial verificável foi executado."]
-        note = ("\\n**Nota:** produtos e indicadores espectrais isolados não confirmam depósitos, "
+        note = ("\n**Nota:** produtos e indicadores espectrais isolados não confirmam depósitos, "
                 "falhas ou riscos. Não inferir áreas, orientações ou valores sem medições.")
         return {
             "status": ("completed" if succeeded and not failed else
@@ -214,7 +214,7 @@ class GeoMozAgent:
             "steps": steps_log,
             "map_actions": map_actions,
             "runs": executed_runs,
-            "synthesis": "### Evidências computadas\\n\\n" + "\\n".join(evidence) + "\\n\\n" + note,
+            "synthesis": "### Evidências computadas\n\n" + "\n".join(evidence) + "\n\n" + note,
         }
 
     @classmethod
