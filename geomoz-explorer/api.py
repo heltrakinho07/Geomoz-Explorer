@@ -1410,6 +1410,24 @@ async def synthesize_study(req: StudySynthesisRequest):
     return {"synthesis": conclusion}
 
 
+class AgentModelCatalogRequest(BaseModel):
+    provider: str
+    api_key: str
+
+
+@app.post("/geomoz-api/ai/models")
+async def agent_model_catalog(req: AgentModelCatalogRequest):
+    """List provider-visible tool-candidate models; keys are never logged/stored."""
+    from agent.model_catalog import discover_models
+    try:
+        return await run_in_threadpool(discover_models, req.provider, req.api_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except Exception:
+        logger.exception("GEOAGENTE model catalogue request failed")
+        raise HTTPException(status_code=503, detail="Catálogo de modelos temporariamente indisponível.") from None
+
+
 @app.post("/geomoz-api/ai/agent-chat")
 async def agent_chat(req: AgentChatRequest):
     """
