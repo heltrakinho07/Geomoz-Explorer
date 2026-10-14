@@ -38,6 +38,13 @@ class GeoMozAgent:
         gemini_api_key: Optional[str] = None
     ) -> Dict[str, Any]:
         """Orchestrate plan, execute tools, and return map actions and synthesis."""
+        # Explicit sensor requests and map follow-ups take precedence over
+        # stochastic model planning. Their outputs are derived from real tool results.
+        from agent.grounded import run_explicit_intent
+        grounded = await run_explicit_intent(user_message, current_map_state)
+        if grounded is not None:
+            return grounded
+
         raw_key = gemini_api_key or os.getenv("GEMINI_API_KEY") or ""
         clean_key = raw_key.strip().strip("`").strip('"').strip("'")
 
@@ -133,15 +140,9 @@ class GeoMozAgent:
 
             if not func_call:
                 # Agent completed all tool calls and generated final textual synthesis
-                final_text = part.get("text", "Análise espacial concluída com sucesso.")
-                return {
-                    "status": "completed",
-                    "plan": [s["name"] for s in steps_log],
-                    "steps": steps_log,
-                    "map_actions": map_actions,
-                    "runs": executed_runs,
-                    "synthesis": final_text
-                }
+                # Do not trust uncited free-form LLM numerical claims: rebuild
+                # narrative from the actual tool outputs, including failures.
+                return cls._grounded_llm_summary(steps_log, executed_runs, map_actions)
 
             # Handle Function Call
             tool_name = func_call.get("name")
@@ -155,11 +156,17 @@ class GeoMozAgent:
             steps_log.append(step_entry)
 
             tool_output = await ToolDispatcher.execute(tool_name, tool_args, current_map_state)
-            step_entry["status"] = "completed"
-            step_entry["resultSummary"] = str(tool_output.get("mean") or tool_output.get("areaKm2") or "Concluído")
-
-            if "map_action" in tool_output:
-                map_actions.append(tool_output["map_action"])
+            ok = tool_output.get("status") == "success"
+            step_entry["status"] = "completed" if ok else "error"
+            numeric = tool_output.get("mean")
+            step_entry["resultSummary"] = (
+                str(numeric) if isinstance(numeric, (float, int))
+                else tool_output.get("message") or ("Camada disponível" if ok else "Sem dados")
+            )
+            if ok and isinstance(tool_output.get("map_action"), dict):
+                action = tool_output["map_action"]
+                if action.get("type") != "ADD_LAYER" or action.get("tileUrl"):
+                    map_actions.append(action)
             executed_runs.append({"tool": tool_name, "output": tool_output})
 
             # Append model turn and function response
@@ -175,13 +182,39 @@ class GeoMozAgent:
             })
 
         # Fallback if loop finishes without text
+        return cls._grounded_llm_summary(steps_log, executed_runs, map_actions)
+
+    @staticmethod
+    def _grounded_llm_summary(steps_log, executed_runs, map_actions):
+        """Conclude from executed tool evidence only, never from model assertions."""
+        succeeded = [r for r in executed_runs if r.get("output", {}).get("status") == "success"]
+        failed = [r for r in executed_runs if r.get("output", {}).get("status") != "success"]
+        evidence = []
+        for item in succeeded:
+            name = item.get("tool", "Ferramenta")
+            output = item.get("output") or {}
+            stats = []
+            for key in ("mean", "unitsCount", "favorableAreaKm2", "sceneCount"):
+                val = output.get(key)
+                if isinstance(val, (float, int)) and not isinstance(val, bool):
+                    stats.append("{}={}".format(key, val))
+            evidence.append("- **{}:** {}.".format(name, ", ".join(stats) or "camada disponível"))
+        for item in failed:
+            output = item.get("output") or {}
+            evidence.append("- **{}:** não concluído — {}.".format(
+                item.get("tool", "Ferramenta"), output.get("message", "dados indisponíveis")))
+        if not evidence:
+            evidence = ["Nenhum cálculo geoespacial verificável foi executado."]
+        note = ("\\n**Nota:** produtos e indicadores espectrais isolados não confirmam depósitos, "
+                "falhas ou riscos. Não inferir áreas, orientações ou valores sem medições.")
         return {
-            "status": "completed",
-            "plan": [s["name"] for s in steps_log],
+            "status": ("completed" if succeeded and not failed else
+                       "partial" if succeeded else "warning"),
+            "plan": [s.get("name") for s in steps_log],
             "steps": steps_log,
             "map_actions": map_actions,
             "runs": executed_runs,
-            "synthesis": "Análise geoespacial executada através do catálogo de ferramentas do GeoMoz."
+            "synthesis": "### Evidências computadas\\n\\n" + "\\n".join(evidence) + "\\n\\n" + note,
         }
 
     @classmethod
