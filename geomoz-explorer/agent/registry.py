@@ -42,6 +42,14 @@ TOOL_DECLARATIONS = [
         }
     },
     {
+        "name": "get_soil_moisture_smap",
+        "description": "Mede humidade superficial do solo com NASA SMAP L3 9 km; nunca substitui por NDVI.",
+        "parameters": {"type": "object", "properties": {
+            "start_date": {"type": "string", "description": "Data inicial YYYY-MM-DD"},
+            "end_date": {"type": "string", "description": "Data final YYYY-MM-DD"}
+        }}
+    },
+    {
         "name": "get_elevation_dem",
         "description": "Obtém o modelo digital de elevação (Copernicus DEM 30m GLO-30) para hipsometria e altimetria.",
         "parameters": {
@@ -218,15 +226,19 @@ class ToolDispatcher:
 
         def _ensure_gee():
             import gee_module
-            try:
-                gee_module._init_gee(token=gee_token, project=gee_project)
-            except Exception as e:
-                logger.warning("Agent GEE init attempt notice: %s", e)
+            # A failed initialization must be propagated, never treated as success.
+            gee_module._init_gee(token=gee_token, project=gee_project)
 
         try:
             if tool_name == "resolve_aoi":
-                prov_name = args.get("province", "Maputo")
-                dist_name = args.get("district")
+                prov_name = args.get("province") or province
+                dist_name = args.get("district") or district
+                if not prov_name and region_geom:
+                    return {"status": "success", "label": aoi.get("label", "AOI personalizada"),
+                            "hasGeometry": True}
+                if not prov_name:
+                    return {"status": "success", "label": aoi.get("label", "Moçambique (Nacional)"),
+                            "hasGeometry": False}
                 region_geojson = None
                 try:
                     import api
@@ -261,14 +273,18 @@ class ToolDispatcher:
                     end_date=end_date,
                     cloud_pct=30
                 )
-                mean_val = result.get("stats", {}).get("mean") or result.get("stats", {}).get("p50")
-                summary_val = f"{float(mean_val):.3f}" if mean_val is not None else "N/D"
+                mean_val = result.get("stats", {}).get("mean")
+                if not result.get("tileUrl"):
+                    return {"status": "error", "message": "GEE não devolveu camada válida", "index": idx}
                 return {
                     "status": "success",
                     "index": idx,
                     "name": result.get("name"),
                     "tileUrl": result.get("tileUrl"),
-                    "mean": summary_val,
+                    "source": "LANDSAT/LC08/C02/T1_L2" if idx.endswith("_l8") else "COPERNICUS/S2_SR_HARMONIZED",
+                    "stats": result.get("stats", {}),
+                    "sceneCount": result.get("sceneCount"),
+                    "mean": float(mean_val) if isinstance(mean_val, (int, float)) else None,
                     "map_action": {
                         "type": "ADD_LAYER",
                         "id": f"agent_{idx}",
@@ -277,6 +293,41 @@ class ToolDispatcher:
                         "opacity": 0.8
                     }
                 }
+
+            elif tool_name == "get_soil_moisture_smap":
+                import ee
+                import api
+                import gee_module
+                _ensure_gee()
+                geojson = api._region_geojson(province=province, district=district, geometry=region_geom)
+                region = gee_module._to_ee_region(geojson)
+                dataset_id = "NASA/SMAP/SPL3SMP_E/006"
+                collection = (ee.ImageCollection(dataset_id)
+                              .filterBounds(region)
+                              .filterDate(start_date, ee.Date(end_date).advance(1, "day"))
+                              .select("soil_moisture_am"))
+                count = int(collection.size().getInfo())
+                if count == 0:
+                    return {"status": "warning", "message": "SMAP sem observações no período e AOI.",
+                            "source": dataset_id, "sceneCount": 0}
+                moisture = collection.mean().rename("soil_moisture_am").clip(region)
+                moisture = moisture.updateMask(moisture.gte(0).And(moisture.lte(1)))
+                raw = moisture.reduceRegion(
+                    reducer=ee.Reducer.mean(), geometry=region, scale=9000,
+                    bestEffort=True, maxPixels=10000000, tileScale=4).getInfo() or {}
+                mean = raw.get("soil_moisture_am")
+                if not isinstance(mean, (float, int)):
+                    return {"status": "warning", "message": "SMAP sem pixels válidos na AOI.",
+                            "source": dataset_id, "sceneCount": count}
+                visual = moisture.visualize(
+                    min=0, max=0.5, palette=["a50026", "fdae61", "ffffbf", "a6d96a", "1a9850"])
+                tile = visual.getMapId()["tile_fetcher"].url_format
+                return {"status": "success", "source": dataset_id, "band": "soil_moisture_am",
+                        "spatialResolutionM": 9000, "unit": "m³/m³", "mean": float(mean),
+                        "sceneCount": count, "tileUrl": tile,
+                        "map_action": {"type": "ADD_LAYER", "id": "agent_smap_soil_moisture",
+                                       "name": "SMAP — Humidade do Solo (9 km)",
+                                       "tileUrl": tile, "opacity": 0.85}}
 
             elif tool_name == "get_elevation_dem":
                 import gee_module
@@ -329,7 +380,7 @@ class ToolDispatcher:
                 region = api._region_geojson(province=province, district=district, geometry=region_geom)
                 rad = int(args.get("density_radius_m", 750))
                 result = gee_module.compute_lineaments_tile(region_geojson=region, density_radius_m=rad)
-                dominant_dir = "NE-SW / N-S"
+                dominant_dir = result.get("dominantOrientation")
                 return {
                     "status": "success",
                     "name": result.get("name"),
@@ -367,7 +418,7 @@ class ToolDispatcher:
                     "status": "success",
                     "mineral": mineral,
                     "tileUrl": result.get("tileUrl"),
-                    "favorableAreaKm2": f"{fav_area:.1f} km²",
+                    "favorableAreaKm2": f"{fav_area:.1f} km²" if isinstance(fav_area, (int, float)) else None,
                     "p90": stats.get("p90", "N/D"),
                     "map_action": {
                         "type": "ADD_LAYER",
@@ -477,17 +528,11 @@ class ToolDispatcher:
                 except Exception as g_err:
                     logger.warning("Geology query notice: %s", g_err)
                 return {
-                    "status": "success",
-                    "unitsCount": 14,
-                    "dominantUnits": ["Complexos Gnáissico-Graníticos do Pré-Câmbrico", "Sedimentos Fluviais e Aluviões Recentes", "Rochas Vulcânicas do Karoo"],
-                    "summary": "Substrato caracterizado por terrenos cristalinos do Cinturão de Moçambique e bacias sedimentares costeiras.",
-                    "map_action": {
-                        "type": "ADD_GEOJSON_LAYER",
-                        "id": "agent_geology",
-                        "name": f"Geologia 1:1M ({province or 'Moçambique'})",
-                        "province": province,
-                        "district": district
-                    }
+                    "status": "warning",
+                    "unitsCount": 0,
+                    "dominantUnits": [],
+                    "summary": None,
+                    "message": "Não foi possível obter polígonos litológicos para esta AOI."
                 }
 
             elif tool_name == "get_flood_susceptibility":
@@ -616,7 +661,7 @@ class ToolDispatcher:
                 return {
                     "status": "warning",
                     "message": "Requer autenticação do Google Earth Engine (conecte a sua conta nas Definições ou no topo).",
-                    "mean": "Requer GEE Ativo",
+                    "mean": None,
                     "error": err_str
                 }
             logger.exception("Error executing tool '%s': %s", tool_name, exc)
