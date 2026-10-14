@@ -1353,9 +1353,21 @@ async def agent_chat(req: AgentChatRequest):
             model=req.model
         )
         return result
-    except Exception as exc:
-        logger.exception("Error in agent_chat: %s", exc)
-        raise HTTPException(500, f"Erro na execução do agente GeoMoz: {exc}")
+    except Exception:
+        # Never disclose Google/OpenAI API keys, internal paths or stack traces
+        # through user-facing HTTP 500 response bodies.
+        from uuid import uuid4
+
+        request_id = uuid4().hex[:12]
+        logger.exception("GeoMoz AI agent-chat unexpected failure [%s]", request_id)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Falha interna no GEOAGENTE. Repita a consulta; se persistir, envie o código de diagnóstico ao suporte.",
+                "request_id": request_id,
+            },
+            headers={"X-Request-ID": request_id},
+        ) from None
 
 
 class AgentGeologyFeaturesRequest(BaseModel):

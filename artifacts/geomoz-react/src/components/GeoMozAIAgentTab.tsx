@@ -661,7 +661,23 @@ export default function GeoMozAIAgentTab() {
       });
 
       if (!res.ok) {
-        throw new Error(`Erro do Agente: HTTP ${res.status}`);
+        // Show a useful diagnostic instead of discarding the API error body.
+        // The backend returns a safe request_id for unexpected 500 errors.
+        const payload: unknown = await res.json().catch(() => null);
+        const response = payload && typeof payload === "object"
+          ? payload as Record<string, unknown>
+          : null;
+        const detail = response?.detail;
+        const message = typeof detail === "string"
+          ? detail
+          : detail && typeof detail === "object" && "message" in detail
+            ? String((detail as Record<string, unknown>).message)
+            : "Não foi possível processar a consulta.";
+        const requestId = detail && typeof detail === "object" && "request_id" in detail
+          ? String((detail as Record<string, unknown>).request_id)
+          : res.headers.get("X-Request-ID");
+        const safeMessage = message.slice(0, 350);
+        throw new Error(`HTTP ${res.status}: ${safeMessage}${requestId ? ` (código: ${requestId})` : ""}`);
       }
 
       const data = await res.json();

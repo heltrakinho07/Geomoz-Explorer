@@ -249,7 +249,9 @@ class ToolDispatcher:
         """Dispatch a tool call to its underlying implementation."""
         logger.info("Executing Agent Tool '%s' with args: %s", tool_name, args)
 
-        aoi = context.get("aoi", {})
+        aoi = context.get("aoi") or {}
+        if not isinstance(aoi, dict):
+            aoi = {}
         province = args.get("province") or aoi.get("province")
         district = args.get("district") or aoi.get("district")
         region_geom = aoi.get("geometry") or aoi.get("customGeometry")
@@ -492,8 +494,13 @@ class ToolDispatcher:
                 }
 
             elif tool_name == "get_geology_units":
+                from starlette.concurrency import run_in_threadpool
                 from agent.geology_data import summarize_geology
-                return summarize_geology(
+
+                # A national geology file may take seconds to read/clip.
+                # Do not freeze the async server or other chat sessions.
+                return await run_in_threadpool(
+                    summarize_geology,
                     province=province, district=district,
                     geometry=region_geom, filter_str=args.get("filter_str"),
                 )
