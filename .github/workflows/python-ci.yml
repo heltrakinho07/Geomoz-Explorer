@@ -143,9 +143,38 @@ jobs:
             if curl --max-time 3 --fail --silent http://127.0.0.1:5003/geomoz-api/health \
               | grep -q '"status":"ok"'; then
               echo 'GeoMoz production API container passed boot/health smoke.'
-              exit 0
+              break
             fi
             sleep 2
           done
-          echo 'GeoMoz production API container did not become healthy.' >&2
-          exit 1
+          if ! curl --max-time 3 --fail --silent http://127.0.0.1:5003/geomoz-api/health \
+            | grep -q '"status":"ok"'; then
+            echo 'GeoMoz production API container did not become healthy.' >&2
+            exit 1
+          fi
+          echo 'Checking lazily imported GEOAGENTE Python modules inside production container'
+          docker exec geomoz-api-smoke python -c 'from agent.planner import GeoMozAgent; from agent.registry import ToolDispatcher; from agent.geology_data import summarize_geology; print("GEOAGENTE modules import OK")'
+          echo 'Running end-to-end Manica geology chat against production Docker image'
+          python - <<'PY'
+          import json
+          import urllib.request
+
+          url = "http://127.0.0.1:5003/geomoz-api/ai/agent-chat"
+          payload = json.dumps({
+              "message": "Quais são as principais litologias de Manica? Mostra no mapa.",
+              "current_map_state": {
+                  "aoi": {"province": None, "district": None, "geometry": None},
+                  "temporalWindow": {"startDate": "2024-01-01", "endDate": "2024-12-31"},
+              },
+              "provider": "auto",
+          }).encode("utf-8")
+          request = urllib.request.Request(url, data=payload, headers={
+              "Content-Type": "application/json",
+          }, method="POST")
+          with urllib.request.urlopen(request, timeout=150) as response:
+              assert response.status == 200, response.status
+              result = json.load(response)
+          assert result.get("status") == "completed", result.get("synthesis") or result.get("status")
+          assert result.get("map_actions"), "Geology summary failed to create map action"
+          print("GEOAGENTE answered the real Manica geology query inside the Docker image")
+          PY
