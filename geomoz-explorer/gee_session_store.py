@@ -20,7 +20,11 @@ def _get_db():
     try:
         from firebase_admin import firestore
         return firestore.client()
-    except Exception:
+    except Exception as exc:
+        # Do not log exception text: third-party credential errors may carry
+        # identifiers or other sensitive context. The class is enough for
+        # Cloud Run diagnostics (e.g. DefaultCredentialsError).
+        logger.error("GEE Firestore Admin client initialization failed: %s", type(exc).__name__)
         return None
 
 

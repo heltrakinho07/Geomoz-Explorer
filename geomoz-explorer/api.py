@@ -1251,15 +1251,30 @@ async def gee_status_endpoint(request: Request):
         user_token = gee_session_store.get_token(uid) or {}
     except Exception as exc:
         # Log the exception class, not credentials or token payloads.
-        logger.error("GEE Firestore credential lookup unavailable: %s", type(exc).__name__)
-        raise HTTPException(
-            status_code=503,
-            detail=(
+        error_type = type(exc).__name__
+        logger.error("GEE Firestore credential lookup unavailable: %s", error_type)
+        if error_type in ("PermissionDenied", "Forbidden"):
+            detail = (
+                "O servidor Cloud Run não tem autorização para ler o Firestore. "
+                "Verifique roles/datastore.user na conta de serviço de execução."
+            )
+        elif error_type in ("NotFound", "FailedPrecondition"):
+            detail = (
+                "A base de dados Firestore (default) pode não existir ou estar indisponível. "
+                "Verifique a base de dados no projecto geoprocessamento-426809."
+            )
+        elif error_type in ("DefaultCredentialsError", "RefreshError"):
+            detail = (
+                "A identidade de serviço do Cloud Run não conseguiu autenticar o acesso ao Firestore. "
+                "Verifique a identidade configurada no serviço."
+            )
+        else:
+            detail = (
                 "Não foi possível consultar as credenciais GEE no Firestore. "
                 "Verifique a disponibilidade do Firestore e as permissões da "
                 "conta de serviço de execução do Cloud Run."
-            ),
-        ) from exc
+            )
+        raise HTTPException(status_code=503, detail=detail) from exc
     try:
         st = gee_status(uid=uid)
     except Exception as exc:
