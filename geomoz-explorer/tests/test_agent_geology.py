@@ -4,12 +4,20 @@ import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
 import geopandas as gpd
 from shapely.geometry import box, mapping
 
 from agent.geology_data import summarize_geology, geology_features
 from agent.registry import ToolDispatcher
 from agent.planner import GeoMozAgent
+
+
+@pytest.fixture
+def _mock_shapely_ops():
+    """Override the global shapely mock: these tests must validate real polygons."""
+    yield
+
 
 
 def _sample_data():
