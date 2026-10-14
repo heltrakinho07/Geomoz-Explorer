@@ -1,0 +1,105 @@
+name: Diagnose and Repair GeoMoz GEE Firestore Access
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/gee-firestore-remediation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: geomoz-firestore-runtime-iam
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: geoprocessamento-426809
+  REGION: europe-west1
+  SERVICE_NAME: geomoz-explorer-api
+
+jobs:
+  firestore-runtime-access:
+    name: Confirm Cloud Run identity and repair Firestore data access
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate with existing deployment identity
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Resolve current Cloud Run runtime identity
+        id: runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACCOUNT=$(gcloud run services describe "$SERVICE_NAME" \
+            --region="$REGION" --project="$PROJECT_ID" \
+            --format='value(spec.template.spec.serviceAccountName)')
+          if [ -z "$ACCOUNT" ]; then
+            NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+            ACCOUNT="${NUMBER}-compute@developer.gserviceaccount.com"
+          fi
+          if [[ ! "$ACCOUNT" =~ ^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.gserviceaccount\.com$ ]]; then
+            echo "::error::Cloud Run runtime identity could not be determined safely"
+            exit 1
+          fi
+          echo "runtime_account=$ACCOUNT" >> "$GITHUB_OUTPUT"
+          echo "Cloud Run runtime service account: $ACCOUNT"
+
+      - name: Check Firestore default database without creating one
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gcloud firestore databases describe --database='(default)' \
+              --project="$PROJECT_ID" --format='value(name)'; then
+            echo "::error::Cannot inspect Firestore (default): database may be absent, API disabled, or this deployment identity lacks firestore database metadata access."
+            echo "Check https://console.cloud.google.com/firestore/databases?project=$PROJECT_ID"
+            echo "No database was created automatically; its location must be chosen by the owner."
+            exit 1
+          fi
+
+      - name: Grant Firestore read/write only to Cloud Run runtime identity
+        env:
+          ACCOUNT: ${{ steps.runtime.outputs.runtime_account }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Ensuring roles/datastore.user for Cloud Run runtime service account, not the GitHub/Firebase deploy identity."
+          if ! gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+            --member="serviceAccount:$ACCOUNT" \
+            --role="roles/datastore.user" \
+            --condition=None \
+            --quiet \
+            --format='none'; then
+            echo "::error::The GitHub deployment identity cannot update Google Cloud project IAM. An owner or IAM administrator must grant roles/datastore.user to the Cloud Run runtime account."
+            echo "Command for an authorized GCP administrator:"
+            echo "gcloud projects add-iam-policy-binding $PROJECT_ID --member=serviceAccount:$ACCOUNT --role=roles/datastore.user --condition=None"
+            exit 1
+          fi
+          echo "Firestore role binding successfully applied/confirmed for the runtime identity."
+
+      - name: Recent sanitized GEE storage failures
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          echo "Recent sanitized error categories in Cloud Run (no secrets or user data):"
+          gcloud logging read \
+            'resource.type="cloud_run_revision" AND resource.labels.service_name="geomoz-explorer-api" AND textPayload:"GEE Firestore credential lookup unavailable"' \
+            --project="$PROJECT_ID" \
+            --freshness=2h --limit=10 --format='value(timestamp,textPayload)' \
+            2>/dev/null | grep -E 'GEE Firestore credential lookup unavailable: [[:alnum:]_]+' || true
+
+      - name: Explain remaining verification
+        if: success()
+        run: |
+          echo "Firestore runtime permission is granted. IAM propagation can take several minutes."
+          echo "Sign into GeoMoz, retry the authenticated GEE status request, then link the personal Google account."
+          echo "This job cannot verify a private user's tokens and does not grant OAuth consent."
