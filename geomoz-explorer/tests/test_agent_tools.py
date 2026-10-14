@@ -63,8 +63,9 @@ class TestGeoMozAgent(unittest.TestCase):
             with patch.dict("sys.modules", {"gee_module": mock_gee, "api": mock_api}):
                 # 1. Geology tool
                 geo_res = await ToolDispatcher.execute("get_geology_units", {"province": "Tete"}, {})
-                self.assertEqual(geo_res["status"], "success")
-                self.assertIn("map_action", geo_res)
+                # No real geological dataset in this mock: never return fake units.
+                self.assertEqual(geo_res["status"], "error")
+                self.assertNotIn("map_action", geo_res)
 
                 # 2. Flood susceptibility
                 flood_res = await ToolDispatcher.execute("get_flood_susceptibility", {"province": "Zambezia"}, {})
