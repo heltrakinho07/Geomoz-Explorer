@@ -359,10 +359,10 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       </p>
                     </div>
                     <a
-                      href="https://code.earthengine.google.com"
+                      href="https://code.earthengine.google.com/"
                       target="_blank"
-                      rel="noreferrer"
-                      className="text-[11px] text-sky-600 hover:text-sky-700 flex items-center gap-1 shrink-0"
+                      rel="noopener noreferrer"
+                      className="relative z-10 inline-flex min-h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-sky-600 underline underline-offset-2 hover:bg-sky-50 hover:text-sky-800 dark:hover:bg-slate-800"
                     >
                       Verificar GEE <ExternalLink size={10} />
                     </a>
@@ -396,7 +396,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                   ) : (
                     <div className="space-y-2">
                       <Button
-                        onClick={oauthReady ? handleConnectGee : () => { void refreshStatus(); }}
+                        onClick={handleConnectGee}
                         disabled={geeLoading}
                         className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl shadow-sm flex items-center justify-center gap-2.5 text-xs transition-all"
                       >
@@ -418,8 +418,20 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                             d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                           />
                         </svg>
-                        <span>{oauthReady ? "Ligar com a Conta Google" : "Verificar disponibilidade do servidor GEE"}</span>
+                        <span>Ligar com a Conta Google</span>
                       </Button>
+                      {!oauthReady && (
+                        <div className="flex flex-col gap-1.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+                          <span>Não foi possível confirmar antecipadamente a disponibilidade do servidor. Pode tentar ligar a Conta Google; em caso de falha, será apresentado o erro.</span>
+                          <button
+                            type="button"
+                            onClick={() => { void refreshStatus(); }}
+                            className="self-start font-semibold text-sky-700 underline underline-offset-2 hover:text-sky-900 dark:text-sky-300"
+                          >
+                            Voltar a verificar a API
+                          </button>
+                        </div>
+                      )}
                       <p className="text-center text-[11px] text-slate-500 dark:text-slate-400">
                         A autorização abre uma janela Google. Se for bloqueada, permita pop-ups para este site nas definições do navegador.
                       </p>
