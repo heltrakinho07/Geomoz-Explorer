@@ -10,7 +10,8 @@
  * 6. Histórico de Processamento (Registo cronológico com Re-run e exportação de logs)
  * 7. Cortina Temporal Swipe & Mapa Interativo (Visualização sincronizada antes/depois)
  *
- * 100% Funcional e operando em DADOS PRÓPRIOS DO UTILIZADOR (sem mocks).
+ * Apenas operações registadas/implementadas são executáveis; restantes módulos
+ * são extensões futuras e nunca retornam resultados substitutos.
  */
 
 import React, { useState, useRef, useMemo, useCallback } from "react";
@@ -97,6 +98,7 @@ import {
   runVectorIntersect,
   runVectorPointsInPolygon,
 } from "@/lib/wasm-geoprocessing";
+import { executeWorkspaceOperation, getWorkspaceOperation, type WorkspaceOperationId } from "@/lib/gis-workspace-engine";
 import { executeSpatialQuery, exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-loader";
 import {
   createPDFContext,
@@ -260,6 +262,9 @@ export default function GeoProcessamento({
   // Filtered tools catalog
   const filteredTools = useMemo(() => {
     return GEOPROCESSING_TOOLS_CATALOG.filter((tool) => {
+      // Only show implemented commands; unsupported raster/WASM tools are not
+      // silently replaced with centroid output.
+      if (!getWorkspaceOperation(tool.id)) return false;
       const matchSearch =
         tool.name.toLowerCase().includes(toolSearch.toLowerCase()) ||
         tool.description.toLowerCase().includes(toolSearch.toLowerCase());
@@ -361,34 +366,12 @@ export default function GeoProcessamento({
   // ── Run Geoprocessing Tool ───────────────────────────────────────────────
   const executeToolById = useCallback(
     (toolId: string, inputFc: FeatureCollection, params: Record<string, any>, overlayFc?: FeatureCollection) => {
-      switch (toolId) {
-        case "vector_buffer":
-          return runVectorBuffer(inputFc, Number(params.distance || 1000), params.units || "meters", Boolean(params.dissolve));
-        case "vector_centroids":
-          return runVectorCentroids(inputFc);
-        case "vector_convexhull":
-          return runVectorConvexHull(inputFc);
-        case "vector_bbox":
-          return runVectorBBox(inputFc);
-        case "vector_dissolve":
-          return runVectorDissolve(inputFc, params.propertyName);
-        case "vector_simplify":
-          return runVectorSimplify(inputFc, Number(params.tolerance || 0.005), Boolean(params.highQuality ?? true));
-        case "vector_explode":
-          return runVectorExplode(inputFc);
-        case "vector_calc_metrics":
-          return runVectorMetrics(inputFc);
-        case "vector_intersect":
-          if (!overlayFc) throw new Error("A segunda camada é obrigatória para interseção espacial.");
-          return runVectorIntersect(inputFc, overlayFc);
-        case "vector_points_in_poly":
-          if (!overlayFc) throw new Error("A segunda camada de polígonos/pontos é obrigatória.");
-          return runVectorPointsInPolygon(inputFc, overlayFc);
-        default:
-          return runVectorCentroids(inputFc);
-      }
-    },
-    []
+      // Shared, fail-closed registry. No fake centroid fallback for unknown tools.
+      const execution = executeWorkspaceOperation(
+        toolId as WorkspaceOperationId, inputFc, overlayFc, params,
+      );
+      return { result: execution.result, stats: execution.stats };
+    }, [],
   );
 
   const handleRunTool = useCallback(() => {
