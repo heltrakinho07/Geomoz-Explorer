@@ -599,15 +599,19 @@ export default function GeoProcessamento({
         basemap,
       };
 
+      // Capture the edit order before asynchronous IndexedDB operations:
+      // a slow older save must not enqueue its stale cloud snapshot last.
+      const sequence = ++cloudSyncSequenceRef.current;
       void (async () => {
         await saveGISWorkspaceSnapshot({ ...snapshot, projectId: workspaceCacheId });
         await syncGISWorkspaceRasterFiles(workspaceCacheId, rasterLayers).catch((error) => {
           console.warn("GIS Workspace: falha ao persistir rasters localmente:", error);
         });
 
+        if (hydratedProjectRef.current !== workspaceCacheId ||
+            cloudSyncSequenceRef.current !== sequence) return;
         if (cloudUid && activeProject?.id &&
             cloudSyncReadyRef.current === workspaceCacheId) {
-          const sequence = ++cloudSyncSequenceRef.current;
           setCloudSyncStatus("saving");
           try {
             await cloudSyncQueue.enqueue({ uid: cloudUid, snapshot });
