@@ -2,10 +2,10 @@
  * GeoProcessamento Avançado — Suite Completa de Geoprocessamento
  * Fiel à arquitetura e estrutura do GeoLibre (https://geolibre.app/user-guide/processing/):
  *
- * 1. Whitebox Toolbox (1.000+ ferramentas categorizadas: Vector, Raster, Hydrology, Terrain, LiDAR, etc.)
+ * 1. Catálogo de operações vetoriais efectivamente implementadas (sem Whitebox WASM)
  * 2. GeoLibre Toolbox (Ferramentas direcionadas: Geometria, Sobreposição, Junção, Seleção, Raster, Conversão, Estatística)
  * 3. Model Builder (Construção visual de pipelines encadeados de análise)
- * 4. SQL Workspace (DuckDB-WASM Spatial sobre as camadas do próprio utilizador)
+ * 4. SQL Workspace (subconjunto de consulta local; DuckDB-WASM ainda não integrado)
  * 5. Dashboard Analítico (Histogramas, dispersão e indicadores de atributos via Recharts)
  * 6. Histórico de Processamento (Registo cronológico com Re-run e exportação de logs)
  * 7. Cortina Temporal Swipe & Mapa Interativo (Visualização sincronizada antes/depois)
@@ -654,10 +654,10 @@ export default function GeoProcessamento({
               <div className="flex items-center gap-1.5">
                 <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Processing Tools</h2>
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
-                  GeoLibre Core
+                  GeoMoz Core · Turf.js
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400">Whitebox · GeoLibre Toolbox · Model Builder · SQL</p>
+              <p className="text-[10px] text-slate-400">Ferramentas vectoriais · Modelo · Consulta local</p>
             </div>
           </div>
           <button
@@ -681,7 +681,7 @@ export default function GeoProcessamento({
               }`}
             >
               <Wrench size={12} />
-              <span>GeoLibre</span>
+              <span>Vetor GIS</span>
             </button>
             <button
               onClick={() => setActiveTab("whitebox_toolbox")}
@@ -692,7 +692,7 @@ export default function GeoProcessamento({
               }`}
             >
               <Boxes size={12} />
-              <span>Whitebox</span>
+              <span>Catálogo</span>
             </button>
             <button
               onClick={() => setActiveTab("model_builder")}
@@ -964,8 +964,8 @@ export default function GeoProcessamento({
         {activeTab === "whitebox_toolbox" && (
           <div className="p-3 space-y-3 flex-1">
             <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/40 rounded-xl p-2.5 text-[11px] text-sky-900 dark:text-sky-300">
-              <span className="font-semibold block mb-0.5">Catálogo Whitebox Tools</span>
-              Navegue pelas centenas de algoritmos disponíveis para hidrologia, relevo, sensoriamento e conversão.
+              <span className="font-semibold block mb-0.5">Catálogo de operações disponíveis</span>
+              São apresentadas apenas as operações actualmente executáveis. Ferramentas raster, Whitebox WASM e RustGIS WASM exigem integração adicional.
             </div>
 
             {/* Search Box */}
@@ -975,7 +975,7 @@ export default function GeoProcessamento({
                 type="text"
                 value={toolSearch}
                 onChange={(e) => setToolSearch(e.target.value)}
-                placeholder="Pesquisar ferramentas Whitebox..."
+                placeholder="Pesquisar ferramentas executáveis..."
                 className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
@@ -1095,8 +1095,8 @@ export default function GeoProcessamento({
         {activeTab === "sql_workspace" && (
           <div className="p-3 space-y-3 flex-1">
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40 rounded-xl p-2.5 text-[11px] text-amber-900 dark:text-amber-300">
-              <span className="font-semibold block mb-0.5">DuckDB Spatial Workspace</span>
-              Escreva instruções SQL completas diretamente sobre os atributos e geometrias da camada ativa.
+              <span className="font-semibold block mb-0.5">Consulta local de atributos</span>
+              Use o subconjunto de instruções SELECT suportado pelo GeoMoz. Este módulo ainda não integra DuckDB-WASM Spatial.
             </div>
 
             <div>
