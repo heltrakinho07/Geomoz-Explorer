@@ -13,6 +13,14 @@ export interface WorkspaceLayer {
   featureCount: number;
   geojson: FeatureCollection;
   createdAt: string;
+  provenance?: {
+    command: string;
+    engine: string;
+    inputLayerName: string;
+    overlayLayerName?: string;
+    durationMs: number;
+    parameters: Record<string, unknown>;
+  };
 }
 
 export interface ParsedWorkspaceFile {

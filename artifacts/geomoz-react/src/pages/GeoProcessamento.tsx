@@ -2,15 +2,16 @@
  * GeoProcessamento Avançado — Suite Completa de Geoprocessamento
  * Fiel à arquitetura e estrutura do GeoLibre (https://geolibre.app/user-guide/processing/):
  *
- * 1. Whitebox Toolbox (1.000+ ferramentas categorizadas: Vector, Raster, Hydrology, Terrain, LiDAR, etc.)
+ * 1. Catálogo de operações vetoriais efectivamente implementadas (sem Whitebox WASM)
  * 2. GeoLibre Toolbox (Ferramentas direcionadas: Geometria, Sobreposição, Junção, Seleção, Raster, Conversão, Estatística)
  * 3. Model Builder (Construção visual de pipelines encadeados de análise)
- * 4. SQL Workspace (DuckDB-WASM Spatial sobre as camadas do próprio utilizador)
+ * 4. SQL Workspace (subconjunto de consulta local; DuckDB-WASM ainda não integrado)
  * 5. Dashboard Analítico (Histogramas, dispersão e indicadores de atributos via Recharts)
  * 6. Histórico de Processamento (Registo cronológico com Re-run e exportação de logs)
  * 7. Cortina Temporal Swipe & Mapa Interativo (Visualização sincronizada antes/depois)
  *
- * 100% Funcional e operando em DADOS PRÓPRIOS DO UTILIZADOR (sem mocks).
+ * Apenas operações registadas/implementadas são executáveis; restantes módulos
+ * são extensões futuras e nunca retornam resultados substitutos.
  */
 
 import React, { useState, useRef, useMemo, useCallback } from "react";
@@ -97,6 +98,7 @@ import {
   runVectorIntersect,
   runVectorPointsInPolygon,
 } from "@/lib/wasm-geoprocessing";
+import { executeWorkspaceOperation, getWorkspaceOperation, type WorkspaceOperationId } from "@/lib/gis-workspace-engine";
 import { executeSpatialQuery, exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-loader";
 import {
   createPDFContext,
@@ -260,6 +262,9 @@ export default function GeoProcessamento({
   // Filtered tools catalog
   const filteredTools = useMemo(() => {
     return GEOPROCESSING_TOOLS_CATALOG.filter((tool) => {
+      // Only show implemented commands; unsupported raster/WASM tools are not
+      // silently replaced with centroid output.
+      if (!getWorkspaceOperation(tool.id)) return false;
       const matchSearch =
         tool.name.toLowerCase().includes(toolSearch.toLowerCase()) ||
         tool.description.toLowerCase().includes(toolSearch.toLowerCase());
@@ -361,34 +366,12 @@ export default function GeoProcessamento({
   // ── Run Geoprocessing Tool ───────────────────────────────────────────────
   const executeToolById = useCallback(
     (toolId: string, inputFc: FeatureCollection, params: Record<string, any>, overlayFc?: FeatureCollection) => {
-      switch (toolId) {
-        case "vector_buffer":
-          return runVectorBuffer(inputFc, Number(params.distance || 1000), params.units || "meters", Boolean(params.dissolve));
-        case "vector_centroids":
-          return runVectorCentroids(inputFc);
-        case "vector_convexhull":
-          return runVectorConvexHull(inputFc);
-        case "vector_bbox":
-          return runVectorBBox(inputFc);
-        case "vector_dissolve":
-          return runVectorDissolve(inputFc, params.propertyName);
-        case "vector_simplify":
-          return runVectorSimplify(inputFc, Number(params.tolerance || 0.005), Boolean(params.highQuality ?? true));
-        case "vector_explode":
-          return runVectorExplode(inputFc);
-        case "vector_calc_metrics":
-          return runVectorMetrics(inputFc);
-        case "vector_intersect":
-          if (!overlayFc) throw new Error("A segunda camada é obrigatória para interseção espacial.");
-          return runVectorIntersect(inputFc, overlayFc);
-        case "vector_points_in_poly":
-          if (!overlayFc) throw new Error("A segunda camada de polígonos/pontos é obrigatória.");
-          return runVectorPointsInPolygon(inputFc, overlayFc);
-        default:
-          return runVectorCentroids(inputFc);
-      }
-    },
-    []
+      // Shared, fail-closed registry. No fake centroid fallback for unknown tools.
+      const execution = executeWorkspaceOperation(
+        toolId as WorkspaceOperationId, inputFc, overlayFc, params,
+      );
+      return { result: execution.result, stats: execution.stats };
+    }, [],
   );
 
   const handleRunTool = useCallback(() => {
@@ -671,10 +654,10 @@ export default function GeoProcessamento({
               <div className="flex items-center gap-1.5">
                 <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Processing Tools</h2>
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
-                  GeoLibre Core
+                  GeoMoz Core · Turf.js
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400">Whitebox · GeoLibre Toolbox · Model Builder · SQL</p>
+              <p className="text-[10px] text-slate-400">Ferramentas vectoriais · Modelo · Consulta local</p>
             </div>
           </div>
           <button
@@ -698,7 +681,7 @@ export default function GeoProcessamento({
               }`}
             >
               <Wrench size={12} />
-              <span>GeoLibre</span>
+              <span>Vetor GIS</span>
             </button>
             <button
               onClick={() => setActiveTab("whitebox_toolbox")}
@@ -709,7 +692,7 @@ export default function GeoProcessamento({
               }`}
             >
               <Boxes size={12} />
-              <span>Whitebox</span>
+              <span>Catálogo</span>
             </button>
             <button
               onClick={() => setActiveTab("model_builder")}
@@ -981,8 +964,8 @@ export default function GeoProcessamento({
         {activeTab === "whitebox_toolbox" && (
           <div className="p-3 space-y-3 flex-1">
             <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/40 rounded-xl p-2.5 text-[11px] text-sky-900 dark:text-sky-300">
-              <span className="font-semibold block mb-0.5">Catálogo Whitebox Tools</span>
-              Navegue pelas centenas de algoritmos disponíveis para hidrologia, relevo, sensoriamento e conversão.
+              <span className="font-semibold block mb-0.5">Catálogo de operações disponíveis</span>
+              São apresentadas apenas as operações actualmente executáveis. Ferramentas raster, Whitebox WASM e RustGIS WASM exigem integração adicional.
             </div>
 
             {/* Search Box */}
@@ -992,7 +975,7 @@ export default function GeoProcessamento({
                 type="text"
                 value={toolSearch}
                 onChange={(e) => setToolSearch(e.target.value)}
-                placeholder="Pesquisar ferramentas Whitebox..."
+                placeholder="Pesquisar ferramentas executáveis..."
                 className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
@@ -1112,8 +1095,8 @@ export default function GeoProcessamento({
         {activeTab === "sql_workspace" && (
           <div className="p-3 space-y-3 flex-1">
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40 rounded-xl p-2.5 text-[11px] text-amber-900 dark:text-amber-300">
-              <span className="font-semibold block mb-0.5">DuckDB Spatial Workspace</span>
-              Escreva instruções SQL completas diretamente sobre os atributos e geometrias da camada ativa.
+              <span className="font-semibold block mb-0.5">Consulta local de atributos</span>
+              Use o subconjunto de instruções SELECT suportado pelo GeoMoz. Este módulo ainda não integra DuckDB-WASM Spatial.
             </div>
 
             <div>

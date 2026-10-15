@@ -1,7 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { GeoJSON as VectorLayer, MapContainer, ScaleControl, TileLayer, useMap } from "react-leaflet";
-import { Database, Eye, EyeOff, FileUp, Layers, Map as MapIcon, Search, Table2, Trash2 } from "lucide-react";
+import { Database, Download, Eye, EyeOff, FileUp, Layers, Map as MapIcon, Play, Search, Table2, Trash2, Clock3 } from "lucide-react";
+import {
+  WORKSPACE_OPERATIONS, getWorkspaceOperation,
+  type WorkspaceOperationId, type WorkspaceParameters,
+} from "@/lib/gis-workspace-engine";
+import { runWorkspaceOperationAsync } from "@/lib/gis-workspace-runner";
 import { parseWorkspaceFile, workspaceColumns, type WorkspaceLayer } from "@/lib/gis-workspace";
 
 interface Props {
@@ -30,6 +35,12 @@ export default function GISWorkspacePanel({ layers, setLayers }: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [operationId, setOperationId] = useState<WorkspaceOperationId>("vector_buffer");
+  const [operationParams, setOperationParams] = useState<WorkspaceParameters>({ distance: 1000, units: "meters", dissolve: false });
+  const [overlayId, setOverlayId] = useState<string>("");
+  const [running, setRunning] = useState(false);
+  const [history, setHistory] = useState<Array<{ id: string; command: string; message: string; status: "success" | "error"; durationMs?: number }>>([]);
+  const operation = getWorkspaceOperation(operationId)!;
   const activeLayer = layers.find((layer) => layer.id === activeId) ?? layers[0] ?? null;
   const visibleLayers = layers.filter((layer) => layer.visible);
   const columns = useMemo(() => activeLayer ? workspaceColumns(activeLayer) : [], [activeLayer]);
@@ -77,6 +88,69 @@ export default function GISWorkspacePanel({ layers, setLayers }: Props) {
     if (activeId === id) setActiveId(layers.find((layer) => layer.id !== id)?.id ?? null);
   };
 
+  const runOperation = async () => {
+    if (running) return;
+    setError(null);
+    if (!activeLayer) {
+      setError("Importe ou seleccione primeiro uma camada de entrada.");
+      return;
+    }
+    setRunning(true);
+    try {
+      const secondary = layers.find((layer) => layer.id === overlayId && layer.id !== activeLayer.id);
+      const execution = await runWorkspaceOperationAsync(
+        operationId, activeLayer.geojson,
+        operation.requiresOverlay ? secondary?.geojson : undefined,
+        operationParams,
+      );
+      const layer: WorkspaceLayer = {
+        id: crypto.randomUUID(),
+        name: `${operation.label} — ${activeLayer.name}`,
+        visible: true, opacity: 0.8, format: "GeoJSON",
+        featureCount: execution.result.features.length,
+        geojson: execution.result,
+        createdAt: execution.provenance.completedAt,
+        provenance: {
+          command: operationId,
+          engine: execution.provenance.engine,
+          inputLayerName: activeLayer.name,
+          overlayLayerName: secondary?.name,
+          durationMs: execution.provenance.durationMs,
+          parameters: execution.provenance.parameters,
+        },
+      };
+      setLayers((current) => [layer, ...current]);
+      setActiveId(layer.id);
+      setQuery("");
+      setHistory((current) => [{
+        id: crypto.randomUUID(), command: operation.label,
+        message: execution.result.features.length === 0
+          ? "Operação válida, sem feições na área de sobreposição."
+          : execution.stats.summary,
+        status: "success" as const, durationMs: execution.provenance.durationMs,
+      }, ...current].slice(0, 30));
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : "Operação espacial falhou.";
+      setError(detail);
+      setHistory((current) => [{
+        id: crypto.randomUUID(), command: operation.label,
+        message: detail, status: "error" as const,
+      }, ...current].slice(0, 30));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const downloadLayer = (layer: WorkspaceLayer) => {
+    const geojson = JSON.stringify(layer.geojson);
+    const url = URL.createObjectURL(new Blob([geojson], { type: "application/geo+json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${layer.name.replace(/[^a-z0-9_-]/gi, "_").slice(0, 70) || "camada"}.geojson`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="h-full min-h-0 w-full overflow-auto bg-slate-50 dark:bg-slate-950 p-3 md:p-4">
       <div className="h-full min-h-[600px] grid grid-cols-1 xl:grid-cols-[300px_minmax(0,1fr)] gap-3">
@@ -86,7 +160,7 @@ export default function GISWorkspacePanel({ layers, setLayers }: Props) {
               <Database size={18} className="text-sky-500" />
               <div>
                 <h2 className="text-sm font-extrabold">GIS Workspace</h2>
-                <p className="text-[11px] text-slate-500">Importação e visualização local</p>
+                <p className="text-[11px] text-slate-500">Geoprocessamento real, camadas e resultados</p>
               </div>
             </div>
             <button type="button" onClick={() => inputRef.current?.click()}
@@ -98,6 +172,81 @@ export default function GISWorkspacePanel({ layers, setLayers }: Props) {
               className="hidden" onChange={(e) => void importFiles(e.target.files)} />
             <p className="mt-2 text-[10px] text-slate-500">GeoJSON/CSV · WGS84 · Até 8 MB e 5 000 feições por ficheiro. Dados permanecem ao navegar entre módulos; não são enviados ao servidor.</p>
             {error && <p role="alert" className="mt-2 rounded-lg bg-rose-50 dark:bg-rose-950/30 p-2 text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
+          </div>
+          <div className="p-3 border-b border-slate-200 dark:border-slate-800 space-y-2.5" aria-label="Ferramentas GIS">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-extrabold">Ferramentas GIS</h3>
+              <span className="text-[10px] text-slate-500">Motor Turf.js · local</span>
+            </div>
+            <label className="text-[11px] text-slate-500 block">
+              Operação
+              <select aria-label="Operação espacial" value={operationId}
+                onChange={(event) => {
+                  const id = event.target.value as WorkspaceOperationId;
+                  setOperationId(id);
+                  const next = getWorkspaceOperation(id);
+                  const defaults: WorkspaceParameters = {};
+                  next?.parameters?.forEach((parameter) => { defaults[parameter.id] = parameter.defaultValue; });
+                  setOperationParams(defaults);
+                  setError(null);
+                }}
+                className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs px-2 py-2">
+                {WORKSPACE_OPERATIONS.map((tool) => (
+                  <option key={tool.id} value={tool.id}>{tool.group} · {tool.label}</option>
+                ))}
+              </select>
+            </label>
+            <p className="text-[11px] text-slate-500">{operation.description}</p>
+            {operation.requiresOverlay && (
+              <label className="text-[11px] text-slate-500 block">
+                Camada secundária
+                <select aria-label="Camada secundária" value={overlayId}
+                  onChange={(e) => setOverlayId(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs px-2 py-2">
+                  <option value="">Seleccione a máscara/camada B</option>
+                  {layers.filter((layer) => layer.id !== activeLayer?.id).map((layer) =>
+                    <option key={layer.id} value={layer.id}>{layer.name}</option>)}
+                </select>
+              </label>
+            )}
+            {operation.parameters?.map((parameter) => (
+              <label key={parameter.id} className="text-[11px] text-slate-500 flex items-center justify-between gap-2">
+                <span>{parameter.label}</span>
+                {parameter.kind === "boolean" ? (
+                  <input type="checkbox" checked={operationParams[parameter.id] === true}
+                    onChange={(e) => setOperationParams((current) => ({ ...current, [parameter.id]: e.target.checked }))}/>
+                ) : parameter.kind === "select" ? (
+                  <select value={String(operationParams[parameter.id] ?? parameter.defaultValue)}
+                    onChange={(e) => setOperationParams((current) => ({ ...current, [parameter.id]: e.target.value }))}
+                    className="w-32 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 p-1.5 text-xs">
+                    {parameter.options?.map((opt) => <option value={opt.value} key={opt.value}>{opt.label}</option>)}
+                  </select>
+                ) : (
+                  <input type={parameter.kind} value={String(operationParams[parameter.id] ?? parameter.defaultValue)}
+                    min={parameter.min} max={parameter.max}
+                    onChange={(e) => setOperationParams((current) => ({
+                      ...current, [parameter.id]: parameter.kind === "number" ? Number(e.target.value) : e.target.value,
+                    }))}
+                    className="w-32 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 p-1.5 text-xs"/>
+                )}
+              </label>
+            ))}
+            <button type="button" onClick={runOperation}
+              disabled={running || !activeLayer || (operation.requiresOverlay && (!overlayId || overlayId === activeLayer.id))}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold py-2.5">
+              <Play size={14}/>{running ? "A executar…" : "Executar análise real"}
+            </button>
+            {history.length > 0 && (
+              <div className="space-y-1" aria-label="Histórico de processamento">
+                <h4 className="flex items-center gap-1 text-[11px] font-semibold"><Clock3 size={12}/> Histórico verificável</h4>
+                {history.slice(0, 3).map((item) => (
+                  <p key={item.id} className={`text-[10px] leading-relaxed ${item.status === "error" ? "text-rose-600" : "text-slate-500"}`}>
+                    <b>{item.command}</b> · {item.message}
+                    {typeof item.durationMs === "number" ? ` (${item.durationMs} ms)` : ""}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
           <div className="p-3 flex-1 overflow-y-auto">
             <div className="flex items-center justify-between mb-2">
@@ -123,11 +272,15 @@ export default function GISWorkspacePanel({ layers, setLayers }: Props) {
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-bold truncate">{layer.name}</p>
                         <p className="text-[10px] text-slate-500">{layer.format} · {layer.featureCount} feições</p>
+                        {layer.provenance && <p className="text-[10px] text-emerald-700 dark:text-emerald-400">Resultado calculado · {layer.provenance.engine}</p>}
                         <input aria-label={`Opacidade: ${layer.name}`} type="range" min={0.1} max={1} step={0.05}
                           value={layer.opacity} onClick={(e) => e.stopPropagation()}
                           onChange={(e) => changeLayer(layer.id, { opacity: Number(e.target.value) })}
                           className="mt-2 w-full" />
                       </div>
+                      <button type="button" title="Exportar camada em GeoJSON" aria-label={`Exportar ${layer.name}`}
+                        onClick={(e) => { e.stopPropagation(); downloadLayer(layer); }}
+                        className="text-slate-400 hover:text-sky-500"><Download size={15}/></button>
                       <button type="button" aria-label={`Remover ${layer.name}`}
                         onClick={(e) => { e.stopPropagation(); removeLayer(layer.id); }}
                         className="text-slate-400 hover:text-rose-500"><Trash2 size={15} /></button>
