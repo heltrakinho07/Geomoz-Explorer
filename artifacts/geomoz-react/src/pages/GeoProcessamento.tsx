@@ -144,6 +144,7 @@ import {
   runVectorPointsInPolygon,
 } from "@/lib/wasm-geoprocessing";
 import { runGISVectorCommand } from "@/lib/gis-vector-runner";
+import { createLastWriteWinsQueue } from "@/lib/gis-workspace-sync-queue";
 import { exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-loader";
 import {
   executeDuckDbSpatialQuery,
@@ -369,6 +370,8 @@ export default function GeoProcessamento({
     highQuality: true,
   });
   const [isExecuting, setIsExecuting] = useState(false);
+  const vectorAbortRef = useRef<AbortController | null>(null);
+  const [vectorJobState, setVectorJobState] = useState<"idle" | "running" | "cancelling">("idle");
 
   // Real Whitebox / Whitebox WASM catalog (lazy-loaded only when the tab opens).
   const [whiteboxTools, setWhiteboxTools] = useState<WhiteboxWasmManifest[]>([]);
@@ -385,6 +388,12 @@ export default function GeoProcessamento({
   const [history, setHistory] = useState<ProcessingHistoryEntry[]>([]);
   const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
   const hydratedProjectRef = useRef<string | null>(null);
+  const cloudSyncReadyRef = useRef<string | null>(null);
+  const cloudSyncSequenceRef = useRef(0);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<"loading" | "local-only" | "ready" | "saving" | "saved" | "error">("loading");
+  const cloudSyncQueue = useMemo(() => createLastWriteWinsQueue(
+    (job: { uid: string; snapshot: Parameters<typeof syncGISWorkspaceToCloud>[1] }) => syncGISWorkspaceToCloud(job.uid, job.snapshot)
+  ), []);
 
   // Model Builder — typed DAG (vector + raster).
   const [modelGraph, setModelGraph] = useState<GISModelGraph>(
@@ -402,6 +411,9 @@ export default function GeoProcessamento({
     let cancelled = false;
     setWorkspaceHydrated(false);
     hydratedProjectRef.current = null;
+    cloudSyncReadyRef.current = null;
+    cloudSyncSequenceRef.current += 1;
+    setCloudSyncStatus("loading");
 
     const load = async () => {
       const localPromise = loadGISWorkspaceSnapshot(workspaceCacheId);
