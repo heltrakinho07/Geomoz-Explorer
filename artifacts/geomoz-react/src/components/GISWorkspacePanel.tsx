@@ -127,14 +127,14 @@ export default function GISWorkspacePanel({ layers, setLayers }: Props) {
         message: execution.result.features.length === 0
           ? "Operação válida, sem feições na área de sobreposição."
           : execution.stats.summary,
-        status: "success", durationMs: execution.provenance.durationMs,
+        status: "success" as const, durationMs: execution.provenance.durationMs,
       }, ...current].slice(0, 30));
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : "Operação espacial falhou.";
       setError(detail);
       setHistory((current) => [{
         id: crypto.randomUUID(), command: operation.label,
-        message: detail, status: "error",
+        message: detail, status: "error" as const,
       }, ...current].slice(0, 30));
     } finally {
       setRunning(false);
