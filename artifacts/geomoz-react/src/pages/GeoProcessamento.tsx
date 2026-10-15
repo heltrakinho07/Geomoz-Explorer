@@ -421,19 +421,21 @@ export default function GeoProcessamento({
         console.warn("GIS Workspace: raster cache indisponível:", error);
         return new Map<string, File>();
       });
-      const cloudPromise =
-        cloudUid && activeProject?.id
-          ? loadGISWorkspaceFromCloud(cloudUid, workspaceProjectId).catch((error) => {
-              console.warn("GIS Workspace: cloud restore unavailable, using local cache:", error);
-              return null;
+      // Fail closed: a failed cloud restore must never trigger a destructive
+      // autosave from an empty or stale local cache.
+      const cloudPromise = cloudUid && activeProject?.id
+        ? loadGISWorkspaceFromCloud(cloudUid, workspaceProjectId)
+            .then((snapshot) => ({ succeeded: true, snapshot }))
+            .catch((error) => {
+              console.warn("GIS Workspace: cloud restore unavailable, local-only:", error);
+              return { succeeded: false, snapshot: null };
             })
-          : Promise.resolve(null);
+        : Promise.resolve({ succeeded: false, snapshot: null });
 
-      const [localSnapshot, rasterFiles, cloudSnapshot] = await Promise.all([
-        localPromise,
-        rasterFilesPromise,
-        cloudPromise,
+      const [localSnapshot, rasterFiles, cloudRestore] = await Promise.all([
+        localPromise, rasterFilesPromise, cloudPromise,
       ]);
+      const cloudSnapshot = cloudRestore.snapshot;
       if (cancelled) return;
 
       const localTime = localSnapshot ? Date.parse(localSnapshot.updatedAt) || 0 : 0;
@@ -535,6 +537,8 @@ export default function GeoProcessamento({
         setModelLog([]);
       }
 
+      cloudSyncReadyRef.current = cloudRestore.succeeded ? workspaceCacheId : null;
+      setCloudSyncStatus(cloudRestore.succeeded ? "ready" : "local-only");
       hydratedProjectRef.current = workspaceCacheId;
       setWorkspaceHydrated(true);
     };
