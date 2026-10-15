@@ -61,6 +61,15 @@ export interface PersistedProcessingHistoryEntry {
   outputLabel?: string;
   status: "success" | "error";
   parameters: Record<string, unknown>;
+  provenance?: {
+    algorithm: string;
+    inputLayerId: string;
+    overlayLayerId: string | null;
+    outputLayerId: string;
+    inputFeatureCount: number;
+    overlayFeatureCount: number | null;
+    completedAt: string;
+  };
 }
 
 export type PersistedModelNode = GISModelNode;
