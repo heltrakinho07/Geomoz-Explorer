@@ -77,8 +77,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Validate GIS Workspace importer
-        run: pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/gis-workspace.test.ts
+      - name: Validate GIS Workspace importer and real GIS algorithms
+        run: pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/gis-workspace.test.ts src/lib/__tests__/gis-workspace-engine.test.ts
         env:
           CI: "true"
 
