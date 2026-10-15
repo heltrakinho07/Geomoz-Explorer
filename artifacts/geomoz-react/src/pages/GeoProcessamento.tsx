@@ -145,6 +145,7 @@ import {
 } from "@/lib/wasm-geoprocessing";
 import { runGISVectorCommand } from "@/lib/gis-vector-runner";
 import { createLastWriteWinsQueue } from "@/lib/gis-workspace-sync-queue";
+import { canSyncGISWorkspaceToCloud } from "@/lib/gis-workspace-sync-readiness";
 import { exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-loader";
 import {
   executeDuckDbSpatialQuery,
@@ -551,7 +552,9 @@ export default function GeoProcessamento({
         (raster) => !raster.remoteUrl && !rasterFiles.has(raster.id)
       );
       const cloudReady = cloudRestore.succeeded && !missingRaster;
-      cloudSyncReadyRef.current = cloudReady ? workspaceCacheId : null;
+      // This ref records restore success only. Source readiness is checked on
+      // every save so removing/replacing a missing raster can recover sync.
+      cloudSyncReadyRef.current = cloudRestore.succeeded ? workspaceCacheId : null;
       setCloudSyncStatus(cloudReady ? "ready" : "local-only");
       hydratedProjectRef.current = workspaceCacheId;
       setWorkspaceHydrated(true);
@@ -617,7 +620,9 @@ export default function GeoProcessamento({
         if (hydratedProjectRef.current !== workspaceCacheId ||
             cloudSyncSequenceRef.current !== sequence) return;
         if (cloudUid && activeProject?.id &&
-            cloudSyncReadyRef.current === workspaceCacheId) {
+            canSyncGISWorkspaceToCloud(
+              cloudSyncReadyRef.current === workspaceCacheId, rasterLayers,
+            )) {
           setCloudSyncStatus("saving");
           try {
             await cloudSyncQueue.enqueue({ uid: cloudUid, snapshot });

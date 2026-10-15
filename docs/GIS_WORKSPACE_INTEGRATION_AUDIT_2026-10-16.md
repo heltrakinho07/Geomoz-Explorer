@@ -17,6 +17,9 @@ No synced project references or production user data were modified during testin
   rejects the save. Hydration retains missing raster metadata and blocks cloud
   autosave rather than dropping the layer. Cloud raster URLs take precedence over
   potentially stale cached files.
+  Source readiness is recalculated for each save, so removing/replacing a
+  missing raster restores cloud sync without reloading; failed cloud hydration
+  remains blocked regardless of subsequent raster edits.
 - Cloud restore rejects foreign-project Storage paths, absent committed
   manifests, missing vector objects and vector SHA-256 mismatches.
 - IndexedDB request success preceded transaction commit. Cache writes now settle
@@ -32,7 +35,7 @@ No synced project references or production user data were modified during testin
 
 ## Executed validation
 
-- 72 tests across the 15 frontend suites used by CI, including 9 independent
+- 74 tests across the 16 frontend suites used by CI, including 9 independent
   GEOS/analytic reference tests, passed locally.
 - 12 Firestore/Storage emulator integration tests passed locally. They exercise
   the production workspace service using Firebase SDKs and the repository's actual
