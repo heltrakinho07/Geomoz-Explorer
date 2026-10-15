@@ -2016,14 +2016,19 @@ export default function GeoProcessamento({
       return;
     }
 
+    const controller = new AbortController();
+    vectorAbortRef.current = controller;
+    setVectorJobState("running");
     setIsExecuting(true);
     try {
         const { result, stats, provenance } = await runGISVectorCommand(
           selectedToolId,
           activeLayer.geojson,
           toolParams,
-          secondaryLayer?.geojson
+          secondaryLayer?.geojson,
+          { signal: controller.signal },
         );
+        if (controller.signal.aborted) throw new Error("Análise GIS cancelada.");
 
         const resultId = `result_${Date.now()}`;
         const newLayer: UserLayer = {
@@ -2053,6 +2058,15 @@ export default function GeoProcessamento({
           outputCount: result.features.length,
           status: "success",
           parameters: { ...toolParams },
+          provenance: {
+            algorithm: provenance.tool,
+            inputLayerId: activeLayer.id,
+            overlayLayerId: secondaryLayer?.id ?? null,
+            outputLayerId: resultId,
+            inputFeatureCount: provenance.inputFeatureCount,
+            overlayFeatureCount: provenance.overlayFeatureCount,
+            completedAt: new Date().toISOString(),
+          },
         };
         setHistory((prev) => [historyEntry, ...prev]);
 
@@ -2069,6 +2083,8 @@ export default function GeoProcessamento({
           variant: "destructive",
         });
       } finally {
+        if (vectorAbortRef.current === controller) vectorAbortRef.current = null;
+        setVectorJobState("idle");
         setIsExecuting(false);
       }
   }, [activeLayer, secondaryLayer, currentTool, selectedToolId, toolParams, layers, toast]);
