@@ -3,9 +3,10 @@ import L from "leaflet";
 import { GeoJSON as VectorLayer, MapContainer, ScaleControl, TileLayer, useMap } from "react-leaflet";
 import { Database, Download, Eye, EyeOff, FileUp, Layers, Map as MapIcon, Play, Search, Table2, Trash2, Clock3 } from "lucide-react";
 import {
-  WORKSPACE_OPERATIONS, executeWorkspaceOperation, getWorkspaceOperation,
+  WORKSPACE_OPERATIONS, getWorkspaceOperation,
   type WorkspaceOperationId, type WorkspaceParameters,
 } from "@/lib/gis-workspace-engine";
+import { runWorkspaceOperationAsync } from "@/lib/gis-workspace-runner";
 import { parseWorkspaceFile, workspaceColumns, type WorkspaceLayer } from "@/lib/gis-workspace";
 
 interface Props {
@@ -87,7 +88,7 @@ export default function GISWorkspacePanel({ layers, setLayers }: Props) {
     if (activeId === id) setActiveId(layers.find((layer) => layer.id !== id)?.id ?? null);
   };
 
-  const runOperation = () => {
+  const runOperation = async () => {
     if (running) return;
     setError(null);
     if (!activeLayer) {
@@ -97,7 +98,7 @@ export default function GISWorkspacePanel({ layers, setLayers }: Props) {
     setRunning(true);
     try {
       const secondary = layers.find((layer) => layer.id === overlayId && layer.id !== activeLayer.id);
-      const execution = executeWorkspaceOperation(
+      const execution = await runWorkspaceOperationAsync(
         operationId, activeLayer.geojson,
         operation.requiresOverlay ? secondary?.geojson : undefined,
         operationParams,
