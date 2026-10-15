@@ -269,7 +269,7 @@ export function runVectorBuffer(
         bufferedFeatures.push(b);
       }
     } catch (e) {
-      console.warn("Buffer failed for feature:", e);
+      throw new Error("Buffer falhou para uma feição. Verifique a topologia dos dados de entrada.", { cause: e });
     }
   }
 
@@ -283,7 +283,7 @@ export function runVectorBuffer(
         finalFc = dissolved;
       }
     } catch (e) {
-      console.warn("Dissolve failed, returning separate buffers:", e);
+      throw new Error("Dissolve dos buffers falhou; o resultado não foi publicado.", { cause: e });
     }
   }
 
@@ -317,7 +317,7 @@ export function runVectorCentroids(fc: FeatureCollection): { result: FeatureColl
       const c = turf.centroid(feature, { properties: { ...feature.properties, _is_centroid: true } });
       centroidFeatures.push(c);
     } catch (e) {
-      console.warn("Centroid failed for feature:", e);
+      throw new Error("Cálculo de centróide falhou para uma feição.", { cause: e });
     }
   }
 
@@ -548,7 +548,9 @@ export function runVectorIntersect(
           };
           intersectedFeatures.push(inter);
         }
-      } catch {}
+      } catch (error) {
+        throw new Error("Intersecção espacial falhou para um par de polígonos; corrija a geometria.", { cause: error });
+      }
     }
   }
 
@@ -598,7 +600,7 @@ export function runVectorDifference(
           turf.featureCollection([current, mask])
         ) as Feature<Polygon | MultiPolygon> | null;
       } catch (err) {
-        console.warn("Difference failed for mask:", err);
+        throw new Error("Diferença espacial falhou ao aplicar máscara; resultado não é fiável.", { cause: err });
       }
     }
 
