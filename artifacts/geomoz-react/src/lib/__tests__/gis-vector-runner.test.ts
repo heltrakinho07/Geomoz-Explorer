@@ -24,7 +24,29 @@ describe("GIS vector runner cancellation", () => {
     FakeWorker.instances = [];
     vi.stubGlobal("Worker", FakeWorker);
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it("ignores late success after cancellation and finishes exactly once", async () => {
+    const controller = new AbortController();
+    const state = vi.fn();
+    const run = runGISVectorCommand("vector_centroids", fc, {}, undefined, { signal: controller.signal, onStateChange: state });
+    const worker = FakeWorker.instances[0];
+    controller.abort();
+    worker.onmessage?.({ data: { id: (worker.posted as { id: string }).id, status: "success", response: { result: fc } } } as MessageEvent);
+    await expect(run).rejects.toThrow("cancelada");
+    expect(state.mock.calls).toEqual([["running"], ["finished"]]);
+  });
+
+  it("terminates a timed-out job and ignores unrelated response IDs", async () => {
+    vi.useFakeTimers();
+    const run = runGISVectorCommand("vector_centroids", fc, {}, undefined, { timeoutMs: 1000 });
+    const failure = expect(run).rejects.toThrow(/limite de tempo/);
+    const worker = FakeWorker.instances[0];
+    worker.onmessage?.({ data: { id: "another-job", status: "success", response: { result: fc } } } as MessageEvent);
+    await vi.advanceTimersByTimeAsync(1000);
+    await failure;
+    expect(worker.terminated).toBe(true);
+  });
 
   it("rejects pre-aborted tasks without constructing a worker", async () => {
     const controller = new AbortController();

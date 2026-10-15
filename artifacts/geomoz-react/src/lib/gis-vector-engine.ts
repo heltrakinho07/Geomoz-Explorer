@@ -5,6 +5,7 @@
  * bundled RustGIS, Whitebox or GeoLibre binaries.
  */
 import type { FeatureCollection } from "geojson";
+import { booleanValid, kinks } from "@turf/turf";
 import {
   runVectorBuffer, runVectorCentroids, runVectorConvexHull, runVectorBBox,
   runVectorDissolve, runVectorSimplify, runVectorExplode, runVectorMetrics,
@@ -63,6 +64,10 @@ export function validateGISVectorLayer(input: FeatureCollection, label: string):
       throw new Error(`${label}: GeometryCollection requer preparação prévia.`);
     }
     validGeometryCoordinates(geom.coordinates);
+    if (!booleanValid(feature)) throw new Error(`${label}: geometria inválida.`);
+    if ((geom.type === "Polygon" || geom.type === "MultiPolygon") && kinks(geom).features.length) {
+      throw new Error(`${label}: polígono com auto-intersecção.`);
+    }
   }
 }
 

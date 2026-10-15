@@ -36,6 +36,9 @@ npm-debug.log
 yarn-error.log
 testem.log
 firebase-debug.log
+firestore-debug.log
+storage-debug.log
+ui-debug.log
 /typings
 
 # System Files

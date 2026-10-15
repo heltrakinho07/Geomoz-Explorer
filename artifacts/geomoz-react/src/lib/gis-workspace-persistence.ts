@@ -200,7 +200,10 @@ async function withStore<T>(
       const request = operation(store);
       request.onerror = () =>
         reject(request.error ?? new Error("Operação IndexedDB falhou."));
-      request.onsuccess = () => resolve(request.result);
+      // A successful request can still be rolled back by a transaction abort.
+      transaction.oncomplete = () => resolve(request.result);
+      transaction.onabort = () =>
+        reject(transaction.error ?? new Error("Transação IndexedDB abortada."));
       transaction.onerror = () =>
         reject(transaction.error ?? new Error("Transação IndexedDB falhou."));
     });
