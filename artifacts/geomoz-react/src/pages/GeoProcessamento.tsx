@@ -143,6 +143,7 @@ import {
   runVectorDifference,
   runVectorPointsInPolygon,
 } from "@/lib/wasm-geoprocessing";
+import { runGISVectorCommand } from "@/lib/gis-vector-runner";
 import { exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-loader";
 import {
   executeDuckDbSpatialQuery,
@@ -1946,7 +1947,7 @@ export default function GeoProcessamento({
     []
   );
 
-  const handleRunTool = useCallback(() => {
+  const handleRunTool = useCallback(async () => {
     if (currentTool.implemented === false) {
       toast({
         title: "Ferramenta raster ainda não ligada",
@@ -1975,9 +1976,8 @@ export default function GeoProcessamento({
     }
 
     setIsExecuting(true);
-    setTimeout(() => {
-      try {
-        const { result, stats } = executeToolById(
+    try {
+        const { result, stats, provenance } = await runGISVectorCommand(
           selectedToolId,
           activeLayer.geojson,
           toolParams,
@@ -2007,7 +2007,7 @@ export default function GeoProcessamento({
           toolName: currentTool.name,
           engine: "Client (Turf.js)",
           timestamp: new Date().toLocaleTimeString("pt-PT"),
-          durationMs: stats.executionTimeMs,
+          durationMs: provenance.durationMs,
           inputLayerName: activeLayer.name,
           outputCount: result.features.length,
           status: "success",
@@ -2017,7 +2017,9 @@ export default function GeoProcessamento({
 
         toast({
           title: "Operação Concluída com Sucesso",
-          description: stats.summary,
+          description: result.features.length === 0
+            ? "Análise concluída: não há sobreposição espacial entre as camadas."
+            : stats.summary,
         });
       } catch (err: any) {
         toast({
@@ -2028,8 +2030,7 @@ export default function GeoProcessamento({
       } finally {
         setIsExecuting(false);
       }
-    }, 25);
-  }, [activeLayer, secondaryLayer, currentTool, selectedToolId, toolParams, layers, executeToolById, toast]);
+  }, [activeLayer, secondaryLayer, currentTool, selectedToolId, toolParams, layers, toast]);
 
   const readRasterBytes = useCallback(
     async (layer: GISWorkspaceRasterLayer): Promise<Uint8Array> => {
