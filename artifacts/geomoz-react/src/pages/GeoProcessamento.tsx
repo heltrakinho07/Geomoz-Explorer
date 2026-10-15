@@ -3985,6 +3985,20 @@ export default function GeoProcessamento({
                     </>
                   )}
                 </button>
+                {vectorJobState !== "idle" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVectorJobState("cancelling");
+                      vectorAbortRef.current?.abort();
+                    }}
+                    disabled={vectorJobState === "cancelling"}
+                    className="mt-2 w-full rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                  >
+                    <X size={13} className="inline mr-1" />
+                    {vectorJobState === "cancelling" ? "A cancelar..." : "Cancelar processamento"}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -4585,6 +4599,15 @@ export default function GeoProcessamento({
                     <div className="text-[10px] text-slate-400">
                       Gerou {h.outputCount} {h.outputLabel ?? "feições"} via {h.engine}
                     </div>
+                    {h.provenance && (
+                      <div className="text-[10px] text-slate-500 break-words">
+                        Proveniência: {h.provenance.algorithm} · {h.provenance.inputFeatureCount} entradas
+                        {h.provenance.overlayFeatureCount != null
+                          ? " · " + h.provenance.overlayFeatureCount + " sobrepostas"
+                          : ""}
+                        · {h.provenance.completedAt}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
