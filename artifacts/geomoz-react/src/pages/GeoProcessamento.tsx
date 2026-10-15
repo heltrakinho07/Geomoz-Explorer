@@ -596,10 +596,25 @@ export default function GeoProcessamento({
           console.warn("GIS Workspace: falha ao persistir rasters localmente:", error);
         });
 
-        if (cloudUid && activeProject?.id) {
-          await syncGISWorkspaceToCloud(cloudUid, snapshot).catch((error) => {
-            console.warn("GIS Workspace: cloud sync deferred; local copy is safe:", error);
-          });
+        if (cloudUid && activeProject?.id &&
+            cloudSyncReadyRef.current === workspaceCacheId) {
+          const sequence = ++cloudSyncSequenceRef.current;
+          setCloudSyncStatus("saving");
+          try {
+            await cloudSyncQueue.enqueue({ uid: cloudUid, snapshot });
+            if (hydratedProjectRef.current === workspaceCacheId &&
+                cloudSyncSequenceRef.current === sequence) {
+              setCloudSyncStatus("saved");
+            }
+          } catch (error) {
+            console.warn("GIS Workspace: cloud sync deferred; local cache retained:", error);
+            if (hydratedProjectRef.current === workspaceCacheId &&
+                cloudSyncSequenceRef.current === sequence) {
+              setCloudSyncStatus("error");
+            }
+          }
+        } else if (hydratedProjectRef.current === workspaceCacheId) {
+          setCloudSyncStatus("local-only");
         }
       })();
     }, 900);
@@ -621,6 +636,7 @@ export default function GeoProcessamento({
     modelGraph,
     activeTab,
     basemap,
+    cloudSyncQueue,
   ]);
 
 
@@ -2971,6 +2987,20 @@ export default function GeoProcessamento({
           >
             <X size={18} />
           </button>
+        </div>
+
+        {/* Explicit local-vs-cloud state: an offline cache is not a confirmed backup. */}
+        <div role="status" aria-live="polite" className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 text-[10px] text-slate-600 dark:text-slate-300">
+          {cloudSyncStatus === "loading" && "Projecto GIS: a restaurar dados..."}
+          {cloudSyncStatus === "ready" && "Projecto GIS: sincronização disponível"}
+          {cloudSyncStatus === "saving" && "Projecto GIS: a guardar no Firebase..."}
+          {cloudSyncStatus === "saved" && "Projecto GIS: guardado no Firebase"}
+          {cloudSyncStatus === "local-only" && (
+            <span className="text-amber-700 dark:text-amber-400">Projecto GIS: apenas cache local; nuvem indisponível ou sessão anónima</span>
+          )}
+          {cloudSyncStatus === "error" && (
+            <span className="text-rose-700 dark:text-rose-400">Falha na sincronização Firebase; cache local mantida. Altere o projecto para tentar novamente.</span>
+          )}
         </div>
 
         {/* Top Processing Menu Tabs */}
