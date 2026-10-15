@@ -225,6 +225,15 @@ export interface ProcessingHistoryEntry {
   outputLabel?: string;
   status: "success" | "error";
   parameters: Record<string, any>;
+  provenance?: {
+    algorithm: string;
+    inputLayerId: string;
+    overlayLayerId: string | null;
+    outputLayerId: string;
+    inputFeatureCount: number;
+    overlayFeatureCount: number | null;
+    completedAt: string;
+  };
 }
 
 type MainTab =
