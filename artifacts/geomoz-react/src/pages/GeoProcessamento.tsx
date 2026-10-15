@@ -144,6 +144,7 @@ import {
   runVectorPointsInPolygon,
 } from "@/lib/wasm-geoprocessing";
 import { runGISVectorCommand } from "@/lib/gis-vector-runner";
+import { createLastWriteWinsQueue } from "@/lib/gis-workspace-sync-queue";
 import { exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-loader";
 import {
   executeDuckDbSpatialQuery,
@@ -224,6 +225,15 @@ export interface ProcessingHistoryEntry {
   outputLabel?: string;
   status: "success" | "error";
   parameters: Record<string, any>;
+  provenance?: {
+    algorithm: string;
+    inputLayerId: string;
+    overlayLayerId: string | null;
+    outputLayerId: string;
+    inputFeatureCount: number;
+    overlayFeatureCount: number | null;
+    completedAt: string;
+  };
 }
 
 type MainTab =
@@ -369,6 +379,8 @@ export default function GeoProcessamento({
     highQuality: true,
   });
   const [isExecuting, setIsExecuting] = useState(false);
+  const vectorAbortRef = useRef<AbortController | null>(null);
+  const [vectorJobState, setVectorJobState] = useState<"idle" | "running" | "cancelling">("idle");
 
   // Real Whitebox / Whitebox WASM catalog (lazy-loaded only when the tab opens).
   const [whiteboxTools, setWhiteboxTools] = useState<WhiteboxWasmManifest[]>([]);
@@ -385,6 +397,12 @@ export default function GeoProcessamento({
   const [history, setHistory] = useState<ProcessingHistoryEntry[]>([]);
   const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
   const hydratedProjectRef = useRef<string | null>(null);
+  const cloudSyncReadyRef = useRef<string | null>(null);
+  const cloudSyncSequenceRef = useRef(0);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<"loading" | "local-only" | "ready" | "saving" | "saved" | "error">("loading");
+  const cloudSyncQueue = useMemo(() => createLastWriteWinsQueue(
+    (job: { uid: string; snapshot: Parameters<typeof syncGISWorkspaceToCloud>[1] }) => syncGISWorkspaceToCloud(job.uid, job.snapshot)
+  ), []);
 
   // Model Builder — typed DAG (vector + raster).
   const [modelGraph, setModelGraph] = useState<GISModelGraph>(
@@ -402,6 +420,9 @@ export default function GeoProcessamento({
     let cancelled = false;
     setWorkspaceHydrated(false);
     hydratedProjectRef.current = null;
+    cloudSyncReadyRef.current = null;
+    cloudSyncSequenceRef.current += 1;
+    setCloudSyncStatus("loading");
 
     const load = async () => {
       const localPromise = loadGISWorkspaceSnapshot(workspaceCacheId);
@@ -409,19 +430,21 @@ export default function GeoProcessamento({
         console.warn("GIS Workspace: raster cache indisponível:", error);
         return new Map<string, File>();
       });
-      const cloudPromise =
-        cloudUid && activeProject?.id
-          ? loadGISWorkspaceFromCloud(cloudUid, workspaceProjectId).catch((error) => {
-              console.warn("GIS Workspace: cloud restore unavailable, using local cache:", error);
-              return null;
+      // Fail closed: a failed cloud restore must never trigger a destructive
+      // autosave from an empty or stale local cache.
+      const cloudPromise = cloudUid && activeProject?.id
+        ? loadGISWorkspaceFromCloud(cloudUid, workspaceProjectId)
+            .then((snapshot) => ({ succeeded: true, snapshot }))
+            .catch((error) => {
+              console.warn("GIS Workspace: cloud restore unavailable, local-only:", error);
+              return { succeeded: false, snapshot: null };
             })
-          : Promise.resolve(null);
+        : Promise.resolve({ succeeded: false, snapshot: null });
 
-      const [localSnapshot, rasterFiles, cloudSnapshot] = await Promise.all([
-        localPromise,
-        rasterFilesPromise,
-        cloudPromise,
+      const [localSnapshot, rasterFiles, cloudRestore] = await Promise.all([
+        localPromise, rasterFilesPromise, cloudPromise,
       ]);
+      const cloudSnapshot = cloudRestore.snapshot;
       if (cancelled) return;
 
       const localTime = localSnapshot ? Date.parse(localSnapshot.updatedAt) || 0 : 0;
@@ -523,6 +546,8 @@ export default function GeoProcessamento({
         setModelLog([]);
       }
 
+      cloudSyncReadyRef.current = cloudRestore.succeeded ? workspaceCacheId : null;
+      setCloudSyncStatus(cloudRestore.succeeded ? "ready" : "local-only");
       hydratedProjectRef.current = workspaceCacheId;
       setWorkspaceHydrated(true);
     };
@@ -574,16 +599,35 @@ export default function GeoProcessamento({
         basemap,
       };
 
+      // Capture the edit order before asynchronous IndexedDB operations:
+      // a slow older save must not enqueue its stale cloud snapshot last.
+      const sequence = ++cloudSyncSequenceRef.current;
       void (async () => {
         await saveGISWorkspaceSnapshot({ ...snapshot, projectId: workspaceCacheId });
         await syncGISWorkspaceRasterFiles(workspaceCacheId, rasterLayers).catch((error) => {
           console.warn("GIS Workspace: falha ao persistir rasters localmente:", error);
         });
 
-        if (cloudUid && activeProject?.id) {
-          await syncGISWorkspaceToCloud(cloudUid, snapshot).catch((error) => {
-            console.warn("GIS Workspace: cloud sync deferred; local copy is safe:", error);
-          });
+        if (hydratedProjectRef.current !== workspaceCacheId ||
+            cloudSyncSequenceRef.current !== sequence) return;
+        if (cloudUid && activeProject?.id &&
+            cloudSyncReadyRef.current === workspaceCacheId) {
+          setCloudSyncStatus("saving");
+          try {
+            await cloudSyncQueue.enqueue({ uid: cloudUid, snapshot });
+            if (hydratedProjectRef.current === workspaceCacheId &&
+                cloudSyncSequenceRef.current === sequence) {
+              setCloudSyncStatus("saved");
+            }
+          } catch (error) {
+            console.warn("GIS Workspace: cloud sync deferred; local cache retained:", error);
+            if (hydratedProjectRef.current === workspaceCacheId &&
+                cloudSyncSequenceRef.current === sequence) {
+              setCloudSyncStatus("error");
+            }
+          }
+        } else if (hydratedProjectRef.current === workspaceCacheId) {
+          setCloudSyncStatus("local-only");
         }
       })();
     }, 900);
@@ -605,6 +649,7 @@ export default function GeoProcessamento({
     modelGraph,
     activeTab,
     basemap,
+    cloudSyncQueue,
   ]);
 
 
@@ -1975,14 +2020,19 @@ export default function GeoProcessamento({
       return;
     }
 
+    const controller = new AbortController();
+    vectorAbortRef.current = controller;
+    setVectorJobState("running");
     setIsExecuting(true);
     try {
         const { result, stats, provenance } = await runGISVectorCommand(
           selectedToolId,
           activeLayer.geojson,
           toolParams,
-          secondaryLayer?.geojson
+          secondaryLayer?.geojson,
+          { signal: controller.signal },
         );
+        if (controller.signal.aborted) throw new Error("Análise GIS cancelada.");
 
         const resultId = `result_${Date.now()}`;
         const newLayer: UserLayer = {
@@ -2012,6 +2062,15 @@ export default function GeoProcessamento({
           outputCount: result.features.length,
           status: "success",
           parameters: { ...toolParams },
+          provenance: {
+            algorithm: provenance.tool,
+            inputLayerId: activeLayer.id,
+            overlayLayerId: secondaryLayer?.id ?? null,
+            outputLayerId: resultId,
+            inputFeatureCount: provenance.inputFeatureCount,
+            overlayFeatureCount: provenance.overlayFeatureCount,
+            completedAt: new Date().toISOString(),
+          },
         };
         setHistory((prev) => [historyEntry, ...prev]);
 
@@ -2028,6 +2087,8 @@ export default function GeoProcessamento({
           variant: "destructive",
         });
       } finally {
+        if (vectorAbortRef.current === controller) vectorAbortRef.current = null;
+        setVectorJobState("idle");
         setIsExecuting(false);
       }
   }, [activeLayer, secondaryLayer, currentTool, selectedToolId, toolParams, layers, toast]);
@@ -2955,6 +3016,20 @@ export default function GeoProcessamento({
           >
             <X size={18} />
           </button>
+        </div>
+
+        {/* Explicit local-vs-cloud state: an offline cache is not a confirmed backup. */}
+        <div role="status" aria-live="polite" className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 text-[10px] text-slate-600 dark:text-slate-300">
+          {cloudSyncStatus === "loading" && "Projecto GIS: a restaurar dados..."}
+          {cloudSyncStatus === "ready" && "Projecto GIS: sincronização disponível"}
+          {cloudSyncStatus === "saving" && "Projecto GIS: a guardar no Firebase..."}
+          {cloudSyncStatus === "saved" && "Projecto GIS: guardado no Firebase"}
+          {cloudSyncStatus === "local-only" && (
+            <span className="text-amber-700 dark:text-amber-400">Projecto GIS: apenas cache local; nuvem indisponível ou sessão anónima</span>
+          )}
+          {cloudSyncStatus === "error" && (
+            <span className="text-rose-700 dark:text-rose-400">Falha na sincronização Firebase; cache local mantida. Altere o projecto para tentar novamente.</span>
+          )}
         </div>
 
         {/* Top Processing Menu Tabs */}
@@ -3914,6 +3989,20 @@ export default function GeoProcessamento({
                     </>
                   )}
                 </button>
+                {vectorJobState !== "idle" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVectorJobState("cancelling");
+                      vectorAbortRef.current?.abort();
+                    }}
+                    disabled={vectorJobState === "cancelling"}
+                    className="mt-2 w-full rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                  >
+                    <X size={13} className="inline mr-1" />
+                    {vectorJobState === "cancelling" ? "A cancelar..." : "Cancelar processamento"}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -4514,6 +4603,15 @@ export default function GeoProcessamento({
                     <div className="text-[10px] text-slate-400">
                       Gerou {h.outputCount} {h.outputLabel ?? "feições"} via {h.engine}
                     </div>
+                    {h.provenance && (
+                      <div className="text-[10px] text-slate-500 break-words">
+                        Proveniência: {h.provenance.algorithm} · {h.provenance.inputFeatureCount} entradas
+                        {h.provenance.overlayFeatureCount != null
+                          ? " · " + h.provenance.overlayFeatureCount + " sobrepostas"
+                          : ""}
+                        · {h.provenance.completedAt}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
