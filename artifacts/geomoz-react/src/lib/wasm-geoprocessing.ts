@@ -4,6 +4,7 @@
  */
 
 import * as turf from "@turf/turf";
+import { planarCentroid } from "./gis-planar-centroid";
 import type { Feature, FeatureCollection, Geometry, Polygon, MultiPolygon, Point, LineString } from "geojson";
 
 export interface RasterGrid {
@@ -314,7 +315,7 @@ export function runVectorCentroids(fc: FeatureCollection): { result: FeatureColl
 
   for (const feature of fc.features) {
     try {
-      const c = turf.centroid(feature, { properties: { ...feature.properties, _is_centroid: true } });
+      const c = turf.point(planarCentroid(feature.geometry), { ...feature.properties, _is_centroid: true });
       centroidFeatures.push(c);
     } catch (e) {
       throw new Error("Cálculo de centróide falhou para uma feição.", { cause: e });
@@ -411,8 +412,7 @@ export function runVectorDissolve(
       dissolved = turf.dissolve(flatPolygons, { propertyName: propertyName || undefined });
     }
   } catch (err) {
-    console.warn("Turf dissolve error:", err);
-    dissolved = fc;
+    throw new Error("Dissolução falhou; corrija as geometrias de entrada.", { cause: err });
   }
 
   const duration = Math.round(performance.now() - t0);

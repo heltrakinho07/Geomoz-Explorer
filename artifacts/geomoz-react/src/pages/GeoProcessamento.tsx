@@ -145,6 +145,7 @@ import {
 } from "@/lib/wasm-geoprocessing";
 import { runGISVectorCommand } from "@/lib/gis-vector-runner";
 import { createLastWriteWinsQueue } from "@/lib/gis-workspace-sync-queue";
+import { canSyncGISWorkspaceToCloud } from "@/lib/gis-workspace-sync-readiness";
 import { exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-loader";
 import {
   executeDuckDbSpatialQuery,
@@ -401,7 +402,8 @@ export default function GeoProcessamento({
   const cloudSyncSequenceRef = useRef(0);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<"loading" | "local-only" | "ready" | "saving" | "saved" | "error">("loading");
   const cloudSyncQueue = useMemo(() => createLastWriteWinsQueue(
-    (job: { uid: string; snapshot: Parameters<typeof syncGISWorkspaceToCloud>[1] }) => syncGISWorkspaceToCloud(job.uid, job.snapshot)
+    (job: { uid: string; snapshot: Parameters<typeof syncGISWorkspaceToCloud>[1] }) => syncGISWorkspaceToCloud(job.uid, job.snapshot),
+    (job) => JSON.stringify([job.uid, job.snapshot.projectId]),
   ), []);
 
   // Model Builder — typed DAG (vector + raster).
@@ -457,11 +459,10 @@ export default function GeoProcessamento({
         setServiceLayers(snapshot.services ?? []);
         const rasterMetadata = (snapshot.rasters ?? []) as PersistedGISRasterLayer[];
         setRasterLayers(
-          rasterMetadata.flatMap((raster) => {
-            const file = rasterFiles.get(raster.id);
-            if (!file && !raster.remoteUrl) return [];
-            return [
-              {
+          rasterMetadata.map((raster) => {
+            // A cloud URL may refer to newer bytes than the local file cache.
+            const file = raster.remoteUrl ? undefined : rasterFiles.get(raster.id);
+            return {
                 id: raster.id,
                 name: raster.name,
                 file,
@@ -476,12 +477,13 @@ export default function GeoProcessamento({
                 isResult: raster.isResult,
                 bandCount: raster.bandCount ?? null,
                 bounds: raster.bounds ?? null,
-                error: raster.error ?? null,
+                error: !file && !raster.remoteUrl
+                  ? "Fonte raster indisponível; metadados preservados."
+                  : raster.error ?? null,
                 rasterState: raster.rasterState as GISWorkspaceRasterLayer["rasterState"],
                 rasterSymbology:
                   raster.rasterSymbology as GISWorkspaceRasterLayer["rasterSymbology"],
-              } satisfies GISWorkspaceRasterLayer,
-            ];
+              } satisfies GISWorkspaceRasterLayer;
           })
         );
         setSelectedLayerId(snapshot.selectedLayerId || snapshot.layers[0]?.id || "");
@@ -546,8 +548,14 @@ export default function GeoProcessamento({
         setModelLog([]);
       }
 
+      const missingRaster = (snapshot?.rasters ?? []).some(
+        (raster) => !raster.remoteUrl && !rasterFiles.has(raster.id)
+      );
+      const cloudReady = cloudRestore.succeeded && !missingRaster;
+      // This ref records restore success only. Source readiness is checked on
+      // every save so removing/replacing a missing raster can recover sync.
       cloudSyncReadyRef.current = cloudRestore.succeeded ? workspaceCacheId : null;
-      setCloudSyncStatus(cloudRestore.succeeded ? "ready" : "local-only");
+      setCloudSyncStatus(cloudReady ? "ready" : "local-only");
       hydratedProjectRef.current = workspaceCacheId;
       setWorkspaceHydrated(true);
     };
@@ -555,6 +563,7 @@ export default function GeoProcessamento({
     void load();
     return () => {
       cancelled = true;
+      vectorAbortRef.current?.abort();
     };
   }, [workspaceProjectId, workspaceCacheId, cloudUid, activeProject?.id]);
 
@@ -611,7 +620,9 @@ export default function GeoProcessamento({
         if (hydratedProjectRef.current !== workspaceCacheId ||
             cloudSyncSequenceRef.current !== sequence) return;
         if (cloudUid && activeProject?.id &&
-            cloudSyncReadyRef.current === workspaceCacheId) {
+            canSyncGISWorkspaceToCloud(
+              cloudSyncReadyRef.current === workspaceCacheId, rasterLayers,
+            )) {
           setCloudSyncStatus("saving");
           try {
             await cloudSyncQueue.enqueue({ uid: cloudUid, snapshot });

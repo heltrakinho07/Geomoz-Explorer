@@ -9,9 +9,11 @@
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:firebase": "vitest run --config vitest.firebase.config.ts",
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "4.0.1",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.4",
     "@radix-ui/react-alert-dialog": "^1.1.7",
@@ -62,6 +64,7 @@
     "cmdk": "^1.1.1",
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.6.0",
+    "fake-indexeddb": "6.2.4",
     "framer-motion": "catalog:",
     "input-otp": "^1.4.2",
     "jsdom": "^29.1.1",
@@ -93,6 +96,7 @@
     "@deck.gl/layers": "^9.4.0",
     "@deck.gl/mapbox": "^9.4.0",
     "@deck.gl/mesh-layers": "^9.4.0",
+    "@developmentseed/deck.gl-raster": "^0.8.1",
     "@duckdb/duckdb-wasm": "1.33.1-dev57.0",
     "@luma.gl/core": "^9.4.0",
     "@luma.gl/shadertools": "^9.4.0",
@@ -106,14 +110,13 @@
     "jspdf": "^4.2.1",
     "lerc": "^4.2.0",
     "maplibre-gl": "^6.9.0",
-    "pmtiles": "^4.5.0",
     "maplibre-gl-raster": "^0.14.15",
     "pako": "^2.1.0",
+    "pmtiles": "^4.5.0",
     "proj4": "^2.22.0",
     "react-error-boundary": "^4.1.2",
     "shpjs": "^6.2.0",
     "whitebox-wasm": "^0.6.0",
-    "zstddec": "^0.2.0",
-    "@developmentseed/deck.gl-raster": "^0.8.1"
+    "zstddec": "^0.2.0"
   }
 }

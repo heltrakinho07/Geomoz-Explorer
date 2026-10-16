@@ -1,10 +1,9 @@
 import {
   collection,
-  deleteDoc,
   doc,
   getDoc,
   getDocs,
-  setDoc,
+  writeBatch,
 } from "firebase/firestore";
 import {
   deleteObject,
@@ -96,8 +95,18 @@ interface CloudWorkspaceState {
   updatedAt: string;
 }
 
-const hashCache = new WeakMap<object, string>();
 const blobHashCache = new WeakMap<Blob, string>();
+
+// Firestore rejects optional undefined fields, including nested provenance.
+function firestoreData<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function assertOwnedPath(uid: string, projectId: string, path: string): void {
+  if (!path.startsWith(`${workspaceRoot(uid, projectId)}/`) || path.includes("..")) {
+    throw new Error("Fonte Storage fora do projecto autenticado.");
+  }
+}
 
 function workspaceRoot(uid: string, projectId: string): string {
   return `users/${uid}/projects/${projectId}`;
@@ -138,11 +147,8 @@ async function serializeLayer(layer: PersistedGISLayer): Promise<{
   json: string;
   hash: string;
 }> {
-  const cached = hashCache.get(layer as object);
   const json = JSON.stringify(layer.geojson);
-  if (cached) return { json, hash: cached };
   const hash = await sha256Hex(json);
-  hashCache.set(layer as object, hash);
   return { json, hash };
 }
 
@@ -158,7 +164,12 @@ async function uploadLayerIfChanged(
     : null;
 
   const { json, hash } = await serializeLayer(layer);
-  const objectPath = `${workspaceRoot(uid, projectId)}/vectors/${layer.id}.geojson`;
+  // Immutable uploads keep the last committed workspace readable if any later
+  // upload or the Firestore commit fails. Existing manifests remain compatible.
+  const objectPath = existing?.contentHash === hash && existing.objectPath
+    ? existing.objectPath
+    : `${workspaceRoot(uid, projectId)}/vectors/${layer.id}/${hash}.geojson`;
+  assertOwnedPath(uid, projectId, objectPath);
   const now = new Date().toISOString();
 
   if (!existing || existing.contentHash !== hash) {
@@ -192,7 +203,6 @@ async function uploadLayerIfChanged(
     updatedAt: now,
   };
 
-  await setDoc(manifestRef, manifest, { merge: true });
   return manifest;
 }
 
@@ -201,7 +211,7 @@ async function uploadRasterIfChanged(
   projectId: string,
   layer: PersistedGISRasterLayer,
   file?: File
-): Promise<CloudGISRasterLayerManifest | null> {
+): Promise<CloudGISRasterLayerManifest> {
   const manifestRef = layerManifestRef(uid, projectId, layer.id);
   const current = await getDoc(manifestRef);
   const existing =
@@ -218,18 +228,6 @@ async function uploadRasterIfChanged(
     /^https?:\/\//i.test(remoteUrl);
 
   if (isExternalUrl && remoteUrl) {
-    if (
-      existing?.sourceType !== "url" &&
-      existing?.sourceType !== "stac" &&
-      existing?.objectPath
-    ) {
-      try {
-        await deleteObject(storageRef(storage, existing.objectPath));
-      } catch {
-        // A previous project-owned raster may already have been removed.
-      }
-    }
-
     const manifest: CloudGISRasterLayerManifest = {
       kind: "raster",
       sourceType: layer.sourceType === "stac" ? "stac" : "url",
@@ -256,19 +254,19 @@ async function uploadRasterIfChanged(
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
-    await setDoc(manifestRef, manifest);
     return manifest;
   }
 
   if (!file && !existing?.objectPath) {
-    return null;
+    throw new Error(`Raster ${layer.name}: ficheiro local e cópia Storage indisponíveis.`);
   }
 
   const contentHash = file ? await sha256Blob(file) : existing?.contentHash ?? "";
   const objectPath =
-    existing?.sourceType !== "url" && existing?.objectPath
+    existing?.contentHash === contentHash && existing?.objectPath
       ? existing.objectPath
-      : `${workspaceRoot(uid, projectId)}/rasters/${layer.id}.tif`;
+      : `${workspaceRoot(uid, projectId)}/rasters/${layer.id}/${contentHash}.tif`;
+  assertOwnedPath(uid, projectId, objectPath);
 
   if (
     file &&
@@ -310,31 +308,7 @@ async function uploadRasterIfChanged(
     updatedAt: now,
   };
 
-  await setDoc(manifestRef, manifest);
   return manifest;
-}
-
-async function removeStaleCloudLayers(
-  uid: string,
-  projectId: string,
-  layerIds: Set<string>
-): Promise<void> {
-  const snapshot = await getDocs(workspaceLayersCollection(uid, projectId));
-  await Promise.all(
-    snapshot.docs
-      .filter((layerDoc) => !layerIds.has(layerDoc.id))
-      .map(async (layerDoc) => {
-        const manifest = layerDoc.data() as Partial<CloudGISLayerManifest>;
-        if (manifest.objectPath) {
-          try {
-            await deleteObject(storageRef(storage, manifest.objectPath));
-          } catch {
-            // The object may already have been removed manually.
-          }
-        }
-        await deleteDoc(layerDoc.ref);
-      })
-  );
 }
 
 export async function syncGISWorkspaceToCloud(
@@ -349,18 +323,19 @@ export async function syncGISWorkspaceToCloud(
     uid + "::" + projectId
   ).catch(() => new Map<string, File>());
 
-  await Promise.all([
+  const previous = await getDocs(workspaceLayersCollection(uid, projectId));
+  // Firestore batches support at most 500 writes. Never split a publication.
+  const ids = [...snapshot.layers, ...snapshot.rasters].map((layer) => layer.id);
+  if (new Set(ids).size !== ids.length) throw new Error("IDs de camadas duplicados.");
+  const layerIds = new Set(ids);
+  const stale = previous.docs.filter((item) => !layerIds.has(item.id));
+  if (ids.length + stale.length + 1 > 500) throw new Error("Máximo de 499 alterações de camadas por sincronização.");
+  const manifests = await Promise.all([
     ...snapshot.layers.map((layer) => uploadLayerIfChanged(uid, projectId, layer)),
     ...snapshot.rasters.map((layer) =>
       uploadRasterIfChanged(uid, projectId, layer, rasterFiles.get(layer.id))
     ),
   ]);
-
-  const layerIds = new Set([
-    ...snapshot.layers.map((layer) => layer.id),
-    ...snapshot.rasters.map((layer) => layer.id),
-  ]);
-  await removeStaleCloudLayers(uid, projectId, layerIds);
 
   const state: CloudWorkspaceState = {
     version: GIS_WORKSPACE_SCHEMA_VERSION,
@@ -378,7 +353,23 @@ export async function syncGISWorkspaceToCloud(
     basemap: snapshot.basemap,
     updatedAt: new Date().toISOString(),
   };
-  await setDoc(workspaceStateRef(uid, projectId), state, { merge: true });
+  const batch = writeBatch(db);
+  for (const manifest of manifests) {
+    batch.set(layerManifestRef(uid, projectId, manifest.id), firestoreData(manifest));
+  }
+  for (const item of stale) batch.delete(item.ref);
+  batch.set(workspaceStateRef(uid, projectId), firestoreData(state));
+  await batch.commit();
+  // Only removed layers are cleaned up, after publication. Old revisions of
+  // retained layers are preserved: an in-flight reader may still need them.
+  await Promise.all(stale.map(async (item) => {
+    const path = (item.data() as Partial<CloudGISLayerManifest>).objectPath;
+    if (!path) return;
+    assertOwnedPath(uid, projectId, path);
+    await deleteObject(storageRef(storage, path)).catch((error) => {
+      console.warn("GIS Workspace: limpeza Storage adiada:", error);
+    });
+  }));
 }
 
 async function downloadVectorLayer(
@@ -390,6 +381,9 @@ async function downloadVectorLayer(
     throw new Error(`Falha ao transferir ${manifest.name}: HTTP ${response.status}`);
   }
   const geojson = await response.json();
+  if (manifest.contentHash && await sha256Hex(JSON.stringify(geojson)) !== manifest.contentHash) {
+    throw new Error(`Integridade da camada cloud ${manifest.name} inválida.`);
+  }
   if (!geojson || geojson.type !== "FeatureCollection" || !Array.isArray(geojson.features)) {
     throw new Error(`A camada cloud ${manifest.name} não contém GeoJSON válido.`);
   }
@@ -468,6 +462,13 @@ export async function loadGISWorkspaceFromCloud(
   const manifests = layerSnaps.docs.map(
     (layerDoc) => layerDoc.data() as CloudGISLayerManifest
   );
+  for (const manifest of manifests) {
+    if (manifest.objectPath) assertOwnedPath(uid, projectId, manifest.objectPath);
+  }
+  const manifestIds = new Set(manifests.map((item) => item.id));
+  if ([...(state?.layerOrder ?? []), ...(state?.rasterLayerOrder ?? [])].some((id) => !manifestIds.has(id))) {
+    throw new Error("Manifesto cloud incompleto; restauro bloqueado para preservar os dados.");
+  }
   const vectorManifests = manifests.filter(
     (manifest): manifest is CloudGISVectorLayerManifest =>
       manifest.kind !== "raster" && manifest.format === "GeoJSON"

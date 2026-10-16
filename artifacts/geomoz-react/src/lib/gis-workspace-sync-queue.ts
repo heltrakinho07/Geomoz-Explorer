@@ -3,17 +3,21 @@
  * not finish after a newer snapshot and silently restore removed layers.
  * Pending autosaves are coalesced; all waiting callers observe the final write.
  */
-export function createLastWriteWinsQueue<T>(write: (value: T) => Promise<void>) {
+export function createLastWriteWinsQueue<T>(
+  write: (value: T) => Promise<void>,
+  keyOf: (value: T) => string = () => "default",
+) {
   type Waiter = { resolve: () => void; reject: (cause: unknown) => void };
   let running = false;
-  let pending: { value: T; waiters: Waiter[] } | null = null;
+  const pending = new Map<string, { value: T; waiters: Waiter[] }>();
 
   const drain = async () => {
     if (running) return;
     running = true;
-    while (pending) {
-      const batch = pending;
-      pending = null;
+    while (pending.size) {
+      const key = pending.keys().next().value!;
+      const batch = pending.get(key)!;
+      pending.delete(key);
       try {
         await write(batch.value);
         batch.waiters.forEach(({ resolve }) => resolve());
@@ -27,11 +31,13 @@ export function createLastWriteWinsQueue<T>(write: (value: T) => Promise<void>) 
   return {
     enqueue(value: T): Promise<void> {
       return new Promise<void>((resolve, reject) => {
-        if (pending) {
-          pending.value = value;
-          pending.waiters.push({ resolve, reject });
+        const key = keyOf(value);
+        const batch = pending.get(key);
+        if (batch) {
+          batch.value = value;
+          batch.waiters.push({ resolve, reject });
         } else {
-          pending = { value, waiters: [{ resolve, reject }] };
+          pending.set(key, { value, waiters: [{ resolve, reject }] });
         }
         void drain();
       });

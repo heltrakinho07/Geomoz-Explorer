@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
+    "test:gis:firebase": "pnpm dlx firebase-tools@14.22.0 emulators:exec --config firebase.emulators.json --only firestore,storage --project demo-geomoz-gis \"pnpm --dir artifacts/geomoz-react run test:firebase\"",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
