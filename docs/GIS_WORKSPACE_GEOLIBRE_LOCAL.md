@@ -8,11 +8,14 @@ A interface usa a identidade GeoMoz. Esta integração não instala uma segunda 
 
 ## Privacidade e ciclo de vida
 
-- **Sem base de dados:** o GIS Workspace não faz `getDoc`, `uploadBytes`, autosave Firestore/Storage, nem IndexedDB/localStorage. Apenas mantém o estado React numa referência de memória do separador.
+- **Modo Local (predefinição, disponível para todos):** o GIS Workspace não faz `getDoc`, `uploadBytes`, autosave Firestore/Storage, nem IndexedDB/localStorage. Apenas mantém o estado React numa referência de memória do separador. **A infraestrutura existente de Firebase e IndexedDB permanece no projecto**, sem ser eliminada.
 - **Guardar projecto:** gera um ficheiro `.geomoz.json` descarregado pelo navegador contendo camadas vectoriais GeoJSON, configurações e referências de serviços. É necessário escolher «Guardar projecto» antes de actualizar ou fechar a página.
 - **Abrir projecto:** lê esse ficheiro **localmente**, sem upload. URLs públicas de COG podem ser novamente carregadas; ficheiros GeoTIFF seleccionados do computador **não são incorporados** no JSON — reimporte-os.
 - Operações que explicitamente dependem de **serviços externos** (tiles de mapa, DEM AWS, WMS/WFS/WMTS/STAC, GEE, ou processamentos backend opcionais) continuam a contactar esses serviços apenas quando o utilizador as executa. «Sem BD» **não significa offline para downloads remotos**.
 - Funcionalidades de contas, autenticação e projectos fora desta guia não são alteradas.
+- **Modo Pro (preparação):** o código original `src/services/gisWorkspaceCloudService.ts` mantém o acesso a Firestore e Storage; `src/lib/gis-workspace-persistence.ts` mantém a cache offline IndexedDB. `src/lib/gis-workspace-pro-storage.ts` fornece uma ponte separada para futuras operações Pro, exigindo uma identidade Firebase e uma custom claim `geomoz_pro` ou `geomozPro` emitida pelo servidor. O modo Pro **não está activo na interface nesta versão**.
+- **Segurança e comercialização:** o controlo por custom claim do lado do cliente não basta para cobrar ou proteger recursos Pro. Antes de disponibilizar a sincronização Pro, aplicar regras Firestore/Storage que verifiquem a claim, integrar verificação administrativa de pagamentos e testar migração/isolamento dos dados. Não permitir que campos editáveis pelo utilizador atribuam acesso Pro.
+- **Dados anteriores:** não executar migrações destrutivas nem limpar documentos Firestore, objectos Storage ou bases IndexedDB existentes. O novo modo Local não consulta nem apaga esses dados. A futura recuperação Pro deverá ser iniciada explicitamente pelo titular do projecto e reconciliar versões antes de guardar.
 
 ## DEM Global — algoritmo do GeoLibre
 
