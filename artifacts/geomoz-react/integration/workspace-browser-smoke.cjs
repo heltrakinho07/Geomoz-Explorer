@@ -85,9 +85,10 @@ const server = createServer(async (req, res) => {
     await page.waitForFunction(()=>Number(document.querySelector('[data-testid="cesium-workspace"]')?.dataset.resultTiles)>0);
     await page.waitForFunction(()=>document.querySelector('[data-testid="cesium-workspace"]')?.dataset.activeRasterOnTop==="true");
     await page.screenshot({path:"workspace-browser-artifacts/03-result.png",fullPage:true});
+    await page.waitForFunction(()=>[...document.querySelectorAll("button")].some(button=>button.textContent.includes("Auto stretch 2–98%")&&!button.disabled));
     const selected = await page.locator(".gw-input-card strong").innerText();
     if (!selected.includes("Declive")) throw Error("The output raster was not automatically selected: "+selected);
-    // Real GeoJSON loading and Cesium entity picking.
+    // Real GeoJSON loading and feature identification in the Cesium map.
     const polygon={type:"FeatureCollection",features:[{type:"Feature",properties:{fixture:"Cesium vector"},geometry:{type:"Polygon",coordinates:[[[35,-20],[36,-20],[36,-19],[35,-19],[35,-20]]]}}]};
     await page.locator('.geomoz-workspace input[type="file"][multiple][accept*=".hgt"]').setInputFiles({name:"cesium-fixture.geojson",mimeType:"application/geo+json",buffer:Buffer.from(JSON.stringify(polygon))});
     await page.waitForFunction(()=>Number(document.querySelector('[data-testid="cesium-workspace"]')?.dataset.vectorReady)>0);

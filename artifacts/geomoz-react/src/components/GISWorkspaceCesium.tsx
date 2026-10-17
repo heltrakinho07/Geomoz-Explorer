@@ -2,6 +2,7 @@ import React, {useEffect, useRef, useState} from "react";
 import type {FeatureCollection} from "geojson";
 import type {Viewer, ImageryLayer, GeoJsonDataSource} from "cesium";
 import {bbox} from "@turf/turf";
+import {pickWorkspaceFeature} from "@/lib/cesium-feature-pick";
 import {GOOGLE_BASEMAPS, type BasemapType} from "@/lib/basemaps";
 import {loadCesium, type CesiumSDK} from "@/lib/cesium-sdk";
 import {RasterWorkerClient, rasterProvider, serviceProvider} from "@/lib/cesium-imagery";
@@ -135,6 +136,12 @@ export default function GISWorkspaceCesium(props:Props) {
           if(last&&Math.abs(point[0]-last[0])+Math.abs(point[1]-last[1])<1e-9)return;
           points.current.push(point);cursor.current=null;setCount(points.current.length);setDrawError(null);
           refreshPreview();viewer.scene.requestRender();return;
+        }
+        const lonlat=pick(event.position);
+        if(lonlat){
+          const feature=pickWorkspaceFeature(current.current.layers,lonlat,event.position,position=>
+            C.SceneTransforms.worldToWindowCoordinates(viewer.scene,C.Cartesian3.fromDegrees(position[0],position[1])));
+          if(feature){current.current.onSelectLayer?.(feature.layerId);setSelected(feature);return;}
         }
         const hit=viewer.scene.pick(new C.Cartesian2(event.position.x,event.position.y));
         if(hit?.id){
