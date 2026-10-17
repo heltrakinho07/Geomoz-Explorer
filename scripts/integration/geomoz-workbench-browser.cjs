@@ -37,7 +37,7 @@ async function settleRecovery(page){
  // Keep the application's picker implementation intact.
  await context.addInitScript(()=>Object.defineProperty(window,"showSaveFilePicker",{configurable:true,value:undefined}));
  const page=await context.newPage(),errors=[];
- page.on("console",message=>{if(["error","warning"].includes(message.type())&&/Geo.?Editor|Geoman|deactivat|plugin.*error|removeControl/i.test(message.text()))console.log("Editor diagnostic:",message.text());});
+ page.on("console",message=>{if(["error","warning","warn"].includes(message.type())&&/Geo.?Editor|Geoman|deactivat|plugin.*error|removeControl/i.test(message.text()))console.log("Editor diagnostic:",message.text());});
  page.on("pageerror",error=>{errors.push(error.message);console.error("Runtime error:",error.message);});
  page.setDefaultTimeout(90000);
  try{
@@ -184,6 +184,7 @@ async function settleRecovery(page){
   await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').click();
   const editor=page.locator(".geo-editor-toolbar");
   await editor.waitFor();
+  assert.equal(await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').getAttribute("aria-pressed"),"true");
   assert.equal(await editor.locator('button[data-mode="massing"]').count(),0,"3D massing stays hidden");
   await editor.locator('button[data-mode="line"]').waitFor();
   await editor.locator('button[data-mode="polygon"]').click();
@@ -203,6 +204,7 @@ async function settleRecovery(page){
   console.log("Study polygon drawn and exported with real geometry; 3D controls hidden.");
   await page.screenshot({path:"workbench-browser-artifacts/03c-geomoz-study-area.png",fullPage:true});
   await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').click();
+  console.log("Drawing command state after finishing:",await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').getAttribute("aria-pressed"));
   await editor.waitFor({state:"hidden",timeout:15000});
   console.log("Drawing ended; ordinary map navigation restored.");
   await page.locator('.gm-menu-slot:not([hidden]) button').first().click();
@@ -246,6 +248,8 @@ async function settleRecovery(page){
   assert.deepEqual(errors,[],"No uncaught React/runtime errors");
   await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,resultNavigator:true,seismicUsgs:true,curatedMenus:true,searchCurated:true,studyAreaDrawing:true,layerProperties:true,geojsonExport:true,themePersistence:true,crossTabTheme:true,mobile:true,viewerReadOnly:true,duplicateNamesGuarded:true,errors},null,2));
   console.log("GeoMoz Workbench: owned UI, real import, layer controls, analysis dialog, menus, dark/light persistence and mobile layout passed.");
- }catch(error){console.error("Visible interface:",(await page.locator("body").innerText()).slice(-12000));await page.screenshot({path:"workbench-browser-artifacts/failure.png",fullPage:true}).catch(()=>{});throw error;}
+ }catch(error){
+  try{await page.locator(".gm-help-menu summary").click({timeout:2000});await page.getByRole("button",{name:"Diagnóstico",exact:true}).click({timeout:2000});await page.getByRole("dialog").waitFor({timeout:2000});console.error("Application diagnostics:",(await page.getByRole("dialog").innerText()).slice(-14000));}catch{}
+  console.error("Visible interface:",(await page.locator("body").innerText()).slice(-12000));await page.screenshot({path:"workbench-browser-artifacts/failure.png",fullPage:true}).catch(()=>{});throw error;}
  finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error(error);process.exitCode=1;});

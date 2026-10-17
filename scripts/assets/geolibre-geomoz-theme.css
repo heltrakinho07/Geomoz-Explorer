@@ -297,3 +297,5 @@ html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0
 @media(max-width:640px){.gm-project-title{display:none;}}
 
 .gm-layer-properties .gm-group-visibility{flex-direction:row;align-items:center;}.gm-layer-properties .gm-group-visibility input{width:12px;accent-color:var(--gm-accent);}
+
+.gm-ribbon-group button[aria-pressed=true]{border-color:var(--gm-accent);background:var(--gm-muted);color:var(--gm-accent);}
