@@ -11,7 +11,7 @@ export const GEOMOZ_ROLLOUT = Object.freeze({
   fullLayerManager: false,
 });
 export type Rollout = {readonly [K in keyof typeof GEOMOZ_ROLLOUT]:boolean};
-export const CORE_VECTOR_TOOLS = Object.freeze(["buffer","clip","intersection","dissolve","reproject","calculate-area"]);
+export const CORE_VECTOR_TOOLS = Object.freeze(["buffer","clip","intersection","dissolve","reproject"]);
 export const CORE_RASTER_TOOLS = Object.freeze(["slope","hillshade","contour","clip-extent","clip-mask","reproject"]);
 export const CORE_DATA_SOURCES = Object.freeze(["vector","raster","delimited-text","xyz","wms","wfs","wmts"]);
 const CORE_COMMANDS = new Set([

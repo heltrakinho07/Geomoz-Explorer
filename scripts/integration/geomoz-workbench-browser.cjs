@@ -33,6 +33,9 @@ async function settleRecovery(page){
  await new Promise(resolve=>server.listen(4182,"127.0.0.1",resolve));
  const browser=await chromium.launch({headless:true,args:["--use-angle=swiftshader","--enable-webgl","--ignore-gpu-blocklist"]});
  const context=await browser.newContext({viewport:{width:1440,height:960},colorScheme:"light"});
+ // Exercise the actual download fallback used in browsers without File System Access.
+ // Keep the application's picker implementation intact.
+ await context.addInitScript(()=>Object.defineProperty(window,"showSaveFilePicker",{configurable:true,value:undefined}));
  const page=await context.newPage(),errors=[];
  page.on("pageerror",error=>{errors.push(error.message);console.error("Runtime error:",error.message);});
  page.setDefaultTimeout(90000);
@@ -94,7 +97,11 @@ async function settleRecovery(page){
   await page.getByRole("textbox",{name:"Nome do novo grupo",exact:true}).fill("Estudo local");
   await page.locator(".gm-layer-properties").getByRole("button",{name:"Criar",exact:true}).click();
   assert.notEqual(await page.getByRole("combobox",{name:"Grupo da camada"}).inputValue(),"");
-  const downloadPromise=page.waitForEvent("download");
+  await page.getByRole("checkbox",{name:"Mostrar grupo Estudo local",exact:true}).uncheck();
+  assert.equal(await row.getAttribute("data-rendered"),"false");
+  await page.getByRole("checkbox",{name:"Mostrar grupo Estudo local",exact:true}).check();
+  assert.equal(await row.getAttribute("data-rendered"),"true");
+  const downloadPromise=page.waitForEvent("download",{timeout:15000});
   await page.getByRole("button",{name:"Exportar GeoJSON",exact:true}).click();
   const download=await downloadPromise;
   await download.saveAs("workbench-browser-artifacts/exported-points.geojson");

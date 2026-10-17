@@ -16,6 +16,7 @@ export function GeoMozLayerProperties({layer,props}:{layer:GeoLibreLayer;props:C
   const reorder=useAppStore(s=>s.reorderLayer);
   const move=useAppStore(s=>s.moveLayerToGroup);
   const addGroup=useAppStore(s=>s.addLayerGroup);
+  const setGroupVisible=useAppStore(s=>s.setLayerGroupVisibility);
   const [groupName,setGroupName]=useState("");
   const exportPrivilege=useAppCapability("export:data");
   const canEditLayer=useCallback((id:string)=>{
@@ -38,12 +39,18 @@ export function GeoMozLayerProperties({layer,props}:{layer:GeoLibreLayer;props:C
   const editable=canEditLayer(layer.id);
   const canExport=!viewer&&deployment.has("export:data")&&exportPrivilege.granted;
   const status=props.refresh.refreshStatuses[layer.id];
+  const ancestors:typeof groups=[];
+  const visited=new Set<string>();
+  let parent=groups.find(group=>group.id===layer.groupId);
+  while(parent&&!visited.has(parent.id)){visited.add(parent.id);ancestors.push(parent);parent=groups.find(group=>group.id===parent?.parentId);}
+
   return <details className="gm-layer-properties" key={layer.id}><summary>Propriedades da camada</summary>
     <label>Nome<input aria-label="Renomear camada" defaultValue={layer.name} disabled={!editable}
       onBlur={event=>{const name=event.target.value.trim();if(name&&editable)update(layer.id,{name});else event.target.value=layer.name;}}
       onKeyDown={event=>{if(event.key==="Enter"&&!event.nativeEvent.isComposing)event.currentTarget.blur();}}/></label>
     <label>Grupo<select aria-label="Grupo da camada" value={layer.groupId??""} disabled={!editable}
       onChange={event=>{if(editable)move(layer.id,event.target.value||null);}}><option value="">Sem grupo</option>{groups.map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
+    {ancestors.map(group=><label className="gm-group-visibility" key={group.id}><input type="checkbox" aria-label={"Mostrar grupo "+group.name} checked={group.visible} disabled={!editable} onChange={event=>{if(editable)setGroupVisible(group.id,event.target.checked);}}/>{group.name}</label>)}
     {editable&&<form onSubmit={event=>{event.preventDefault();if(groupName.trim()){addGroup(groupName.trim(),[layer.id]);setGroupName("");}}}><input aria-label="Nome do novo grupo" placeholder="Novo grupo" value={groupName} onChange={event=>setGroupName(event.target.value)}/><button type="submit" disabled={!groupName.trim()}>Criar</button></form>}
     <div className="gm-inspector-actions">{editable&&<><button type="button" onClick={()=>reorder(layer.id,"up")}>Subir</button><button type="button" onClick={()=>reorder(layer.id,"down")}>Descer</button></>}
       {canExport&&layer.geojson&&<button type="button" onClick={()=>void actions.handleExportLayer(layer,"geojson")}>Exportar GeoJSON</button>}</div>

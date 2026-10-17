@@ -226,3 +226,7 @@ html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0
 .gm-help-menu nav button{display:block;width:100%;padding:9px 8px;border:0;border-radius:4px;background:transparent;text-align:left;color:var(--gm-text);font-size:11px;}
 .gm-help-menu nav button:hover{background:var(--gm-muted);}
 @media(max-width:767px){.gm-titlebar{gap:5px;}.gm-project-menu .gm-menu-slot>button{width:30px;padding:5px;}.gm-project-menu .gm-menu-slot>button>span{display:none;}.gm-task-guidance{padding:5px 12px;font-size:9px;}.gm-task-tabs>button{padding:9px 10px;}}
+
+@media(max-width:640px){.gm-project-title{display:none;}}
+
+.gm-layer-properties .gm-group-visibility{flex-direction:row;align-items:center;}.gm-layer-properties .gm-group-visibility input{width:12px;accent-color:var(--gm-accent);}

@@ -4,15 +4,13 @@ A interface de /gis-workspace/ pertence ao GeoMoz. O motor GIS MIT continua fixa
 
 ## Organização
 
-- Projecto: criar, abrir, guardar, importar projectos e gerir colaboração.
-- Dados: importar camadas e consultar catálogos; opções completas no menu secundário.
-- Mapa: navegação, medição, pesquisa e apresentação.
-- Análise: operações vectoriais, terreno, SQL e ferramentas completas.
-- Publicar: composição, gravação e partilha quando configurada.
-- Definições: extensões, estilos, perfis e diagnóstico.
-- Catálogo: pesquisa, visibilidade efectiva dos grupos, enquadramento, opacidade suportada, tabela e simbologia.
-- Resultados: histórico real de execuções, erros e ligações às saídas ainda presentes no mapa.
-- Gestão: operações completas do motor, incluindo grupos, exportação, renomeação e ferramentas avançadas.
+- Área de estudo: desenho/importação da área, navegação, medição e localização.
+- Dados: ficheiros vectoriais/GeoPackage, raster/DEM, CSV e serviços WMS/WFS/XYZ/WMTS.
+- Análise: operações vectoriais essenciais e ferramentas de terreno seleccionadas.
+- Resultados: execuções reais, erros, saídas e composição do mapa.
+- Projecto na barra superior: criar, abrir, guardar, recuperar e exportar.
+- Catálogo: pesquisa, visibilidade efectiva dos grupos, enquadramento, opacidade suportada, tabela, simbologia e propriedades.
+- Propriedades: nome, ordem, grupo e exportação GeoJSON, respeitando o modo de leitura e as permissões.
 
 Os comandos rápidos vêm do mesmo registo filtrado por capacidades e privilégios que os menus. Não executam cliques no DOM nem contornam indisponibilidades. A tabela respeita a capacidade de consulta da camada. Os diálogos, controlos do mapa, painéis de extensões, colaboração e ferramentas continuam a usar as suas APIs originais.
 
@@ -31,7 +29,7 @@ artifacts/geomoz-react/public/geomoz-theme.js inicializa o tema antes de React. 
 
 ## Validação
 
-O workflow GeoMoz Workbench CI compila TypeScript e executa o navegador com o resultado da compilação: importa GeoJSON, altera visibilidade e opacidade, executa Buffer, consulta resultados, usa menus completos, verifica persistência do tema e adaptação móvel. As capturas claro/nocturno/móvel ficam no artefacto geomoz-workbench-browser-checks.
+O workflow GeoMoz Workbench CI compila TypeScript e executa o navegador com o resultado da compilação: importa GeoJSON, altera visibilidade e opacidade, executa Buffer, consulta resultados, verifica os menus curados, verifica persistência do tema e adaptação móvel. As capturas claro/nocturno/móvel ficam no artefacto geomoz-workbench-browser-checks.
 
 Frontend CI mantém a regressão Cesium do módulo interno e verifica também o tema na navegação e nas páginas legais. As verificações da publicação confirmam os ficheiros e a política efectivamente servidos pelo Hosting.
 

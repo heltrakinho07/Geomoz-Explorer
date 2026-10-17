@@ -1,3 +1,4 @@
+import {useLayoutOptions} from "../../hooks/useLayoutOptions";
 import { GEOMOZ_ROLLOUT } from "../../lib/geomoz-workbench-profile";
 import {GeoMozLayerProperties} from "./GeoMozLayerProperties";
 import { useEffect, useRef, useState, type ComponentProps } from "react";
@@ -8,6 +9,7 @@ import { setLayersPanelCollapsed } from "../../lib/layer-panel-collapse";
 type Props = ComponentProps<typeof EngineLayerPanel>;
 /** GeoMoz's primary navigator. Advanced operations retain the engine's collaboration and edit guards. */
 export function GeoMozLayerPanel(props:Props) {
+  const {viewer}=useLayoutOptions();
   const layers=useAppStore(s=>s.layers);
   const groups=useAppStore(s=>s.layerGroups);
   const renderer=useAppStore(s=>s.primaryRenderer);
@@ -63,7 +65,7 @@ export function GeoMozLayerPanel(props:Props) {
       </div>
       {selected&&<section className="gm-layer-inspector" aria-label="Camada seleccionada"><small>CAMADA SELECCIONADA</small><h3 title={selected.name}>{selected.name}</h3>
         {(!pluginOwnsPaint(selected)||supportsBridgedOpacity(selected.id)||rendererAppliesOpacity(selected,renderer))&&<label className="gm-opacity">Opacidade <output>{Math.round(selected.opacity*100)}%</output><input aria-label="Opacidade da camada" type="range" min="0" max="1" step="0.01" value={selected.opacity} onChange={event=>opacity(selected.id,Number(event.target.value))}/></label>}
-        <div className="gm-inspector-actions">{resolveLayerCapabilities(selected).query&&["geojson","duckdb-query","geoparquet","flatgeobuf"].includes(selected.type)&&<button type="button" onClick={()=>openTable(true)}><Table2 size={14}/> Tabela</button>}{props.onOpenStylePanel&&<button type="button" onClick={props.onOpenStylePanel}><Palette size={14}/> Estilo</button>}{GEOMOZ_ROLLOUT.fullLayerManager&&<button type="button" onClick={()=>setAdvanced(true)}><SlidersHorizontal size={14}/> Propriedades</button>}</div>
+        <div className="gm-inspector-actions">{resolveLayerCapabilities(selected).query&&["geojson","duckdb-query","geoparquet","flatgeobuf"].includes(selected.type)&&<button type="button" onClick={()=>openTable(true)}><Table2 size={14}/> Tabela</button>}{!viewer&&props.onOpenStylePanel&&<button type="button" onClick={props.onOpenStylePanel}><Palette size={14}/> Estilo</button>}{GEOMOZ_ROLLOUT.fullLayerManager&&<button type="button" onClick={()=>setAdvanced(true)}><SlidersHorizontal size={14}/> Propriedades</button>}</div>
         <GeoMozLayerProperties key={selected.id} layer={selected} props={props}/>
       </section>}
       <div className="gm-catalog-footer"><span><i/>{layers.filter(rendered).length} visíveis de {layers.length}</span><span title="Altere a ordem e os grupos nas propriedades da camada">SIG LOCAL</span></div>

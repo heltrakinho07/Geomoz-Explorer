@@ -124,7 +124,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
         {!groups.length&&<p className="gm-ribbon-empty"><Compass size={22}/> As opções disponíveis estão nos menus desta tarefa.</p>}</div>
         {GEOMOZ_ROLLOUT.fullMenus&&<button type="button" className="gm-more-tools" aria-expanded={more} onClick={()=>setMore(!more)}>Mais opções <ChevronDown size={14}/></button>}
       </div>
-      <p className="gm-task-guidance" role="status" hidden={more}>{GUIDANCE[activeTask]}</p>
+      <p className="gm-task-guidance" role="status" hidden={more}>{viewer?"Explore as camadas e navegue no mapa. Esta sessão está em modo de leitura.":GUIDANCE[activeTask]}</p>
     </header>
   </TaskContext.Provider>;
 }
