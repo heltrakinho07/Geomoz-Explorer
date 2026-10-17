@@ -146,8 +146,6 @@ import {
   runVectorPointsInPolygon,
 } from "@/lib/wasm-geoprocessing";
 import { runGISVectorCommand } from "@/lib/gis-vector-runner";
-import { createLastWriteWinsQueue } from "@/lib/gis-workspace-sync-queue";
-import { canSyncGISWorkspaceToCloud } from "@/lib/gis-workspace-sync-readiness";
 import { exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-loader";
 import {
   executeDuckDbSpatialQuery,
@@ -166,19 +164,13 @@ import {
   CONTENT_W,
 } from "@/lib/pdf-export";
 import type { FeatureCollection, Feature } from "geojson";
-import { useProject } from "@/context/ProjectContext";
-import { useAuth } from "@/hooks/useAuth";
 import {
-  loadGISWorkspaceFromCloud,
-  syncGISWorkspaceToCloud,
-} from "@/services/gisWorkspaceCloudService";
-import {
-  loadGISWorkspaceSnapshot,
-  saveGISWorkspaceSnapshot,
-  loadGISWorkspaceRasterFiles,
-  syncGISWorkspaceRasterFiles,
-  type PersistedGISRasterLayer,
-} from "@/lib/gis-workspace-persistence";
+  getGISSessionWorkspace,
+  setGISSessionWorkspace,
+  exportPortableGISProject,
+  parsePortableGISProject,
+} from "@/lib/gis-workspace-session";
+import { downloadGlobalDem, globalDemTileRange } from "@/lib/gis-global-dem";
 import {
   listWhiteboxWasmManifests,
   runWhiteboxRasterTool,
@@ -291,18 +283,15 @@ export default function GeoProcessamento({
   onAOIChange,
 }: Props) {
   const { toast } = useToast();
-  const { activeProject } = useProject();
-  const { user } = useAuth();
-  const workspaceProjectId = activeProject?.id ?? "session-default";
-  const cloudUid =
-    user?.uid && user.uid !== "guest_user" && !user.uid.startsWith("guest_")
-      ? user.uid
-      : null;
-  // IndexedDB belongs to the signed-in UID as well as the project. Two
-  // different users with the same project ID must never share offline data.
-  const workspaceCacheId =
-    (cloudUid ?? "guest") + "::" + workspaceProjectId;
+  // This GIS workbench intentionally does not use accounts, cloud projects,
+  // Firestore, Storage, IndexedDB or any automatic data persistence.
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const projectInputRef = useRef<HTMLInputElement>(null);
+  const demAbortRef = useRef<AbortController | null>(null);
+  const [demProgress, setDemProgress] = useState<{ completed: number; total: number } | null>(null);
+  const [demLoading, setDemLoading] = useState(false);
+  const [mapViewportBbox, setMapViewportBbox] = useState<[number, number, number, number]>([33.0, -20.8, 36.0, -16.0]);
+  const [projectNotice, setProjectNotice] = useState<string | null>(null);
   const rasterErrorToastRef = useRef(new Set<string>());
 
   // Main UI Navigation
@@ -393,17 +382,9 @@ export default function GeoProcessamento({
   const [heavyJob, setHeavyJob] = useState<GISHeavyProcessingJob | null>(null);
   const heavyJobAbortRef = useRef<AbortController | null>(null);
 
-  // Processing History
+  // Processing history and transient browser session; no database writes.
   const [history, setHistory] = useState<ProcessingHistoryEntry[]>([]);
   const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
-  const hydratedProjectRef = useRef<string | null>(null);
-  const cloudSyncReadyRef = useRef<string | null>(null);
-  const cloudSyncSequenceRef = useRef(0);
-  const [cloudSyncStatus, setCloudSyncStatus] = useState<"loading" | "local-only" | "ready" | "saving" | "saved" | "error">("loading");
-  const cloudSyncQueue = useMemo(() => createLastWriteWinsQueue(
-    (job: { uid: string; snapshot: Parameters<typeof syncGISWorkspaceToCloud>[1] }) => syncGISWorkspaceToCloud(job.uid, job.snapshot),
-    (job) => JSON.stringify([job.uid, job.snapshot.projectId]),
-  ), []);
 
   // Model Builder — typed DAG (vector + raster).
   const [modelGraph, setModelGraph] = useState<GISModelGraph>(
@@ -415,279 +396,35 @@ export default function GeoProcessamento({
   const [modelLog, setModelLog] = useState<string[]>([]);
   const modelAbortRef = useRef<AbortController | null>(null);
 
-  // Restore the newest available workspace snapshot. IndexedDB is the fast
-  // offline cache; authenticated projects additionally use Firestore + Storage.
+  // Restore only RAM state when the component remounts in the same tab.
+  // Refreshing/closing the tab clears it; use Exportar Projecto for backup.
   React.useEffect(() => {
-    let cancelled = false;
-    setWorkspaceHydrated(false);
-    hydratedProjectRef.current = null;
-    cloudSyncReadyRef.current = null;
-    cloudSyncSequenceRef.current += 1;
-    setCloudSyncStatus("loading");
+    const snapshot = getGISSessionWorkspace();
+    if (snapshot) {
+      setLayers(snapshot.layers as UserLayer[]);
+      setRasterLayers(snapshot.rasters);
+      setServiceLayers(snapshot.services);
+      setSelectedLayerId(snapshot.selectedLayerId);
+      setSecondLayerId(snapshot.secondLayerId);
+      setTableLayerId(snapshot.tableLayerId);
+      setHistory(snapshot.history as ProcessingHistoryEntry[]);
+      setModelGraph(snapshot.modelGraph);
+      setActiveTab(snapshot.activeTab as MainTab);
+      setBasemap(snapshot.basemap as BasemapType);
+    }
+    setWorkspaceHydrated(true);
+  }, []);
 
-    const load = async () => {
-      const localPromise = loadGISWorkspaceSnapshot(workspaceCacheId);
-      const rasterFilesPromise = loadGISWorkspaceRasterFiles(workspaceCacheId).catch((error) => {
-        console.warn("GIS Workspace: raster cache indisponível:", error);
-        return new Map<string, File>();
-      });
-      // Fail closed: a failed cloud restore must never trigger a destructive
-      // autosave from an empty or stale local cache.
-      const cloudPromise = cloudUid && activeProject?.id
-        ? loadGISWorkspaceFromCloud(cloudUid, workspaceProjectId)
-            .then((snapshot) => ({ succeeded: true, snapshot }))
-            .catch((error) => {
-              console.warn("GIS Workspace: cloud restore unavailable, local-only:", error);
-              return { succeeded: false, snapshot: null };
-            })
-        : Promise.resolve({ succeeded: false, snapshot: null });
-
-      const [localSnapshot, rasterFiles, cloudRestore] = await Promise.all([
-        localPromise, rasterFilesPromise, cloudPromise,
-      ]);
-      const cloudSnapshot = cloudRestore.snapshot;
-      if (cancelled) return;
-
-      const localTime = localSnapshot ? Date.parse(localSnapshot.updatedAt) || 0 : 0;
-      const cloudTime = cloudSnapshot ? Date.parse(cloudSnapshot.updatedAt) || 0 : 0;
-      const snapshot =
-        cloudSnapshot && cloudTime > localTime ? cloudSnapshot : localSnapshot ?? cloudSnapshot;
-
-      if (snapshot) {
-        setLayers(snapshot.layers as UserLayer[]);
-        setServiceLayers(snapshot.services ?? []);
-        const rasterMetadata = (snapshot.rasters ?? []) as PersistedGISRasterLayer[];
-        setRasterLayers(
-          rasterMetadata.map((raster) => {
-            // A cloud URL may refer to newer bytes than the local file cache.
-            const file = raster.remoteUrl ? undefined : rasterFiles.get(raster.id);
-            return {
-                id: raster.id,
-                name: raster.name,
-                file,
-                remoteUrl: raster.remoteUrl,
-                sourceType: raster.sourceType,
-                stacSource: raster.stacSource,
-                fileName: raster.fileName,
-                mimeType: raster.mimeType || "image/tiff",
-                sizeBytes: file?.size ?? raster.sizeBytes ?? 0,
-                visible: raster.visible,
-                opacity: raster.opacity,
-                isResult: raster.isResult,
-                bandCount: raster.bandCount ?? null,
-                bounds: raster.bounds ?? null,
-                error: !file && !raster.remoteUrl
-                  ? "Fonte raster indisponível; metadados preservados."
-                  : raster.error ?? null,
-                rasterState: raster.rasterState as GISWorkspaceRasterLayer["rasterState"],
-                rasterSymbology:
-                  raster.rasterSymbology as GISWorkspaceRasterLayer["rasterSymbology"],
-              } satisfies GISWorkspaceRasterLayer;
-          })
-        );
-        setSelectedLayerId(snapshot.selectedLayerId || snapshot.layers[0]?.id || "");
-        setSecondLayerId(snapshot.secondLayerId || "");
-        setTableLayerId(snapshot.tableLayerId || null);
-        setHistory(snapshot.history as ProcessingHistoryEntry[]);
-        setModelGraph(
-          snapshot.modelNodes.length || snapshot.modelEdges.length
-            ? {
-                version: 1,
-                nodes: snapshot.modelNodes,
-                edges: snapshot.modelEdges,
-              }
-            : createDefaultGISModelGraph()
-        );
-        if (snapshot.activeTab) {
-          const supportedTabs: MainTab[] = [
-            "terrain_workflow",
-            "data_sources",
-            "vector_toolbox",
-            "whitebox_toolbox",
-            "model_builder",
-            "sql_workspace",
-            "dashboard",
-            "history",
-            "layers",
-          ];
-          setActiveTab(
-            supportedTabs.includes(snapshot.activeTab as MainTab)
-              ? (snapshot.activeTab as MainTab)
-              : "vector_toolbox"
-          );
-        }
-        if (snapshot.basemap) setBasemap(snapshot.basemap as BasemapType);
-
-        // Refresh the local offline cache when the cloud copy is newer.
-        if (snapshot === cloudSnapshot) {
-          void saveGISWorkspaceSnapshot({
-            projectId: workspaceCacheId,
-            layers: snapshot.layers,
-            rasters: snapshot.rasters ?? [],
-            services: snapshot.services ?? [],
-            selectedLayerId: snapshot.selectedLayerId,
-            secondLayerId: snapshot.secondLayerId,
-            tableLayerId: snapshot.tableLayerId,
-            history: snapshot.history,
-            modelNodes: snapshot.modelNodes,
-            modelEdges: snapshot.modelEdges,
-            activeTab: snapshot.activeTab,
-            basemap: snapshot.basemap,
-          });
-        }
-      } else {
-        setLayers([]);
-        setRasterLayers([]);
-        setServiceLayers([]);
-        setSelectedLayerId("");
-        setSecondLayerId("");
-        setTableLayerId(null);
-        setHistory([]);
-        setModelGraph(createDefaultGISModelGraph());
-        setModelNodeStatus({});
-        setModelLog([]);
-      }
-
-      const missingRaster = (snapshot?.rasters ?? []).some(
-        (raster) => !raster.remoteUrl && !rasterFiles.has(raster.id)
-      );
-      const cloudReady = cloudRestore.succeeded && !missingRaster;
-      // This ref records restore success only. Source readiness is checked on
-      // every save so removing/replacing a missing raster can recover sync.
-      cloudSyncReadyRef.current = cloudRestore.succeeded ? workspaceCacheId : null;
-      setCloudSyncStatus(cloudReady ? "ready" : "local-only");
-      hydratedProjectRef.current = workspaceCacheId;
-      setWorkspaceHydrated(true);
-    };
-
-    void load();
-    return () => {
-      cancelled = true;
-      vectorAbortRef.current?.abort();
-    };
-  }, [workspaceProjectId, workspaceCacheId, cloudUid, activeProject?.id]);
-
-  // Persist project workspace changes without blocking map interaction.
   React.useEffect(() => {
-    if (!workspaceHydrated || hydratedProjectRef.current !== workspaceCacheId) return;
-
-    const timer = window.setTimeout(() => {
-      const rasterSnapshot: PersistedGISRasterLayer[] = rasterLayers.map((raster) => ({
-        id: raster.id,
-        name: raster.name,
-        fileName: raster.file?.name ?? raster.fileName,
-        mimeType: raster.file?.type || raster.mimeType || "image/tiff",
-        sizeBytes: raster.file?.size ?? raster.sizeBytes ?? 0,
-        visible: raster.visible,
-        opacity: raster.opacity,
-        isResult: raster.isResult,
-        bandCount: raster.bandCount ?? null,
-        bounds: raster.bounds ?? null,
-        error: raster.error ?? null,
-        rasterState: raster.rasterState ? { ...raster.rasterState } : undefined,
-        rasterSymbology: raster.rasterSymbology
-          ? { ...raster.rasterSymbology }
-          : undefined,
-        remoteUrl: raster.remoteUrl,
-        sourceType: raster.sourceType,
-        stacSource: raster.stacSource,
-      }));
-
-      const snapshot = {
-        projectId: workspaceProjectId,
-        layers,
-        rasters: rasterSnapshot,
-        services: serviceLayers,
-        selectedLayerId,
-        secondLayerId,
-        tableLayerId,
-        history,
-        modelNodes: modelGraph.nodes,
-        modelEdges: modelGraph.edges,
-        activeTab,
-        basemap,
-      };
-
-      // Capture the edit order before asynchronous IndexedDB operations:
-      // a slow older save must not enqueue its stale cloud snapshot last.
-      const sequence = ++cloudSyncSequenceRef.current;
-      void (async () => {
-        await saveGISWorkspaceSnapshot({ ...snapshot, projectId: workspaceCacheId });
-        await syncGISWorkspaceRasterFiles(workspaceCacheId, rasterLayers).catch((error) => {
-          console.warn("GIS Workspace: falha ao persistir rasters localmente:", error);
-        });
-
-        if (hydratedProjectRef.current !== workspaceCacheId ||
-            cloudSyncSequenceRef.current !== sequence) return;
-        if (cloudUid && activeProject?.id &&
-            canSyncGISWorkspaceToCloud(
-              cloudSyncReadyRef.current === workspaceCacheId, rasterLayers,
-            )) {
-          setCloudSyncStatus("saving");
-          try {
-            await cloudSyncQueue.enqueue({ uid: cloudUid, snapshot });
-            if (hydratedProjectRef.current === workspaceCacheId &&
-                cloudSyncSequenceRef.current === sequence) {
-              setCloudSyncStatus("saved");
-            }
-          } catch (error) {
-            console.warn("GIS Workspace: cloud sync deferred; local cache retained:", error);
-            if (hydratedProjectRef.current === workspaceCacheId &&
-                cloudSyncSequenceRef.current === sequence) {
-              setCloudSyncStatus("error");
-            }
-          }
-        } else if (hydratedProjectRef.current === workspaceCacheId) {
-          setCloudSyncStatus("local-only");
-        }
-      })();
-    }, 900);
-
-    return () => window.clearTimeout(timer);
-  }, [
-    workspaceHydrated,
-    workspaceProjectId,
-    workspaceCacheId,
-    cloudUid,
-    activeProject?.id,
-    layers,
-    rasterLayers,
-    serviceLayers,
-    selectedLayerId,
-    secondLayerId,
-    tableLayerId,
-    history,
-    modelGraph,
-    activeTab,
-    basemap,
-    cloudSyncQueue,
-  ]);
-
-
-  // Spatial SQL Workspace
-  const [sqlQuery, setSqlQuery] = useState<string>("");
-  const [sqlResult, setSqlResult] = useState<QueryResult | null>(null);
-
-  // Active layer references
-  const activeLayer = useMemo(() => layers.find((l) => l.id === selectedLayerId), [layers, selectedLayerId]);
-  const secondaryLayer = useMemo(() => layers.find((l) => l.id === secondLayerId), [layers, secondLayerId]);
-
-  // Current selected tool metadata
-  const currentTool = useMemo(
-    () => GEOPROCESSING_TOOLS_CATALOG.find((t) => t.id === selectedToolId) || GEOPROCESSING_TOOLS_CATALOG[0],
-    [selectedToolId]
-  );
-
-  // Filtered tools catalog
-  const filteredTools = useMemo(() => {
-    return GEOPROCESSING_TOOLS_CATALOG.filter((tool) => {
-      const matchSearch =
-        tool.name.toLowerCase().includes(toolSearch.toLowerCase()) ||
-        tool.description.toLowerCase().includes(toolSearch.toLowerCase());
-      const matchCat = toolCategoryFilter === "all" || tool.category === toolCategoryFilter;
-      return matchSearch && matchCat;
+    if (!workspaceHydrated) return;
+    setGISSessionWorkspace({
+      layers, rasters: rasterLayers, services: serviceLayers,
+      selectedLayerId, secondLayerId, tableLayerId,
+      history, modelGraph, activeTab, basemap,
     });
-  }, [toolSearch, toolCategoryFilter]);
+  }, [workspaceHydrated, layers, rasterLayers, serviceLayers,
+      selectedLayerId, secondLayerId, tableLayerId, history, modelGraph,
+      activeTab, basemap]);
 
   const selectedWhiteboxTool = useMemo(
     () => whiteboxTools.find((tool) => tool.id === selectedWhiteboxToolId) ?? null,
@@ -3067,18 +2804,12 @@ export default function GeoProcessamento({
           </button>
         </div>
 
-        {/* Explicit local-vs-cloud state: an offline cache is not a confirmed backup. */}
-        <div role="status" aria-live="polite" className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 text-[10px] text-slate-600 dark:text-slate-300">
-          {cloudSyncStatus === "loading" && "Projecto GIS: a restaurar dados..."}
-          {cloudSyncStatus === "ready" && "Projecto GIS: sincronização disponível"}
-          {cloudSyncStatus === "saving" && "Projecto GIS: a guardar no Firebase..."}
-          {cloudSyncStatus === "saved" && "Projecto GIS: guardado no Firebase"}
-          {cloudSyncStatus === "local-only" && (
-            <span className="text-amber-700 dark:text-amber-400">Projecto GIS: apenas cache local; nuvem indisponível ou sessão anónima</span>
-          )}
-          {cloudSyncStatus === "error" && (
-            <span className="text-rose-700 dark:text-rose-400">Falha na sincronização Firebase; cache local mantida. Altere o projecto para tentar novamente.</span>
-          )}
+        <div role="status" aria-live="polite"
+          className="border-b border-slate-100 bg-sky-50/60 px-3 py-2 text-[10px] leading-relaxed text-sky-800 dark:border-slate-800 dark:bg-sky-950/20 dark:text-sky-300">
+          <strong>Modo local:</strong> dados e resultados permanecem apenas na memória
+          deste separador; não são enviados ao Firestore nem ao Storage.
+          Exporte o projecto antes de fechar ou actualizar a página.
+          {projectNotice && <span className="mt-1 block font-semibold">{projectNotice}</span>}
         </div>
 
         {/* Top Processing Menu Tabs */}
@@ -3184,7 +2915,7 @@ export default function GeoProcessamento({
           <Mountain size={16} /> Terreno e Hidrologia
         </button>
         {workspaceHydrated && <div hidden={activeTab !== "terrain_workflow"}>
-          <TerrainWorkflowPanel key={workspaceCacheId} aoi={aoi} rasters={rasterLayers}
+          <TerrainWorkflowPanel aoi={aoi} rasters={rasterLayers}
             onComplete={handleTerrainComplete} onShowProduct={handleShowTerrainProduct}
             onDraw={() => { setDrawingEnabled(true); setSidebarOpen(false); setDesktopSidebarOpen(false); }} />
         </div>}
@@ -3194,8 +2925,8 @@ export default function GeoProcessamento({
           <div className="p-3 space-y-3 flex-1">
             <div className="rounded-xl border border-cyan-100 bg-cyan-50 p-2.5 text-[11px] text-cyan-900 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-300">
               <span className="font-semibold block mb-0.5">Data Sources do projeto</span>
-              Adicione ficheiros, dados cloud-native e serviços OGC. As fontes ficam
-              persistidas com o GIS Workspace.
+              Adicione ficheiros locais, COGs e serviços OGC. Os dados ficam na
+              memória do navegador; nenhum upload ou sincronização automática.
             </div>
 
             <div className="grid grid-cols-2 gap-2">
