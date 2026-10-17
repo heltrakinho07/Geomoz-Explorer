@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentProps } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { useAppStore, effectiveLayerRenderState, resolveLayerCapabilities, pluginOwnsPaint, rendererAppliesOpacity, supportsBridgedOpacity } from "@geolibre/core";
 import { Layers3, Search, ChevronLeft, ChevronRight, Eye, EyeOff, Crosshair, SlidersHorizontal, Table2, Palette, FileStack, Map as MapIcon, FolderOpen, History, CheckCircle2, AlertCircle } from "lucide-react";
 import { LayerPanel as EngineLayerPanel } from "../panels/LayerPanel";
@@ -9,7 +9,7 @@ export function GeoMozLayerPanel(props:Props) {
   const layers=useAppStore(s=>s.layers);
   const groups=useAppStore(s=>s.layerGroups);
   const renderer=useAppStore(s=>s.primaryRenderer);
-  const groupById=new Map(groups.map(group=>[group.id,group]));
+  const groupById=new Map(groups.map(group=>[group.id,group] as const));
   const rendered=(layer:(typeof layers)[number])=>effectiveLayerRenderState(layer,groupById).visible;
   const selectedId=useAppStore(s=>s.selectedLayerId);
   const select=useAppStore(s=>s.selectLayer);
@@ -27,10 +27,18 @@ export function GeoMozLayerPanel(props:Props) {
   const [notice,setNotice]=useState("");
   const collapsed=props.collapsed??internalCollapsed;
   const changeCollapsed=(value:boolean)=>props.collapsed===undefined?setInternalCollapsed(value):props.onCollapsedChange?.(value);
-  useEffect(()=>{if(props.collapsed===undefined&&props.autoCollapse)setInternalCollapsed(true);},[props.autoCollapse,props.collapsed]);
-  useEffect(()=>setLayersPanelCollapsed(collapsed),[collapsed,advanced]);
+  const previousAuto=useRef<boolean|null>(null);
+  const beforeAuto=useRef(internalCollapsed);
+  useEffect(()=>{
+    if(props.collapsed!==undefined)return;
+    const previous=previousAuto.current;
+    previousAuto.current=!!props.autoCollapse;
+    if(props.autoCollapse&&!previous){beforeAuto.current=internalCollapsed;setInternalCollapsed(true);}
+    else if(!props.autoCollapse&&previous)setInternalCollapsed(beforeAuto.current);
+  },[props.autoCollapse,props.collapsed,internalCollapsed]);
+  useEffect(()=>{setLayersPanelCollapsed(collapsed);return ()=>setLayersPanelCollapsed(false);},[collapsed,advanced]);
   const selected=layers.find(layer=>layer.id===selectedId);
-  const filtered=layers.filter(layer=>(tab==="all"||rendered(layer))&&layer.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+  const filtered=[...layers].reverse().filter(layer=>(tab==="all"||rendered(layer))&&layer.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   if(collapsed)return props.hideOwnRail?null:<aside className="gm-layer-rail" aria-label="Catálogo recolhido"><button className="gm-icon-button" aria-label="Expandir catálogo" onClick={()=>changeCollapsed(false)}><Layers3 size={19}/></button><span>CATÁLOGO</span></aside>;
   return <aside className="gm-catalog" data-testid="geomoz-layer-catalog" aria-label="Catálogo de camadas">
     <div className="gm-catalog-heading"><div><small>ÁREA DE TRABALHO</small><h2><Layers3 size={18}/> Catálogo</h2></div><button type="button" className="gm-icon-button" aria-label="Recolher catálogo" onClick={()=>changeCollapsed(true)}><ChevronLeft size={17}/></button></div>
