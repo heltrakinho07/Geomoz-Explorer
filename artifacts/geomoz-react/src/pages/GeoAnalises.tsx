@@ -2631,8 +2631,6 @@ interface GeoAnalisesProps {
   onProvinceChange: (p: string | null) => void;
   onDistrictChange?: (d: string | null) => void;
   onAOIChange: (aoi: AreaOfInterest) => void;
-  viewMode?: "2d" | "3d";
-  onViewModeChange?: (mode: "2d" | "3d") => void;
 }
 
 // Defaults for custom topographic classes (user can edit)
@@ -2842,14 +2840,14 @@ export interface GeoAnaliseCategory {
 export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
   {
     id: "terrain",
-    title: "Relevo, Topografia & Morfologia 3D",
+    title: "Relevo, Topografia & Morfologia",
     subtitle: "DEM Copernicus GLO-30 · 30 m",
     badge: "DEM Copernicus 30m",
     badgeColor: "bg-amber-100 text-amber-800 border-amber-200",
     icon: Mountain,
     gradient: "from-amber-500 to-orange-600",
-    description: "Altimetria digital de alta resolução, cortes topográficos tridimensionais (A→B), curvas de nível automáticas e divisão em classes morfológicas.",
-    highlights: ["Perfil Topográfico 3D (A→B)", "Curvas de Nível GEE", "Classes Morfológicas", "Hipsometria Relativa"],
+    description: "Altimetria digital de alta resolução, perfis topográficos (A→B), curvas de nível automáticas e divisão em classes morfológicas.",
+    highlights: ["Perfil Topográfico (A→B)", "Curvas de Nível GEE", "Classes Morfológicas", "Hipsometria Relativa"],
     defaultTab: "elevation",
     tabIds: ["elevation", "hipsometry", "topo_class", "topo_custom", "profile", "contours"],
   },
@@ -2948,11 +2946,7 @@ export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
 
 export default function GeoAnalises({
   aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange,
-  viewMode: propViewMode, onViewModeChange,
 }: GeoAnalisesProps) {
-  const [internalViewMode, setInternalViewMode] = useState<"2d" | "3d">("3d");
-  const viewMode = propViewMode ?? internalViewMode;
-  const handleViewModeChange = onViewModeChange ?? setInternalViewMode;
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
@@ -3590,7 +3584,7 @@ export default function GeoAnalises({
     }
     if (isProfile) {
       return {
-        label: "Perfil Topográfico 3D (A→B)",
+        label: "Perfil Topográfico (A→B)",
         category: "Morfologia",
         classLabel: "Corte Altimétrico",
       };
@@ -4868,14 +4862,13 @@ export default function GeoAnalises({
             )}
           </div>
 
-          {/* Basemap Switcher (Google Maps / Cesium) */}
+          {/* Tipos de mapa 2D */}
           <BasemapSwitcher
             current={basemap}
             onChange={setBasemap}
             className="absolute bottom-16 sm:bottom-6 right-4 z-[600]"
             position="bottom-right"
-            show3dToggle={false}
-          />
+            />
 
           <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }}>
             {/* Base tiles */}
