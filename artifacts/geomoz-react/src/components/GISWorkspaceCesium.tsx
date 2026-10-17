@@ -42,6 +42,17 @@ function path(project:(p:number[])=>{x:number;y:number},points:number[][],close:
   const parts=points.map(project).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
   return parts.map((p,i)=>(i?"L":"M")+p.x.toFixed(1)+","+p.y.toFixed(1)).join(" ")+(close&&parts.length?" Z":"");
 }
+/** Project lists are newest first. Keep analysis rasters above service imagery. */
+function orderImagery(r:Runtime,props:Props) {
+  const collection=r.viewer.imageryLayers;
+  if(r.base)collection.lowerToBottom(r.base);
+  for(const layer of [...(props.serviceLayers??[])].reverse()){
+    const imagery=r.services.get(layer.id)?.imagery;if(imagery)collection.raiseToTop(imagery);
+  }
+  for(const layer of [...(props.rasterLayers??[])].reverse()){
+    const imagery=r.rasters.get(layer.id)?.imagery;if(imagery)collection.raiseToTop(imagery);
+  }
+}
 function fit(r:Runtime,b:Bounds) {
   if(!b.every(Number.isFinite)) return;
   const width=Math.max(0.002,b[2]-b[0]),height=Math.max(0.002,b[3]-b[1]);
@@ -148,7 +159,10 @@ export default function GISWorkspaceCesium(props:Props) {
         refreshPreview();
       };
       const removeMove=viewer.camera.moveEnd.addEventListener(viewport);
-      const removeRender=viewer.scene.postRender.addEventListener(()=>refreshPreview());
+      const removeRender=viewer.scene.postRender.addEventListener(()=>{
+        refreshPreview();
+        if(host.current)host.current.dataset.vectorReady=String(viewer.dataSourceDisplay.ready?[...r.vectors.values()].filter(e=>e.source).length:0);
+      });
       const observer=new ResizeObserver(()=>{if(r.alive){viewer.resize();viewer.scene.requestRender();}});
       observer.observe(container.current);
       dispose=()=>{r.alive=false;observer.disconnect();input.destroy();removeMove();removeRender();r.worker.stop();
@@ -167,7 +181,7 @@ export default function GISWorkspaceCesium(props:Props) {
       tilingScheme:new r.C.WebMercatorTilingScheme(),enablePickFeatures:false,
     }),0);
     if(r.base)r.viewer.imageryLayers.remove(r.base,true);
-    r.base=next;r.viewer.scene.requestRender();
+    r.base=next;orderImagery(r,current.current);r.viewer.scene.requestRender();
   },[ready,props.basemap]);
 
   useEffect(()=>{
@@ -186,7 +200,9 @@ export default function GISWorkspaceCesium(props:Props) {
         if(!r.alive||r.vectors.get(l.id)!==next){return;}
         next.source=source;source.show=current.current.layers.find(layer=>layer.id===l.id)?.visible??false;
         return r.viewer.dataSources.add(source);
-      }).then(()=>{if(r.alive)r.viewer.scene.requestRender();}).catch(err=>{if(r.alive)fail(l.id,"Falha na camada vectorial: "+err.message);});
+      }).then(()=>{if(r.alive){
+        r.viewer.scene.requestRender();
+      }}).catch(err=>{if(r.alive)fail(l.id,"Falha na camada vectorial: "+err.message);});
     }
     if(host.current)host.current.dataset.vectorCount=String(r.vectors.size);
     r.viewer.scene.requestRender();
@@ -214,7 +230,11 @@ export default function GISWorkspaceCesium(props:Props) {
         entry.imagery=r.viewer.imageryLayers.addImageryProvider(p);
       }
       entry.imagery.show=l.visible;entry.imagery.alpha=l.opacity;
-      if(host.current)host.current.dataset.rasterCount=String([...r.rasters.values()].filter(e=>e.imagery).length);
+      orderImagery(r,current.current);
+      if(host.current){
+        host.current.dataset.rasterCount=String([...r.rasters.values()].filter(e=>e.imagery).length);
+        host.current.dataset.activeRasterOnTop=String(r.viewer.imageryLayers.get(r.viewer.imageryLayers.length-1)===r.rasters.get(current.current.activeRasterId??"")?.imagery);
+      }
       r.viewer.scene.requestRender();
     };
     for(const l of layers){
@@ -231,12 +251,11 @@ export default function GISWorkspaceCesium(props:Props) {
           next.bounds=meta.bounds;next.bandCount=meta.bandCount;
           if(!r.alive||r.rasters.get(l.id)!==next){if(r.alive)await r.worker.request("close",next.key);return;}
           apply(l.id,next);
-          current.current.onRasterMetadata?.({id:l.id,...meta,error:null,rasterState:l.rasterState??{}});
+          current.current.onRasterMetadata?.({id:l.id,...meta,error:null,rasterState:current.current.rasterLayers?.find(layer=>layer.id===l.id)?.rasterState??{}});
         }catch(err){if(r.alive&&r.rasters.get(l.id)===next){next.failed=true;fail(l.id,err instanceof Error?err.message:String(err));}}
       })();
     }
-    // Match the project layer order after asynchronous raster opens.
-    for(const l of layers){const entry=r.rasters.get(l.id);if(entry?.imagery)r.viewer.imageryLayers.raiseToTop(entry.imagery);}
+    orderImagery(r,current.current);
   },[ready,props.rasterLayers]);
 
   useEffect(()=>{
@@ -257,7 +276,7 @@ export default function GISWorkspaceCesium(props:Props) {
         const latest=current.current.serviceLayers?.find(layer=>layer.id===l.id);
         next.imagery.show=latest?.visible??false;next.imagery.alpha=latest?.opacity??1;
         if(host.current)host.current.dataset.serviceCount=String(r.services.size);
-        r.viewer.scene.requestRender();
+        orderImagery(r,current.current);r.viewer.scene.requestRender();
       }).catch(err=>{if(r.alive)setLayerErrors(old=>({...old,[l.id]:err.message}));});
     }
     r.viewer.scene.requestRender();

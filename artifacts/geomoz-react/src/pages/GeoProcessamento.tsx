@@ -2,7 +2,7 @@
  * GeoMoz GIS Workspace — ambiente SIG local, independente e sem base de dados.
  *
  * Engines: Turf.js for verified vector tools, DuckDB-WASM Spatial for SQL,
- * Whitebox WASM for a curated geoprocessing catalog, and MapLibre for mapping.
+ * Whitebox WASM for a curated geoprocessing catalog, and CesiumJS in 2D for mapping.
  * The UI only exposes execution paths that GeoMoz can configure explicitly.
  */
 

@@ -12,5 +12,5 @@ Esta alteração:
 
 O ambiente local ficou indisponível durante o trabalho anterior. A validação desta entrega é feita no GitHub Actions. Não se declara ensaio visual nem ensaio do ficheiro específico do utilizador.
 
-## Pendências explícitas
-O mapa actual continua a usar MapLibre em 2D. A migração pedida para CesiumJS não está implementada nesta alteração. Essa migração precisa de verificar a preservação de camadas raster, classificação, serviços OGC e desenho no mapa; não deve ser confundida com mudar o nome do mapa ou a imagem de fundo.
+## Migração posterior para CesiumJS
+O PR de migração substitui o mapa do Workspace por CesiumJS em 2D. O fluxo, as limitações e a validação estão descritos em [GIS_WORKSPACE_CESIUM.md](GIS_WORKSPACE_CESIUM.md).
