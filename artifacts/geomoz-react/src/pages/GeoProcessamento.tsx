@@ -1,5 +1,5 @@
 /**
- * GeoMoz GIS Workspace — ambiente GIS integrado e persistente.
+ * GeoMoz GIS Workspace — ambiente SIG local, independente e sem base de dados.
  *
  * Engines: Turf.js for verified vector tools, DuckDB-WASM Spatial for SQL,
  * Whitebox WASM for a curated geoprocessing catalog, and MapLibre for mapping.
@@ -295,7 +295,7 @@ export default function GeoProcessamento({
   const rasterErrorToastRef = useRef(new Set<string>());
 
   // Main UI Navigation
-  const [activeTab, setActiveTab] = useState<MainTab>("vector_toolbox");
+  const [activeTab, setActiveTab] = useState<MainTab>("layers");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [basemap, setBasemap] = useState<BasemapType>("hybrid");
@@ -1460,7 +1460,7 @@ export default function GeoProcessamento({
     setServiceLayers((previous) => [service, ...previous]);
     toast({
       title: "WMS adicionado",
-      description: `${service.name} foi registado como camada persistente do projeto.`,
+      description: `${service.name} foi adicionado à sessão local do GIS Workspace.`,
     });
   }, [toast, wmsCapabilities, wmsSelectedLayer, wmsStyle]);
 
@@ -1559,7 +1559,7 @@ export default function GeoProcessamento({
             id: `raster_${crypto.randomUUID().slice(0, 12)}`,
             name: file.name.replace(/\.[^/.]+$/, ""),
             file,
-            sourceType: "storage",
+            
             fileName: file.name,
             mimeType: file.type || "image/tiff",
             sizeBytes: file.size,
@@ -2138,7 +2138,7 @@ export default function GeoProcessamento({
             id: `model_raster_${crypto.randomUUID().slice(0, 12)}`,
             name: node.name.trim() || value.name || "Resultado raster do modelo",
             file,
-            sourceType: "storage",
+            
             fileName,
             mimeType: "image/tiff",
             sizeBytes: file.size,
@@ -2329,7 +2329,7 @@ export default function GeoProcessamento({
           whiteboxManifestName(selectedWhiteboxTool!) +
           " — Backend GDAL",
         file: resultFile,
-        sourceType: "storage",
+        
         fileName: resultFile.name,
         mimeType: resultFile.type || "image/tiff",
         sizeBytes: resultFile.size,
@@ -2476,7 +2476,7 @@ export default function GeoProcessamento({
             id: `whitebox_raster_${crypto.randomUUID().slice(0, 12)}`,
             name: `${whiteboxManifestName(selectedWhiteboxTool)} — ${output.parameter}`,
             file,
-            sourceType: "storage",
+            
             fileName: file.name,
             mimeType: "image/tiff",
             sizeBytes: file.size,
@@ -2862,7 +2862,7 @@ export default function GeoProcessamento({
       return {
         id, name: `${product.name} — ${result.report.source.name}`, file,
         fileName: file.name, mimeType: file.type, sizeBytes: file.size,
-        sourceType: "storage", visible: product.id === "slope", opacity: 1,
+         visible: product.id === "slope", opacity: 1,
         isResult: true, bandCount: 1, bounds: product.bounds, error: null,
         rasterState: { mode: "single", bands: [1],
           colormap: product.id === "hillshade" ? "gray" : product.id === "streams" ? "blues" : "viridis",
@@ -3780,7 +3780,7 @@ export default function GeoProcessamento({
                 disabled={!tileServiceUrl.trim()}
                 className="w-full rounded-lg bg-amber-600 px-3 py-2 text-[10px] font-bold text-white hover:bg-amber-700 disabled:opacity-50"
               >
-                Adicionar tiles persistentes
+                Adicionar serviço de tiles à sessão
               </button>
             </div>
           </div>
@@ -4952,7 +4952,7 @@ export default function GeoProcessamento({
                                       Classificação Raster
                                     </span>
                                     <span className="text-[9px] text-slate-400">
-                                      Classes discretas e legenda persistente
+                                      Classes discretas e legenda da camada
                                     </span>
                                   </div>
                                   <label className="flex items-center gap-1.5 text-[9px] font-semibold text-slate-600 dark:text-slate-300">
