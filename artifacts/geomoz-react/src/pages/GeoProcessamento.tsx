@@ -171,6 +171,11 @@ import {
   parsePortableGISProject,
 } from "@/lib/gis-workspace-session";
 import { downloadGlobalDem, globalDemTileRange } from "@/lib/gis-global-dem";
+import {
+  loadGISWorkspaceSnapshot, saveGISWorkspaceSnapshot,
+  loadGISWorkspaceRasterFiles, syncGISWorkspaceRasterFiles,
+  type PersistedGISRasterLayer,
+} from "@/lib/gis-workspace-persistence";
 import { prepareLocalGeoTiff } from "@/lib/gis-local-geotiff";
 import {
   listWhiteboxWasmManifests,
@@ -386,6 +391,12 @@ export default function GeoProcessamento({
   // Processing history and transient browser session; no database writes.
   const [history, setHistory] = useState<ProcessingHistoryEntry[]>([]);
   const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
+  // Browser-only opt-in; Firebase services remain available as a separate
+  // subscription-gated integration. Never infer entitlement from a UI toggle.
+  const [workspaceStorageMode, setWorkspaceStorageMode] = useState<"memory" | "indexeddb">("memory");
+  const [localSaveStatus, setLocalSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const workspaceCacheId = "geomoz-workbench-local-v1";
+  const storageHydratedRef = useRef(false);
 
   // Model Builder — typed DAG (vector + raster).
   const [modelGraph, setModelGraph] = useState<GISModelGraph>(
@@ -426,6 +437,66 @@ export default function GeoProcessamento({
   }, [workspaceHydrated, layers, rasterLayers, serviceLayers,
       selectedLayerId, secondLayerId, tableLayerId, history, modelGraph,
       activeTab, basemap]);
+
+  // IndexedDB is opt-in and stores data on the user's device, not Firebase.
+  React.useEffect(() => {
+    if (workspaceStorageMode !== "indexeddb" || storageHydratedRef.current) return;
+    storageHydratedRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [snapshot, files] = await Promise.all([
+          loadGISWorkspaceSnapshot(workspaceCacheId),
+          loadGISWorkspaceRasterFiles(workspaceCacheId),
+        ]);
+        if (cancelled || !snapshot) return;
+        setLayers(snapshot.layers as UserLayer[]);
+        setRasterLayers((snapshot.rasters ?? []).map((r: PersistedGISRasterLayer) => ({
+          ...r, file: files.get(r.id), error: !files.has(r.id) && !r.remoteUrl
+            ? "Ficheiro raster local indisponível." : r.error,
+        })));
+        setServiceLayers(snapshot.services ?? []);
+        setSelectedLayerId(snapshot.selectedLayerId ?? "");
+        setSecondLayerId(snapshot.secondLayerId ?? "");
+        setTableLayerId(snapshot.tableLayerId ?? null);
+        setHistory(snapshot.history as ProcessingHistoryEntry[]);
+        setModelGraph({ version: 1, nodes: snapshot.modelNodes, edges: snapshot.modelEdges });
+        setLocalSaveStatus("saved");
+      } catch (err) {
+        console.warn("GIS Workspace: IndexedDB indisponível", err);
+        if (!cancelled) setLocalSaveStatus("error");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [workspaceStorageMode]);
+
+  React.useEffect(() => {
+    if (workspaceStorageMode !== "indexeddb" || !workspaceHydrated || !storageHydratedRef.current) return;
+    const timer = window.setTimeout(() => {
+      const rasters: PersistedGISRasterLayer[] = rasterLayers.map(r => ({
+        id: r.id, name: r.name, fileName: r.fileName, mimeType: r.mimeType,
+        sizeBytes: r.sizeBytes, visible: r.visible, opacity: r.opacity,
+        isResult: r.isResult, bandCount: r.bandCount, bounds: r.bounds,
+        error: r.error, remoteUrl: r.remoteUrl, sourceType: r.sourceType,
+        stacSource: r.stacSource, rasterState: r.rasterState as Record<string, unknown>,
+        rasterSymbology: r.rasterSymbology,
+      }));
+      setLocalSaveStatus("saving");
+      void Promise.all([
+        saveGISWorkspaceSnapshot({
+          projectId: workspaceCacheId, layers, rasters, services: serviceLayers,
+          selectedLayerId, secondLayerId, tableLayerId, history,
+          modelNodes: modelGraph.nodes, modelEdges: modelGraph.edges, activeTab, basemap,
+        }),
+        syncGISWorkspaceRasterFiles(workspaceCacheId, rasterLayers),
+      ]).then(() => setLocalSaveStatus("saved")).catch(err => {
+        console.warn("GIS Workspace: erro ao guardar IndexedDB", err);
+        setLocalSaveStatus("error");
+      });
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [workspaceStorageMode, workspaceHydrated, layers, rasterLayers, serviceLayers,
+    selectedLayerId, secondLayerId, tableLayerId, history, modelGraph, activeTab, basemap]);
 
   // Spatial SQL Workspace
   const [sqlQuery, setSqlQuery] = useState<string>("");
@@ -3001,9 +3072,28 @@ export default function GeoProcessamento({
 
         <div role="status" aria-live="polite"
           className="border-b border-slate-100 bg-sky-50/60 px-3 py-2 text-[10px] leading-relaxed text-sky-800 dark:border-slate-800 dark:bg-sky-950/20 dark:text-sky-300">
-          <strong>Modo local:</strong> dados e resultados permanecem apenas na memória
-          deste separador; não são enviados ao Firestore nem ao Storage.
-          Exporte o projecto antes de fechar ou actualizar a página.
+          <strong>Armazenamento:</strong> Firestore e Storage não são utilizados por padrão.
+          {workspaceStorageMode === "memory"
+            ? " Sessão temporária em memória; exporte o projecto antes de fechar."
+            : " IndexedDB no dispositivo; não é uma cópia de segurança na nuvem."}
+          <label className="mt-1 flex items-center gap-2">
+            <span>Modo</span>
+            <select aria-label="Modo de armazenamento GIS" value={workspaceStorageMode}
+              onChange={event => setWorkspaceStorageMode(event.target.value as "memory" | "indexeddb")}
+              className="rounded-md border border-sky-200 bg-white px-2 py-1 text-[11px] text-slate-800">
+              <option value="memory">Temporário (sem guardar)</option>
+              <option value="indexeddb">Local no dispositivo (IndexedDB)</option>
+            </select>
+          </label>
+          {workspaceStorageMode === "indexeddb" && <span className="block">
+            {localSaveStatus === "saved" ? "Guardado neste navegador." :
+              localSaveStatus === "saving" ? "A guardar localmente…" :
+              localSaveStatus === "error" ? "Falha ao guardar localmente." :
+              "Armazenamento local seleccionado."}
+          </span>}
+          <span className="block text-slate-500 dark:text-slate-400">
+            Sincronização PRO/Premium via Firebase: reservada para futura activação após validação da subscrição.
+          </span>
           {projectNotice && <span className="mt-1 block font-semibold">{projectNotice}</span>}
         </div>
 
