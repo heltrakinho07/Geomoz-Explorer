@@ -1,3 +1,4 @@
+import {useGeoMozTheme} from "@/hooks/useGeoMozTheme";
 import React, { useRef, useState, useEffect, Suspense } from "react";
 import { Link } from "wouter";
 import {
@@ -464,22 +465,7 @@ export default function Explorer() {
     }
   };
 
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    try {
-      return (localStorage.getItem("geomoz_theme") as "light" | "dark") || "light";
-    } catch {
-      return "light";
-    }
-  });
-
-  useEffect(() => {
-    const handleThemeChange = (e: Event) => {
-      const newTheme = (e as CustomEvent).detail as "light" | "dark";
-      if (newTheme) setTheme(newTheme);
-    };
-    window.addEventListener("geomoz_theme_changed", handleThemeChange);
-    return () => window.removeEventListener("geomoz_theme_changed", handleThemeChange);
-  }, []);
+  const {theme} = useGeoMozTheme();
 
   const currentTabMeta = getTabMeta(activeTab);
 

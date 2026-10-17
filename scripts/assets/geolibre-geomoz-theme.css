@@ -1,10 +1,3 @@
-/*
- * GeoMoz GIS Workspace · camada de identidade visual (GeoLibre Web).
- * Identidade do GeoMoz: #020617 / #082f49 / #0284c7 / #38bdf8 / #ffffff.
- * Apenas a interface recebe este tema; não alterar estilos de mapas,
- * rampas científicas, gráficos, simbologia ou as ferramentas do GeoLibre.
- * Tema independente dos ficheiros upstream (MIT).
- */
 :root {
   --geomoz-navy: #020617;
   --geomoz-deep-blue: #082f49;
@@ -69,380 +62,121 @@ html.dark[data-theme] {
   --ring: 199 95% 63%;
 }
 
-/* Barra principal identificável sem interferir com cartões e mapas. */
-#root header[class~="bg-card"][class~="border-b"] {
-  background: linear-gradient(106deg, #020617 0%, #082f49 48%, #075985 100%) !important;
-  color: #f8fafc;
-  border-bottom: 1px solid rgb(56 189 248 / 24%);
-  box-shadow: 0 2px 16px rgb(2 6 23 / 17%);
-}
-#root header[class~="bg-card"][class~="border-b"] > span {
-  color: #e0f2fe;
-  font-weight: 750;
-  letter-spacing: -0.015em;
-}
-#root header[class~="bg-card"][class~="border-b"] > span svg {
-  color: #38bdf8;
-}
-#root header[class~="bg-card"][class~="border-b"] button {
-  color: #e2e8f0;
-  border-radius: 8px;
-  transition: background-color 150ms ease, color 150ms ease;
-}
-#root header[class~="bg-card"][class~="border-b"] button:hover,
-#root header[class~="bg-card"][class~="border-b"] button[data-state="open"],
-#root header[class~="bg-card"][class~="border-b"] button[aria-expanded="true"] {
-  background-color: rgb(56 189 248 / 16%);
-  color: #ffffff;
-}
-#root header[class~="bg-card"][class~="border-b"] button:focus-visible {
-  outline: 2px solid #7dd3fc;
-  outline-offset: -2px;
-}
-/* Menus, janelas e painéis conservam o espaçamento do GeoLibre. */
-#root [role="menu"],
-#root [role="dialog"] {
-  border-color: hsl(var(--border));
-  box-shadow: 0 16px 36px rgb(2 6 23 / 15%);
-}
-#root :is(button, a, input, select, textarea):focus-visible {
-  outline-color: hsl(var(--ring));
-}
-#root footer[class*="bg-muted"] {
-  border-top-color: hsl(var(--border));
-  background-color: hsl(var(--muted) / 0.88);
-}
-html.dark #root footer[class*="bg-muted"] {
-  background-color: hsl(var(--card) / 0.94);
-}
-/* Botão de retorno do portal, deliberadamente separado dos controlos do mapa. */
-.geomoz-back-link {
-  position: fixed;
-  right: max(16px, env(safe-area-inset-right));
-  bottom: max(39px, calc(env(safe-area-inset-bottom) + 39px));
-  z-index: 999;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 39px;
-  padding: 0 14px;
-  border: 1px solid rgb(125 211 252 / 38%);
-  border-radius: 999px;
-  background: linear-gradient(110deg, #082f49, #075985);
-  color: #ffffff;
-  box-shadow: 0 5px 18px rgb(2 6 23 / 27%);
-  text-decoration: none;
-  font: 650 12px/1.4 system-ui, sans-serif;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-  transition: background 150ms ease, transform 150ms ease, box-shadow 150ms ease;
-}
-.geomoz-back-link:hover {
-  background: #0284c7;
-  box-shadow: 0 8px 22px rgb(2 6 23 / 33%);
-  transform: translateY(-1px);
-}
-.geomoz-back-link:focus-visible {
-  outline: 3px solid #7dd3fc;
-  outline-offset: 3px;
-}
-@media (max-width: 639px) {
-  #root header[class~="bg-card"][class~="border-b"] {
-    min-height: 44px;
-  }
-  .geomoz-back-link {
-    right: max(8px, env(safe-area-inset-right));
-    bottom: max(39px, calc(env(safe-area-inset-bottom) + 39px));
-    min-height: 38px;
-    padding: 0 11px;
-    font-size: 11px;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .geomoz-back-link, #root header[class~="bg-card"][class~="border-b"] button {
-    transition: none;
-  }
-  .geomoz-back-link:hover { transform: none; }
-}
 
-
-/* ==========================================================================
-   GeoMoz · QGIS-inspired integrated application shell (not a second portal).
-   Stacks shared GeoMoz navigation + quick tools ABOVE the original GIS app.
-   Keep React's DOM and GeoLibre's dock/processing/event handlers untouched.
-   ========================================================================== */
-html, body {
-  height: 100%;
-}
-body:has(.geomoz-portal-shell) {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: #e8edf3;
-}
-body > .geomoz-portal-shell {
-  flex: 0 0 auto;
-  width: 100%;
-  min-width: 0;
-  color: #f8fafc;
-  font-family: var(--font-sans, system-ui, sans-serif);
-  z-index: 42;
-  position: relative;
-}
-body > #root {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: auto !important;
-  width: 100%;
-  overflow: hidden;
-}
-.geomoz-portal-top {
-  display: flex;
-  align-items: center;
-  min-height: 47px;
-  padding: 0 14px;
-  gap: 18px;
-  background: linear-gradient(108deg, #020617, #082f49 64%, #0b456c);
-  box-shadow: 0 1px 6px rgb(2 6 23 / 22%);
-  border-bottom: 1px solid rgb(125 211 252 / 22%);
-}
-.geomoz-portal-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-  color: white;
-  text-decoration: none;
-  font-size: 14px;
-  font-weight: 780;
-  letter-spacing: -.02em;
-  white-space: nowrap;
-}
-.geomoz-portal-brand img {
-  width: 27px;
-  height: 27px;
-  border-radius: 7px;
-  background: white;
-}
-.geomoz-portal-brand-name { color: #f8fafc; }
-.geomoz-portal-brand-separator {
-  display: block; height: 20px; width: 1px; margin: 0 2px;
-  background: rgb(203 213 225 / 35%);
-}
-.geomoz-portal-brand-context {
-  color: #9ddfff;
-  font-size: 11px;
-  font-weight: 600;
-}
-.geomoz-portal-nav {
-  display: flex;
-  align-items: center;
-  align-self: stretch;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-  gap: 4px;
-}
-.geomoz-portal-nav::-webkit-scrollbar { display: none; }
-.geomoz-portal-nav a {
-  color: #cbd5e1;
-  white-space: nowrap;
-  text-decoration: none;
-  font: 600 11px/1.4 system-ui, sans-serif;
-  border-radius: 6px;
-  padding: 8px 12px;
-  transition: background-color 0.16s ease;
-}
-.geomoz-portal-nav a:is(:hover, :focus-visible) {
-  color: white;
-  background: rgb(148 163 184 / 14%);
-}
-.geomoz-portal-nav a[aria-current="page"] {
-  color: #f0f9ff;
-  background: #0369a1;
-  box-shadow: inset 0 -2px 0 #7dd3fc;
-}
-.geomoz-portal-context {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  flex: none;
-  white-space: nowrap;
-  font-size: 10px;
-  font-weight: 700;
-  color: #bae6fd;
-}
-.geomoz-mode-dot {
-  width: 7px; height: 7px; border-radius: 50%; background: #38bdf8;
-  box-shadow: 0 0 0 3px rgb(56 189 248 / 17%);
-}
-.geomoz-gis-commandbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 40px;
-  min-width: 0;
-  padding: 0 13px;
-  background: #f1f5f9;
-  color: #1e293b;
-  border-bottom: 1px solid #cbd5e1;
-  box-shadow: inset 0 1px 0 #fff;
-}
-.geomoz-gis-commandbar-title {
-  flex: none;
-  color: #475569;
-  font-size: 10px;
-  font-weight: 750;
-  text-transform: uppercase;
-  letter-spacing: .055em;
-  white-space: nowrap;
-}
-.geomoz-gis-commandbar-items {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  min-width: 0;
-  flex: 1;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.geomoz-gis-commandbar-items::-webkit-scrollbar { display: none; }
-.geomoz-gis-commandbar button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  flex: none;
-  min-height: 29px;
-  padding: 3px 9px;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  color: #334155;
-  background: transparent;
-  font: 600 11px/1.3 system-ui, sans-serif;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.geomoz-gis-commandbar button svg {
-  width: 15px; height: 15px; flex: none;
-  stroke: #0369a1; fill: none; stroke-width: 1.7;
-  stroke-linecap: round; stroke-linejoin: round;
-}
-.geomoz-gis-commandbar button:is(:hover, :focus-visible) {
-  background: #dbeafe;
-  border-color: #93c5fd;
-  color: #0c4a6e;
-}
-.geomoz-gis-commandbar button:focus-visible {
-  outline: 2px solid #0284c7; outline-offset: 1px;
-}
-.geomoz-gis-divider {
-  flex: none;
-  display: block;
-  height: 19px;
-  width: 1px;
-  margin: 0 5px;
-  background: #cbd5e1;
-}
-.geomoz-command-status {
-  color: #9a3412;
-  font-size: 10px;
-  flex: none;
-}
-.geomoz-command-status:empty { display: none; }
-
-/* Original menu row becomes a QGIS-style light menu bar, not a separate
-   dark product header. Its REAL React menu triggers remain interactive. */
-html:not(.dark) #root header[class~="bg-card"][class~="border-b"] {
-  background: #ffffff !important;
-  color: #334155;
-  border-color: #cbd5e1;
-  box-shadow: 0 1px 3px rgb(15 23 42 / 5%);
-  min-height: 40px;
-}
-html:not(.dark) #root header[class~="bg-card"][class~="border-b"] > span {
-  color: #075985;
-  letter-spacing: -0.01em;
-  font-size: 11px;
-}
-html:not(.dark) #root header[class~="bg-card"][class~="border-b"] > span svg {
-  color: #0284c7;
-}
-html:not(.dark) #root header[class~="bg-card"][class~="border-b"] button {
-  color: #334155;
-  border-radius: 4px;
-}
-html:not(.dark) #root header[class~="bg-card"][class~="border-b"] button:is(:hover, [aria-expanded="true"], [data-state="open"]) {
-  color: #075985;
-  background: #e0f2fe;
-}
-html:not(.dark) #root header[class~="bg-card"][class~="border-b"] input {
-  color: #334155;
-}
-html.dark #root header[class~="bg-card"][class~="border-b"] {
-  background: #0c2034 !important;
-  border-color: #214563;
-  box-shadow: 0 1px 4px #02061780;
-}
-
-/* Desktop GIS dock surfaces: technical, compact, QGIS-like and legible.
-   Do not reposition native panel elements: their resize/collapse and
-   dock-reordering logic are implemented inside the original GeoLibre. */
-html:not(.dark) #root [data-workspace-row] {
-  background: #e5eaf0;
-}
-html:not(.dark) #root [data-workspace-row] > :not(main) {
-  background-color: #f8fafc;
-  border-color: #cbd5e1;
-}
-html:not(.dark) #root [data-workspace-row] [class*="border-r"],
-html:not(.dark) #root [data-workspace-row] [class*="border-l"] {
-  border-color: #cbd5e1;
-}
-html:not(.dark) #root [data-workspace-row] [class*="bg-muted"] {
-  background-color: #edf2f7;
-}
-html:not(.dark) #root [data-workspace-row] [class*="bg-card"] {
-  background-color: #f8fafc;
-}
-html:not(.dark) #root [data-workspace-row] main {
-  background: #e8eef4;
-}
-html:not(.dark) #root footer[class*="bg-muted"] {
-  background: #e9eef4;
-  color: #475569;
-  border-top: 1px solid #cbd5e1;
-}
-html.dark #root footer[class*="bg-muted"] {
-  color: #b7d0e2;
-  border-top: 1px solid #214563;
-}
-/* No floating "Voltar ao GeoMoz" badge: GeoMoz module navigation lives
-   permanently in the upper application bar. */
-.geomoz-back-link { display: none !important; }
-
-@media (max-width: 900px) {
-  .geomoz-portal-top { gap: 10px; padding: 0 8px; }
-  .geomoz-portal-context { display: none; }
-  .geomoz-gis-commandbar-title { display: none; }
-  .geomoz-gis-commandbar { padding: 0 7px; gap: 3px; }
-}
-@media (max-width: 640px) {
-  .geomoz-portal-top {
-    min-height: 49px;
-    flex-wrap: nowrap;
-  }
-  .geomoz-portal-brand-context, .geomoz-portal-brand-separator { display: none; }
-  .geomoz-portal-brand { gap: 5px; font-size: 12px; }
-  .geomoz-portal-brand img { width: 23px; height: 23px; }
-  .geomoz-portal-nav a { padding: 7px 10px; font-size: 10px; }
-  .geomoz-gis-commandbar { height: 37px; }
-  .geomoz-gis-commandbar button { min-height: 29px; padding: 3px 7px; }
-  .geomoz-gis-commandbar button span { display: none; }
-  .geomoz-gis-commandbar button svg { width: 17px; height: 17px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .geomoz-portal-nav a { transition: none; }
-}
+/* GeoMoz Workbench: owned React layout, shared surfaces for every engine dialog. */
+html, body, #root { width:100%;height:100%;overflow:hidden; }
+body { margin:0;background:hsl(var(--background));color:hsl(var(--foreground));font-family:Inter,"IBM Plex Sans Variable",system-ui,sans-serif; }
+.gm-workbench { --gm-surface:hsl(var(--card));--gm-muted:hsl(var(--muted));--gm-line:hsl(var(--border));--gm-text:hsl(var(--foreground));--gm-subtle:hsl(var(--muted-foreground));--gm-accent:hsl(var(--primary)); }
+.gm-workbench button, .gm-workbench a { -webkit-tap-highlight-color:transparent; }
+.gm-workbench button { cursor:pointer; }
+.gm-workbench button:disabled { cursor:not-allowed;opacity:.42; }
+.gm-workbench :is(button,a,input):focus-visible { outline:2px solid var(--gm-accent);outline-offset:2px; }
+.gm-workbench-chrome { position:relative;z-index:40;flex:none;min-width:0;box-shadow:0 3px 14px #0206170b;background:var(--gm-surface);color:var(--gm-text); }
+.gm-titlebar { height:62px;display:flex;align-items:center;gap:24px;padding:0 20px;background:#071525;color:#eaf3ff;border-bottom:1px solid #ffffff12; }
+.gm-brand { display:flex;align-items:center;gap:9px;flex:none;text-decoration:none;color:#f5faff;font-size:22px;line-height:1.05;font-weight:780;letter-spacing:-.7px; }
+.gm-brand>img { width:32px;height:32px; }
+.gm-brand>span>span { color:#38bdf8; }
+.gm-brand small { display:block;margin-top:4px;color:#8fa9bd;font-size:8px;font-weight:600;letter-spacing:2.1px; }
+.gm-project-title { display:flex;align-items:center;gap:9px;min-width:100px;padding-left:22px;border-left:1px solid #ffffff24; }
+.gm-project-symbol { display:grid;place-items:center;width:31px;height:31px;border:1px solid #ffffff26;border-radius:8px;color:#7dd3fc; }
+.gm-project-field { display:block;min-width:0; }
+.gm-project-field>span { display:block;color:#8fa9bd;font-size:8px;letter-spacing:1.4px;line-height:1.8; }
+.gm-project-field>input { width:clamp(120px,15vw,250px);display:block;border:0;background:transparent;color:#f8fafc;font:550 12px/1.6 inherit;padding:0;outline-offset:1px; }
+.gm-title-actions { display:flex;align-items:center;gap:14px;min-width:0;margin-left:auto; }
+.gm-command-search { height:33px;display:flex;align-items:center;gap:9px;min-width:185px;padding:0 10px;border:1px solid #c6e8ff23;border-radius:6px;color:#c6d9e9;background:#ffffff08;font-size:11px; }
+.gm-command-search kbd { margin-left:17px;color:#93abc0;font:9px/1 system-ui; }
+.gm-module-nav { display:flex;gap:13px; }
+.gm-module-nav>a { display:flex;align-items:center;gap:4px;color:#b9cfdf;text-decoration:none;font-size:10px;white-space:nowrap; }
+.gm-module-nav>a:hover { color:#7dd3fc; }
+.gm-icon-button { display:grid;place-items:center;flex:none;width:29px;height:29px;border:0;border-radius:5px;color:inherit;background:transparent; }
+.gm-icon-button:hover { background:color-mix(in srgb,currentColor 10%,transparent); }
+.gm-taskbar { display:flex;align-items:center;justify-content:space-between;min-width:0;padding:0 18px;border-bottom:1px solid var(--gm-line);gap:12px;background:var(--gm-surface); }
+.gm-task-tabs { display:flex;align-items:stretch;overflow:auto;scrollbar-width:none;gap:5px; }
+.gm-task-tabs>button { position:relative;padding:10px 14px;border:0;background:transparent;color:var(--gm-subtle);font-size:11px;font-weight:600;white-space:nowrap; }
+.gm-task-tabs>button[aria-current] { color:var(--gm-accent); }
+.gm-task-tabs>button[aria-current]::after { content:"";position:absolute;bottom:0;left:13px;right:13px;height:3px;border-radius:3px 3px 0 0;background:var(--gm-accent); }
+.gm-task-tabs>button:hover { background:var(--gm-muted); }
+.gm-session-badge { display:flex;align-items:center;gap:6px;flex:none;font-size:10px;color:var(--gm-subtle); }
+.gm-session-badge i,.gm-catalog-footer i { display:inline-block;width:5px;height:5px;background:#14b8a6;border-radius:100%; }
+.gm-session-detail { margin-left:-4px; }
+.gm-command-ribbon { min-height:85px;display:flex;align-items:stretch;gap:10px;padding:7px 18px 5px;border-bottom:1px solid var(--gm-line); }
+.gm-ribbon-groups { min-width:0;display:flex;align-items:stretch;overflow-x:auto;scrollbar-width:thin; }
+.gm-ribbon-group { flex:none;display:flex;flex-direction:column;justify-content:space-between;margin-right:14px;padding-right:14px;border-right:1px solid var(--gm-line); }
+.gm-ribbon-group:last-child { border:0;margin-right:0; }
+.gm-ribbon-group>div { display:flex;align-items:stretch;gap:3px; }
+.gm-ribbon-group button { display:flex;align-items:center;flex-direction:column;justify-content:center;gap:5px;min-width:64px;max-width:122px;min-height:48px;padding:4px 9px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--gm-text);font-size:10px;line-height:1.2; }
+.gm-ribbon-group button svg { color:var(--gm-accent);stroke-width:1.6; }
+.gm-ribbon-group button:hover:not(:disabled) { background:var(--gm-muted);border-color:var(--gm-line); }
+.gm-ribbon-group>small { text-align:center;font-size:8px;letter-spacing:.4px;color:var(--gm-subtle);margin-top:5px; }
+.gm-ribbon-empty { display:flex;align-items:center;gap:10px;color:var(--gm-subtle);font-size:11px;margin:10px; }
+.gm-more-tools { display:flex;align-self:center;align-items:center;justify-content:center;gap:5px;flex:none;margin-left:auto;padding:7px 9px;border:1px solid var(--gm-line);border-radius:5px;background:transparent;color:var(--gm-subtle);font-size:10px; }
+.gm-more-tools[aria-expanded=true] { color:var(--gm-accent);background:var(--gm-muted); }
+.gm-engine-menus { display:flex;align-items:center;flex-wrap:wrap;gap:5px;padding:7px 18px;border-bottom:1px solid var(--gm-line);background:var(--gm-muted); }
+.gm-engine-menus[hidden],.gm-menu-slot[hidden],.gm-engine-panel[hidden] { display:none !important; }
+.gm-menu-slot { display:contents; }
+.gm-engine-menus button { font-size:11px; }
+.gm-catalog { position:relative;display:flex;flex-direction:column;flex:none;width:var(--layer-panel-width,290px);min-width:230px;min-height:0;max-width:40vw;border-right:1px solid var(--gm-line);background:var(--gm-surface);color:var(--gm-text); }
+.gm-catalog-heading { display:flex;align-items:center;justify-content:space-between;padding:18px 16px 14px; }
+.gm-catalog-heading small { display:block;font-size:8px;letter-spacing:1.5px;color:var(--gm-subtle);margin-bottom:5px; }
+.gm-catalog-heading h2 { display:flex;align-items:center;gap:8px;margin:0;font-size:16px;font-weight:650;letter-spacing:-.3px; }
+.gm-catalog-heading h2 svg { color:var(--gm-accent); }
+.gm-catalog-nav { display:flex;margin:0 14px 14px;padding:3px;border:1px solid var(--gm-line);border-radius:6px;background:var(--gm-muted);gap:3px; }
+.gm-catalog-nav button { display:flex;align-items:center;justify-content:center;gap:5px;flex:1;padding:7px 4px;border:0;border-radius:4px;color:var(--gm-subtle);background:transparent;font-size:10px;font-weight:550; }
+.gm-catalog-nav button[aria-pressed=true] { color:var(--gm-text);background:var(--gm-surface);box-shadow:0 1px 3px #02061714; }
+.gm-catalog-nav b { background:var(--gm-muted);border-radius:3px;padding:0 4px;font-size:9px; }
+.gm-catalog-search { display:flex;align-items:center;gap:7px;margin:0 14px 12px;padding:8px 9px;border:1px solid var(--gm-line);border-radius:5px;color:var(--gm-subtle); }
+.gm-catalog-search input { min-width:0;width:100%;border:0;background:transparent;color:var(--gm-text);font:11px/1.3 inherit;outline:0; }
+.gm-catalog-filter { display:flex;align-items:center;gap:3px;padding:0 14px 10px;border-bottom:1px solid var(--gm-line); }
+.gm-catalog-filter>button { padding:4px 7px;border:0;border-radius:4px;background:transparent;color:var(--gm-subtle);font-size:9px; }
+.gm-catalog-filter>button[aria-pressed=true] { background:var(--gm-muted);color:var(--gm-accent);font-weight:650; }
+.gm-catalog-filter b { font-weight:500; }
+.gm-catalog-filter>span { margin-left:auto;font-size:7px;letter-spacing:.7px;color:var(--gm-subtle); }
+.gm-layer-list { flex:1;min-height:90px;overflow:auto;padding:8px;scrollbar-width:thin; }
+.gm-layer-row { display:flex;align-items:center;gap:2px;padding:5px 3px;border:1px solid transparent;border-radius:5px;min-width:0;margin-bottom:3px; }
+.gm-layer-row[data-selected=true] { background:hsl(var(--accent));border-color:hsl(var(--primary)/.25); }
+.gm-layer-row:hover { background:var(--gm-muted); }
+.gm-layer-row[data-selected=true]:hover { background:hsl(var(--accent)); }
+.gm-layer-visibility { display:grid;place-items:center;flex:none;width:25px;height:29px;border:0;background:transparent;color:var(--gm-subtle); }
+.gm-layer-row[data-visible=false] .gm-layer-select { opacity:.55; }
+.gm-layer-select { display:flex;align-items:center;gap:8px;flex:1;min-width:0;border:0;background:transparent;color:var(--gm-text);text-align:left;padding:4px 1px; }
+.gm-layer-select>span:last-child { min-width:0; }
+.gm-layer-select strong { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:550; }
+.gm-layer-select small { display:block;margin-top:3px;color:var(--gm-subtle);font-size:9px; }
+.gm-layer-symbol { display:grid;place-items:center;flex:none;width:28px;height:30px;background:hsl(var(--primary)/.08);border:1px solid hsl(var(--primary)/.13);border-radius:5px;color:var(--gm-accent); }
+.gm-layer-symbol-raster,.gm-layer-symbol-cog { color:#b45309;background:#f59e0b10;border-color:#f59e0b30; }
+.dark .gm-layer-symbol-raster,.dark .gm-layer-symbol-cog { color:#fbbf24; }
+.gm-layer-fit { width:25px; }
+.gm-catalog-empty { display:flex;align-items:center;flex-direction:column;text-align:center;padding:42px 16px; }
+.gm-catalog-empty>svg { color:var(--gm-accent);stroke-width:1.2;margin-bottom:16px; }
+.gm-catalog-empty strong { font-size:13px;font-weight:600; }
+.gm-catalog-empty p { max-width:220px;color:var(--gm-subtle);font-size:11px;line-height:1.7;margin:8px 0 18px; }
+.gm-catalog-empty>span { padding:5px 9px;border:1px dashed var(--gm-line);border-radius:5px;color:var(--gm-subtle);font-size:8px; }
+.gm-layer-inspector { padding:14px 16px;border-top:1px solid var(--gm-line);background:hsl(var(--muted)/.35); }
+.gm-layer-inspector>small { color:var(--gm-subtle);font-size:8px;letter-spacing:1px; }
+.gm-layer-inspector h3 { font-size:12px;font-weight:650;margin:6px 0 14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.gm-opacity { display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;color:var(--gm-subtle);font-size:10px;gap:8px; }
+.gm-opacity input { width:100%;accent-color:var(--gm-accent);height:13px; }
+.gm-inspector-actions { display:flex;gap:5px;flex-wrap:wrap;margin-top:13px; }
+.gm-inspector-actions button { display:flex;align-items:center;gap:4px;padding:5px 7px;border:1px solid var(--gm-line);border-radius:4px;background:var(--gm-surface);color:var(--gm-text);font-size:9px; }
+.gm-catalog-footer { display:flex;justify-content:space-between;gap:8px;padding:10px 15px;border-top:1px solid var(--gm-line);color:var(--gm-subtle);font-size:9px; }
+.gm-catalog-footer span:last-child { font-size:7px;letter-spacing:1px; }
+.gm-catalog-footer i { margin-right:5px; }
+.gm-catalog-notice { padding:0 15px;font-size:10px;color:var(--gm-subtle); }
+.gm-catalog-notice:empty { display:none; }
+.gm-catalog-resize { position:absolute;right:-4px;top:0;width:8px;height:100%;z-index:30;cursor:col-resize;touch-action:none; }
+.gm-catalog-resize:hover { border-right:2px solid var(--gm-accent); }
+.gm-layer-rail { display:flex;align-items:center;flex-direction:column;gap:16px;width:42px;flex:none;padding:10px 5px;border-right:1px solid var(--gm-line);background:var(--gm-surface);color:var(--gm-subtle); }
+.gm-layer-rail>span { writing-mode:vertical-rl;letter-spacing:1.8px;font-size:8px; }
+.gm-engine-panel { min-height:0;flex:1;display:flex;overflow:hidden; }
+.gm-engine-panel>aside { width:100%!important;max-height:none!important;min-height:0;border:0!important; }
+.gm-workbench [data-workspace-row]>main { background:#dae4ec; }
+.dark .gm-workbench [data-workspace-row]>main { background:#071525; }
+.gm-workbench footer { background:var(--gm-surface);border-top:1px solid var(--gm-line);font-size:10px; }
+[role=dialog], [role=menu], [role=alertdialog], [data-radix-popper-content-wrapper] { --gm-popover:hsl(var(--popover));color:hsl(var(--popover-foreground)); }
+[role=dialog], [role=alertdialog] { border-color:hsl(var(--border));box-shadow:0 18px 64px #02061735; }
+html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0008; }
+@media(max-width:1199px) { .gm-module-nav { display:none; }.gm-titlebar { gap:18px;padding:0 15px; }.gm-command-search kbd { display:none; }.gm-ribbon-group { margin-right:8px;padding-right:8px; }.gm-ribbon-group button { padding:4px 6px;min-width:56px;font-size:9px; } }
+@media(max-width:900px) { .gm-command-search { min-width:0; }.gm-command-search span { display:none; }.gm-taskbar { padding:0 8px; }.gm-task-tabs>button { padding:10px; }.gm-session-detail { display:none; }.gm-more-tools { width:67px;flex-wrap:wrap;font-size:9px; }.gm-command-ribbon { padding-left:8px;padding-right:8px; }.gm-catalog { max-width:42vw; } }
+@media(max-width:767px) { .gm-titlebar { height:55px;gap:12px;padding:0 12px; }.gm-brand { font-size:20px; }.gm-brand img { width:27px;height:27px; }.gm-brand small { font-size:6px;letter-spacing:1.6px; }.gm-project-title { padding-left:10px; }.gm-project-symbol { display:none; }.gm-project-field input { width:100px;font-size:10px; }.gm-title-actions { gap:7px; }.gm-taskbar { padding:0 5px; }.gm-task-tabs { gap:0; }.gm-task-tabs>button { font-size:10px;padding:9px; }.gm-session-badge { display:none; }.gm-command-ribbon { min-height:78px; }.gm-ribbon-group button { min-width:52px;font-size:9px; }.gm-catalog { position:absolute;top:0;left:0;bottom:0;max-width:min(320px,86vw);width:var(--layer-panel-width,290px);z-index:30;box-shadow:12px 0 30px #02061735; }.gm-layer-rail { position:absolute;top:12px;left:12px;z-index:29;width:36px;height:36px;padding:3px;border:1px solid var(--gm-line);border-radius:7px;box-shadow:0 2px 8px #02061725; }.gm-layer-rail>span { display:none; }.gm-catalog-resize { display:none; }.gm-project-field>span { letter-spacing:.7px;font-size:7px; } }
+@media(max-width:390px) { .gm-project-title { display:none; } }
+@media(prefers-reduced-motion:reduce) { .gm-workbench *, .gm-workbench *::before, .gm-workbench *::after { transition:none!important;animation:none!important; } }

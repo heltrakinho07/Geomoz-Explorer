@@ -1,3 +1,4 @@
+import {useGeoMozTheme} from "@/hooks/useGeoMozTheme";
 import React, { useState, useEffect } from "react";
 import { Link } from "wouter";
 import {
@@ -85,33 +86,8 @@ export default function Sidebar({
   const { canInstall, isStandalone, promptInstall } = usePwa();
 
   // Dark mode theme state synchronized with landing page & localStorage
-  const [isDark, setIsDark] = useState<boolean>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("geomoz_theme");
-      if (saved === "dark") return true;
-      if (saved === "light") return false;
-      return document.documentElement.classList.contains("dark");
-    }
-    return false;
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (isDark) {
-      document.documentElement.classList.add("dark");
-      localStorage.setItem("geomoz_theme", "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-      localStorage.setItem("geomoz_theme", "light");
-    }
-    window.dispatchEvent(
-      new CustomEvent("geomoz_theme_changed", { detail: isDark ? "dark" : "light" })
-    );
-  }, [isDark]);
-
-  const toggleTheme = () => {
-    setIsDark((prev) => !prev);
-  };
+  const {theme,toggleTheme} = useGeoMozTheme();
+  const isDark = theme === "dark";
 
   const getCategoryIcon = (cat?: ProjectCategory) => {
     switch (cat) {
