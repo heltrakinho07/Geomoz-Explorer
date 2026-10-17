@@ -119,6 +119,19 @@ jobs:
           echo "$RESPONSE" | python3 -c 'import sys,json; data=json.load(sys.stdin); assert data.get("status") == "ok", "Firebase served HTML or an unhealthy API instead of Cloud Run JSON"'
           echo "Firebase Hosting forwards /geomoz-api/health to Cloud Run successfully"
 
+      - name: Verify deployed original GeoLibre Web workspace
+        run: |
+          BASE="https://geoprocessamento-426809.web.app/gis-workspace"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/" -o "$RUNNER_TEMP/geolibre-index.html"
+          grep -q 'id="root"' "$RUNNER_TEMP/geolibre-index.html"
+          grep -q 'geomoz-back-link' "$RUNNER_TEMP/geolibre-index.html"
+          grep -q '/gis-workspace/assets/' "$RUNNER_TEMP/geolibre-index.html"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/deployment.json" -o "$RUNNER_TEMP/geolibre-policy.json"
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["branding"]["appName"]=="GeoMoz GIS Workspace"; assert d["sharing"]["shareUrl"]=="off"' "$RUNNER_TEMP/geolibre-policy.json"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/sw.js" -o "$RUNNER_TEMP/geolibre-sw.js"
+          test -s "$RUNNER_TEMP/geolibre-sw.js"
+          echo "GeoLibre Web is being served from the GeoMoz Hosting origin"
+
       - name: Show deployed URL
         run: |
           echo "✅ Frontend deployed to Firebase Hosting"
