@@ -20,7 +20,7 @@ function affine(gt: Transform, x: number, y: number): [number, number] {
   return [gt[0] + x * gt[1] + y * gt[2], gt[3] + x * gt[4] + y * gt[5]];
 }
 async function open(key: string, source: File | string) {
-  const tiff = typeof source === "string" ? await fromUrl(source, { allowFullFile: false, cacheSize: 128 }) : await fromBlob(source);
+  const tiff = typeof source === "string" ? await fromUrl(source, { allowFullFile: false }) : await fromBlob(source);
   try {
     const image = await tiff.getImage(), fd = image.getFileDirectory(), keys = image.getGeoKeys();
     const epsg = Number(keys?.ProjectedCSTypeGeoKey ?? keys?.GeographicTypeGeoKey);

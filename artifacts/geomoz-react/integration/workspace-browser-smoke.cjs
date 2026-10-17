@@ -58,6 +58,8 @@ const server = createServer(async (req, res) => {
     await page.getByRole("button",{name:/1 resultado\(s\)/}).waitFor();
     await page.waitForFunction(()=>Number(document.querySelector('[data-testid="cesium-workspace"]')?.dataset.rasterCount)>=2);
     await page.waitForFunction(()=>window.Cesium?.VERSION==="1.127");
+    await page.waitForFunction(()=>document.querySelector('[data-testid="cesium-workspace"]')?.dataset.sceneMode===String(window.Cesium.SceneMode.SCENE2D));
+    await page.waitForFunction(()=>Number(document.querySelector('[data-testid="cesium-workspace"]')?.dataset.resultTiles)>0);
     await page.screenshot({path:"workspace-browser-artifacts/03-result.png",fullPage:true});
     const selected = await page.locator(".gw-input-card strong").innerText();
     if (!selected.includes("Declive")) throw Error("The output raster was not automatically selected: "+selected);

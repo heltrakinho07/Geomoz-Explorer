@@ -80,13 +80,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Inspect pinned Cesium tile decoder and resolved lock
-        run: |
-          node artifacts/geomoz-react/integration/inspect-cesium-dependencies.cjs
-          echo LOCKFILE_BASE64_BEGIN
-          base64 pnpm-lock.yaml
-          echo LOCKFILE_BASE64_END
-
       - name: Run typecheck
         run: pnpm run typecheck
         env:

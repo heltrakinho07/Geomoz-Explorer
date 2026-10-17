@@ -56,6 +56,7 @@ export default function GISWorkspaceCesium(props:Props) {
   const current=useRef(props);current.current=props;
   const runtime=useRef<Runtime|null>(null),points=useRef<Point[]>([]),cursor=useRef<Point|null>(null);
   const previewKey=useRef(""),focusKey=useRef(""),finishRef=useRef<()=>void>(()=>{});
+  const previousSelection=useRef({raster:props.activeRasterId,vector:props.activeLayerId});
   const [ready,setReady]=useState(0),[attempt,setAttempt]=useState(0),[error,setError]=useState<string|null>(null);
   const [count,setCount]=useState(0),[drawError,setDrawError]=useState<string|null>(null);
   const [preview,setPreview]=useState<Preview>({draft:"",points:[],completed:""});
@@ -104,6 +105,7 @@ export default function GISWorkspaceCesium(props:Props) {
       });
       const r:Runtime={C,viewer,worker:new RasterWorkerClient(),rasters:new Map(),vectors:new Map(),services:new Map(),sequence:0,tiles:0,alive:true};
       runtime.current=r;
+      if(host.current)host.current.dataset.sceneMode=String(viewer.scene.mode);
       viewer.scene.screenSpaceCameraController.enableRotate=false;
       viewer.scene.screenSpaceCameraController.enableTilt=false;
       viewer.screenSpaceEventHandler.removeInputAction(C.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
@@ -206,7 +208,8 @@ export default function GISWorkspaceCesium(props:Props) {
         if(entry.imagery)r.viewer.imageryLayers.remove(entry.imagery,true);
         entry.style=style;
         const p=rasterProvider(r.C,r.worker,entry.key,entry.bounds,{rasterState:l.rasterState,rasterSymbology:l.rasterSymbology},
-          ()=>{if(r.alive){r.tiles++;if(host.current)host.current.dataset.rasterTiles=String(r.tiles);r.viewer.scene.requestRender();}},
+          ()=>{if(r.alive){r.tiles++;if(host.current){host.current.dataset.rasterTiles=String(r.tiles);
+              if(current.current.rasterLayers?.find(l=>l.id===id)?.isResult)host.current.dataset.resultTiles=String(Number(host.current.dataset.resultTiles??0)+1);}r.viewer.scene.requestRender();}},
           message=>fail(id,message),()=>r.alive&&r.rasters.get(id)===entry&&entry.imagery?.imageryProvider===p);
         entry.imagery=r.viewer.imageryLayers.addImageryProvider(p);
       }
@@ -233,7 +236,7 @@ export default function GISWorkspaceCesium(props:Props) {
       })();
     }
     // Match the project layer order after asynchronous raster opens.
-    for(const l of [...layers].reverse()){const entry=r.rasters.get(l.id);if(entry?.imagery)r.viewer.imageryLayers.raiseToTop(entry.imagery);}
+    for(const l of layers){const entry=r.rasters.get(l.id);if(entry?.imagery)r.viewer.imageryLayers.raiseToTop(entry.imagery);}
   },[ready,props.rasterLayers]);
 
   useEffect(()=>{
@@ -262,8 +265,11 @@ export default function GISWorkspaceCesium(props:Props) {
 
   useEffect(()=>{
     const r=runtime.current;if(!r?.alive||props.drawingEnabled)return;
+    const vectorChanged=previousSelection.current.vector!==props.activeLayerId;
+    const rasterChanged=previousSelection.current.raster!==props.activeRasterId;
+    previousSelection.current={raster:props.activeRasterId,vector:props.activeLayerId};
     const raster=props.rasterLayers?.find(l=>l.id===props.activeRasterId);
-    if(raster?.bounds){const key="r:"+raster.id+JSON.stringify(raster.bounds);if(key!==focusKey.current){focusKey.current=key;fit(r,raster.bounds);}return;}
+    if(raster?.bounds&&(!vectorChanged||rasterChanged)){const key="r:"+raster.id+JSON.stringify(raster.bounds);if(key!==focusKey.current){focusKey.current=key;fit(r,raster.bounds);}return;}
     const vector=props.layers.find(l=>l.id===props.activeLayerId);
     if(vector?.geojson.features.length)try{
       const b=bbox(vector.geojson) as Bounds,key="v:"+vector.id+JSON.stringify(b);
@@ -313,6 +319,7 @@ export default function GISWorkspaceCesium(props:Props) {
     {!ready&&!error&&<div role="status" className="absolute inset-0 grid place-items-center bg-slate-100 text-slate-600">A iniciar o mapa CesiumJS…</div>}
     {error&&<div role="alert" className="absolute inset-0 z-30 grid place-items-center bg-slate-100 p-6"><div className="max-w-md rounded-xl bg-white p-6 shadow"><p>{error}</p><button className="mt-4 rounded bg-indigo-700 px-4 py-2 text-white" onClick={()=>setAttempt(n=>n+1)}>Tentar novamente</button></div></div>}
     {!!Object.keys(layerErrors).length&&<div role="alert" className="absolute bottom-12 left-3 z-10 max-h-32 max-w-md overflow-auto rounded-lg bg-rose-50 p-3 text-xs text-rose-800 shadow">
+      <button type="button" className="float-right ml-3 underline" onClick={()=>{setLayerErrors({});focusKey.current="";setAttempt(n=>n+1);}}>Recarregar camadas</button>
       {Object.entries(layerErrors).map(([id,message])=><p key={id}>{[...props.layers,...(props.rasterLayers??[]),...(props.serviceLayers??[])].find(l=>l.id===id)?.name}: {message}</p>)}
     </div>}
     {selected&&<div className="absolute right-4 top-40 z-20 max-h-80 w-72 overflow-auto rounded-xl bg-white p-4 text-xs shadow-lg">
