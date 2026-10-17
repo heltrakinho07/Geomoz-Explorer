@@ -6,16 +6,7 @@ const { mockFetch, mockBuilder } = vi.hoisted(() => ({
   mockFetch: vi.fn(),
   mockBuilder: vi.fn(),
 }));
-vi.mock("geotiff", () => ({
-  fromArrayBuffer: async () => ({
-    getImage: async () => ({
-      getWidth: () => 512,
-      getHeight: () => 512,
-      getGDALNoData: () => -32768,
-      readRasters: async () => [new Float32Array(512 * 512).fill(427)],
-    }),
-  }),
-}));
+import { writeArrayBuffer } from "geotiff";
 vi.mock("geolibre-wasm", () => ({
   default: async () => {},
   CogBuilder: class {
@@ -66,8 +57,17 @@ describe("GeoLibre-derived global DEM without server persistence", () => {
 
   it("mosaics GeoTIFF pixels in memory and emits a georeferenced COG File", async () => {
     vi.stubGlobal("fetch", mockFetch);
+    // Use genuine GeoTIFF fixture bytes, since geotiff.js can be externalised
+    // in Vitest and an import mock might not intercept its lazy loader.
+    const realGeoTiff = writeArrayBuffer(new Float32Array(512 * 512).fill(427), {
+      width: 512,
+      height: 512,
+      ModelPixelScale: [30, 30, 0],
+      ModelTiepoint: [0, 0, 0, 0, 0, 0],
+      ProjectedCSTypeGeoKey: 3857,
+    } as Parameters<typeof writeArrayBuffer>[1]);
     mockFetch.mockImplementation(async () => ({
-      ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(8),
+      ok: true, status: 200, arrayBuffer: async () => realGeoTiff,
     }));
     const onProgress = vi.fn();
     const output = await downloadGlobalDem([32.60, -25.99, 32.62, -25.97], { onProgress });
