@@ -60,9 +60,22 @@ const server=createServer(async(req,res)=>{
   await page.screenshot({path:"workbench-browser-artifacts/02-geomoz-data-dark.png",fullPage:true});
   await page.locator('[data-task="analysis"]').click();
   await page.locator('[data-command="proc.vector.buffer"]').click();
-  await page.locator('[role="dialog"]').filter({hasText:/Buffer|Zona tampão/i}).first().waitFor();
+  const toolDialog=page.getByRole("dialog").filter({hasText:/Buffer|Zona tampão/i}).first();
+  await toolDialog.waitFor();
+  const input=toolDialog.locator("select#layer");
+  const inputValue=await input.locator("option").evaluateAll(options=>options.find(option=>option.textContent.includes("Pontos de estudo"))?.value);
+  assert.ok(inputValue,"Imported layer must be available to the actual processing tool");
+  await input.selectOption(inputValue);
+  await toolDialog.locator("input#distance").fill("2");
+  await toolDialog.getByRole("button",{name:"Executar",exact:true}).click();
+  await page.waitForFunction(()=>document.querySelectorAll(".gm-layer-row").length>=2);
   await page.screenshot({path:"workbench-browser-artifacts/03-geomoz-analysis-dark.png",fullPage:true});
   await page.keyboard.press("Escape");
+  await page.getByRole("button",{name:"Resultados",exact:true}).click();
+  await page.locator(".gm-result-card").filter({hasText:"Concluído"}).first().waitFor();
+  await page.screenshot({path:"workbench-browser-artifacts/03b-geomoz-results-dark.png",fullPage:true});
+  await page.locator(".gm-result-card>button").first().click();
+  await page.locator(".gm-layer-row[data-selected=true]").waitFor();
   await page.locator('[data-task="project"]').click();
   await page.getByRole("button",{name:"Mais opções",exact:true}).click();
   await page.locator('.gm-menu-slot:not([hidden]) button').first().click();
@@ -88,7 +101,7 @@ const server=createServer(async(req,res)=>{
   const mapBox=await page.locator("main canvas").first().boundingBox();
   assert.ok(mapBox&&mapBox.width>300&&mapBox.height>300,"Mobile map must remain usable");
   assert.deepEqual(errors,[],"No uncaught React/runtime errors");
-  await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferDialog:true,fullMenus:true,themePersistence:true,crossTabTheme:true,mobile:true,errors},null,2));
+  await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,resultNavigator:true,fullMenus:true,themePersistence:true,crossTabTheme:true,mobile:true,errors},null,2));
   console.log("GeoMoz Workbench: owned UI, real import, layer controls, analysis dialog, menus, dark/light persistence and mobile layout passed.");
  }catch(error){await page.screenshot({path:"workbench-browser-artifacts/failure.png",fullPage:true}).catch(()=>{});throw error;}
  finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

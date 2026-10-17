@@ -48,7 +48,10 @@ for(const name of ["GeoMozWorkbenchChrome.tsx","GeoMozLayerPanel.tsx"]){
 write("hooks/useThemeMode.ts",readFileSync(new URL("./assets/workbench/useThemeMode.ts",import.meta.url),"utf8"));
 // Portuguese is the GeoMoz default; explicit saved engine-language settings still win.
 let i18n=read("i18n/index.ts");
-i18n=once(i18n,'    if (fromSettings) return fromSettings;','    if (fromSettings) return fromSettings;\n    return "pt";',"GeoMoz default language");
+const languageStart=i18n.indexOf("    const navigatorLanguages =");
+const languageEnd=i18n.indexOf("\n  }\n\n  return DEFAULT_LANGUAGE;",languageStart);
+if(languageStart<0||languageEnd<languageStart)throw Error("GeoMoz initial-language anchors changed");
+i18n=i18n.slice(0,languageStart)+'    return "pt";'+i18n.slice(languageEnd);
 write("i18n/index.ts",i18n);
 const marker=resolve(root,"geomoz-workbench.json");
 writeFileSync(marker,JSON.stringify({interface:"geomoz-workbench",version:1,engine:"f69688ed5be750c496b51b865cee513d910a433f"},null,2)+"\n");

@@ -48,8 +48,12 @@ const server = createServer(async (req, res) => {
   page.on("pageerror",error=>console.error("Browser runtime error:",error.message));
   try {
     await page.goto("http://127.0.0.1:4178/");
+    await page.getByTitle("Ativar Modo Noturno",{exact:true}).first().click();
+    await page.waitForFunction(()=>document.documentElement.dataset.geomozTheme==="dark");
     await page.getByRole("button",{name:"Explorar",exact:true}).click();
     await page.getByRole("button",{name:"Continuar como Convidado (Explorar sem conta)",exact:true}).click();
+    await page.getByRole("button",{name:"Modo Claro",exact:true}).waitFor();
+    await page.waitForFunction(()=>document.documentElement.classList.contains("dark"));
     await page.getByRole("button",{name:"GIS Workspace",exact:true}).click();
     await page.getByRole("heading",{name:"Da área de estudo ao resultado.",exact:true}).waitFor();
     await page.locator('[data-testid="cesium-workspace"] .cesium-widget canvas').waitFor();
@@ -114,6 +118,18 @@ const server = createServer(async (req, res) => {
     if(!wms||coords.length!==4||!coords.every(Number.isFinite)||coords[0]>=coords[2]||coords[1]>=coords[3]||wms.CRS!=="EPSG:3857")throw Error("Invalid projected WMS request: "+JSON.stringify(wmsRequests));
     await page.screenshot({path:"workspace-browser-artifacts/04-vectors-services.png",fullPage:true});
     console.log("Cesium vector picking, XYZ and WMS passed",JSON.stringify({xyz:tileRequests.length,wms:wmsRequests.length,bbox:wms.BBOX}));
+    // Global theme survives module navigation and the crawlable legal documents.
+    for(const route of ["/privacy","/terms","/privacy.html","/terms.html"]){
+      await page.goto("http://127.0.0.1:4178"+route);
+      await page.waitForFunction(()=>document.documentElement.dataset.geomozTheme==="dark");
+      const surface=page.locator(route.endsWith(".html")?"article":"main section[id]").first();
+      await surface.waitFor();
+      const color=await surface.evaluate(node=>getComputedStyle(node).backgroundColor);
+      if(color==="rgb(255, 255, 255)")throw Error("White legal surface in global dark mode: "+route);
+    }
+    await page.goto("http://127.0.0.1:4178/");
+    await page.getByTitle("Ativar Modo Claro",{exact:true}).first().waitFor();
+    console.log("Global dark mode persisted across landing, portal, GIS and all legal routes.");
     console.log(JSON.stringify({engine:"CesiumJS 1.127 in 2D",drawing:"visible",hgt:"imported and rendered",slope:"completed",selected}));
   } catch (error) {
     console.error("Rendered workspace state:", (await page.locator("body").innerText()).slice(-14000));

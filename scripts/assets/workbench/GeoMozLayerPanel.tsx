@@ -1,6 +1,6 @@
 import { useEffect, useState, type ComponentProps } from "react";
 import { useAppStore } from "@geolibre/core";
-import { Layers3, Search, ChevronLeft, Eye, EyeOff, Crosshair, SlidersHorizontal, Table2, Palette, FileStack, Map, FolderOpen } from "lucide-react";
+import { Layers3, Search, ChevronLeft, ChevronRight, Eye, EyeOff, Crosshair, SlidersHorizontal, Table2, Palette, FileStack, Map, FolderOpen, History, CheckCircle2, AlertCircle } from "lucide-react";
 import { LayerPanel as EngineLayerPanel } from "../panels/LayerPanel";
 import { setLayersPanelCollapsed } from "../../lib/layer-panel-collapse";
 type Props = ComponentProps<typeof EngineLayerPanel>;
@@ -12,6 +12,10 @@ export function GeoMozLayerPanel(props:Props) {
   const visibility=useAppStore(s=>s.setLayerVisibility);
   const opacity=useAppStore(s=>s.setLayerOpacity);
   const openTable=useAppStore(s=>s.setAttributeTableOpen);
+  const runs=useAppStore(s=>s.processingHistory);
+  const openHistory=useAppStore(s=>s.setProcessingHistoryOpen);
+  const canProcess=useAppStore(s=>s.deploymentCapabilities.has("processing:run"));
+  const [results,setResults]=useState(false);
   const [query,setQuery]=useState("");
   const [tab,setTab]=useState<"all"|"visible">("all");
   const [advanced,setAdvanced]=useState(false);
@@ -26,8 +30,8 @@ export function GeoMozLayerPanel(props:Props) {
   if(collapsed)return props.hideOwnRail?null:<aside className="gm-layer-rail" aria-label="Catálogo recolhido"><button className="gm-icon-button" aria-label="Expandir catálogo" onClick={()=>changeCollapsed(false)}><Layers3 size={19}/></button><span>CATÁLOGO</span></aside>;
   return <aside className="gm-catalog" data-testid="geomoz-layer-catalog" aria-label="Catálogo de camadas">
     <div className="gm-catalog-heading"><div><small>ÁREA DE TRABALHO</small><h2><Layers3 size={18}/> Catálogo</h2></div><button type="button" className="gm-icon-button" aria-label="Recolher catálogo" onClick={()=>changeCollapsed(true)}><ChevronLeft size={17}/></button></div>
-    <div className="gm-catalog-nav"><button type="button" aria-pressed={!advanced} onClick={()=>setAdvanced(false)}><FileStack size={14}/>Camadas <b>{layers.length}</b></button><button type="button" aria-pressed={advanced} onClick={()=>setAdvanced(true)}><SlidersHorizontal size={14}/>Gestão</button></div>
-    {!advanced&&<>
+    <div className="gm-catalog-nav"><button type="button" aria-pressed={!advanced&&!results} onClick={()=>{setAdvanced(false);setResults(false);}}><FileStack size={14}/>Camadas <b>{layers.length}</b></button><button type="button" aria-pressed={results} onClick={()=>{setResults(true);setAdvanced(false);}}><History size={14}/>Resultados</button><button type="button" aria-pressed={advanced} onClick={()=>{setAdvanced(true);setResults(false);}}><SlidersHorizontal size={14}/>Gestão</button></div>
+    {!advanced&&!results&&<>
       <div className="gm-catalog-search"><Search size={15}/><input aria-label="Pesquisar camadas" placeholder="Pesquisar neste projecto…" value={query} onChange={event=>setQuery(event.target.value)}/></div>
       <div className="gm-catalog-filter"><button type="button" aria-pressed={tab==="all"} onClick={()=>setTab("all")}>Todas</button><button type="button" aria-pressed={tab==="visible"} onClick={()=>setTab("visible")}>Visíveis <b>{layers.filter(layer=>layer.visible).length}</b></button><span>ORDEM DO MAPA</span></div>
       <div className="gm-layer-list">
@@ -44,6 +48,16 @@ export function GeoMozLayerPanel(props:Props) {
       </section>}
       <div className="gm-catalog-footer"><span><i/>{layers.filter(layer=>layer.visible).length} visíveis de {layers.length}</span><span title="A ordem e os grupos podem ser alterados em Gestão">SIG LOCAL</span></div>
     </>}
+    {results&&<section className="gm-results" aria-label="Resultados do processamento">
+      <div className="gm-results-title"><span>{runs.length} {runs.length===1?"execução":"execuções"}</span>{canProcess&&<button type="button" onClick={()=>openHistory(true)}>Histórico completo</button>}</div>
+      {!runs.length&&<div className="gm-catalog-empty"><History size={32}/><strong>Da análise à decisão</strong><p>Execute uma ferramenta na tarefa Análise. Aqui poderá acompanhar o estado e localizar as saídas produzidas.</p></div>}
+      {[...runs].reverse().map(run=><article key={run.id} className="gm-result-card">
+        <div>{run.status==="error"?<AlertCircle size={16}/>:<CheckCircle2 size={16}/>}<strong>{run.toolName}</strong><span>{run.status==="error"?"Falhou":run.status==="success"?"Concluído":run.status}</span></div>
+        <p>{new Date(run.startedAt).toLocaleString("pt-MZ")} · {run.engine}</p>
+        {run.error&&<p role="status">{run.error}</p>}
+        {run.outputLayerNames?.map((name,index)=>{const layer=layers.find(item=>item.name===name);return <button key={name+index} type="button" disabled={!layer} title={layer?"Seleccionar e enquadrar saída":"Esta saída já não está no mapa"} onClick={()=>{if(layer){select(layer.id);props.mapControllerRef.current?.fitLayer(layer);setResults(false);}}}><Layers3 size={13}/>{name}<ChevronRight size={13}/></button>;})}
+      </article>)}
+    </section>}
     <div className="gm-engine-panel" hidden={!advanced}><EngineLayerPanel {...props} autoCollapse={false} collapsed={false} onCollapsedChange={()=>changeCollapsed(true)} hideOwnRail /></div>
     <p className="gm-catalog-notice" role="status">{notice}</p>
     <div className="gm-catalog-resize" role="separator" aria-label="Redimensionar catálogo" aria-orientation="vertical" onPointerDown={props.onResizeStart}/>

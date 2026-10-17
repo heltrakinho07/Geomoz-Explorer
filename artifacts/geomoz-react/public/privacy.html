@@ -8,6 +8,7 @@
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://geomoz.geolithica.com/privacy">
   <meta name="theme-color" content="#071d34">
+  <script src="/geomoz-theme.js"></script>
   <style>
     :root{color-scheme:light;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#14283d;background:#f4f8fc}
     *{box-sizing:border-box}body{margin:0;line-height:1.75}a{color:#056ba9;text-underline-offset:3px}a:hover{color:#064e83}
@@ -25,10 +26,15 @@
     footer{border-top:1px solid #dce8f0;background:#fff;padding:23px;color:#526577;font-size:.9rem}
     footer .bar{max-width:940px}footer a{font-weight:600}
     @media(max-width:520px){header{padding:20px 18px}main{margin:18px auto;padding:0 13px 35px}article{padding:23px 20px;border-radius:12px}nav{gap:12px}}
+    html.dark{color-scheme:dark;color:#dce7f3;background:#071525}
+    html.dark article,html.dark footer{background:#102137;border-color:#293c53;color:#dce7f3}
+    html.dark h1,html.dark h2{color:#ecf6ff}html.dark .intro{color:#b6cada;border-color:#293c53}
+    html.dark .updated{color:#93aac0}html.dark .eyebrow,html.dark a{color:#7dd3fc}
+    html.dark a:hover{color:#bae6fd}.theme-toggle{padding:5px 10px;border:1px solid #ffffff55;border-radius:6px;background:transparent;color:#e2f4ff;cursor:pointer;font:inherit;font-size:.85rem}
   </style>
 </head>
 <body>
-<header><div class="bar"><a class="brand" href="/">Geo<span>Moz</span> Explorer</a><nav aria-label="Navegação"><a href="/">Página inicial</a><a href="/privacy">Privacidade</a><a href="/terms">Termos</a></nav></div></header>
+<header><div class="bar"><a class="brand" href="/">Geo<span>Moz</span> Explorer</a><nav aria-label="Navegação"><a href="/">Página inicial</a><a href="/privacy">Privacidade</a><a href="/terms">Termos</a><button type="button" class="theme-toggle" aria-label="Alternar tema claro / nocturno" onclick="window.GeoMozTheme.toggle()">Claro / Nocturno</button></nav></div></header>
 <main id="conteudo"><article>
   <p class="eyebrow">GEOLÍTHICA · GeoMoz Explorer</p>
   <h1>Política de Privacidade</h1>
