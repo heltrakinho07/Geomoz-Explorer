@@ -61,10 +61,14 @@ write("i18n/index.ts",i18n);
 // Product curation intersects the existing capability, role and profile gates.
 // The source registries and callbacks are retained for gradual adaptation.
 write("lib/geomoz-workbench-profile.ts",readFileSync(new URL("./assets/workbench/geomoz-workbench-profile.ts",import.meta.url),"utf8"));
+write("lib/geomoz-command-context.ts",readFileSync(new URL("./assets/workbench/geomoz-command-context.ts",import.meta.url),"utf8"));
 let commands=read("hooks/toolbar/useToolbarCommands.ts");
-commands='import { curateGeoMozCommands } from "../../lib/geomoz-workbench-profile";\n'+commands;
+commands='import { curateGeoMozCommands } from "../../lib/geomoz-workbench-profile";\nimport { preserveCommandApi } from "../../lib/geomoz-command-context";\n'+commands;
 commands=once(commands,"  const shortcutCommands = useMemo(","  const curatedCommands = useMemo(() => curateGeoMozCommands(allowedCommands), [allowedCommands]);\n  const shortcutCommands = useMemo(","curated shortcut registry");
 commands=commands.replace("? allowedCommands.filter", "? curatedCommands.filter").replace(": allowedCommands,", ": curatedCommands,").replace("[allowedCommands, viewer]", "[curatedCommands, viewer]").replace("return allowedCommands;", "return curatedCommands;");
+commands=once(commands,"        createLatestProxy(() => buildingContext ?? latestContextRef.current),","        preserveCommandApi(createLatestProxy(() => buildingContext ?? latestContextRef.current), () => buildingContext ?? latestContextRef.current),","preserve enumerable map API for plugin lifecycle");
+commands=once(commands,"const { t, themeMode, shareAvailable, plugins, isActive } = options;","const { t, themeMode, shareAvailable, plugins, isActive, appApi } = options;","map API memo identity");
+commands=once(commands,"      pluginKey,\n    ],","      pluginKey,\n      appApi,\n    ],","rebuild commands when map API changes");
 write("hooks/toolbar/useToolbarCommands.ts",commands);
 let palette=read("hooks/toolbar/usePaletteCommands.ts");
 palette='import { curateGeoMozCommands } from "../../lib/geomoz-workbench-profile";\n'+palette;

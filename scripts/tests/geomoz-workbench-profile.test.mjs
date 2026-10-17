@@ -40,3 +40,21 @@ test("source preparation retains original menus and registries behind reversible
  assert.match(layers,/<EngineLayerPanel/);
  assert.match(layers,/GEOMOZ_ROLLOUT.fullLayerManager/);
 });
+
+test("plugin lifecycle keeps the enumerable App API while callbacks remain live",async()=>{
+ const {preserveCommandApi}=await import("../assets/workbench/geomoz-command-context.ts");
+ const removed=[];
+ let latest={appApi:{getMap:()=>"map",removeMapControl:control=>removed.push(control)},name:"first"};
+ const readView=new Proxy({}, {get:(_target,key)=>key==="appApi"?new Proxy({}, {get:(_t,method)=>latest.appApi[method]}):latest[key]});
+ assert.deepEqual(Object.keys(readView.appApi),[],"Reproduce the engine proxy's documented non-enumerability");
+ const context=preserveCommandApi(readView,()=>latest);
+ assert.equal(context.appApi,latest.appApi);
+ const activationScope={...context.appApi};
+ const deactivationScope={...context.appApi};
+ assert.equal(activationScope.getMap(),"map");
+ deactivationScope.removeMapControl("drawing-control");
+ assert.deepEqual(removed,["drawing-control"]);
+ latest={...latest,appApi:{...latest.appApi,getMap:()=>"new-map"},name:"second"};
+ assert.equal(context.appApi.getMap(),"new-map");
+ assert.equal(context.name,"second");
+});

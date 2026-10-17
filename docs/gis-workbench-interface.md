@@ -49,3 +49,5 @@ As propriedades próprias mantêm renomeação, ordem, grupo e exportação GeoJ
 O editor de área oferece polígono, linha, rectângulo e ponto, com selecção, deslocação, edição de vértices e remoção. Modos avançados e volumetria 3D, incluindo o formulário de altura, ficam ocultos através de advancedDrawing; os modos e atributos originais são preservados.
 
 A integração de sismicidade USGS/ISC publicada em paralelo é preservada em Dados → Catálogos sísmicos. Os clientes, estilos e testes de sismicidade continuam activos; não foi criada uma quinta etapa no fluxo principal.
+
+Os comandos preservam a identidade da API do mapa ao atravessar o proxy de callbacks do motor. Os scopes dos plugins enumeram essa API: sem esta adaptação perdiam getMap/removeMapControl e a barra de desenho podia permanecer activa após «Terminar desenho». O teste unitário reproduz esta condição e o teste no navegador cria, exporta e encerra um desenho real.
