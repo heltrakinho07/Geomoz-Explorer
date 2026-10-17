@@ -66,7 +66,7 @@ function layerIds(layerId: string) {
 function basemapStyle(basemap: BasemapType): StyleSpecification {
   const config = GOOGLE_BASEMAPS[basemap];
   const subdomain = config.subdomains?.[0] ?? "0";
-  const tileUrl = config.url.replace("{s}", subdomain);
+  const tileUrl = config.url.replace("{s}", subdomain) + (config.url.includes("google.com") ? "&hl=pt" : "");
   return {
     version: 8,
     sources: {

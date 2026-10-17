@@ -44,9 +44,11 @@ const server = createServer(async (req, res) => {
     // Synthetic SRTM sample; it is not the user's original DEM.
     const side=1201, hgt=Buffer.alloc(side*side*2);
     for(let y=0;y<side;y++) for(let x=0;x<side;x++) hgt.writeInt16BE(1500-Math.floor(x/4)-Math.floor(y/8),(y*side+x)*2);
-    await page.locator('input[type="file"][multiple]').setInputFiles({name:"S20E035.hgt",mimeType:"application/octet-stream",buffer:hgt});
+    await page.locator('.geomoz-workspace input[type="file"][multiple][accept*=".hgt"]').setInputFiles({name:"S20E035.hgt",mimeType:"application/octet-stream",buffer:hgt});
+    console.log("HGT attached; opening processing");
     await page.getByRole("button",{name:"Processamento",exact:true}).click();
     await page.getByText("Declive (Slope)",{exact:true}).first().click();
+    console.log("Slope selected; starting WASM");
     await page.getByRole("button",{name:"Executar no browser",exact:true}).click();
     await page.getByText("Whitebox Raster concluído",{exact:true}).waitFor();
     await page.getByRole("button",{name:/1 resultado\(s\)/}).waitFor();
@@ -54,6 +56,9 @@ const server = createServer(async (req, res) => {
     const selected = await page.locator(".gw-input-card strong").innerText();
     if (!selected.includes("Declive")) throw Error("The output raster was not automatically selected: "+selected);
     console.log(JSON.stringify({drawing:"visible",hgt:"imported",slope:"completed",selected}));
+  } catch (error) {
+    console.error("Rendered workspace state:", (await page.locator("body").innerText()).slice(-14000));
+    throw error;
   } finally {
     await page.screenshot({path:"workspace-browser-artifacts/final-state.png",fullPage:true}).catch(()=>{});
     await browser.close(); await new Promise(resolve=>server.close(resolve));
