@@ -426,6 +426,31 @@ export default function GeoProcessamento({
       selectedLayerId, secondLayerId, tableLayerId, history, modelGraph,
       activeTab, basemap]);
 
+  // Spatial SQL Workspace
+  const [sqlQuery, setSqlQuery] = useState<string>("");
+  const [sqlResult, setSqlResult] = useState<QueryResult | null>(null);
+
+  // Active layer references
+  const activeLayer = useMemo(() => layers.find((l) => l.id === selectedLayerId), [layers, selectedLayerId]);
+  const secondaryLayer = useMemo(() => layers.find((l) => l.id === secondLayerId), [layers, secondLayerId]);
+
+  // Current selected tool metadata
+  const currentTool = useMemo(
+    () => GEOPROCESSING_TOOLS_CATALOG.find((t) => t.id === selectedToolId) || GEOPROCESSING_TOOLS_CATALOG[0],
+    [selectedToolId]
+  );
+
+  // Filtered tools catalog
+  const filteredTools = useMemo(() => {
+    return GEOPROCESSING_TOOLS_CATALOG.filter((tool) => {
+      const matchSearch =
+        tool.name.toLowerCase().includes(toolSearch.toLowerCase()) ||
+        tool.description.toLowerCase().includes(toolSearch.toLowerCase());
+      const matchCat = toolCategoryFilter === "all" || tool.category === toolCategoryFilter;
+      return matchSearch && matchCat;
+    });
+  }, [toolSearch, toolCategoryFilter]);
+
   const selectedWhiteboxTool = useMemo(
     () => whiteboxTools.find((tool) => tool.id === selectedWhiteboxToolId) ?? null,
     [whiteboxTools, selectedWhiteboxToolId]
