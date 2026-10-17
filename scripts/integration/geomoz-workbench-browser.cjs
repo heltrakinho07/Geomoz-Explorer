@@ -103,8 +103,18 @@ const server=createServer(async(req,res)=>{
   await page.getByTestId("geomoz-layer-catalog").getByRole("button",{name:"Recolher catálogo",exact:true}).click();
   const mapBox=await page.locator("main canvas").first().boundingBox();
   assert.ok(mapBox&&mapBox.width>300&&mapBox.height>300,"Mobile map must remain usable");
+  const viewer=await context.newPage();
+  await viewer.goto("http://127.0.0.1:4182/gis-workspace/?layout=viewer");
+  await viewer.getByTestId("geomoz-workbench-chrome").waitFor();
+  await viewer.locator("main canvas").first().waitFor();
+  assert.equal(await viewer.locator("[data-command^='project.'],[data-command^='add.'],[data-command^='proc.'],[data-command^='settings.']").count(),0,"Viewer ribbon must never expose authoring actions");
+  assert.equal(await viewer.getByRole("textbox",{name:"Nome do projecto"}).isEditable(),false);
+  assert.equal(await viewer.locator(".gm-task-tabs button").count(),1);
+  await viewer.getByTestId("geomoz-theme-toggle").click();
+  await viewer.close();
+  console.log("Read-only viewer keeps camera and theme controls while withholding authoring commands.");
   assert.deepEqual(errors,[],"No uncaught React/runtime errors");
-  await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,resultNavigator:true,fullMenus:true,themePersistence:true,crossTabTheme:true,mobile:true,errors},null,2));
+  await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,resultNavigator:true,fullMenus:true,themePersistence:true,crossTabTheme:true,mobile:true,viewerReadOnly:true,errors},null,2));
   console.log("GeoMoz Workbench: owned UI, real import, layer controls, analysis dialog, menus, dark/light persistence and mobile layout passed.");
  }catch(error){console.error("Visible interface:",(await page.locator("body").innerText()).slice(-12000));await page.screenshot({path:"workbench-browser-artifacts/failure.png",fullPage:true}).catch(()=>{});throw error;}
  finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
