@@ -40,6 +40,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY api.py .
 COPY processing_jobs.py .
 COPY gee_module.py .
+COPY gee_download_grid.py .
+RUN python3 -c "from gee_download_grid import bounded_download_grid; print('Bounded GEE download runtime available')"
 COPY gee_session_store.py .
 COPY gee_presets.py .
 # GeoMoz Agent is lazily imported by /geomoz-api/ai/agent-chat.
