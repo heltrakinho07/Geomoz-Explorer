@@ -399,6 +399,7 @@ export default function GeoProcessamento({
   // Processing history and transient browser session; no database writes.
   const [history, setHistory] = useState<ProcessingHistoryEntry[]>([]);
   const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
+  const [hydratedScope, setHydratedScope] = useState<string | null>(null);
 
   // Model Builder — typed DAG (vector + raster).
   const [modelGraph, setModelGraph] = useState<GISModelGraph>(
@@ -410,10 +411,11 @@ export default function GeoProcessamento({
   const [modelLog, setModelLog] = useState<string[]>([]);
   const modelAbortRef = useRef<AbortController | null>(null);
 
-  // Restore only RAM state when the component remounts in the same tab.
-  // Refreshing/closing the tab clears it; use Exportar Projecto for backup.
+  // RAM sessions are scoped by current UID/project; switching identities
+  // cannot leak prior sessions and does not read/write cloud storage.
   React.useEffect(() => {
-    const snapshot = getGISSessionWorkspace();
+    setWorkspaceHydrated(false);
+    const snapshot = getGISSessionWorkspace(deviceCacheKey);
     if (snapshot) {
       setLayers(snapshot.layers as UserLayer[]);
       setRasterLayers(snapshot.rasters);
@@ -425,20 +427,31 @@ export default function GeoProcessamento({
       setModelGraph(snapshot.modelGraph);
       setActiveTab(snapshot.activeTab as MainTab);
       setBasemap(snapshot.basemap as BasemapType);
+    } else {
+      setLayers([]);
+      setRasterLayers([]);
+      setServiceLayers([]);
+      setSelectedLayerId("");
+      setSecondLayerId("");
+      setTableLayerId(null);
+      setHistory([]);
+      setModelGraph(createDefaultGISModelGraph());
+      setActiveTab("layers");
     }
+    setHydratedScope(deviceCacheKey);
     setWorkspaceHydrated(true);
-  }, []);
+  }, [deviceCacheKey]);
 
   React.useEffect(() => {
-    if (!workspaceHydrated) return;
+    if (!workspaceHydrated || hydratedScope !== deviceCacheKey) return;
     setGISSessionWorkspace({
       layers, rasters: rasterLayers, services: serviceLayers,
       selectedLayerId, secondLayerId, tableLayerId,
       history, modelGraph, activeTab, basemap,
-    });
-  }, [workspaceHydrated, layers, rasterLayers, serviceLayers,
-      selectedLayerId, secondLayerId, tableLayerId, history, modelGraph,
-      activeTab, basemap]);
+    }, deviceCacheKey);
+  }, [workspaceHydrated, hydratedScope, deviceCacheKey, layers, rasterLayers,
+      serviceLayers, selectedLayerId, secondLayerId, tableLayerId, history,
+      modelGraph, activeTab, basemap]);
 
   // Spatial SQL Workspace
   const [sqlQuery, setSqlQuery] = useState<string>("");
