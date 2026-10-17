@@ -33,7 +33,11 @@ async function settleRecovery(page){
  await new Promise(resolve=>server.listen(4182,"127.0.0.1",resolve));
  const browser=await chromium.launch({headless:true,args:["--use-angle=swiftshader","--enable-webgl","--ignore-gpu-blocklist"]});
  const context=await browser.newContext({viewport:{width:1440,height:960},colorScheme:"light"});
+ // Exercise the actual download fallback used in browsers without File System Access.
+ // Keep the application's picker implementation intact.
+ await context.addInitScript(()=>Object.defineProperty(window,"showSaveFilePicker",{configurable:true,value:undefined}));
  const page=await context.newPage(),errors=[];
+ page.on("console",message=>{if(["error","warning","warn"].includes(message.type())&&/Geo.?Editor|Geoman|deactivat|plugin.*error|removeControl/i.test(message.text()))console.log("Editor diagnostic:",message.text());});
  page.on("pageerror",error=>{errors.push(error.message);console.error("Runtime error:",error.message);});
  page.setDefaultTimeout(90000);
  try{
@@ -43,6 +47,22 @@ async function settleRecovery(page){
   await page.locator("main canvas").first().waitFor();
   assert.equal(await page.locator(".geomoz-portal-shell").count(),0,"Old shell must not coexist with the new UI");
   assert.equal(await page.locator("[data-command='add.vector']").count(),1);
+  assert.deepEqual(await page.locator(".gm-task-tabs button").allTextContents(),["Área de estudo","Dados","Análise","Resultados"]);
+  assert.equal(await page.getByRole("button",{name:"Mais opções",exact:true}).count(),0);
+  assert.equal(await page.getByRole("button",{name:"Gestão",exact:true}).count(),0);
+  await page.keyboard.press("Control+k");
+  const search=page.getByRole("combobox");
+  await search.waitFor();
+  for(const term of ["Python","SQL","Voronoi","STAC","directions"]){
+    await search.fill(term);
+    await page.waitForTimeout(500);
+    assert.equal(await page.getByRole("option").count(),0,"Specialist feature must be hidden from search: "+term);
+  }
+  await search.fill("buffer");
+  await page.getByRole("option").first().waitFor();
+  await page.keyboard.press("Escape");
+  console.log("Curated workflow and searchable catalog verified.");
+
   await page.getByRole("textbox",{name:"Nome do projecto"}).fill("Estudo do território");
   await page.getByRole("textbox",{name:"Nome do projecto"}).press("Enter");
   const light=await page.getByTestId("geomoz-layer-catalog").evaluate(node=>getComputedStyle(node).backgroundColor);
@@ -69,11 +89,30 @@ async function settleRecovery(page){
   assert.equal(await row.getAttribute("data-visible"),"false");
   await row.locator(".gm-layer-visibility").click();
   await row.locator(".gm-layer-fit").click();
+  await page.locator(".gm-layer-properties summary").click();
+  const rename=page.getByRole("textbox",{name:"Renomear camada",exact:true});
+  await rename.fill("Pontos renomeados");await rename.press("Enter");
+  await page.locator('.gm-layer-row[data-layer-name="Pontos renomeados"]').waitFor();
+  await rename.fill("Pontos de estudo");await rename.press("Enter");
+  await row.waitFor();
+  await page.getByRole("textbox",{name:"Nome do novo grupo",exact:true}).fill("Estudo local");
+  await page.locator(".gm-layer-properties").getByRole("button",{name:"Criar",exact:true}).click();
+  assert.notEqual(await page.getByRole("combobox",{name:"Grupo da camada"}).inputValue(),"");
+  await page.getByRole("checkbox",{name:"Mostrar grupo Estudo local",exact:true}).uncheck();
+  assert.equal(await row.getAttribute("data-rendered"),"false");
+  await page.getByRole("checkbox",{name:"Mostrar grupo Estudo local",exact:true}).check();
+  assert.equal(await row.getAttribute("data-rendered"),"true");
+  const downloadPromise=page.waitForEvent("download",{timeout:15000});
+  await page.getByRole("button",{name:"Exportar GeoJSON",exact:true}).click();
+  const download=await downloadPromise;
+  await download.saveAs("workbench-browser-artifacts/exported-points.geojson");
+  assert.equal(JSON.parse(await readFile("workbench-browser-artifacts/exported-points.geojson","utf8")).features.length,2);
+  await page.locator(".gm-layer-properties summary").click();
+
   await page.getByRole("textbox",{name:"Pesquisar camadas"}).fill("inexistente");
   await page.getByText("Nenhuma correspondência",{exact:true}).waitFor();
   await page.getByRole("textbox",{name:"Pesquisar camadas"}).fill("");
   await page.screenshot({path:"workbench-browser-artifacts/02-geomoz-data-dark.png",fullPage:true});
-
   // Exercise seismic UI and map-store import with a deterministic USGS fixture.
   await page.route("https://earthquake.usgs.gov/fdsnws/event/1/query**",route=>route.fulfill({
     status:200,contentType:"application/json",
@@ -84,7 +123,8 @@ async function settleRecovery(page){
       place:"Centro de Moçambique",net:"us",url:"https://earthquake.usgs.gov/earthquakes/eventpage/mz-test-001"}}
     ]})
   }));
-  await page.locator('[data-task="seismic"]').click();
+  await page.locator('[data-task="data"]').click();
+  await page.locator('[data-action="geomoz-seismic"]').click();
   await page.getByTestId("geomoz-seismic-panel").waitFor();
   await page.getByRole("button",{name:"Consultar eventos"}).click();
   await page.getByTestId("geomoz-seismic-panel").getByText("1", {exact:true}).first().waitFor();
@@ -99,16 +139,17 @@ async function settleRecovery(page){
   await page.locator('[data-command="proc.vector.buffer"]').click();
   const toolDialog=page.getByRole("dialog").filter({hasText:/Buffer|Zona tampão/i}).first();
   await toolDialog.waitFor();
+  assert.equal(await toolDialog.getByRole("button",{name:/Voronoi|DGGS|Polyline/i}).count(),0,"Internal dialog lists must also be curated");
   const input=toolDialog.locator("select#layer");
   const inputValue=await input.locator("option").evaluateAll(options=>options.find(option=>option.textContent.includes("Pontos de estudo"))?.value);
   assert.ok(inputValue,"Imported layer must be available to the actual processing tool");
   await input.selectOption(inputValue);
   await toolDialog.locator("input#distance").fill("2");
   await toolDialog.getByRole("button",{name:"Executar",exact:true}).click();
-  await page.waitForFunction(()=>document.querySelectorAll(".gm-layer-row").length>=2);
+  await page.waitForFunction(()=>document.querySelectorAll('.gm-layer-row[data-layer-name="Buffer"]').length>=1);
   await page.screenshot({path:"workbench-browser-artifacts/03-geomoz-analysis-dark.png",fullPage:true});
   await page.keyboard.press("Escape");
-  await page.getByRole("button",{name:"Resultados",exact:true}).click();
+  await page.getByTestId("geomoz-layer-catalog").getByRole("button",{name:"Resultados",exact:true}).click();
   await page.locator(".gm-result-card").filter({hasText:"Concluído"}).first().waitFor();
   console.log("Buffer executed; output layer and result history available.");
   await page.screenshot({path:"workbench-browser-artifacts/03b-geomoz-results-dark.png",fullPage:true});
@@ -122,17 +163,50 @@ async function settleRecovery(page){
   await toolDialog.locator("select#layer").selectOption(inputValue);
   await toolDialog.locator("input#distance").fill("2");
   await toolDialog.getByRole("button",{name:"Executar",exact:true}).click();
-  await page.waitForFunction(()=>document.querySelectorAll(".gm-layer-row").length>=3);
+  await page.waitForFunction(()=>document.querySelectorAll('.gm-layer-row[data-layer-name="Buffer"]').length>=2);
   await page.keyboard.press("Escape");
-  await page.getByRole("button",{name:"Resultados",exact:true}).click();
+  await page.getByTestId("geomoz-layer-catalog").getByRole("button",{name:"Resultados",exact:true}).click();
   await page.waitForFunction(()=>document.querySelectorAll(".gm-result-card").length===2);
   const outputLinks=page.locator(".gm-result-card>button");
   assert.equal(await outputLinks.count(),2);
   for(const link of await outputLinks.all())assert.equal(await link.isDisabled(),true,"Duplicate names must never open the wrong layer");
   await page.locator(".gm-catalog-nav button").first().click();
   console.log("Duplicate output names are reported without selecting an arbitrary layer.");
-  await page.locator('[data-task="project"]').click();
-  await page.getByRole("button",{name:"Mais opções",exact:true}).click();
+  await page.locator('[data-task="output"]').click();
+  await page.locator(".gm-results").waitFor();
+  await page.locator(".gm-catalog-nav button").first().click();
+  await page.locator('[data-task="map"]').click();
+  const baseCanvas=await page.locator("main canvas").first().boundingBox();
+  await page.mouse.click(baseCanvas.x+baseCanvas.width*.55,baseCanvas.y+baseCanvas.height*.35,{button:"right"});
+  await page.getByRole("menu").first().waitFor({timeout:10000});
+  assert.equal(await page.getByRole("menuitem",{name:/directions|rota|conduzir|Google|Earth|tempo de viagem/i}).count(),0,"Map context must withhold off-scope features");
+  await page.keyboard.press("Escape");
+  await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').click();
+  const editor=page.locator(".geo-editor-toolbar");
+  await editor.waitFor();
+  assert.equal(await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').getAttribute("aria-pressed"),"true");
+  assert.equal(await editor.locator('button[data-mode="massing"]').count(),0,"3D massing stays hidden");
+  await editor.locator('button[data-mode="line"]').waitFor();
+  await editor.locator('button[data-mode="polygon"]').click();
+  const canvas=await page.locator("main canvas").first().boundingBox();
+  const at=(x,y)=>({x:canvas.x+canvas.width*x,y:canvas.y+canvas.height*y});
+  const a=at(.55,.35),b=at(.8,.35),c=at(.8,.65),d=at(.55,.65);
+  await page.mouse.click(a.x,a.y);await page.mouse.click(b.x,b.y);await page.mouse.click(c.x,c.y);await page.mouse.dblclick(d.x,d.y);
+  await page.locator('.gm-layer-row[data-layer-name="Sketches"]').waitFor();
+  await page.locator('.gm-layer-row[data-layer-name="Sketches"] .gm-layer-select').click();
+  await page.locator(".gm-layer-properties summary").click();
+  const areaDownload=page.waitForEvent("download",{timeout:15000});
+  await page.getByRole("button",{name:"Exportar GeoJSON",exact:true}).click();
+  await (await areaDownload).saveAs("workbench-browser-artifacts/study-area.geojson");
+  const area=JSON.parse(await readFile("workbench-browser-artifacts/study-area.geojson","utf8"));
+  assert.ok(area.features.some(feature=>["Polygon","MultiPolygon"].includes(feature.geometry?.type)),"The drawn area must contain real polygon geometry");
+  assert.equal(await page.locator(".geo-editor-attribute-panel:not(.attribute-panel--hidden)").isVisible(),false,"The 3D height form must stay hidden");
+  console.log("Study polygon drawn and exported with real geometry; 3D controls hidden.");
+  await page.screenshot({path:"workbench-browser-artifacts/03c-geomoz-study-area.png",fullPage:true});
+  await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').click();
+  console.log("Drawing command state after finishing:",await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').getAttribute("aria-pressed"));
+  await editor.waitFor({state:"hidden",timeout:15000});
+  console.log("Drawing ended; ordinary map navigation restored.");
   await page.locator('.gm-menu-slot:not([hidden]) button').first().click();
   await page.getByRole("menu").first().waitFor();
   await page.keyboard.press("Escape");
@@ -167,13 +241,15 @@ async function settleRecovery(page){
   assert.equal(await viewer.locator("[data-command^='project.'],[data-command^='add.'],[data-command^='proc.'],[data-command^='settings.']").count(),0,"Viewer ribbon must never expose authoring actions");
   assert.equal(await viewer.getByRole("textbox",{name:"Nome do projecto"}).isEditable(),false);
   assert.equal(await viewer.locator(".gm-task-tabs button").count(),1);
-  assert.equal(await viewer.locator('[data-task="seismic"]').count(),0,"Viewer cannot import seismic events");
+  assert.equal(await viewer.locator('[data-action="geomoz-seismic"]').count(),0,"Viewer must not expose catalog import");
   await viewer.getByTestId("geomoz-theme-toggle").click();
   await viewer.close();
   console.log("Read-only viewer keeps camera and theme controls while withholding authoring commands.");
   assert.deepEqual(errors,[],"No uncaught React/runtime errors");
-  await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,resultNavigator:true,fullMenus:true,themePersistence:true,crossTabTheme:true,mobile:true,viewerReadOnly:true,duplicateNamesGuarded:true,seismicUsgs:true,errors},null,2));
+  await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,resultNavigator:true,seismicUsgs:true,curatedMenus:true,searchCurated:true,studyAreaDrawing:true,layerProperties:true,geojsonExport:true,themePersistence:true,crossTabTheme:true,mobile:true,viewerReadOnly:true,duplicateNamesGuarded:true,errors},null,2));
   console.log("GeoMoz Workbench: owned UI, real import, layer controls, analysis dialog, menus, dark/light persistence and mobile layout passed.");
- }catch(error){console.error("Visible interface:",(await page.locator("body").innerText()).slice(-12000));await page.screenshot({path:"workbench-browser-artifacts/failure.png",fullPage:true}).catch(()=>{});throw error;}
+ }catch(error){
+  try{await page.locator(".gm-help-menu summary").click({timeout:2000});await page.getByRole("button",{name:"Diagnóstico",exact:true}).click({timeout:2000});await page.getByRole("dialog").waitFor({timeout:2000});console.error("Application diagnostics:",(await page.getByRole("dialog").innerText()).slice(-14000));}catch{}
+  console.error("Visible interface:",(await page.locator("body").innerText()).slice(-12000));await page.screenshot({path:"workbench-browser-artifacts/failure.png",fullPage:true}).catch(()=>{});throw error;}
  finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error(error);process.exitCode=1;});

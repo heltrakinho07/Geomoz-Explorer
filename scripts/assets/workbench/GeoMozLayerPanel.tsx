@@ -1,3 +1,6 @@
+import {useLayoutOptions} from "../../hooks/useLayoutOptions";
+import { GEOMOZ_ROLLOUT } from "../../lib/geomoz-workbench-profile";
+import {GeoMozLayerProperties} from "./GeoMozLayerProperties";
 import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { useAppStore, effectiveLayerRenderState, resolveLayerCapabilities, pluginOwnsPaint, rendererAppliesOpacity, supportsBridgedOpacity } from "@geolibre/core";
 import { Layers3, Search, ChevronLeft, ChevronRight, Eye, EyeOff, Crosshair, SlidersHorizontal, Table2, Palette, FileStack, Map as MapIcon, FolderOpen, History, CheckCircle2, AlertCircle } from "lucide-react";
@@ -6,6 +9,7 @@ import { setLayersPanelCollapsed } from "../../lib/layer-panel-collapse";
 type Props = ComponentProps<typeof EngineLayerPanel>;
 /** GeoMoz's primary navigator. Advanced operations retain the engine's collaboration and edit guards. */
 export function GeoMozLayerPanel(props:Props) {
+  const {viewer}=useLayoutOptions();
   const layers=useAppStore(s=>s.layers);
   const groups=useAppStore(s=>s.layerGroups);
   const renderer=useAppStore(s=>s.primaryRenderer);
@@ -27,6 +31,11 @@ export function GeoMozLayerPanel(props:Props) {
   const [notice,setNotice]=useState("");
   const collapsed=props.collapsed??internalCollapsed;
   const changeCollapsed=(value:boolean)=>props.collapsed===undefined?setInternalCollapsed(value):props.onCollapsedChange?.(value);
+  useEffect(()=>{
+    const onTask=(event:Event)=>{const task=(event as CustomEvent<string>).detail;if(task==="output"){setResults(true);setAdvanced(false);changeCollapsed(false);}else{setResults(false);setAdvanced(false);}};
+    window.addEventListener("geomoz:task",onTask);
+    return ()=>window.removeEventListener("geomoz:task",onTask);
+  });
   const previousAuto=useRef<boolean|null>(null);
   const beforeAuto=useRef(internalCollapsed);
   useEffect(()=>{
@@ -42,7 +51,7 @@ export function GeoMozLayerPanel(props:Props) {
   if(collapsed)return props.hideOwnRail?null:<aside className="gm-layer-rail" aria-label="Catálogo recolhido"><button className="gm-icon-button" aria-label="Expandir catálogo" onClick={()=>changeCollapsed(false)}><Layers3 size={19}/></button><span>CATÁLOGO</span></aside>;
   return <aside className="gm-catalog" data-testid="geomoz-layer-catalog" aria-label="Catálogo de camadas">
     <div className="gm-catalog-heading"><div><small>ÁREA DE TRABALHO</small><h2><Layers3 size={18}/> Catálogo</h2></div><button type="button" className="gm-icon-button" aria-label="Recolher catálogo" onClick={()=>changeCollapsed(true)}><ChevronLeft size={17}/></button></div>
-    <div className="gm-catalog-nav"><button type="button" aria-pressed={!advanced&&!results} onClick={()=>{setAdvanced(false);setResults(false);}}><FileStack size={14}/>Camadas <b>{layers.length}</b></button><button type="button" aria-pressed={results} onClick={()=>{setResults(true);setAdvanced(false);}}><History size={14}/>Resultados</button><button type="button" aria-pressed={advanced} onClick={()=>{setAdvanced(true);setResults(false);}}><SlidersHorizontal size={14}/>Gestão</button></div>
+    <div className="gm-catalog-nav"><button type="button" aria-pressed={!advanced&&!results} onClick={()=>{setAdvanced(false);setResults(false);}}><FileStack size={14}/>Camadas <b>{layers.length}</b></button><button type="button" aria-pressed={results} onClick={()=>{setResults(true);setAdvanced(false);}}><History size={14}/>Resultados</button>{GEOMOZ_ROLLOUT.fullLayerManager&&<button type="button" aria-pressed={advanced} onClick={()=>{setAdvanced(true);setResults(false);}}><SlidersHorizontal size={14}/>Gestão</button>}</div>
     {!advanced&&!results&&<>
       <div className="gm-catalog-search"><Search size={15}/><input aria-label="Pesquisar camadas" placeholder="Pesquisar neste projecto…" value={query} onChange={event=>setQuery(event.target.value)}/></div>
       <div className="gm-catalog-filter"><button type="button" aria-pressed={tab==="all"} onClick={()=>setTab("all")}>Todas</button><button type="button" aria-pressed={tab==="visible"} onClick={()=>setTab("visible")}>Visíveis <b>{layers.filter(rendered).length}</b></button><span>ORDEM DO MAPA</span></div>
@@ -56,9 +65,10 @@ export function GeoMozLayerPanel(props:Props) {
       </div>
       {selected&&<section className="gm-layer-inspector" aria-label="Camada seleccionada"><small>CAMADA SELECCIONADA</small><h3 title={selected.name}>{selected.name}</h3>
         {(!pluginOwnsPaint(selected)||supportsBridgedOpacity(selected.id)||rendererAppliesOpacity(selected,renderer))&&<label className="gm-opacity">Opacidade <output>{Math.round(selected.opacity*100)}%</output><input aria-label="Opacidade da camada" type="range" min="0" max="1" step="0.01" value={selected.opacity} onChange={event=>opacity(selected.id,Number(event.target.value))}/></label>}
-        <div className="gm-inspector-actions">{resolveLayerCapabilities(selected).query&&["geojson","duckdb-query","geoparquet","flatgeobuf"].includes(selected.type)&&<button type="button" onClick={()=>openTable(true)}><Table2 size={14}/> Tabela</button>}{props.onOpenStylePanel&&<button type="button" onClick={props.onOpenStylePanel}><Palette size={14}/> Estilo</button>}<button type="button" onClick={()=>setAdvanced(true)}><SlidersHorizontal size={14}/> Propriedades</button></div>
+        <div className="gm-inspector-actions">{resolveLayerCapabilities(selected).query&&["geojson","duckdb-query","geoparquet","flatgeobuf"].includes(selected.type)&&<button type="button" onClick={()=>openTable(true)}><Table2 size={14}/> Tabela</button>}{!viewer&&props.onOpenStylePanel&&<button type="button" onClick={props.onOpenStylePanel}><Palette size={14}/> Estilo</button>}{GEOMOZ_ROLLOUT.fullLayerManager&&<button type="button" onClick={()=>setAdvanced(true)}><SlidersHorizontal size={14}/> Propriedades</button>}</div>
+        <GeoMozLayerProperties key={selected.id} layer={selected} props={props}/>
       </section>}
-      <div className="gm-catalog-footer"><span><i/>{layers.filter(rendered).length} visíveis de {layers.length}</span><span title="A ordem e os grupos podem ser alterados em Gestão">SIG LOCAL</span></div>
+      <div className="gm-catalog-footer"><span><i/>{layers.filter(rendered).length} visíveis de {layers.length}</span><span title="Altere a ordem e os grupos nas propriedades da camada">SIG LOCAL</span></div>
     </>}
     {results&&<section className="gm-results" aria-label="Resultados do processamento">
       <div className="gm-results-title"><span>{runs.length} {runs.length===1?"execução":"execuções"}</span>{canProcess&&<button type="button" onClick={()=>openHistory(true)}>Histórico completo</button>}</div>
@@ -70,7 +80,7 @@ export function GeoMozLayerPanel(props:Props) {
         {run.outputLayerNames?.map((name,index)=>{const matches=layers.filter(item=>item.name===name);const layer=matches.length===1?matches[0]:undefined;return <button key={name+index} type="button" disabled={!layer} title={layer?"Seleccionar e enquadrar saída":matches.length>1?"Existem várias camadas com este nome. Seleccione a saída no catálogo.":"Camada não encontrada com este nome no mapa."} onClick={()=>{if(layer){select(layer.id);props.mapControllerRef.current?.fitLayer(layer);setResults(false);}}}><Layers3 size={13}/>{name}<ChevronRight size={13}/></button>;})}
       </article>)}
     </section>}
-    <div className="gm-engine-panel" hidden={!advanced}><EngineLayerPanel {...props} autoCollapse={false} collapsed={false} onCollapsedChange={()=>changeCollapsed(true)} hideOwnRail /></div>
+    <div className="gm-engine-panel" hidden={!GEOMOZ_ROLLOUT.fullLayerManager||!advanced}><EngineLayerPanel {...props} autoCollapse={false} collapsed={false} onCollapsedChange={()=>changeCollapsed(true)} hideOwnRail /></div>
     <p className="gm-catalog-notice" role="status">{notice}</p>
     <div className="gm-catalog-resize" role="separator" aria-label="Redimensionar catálogo" aria-orientation="vertical" onPointerDown={props.onResizeStart}/>
   </aside>;

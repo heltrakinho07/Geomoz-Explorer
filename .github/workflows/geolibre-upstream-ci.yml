@@ -41,7 +41,7 @@ jobs:
           cache-dependency-path: .geolibre-upstream/package-lock.json
 
       - name: Test GeoMoz build integration
-        run: node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs scripts/tests/seismic-data.test.mjs
+        run: node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs scripts/tests/seismic-data.test.mjs scripts/tests/geomoz-workbench-profile.test.mjs
 
       - name: Install upstream with pinned package-lock
         run: npm ci --no-audit --no-fund
