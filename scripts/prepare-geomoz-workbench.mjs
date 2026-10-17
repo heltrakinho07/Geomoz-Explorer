@@ -47,7 +47,7 @@ write("components/layout/DesktopShell.tsx",shell);
 let rail=read("components/panels/SharedSidebar.tsx");
 rail=once(rail,'"flex w-full shrink-0 items-center gap-1 border-t bg-card','"gm-shared-rail flex w-full shrink-0 items-center gap-1 border-t bg-card',"GeoMoz activity rail");
 write("components/panels/SharedSidebar.tsx",rail);
-for(const name of ["GeoMozWorkbenchChrome.tsx","GeoMozLayerPanel.tsx"]){
+for(const name of ["GeoMozWorkbenchChrome.tsx","GeoMozLayerPanel.tsx","GeoMozLayerProperties.tsx"]){
   write("components/geomoz/"+name,readFileSync(new URL("./assets/workbench/"+name,import.meta.url),"utf8"));
 }
 write("hooks/useThemeMode.ts",readFileSync(new URL("./assets/workbench/useThemeMode.ts",import.meta.url),"utf8"));
@@ -58,6 +58,61 @@ const languageEnd=i18n.indexOf("\n  }\n\n  return DEFAULT_LANGUAGE;",languageSta
 if(languageStart<0||languageEnd<languageStart)throw Error("GeoMoz initial-language anchors changed");
 i18n=i18n.slice(0,languageStart)+'    return "pt";'+i18n.slice(languageEnd);
 write("i18n/index.ts",i18n);
+// Product curation intersects the existing capability, role and profile gates.
+// The source registries and callbacks are retained for gradual adaptation.
+write("lib/geomoz-workbench-profile.ts",readFileSync(new URL("./assets/workbench/geomoz-workbench-profile.ts",import.meta.url),"utf8"));
+let commands=read("hooks/toolbar/useToolbarCommands.ts");
+commands='import { curateGeoMozCommands } from "../../lib/geomoz-workbench-profile";\n'+commands;
+commands=once(commands,"  const shortcutCommands = useMemo(","  const curatedCommands = useMemo(() => curateGeoMozCommands(allowedCommands), [allowedCommands]);\n  const shortcutCommands = useMemo(","curated shortcut registry");
+commands=commands.replace("? allowedCommands.filter", "? curatedCommands.filter").replace(": allowedCommands,", ": curatedCommands,").replace("[allowedCommands, viewer]", "[curatedCommands, viewer]").replace("return allowedCommands;", "return curatedCommands;");
+write("hooks/toolbar/useToolbarCommands.ts",commands);
+let palette=read("hooks/toolbar/usePaletteCommands.ts");
+palette='import { curateGeoMozCommands } from "../../lib/geomoz-workbench-profile";\n'+palette;
+palette=once(palette,"filterCommandsByCapabilities(allTools, deploymentCapabilities)","curateGeoMozCommands(filterCommandsByCapabilities(allTools, deploymentCapabilities))","curated dynamic catalog");
+write("hooks/toolbar/usePaletteCommands.ts",palette);
+let profile=read("lib/ui-profile.ts");
+profile='import { isGeoMozDataSourceVisible, isGeoMozPluginVisible, isGeoMozMenuItemVisible } from "./geomoz-workbench-profile";\n'+profile;
+for(const [fn,param,gate] of [
+  ["isDataSourceVisible","id","isGeoMozDataSourceVisible"],
+  ["isPluginVisible","id","isGeoMozPluginVisible"],
+  ["isMenuItemVisible","itemId","isGeoMozMenuItemVisible"],
+]){
+  const anchor='export function '+fn+'(profile: UiProfileSettings, '+param+': string): boolean {';
+  profile=once(profile,anchor,anchor+'\n  if (!'+gate+'('+param+')) return false;',"product gate "+fn);
+}
+write("lib/ui-profile.ts",profile);
+for(const [file,family,registry] of [["VectorToolsDialog","vector","VECTOR_TOOLS"],["RasterToolsDialog","raster","RASTER_TOOLS"]]){
+  const path="components/processing/"+file+".tsx";
+  let dialog=read(path);
+  dialog='import { isGeoMozToolVisible } from "../../lib/geomoz-workbench-profile";\n'+dialog;
+  dialog=once(dialog,"for (const tool of "+registry+") {","for (const tool of "+registry+") {\n    if (!isGeoMozToolVisible(\""+family+"\", tool.id)) continue;","curated "+family+" tool list");
+  write(path,dialog);
+}
+let context=read("components/layout/MapContextMenu.tsx");
+context='import { GEOMOZ_ROLLOUT } from "../../lib/geomoz-workbench-profile";\n'+context;
+context=context.replaceAll("{lineOfSightAvailable ? (","{GEOMOZ_ROLLOUT.immersive && lineOfSightAvailable ? (").replace("{onExplorePlace ? (","{GEOMOZ_ROLLOUT.immersive && onExplorePlace ? (");
+context=once(context,"          <DropdownMenuSub>","          {GEOMOZ_ROLLOUT.specialistProcessing && <DropdownMenuSub>","advanced context tools");
+context=once(context,"          </DropdownMenuSub>","          </DropdownMenuSub>}","advanced context tools end");
+context=once(context,'          <DropdownMenuItem onSelect={viewInGoogleMaps}', '          {GEOMOZ_ROLLOUT.immersive && <DropdownMenuItem onSelect={viewInGoogleMaps}',"external map links");
+context=once(context,'{t("mapContextMenu.viewInGoogleEarth")}\n          </DropdownMenuItem>', '{t("mapContextMenu.viewInGoogleEarth")}\n          </DropdownMenuItem>}','external map links end');
+// Each external link needs its own conditional expression.
+context=context.replace('{t("mapContextMenu.viewInGoogleMaps")}\n          </DropdownMenuItem>', '{t("mapContextMenu.viewInGoogleMaps")}\n          </DropdownMenuItem>}').replace('<DropdownMenuItem onSelect={viewInGoogleEarth}', '{GEOMOZ_ROLLOUT.immersive && <DropdownMenuItem onSelect={viewInGoogleEarth}');
+write("components/layout/MapContextMenu.tsx",context);
+let browser=read("hooks/useRegisterBrowserPanel.ts");
+browser='import { GEOMOZ_ROLLOUT } from "../lib/geomoz-workbench-profile";\n'+browser;
+browser=once(browser,"() =>\n      registerPersistedRightPanel(","() =>\n      GEOMOZ_ROLLOUT.fullMenus ? registerPersistedRightPanel(","retain generic browser registration");
+browser=once(browser,'        "browserPanelVisible",\n      ),','        "browserPanelVisible",\n      ) : undefined,',"hide generic browser rail");
+write("hooks/useRegisterBrowserPanel.ts",browser);
+let startup=read("hooks/desktop-shell/useStartupPanels.ts");
+startup='import { GEOMOZ_ROLLOUT } from "../../lib/geomoz-workbench-profile";\n'+startup;
+startup=once(startup,"if (handled.current || viewer ||","if (!GEOMOZ_ROLLOUT.advancedData || handled.current || viewer ||","hide advanced startup browser");
+write("hooks/desktop-shell/useStartupPanels.ts",startup);
+let history=read("components/processing/ProcessingHistoryDialog.tsx");
+history='import { GEOMOZ_ROLLOUT, isGeoMozCommandVisible } from "../../lib/geomoz-workbench-profile";\n'+history;
+history=once(history,'{AUTO_RERUN_KINDS.has(run.kind) ? (','{isGeoMozCommandVisible("proc."+run.kind+"."+run.toolId) && AUTO_RERUN_KINDS.has(run.kind) ? (',"curated history rerun");
+history=once(history,'{EDIT_RERUN_KINDS.has(run.kind) ? (','{isGeoMozCommandVisible("proc."+run.kind+"."+run.toolId) && EDIT_RERUN_KINDS.has(run.kind) ? (',"curated history edit");
+history=once(history,'{PYTHON_ELIGIBLE_KINDS.has(run.kind) &&','{GEOMOZ_ROLLOUT.specialistProcessing && PYTHON_ELIGIBLE_KINDS.has(run.kind) &&',"retain hidden Python export");
+write("components/processing/ProcessingHistoryDialog.tsx",history);
 const marker=resolve(root,"geomoz-workbench.json");
 writeFileSync(marker,JSON.stringify({interface:"geomoz-workbench",version:1,engine:"f69688ed5be750c496b51b865cee513d910a433f"},null,2)+"\n");
 console.log("GeoMoz Workbench React interface prepared; engine capability gates, dialogs and map APIs retained.");

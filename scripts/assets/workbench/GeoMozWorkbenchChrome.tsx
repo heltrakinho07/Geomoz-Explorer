@@ -1,3 +1,4 @@
+import { GEOMOZ_ROLLOUT, curateGeoMozCommands } from "../../lib/geomoz-workbench-profile";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useAppStore, DEFAULT_PROJECT_NAME } from "@geolibre/core";
 import { ArrowUpRight, Search, Moon, Sun, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass } from "lucide-react";
@@ -6,8 +7,8 @@ import type { ThemeMode } from "../../hooks/useThemeMode";
 
 type Task = "project" | "data" | "map" | "analysis" | "output" | "settings";
 const TaskContext = createContext<Task>("data");
-const TASKS: [Task, string][] = [["project","Projecto"],["data","Dados"],["map","Mapa"],["analysis","Análise"],["output","Publicar"],["settings","Definições"]];
-const ACTIONS: Record<Task, {label:string; ids:string[]}[]> = {
+const LEGACY_TASKS: [Task, string][] = [["project","Projecto"],["data","Dados"],["map","Mapa"],["analysis","Análise"],["output","Publicar"],["settings","Definições"]];
+const LEGACY_ACTIONS: Record<Task, {label:string; ids:string[]}[]> = {
   project: [
     {label:"Criar",ids:["project.new","project.examples"]},
     {label:"Ficheiros",ids:["project.open-file","project.open-url","project.save","project.save-as"]},
@@ -37,11 +38,26 @@ const ACTIONS: Record<Task, {label:string; ids:string[]}[]> = {
     {label:"Ajuda",ids:["help.shortcuts","help.diagnostics","help.about"]},
   ],
 };
+const TASKS: [Task,string][] = GEOMOZ_ROLLOUT.fullMenus ? LEGACY_TASKS : [["map","Área de estudo"],["data","Dados"],["analysis","Análise"],["output","Resultados"]];
+const CORE_ACTIONS: Partial<typeof LEGACY_ACTIONS> = {
+  map:[{label:"Definir a área",ids:["plugin.maplibre-gl-geo-editor","add.vector"]},{label:"Explorar o território",ids:["control.measure","control.search","view.previous","view.reset-north"]}],
+  data:[{label:"Ficheiros locais",ids:["add.vector","add.raster","add.delimited-text"]},{label:"Serviços de mapas",ids:["add.wms","add.wfs","add.xyz","add.wmts"]}],
+  analysis:[{label:"Análise vectorial",ids:["proc.vector.buffer","proc.vector.clip","proc.vector.intersection","proc.vector.dissolve","proc.vector.reproject"]},{label:"Análise do terreno",ids:["proc.raster.slope","proc.raster.hillshade","proc.raster.contour","proc.raster.clip-mask"]}],
+  output:[{label:"Mapa e projecto",ids:["project.print-layout","project.save-as"]},{label:"Elementos do mapa",ids:["control.legend","control.colorbar"]}],
+};
+const ACTIONS = GEOMOZ_ROLLOUT.fullMenus ? LEGACY_ACTIONS : {...LEGACY_ACTIONS,...CORE_ACTIONS};
+const GUIDANCE:Partial<Record<Task,string>> = {
+  map:"Desenhe ou importe uma área e enquadre o território de estudo.",
+  data:"Adicione os dados do estudo. Organize as camadas no catálogo.",
+  analysis:"Escolha uma ferramenta, confirme os dados e execute a análise.",
+  output:"Consulte as execuções no catálogo e exporte as camadas ou a composição do mapa.",
+};
 const LABELS: Record<string,string> = {
   "project.new":"Novo projecto","project.examples":"Exemplos","project.open-file":"Abrir ficheiro","project.open-url":"Abrir URL",
   "project.save":"Guardar","project.save-as":"Guardar como","project.share":"Partilhar","project.collaborate":"Colaborar",
   "project.print-layout":"Composição de mapa",
-  "add.vector":"Vector","add.raster":"Raster / DEM","add.geoparquet":"GeoParquet","add.flatgeobuf":"FlatGeobuf",
+  "plugin.maplibre-gl-geo-editor":"Desenhar área","add.delimited-text":"Tabela / CSV","add.wms":"WMS","add.wfs":"WFS","add.xyz":"XYZ","add.wmts":"WMTS","proc.vector.intersection":"Intersecção","proc.vector.reproject":"Reprojectar","proc.raster.contour":"Curvas de nível","proc.raster.clip-mask":"Recortar DEM",
+  "add.vector":"Vector / GeoPackage","add.raster":"Raster / DEM","add.geoparquet":"GeoParquet","add.flatgeobuf":"FlatGeobuf",
   "add.stac":"Catálogo STAC","add.duckdb":"SQL / DuckDB","add.pmtiles":"PMTiles","add.zarr":"Zarr",
   "proc.planetary-computer":"Dados globais","proc.earth-engine":"Earth Engine",
   "view.zoom-in":"Aproximar","view.zoom-out":"Afastar","view.previous":"Vista anterior","view.next":"Vista seguinte","view.reset-north":"Norte",
@@ -56,7 +72,7 @@ const LABELS: Record<string,string> = {
 /** Secondary engine menus remain mounted, with their original permission gates and dialogs. */
 export function GeoMozMenuSlot({area,children}:{area:Task;children:ReactNode}) {
   const active = useContext(TaskContext);
-  return <div className="gm-menu-slot" hidden={active !== area}>{children}</div>;
+  return <div className="gm-menu-slot" data-area={area} hidden={area==="project"?false:!GEOMOZ_ROLLOUT.fullMenus||active !== area}>{children}</div>;
 }
 
 export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleThemeMode,onSearch,viewer}:{
@@ -69,7 +85,8 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   const layers=useAppStore(s=>s.layers);
   const [more,setMore]=useState(false);
   const activeTask:Task=viewer?"map":task;
-  const visibleCommands=viewer?commands.filter(command=>command.id.startsWith("view.")):commands;
+  const curated=curateGeoMozCommands(commands);
+  const visibleCommands=viewer?curated.filter(command=>command.id.startsWith("view.")):curated;
   const registry=new Map(visibleCommands.map(command=>[command.id,command]));
   const groups=ACTIONS[activeTask].map(group=>({...group,items:group.ids.flatMap(id=>{
     const command=registry.get(id);
@@ -85,15 +102,17 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
             onBlur={event=>{if(!viewer&&!event.target.value.trim())setName(DEFAULT_PROJECT_NAME);}}
             onKeyDown={event=>{if(event.key==="Enter"&&!event.nativeEvent.isComposing)event.currentTarget.blur();}} /></label>
         </div>
+        <div className="gm-project-menu">{children}</div>
         <div className="gm-title-actions">
           {!viewer&&<button type="button" className="gm-command-search" onClick={onSearch}><Search size={15}/><span>Procurar ferramentas…</span><kbd>⌘ / Ctrl K</kbd></button>}
+          {!viewer&&<details className="gm-module-switch gm-help-menu"><summary aria-label="Ajuda GeoMoz">?</summary><nav aria-label="Ajuda GeoMoz"><small>APOIO AO ESTUDO</small>{["help.shortcuts","help.diagnostics"].map(id=>{const command=registry.get(id);return command?<button key={id} type="button" disabled={!!command.disabledReason} title={command.disabledReason} onClick={()=>{if(!command.disabledReason)command.run();}}>{LABELS[id]}</button>:null;})}<a href="/documentacao">Documentação <ArrowUpRight size={12}/></a></nav></details>}
           <details className="gm-module-switch"><summary aria-label="Abrir módulos GeoMoz"><Grid2X2 size={16}/><span>Módulos</span></summary><nav aria-label="Módulos GeoMoz"><small>PLATAFORMA GEOMOZ</small>{[["/dashboard","Visão geral"],["/mapa","Explorador de mapas"],["/analises","GeoAnálises"],["/hidrografia","Bacias hidrográficas"],["/agua-subterranea","Água subterrânea"],["/geoperigos","Geoperigos"],["/geomoz-ai","GeoMoz AI"],["/documentacao","Documentação"]].map(([href,label])=><a key={href} href={href}>{label}<ArrowUpRight size={12}/></a>)}</nav></details>
           <button type="button" className="gm-icon-button" data-testid="geomoz-theme-toggle" onClick={onToggleThemeMode}
             aria-label={themeMode==="dark"?"Activar modo claro":"Activar modo nocturno"} title={themeMode==="dark"?"Activar modo claro":"Activar modo nocturno"}>{themeMode==="dark"?<Sun size={18}/>:<Moon size={18}/>}</button>
         </div>
       </div>
       <div className="gm-taskbar"><nav aria-label="Tarefas GIS" className="gm-task-tabs">{TASKS.filter(([id])=>!viewer||id==="map").map(([id,label])=>
-        <button key={id} type="button" aria-current={activeTask===id?"page":undefined} onClick={()=>{setTask(id);setMore(false);}} data-task={id}>{label}</button>)}</nav>
+        <button key={id} type="button" aria-current={activeTask===id?"page":undefined} onClick={()=>{setTask(id);setMore(false);window.dispatchEvent(new CustomEvent("geomoz:task",{detail:id}));}} data-task={id}>{label}</button>)}</nav>
         <span className="gm-session-badge"><i/>{viewer?"Vista de leitura":"Projecto aberto"}<span className="gm-session-detail"> · {layers.length} camada{layers.length===1?"":"s"}</span></span>
       </div>
       <div className="gm-command-ribbon" aria-label={"Comandos de "+TASKS.find(([id])=>id===activeTask)?.[1]}>
@@ -103,9 +122,9 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
             title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={19}/><span>{LABELS[command.id]??command.title}</span></button>;
         })}</div><small>{group.label}</small></section>)}
         {!groups.length&&<p className="gm-ribbon-empty"><Compass size={22}/> As opções disponíveis estão nos menus desta tarefa.</p>}</div>
-        <button type="button" className="gm-more-tools" aria-expanded={more} onClick={()=>setMore(!more)}>Mais opções <ChevronDown size={14}/></button>
+        {GEOMOZ_ROLLOUT.fullMenus&&<button type="button" className="gm-more-tools" aria-expanded={more} onClick={()=>setMore(!more)}>Mais opções <ChevronDown size={14}/></button>}
       </div>
-      <div className="gm-engine-menus" hidden={!more} aria-label="Opções completas da tarefa">{children}</div>
+      <p className="gm-task-guidance" role="status" hidden={more}>{GUIDANCE[activeTask]}</p>
     </header>
   </TaskContext.Provider>;
 }

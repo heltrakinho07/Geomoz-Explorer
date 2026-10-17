@@ -34,3 +34,16 @@ artifacts/geomoz-react/public/geomoz-theme.js inicializa o tema antes de React. 
 O workflow GeoMoz Workbench CI compila TypeScript e executa o navegador com o resultado da compilação: importa GeoJSON, altera visibilidade e opacidade, executa Buffer, consulta resultados, usa menus completos, verifica persistência do tema e adaptação móvel. As capturas claro/nocturno/móvel ficam no artefacto geomoz-workbench-browser-checks.
 
 Frontend CI mantém a regressão Cesium do módulo interno e verifica também o tema na navegação e nas páginas legais. As verificações da publicação confirmam os ficheiros e a política efectivamente servidos pelo Hosting.
+
+
+## Perfil essencial GeoMoz
+
+A experiência principal tem quatro etapas: Área de estudo → Dados → Análise → Resultados. O menu Projecto permanece na barra superior para abrir, guardar e recuperar o trabalho. Resultados abre o histórico no catálogo; a composição do mapa e a exportação de camadas continuam disponíveis.
+
+A política única está em `scripts/assets/workbench/geomoz-workbench-profile.ts`. É um filtro de produto aplicado depois das verificações existentes de capacidades, privilégios e compatibilidade. Não concede permissões. As preferências de complexidade guardadas pelo utilizador não podem contornar este filtro.
+
+SQL/Python/modelador, catálogos e formatos especializados, ferramentas não curadas, navegação rodoviária, efeitos, ligações a visualizadores externos, gestor de extensões e gestão completa ficam ocultos. Os registos, leitores, algoritmos, callbacks e componentes originais permanecem no código. `GEOMOZ_ROLLOUT` permite reintroduzir grupos após adaptação e revisão; não há interruptor por URL ou localStorage.
+
+O mesmo filtro abrange a faixa superior, pesquisa fixa e dinâmica, atalhos, menus de dados, listas dos diálogos, reexecução de ferramentas no histórico e menu de contexto. O Browser genérico e o arranque automático do S3 deixam de ocupar o catálogo. Nenhum projecto, camada, histórico ou preferência existente é apagado.
+
+As propriedades próprias mantêm renomeação, ordem, grupo e exportação GeoJSON com os guardas de colaboração, permissões e modo de leitura. O painel completo original continua montado e oculto. O tema global permanece partilhado com todo o sistema.

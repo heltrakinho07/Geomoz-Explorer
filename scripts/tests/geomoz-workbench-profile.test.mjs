@@ -1,0 +1,42 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import {GEOMOZ_ROLLOUT,curateGeoMozCommands,isGeoMozCommandVisible,isGeoMozDataSourceVisible,isGeoMozToolVisible,isGeoMozMenuItemVisible} from "../assets/workbench/geomoz-workbench-profile.ts";
+
+test("core actions survive while specialist entries disappear from every command consumer",()=>{
+ const ids=["project.open-file","project.save","add.vector","add.raster","add.wms","proc.vector.buffer","proc.vector.intersection","proc.raster.slope","proc.raster.contour","plugin.maplibre-gl-geo-editor","view.theme"];
+ const hidden=["proc.sql","proc.python","proc.modelBuilder","proc.whitebox","proc.earth-engine","settings.manage-plugins","settings.simplify-interface","project.examples","control.directions","control.effects","control.turn-by-turn","add.splatting","add.3d-tiles","add.duckdb","add.stac","proc.vector.voronoi","proc.network.isochrone","proc.whitebox.FillDepressions"];
+ const commands=[...ids,...hidden].map(id=>({id,run(){return id;}}));
+ const curated=curateGeoMozCommands(commands);
+ assert.deepEqual(curated.map(c=>c.id),ids);
+ assert.equal(curated[0],commands[0],"Original gated command identity/callback is retained");
+ assert.equal(commands.length,ids.length+hidden.length,"Curation never mutates the registry");
+ for(const id of hidden)assert.equal(isGeoMozCommandVisible(id),false,id);
+});
+test("reviewed groups can be reintroduced without restoring or deleting implementations",()=>{
+ assert.equal(isGeoMozCommandVisible("add.stac",{...GEOMOZ_ROLLOUT,advancedData:true}),true);
+ assert.equal(isGeoMozCommandVisible("proc.sql",{...GEOMOZ_ROLLOUT,specialistProcessing:true}),true);
+ assert.equal(isGeoMozCommandVisible("proc.sql"),false);
+ assert.equal(isGeoMozCommandVisible("unknown.command"),false);
+ assert.ok(Object.isFrozen(GEOMOZ_ROLLOUT));
+});
+test("data menus, project menu and dialog lists respect the curated product",()=>{
+ for(const id of ["vector","raster","wms","wfs","xyz","delimited-text"])assert.ok(isGeoMozDataSourceVisible(id));
+ for(const id of ["stac","duckdb","cad","gpx","landxml","zarr"])assert.equal(isGeoMozDataSourceVisible(id),false);
+ assert.ok(isGeoMozToolVisible("vector","buffer"));
+ assert.equal(isGeoMozToolVisible("vector","voronoi"),false);
+ assert.ok(isGeoMozToolVisible("raster","contour"));
+ assert.equal(isGeoMozToolVisible("raster","raster-calc"),false);
+ assert.ok(isGeoMozMenuItemVisible("project.openFrom"));
+ assert.equal(isGeoMozMenuItemVisible("project.storymap"),false);
+});
+test("source preparation retains original menus and registries behind reversible gates",()=>{
+ const prep=readFileSync(new URL("../prepare-geomoz-workbench.mjs",import.meta.url),"utf8");
+ assert.ok(prep.includes("buildToolbarCommands")===false,"Original command builder file is not replaced");
+ const chrome=readFileSync(new URL("../assets/workbench/GeoMozWorkbenchChrome.tsx",import.meta.url),"utf8");
+ assert.match(chrome,/LEGACY_ACTIONS/);
+ assert.match(chrome,/GEOMOZ_ROLLOUT.fullMenus/);
+ const layers=readFileSync(new URL("../assets/workbench/GeoMozLayerPanel.tsx",import.meta.url),"utf8");
+ assert.match(layers,/<EngineLayerPanel/);
+ assert.match(layers,/GEOMOZ_ROLLOUT.fullLayerManager/);
+});
