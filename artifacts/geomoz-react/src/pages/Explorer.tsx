@@ -21,6 +21,13 @@ import {
   BookOpen,
   Layers,
   Cpu,
+  FolderOpen,
+  Save,
+  Mountain,
+  Wrench,
+  DatabaseZap,
+  ArrowLeft,
+  Upload,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -476,20 +483,55 @@ export default function Explorer() {
         theme === "dark" ? "dark bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900"
       }`}
     >
-      {/* 1. Desktop & Mobile Modern Navigation Sidebar */}
-      <Sidebar
+      {/* A dedicated GIS application shell replaces generic navigation. */}
+      {activeTab !== "GIS Workspace" && <Sidebar
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onOpenProjectModal={() => setProjectModalOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         mobileOpen={mobileSidebarOpen}
         onMobileClose={() => setMobileSidebarOpen(false)}
-      />
+      />}
 
       {/* 2. Main Workspace (Clean Topbar + Active View) */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-white dark:bg-slate-950">
+        {activeTab === "GIS Workspace" && (
+          <header data-testid="gis-workspace-app-toolbar"
+            className="z-30 flex h-12 shrink-0 min-w-0 items-center gap-2 border-b border-sky-900 bg-slate-950 px-2 text-slate-100 shadow-md sm:px-3">
+            <button type="button" onClick={() => setActiveTab("Mapa")}
+              title="Sair do GIS Workspace e regressar ao GeoMoz"
+              aria-label="Sair do GIS Workspace"
+              className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-bold hover:bg-slate-800">
+              <ArrowLeft size={15} />
+              <span className="hidden sm:inline text-sky-400">GeoMoz</span>
+              <span className="text-white">GIS</span>
+            </button>
+            <div className="hidden h-6 w-px shrink-0 bg-slate-700 sm:block" />
+            <nav aria-label="Menus GIS Workspace" className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none]">
+              {([
+                ["Abrir projecto", "import-project", FolderOpen],
+                ["Guardar projecto", "export-project", Save],
+                ["Adicionar dados", "add-file", Upload],
+                ["DEM Global", "download-dem", Mountain],
+                ["Processamento", "processing", Wrench],
+                ["Fontes OGC", "data", Globe],
+                ["Camadas", "layers", Layers],
+                ["Terreno", "terrain", DatabaseZap],
+              ] as const).map(([label, action, Icon]) => (
+                <button key={action} type="button" title={label}
+                  onClick={() => window.dispatchEvent(new CustomEvent("geomoz:gis-workspace-action", { detail: action }))}
+                  className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold text-slate-200 hover:bg-slate-800 hover:text-sky-300 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-400">
+                  <Icon size={13} />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </nav>
+            <span className="hidden shrink-0 text-[10px] font-semibold text-emerald-400 lg:inline">Sessão local · sem Firebase</span>
+          </header>
+        )}
+
         {/* Decluttered Top Header */}
-        <header className="flex-none h-14 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 sm:px-4 flex items-center justify-between shrink-0 z-30 transition-all">
+        {activeTab !== "GIS Workspace" && <header className="flex-none h-14 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 sm:px-4 flex items-center justify-between shrink-0 z-30 transition-all">
           {/* Left: Mobile Toggle & Current Module Title */}
           <div className="flex items-center gap-3 min-w-0">
             <button
@@ -634,7 +676,7 @@ export default function Explorer() {
               </button>
             </div>
           )}
-        </header>
+        </header>}
 
         {/* Mobile Search Dropdown Bar on Mapa */}
         {mobileSearchOpen && activeTab === "Mapa" && (
