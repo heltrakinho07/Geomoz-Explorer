@@ -472,7 +472,7 @@ export default function Explorer() {
 
   return (
     <div
-      className={`flex h-screen w-full font-sans overflow-hidden transition-colors duration-200 ${
+      className={`flex h-[100dvh] min-h-0 w-full min-w-0 font-sans overflow-hidden transition-colors duration-200 ${
         theme === "dark" ? "dark bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900"
       }`}
     >
@@ -494,8 +494,9 @@ export default function Explorer() {
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setMobileSidebarOpen(true)}
-              className="md:hidden p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="md:hidden flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               title="Abrir Menu de Navegação"
+              aria-label="Abrir menu de navegação"
             >
               <Menu size={18} />
             </button>
