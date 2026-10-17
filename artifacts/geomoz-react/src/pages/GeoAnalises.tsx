@@ -3275,6 +3275,31 @@ export default function GeoAnalises({
 
   const [isCalculatingActiveIndex, setIsCalculatingActiveIndex] = useState(false);
   const [activeIndexError, setActiveIndexError] = useState<string | null>(null);
+  const [processingMode, setProcessingMode] = useState<"fast" | "balanced" | "detailed">("fast");
+  const [processingTimeLimit, setProcessingTimeLimit] = useState(150);
+  const [processingElapsed, setProcessingElapsed] = useState(0);
+  const [lastProcessingDuration, setLastProcessingDuration] = useState<number | null>(null);
+  const analysisAbortRef = useRef<AbortController | null>(null);
+  const abortReasonRef = useRef<"manual" | "timeout" | null>(null);
+
+  useEffect(() => {
+    if (!isCalculatingActiveIndex) return;
+    const start = Date.now();
+    setProcessingElapsed(0);
+    const interval = window.setInterval(() => {
+      setProcessingElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [isCalculatingActiveIndex]);
+
+  useEffect(() => () => { analysisAbortRef.current?.abort(); }, []);
+
+  const cancelActiveProcessing = () => {
+    if (analysisAbortRef.current) {
+      abortReasonRef.current = "manual";
+      analysisAbortRef.current.abort();
+    }
+  };
 
   const activeIndexLabel = activeDef?.short || activeDef?.label || (
     activeTab === "s2" ? "S-2 Cloudless" :
@@ -3301,13 +3326,25 @@ export default function GeoAnalises({
   );
 
   const handleCalculateActiveIndex = async () => {
+    if (isCalculatingActiveIndex) return;
+    const controller = new AbortController();
+    analysisAbortRef.current = controller;
+    abortReasonRef.current = null;
+    const beganAt = Date.now();
+    const timeout = window.setTimeout(() => {
+      abortReasonRef.current = "timeout";
+      controller.abort();
+    }, processingTimeLimit * 1000);
     setIsCalculatingActiveIndex(true);
+    setProcessingElapsed(0);
+    setLastProcessingDuration(null);
     setActiveIndexError(null);
     try {
       if (activeDef && !isLineaments && !isProfile && !isContours && !isTopoCustom && !isLandCover && !isTargeting && !isSpiNdvi && activeTab !== "s2") {
         setGeeTile(null);
         const res = await apiFetch("/geomoz-api/gee/index", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             index: activeTab,
@@ -3317,6 +3354,7 @@ export default function GeoAnalises({
             start_date: geeStartDate,
             end_date: geeEndDate,
             cloud_pct: geeCloudPct,
+            processing_mode: processingMode,
           }),
         });
         if (!res.ok) {
@@ -3350,6 +3388,7 @@ export default function GeoAnalises({
         setLineamentsTile(null);
         const res = await apiFetch("/geomoz-api/gee/lineaments", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             province: province || null,
@@ -3366,6 +3405,7 @@ export default function GeoAnalises({
         setContoursTile(null);
         const res = await apiFetch("/geomoz-api/gee/contours", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             province: province || null,
@@ -3381,6 +3421,7 @@ export default function GeoAnalises({
         setTopoClassesTile(null);
         const res = await apiFetch("/geomoz-api/gee/topo-classes", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             province: province || null,
@@ -3394,6 +3435,7 @@ export default function GeoAnalises({
         setLandCoverTile(null);
         const res = await apiFetch("/geomoz-api/gee/landcover", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             province: province || null,
@@ -3408,6 +3450,7 @@ export default function GeoAnalises({
         setTargetingTile(null);
         const res = await apiFetch("/geomoz-api/gee/targeting", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             province: province || null,
@@ -3431,6 +3474,7 @@ export default function GeoAnalises({
         setSpiNdviResult(null);
         const res = await apiFetch("/geomoz-api/gee/spi-ndvi", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             province: province || null,
@@ -3444,10 +3488,21 @@ export default function GeoAnalises({
       } else if (activeTab === "s2") {
         setShowS2(true);
       }
+      if (!controller.signal.aborted) {
+        setLastProcessingDuration(Math.round((Date.now() - beganAt) / 1000));
+      }
     } catch (err: any) {
+      const aborted = controller.signal.aborted || err?.name === "AbortError";
+      const message = aborted
+        ? abortReasonRef.current === "timeout"
+          ? `Tempo limite de ${processingTimeLimit}s atingido. Experimente o modo Rápido ou uma área/período menores. O cálculo pode continuar no servidor.`
+          : "Espera cancelada. A computação já iniciada no Earth Engine pode continuar no servidor."
+        : err?.message || "Erro ao calcular índice.";
       console.error("Calculate index error:", err);
-      setActiveIndexError(err?.message || "Erro ao calcular índice.");
+      setActiveIndexError(message);
     } finally {
+      window.clearTimeout(timeout);
+      if (analysisAbortRef.current === controller) analysisAbortRef.current = null;
       setIsCalculatingActiveIndex(false);
     }
   };
