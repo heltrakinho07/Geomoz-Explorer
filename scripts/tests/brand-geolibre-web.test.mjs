@@ -29,7 +29,7 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     const cfg = JSON.parse(readFileSync(join(f.dst, "deployment.json"), "utf8"));
     assert.match(html, /geomoz-brand\.css/);
     assert.match(html, /data-geomoz-app="workbench"/);
-    assert.match(html, /geomoz-theme\\.js\\?v=[a-f0-9]{12}/);
+    assert.match(html, /geomoz-theme\.js\?v=[a-f0-9]{12}/);
     assert.doesNotMatch(html, /geomoz-shell|geomoz-gis-commandbar|data-geomoz-menu/);
     assert.equal(cfg.branding.appName, "GeoMoz GIS Workspace");
     assert.equal(cfg.sharing.shareUrl, "off");
@@ -41,7 +41,7 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     const manifest = JSON.parse(readFileSync(join(f.dst, "manifest.webmanifest"), "utf8"));
     assert.match(css, /--geomoz-navy: #020617/);
     assert.match(css, /--geomoz-blue: #0284c7/);
-    assert.match(css, /html\\.dark/);
+    assert.match(css, /html\.dark/);
     assert.match(css, /prefers-reduced-motion/);
     assert.match(css, /gm-workbench-chrome/);
     assert.match(css, /gm-catalog/);
