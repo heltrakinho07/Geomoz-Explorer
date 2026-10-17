@@ -135,7 +135,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Verify report export safety
-        run: pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/report-export.test.ts src/pages/__tests__/legal-pages.test.tsx src/lib/__tests__/gee-connection-diagnostics.test.ts src/pages/__tests__/gee-auth-clickable.test.ts src/lib/__tests__/gee-ndvi-validation.test.ts src/components/__tests__/GeoAgentMarkdown.test.tsx src/pages/__tests__/gee-processing-time-controls.test.ts src/pages/__tests__/geoanalises-mobile-results.test.tsx
+        run: pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/report-export.test.ts src/pages/__tests__/legal-pages.test.tsx src/lib/__tests__/gee-connection-diagnostics.test.ts src/pages/__tests__/gee-auth-clickable.test.ts src/lib/__tests__/gee-ndvi-validation.test.ts src/components/__tests__/GeoAgentMarkdown.test.tsx src/pages/__tests__/gee-processing-time-controls.test.ts src/pages/__tests__/geoanalises-mobile-results.test.tsx src/components/__tests__/Basemap3DRestriction.test.tsx
         env:
           CI: "true"
 
