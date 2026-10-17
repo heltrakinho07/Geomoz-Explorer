@@ -3190,7 +3190,7 @@ export default function GeoProcessamento({
         {workspaceHydrated && <div hidden={activeTab !== "terrain_workflow"}>
           <TerrainWorkflowPanel key={workspaceCacheId} aoi={aoi} rasters={rasterLayers}
             onComplete={handleTerrainComplete} onShowProduct={handleShowTerrainProduct}
-            onDraw={() => { setDrawingEnabled(true); setSidebarOpen(false); }} />
+            onDraw={() => { setDrawingEnabled(true); setSidebarOpen(false); setDesktopSidebarOpen(false); }} />
         </div>}
 
         {/* ── Data Sources: local, URL and OGC services ─────────────────── */}
@@ -5768,10 +5768,12 @@ export default function GeoProcessamento({
           onSelectLayer={setSelectedLayerId}
           onDrawComplete={(geometry, label) => {
             setDrawingEnabled(false);
+            setDesktopSidebarOpen(true); setSidebarOpen(true);
             onAOIChange(customAOI(geometry, label, "draw"));
           }}
           onDrawCancel={() => {
             setDrawingEnabled(false);
+            setDesktopSidebarOpen(true); setSidebarOpen(true);
           }}
           onRasterMetadata={handleRasterMetadata}
           onRasterError={handleRasterError}

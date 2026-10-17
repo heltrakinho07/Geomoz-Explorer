@@ -131,9 +131,13 @@ export default function GISWorkspaceMapLibre({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const layersRef = useRef(layers);
+  const aoiGeometryRef = useRef(aoiGeometry);
   const rasterLayersRef = useRef(rasterLayers);
   const serviceLayersRef = useRef(serviceLayers);
   const drawingRef = useRef(drawingEnabled);
+  const styleReadyRef = useRef(false);
+  const [drawVertexCount, setDrawVertexCount] = useState(0);
+  const [drawError, setDrawError] = useState<string | null>(null);
   const drawCoordsRef = useRef<[number, number][]>([]);
   const onSelectLayerRef = useRef(onSelectLayer);
   const onDrawCompleteRef = useRef(onDrawComplete);
@@ -144,6 +148,7 @@ export default function GISWorkspaceMapLibre({
   const [coords, setCoords] = useState<{ lng: number; lat: number } | null>(null);
 
   layersRef.current = layers;
+  aoiGeometryRef.current = aoiGeometry;
   rasterLayersRef.current = rasterLayers;
   serviceLayersRef.current = serviceLayers;
   drawingRef.current = drawingEnabled;
@@ -162,7 +167,8 @@ export default function GISWorkspaceMapLibre({
   );
 
   const syncAoi = (map: MapLibreMap) => {
-    if (!map.isStyleLoaded()) return;
+    if (!styleReadyRef.current) return;
+    const aoiGeometry = aoiGeometryRef.current;
     const existing = map.getSource(AOI_SOURCE) as maplibregl.GeoJSONSource | undefined;
     const data =
       aoiGeometry && (aoiGeometry as any).type
@@ -194,12 +200,13 @@ export default function GISWorkspaceMapLibre({
   };
 
   const syncDrawPreview = (map: MapLibreMap) => {
-    if (!map.isStyleLoaded()) return;
-    const feature = polygonFeature(drawCoordsRef.current);
-    const data: FeatureCollection = {
-      type: "FeatureCollection",
-      features: feature ? [feature] : [],
-    };
+    if (!styleReadyRef.current) return;
+    const points = drawCoordsRef.current;
+    const feature = polygonFeature(points);
+    const features: Feature[] = points.map(coordinates => ({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates } }));
+    if (feature) features.unshift(feature);
+    else if (points.length > 1) features.unshift({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: points } });
+    const data: FeatureCollection = { type: "FeatureCollection", features };
     const existing = map.getSource(DRAW_SOURCE) as maplibregl.GeoJSONSource | undefined;
     if (existing) {
       existing.setData(data);
@@ -210,18 +217,37 @@ export default function GISWorkspaceMapLibre({
       id: DRAW_FILL,
       type: "fill",
       source: DRAW_SOURCE,
+      filter: ["==", ["geometry-type"], "Polygon"],
       paint: { "fill-color": "#4f46e5", "fill-opacity": 0.14 },
     });
     map.addLayer({
       id: DRAW_LINE,
       type: "line",
       source: DRAW_SOURCE,
+      filter: ["!=", ["geometry-type"], "Point"],
       paint: { "line-color": "#4f46e5", "line-width": 2.5 },
     });
+    map.addLayer({ id: "__geomoz_draw_points", type: "circle", source: DRAW_SOURCE,
+      filter: ["==", ["geometry-type"], "Point"],
+      paint: { "circle-radius": 5, "circle-color": "#4f46e5", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
+  };
+
+  const finishDraw = () => {
+    if (!drawingRef.current) return;
+    const feature = polygonFeature(drawCoordsRef.current);
+    if (!feature) return;
+    const ring = feature.geometry.coordinates[0];
+    const twiceArea = ring.slice(0, -1).reduce((sum, p, i) => sum + p[0] * ring[i + 1][1] - ring[i + 1][0] * p[1], 0);
+    if (Math.abs(twiceArea) < 1e-12) { setDrawError("Os pontos devem formar uma área. Adicione um ponto fora da linha ou desfaça o último ponto."); return; }
+    drawingRef.current = false;
+    drawCoordsRef.current = [];
+    setDrawVertexCount(0);
+    if (mapRef.current) syncDrawPreview(mapRef.current);
+    onDrawCompleteRef.current?.(feature.geometry, "Área desenhada no mapa");
   };
 
   const syncLayers = (map: MapLibreMap) => {
-    if (!map.isStyleLoaded()) return;
+    if (!styleReadyRef.current) return;
     const desiredSources = new Set<string>();
     const lookup = new Map<string, string>();
 
@@ -328,6 +354,10 @@ export default function GISWorkspaceMapLibre({
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
 
+    map.on("style.load", () => {
+      styleReadyRef.current = true;
+      syncDrawPreview(map);
+    });
     map.on("load", () => {
       syncLayers(map);
       syncGISWorkspaceServiceLayers(map, serviceLayersRef.current);
@@ -343,10 +373,11 @@ export default function GISWorkspaceMapLibre({
 
     map.on("click", (event: MapMouseEvent) => {
       if (drawingRef.current) {
-        drawCoordsRef.current = [
-          ...drawCoordsRef.current,
-          [event.lngLat.lng, event.lngLat.lat],
-        ];
+        setDrawError(null);
+        const point: [number, number] = [event.lngLat.lng, event.lngLat.lat];
+        const last = drawCoordsRef.current.at(-1);
+        if (!last || last[0] !== point[0] || last[1] !== point[1]) drawCoordsRef.current = [...drawCoordsRef.current, point];
+        setDrawVertexCount(drawCoordsRef.current.length);
         syncDrawPreview(map);
         return;
       }
@@ -381,14 +412,13 @@ export default function GISWorkspaceMapLibre({
     map.on("dblclick", (event: MapMouseEvent) => {
       if (!drawingRef.current) return;
       event.preventDefault();
-      const feature = polygonFeature(drawCoordsRef.current);
-      if (!feature) return;
-      drawCoordsRef.current = [];
-      syncDrawPreview(map);
-      onDrawCompleteRef.current?.(feature, "AOI desenhada no GIS Workspace");
+      finishDraw();
     });
 
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => map.resize()) : null;
+    resizeObserver?.observe(containerRef.current);
     return () => {
+      resizeObserver?.disconnect();
       map.remove();
       mapRef.current = null;
     };
@@ -399,6 +429,7 @@ export default function GISWorkspaceMapLibre({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    styleReadyRef.current = false;
     map.setStyle(basemapStyle(basemap));
     map.once("style.load", () => {
       syncLayers(map);
@@ -413,7 +444,7 @@ export default function GISWorkspaceMapLibre({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map || !styleReadyRef.current) return;
     syncLayers(map);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layers, aoiGeometry]);
@@ -479,6 +510,8 @@ export default function GISWorkspaceMapLibre({
     const map = mapRef.current;
     if (!map) return;
     drawCoordsRef.current = [];
+    setDrawVertexCount(0); setDrawError(null);
+    syncDrawPreview(map);
     if (drawingEnabled) {
       map.doubleClickZoom.disable();
       map.getCanvas().style.cursor = "crosshair";
@@ -496,19 +529,22 @@ export default function GISWorkspaceMapLibre({
         MapLibre GL · {visibleCount} camada(s) visível(is)
       </div>
       {drawingEnabled && (
-        <div className="absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-xl border border-indigo-200 bg-white/95 px-3 py-2 text-xs font-semibold text-indigo-700 shadow-md dark:border-indigo-800 dark:bg-slate-900/95 dark:text-indigo-300">
-          Clique para adicionar vértices · duplo clique para concluir
-          <button
-            type="button"
-            onClick={() => {
-              drawCoordsRef.current = [];
-              if (mapRef.current?.isStyleLoaded()) syncDrawPreview(mapRef.current);
+        <div className="absolute left-1/2 top-16 z-20 w-[calc(100%-1.5rem)] max-w-lg -translate-x-1/2 rounded-xl border border-indigo-200 bg-white/95 px-3 py-2 text-xs font-semibold text-indigo-700 shadow-md md:top-3 dark:border-indigo-800 dark:bg-slate-900/95 dark:text-indigo-300">
+          <p role="status">Toque ou clique no mapa para adicionar pontos · {drawVertexCount} ponto(s)</p>
+          {drawError && <p role="alert" className="mt-1 text-rose-700">{drawError}</p>}
+          <div className="mt-2 flex flex-wrap gap-3">
+            <button type="button" disabled={drawVertexCount < 3} onClick={finishDraw}
+              className="rounded bg-indigo-700 px-3 py-1.5 text-white disabled:opacity-40">Concluir área</button>
+            <button type="button" disabled={!drawVertexCount} onClick={() => {
+              drawCoordsRef.current = drawCoordsRef.current.slice(0, -1); setDrawVertexCount(drawCoordsRef.current.length);
+              if (mapRef.current) syncDrawPreview(mapRef.current);
+            }} className="disabled:opacity-40">Desfazer ponto</button>
+            <button type="button" onClick={() => {
+              drawCoordsRef.current = []; setDrawVertexCount(0);
+              if (mapRef.current) syncDrawPreview(mapRef.current);
               onDrawCancelRef.current?.();
-            }}
-            className="ml-3 text-rose-600 hover:underline"
-          >
-            Cancelar
-          </button>
+            }} className="text-rose-600 hover:underline">Cancelar desenho</button>
+          </div>
         </div>
       )}
       {coords && (
