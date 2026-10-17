@@ -47,6 +47,7 @@ const server=createServer(async(req,res)=>{
   });
   const row=page.locator('.gm-layer-row').filter({hasText:"Pontos de estudo"});
   await row.waitFor();
+  console.log("GeoJSON imported through the real GIS drop handler.");
   await row.locator(".gm-layer-select").click();
   await page.getByRole("slider",{name:"Opacidade da camada"}).fill("0.65");
   await page.waitForFunction(()=>document.querySelector(".gm-layer-row[data-selected=true]")?.textContent.includes("65%"));
@@ -73,6 +74,7 @@ const server=createServer(async(req,res)=>{
   await page.keyboard.press("Escape");
   await page.getByRole("button",{name:"Resultados",exact:true}).click();
   await page.locator(".gm-result-card").filter({hasText:"Concluído"}).first().waitFor();
+  console.log("Buffer executed; output layer and result history available.");
   await page.screenshot({path:"workbench-browser-artifacts/03b-geomoz-results-dark.png",fullPage:true});
   await page.locator(".gm-result-card>button").first().click();
   await page.locator(".gm-layer-row[data-selected=true]").waitFor();
@@ -90,19 +92,20 @@ const server=createServer(async(req,res)=>{
   await other.getByTestId("geomoz-theme-toggle").click();
   await page.waitForFunction(()=>document.documentElement.dataset.geomozTheme==="light");
   await other.close();
+  console.log("Cross-tab theme synchronisation and reload persistence passed.");
   await page.setViewportSize({width:390,height:844});
   await page.reload();
   await page.getByTestId("geomoz-workbench-chrome").waitFor();
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"Mobile viewport must not overflow horizontally");
-  await page.getByRole("button",{name:"Expandir catálogo"}).click();
+  await page.getByRole("button",{name:/^Expandir catálogo$/i}).first().click();
   await page.getByTestId("geomoz-layer-catalog").waitFor();
   await page.screenshot({path:"workbench-browser-artifacts/04-geomoz-mobile.png",fullPage:true});
-  await page.getByRole("button",{name:"Recolher catálogo"}).click();
+  await page.getByTestId("geomoz-layer-catalog").getByRole("button",{name:"Recolher catálogo",exact:true}).click();
   const mapBox=await page.locator("main canvas").first().boundingBox();
   assert.ok(mapBox&&mapBox.width>300&&mapBox.height>300,"Mobile map must remain usable");
   assert.deepEqual(errors,[],"No uncaught React/runtime errors");
   await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,resultNavigator:true,fullMenus:true,themePersistence:true,crossTabTheme:true,mobile:true,errors},null,2));
   console.log("GeoMoz Workbench: owned UI, real import, layer controls, analysis dialog, menus, dark/light persistence and mobile layout passed.");
- }catch(error){await page.screenshot({path:"workbench-browser-artifacts/failure.png",fullPage:true}).catch(()=>{});throw error;}
+ }catch(error){console.error("Visible interface:",(await page.locator("body").innerText()).slice(-12000));await page.screenshot({path:"workbench-browser-artifacts/failure.png",fullPage:true}).catch(()=>{});throw error;}
  finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error(error);process.exitCode=1;});

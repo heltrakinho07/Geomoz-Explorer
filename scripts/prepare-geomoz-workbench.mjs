@@ -41,7 +41,12 @@ let shell=read("components/layout/DesktopShell.tsx");
 shell=once(shell,'import { LayerPanel } from "../panels/LayerPanel";','import { GeoMozLayerPanel as LayerPanel } from "../geomoz/GeoMozLayerPanel";',"layer navigator");
 shell=once(shell,'className="relative flex h-full min-w-0 flex-col overflow-hidden bg-background"','className="gm-workbench relative flex h-full min-w-0 flex-col overflow-hidden bg-background"',"workspace root");
 shell=once(shell,'<h1 className="sr-only">{t("shell.workspaceTitle")}</h1>','<h1 className="sr-only">GeoMoz GIS Workspace — mapa e análise</h1>',"workspace name");
+shell=once(shell,'builtinTitle={t("sharedRail.layers")}','builtinTitle="Catálogo"',"catalog rail title");
+shell=once(shell,'builtinTitle={t("sharedRail.style")}','builtinTitle="Simbologia"',"style rail title");
 write("components/layout/DesktopShell.tsx",shell);
+let rail=read("components/panels/SharedSidebar.tsx");
+rail=once(rail,'"flex w-full shrink-0 items-center gap-1 border-t bg-card','"gm-shared-rail flex w-full shrink-0 items-center gap-1 border-t bg-card',"GeoMoz activity rail");
+write("components/panels/SharedSidebar.tsx",rail);
 for(const name of ["GeoMozWorkbenchChrome.tsx","GeoMozLayerPanel.tsx"]){
   write("components/geomoz/"+name,readFileSync(new URL("./assets/workbench/"+name,import.meta.url),"utf8"));
 }
