@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { diagnoseGeeApi } from "@/lib/gee-connection-diagnostics";
+import { validateRealSentinel2Ndvi } from "@/lib/gee-ndvi-validation";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -71,6 +72,8 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const [savingSa, setSavingSa] = useState(false);
   const [testResult, setTestResult] = useState<{ connected: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
+  const [testingNdvi, setTestingNdvi] = useState(false);
+  const [ndviResult, setNdviResult] = useState<{ success: boolean; message: string } | null>(null);
   const [checkingApi, setCheckingApi] = useState(false);
   const [apiCheckResult, setApiCheckResult] = useState<{ connected: boolean; message: string } | null>(null);
 
@@ -209,6 +212,25 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
       });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleValidateRealNdvi = async () => {
+    setTestingNdvi(true);
+    setNdviResult(null);
+    try {
+      const result = await validateRealSentinel2Ndvi();
+      setNdviResult({
+        success: true,
+        message: `${result.message} Período: ${result.dateRange}. Área: ${result.projectNote}.`,
+      });
+    } catch (caught) {
+      setNdviResult({
+        success: false,
+        message: caught instanceof Error ? caught.message : "O teste real Sentinel-2 NDVI não foi concluído.",
+      });
+    } finally {
+      setTestingNdvi(false);
     }
   };
 
@@ -518,7 +540,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                     </a>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
                     <Button
                       variant="outline"
                       size="sm"
@@ -533,7 +555,38 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       )}
                       Testar Conexão em Tempo Real
                     </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleValidateRealNdvi}
+                      disabled={testingNdvi || !geeConnected}
+                      className="text-xs rounded-xl border-emerald-300 text-emerald-800 dark:text-emerald-300"
+                      title={!geeConnected ? "Primeiro ligue e autorize a sua conta Google Earth Engine." : "Executa o endpoint real GEE, Sentinel-2 SR Harmonized e NDVI para uma área de Maputo."}
+                    >
+                      {testingNdvi ? (
+                        <Loader2 size={13} className="animate-spin mr-1.5" />
+                      ) : (
+                        <Layers size={13} className="mr-1.5" />
+                      )}
+                      {testingNdvi ? "A processar Sentinel-2..." : "Testar NDVI Real — Maputo"}
+                    </Button>
                   </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    O teste NDVI processa cenas Sentinel-2 reais numa pequena área de Maputo (Maio–Agosto de 2025), usando a sua autorização GEE. Não utiliza resultados simulados.
+                    {!geeConnected && " Primeiro ligue a sua conta Google."}
+                  </p>
+                  {ndviResult && (
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className={`rounded-xl border p-3 text-xs leading-relaxed ${ndviResult.success
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200"
+                        : "border-red-200 bg-red-50 text-red-900 dark:bg-red-950/30 dark:text-red-200"}`}
+                    >
+                      {ndviResult.message}
+                    </div>
+                  )}
                 </div>
 
                 {/* Advanced Options (Collapsible for IT / Admins only) */}
