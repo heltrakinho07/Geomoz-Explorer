@@ -29,6 +29,11 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     const cfg = JSON.parse(readFileSync(join(f.dst, "deployment.json"), "utf8"));
     assert.match(html, /geomoz-brand\.css/);
     assert.match(html, /href="\/mapa"/);
+    assert.match(html, /aria-current="page">GIS Workspace/);
+    assert.match(html, /class="geomoz-gis-commandbar"/);
+    assert.match(html, /data-geomoz-menu="Processing"/);
+    assert.match(html, /geomoz-shell\.js\?v=[a-f0-9]{12}/);
+    assert.doesNotMatch(html, /class="geomoz-back-link"/);
     assert.equal(cfg.branding.appName, "GeoMoz GIS Workspace");
     assert.equal(cfg.sharing.shareUrl, "off");
     assert.equal(cfg.ai.enabled, false);
@@ -42,6 +47,13 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     assert.match(css, /#root header\[class~="bg-card"\]/);
     assert.match(css, /html\.dark/);
     assert.match(css, /prefers-reduced-motion/);
+    assert.match(css, /geomoz-portal-top/);
+    assert.match(css, /geomoz-gis-commandbar/);
+    assert.match(css, /data-workspace-row/);
+    assert.match(css, /body > #root/);
+    const shellJs = readFileSync(join(f.dst, "geomoz-shell.js"), "utf8");
+    assert.match(shellJs, /getNativeHeader/);
+    assert.match(shellJs, /button\.click\(\)/);
     assert.match(html, /GeoMoz GIS Workspace<\/title>/);
     assert.match(html, /href="\/gis-workspace\/favicon\.svg"/);
     assert.match(html, /geomoz-brand\.css\?v=[a-f0-9]{12}/);
