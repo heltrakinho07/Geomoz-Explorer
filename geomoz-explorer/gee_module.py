@@ -17,6 +17,7 @@ import os
 import json
 import logging
 import threading
+import time
 from typing import Optional, Any
 
 from gee_presets import (
@@ -1575,14 +1576,20 @@ def compute_index_tile(
     start_date: str = "2023-01-01",
     end_date: str = "2023-12-31",
     cloud_pct: int = 30,
+    processing_mode: str = "detailed",
 ) -> dict:
-    """Compute one spectral / terrain index, return a Leaflet tile URL.
+    """Compute a real GEE tile with a configurable statistics workload.
 
-    region_geojson : GeoJSON geometry dict (Polygon/MultiPolygon) — used both
-                     for filterBounds AND .clip() so output is precisely cut.
-                     If None, falls back to the full Mozambique bbox.
+    fast: obtain the real map tile without server-side statistics reductions.
+    balanced: calculate an approximate mean and min/max at 250 m sampling.
+    detailed: retain the full scientific multi-percentile statistics.
+    Pixel resolution of visualised GEE imagery is unchanged by this mode.
     """
     import ee
+
+    if processing_mode not in ("fast", "balanced", "detailed"):
+        raise ValueError("Modo de processamento inválido. Escolha fast, balanced ou detailed.")
+    started_at = time.perf_counter()
 
     if index not in INDEX_REGISTRY:
         raise ValueError(f"Índice desconhecido '{index}'. Disponíveis: {list(INDEX_REGISTRY)}")
@@ -1611,36 +1618,48 @@ def compute_index_tile(
     _cache_put(ck, idx_img)
 
     stats: dict = {}
-    try:
-        stats_reducer = (
-            ee.Reducer.mean()
-            .combine(ee.Reducer.stdDev(), "", True)
-            .combine(ee.Reducer.percentile([2, 10, 25, 50, 75, 90, 98]), "", True)
-            .combine(ee.Reducer.minMax(), "", True)
-        )
-        dyn_scale = _compute_dynamic_scale(region)
-        raw_stats = idx_img.reduceRegion(
-            reducer=stats_reducer,
-            geometry=region,
-            scale=dyn_scale,
-            maxPixels=1e9,
-            bestEffort=True,
-            tileScale=4,
-        ).getInfo()
-
-        for k, v in (raw_stats or {}).items():
-            clean_k = k.split("_")[-1] if "_" in k else k
-            if isinstance(v, (int, float)):
-                stats[clean_k] = round(float(v), 4)
-
+    if processing_mode != "fast":
         try:
-            area_m2 = region.area(maxError=1000).getInfo()
-            if area_m2:
-                stats["areaKm2"] = round(area_m2 / 1e6, 2)
-        except Exception:
-            pass
-    except Exception as e:
-        logger.warning(f"Failed to compute stats for {index}: {e}")
+            if processing_mode == "balanced":
+                # Do not ask EE to compute AOI area or expensive percentiles.
+                # 250 m is the statistics sampling scale, not tile resolution.
+                stats_reducer = (
+                    ee.Reducer.mean()
+                    .combine(ee.Reducer.minMax(), "", True)
+                )
+                dyn_scale = 250
+            else:
+                stats_reducer = (
+                    ee.Reducer.mean()
+                    .combine(ee.Reducer.stdDev(), "", True)
+                    .combine(ee.Reducer.percentile([2, 10, 25, 50, 75, 90, 98]), "", True)
+                    .combine(ee.Reducer.minMax(), "", True)
+                )
+                dyn_scale = _compute_dynamic_scale(region)
+            raw_stats = idx_img.reduceRegion(
+                reducer=stats_reducer,
+                geometry=region,
+                scale=dyn_scale,
+                maxPixels=1e9,
+                bestEffort=True,
+                tileScale=4,
+            ).getInfo()
+            for k, v in (raw_stats or {}).items():
+                clean_k = k.split("_")[-1] if "_" in k else k
+                if isinstance(v, (int, float)):
+                    stats[clean_k] = round(float(v), 4)
+            if processing_mode == "detailed":
+                try:
+                    area_m2 = region.area(maxError=1000).getInfo()
+                    if area_m2:
+                        stats["areaKm2"] = round(area_m2 / 1e6, 2)
+                except Exception:
+                    pass
+        except Exception as exc:
+            logger.warning(
+                "Earth Engine %s statistics unavailable for %s: %s",
+                processing_mode, index, type(exc).__name__,
+            )
 
     vis_params = dict(cfg["vis"])
     # Dynamic 2%–98% linear stretch for mineral & spectral ratio indices
@@ -1667,6 +1686,12 @@ def compute_index_tile(
         "bands":      cfg["bands"],
         "group":      cfg["group"],
         "sceneCount": scene_count,
+        "processingMode": processing_mode,
+        "statisticsLevel": (
+            "none" if processing_mode == "fast" else
+            "summary" if processing_mode == "balanced" else "detailed"
+        ),
+        "durationMs": round((time.perf_counter() - started_at) * 1000),
         "dateRange":  f"{start_date} → {end_date}" if cfg["group"] != "terrain" else "Estático (DEM)",
         "stats":      stats,
         "vis":        vis_params,
