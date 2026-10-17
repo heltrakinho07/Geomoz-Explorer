@@ -1,6 +1,6 @@
 import { useEffect, useState, type ComponentProps } from "react";
 import { useAppStore, effectiveLayerRenderState, resolveLayerCapabilities, pluginOwnsPaint, rendererAppliesOpacity, supportsBridgedOpacity } from "@geolibre/core";
-import { Layers3, Search, ChevronLeft, ChevronRight, Eye, EyeOff, Crosshair, SlidersHorizontal, Table2, Palette, FileStack, Map, FolderOpen, History, CheckCircle2, AlertCircle } from "lucide-react";
+import { Layers3, Search, ChevronLeft, ChevronRight, Eye, EyeOff, Crosshair, SlidersHorizontal, Table2, Palette, FileStack, Map as MapIcon, FolderOpen, History, CheckCircle2, AlertCircle } from "lucide-react";
 import { LayerPanel as EngineLayerPanel } from "../panels/LayerPanel";
 import { setLayersPanelCollapsed } from "../../lib/layer-panel-collapse";
 type Props = ComponentProps<typeof EngineLayerPanel>;
@@ -41,7 +41,7 @@ export function GeoMozLayerPanel(props:Props) {
       <div className="gm-layer-list">
         {filtered.map(layer=><div key={layer.id} className="gm-layer-row" data-layer-name={layer.name} data-visible={layer.visible} data-rendered={rendered(layer)} data-selected={selectedId===layer.id}>
           <button type="button" className="gm-layer-visibility" aria-label={(layer.visible?"Ocultar ":"Mostrar ")+layer.name} aria-pressed={layer.visible} onClick={()=>visibility(layer.id,!layer.visible)}>{layer.visible?<Eye size={15}/>:<EyeOff size={15}/>}</button>
-          <button type="button" className="gm-layer-select" aria-pressed={selectedId===layer.id} onClick={()=>{select(layer.id);setNotice("");}}><span className={"gm-layer-symbol gm-layer-symbol-"+layer.type}>{layer.type==="raster"?<Map size={17}/>:<Layers3 size={17}/>}</span><span><strong>{layer.name}</strong><small>{layer.type} · {layer.visible&&!rendered(layer)?"Oculta pelo grupo":Math.round(layer.opacity*100)+"% opacidade"}</small></span></button>
+          <button type="button" className="gm-layer-select" aria-pressed={selectedId===layer.id} onClick={()=>{select(layer.id);setNotice("");}}><span className={"gm-layer-symbol gm-layer-symbol-"+layer.type}>{layer.type==="raster"?<MapIcon size={17}/>:<Layers3 size={17}/>}</span><span><strong>{layer.name}</strong><small>{layer.type} · {layer.visible&&!rendered(layer)?"Oculta pelo grupo":Math.round(layer.opacity*100)+"% opacidade"}</small></span></button>
           <button type="button" className="gm-icon-button gm-layer-fit" aria-label={"Enquadrar "+layer.name} title="Enquadrar camada" onClick={()=>{const ok=props.mapControllerRef.current?.fitLayer(layer);setNotice(ok?"":"A extensão desta camada ainda não está disponível.");}}><Crosshair size={15}/></button>
         </div>)}
         {!filtered.length&&<div className="gm-catalog-empty"><FolderOpen size={32}/><strong>{layers.length?"Nenhuma correspondência":"O seu mapa começa aqui"}</strong><p>{layers.length?"Experimente outro nome ou mostre todas as camadas.":"Adicione dados na faixa superior. As camadas e os resultados ficam organizados neste catálogo."}</p><span>Vector · Raster · DEM · Serviços</span></div>}
