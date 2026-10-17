@@ -11,7 +11,7 @@ import sys
 import time
 from collections import defaultdict
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, Literal
 from concurrent.futures import ThreadPoolExecutor
 import geopandas as gpd
 from shapely.errors import TopologicalError, GEOSException
@@ -939,6 +939,7 @@ class GEEIndexRequest(BaseModel):
     start_date: str = "2023-01-01"
     end_date:   str = "2023-12-31"
     cloud_pct:  int = 30
+    processing_mode: Literal["fast", "balanced", "detailed"] = "detailed"
 
     @field_validator('cloud_pct')
     @classmethod
@@ -1322,7 +1323,10 @@ async def gee_index(req: GEEIndexRequest, uid: str = Depends(require_gee_auth)):
     try:
         result = await loop.run_in_executor(
             _thread_pool_executor,
-            lambda: compute_index_tile(req.index, region, req.start_date, req.end_date, req.cloud_pct),
+            lambda: compute_index_tile(
+                req.index, region, req.start_date, req.end_date, req.cloud_pct,
+                processing_mode=req.processing_mode,
+            ),
         )
         result["province"] = req.province
         result["district"] = req.district
