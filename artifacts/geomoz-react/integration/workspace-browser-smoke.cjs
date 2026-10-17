@@ -91,7 +91,7 @@ const server = createServer(async (req, res) => {
     // Real GeoJSON loading and feature identification in the Cesium map.
     const polygon={type:"FeatureCollection",features:[{type:"Feature",properties:{fixture:"Cesium vector"},geometry:{type:"Polygon",coordinates:[[[35,-20],[36,-20],[36,-19],[35,-19],[35,-20]]]}}]};
     await page.locator('.geomoz-workspace input[type="file"][multiple][accept*=".hgt"]').setInputFiles({name:"cesium-fixture.geojson",mimeType:"application/geo+json",buffer:Buffer.from(JSON.stringify(polygon))});
-    await page.waitForFunction(()=>Number(document.querySelector('[data-testid="cesium-workspace"]')?.dataset.vectorReady)>0);
+    await page.waitForFunction(()=>Number(document.querySelector('[data-testid="cesium-workspace"]')?.dataset.vectorReady)>=2);
     const vectorBox=await map.boundingBox();
     await map.click({position:{x:vectorBox.width/2,y:vectorBox.height/2}});
     await page.getByRole("button",{name:"Fechar atributos",exact:true}).waitFor();
