@@ -302,6 +302,7 @@ export default function GeoProcessamento({
   const deviceCacheKey = gisDeviceCacheKey(user?.uid, activeProject?.id);
   const [deviceSaveBusy, setDeviceSaveBusy] = useState<"save" | "restore" | "clear" | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const workspacePanelRef = useRef<HTMLDivElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const demAbortRef = useRef<AbortController | null>(null);
   const [demProgress, setDemProgress] = useState<{ completed: number; total: number } | null>(null);
@@ -316,6 +317,7 @@ export default function GeoProcessamento({
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [basemap, setBasemap] = useState<BasemapType>("hybrid");
   const [drawingEnabled, setDrawingEnabled] = useState(false);
+  React.useEffect(() => { workspacePanelRef.current?.scrollTo?.({ top: 0 }); }, [activeTab]);
 
   // User Layers
   const [layers, setLayers] = useState<UserLayer[]>([]);
@@ -3084,13 +3086,14 @@ export default function GeoProcessamento({
 
       {/* ── Sidebar: Full Processing Menu Layout ─────────────────────────── */}
       <div
+        ref={workspacePanelRef}
         className={`geomoz-workspace__panel fixed md:relative inset-y-0 left-0 z-[700] w-[min(100vw,24rem)] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         } ${
           desktopSidebarOpen
             ? activeTab === "model_builder"
               ? "md:w-[min(72vw,980px)] overflow-y-auto"
-              : "md:w-96 overflow-y-auto"
+              : "md:w-[26rem] overflow-y-auto"
             : "md:w-0 overflow-hidden md:border-r-0"
         }`}
       >
@@ -3102,12 +3105,12 @@ export default function GeoProcessamento({
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Ferramentas GIS</h2>
+                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Estúdio GIS</h2>
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
                   GeoMoz Core
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400">Mapa GIS · Toolbox · Model Builder · Spatial SQL · Histórico</p>
+              <p className="text-[10px] text-slate-400">Dados · Área · Análise · Resultados</p>
             </div>
           </div>
           <button
@@ -3119,6 +3122,9 @@ export default function GeoProcessamento({
           </button>
         </div>
 
+        {processingError && activeTab !== "layers" && <p role="alert" className="gw-error mx-3">{processingError}</p>}
+        <details className="mx-3 mt-3 rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+          <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300">Projecto e armazenamento local</summary>
         <div role="status" aria-live="polite"
           className="border-b border-slate-100 bg-sky-50/60 px-3 py-2 text-[10px] leading-relaxed text-sky-800 dark:border-slate-800 dark:bg-sky-950/20 dark:text-sky-300">
           <strong>Sessão local por defeito:</strong> dados e resultados mantêm-se na memória.
@@ -3167,12 +3173,13 @@ export default function GeoProcessamento({
           )}
         </div>
 
-        <GISWorkspaceOverview raster={selectedWhiteboxRaster} layerCount={layers.length + rasterLayers.length + serviceLayers.length}
+        </details>
+        {activeTab === "layers" && <GISWorkspaceOverview raster={selectedWhiteboxRaster} layerCount={layers.length + rasterLayers.length + serviceLayers.length}
           results={layers.filter(layer => layer.isResult).length + rasterLayers.filter(layer => layer.isResult).length}
           busy={isExecuting || demLoading} error={processingError}
           onImport={() => fileInputRef.current?.click()}
           onDraw={() => { setDrawingEnabled(true); setSidebarOpen(false); setDesktopSidebarOpen(false); }}
-          onTerrain={() => setActiveTab("terrain_workflow")} onLayers={() => setActiveTab("layers")} />
+          onTerrain={() => setActiveTab("terrain_workflow")} onLayers={() => setActiveTab("layers")} />}
 
         {/* Top Processing Menu Tabs */}
         <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40">
@@ -5824,7 +5831,7 @@ export default function GeoProcessamento({
           left: desktopSidebarOpen
             ? activeTab === "model_builder"
               ? "min(72vw, 980px)"
-              : "24rem"
+              : "26rem"
             : "0px",
         }}
         title={desktopSidebarOpen ? "Recolher painel" : "Expandir painel"}
