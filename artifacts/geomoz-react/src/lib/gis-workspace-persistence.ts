@@ -252,7 +252,8 @@ export async function loadGISWorkspaceSnapshot(
 }
 
 export async function saveGISWorkspaceSnapshot(
-  snapshot: Omit<GISWorkspaceSnapshot, "version" | "updatedAt">
+  snapshot: Omit<GISWorkspaceSnapshot, "version" | "updatedAt">,
+  options: { strict?: boolean } = {}
 ): Promise<void> {
   if (!snapshot.projectId) return;
   const payload: GISWorkspaceSnapshot = {
@@ -270,11 +271,13 @@ export async function saveGISWorkspaceSnapshot(
     );
   } catch (error) {
     console.warn("GIS Workspace: falha ao persistir snapshot local:", error);
+    if (options.strict) throw error;
   }
 }
 
 export async function deleteGISWorkspaceSnapshot(
-  projectId: string
+  projectId: string,
+  options: { strict?: boolean } = {}
 ): Promise<void> {
   if (!projectId) return;
   try {
@@ -283,6 +286,7 @@ export async function deleteGISWorkspaceSnapshot(
     );
   } catch (error) {
     console.warn("GIS Workspace: falha ao remover snapshot local:", error);
+    if (options.strict) throw error;
   }
 }
 
@@ -292,11 +296,28 @@ interface RasterFileRecord {
   rasterId: string;
   fileName: string;
   mimeType: string;
-  blob: Blob;
+  /** Modern cache format: portable binary bytes, not a runtime-specific File object. */
+  bytes?: ArrayBuffer;
+  /** Legacy IndexedDB cache from older GeoMoz versions; retained for recovery. */
+  blob?: Blob;
 }
 
 function rasterFileKey(projectId: string, rasterId: string): string {
   return `${projectId}:${rasterId}`;
+}
+
+/** Read native browser File bytes; FileReader remains the compatibility
+ * fallback for environments without Blob.arrayBuffer(). */
+function bytesFromFile(file: File): Promise<ArrayBuffer> {
+  if (typeof file.arrayBuffer === "function") return file.arrayBuffer();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => reader.result instanceof ArrayBuffer
+      ? resolve(reader.result)
+      : reject(new Error("O ficheiro raster não forneceu dados binários."));
+    reader.onerror = () => reject(reader.error ?? new Error("Falha ao ler GeoTIFF."));
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 export async function saveGISWorkspaceRasterFile(
@@ -311,7 +332,9 @@ export async function saveGISWorkspaceRasterFile(
     rasterId,
     fileName: file.name,
     mimeType: file.type || "image/tiff",
-    blob: file,
+    // Using raw bytes avoids File/Blob structured-clone differences in browsers
+    // and fake-indexeddb, while preserving exact GeoTIFF binary content.
+    bytes: await bytesFromFile(file),
   };
   await withStore<IDBValidKey>(RASTER_FILE_STORE, "readwrite", (store) =>
     store.put(record)
@@ -329,10 +352,27 @@ export async function loadGISWorkspaceRasterFiles(
   const result = new Map<string, File>();
   for (const record of records) {
     if (record.projectId !== projectId) continue;
+    // fake-indexeddb, jsdom and cross-origin realms may clone an ArrayBuffer
+    // with a different prototype. Normalize to this realm before creating File.
+    const raw = record.bytes as unknown;
+    const isBuffer = raw != null && typeof raw === "object" &&
+      Object.prototype.toString.call(raw) === "[object ArrayBuffer]";
+    let source: BlobPart;
+    if (isBuffer) {
+      source = Uint8Array.from(new Uint8Array(raw as ArrayBuffer)).buffer;
+    } else if (ArrayBuffer.isView(raw)) {
+      source = Uint8Array.from(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength)).buffer;
+    } else if (record.blob && typeof record.blob === "object" &&
+               typeof record.blob.size === "number") {
+      // Old GeoMoz IndexedDB snapshots stored the native File/Blob directly.
+      source = record.blob;
+    } else {
+      throw new Error(`Ficheiro raster local ${record.fileName} não pôde ser recuperado.`);
+    }
     result.set(
       record.rasterId,
-      new File([record.blob], record.fileName, {
-        type: record.mimeType || record.blob.type || "image/tiff",
+      new File([source], record.fileName, {
+        type: record.mimeType || "image/tiff",
       })
     );
   }

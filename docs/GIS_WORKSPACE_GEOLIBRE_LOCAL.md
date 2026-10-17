@@ -8,14 +8,16 @@ A interface usa a identidade GeoMoz. Esta integração não instala uma segunda 
 
 ## Privacidade e ciclo de vida
 
-- **Modo Local (predefinição, disponível para todos):** o GIS Workspace não faz `getDoc`, `uploadBytes`, autosave Firestore/Storage, nem IndexedDB/localStorage. Apenas mantém o estado React numa referência de memória do separador. **A infraestrutura existente de Firebase e IndexedDB permanece no projecto**, sem ser eliminada.
+- **Modo sessão (predefinição, disponível para todos):** o GIS Workspace não faz `getDoc`, `uploadBytes`, autosave Firestore/Storage, nem escrita automática em IndexedDB/localStorage. Mantém o estado numa referência de memória do separador.
+- **Guardar no dispositivo (IndexedDB, opção explícita):** os botões «Guardar no dispositivo» e «Restaurar cópia» armazenam/recuperam o estado SIG e os ficheiros GeoTIFF locais no próprio navegador. O identificador da cópia é separado por UID e projecto (ou por sessão guest). Não há qualquer envio destes dados para Firebase. «Apagar cópia local» exige confirmação e elimina só a cópia IndexedDB desse Workspace, sem afectar a sessão aberta ou os dados cloud. Falhas de quota/armazenamento são apresentadas ao utilizador em vez de se anunciar um backup inexistente. Os dados IndexedDB não se sincronizam entre dispositivos e podem ser eliminados pelo navegador.
+- **Infraestrutura reservada:** Firestore, Firebase Storage e IndexedDB existentes permanecem no projecto; não foram removidos os serviços de sincronização anteriores, as regras de acesso ou os conteúdos legados.
 - **Guardar projecto:** gera um ficheiro `.geomoz.json` descarregado pelo navegador contendo camadas vectoriais GeoJSON, configurações e referências de serviços. É necessário escolher «Guardar projecto» antes de actualizar ou fechar a página.
 - **Abrir projecto:** lê esse ficheiro **localmente**, sem upload. URLs públicas de COG podem ser novamente carregadas; ficheiros GeoTIFF seleccionados do computador **não são incorporados** no JSON — reimporte-os.
 - Operações que explicitamente dependem de **serviços externos** (tiles de mapa, DEM AWS, WMS/WFS/WMTS/STAC, GEE, ou processamentos backend opcionais) continuam a contactar esses serviços apenas quando o utilizador as executa. «Sem BD» **não significa offline para downloads remotos**.
 - Funcionalidades de contas, autenticação e projectos fora desta guia não são alteradas.
-- **Modo Pro (preparação):** o código original `src/services/gisWorkspaceCloudService.ts` mantém o acesso a Firestore e Storage; `src/lib/gis-workspace-persistence.ts` mantém a cache offline IndexedDB. `src/lib/gis-workspace-pro-storage.ts` fornece uma ponte separada para futuras operações Pro, exigindo uma identidade Firebase e uma custom claim `geomoz_pro` ou `geomozPro` emitida pelo servidor. O modo Pro **não está activo na interface nesta versão**.
+- **Cloud PRO / Premium (em preparação, não vendido nem activado):** `src/services/gisWorkspaceCloudService.ts` preserva os serviços Firestore/Storage e `src/lib/gis-workspace-pro-storage.ts` mantém uma ponte independente que valida a identidade Firebase e custom claims `geomoz_pro` ou `geomozPro` emitidas pelo servidor. A interface indica «Cloud PRO · em preparação» e não efectua upload. A autorização deve ser confirmada em backend e nas Security Rules antes de qualquer disponibilização, juntamente com o sistema de subscrições e quotas. Não confundir uma opção de UI com cobrança ou subscrição já activa.
 - **Segurança e comercialização:** o controlo por custom claim do lado do cliente não basta para cobrar ou proteger recursos Pro. Antes de disponibilizar a sincronização Pro, aplicar regras Firestore/Storage que verifiquem a claim, integrar verificação administrativa de pagamentos e testar migração/isolamento dos dados. Não permitir que campos editáveis pelo utilizador atribuam acesso Pro.
-- **Dados anteriores:** não executar migrações destrutivas nem limpar documentos Firestore, objectos Storage ou bases IndexedDB existentes. O novo modo Local não consulta nem apaga esses dados. A futura recuperação Pro deverá ser iniciada explicitamente pelo titular do projecto e reconciliar versões antes de guardar.
+- **Dados anteriores:** não executar migrações destrutivas nem limpar documentos Firestore, objectos Storage ou bases IndexedDB existentes. O novo modo sessão não consulta nem apaga esses dados. No modo IndexedDB opcional, «Restaurar cópia» pode ler uma cópia anterior do mesmo UID e projecto, mas pede confirmação antes de substituir o trabalho aberto. A futura recuperação Pro deverá ser iniciada explicitamente pelo titular do projecto, após entitlement e reconciliação de versões, antes de guardar.
 
 ## DEM Global — algoritmo do GeoLibre
 
@@ -39,6 +41,7 @@ Integração baseada na metodologia e nas funções públicas do projecto **GeoL
 A adaptação específica é mantida em:
 - `src/lib/gis-global-dem.ts`;
 - `src/lib/gis-workspace-session.ts`;
+- `src/lib/gis-workspace-device-storage.ts` (cópias manuais IndexedDB sem cloud);
 - `src/pages/GeoProcessamento.tsx` e `src/pages/Explorer.tsx`.
 
 Esta primeira fase utiliza motores já integrados no GeoMoz e **não** representa a incorporação integral das ferramentas, plugins e interfaces disponíveis no GeoLibre. Importação de projectos com ficheiros COG incorporados, Browser avançado, formatos adicionais e testes com grandes DEMs reais são melhorias futuras.

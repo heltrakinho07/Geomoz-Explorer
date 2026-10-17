@@ -83,6 +83,7 @@ import {
   Layers,
   Upload,
   Download,
+  Save,
   Play,
   Search,
   Plus,
@@ -171,6 +172,14 @@ import {
   parsePortableGISProject,
 } from "@/lib/gis-workspace-session";
 import { downloadGlobalDem, globalDemTileRange } from "@/lib/gis-global-dem";
+import { useAuth } from "@/hooks/useAuth";
+import { useProject } from "@/context/ProjectContext";
+import {
+  gisDeviceCacheKey,
+  saveGISWorkspaceOnDevice,
+  loadGISWorkspaceFromDevice,
+  clearGISWorkspaceOnDevice,
+} from "@/lib/gis-workspace-device-storage";
 import { prepareLocalGeoTiff } from "@/lib/gis-local-geotiff";
 import {
   listWhiteboxWasmManifests,
@@ -284,8 +293,12 @@ export default function GeoProcessamento({
   onAOIChange,
 }: Props) {
   const { toast } = useToast();
-  // This GIS workbench intentionally does not use accounts, cloud projects,
-  // Firestore, Storage, IndexedDB or any automatic data persistence.
+  // Geoprocessing remains local; a user may explicitly enable an IndexedDB
+  // backup. Firestore + Firebase Storage are reserved for future verified PRO.
+  const { user } = useAuth();
+  const { activeProject } = useProject();
+  const deviceCacheKey = gisDeviceCacheKey(user?.uid, activeProject?.id);
+  const [deviceSaveBusy, setDeviceSaveBusy] = useState<"save" | "restore" | "clear" | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const demAbortRef = useRef<AbortController | null>(null);
@@ -386,6 +399,7 @@ export default function GeoProcessamento({
   // Processing history and transient browser session; no database writes.
   const [history, setHistory] = useState<ProcessingHistoryEntry[]>([]);
   const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
+  const [hydratedScope, setHydratedScope] = useState<string | null>(null);
 
   // Model Builder — typed DAG (vector + raster).
   const [modelGraph, setModelGraph] = useState<GISModelGraph>(
@@ -397,10 +411,11 @@ export default function GeoProcessamento({
   const [modelLog, setModelLog] = useState<string[]>([]);
   const modelAbortRef = useRef<AbortController | null>(null);
 
-  // Restore only RAM state when the component remounts in the same tab.
-  // Refreshing/closing the tab clears it; use Exportar Projecto for backup.
+  // RAM sessions are scoped by current UID/project; switching identities
+  // cannot leak prior sessions and does not read/write cloud storage.
   React.useEffect(() => {
-    const snapshot = getGISSessionWorkspace();
+    setWorkspaceHydrated(false);
+    const snapshot = getGISSessionWorkspace(deviceCacheKey);
     if (snapshot) {
       setLayers(snapshot.layers as UserLayer[]);
       setRasterLayers(snapshot.rasters);
@@ -412,20 +427,31 @@ export default function GeoProcessamento({
       setModelGraph(snapshot.modelGraph);
       setActiveTab(snapshot.activeTab as MainTab);
       setBasemap(snapshot.basemap as BasemapType);
+    } else {
+      setLayers([]);
+      setRasterLayers([]);
+      setServiceLayers([]);
+      setSelectedLayerId("");
+      setSecondLayerId("");
+      setTableLayerId(null);
+      setHistory([]);
+      setModelGraph(createDefaultGISModelGraph());
+      setActiveTab("layers");
     }
+    setHydratedScope(deviceCacheKey);
     setWorkspaceHydrated(true);
-  }, []);
+  }, [deviceCacheKey]);
 
   React.useEffect(() => {
-    if (!workspaceHydrated) return;
+    if (!workspaceHydrated || hydratedScope !== deviceCacheKey) return;
     setGISSessionWorkspace({
       layers, rasters: rasterLayers, services: serviceLayers,
       selectedLayerId, secondLayerId, tableLayerId,
       history, modelGraph, activeTab, basemap,
-    });
-  }, [workspaceHydrated, layers, rasterLayers, serviceLayers,
-      selectedLayerId, secondLayerId, tableLayerId, history, modelGraph,
-      activeTab, basemap]);
+    }, deviceCacheKey);
+  }, [workspaceHydrated, hydratedScope, deviceCacheKey, layers, rasterLayers,
+      serviceLayers, selectedLayerId, secondLayerId, tableLayerId, history,
+      modelGraph, activeTab, basemap]);
 
   // Spatial SQL Workspace
   const [sqlQuery, setSqlQuery] = useState<string>("");
@@ -2691,6 +2717,83 @@ export default function GeoProcessamento({
     }
   }, [layers, sqlQuery, toast]);
 
+  // Browser backup is independent of any Pro subscription or Firebase cloud.
+  const currentGISWorkspace = useCallback(() => ({
+    layers, rasters: rasterLayers, services: serviceLayers,
+    selectedLayerId, secondLayerId, tableLayerId,
+    history, modelGraph, activeTab, basemap,
+  }), [layers, rasterLayers, serviceLayers, selectedLayerId, secondLayerId,
+    tableLayerId, history, modelGraph, activeTab, basemap]);
+
+  const saveDeviceWorkspace = useCallback(async () => {
+    if (deviceSaveBusy) return;
+    setDeviceSaveBusy("save");
+    try {
+      await saveGISWorkspaceOnDevice(deviceCacheKey, currentGISWorkspace());
+      const detail = "Camadas e GeoTIFFs guardados no armazenamento deste navegador; sem envio à nuvem.";
+      setProjectNotice(detail);
+      toast({ title: "Cópia local guardada", description: detail });
+    } catch (error) {
+      toast({
+        title: "Falha ao guardar no dispositivo",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setDeviceSaveBusy(null);
+    }
+  }, [deviceSaveBusy, deviceCacheKey, currentGISWorkspace, toast]);
+
+  const restoreDeviceWorkspace = useCallback(async () => {
+    if (deviceSaveBusy) return;
+    if ((layers.length || rasterLayers.length || serviceLayers.length) &&
+        !window.confirm("Substituir o trabalho actual pela cópia deste dispositivo? Exporte o projecto primeiro para evitar perdas.")) {
+      return;
+    }
+    setDeviceSaveBusy("restore");
+    try {
+      const cached = await loadGISWorkspaceFromDevice(deviceCacheKey);
+      if (!cached) {
+        toast({ title: "Sem cópia local", description: "Não há nenhum Workspace guardado neste dispositivo para este utilizador e projecto." });
+        return;
+      }
+      setLayers(cached.layers as UserLayer[]);
+      setRasterLayers(cached.rasters);
+      setServiceLayers(cached.services);
+      setSelectedLayerId(cached.selectedLayerId);
+      setSecondLayerId(cached.secondLayerId);
+      setTableLayerId(cached.tableLayerId);
+      setHistory(cached.history as ProcessingHistoryEntry[]);
+      setModelGraph(cached.modelGraph);
+      setBasemap(cached.basemap as BasemapType);
+      setActiveTab("layers");
+      const missing = cached.rasters.filter(r => !r.file && !r.remoteUrl).length;
+      const detail = `Cópia local restaurada: ${cached.layers.length} camadas vectoriais e ${cached.rasters.length} rasters.` +
+        (missing ? ` Reimporte ${missing} GeoTIFF(s) indisponíveis.` : "");
+      setProjectNotice(detail);
+      toast({ title: "Workspace restaurado", description: detail });
+    } catch (error) {
+      toast({ title: "Erro ao restaurar cópia local", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally {
+      setDeviceSaveBusy(null);
+    }
+  }, [deviceSaveBusy, deviceCacheKey, layers.length, rasterLayers.length, serviceLayers.length, toast]);
+
+  const clearDeviceWorkspace = useCallback(async () => {
+    if (deviceSaveBusy) return;
+    if (!window.confirm("Apagar a cópia deste Workspace guardada neste dispositivo? O trabalho actualmente aberto e os dados Firebase NÃO serão eliminados.")) return;
+    setDeviceSaveBusy("clear");
+    try {
+      await clearGISWorkspaceOnDevice(deviceCacheKey);
+      setProjectNotice("Cópia IndexedDB eliminada deste navegador. A sessão aberta mantém-se.");
+      toast({ title: "Cópia local eliminada", description: "Não foram alterados projectos ou dados na nuvem." });
+    } catch (error) {
+      toast({ title: "Falha ao apagar cópia", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally {
+      setDeviceSaveBusy(null);
+    }
+  }, [deviceSaveBusy, deviceCacheKey, toast]);
+
   // ── GeoLibre-inspired local project lifecycle (no DB) ────────────────────
   const exportWorkspaceProject = useCallback(() => {
     const project = exportPortableGISProject({
@@ -2814,6 +2917,8 @@ export default function GeoProcessamento({
         case "add-file": fileInputRef.current?.click(); break;
         case "import-project": projectInputRef.current?.click(); break;
         case "export-project": exportWorkspaceProject(); break;
+        case "save-device": void saveDeviceWorkspace(); break;
+        case "restore-device": void restoreDeviceWorkspace(); break;
         case "download-dem": void requestGlobalDem(); break;
         case "processing": setActiveTab("whitebox_toolbox"); setDesktopSidebarOpen(true); break;
         case "layers": setActiveTab("layers"); setDesktopSidebarOpen(true); break;
@@ -2824,7 +2929,7 @@ export default function GeoProcessamento({
     };
     window.addEventListener("geomoz:gis-workspace-action", handleAction);
     return () => window.removeEventListener("geomoz:gis-workspace-action", handleAction);
-  }, [exportWorkspaceProject, requestGlobalDem]);
+  }, [exportWorkspaceProject, saveDeviceWorkspace, restoreDeviceWorkspace, requestGlobalDem]);
 
   // ── Export PDF Report ────────────────────────────────────────────────────
   const exportPdf = () => {
@@ -3001,9 +3106,10 @@ export default function GeoProcessamento({
 
         <div role="status" aria-live="polite"
           className="border-b border-slate-100 bg-sky-50/60 px-3 py-2 text-[10px] leading-relaxed text-sky-800 dark:border-slate-800 dark:bg-sky-950/20 dark:text-sky-300">
-          <strong>Modo local:</strong> dados e resultados permanecem apenas na memória
-          deste separador; não são enviados ao Firestore nem ao Storage.
-          Exporte o projecto antes de fechar ou actualizar a página.
+          <strong>Sessão local por defeito:</strong> dados e resultados mantêm-se na memória.
+          Pode guardar uma cópia neste dispositivo (IndexedDB) ou exportar o projecto.
+          Não existe sincronização automática com Firestore ou Firebase Storage.
+          A sincronização na nuvem ficará reservada a contas PRO validadas.
           {projectNotice && <span className="mt-1 block font-semibold">{projectNotice}</span>}
         </div>
 
@@ -3016,6 +3122,24 @@ export default function GeoProcessamento({
             className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200">
             <Upload size={13} /> Abrir projecto
           </button>
+          <button type="button" disabled={deviceSaveBusy !== null} onClick={() => void saveDeviceWorkspace()}
+            title="Guardar voluntariamente o Workspace, incluindo GeoTIFFs, no IndexedDB"
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-emerald-200 px-2.5 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300">
+            <Save size={13} /> {deviceSaveBusy === "save" ? "A guardar…" : "Guardar no dispositivo"}
+          </button>
+          <button type="button" disabled={deviceSaveBusy !== null} onClick={() => void restoreDeviceWorkspace()}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200">
+            <RefreshCw size={13} /> {deviceSaveBusy === "restore" ? "A restaurar…" : "Restaurar cópia"}
+          </button>
+          <button type="button" disabled={deviceSaveBusy !== null} onClick={() => void clearDeviceWorkspace()}
+            title="Eliminar apenas a cópia IndexedDB deste Workspace"
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-rose-200 px-2.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300">
+            <Trash2 size={13} /> Apagar cópia local
+          </button>
+          <span title="Preparado na infraestrutura; requer assinaturas activas e regras de segurança aplicadas"
+            className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-slate-100 px-2.5 text-[11px] text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+            Cloud PRO · em preparação
+          </span>
           <button type="button" disabled={demLoading} onClick={() => void requestGlobalDem()}
             className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-sky-600 px-2.5 text-[11px] font-semibold text-white disabled:opacity-50">
             <Mountain size={13} /> {demLoading ? "DEM a processar…" : "Obter DEM Global"}

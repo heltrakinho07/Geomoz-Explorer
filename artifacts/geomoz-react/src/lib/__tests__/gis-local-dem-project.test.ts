@@ -116,7 +116,7 @@ describe("GIS workbench in-memory mode", () => {
       "syncGISWorkspaceToCloud", "saveGISWorkspaceSnapshot",
       "loadGISWorkspaceRasterFiles", "indexedDB", "uploadBytes("
     ]) expect(source).not.toContain(forbidden);
-    expect(source).toContain("getGISSessionWorkspace()");
+    expect(source).toContain("getGISSessionWorkspace(deviceCacheKey)");
     expect(source).toContain("downloadGlobalDem(demExtent");
     expect(source).toContain("data-testid=\"gis-local-project-input\"");
   });

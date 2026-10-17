@@ -34,15 +34,17 @@ export interface GISLocalWorkspace {
   basemap: string;
 }
 
-let memory: GISLocalWorkspace | null = null;
-export function getGISSessionWorkspace(): GISLocalWorkspace | null {
-  return memory;
+// Isolate volatile sessions too: switching accounts or active projects must
+// never display another principal's layers, even before using IndexedDB.
+const memoryByScope = new Map<string, GISLocalWorkspace>();
+export function getGISSessionWorkspace(scope = "default"): GISLocalWorkspace | null {
+  return memoryByScope.get(scope) ?? null;
 }
-export function setGISSessionWorkspace(next: GISLocalWorkspace): void {
-  memory = next;
+export function setGISSessionWorkspace(next: GISLocalWorkspace, scope = "default"): void {
+  memoryByScope.set(scope, next);
 }
-export function clearGISSessionWorkspace(): void {
-  memory = null;
+export function clearGISSessionWorkspace(scope = "default"): void {
+  memoryByScope.delete(scope);
 }
 
 export interface PortableGISProject {
