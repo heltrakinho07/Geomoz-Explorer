@@ -41,21 +41,30 @@ cpSync(source, destination, { recursive: true, dereference: false });
 const brandingCss = readFileSync(new URL("./assets/geolibre-geomoz-theme.css", import.meta.url), "utf8");
 const cssVersion = createHash("sha256").update(brandingCss).digest("hex").slice(0, 12);
 const themeHref = `<link rel="stylesheet" href="/gis-workspace/geomoz-brand.css?v=${cssVersion}" />`;
-const backLink = '<a class="geomoz-back-link" href="/mapa" aria-label="Regressar ao GeoMoz" title="Regressar ao GeoMoz">← Voltar ao GeoMoz</a>';
+const shellHtml = readFileSync(new URL("./assets/geomoz-gis-shell.html", import.meta.url), "utf8");
+const shellJs = readFileSync(new URL("./assets/geomoz-gis-shell.js", import.meta.url), "utf8");
+const shellVersion = createHash("sha256").update(shellJs).digest("hex").slice(0, 12);
+const shellScript = `<script defer src="/gis-workspace/geomoz-shell.js?v=${shellVersion}"></script>`;
 const identityHead = [
   '<link rel="icon" type="image/svg+xml" href="/gis-workspace/favicon.svg" />',
   '<link rel="apple-touch-icon" href="/gis-workspace/apple-touch-icon.png" />',
   '<meta name="theme-color" content="#082f49" />',
   themeHref,
+  shellScript,
 ].join("\n  ");
 let branded = html
   // Replace GeoLibre favicons, preserving all script and worker references.
   .replace(/<link\b[^>]*\brel=["'](?:icon|apple-touch-icon)["'][^>]*>/gi, "")
   .replace(/<meta\b[^>]*\bname=["']theme-color["'][^>]*>/gi, "")
   .replace(/<title>[^<]*<\/title>/i, "<title>GeoMoz GIS Workspace</title>")
-  .replace("</head>", "  " + identityHead + "\n  </head>");
-branded = branded.replace("</body>", "  " + backLink + "\n  </body>");
-if (branded === html || !branded.includes(backLink) || !branded.includes(themeHref)) {
+  .replace("</head>", "  " + identityHead + "\n  </head>")
+  .replace("<body>", "<body>\n" + shellHtml + "\n");
+if (
+  branded === html ||
+  !branded.includes('data-geomoz-shell="true"') ||
+  !branded.includes(themeHref) ||
+  !branded.includes(shellScript)
+) {
   throw new Error("Unable to brand the built GeoLibre HTML");
 }
 writeFileSync(resolve(destination, "index.html"), branded);
@@ -75,6 +84,7 @@ writeFileSync(
   ) + "\n"
 );
 writeFileSync(resolve(destination, "geomoz-brand.css"), brandingCss);
+writeFileSync(resolve(destination, "geomoz-shell.js"), shellJs);
 
 const publicAssets = fileURLToPath(new URL("../artifacts/geomoz-react/public/", import.meta.url));
 const iconMappings = [
