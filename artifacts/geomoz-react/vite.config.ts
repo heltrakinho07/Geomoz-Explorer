@@ -33,6 +33,7 @@ export default defineConfig({
         ]
       : []),
   ],
+  optimizeDeps: { exclude: ["geolibre-wasm", "geolibre-wasm/tools"] },
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
