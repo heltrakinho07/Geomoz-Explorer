@@ -37,6 +37,7 @@ async function settleRecovery(page){
  // Keep the application's picker implementation intact.
  await context.addInitScript(()=>Object.defineProperty(window,"showSaveFilePicker",{configurable:true,value:undefined}));
  const page=await context.newPage(),errors=[];
+ page.on("console",message=>{if(["error","warning"].includes(message.type())&&/Geo.?Editor|Geoman|deactivat|plugin.*error|removeControl/i.test(message.text()))console.log("Editor diagnostic:",message.text());});
  page.on("pageerror",error=>{errors.push(error.message);console.error("Runtime error:",error.message);});
  page.setDefaultTimeout(90000);
  try{
@@ -153,24 +154,35 @@ async function settleRecovery(page){
   await page.locator(".gm-results").waitFor();
   await page.locator(".gm-catalog-nav button").first().click();
   await page.locator('[data-task="map"]').click();
+  const baseCanvas=await page.locator("main canvas").first().boundingBox();
+  await page.mouse.click(baseCanvas.x+baseCanvas.width*.55,baseCanvas.y+baseCanvas.height*.35,{button:"right"});
+  await page.getByRole("menu").first().waitFor({timeout:10000});
+  assert.equal(await page.getByRole("menuitem",{name:/directions|rota|conduzir|Google|Earth|tempo de viagem/i}).count(),0,"Map context must withhold off-scope features");
+  await page.keyboard.press("Escape");
   await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').click();
   const editor=page.locator(".geo-editor-toolbar");
   await editor.waitFor();
+  assert.equal(await editor.locator('button[data-mode="massing"]').count(),0,"3D massing stays hidden");
+  await editor.locator('button[data-mode="line"]').waitFor();
   await editor.locator('button[data-mode="polygon"]').click();
   const canvas=await page.locator("main canvas").first().boundingBox();
   const at=(x,y)=>({x:canvas.x+canvas.width*x,y:canvas.y+canvas.height*y});
   const a=at(.55,.35),b=at(.8,.35),c=at(.8,.65),d=at(.55,.65);
   await page.mouse.click(a.x,a.y);await page.mouse.click(b.x,b.y);await page.mouse.click(c.x,c.y);await page.mouse.dblclick(d.x,d.y);
   await page.locator('.gm-layer-row[data-layer-name="Sketches"]').waitFor();
-  const attributeClose=page.locator(".geo-editor-attribute-panel:not(.attribute-panel--hidden) .geo-editor-attribute-panel-close");
-  if(await attributeClose.isVisible())await attributeClose.click();
+  await page.locator('.gm-layer-row[data-layer-name="Sketches"] .gm-layer-select').click();
+  await page.locator(".gm-layer-properties summary").click();
+  const areaDownload=page.waitForEvent("download",{timeout:15000});
+  await page.getByRole("button",{name:"Exportar GeoJSON",exact:true}).click();
+  await (await areaDownload).saveAs("workbench-browser-artifacts/study-area.geojson");
+  const area=JSON.parse(await readFile("workbench-browser-artifacts/study-area.geojson","utf8"));
+  assert.ok(area.features.some(feature=>["Polygon","MultiPolygon"].includes(feature.geometry?.type)),"The drawn area must contain real polygon geometry");
+  assert.equal(await page.locator(".geo-editor-attribute-panel:not(.attribute-panel--hidden)").isVisible(),false,"The 3D height form must stay hidden");
+  console.log("Study polygon drawn and exported with real geometry; 3D controls hidden.");
   await page.screenshot({path:"workbench-browser-artifacts/03c-geomoz-study-area.png",fullPage:true});
   await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').click();
-  await page.mouse.click(a.x,a.y,{button:"right"});
-  await page.getByRole("menu").first().waitFor();
-  assert.equal(await page.getByRole("menuitem",{name:/directions|rota|conduzir|Google|Earth|tempo de viagem/i}).count(),0,"Map context must withhold off-scope features");
-  await page.keyboard.press("Escape");
-
+  await editor.waitFor({state:"hidden",timeout:15000});
+  console.log("Drawing ended; ordinary map navigation restored.");
   await page.locator('.gm-menu-slot:not([hidden]) button').first().click();
   await page.getByRole("menu").first().waitFor();
   await page.keyboard.press("Escape");

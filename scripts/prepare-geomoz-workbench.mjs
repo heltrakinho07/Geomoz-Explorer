@@ -113,6 +113,14 @@ history=once(history,'{AUTO_RERUN_KINDS.has(run.kind) ? (','{isGeoMozCommandVisi
 history=once(history,'{EDIT_RERUN_KINDS.has(run.kind) ? (','{isGeoMozCommandVisible("proc."+run.kind+"."+run.toolId) && EDIT_RERUN_KINDS.has(run.kind) ? (',"curated history edit");
 history=once(history,'{PYTHON_ELIGIBLE_KINDS.has(run.kind) &&','{GEOMOZ_ROLLOUT.specialistProcessing && PYTHON_ELIGIBLE_KINDS.has(run.kind) &&',"retain hidden Python export");
 write("components/processing/ProcessingHistoryDialog.tsx",history);
+// Keep the editor implementation and every mode; offer only study-area drawing.
+writeFileSync(resolve(root,"packages/plugins/src/geomoz-workbench-profile.ts"),readFileSync(new URL("./assets/workbench/geomoz-workbench-profile.ts",import.meta.url),"utf8"));
+const editorPath=resolve(root,"packages/plugins/src/plugins/maplibre-geo-editor.ts");
+let editor=readFileSync(editorPath,"utf8");
+editor='import { GEOMOZ_ROLLOUT } from "../geomoz-workbench-profile";\n'+editor;
+editor=once(editor,"    ...GEO_EDITOR_OPTIONS,","    ...GEO_EDITOR_OPTIONS,\n    ...(!GEOMOZ_ROLLOUT.advancedDrawing ? {\n      drawModes: GEO_EDITOR_OPTIONS.drawModes.filter(mode => [\"polygon\",\"line\",\"rectangle\",\"marker\"].includes(mode)),\n      editModes: GEO_EDITOR_OPTIONS.editModes.filter(mode => [\"select\",\"drag\",\"change\",\"delete\"].includes(mode)),\n      showFeatureProperties: false,\n      enableAttributeEditing: false,\n    } : {}),","curated study-area editor");
+editor=once(editor,"if (isGeometryEditSession) geoEditorControl?.closeAttributeEditor();","if (isGeometryEditSession || !GEOMOZ_ROLLOUT.advancedDrawing) geoEditorControl?.closeAttributeEditor();","hide massing attribute form");
+writeFileSync(editorPath,editor);
 const marker=resolve(root,"geomoz-workbench.json");
 writeFileSync(marker,JSON.stringify({interface:"geomoz-workbench",version:1,engine:"f69688ed5be750c496b51b865cee513d910a433f"},null,2)+"\n");
 console.log("GeoMoz Workbench React interface prepared; engine capability gates, dialogs and map APIs retained.");

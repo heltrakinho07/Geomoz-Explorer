@@ -45,3 +45,5 @@ SQL/Python/modelador, catálogos e formatos especializados, ferramentas não cur
 O mesmo filtro abrange a faixa superior, pesquisa fixa e dinâmica, atalhos, menus de dados, listas dos diálogos, reexecução de ferramentas no histórico e menu de contexto. O Browser genérico e o arranque automático do S3 deixam de ocupar o catálogo. Nenhum projecto, camada, histórico ou preferência existente é apagado.
 
 As propriedades próprias mantêm renomeação, ordem, grupo e exportação GeoJSON com os guardas de colaboração, permissões e modo de leitura. O painel completo original continua montado e oculto. O tema global permanece partilhado com todo o sistema.
+
+O editor de área oferece polígono, linha, rectângulo e ponto, com selecção, deslocação, edição de vértices e remoção. Modos avançados e volumetria 3D, incluindo o formulário de altura, ficam ocultos através de advancedDrawing; os modos e atributos originais são preservados.
