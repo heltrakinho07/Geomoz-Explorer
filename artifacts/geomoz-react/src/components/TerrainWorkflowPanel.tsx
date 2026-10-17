@@ -23,6 +23,7 @@ export default function TerrainWorkflowPanel({ aoi, rasters, onComplete, onShowP
   const [layerId, setLayerId] = useState("");
   const [options, setOptions] = useState<TerrainOptions>({ ...DEFAULT_TERRAIN_OPTIONS });
   const [clip, setClip] = useState(false);
+  const [acquisitionNote, setAcquisitionNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<TerrainProgress | null>(null);
@@ -39,7 +40,7 @@ export default function TerrainWorkflowPanel({ aoi, rasters, onComplete, onShowP
   async function start() {
     if (controller.current) return;
     const abort = new AbortController(); controller.current = abort;
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setAcquisitionNote(null);
     setProgress({ completed: 0, total: options.hydrology ? 10 : 5, label: "A obter o DEM…" });
     try {
       const params = { ...options, elevationUnit: source === "gee" ? "metres" as const : options.elevationUnit, bbox: clip ? bbox : undefined };
@@ -59,6 +60,11 @@ export default function TerrainWorkflowPanel({ aoi, rasters, onComplete, onShowP
         }
         const data = await response.json();
         if (typeof data.downloadUrl !== "string" || !data.downloadUrl.startsWith("https://")) throw new Error("O Earth Engine não devolveu um URL de download válido.");
+        if (Number.isFinite(data.scale) && data.scale >= 1) {
+          if (data.scale > 1000) throw new Error("A área seleccionada é demasiado extensa. Desenhe uma área menor para o DEM.");
+          params.resolution = data.scale;
+          if (data.resolutionAdjusted) setAcquisitionNote(`DEM obtido a ${data.scale} m em vez de ${options.resolution} m para respeitar o limite de download. Use uma área menor para mais detalhe.`);
+        }
         bytes = await readBoundedDem(await fetch(data.downloadUrl, { signal: abort.signal }), abort.signal);
         name = `Copernicus GLO-30 via GeoMoz/GEE (focal mean 3 m) — ${aoi.label}`;
       } else {
@@ -71,13 +77,14 @@ export default function TerrainWorkflowPanel({ aoi, rasters, onComplete, onShowP
           const url = await resolveGISRasterRemoteUrl(selected);
           if (!url) throw new Error("A camada não tem um ficheiro acessível.");
           bytes = await readBoundedDem(await fetch(url, { signal: abort.signal }), abort.signal);
-        } else throw new Error("Seleccione um GeoTIFF de elevação.");
+        } else throw new Error("Seleccione um GeoTIFF ou HGT de elevação.");
       }
       abort.signal.throwIfAborted();
       const output = await runTerrainWorkflow(bytes, name, params, abort.signal, setProgress);
       abort.signal.throwIfAborted();
       if (!mounted.current) return;
       onComplete(output); setResult(output);
+      if (output.report.grid.resolution !== options.resolution) setAcquisitionNote(`Análise concluída com grelha de ${output.report.grid.resolution} m. Consulte os parâmetros e a proveniência para a resolução efectiva.`);
     } catch (cause) {
       if (mounted.current) setError(abort.signal.aborted ? "Análise cancelada. Os resultados anteriores continuam disponíveis." : cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -100,11 +107,11 @@ export default function TerrainWorkflowPanel({ aoi, rasters, onComplete, onShowP
       <legend className="mb-2 font-semibold">1. Escolher o DEM</legend>
       <label className="block">Fonte
         <select className={field} value={source} onChange={e => setSource(e.target.value as typeof source)}>
-          <option value="file">GeoTIFF do computador</option><option value="layer">Camada raster do projecto</option><option value="gee">Copernicus DEM · Earth Engine</option>
+          <option value="file">GeoTIFF ou SRTM HGT do computador</option><option value="layer">Camada raster do projecto</option><option value="gee">Copernicus DEM · Earth Engine</option>
         </select>
       </label>
-      {source === "file" && <label className="block text-xs">GeoTIFF de elevação, uma banda, até 64 MiB
-        <input className={field + " mt-1"} type="file" accept=".tif,.tiff,image/tiff" onChange={e => setFile(e.target.files?.[0] ?? null)} />
+      {source === "file" && <label className="block text-xs">GeoTIFF de elevação, uma banda, até 64 MiB; ou SRTM HGT (.hgt)
+        <input className={field + " mt-1"} type="file" accept=".tif,.tiff,.hgt,image/tiff" onChange={e => setFile(e.target.files?.[0] ?? null)} />
       </label>}
       {source === "layer" && <label className="block">Camada de elevação
         <select className={field} value={selected?.id ?? ""} onChange={e => setLayerId(e.target.value)}>
@@ -131,7 +138,7 @@ export default function TerrainWorkflowPanel({ aoi, rasters, onComplete, onShowP
       <label className="block">Resolução da grelha (m)
         <input className={field} type="number" min="1" max="1000" value={options.resolution} onChange={e => patch("resolution", Number(e.target.value))} />
       </label>
-      <p className="text-xs text-slate-500">Grelha UTM automática, até 1 milhão de células. Uma célula menor não aumenta o detalhe da fonte.</p>
+      <p className="text-xs text-slate-500">Grelha UTM automática, até 1 milhão de células. A resolução pode ser ajustada em áreas grandes. Uma célula menor não aumenta o detalhe da fonte.</p>
       <div className="grid grid-cols-2 gap-2">
         <label>Azimute solar (°)<input className={field} type="number" min="0" max="360" value={options.azimuth} onChange={e => patch("azimuth", Number(e.target.value))} /></label>
         <label>Altura solar (°)<input className={field} type="number" min="1" max="90" value={options.altitude} onChange={e => patch("altitude", Number(e.target.value))} /></label>
@@ -151,6 +158,7 @@ export default function TerrainWorkflowPanel({ aoi, rasters, onComplete, onShowP
     {progress && <div role="status" aria-live="polite" className="space-y-1 text-xs">
       <span>{progress.label}</span><progress className="w-full accent-teal-600" value={progress.completed} max={progress.total} />
     </div>}
+    {acquisitionNote && <p role="status" className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">{acquisitionNote}</p>}
     {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900 dark:bg-rose-950 dark:text-rose-200">{error}</p>}
     {result && <div className="space-y-2">
       <h4 className="font-semibold">3. Resultados ({result.products.length})</h4>

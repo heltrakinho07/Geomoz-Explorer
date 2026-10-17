@@ -109,7 +109,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Run GIS processing smoke tests
-        run: pnpm --dir artifacts/geomoz-react exec vitest run src/components/__tests__/GISWorkspaceMapLibre.test.tsx src/lib/__tests__/gis-local-dem-project.test.ts src/lib/__tests__/gis-local-geotiff.test.ts src/lib/__tests__/gis-workspace-pro-storage.test.ts src/lib/__tests__/gis-workspace-device-storage.test.ts src/lib/__tests__/terrain-workflow.test.ts src/lib/__tests__/terrain-workflow-client.test.ts src/components/__tests__/TerrainWorkflowPanel.test.tsx src/lib/__tests__/gis-workspace-sync-readiness.test.ts src/lib/__tests__/gis-geos-reference.test.ts src/lib/__tests__/gis-workspace-processing.test.ts src/lib/__tests__/gis-vector-engine.test.ts src/lib/__tests__/gis-workspace-sync-queue.test.ts src/lib/__tests__/gis-vector-runner.test.ts src/lib/__tests__/whitebox-runtime.test.ts src/lib/__tests__/ogc-wfs.test.ts src/lib/__tests__/gis-data-sources.test.ts src/lib/__tests__/gis-model-graph.test.ts src/lib/__tests__/gis-processing-jobs.test.ts
+        run: pnpm --dir artifacts/geomoz-react exec vitest run src/components/__tests__/GISWorkspaceOverview.test.tsx src/components/__tests__/GISWorkspaceMapLibre.test.tsx src/lib/__tests__/gis-local-dem-project.test.ts src/lib/__tests__/gis-local-geotiff.test.ts src/lib/__tests__/gis-workspace-pro-storage.test.ts src/lib/__tests__/gis-workspace-device-storage.test.ts src/lib/__tests__/terrain-workflow.test.ts src/lib/__tests__/terrain-workflow-client.test.ts src/components/__tests__/TerrainWorkflowPanel.test.tsx src/lib/__tests__/gis-workspace-sync-readiness.test.ts src/lib/__tests__/gis-geos-reference.test.ts src/lib/__tests__/gis-workspace-processing.test.ts src/lib/__tests__/gis-vector-engine.test.ts src/lib/__tests__/gis-workspace-sync-queue.test.ts src/lib/__tests__/gis-vector-runner.test.ts src/lib/__tests__/whitebox-runtime.test.ts src/lib/__tests__/ogc-wfs.test.ts src/lib/__tests__/gis-data-sources.test.ts src/lib/__tests__/gis-model-graph.test.ts src/lib/__tests__/gis-processing-jobs.test.ts
         env:
           CI: "true"
 
@@ -176,6 +176,35 @@ jobs:
           path: artifacts/geomoz-react/dist/public/
           retention-days: 7
           if-no-files-found: error
+
+  workspace-browser:
+    name: Workspace browser regression
+    runs-on: ubuntu-latest
+    needs: [build]
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: artifacts/geomoz-react/dist/public
+      - name: Install pinned browser test runtime
+        run: |
+          npm install --prefix "$RUNNER_TEMP/gis-browser" playwright@1.51.1
+          node "$RUNNER_TEMP/gis-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Verify drawing, HGT import and slope output
+        run: node artifacts/geomoz-react/integration/workspace-browser-smoke.cjs
+        env:
+          GIS_PLAYWRIGHT_ROOT: ${{ runner.temp }}/gis-browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: workspace-browser-screenshots
+          path: workspace-browser-artifacts/
+          retention-days: 7
 
   lint:
     name: Lint (Prettier)
