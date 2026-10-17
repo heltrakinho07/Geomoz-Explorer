@@ -73,6 +73,28 @@ async function settleRecovery(page){
   await page.getByText("Nenhuma correspondência",{exact:true}).waitFor();
   await page.getByRole("textbox",{name:"Pesquisar camadas"}).fill("");
   await page.screenshot({path:"workbench-browser-artifacts/02-geomoz-data-dark.png",fullPage:true});
+
+  // Exercise seismic UI and map-store import with a deterministic USGS fixture.
+  await page.route("https://earthquake.usgs.gov/fdsnws/event/1/query**",route=>route.fulfill({
+    status:200,contentType:"application/json",
+    headers:{"access-control-allow-origin":"*"},
+    body:JSON.stringify({type:"FeatureCollection",features:[
+      {type:"Feature",id:"mz-test-001",geometry:{type:"Point",coordinates:[34.61,-18.98,17.5]},
+      properties:{mag:4.3,magType:"mb",time:1767225600000,type:"earthquake",
+      place:"Centro de Moçambique",net:"us",url:"https://earthquake.usgs.gov/earthquakes/eventpage/mz-test-001"}}
+    ]})
+  }));
+  await page.locator('[data-task="seismic"]').click();
+  await page.getByTestId("geomoz-seismic-panel").waitFor();
+  await page.getByRole("button",{name:"Consultar eventos"}).click();
+  await page.getByTestId("geomoz-seismic-panel").getByText("1", {exact:true}).first().waitFor();
+  await page.getByRole("button",{name:"Adicionar ao mapa"}).click();
+  await page.locator('.gm-layer-row[data-layer-name^="Sismicidade USGS"]').first().waitFor();
+  assert.equal(await page.locator('.gm-layer-row[data-layer-name^="Sismicidade USGS"]').count(),1);
+  await page.screenshot({path:"workbench-browser-artifacts/02b-seismic-usgs.png",fullPage:true});
+  await page.getByRole("button",{name:"Fechar consulta sísmica"}).click();
+  console.log("USGS catalog normalised and imported through the real GIS layer store.");
+
   await page.locator('[data-task="analysis"]').click();
   await page.locator('[data-command="proc.vector.buffer"]').click();
   const toolDialog=page.getByRole("dialog").filter({hasText:/Buffer|Zona tampão/i}).first();
@@ -145,11 +167,12 @@ async function settleRecovery(page){
   assert.equal(await viewer.locator("[data-command^='project.'],[data-command^='add.'],[data-command^='proc.'],[data-command^='settings.']").count(),0,"Viewer ribbon must never expose authoring actions");
   assert.equal(await viewer.getByRole("textbox",{name:"Nome do projecto"}).isEditable(),false);
   assert.equal(await viewer.locator(".gm-task-tabs button").count(),1);
+  assert.equal(await viewer.locator('[data-task="seismic"]').count(),0,"Viewer cannot import seismic events");
   await viewer.getByTestId("geomoz-theme-toggle").click();
   await viewer.close();
   console.log("Read-only viewer keeps camera and theme controls while withholding authoring commands.");
   assert.deepEqual(errors,[],"No uncaught React/runtime errors");
-  await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,resultNavigator:true,fullMenus:true,themePersistence:true,crossTabTheme:true,mobile:true,viewerReadOnly:true,duplicateNamesGuarded:true,errors},null,2));
+  await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,resultNavigator:true,fullMenus:true,themePersistence:true,crossTabTheme:true,mobile:true,viewerReadOnly:true,duplicateNamesGuarded:true,seismicUsgs:true,errors},null,2));
   console.log("GeoMoz Workbench: owned UI, real import, layer controls, analysis dialog, menus, dark/light persistence and mobile layout passed.");
  }catch(error){console.error("Visible interface:",(await page.locator("body").innerText()).slice(-12000));await page.screenshot({path:"workbench-browser-artifacts/failure.png",fullPage:true}).catch(()=>{});throw error;}
  finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
