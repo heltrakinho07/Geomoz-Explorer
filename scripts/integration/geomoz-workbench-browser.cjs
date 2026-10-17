@@ -92,6 +92,23 @@ async function settleRecovery(page){
   await page.screenshot({path:"workbench-browser-artifacts/03b-geomoz-results-dark.png",fullPage:true});
   await page.locator(".gm-result-card>button").first().click();
   await page.locator(".gm-layer-row[data-selected=true]").waitFor();
+  // Repeated analyses can return identical output labels. Never open an
+  // arbitrary first match when the history only identifies outputs by name.
+  await page.locator('[data-task="analysis"]').click();
+  await page.locator('[data-command="proc.vector.buffer"]').click();
+  await toolDialog.waitFor();
+  await toolDialog.locator("select#layer").selectOption(inputValue);
+  await toolDialog.locator("input#distance").fill("2");
+  await toolDialog.getByRole("button",{name:"Executar",exact:true}).click();
+  await page.waitForFunction(()=>document.querySelectorAll(".gm-layer-row").length>=3);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button",{name:"Resultados",exact:true}).click();
+  await page.waitForFunction(()=>document.querySelectorAll(".gm-result-card").length===2);
+  const outputLinks=page.locator(".gm-result-card>button");
+  assert.equal(await outputLinks.count(),2);
+  for(const link of await outputLinks.all())assert.equal(await link.isDisabled(),true,"Duplicate names must never open the wrong layer");
+  await page.locator(".gm-catalog-nav button").first().click();
+  console.log("Duplicate output names are reported without selecting an arbitrary layer.");
   await page.locator('[data-task="project"]').click();
   await page.getByRole("button",{name:"Mais opções",exact:true}).click();
   await page.locator('.gm-menu-slot:not([hidden]) button').first().click();
@@ -132,7 +149,7 @@ async function settleRecovery(page){
   await viewer.close();
   console.log("Read-only viewer keeps camera and theme controls while withholding authoring commands.");
   assert.deepEqual(errors,[],"No uncaught React/runtime errors");
-  await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,resultNavigator:true,fullMenus:true,themePersistence:true,crossTabTheme:true,mobile:true,viewerReadOnly:true,errors},null,2));
+  await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,resultNavigator:true,fullMenus:true,themePersistence:true,crossTabTheme:true,mobile:true,viewerReadOnly:true,duplicateNamesGuarded:true,errors},null,2));
   console.log("GeoMoz Workbench: owned UI, real import, layer controls, analysis dialog, menus, dark/light persistence and mobile layout passed.");
  }catch(error){console.error("Visible interface:",(await page.locator("body").innerText()).slice(-12000));await page.screenshot({path:"workbench-browser-artifacts/failure.png",fullPage:true}).catch(()=>{});throw error;}
  finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
