@@ -67,7 +67,7 @@ export function GeoMozLayerPanel(props:Props) {
         <div>{run.status==="error"?<AlertCircle size={16}/>:<CheckCircle2 size={16}/>}<strong>{run.toolName}</strong><span>{run.status==="error"?"Falhou":run.status==="success"?"Concluído":run.status}</span></div>
         <p>{new Date(run.startedAt).toLocaleString("pt-MZ")} · {run.engine}</p>
         {run.error&&<p role="status">{run.error}</p>}
-        {run.outputLayerNames?.map((name,index)=>{const layer=layers.find(item=>item.name===name);return <button key={name+index} type="button" disabled={!layer} title={layer?"Seleccionar e enquadrar saída":"Esta saída já não está no mapa"} onClick={()=>{if(layer){select(layer.id);props.mapControllerRef.current?.fitLayer(layer);setResults(false);}}}><Layers3 size={13}/>{name}<ChevronRight size={13}/></button>;})}
+        {run.outputLayerNames?.map((name,index)=>{const matches=layers.filter(item=>item.name===name);const layer=matches.length===1?matches[0]:undefined;return <button key={name+index} type="button" disabled={!layer} title={layer?"Seleccionar e enquadrar saída":matches.length>1?"Existem várias camadas com este nome. Seleccione a saída no catálogo.":"Camada não encontrada com este nome no mapa."} onClick={()=>{if(layer){select(layer.id);props.mapControllerRef.current?.fitLayer(layer);setResults(false);}}}><Layers3 size={13}/>{name}<ChevronRight size={13}/></button>;})}
       </article>)}
     </section>}
     <div className="gm-engine-panel" hidden={!advanced}><EngineLayerPanel {...props} autoCollapse={false} collapsed={false} onCollapsedChange={()=>changeCollapsed(true)} hideOwnRail /></div>

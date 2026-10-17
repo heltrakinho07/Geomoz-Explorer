@@ -68,12 +68,14 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   const setName=useAppStore(s=>s.setProjectName);
   const layers=useAppStore(s=>s.layers);
   const [more,setMore]=useState(false);
-  const registry=new Map(commands.map(command=>[command.id,command]));
-  const groups=ACTIONS[task].map(group=>({...group,items:group.ids.flatMap(id=>{
+  const activeTask:Task=viewer?"map":task;
+  const visibleCommands=viewer?commands.filter(command=>command.id.startsWith("view.")):commands;
+  const registry=new Map(visibleCommands.map(command=>[command.id,command]));
+  const groups=ACTIONS[activeTask].map(group=>({...group,items:group.ids.flatMap(id=>{
     const command=registry.get(id);
     return command ? [command] : [];
   })})).filter(group=>group.items.length);
-  return <TaskContext.Provider value={task}>
+  return <TaskContext.Provider value={activeTask}>
     <header className="gm-workbench-chrome" data-testid="geomoz-workbench-chrome">
       <div className="gm-titlebar">
         <a className="gm-brand" href="/" aria-label="GeoMoz — página inicial"><img src="/gis-workspace/favicon.svg" alt="" /><span>Geo<span>Moz</span><small>GIS WORKSPACE</small></span></a>
@@ -90,11 +92,11 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
             aria-label={themeMode==="dark"?"Activar modo claro":"Activar modo nocturno"} title={themeMode==="dark"?"Activar modo claro":"Activar modo nocturno"}>{themeMode==="dark"?<Sun size={18}/>:<Moon size={18}/>}</button>
         </div>
       </div>
-      <div className="gm-taskbar"><nav aria-label="Tarefas GIS" className="gm-task-tabs">{TASKS.map(([id,label])=>
-        <button key={id} type="button" aria-current={task===id?"page":undefined} onClick={()=>{setTask(id);setMore(false);}} data-task={id}>{label}</button>)}</nav>
+      <div className="gm-taskbar"><nav aria-label="Tarefas GIS" className="gm-task-tabs">{TASKS.filter(([id])=>!viewer||id==="map").map(([id,label])=>
+        <button key={id} type="button" aria-current={activeTask===id?"page":undefined} onClick={()=>{setTask(id);setMore(false);}} data-task={id}>{label}</button>)}</nav>
         <span className="gm-session-badge"><i/>{viewer?"Vista de leitura":"Projecto aberto"}<span className="gm-session-detail"> · {layers.length} camada{layers.length===1?"":"s"}</span></span>
       </div>
-      <div className="gm-command-ribbon" aria-label={"Comandos de "+TASKS.find(([id])=>id===task)?.[1]}>
+      <div className="gm-command-ribbon" aria-label={"Comandos de "+TASKS.find(([id])=>id===activeTask)?.[1]}>
         <div className="gm-ribbon-groups">{groups.map(group=><section className="gm-ribbon-group" key={group.label}><div>{group.items.map(command=>{
           const Icon=command.icon??CommandIcon;
           return <button key={command.id} type="button" data-command={command.id} disabled={!!command.disabledReason}
