@@ -126,7 +126,7 @@ async function settleRecovery(page){
   await page.waitForFunction(()=>document.querySelectorAll(".gm-layer-row").length>=2);
   await page.screenshot({path:"workbench-browser-artifacts/03-geomoz-analysis-dark.png",fullPage:true});
   await page.keyboard.press("Escape");
-  await page.getByRole("button",{name:"Resultados",exact:true}).click();
+  await page.getByTestId("geomoz-layer-catalog").getByRole("button",{name:"Resultados",exact:true}).click();
   await page.locator(".gm-result-card").filter({hasText:"Concluído"}).first().waitFor();
   console.log("Buffer executed; output layer and result history available.");
   await page.screenshot({path:"workbench-browser-artifacts/03b-geomoz-results-dark.png",fullPage:true});
@@ -142,7 +142,7 @@ async function settleRecovery(page){
   await toolDialog.getByRole("button",{name:"Executar",exact:true}).click();
   await page.waitForFunction(()=>document.querySelectorAll(".gm-layer-row").length>=3);
   await page.keyboard.press("Escape");
-  await page.getByRole("button",{name:"Resultados",exact:true}).click();
+  await page.getByTestId("geomoz-layer-catalog").getByRole("button",{name:"Resultados",exact:true}).click();
   await page.waitForFunction(()=>document.querySelectorAll(".gm-result-card").length===2);
   const outputLinks=page.locator(".gm-result-card>button");
   assert.equal(await outputLinks.count(),2);
