@@ -524,7 +524,7 @@ export default function GeoProcessamento({
       try {
         const stats = await getGISRasterBandStats(layer, band, signal);
         if (!stats) throw new Error("Não foi possível calcular estatísticas desta banda.");
-        setRasterBandStats((previous) => ({ ...previous, [key]: stats }));
+        if (!signal?.aborted) setRasterBandStats((previous) => ({ ...previous, [key]: stats }));
       } catch (error) {
         if (signal?.aborted) return;
         setRasterStatsErrors((previous) => ({
@@ -548,28 +548,31 @@ export default function GeoProcessamento({
     [rasterLayers, secondWhiteboxRasterId]
   );
 
+  // Loading state and renderer metadata must not cancel the request they just started.
+  const rasterStatsSource = selectedWhiteboxRaster?.file ?? selectedWhiteboxRaster?.remoteUrl ?? selectedWhiteboxRaster?.stacSource;
+  const rasterStatsBands = JSON.stringify([
+    selectedWhiteboxRaster?.rasterState?.mode ?? "single",
+    selectedWhiteboxRaster?.rasterState?.bands ?? [1],
+  ]);
   React.useEffect(() => {
     if (!selectedWhiteboxRaster) return;
-    const mode = selectedWhiteboxRaster.rasterState?.mode ?? "single";
-    const configuredBands = selectedWhiteboxRaster.rasterState?.bands?.length
-      ? selectedWhiteboxRaster.rasterState.bands
-      : [1];
-    const bands =
-      mode === "rgb" ? configuredBands.slice(0, 3) : [configuredBands[0] ?? 1];
-    const band = bands.find((candidate) => {
-      const key = rasterStatsKey(selectedWhiteboxRaster.id, candidate);
-      return !rasterBandStats[key] && rasterStatsLoadingKey !== key;
-    });
-    if (!band) return;
-
+    const layer = selectedWhiteboxRaster;
+    const configured = layer.rasterState?.bands?.length ? layer.rasterState.bands : [1];
+    const bands = [...new Set(layer.rasterState?.mode === "rgb" ? configured.slice(0, 3) : [configured[0] ?? 1])];
     const controller = new AbortController();
-    void loadRasterBandStats(selectedWhiteboxRaster, band, controller.signal);
+    void (async () => {
+      for (const band of bands) {
+        if (controller.signal.aborted) break;
+        if (!rasterBandStats[rasterStatsKey(layer.id, band)])
+          await loadRasterBandStats(layer, band, controller.signal);
+      }
+    })();
     return () => controller.abort();
   }, [
     loadRasterBandStats,
-    rasterBandStats,
-    rasterStatsLoadingKey,
-    selectedWhiteboxRaster,
+    selectedWhiteboxRaster?.id,
+    rasterStatsSource,
+    rasterStatsBands,
   ]);
 
   React.useEffect(() => {
