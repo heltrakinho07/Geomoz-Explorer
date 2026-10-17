@@ -510,7 +510,9 @@ export default function Explorer() {
             <nav aria-label="Menus GIS Workspace" className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none]">
               {([
                 ["Abrir projecto", "import-project", FolderOpen],
-                ["Guardar projecto", "export-project", Save],
+                ["Exportar projecto", "export-project", Save],
+                ["Guardar no dispositivo", "save-device", Save],
+                ["Restaurar cópia", "restore-device", FolderOpen],
                 ["Adicionar dados", "add-file", Upload],
                 ["DEM Global", "download-dem", Mountain],
                 ["Processamento", "processing", Wrench],
@@ -526,7 +528,7 @@ export default function Explorer() {
                 </button>
               ))}
             </nav>
-            <span className="hidden shrink-0 text-[10px] font-semibold text-emerald-400 lg:inline">Sessão local · sem Firebase</span>
+            <span className="hidden shrink-0 text-[10px] font-semibold text-emerald-400 lg:inline" title="Sem sincronização automática. Cópia opcional no dispositivo; nuvem PRO em preparação.">GIS local · nuvem PRO em preparação</span>
           </header>
         )}
 
