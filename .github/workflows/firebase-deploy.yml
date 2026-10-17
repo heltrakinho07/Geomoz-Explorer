@@ -93,7 +93,7 @@ jobs:
 
       - name: Add GeoMoz branding and original license to published GeoLibre
         run: |
-          node --test scripts/tests/brand-geolibre-web.test.mjs
+          node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs
           node scripts/brand-geolibre-web.mjs \
             .geolibre-upstream/apps/geolibre-desktop/dist \
             artifacts/geomoz-react/dist/public/gis-workspace \
@@ -102,6 +102,8 @@ jobs:
           test -s artifacts/geomoz-react/dist/public/gis-workspace/GEOLIBRE-LICENSE.txt
           test -s artifacts/geomoz-react/dist/public/gis-workspace/geomoz-brand.css
           test -s artifacts/geomoz-react/dist/public/gis-workspace/favicon.svg
+          test -s artifacts/geomoz-react/dist/public/gis-workspace/geomoz-shell.js
+          grep -q 'data-geomoz-shell="true"' artifacts/geomoz-react/dist/public/gis-workspace/index.html
           grep -q '"GeoMoz GIS Workspace"' artifacts/geomoz-react/dist/public/gis-workspace/manifest.webmanifest
           grep -q '/gis-workspace/' artifacts/geomoz-react/dist/public/gis-workspace/index.html
           grep -q '"GeoMoz GIS Workspace"' artifacts/geomoz-react/dist/public/gis-workspace/deployment.json
@@ -127,7 +129,8 @@ jobs:
           BASE="https://geoprocessamento-426809.web.app/gis-workspace"
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/" -o "$RUNNER_TEMP/geolibre-index.html"
           grep -q 'id="root"' "$RUNNER_TEMP/geolibre-index.html"
-          grep -q 'geomoz-back-link' "$RUNNER_TEMP/geolibre-index.html"
+          grep -q 'data-geomoz-shell="true"' "$RUNNER_TEMP/geolibre-index.html"
+          grep -q 'aria-current="page">GIS Workspace' "$RUNNER_TEMP/geolibre-index.html"
           grep -q '/gis-workspace/assets/' "$RUNNER_TEMP/geolibre-index.html"
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/deployment.json" -o "$RUNNER_TEMP/geolibre-policy.json"
           python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["branding"]["appName"]=="GeoMoz GIS Workspace"; assert d["sharing"]["shareUrl"]=="off"' "$RUNNER_TEMP/geolibre-policy.json"
@@ -136,6 +139,9 @@ jobs:
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/geomoz-brand.css" -o "$RUNNER_TEMP/geomoz-gis-theme.css"
           grep -q -- '--geomoz-blue: #0284c7' "$RUNNER_TEMP/geomoz-gis-theme.css"
           grep -q -- '#root header' "$RUNNER_TEMP/geomoz-gis-theme.css"
+          grep -q -- 'geomoz-portal-top' "$RUNNER_TEMP/geomoz-gis-theme.css"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/geomoz-shell.js" -o "$RUNNER_TEMP/geomoz-gis-shell.js"
+          grep -q -- 'getNativeHeader' "$RUNNER_TEMP/geomoz-gis-shell.js"
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/manifest.webmanifest" -o "$RUNNER_TEMP/geomoz-gis-manifest.json"
           python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["name"]=="GeoMoz GIS Workspace" and d["scope"]=="/gis-workspace/"' "$RUNNER_TEMP/geomoz-gis-manifest.json"
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/favicon.svg" -o "$RUNNER_TEMP/geomoz-gis-favicon.svg"
