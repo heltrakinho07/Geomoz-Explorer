@@ -14,6 +14,20 @@ const server=createServer(async(req,res)=>{
   res.writeHead(200,{"Content-Type":mime[path.extname(target)]||"application/octet-stream"});res.end(await readFile(target));
  }catch{res.writeHead(500).end();}
 });
+async function settleRecovery(page){
+ // Reloading a dirty synthetic project can legitimately offer recovery.
+ // Resolve that real UI before testing controls behind its modal overlay.
+ const recovery=page.getByRole("dialog").filter({has:page.getByRole("heading",{name:"Recuperar o trabalho não salvo?",exact:true})});
+ const offered=await recovery.waitFor({state:"visible",timeout:4000}).then(()=>true,error=>{
+  if(error.name==="TimeoutError")return false;
+  throw error;
+ });
+ if(offered){
+  await recovery.getByRole("button",{name:"Descartar",exact:true}).click();
+  await recovery.waitFor({state:"hidden"});
+  console.log("Dismissed recovery for this test's synthetic, disposable project.");
+ }
+}
 (async()=>{
  await mkdir("workbench-browser-artifacts",{recursive:true});
  await new Promise(resolve=>server.listen(4182,"127.0.0.1",resolve));
@@ -85,10 +99,12 @@ const server=createServer(async(req,res)=>{
   await page.keyboard.press("Escape");
   await page.reload();
   await page.getByTestId("geomoz-workbench-chrome").waitFor();
+  await settleRecovery(page);
   assert.equal(await page.evaluate(()=>window.GeoMozTheme.getTheme()),"dark");
   const other=await context.newPage();
   await other.goto("http://127.0.0.1:4182/gis-workspace/");
   await other.getByTestId("geomoz-workbench-chrome").waitFor();
+  await settleRecovery(other);
   await other.getByTestId("geomoz-theme-toggle").click();
   await page.waitForFunction(()=>document.documentElement.dataset.geomozTheme==="light");
   await other.close();
@@ -96,6 +112,7 @@ const server=createServer(async(req,res)=>{
   await page.setViewportSize({width:390,height:844});
   await page.reload();
   await page.getByTestId("geomoz-workbench-chrome").waitFor();
+  await settleRecovery(page);
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"Mobile viewport must not overflow horizontally");
   await page.getByRole("button",{name:/^Expandir catálogo$/i}).first().click();
   await page.getByTestId("geomoz-layer-catalog").waitFor();
@@ -106,6 +123,7 @@ const server=createServer(async(req,res)=>{
   const viewer=await context.newPage();
   await viewer.goto("http://127.0.0.1:4182/gis-workspace/?layout=viewer");
   await viewer.getByTestId("geomoz-workbench-chrome").waitFor();
+  await settleRecovery(viewer);
   await viewer.locator("main canvas").first().waitFor();
   assert.equal(await viewer.locator("[data-command^='project.'],[data-command^='add.'],[data-command^='proc.'],[data-command^='settings.']").count(),0,"Viewer ribbon must never expose authoring actions");
   assert.equal(await viewer.getByRole("textbox",{name:"Nome do projecto"}).isEditable(),false);
