@@ -109,14 +109,17 @@ describe("GIS workbench in-memory mode", () => {
     expect(getGISSessionWorkspace()).toBeNull();
   });
 
-  it("does not load Firestore/Storage/IndexedDB or autoupload project files in GIS Workspace", () => {
+  it("never automatically uploads project files and keeps IndexedDB as opt-in", () => {
     const source = read("src/pages/GeoProcessamento.tsx");
     for (const forbidden of [
       "gisWorkspaceCloudService", "loadGISWorkspaceFromCloud",
       "syncGISWorkspaceToCloud", "saveGISWorkspaceSnapshot",
-      "loadGISWorkspaceRasterFiles", "indexedDB", "uploadBytes("
+      "uploadBytes("
     ]) expect(source).not.toContain(forbidden);
     expect(source).toContain("getGISSessionWorkspace()");
+    expect(source).toContain('workspaceStorageMode !== "indexeddb"');
+    expect(source).toContain("loadGISWorkspaceSnapshot(workspaceCacheId)");
+    expect(source).toContain("Sincronização PRO/Premium via Firebase");
     expect(source).toContain("downloadGlobalDem(demExtent");
     expect(source).toContain("data-testid=\"gis-local-project-input\"");
   });
