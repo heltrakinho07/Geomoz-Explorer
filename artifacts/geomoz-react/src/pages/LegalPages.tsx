@@ -116,20 +116,20 @@ function LegalPage({ kind }: { kind: Kind }) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800">
-      <header className="border-b border-slate-200 bg-white">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200">
+      <header className="border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-5 sm:px-8">
-          <a href="/" className="flex items-center gap-3 text-slate-950 hover:text-sky-700">
+          <a href="/" className="flex items-center gap-3 text-slate-950 dark:text-slate-100 hover:text-sky-700 dark:text-sky-300">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-600 text-white"><Globe2 size={22} aria-hidden="true" /></span>
-            <span><span className="block text-base font-extrabold">GeoMoz Explorer</span><span className="text-xs text-slate-500">GEOLÍTHICA · Geospatial Intelligence</span></span>
+            <span><span className="block text-base font-extrabold">GeoMoz Explorer</span><span className="text-xs text-slate-500 dark:text-slate-400">GEOLÍTHICA · Geospatial Intelligence</span></span>
           </a>
           <div className="flex items-center gap-4">
-            <div role="group" aria-label="Idioma / Language" className="flex rounded-lg border border-slate-200 p-1">
+            <div role="group" aria-label="Idioma / Language" className="flex rounded-lg border border-slate-200 dark:border-slate-700 p-1">
               {(["pt", "en"] as const).map((code) => (
-                <button type="button" key={code} onClick={() => changeLanguage(code)} aria-pressed={language === code} className={"rounded-md px-3 py-1.5 text-xs font-bold uppercase " + (language === code ? "bg-sky-600 text-white" : "text-slate-600 hover:bg-slate-100")}>{code}</button>
+                <button type="button" key={code} onClick={() => changeLanguage(code)} aria-pressed={language === code} className={"rounded-md px-3 py-1.5 text-xs font-bold uppercase " + (language === code ? "bg-sky-600 text-white" : "text-slate-600 dark:text-slate-300 hover:bg-slate-100")}>{code}</button>
               ))}
             </div>
-            <a href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-sky-700"><ArrowLeft size={17} />{language === "pt" ? "Voltar" : "Back"}</a>
+            <a href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:text-sky-700 dark:text-sky-300"><ArrowLeft size={17} />{language === "pt" ? "Voltar" : "Back"}</a>
           </div>
         </div>
       </header>
@@ -146,36 +146,36 @@ function LegalPage({ kind }: { kind: Kind }) {
           </div>
         </section>
         <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14">
-          <div className="mb-10 rounded-2xl border border-sky-100 bg-white p-6 shadow-sm sm:p-8">
-            <p className="max-w-4xl text-base leading-8 text-slate-700">{info.introduction}</p>
+          <div className="mb-10 rounded-2xl border border-sky-100 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm sm:p-8">
+            <p className="max-w-4xl text-base leading-8 text-slate-700 dark:text-slate-300">{info.introduction}</p>
             <div className="mt-6 grid gap-3 md:grid-cols-3">
               {info.highlights.map((highlight) => (
-                <div key={highlight} className="flex items-start gap-2.5 rounded-xl bg-sky-50 p-4 text-sm leading-6"><CheckCircle2 className="mt-0.5 shrink-0 text-sky-600" size={18} /><span>{highlight}</span></div>
+                <div key={highlight} className="flex items-start gap-2.5 rounded-xl bg-sky-50 dark:bg-sky-950 p-4 text-sm leading-6"><CheckCircle2 className="mt-0.5 shrink-0 text-sky-600" size={18} /><span>{highlight}</span></div>
               ))}
             </div>
           </div>
           <div className="grid items-start gap-9 lg:grid-cols-[240px_minmax(0,1fr)]">
-            <nav aria-label={language === "pt" ? "Nesta página" : "On this page"} className="rounded-2xl border border-slate-200 bg-white p-5 lg:sticky lg:top-6">
-              <h2 className="mb-4 text-sm font-extrabold uppercase tracking-wide text-slate-950">{language === "pt" ? "Nesta página" : "On this page"}</h2>
+            <nav aria-label={language === "pt" ? "Nesta página" : "On this page"} className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 lg:sticky lg:top-6">
+              <h2 className="mb-4 text-sm font-extrabold uppercase tracking-wide text-slate-950 dark:text-slate-100">{language === "pt" ? "Nesta página" : "On this page"}</h2>
               <ol className="space-y-1">
-                {info.sections.map((section, i) => <li key={section.heading}><a className="block rounded-lg px-2 py-2 text-sm leading-5 text-slate-600 hover:bg-sky-50 hover:text-sky-700" href={"#section-" + (i + 1)}>{section.heading}</a></li>)}
+                {info.sections.map((section, i) => <li key={section.heading}><a className="block rounded-lg px-2 py-2 text-sm leading-5 text-slate-600 dark:text-slate-300 hover:bg-sky-50 dark:bg-sky-950 hover:text-sky-700 dark:text-sky-300" href={"#section-" + (i + 1)}>{section.heading}</a></li>)}
               </ol>
             </nav>
             <div className="space-y-5">
               {info.sections.map((section, i) => (
-                <section key={section.heading} id={"section-" + (i + 1)} aria-labelledby={"title-" + (i + 1)} className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-                  <h2 id={"title-" + (i + 1)} className="text-xl font-bold leading-snug text-slate-950 sm:text-2xl">{section.heading}</h2>
-                  <div className="mt-4 space-y-4 text-[15px] leading-8 text-slate-700">
+                <section key={section.heading} id={"section-" + (i + 1)} aria-labelledby={"title-" + (i + 1)} className="scroll-mt-6 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm sm:p-8">
+                  <h2 id={"title-" + (i + 1)} className="text-xl font-bold leading-snug text-slate-950 dark:text-slate-100 sm:text-2xl">{section.heading}</h2>
+                  <div className="mt-4 space-y-4 text-[15px] leading-8 text-slate-700 dark:text-slate-300">
                     {section.paragraphs.map((text) => <p key={text}>{text}</p>)}
                     {section.bullets && <ul className="list-disc space-y-1 pl-6">{section.bullets.map((text) => <li key={text}>{text}</li>)}</ul>}
                   </div>
                 </section>
               ))}
               {kind === "privacy" && (
-                <aside className="rounded-2xl border border-sky-200 bg-sky-50 p-6 text-sm leading-7 sm:p-8">
-                  <h2 className="text-lg font-bold text-sky-950">{language === "pt" ? "Gerir as autorizações Google" : "Manage your Google permissions"}</h2>
+                <aside className="rounded-2xl border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950 p-6 text-sm leading-7 sm:p-8">
+                  <h2 className="text-lg font-bold text-sky-950 dark:text-sky-100">{language === "pt" ? "Gerir as autorizações Google" : "Manage your Google permissions"}</h2>
                   <p className="mt-2">{language === "pt" ? "Pode rever ou revogar o acesso da aplicação directamente na sua Conta Google." : "You may review or revoke this application's access directly in your Google Account."}</p>
-                  <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1 font-semibold text-sky-800 underline underline-offset-4">{language === "pt" ? "Permissões da Conta Google" : "Google Account permissions"}<ArrowUpRight size={16} /></a>
+                  <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1 font-semibold text-sky-800 dark:text-sky-200 underline underline-offset-4">{language === "pt" ? "Permissões da Conta Google" : "Google Account permissions"}<ArrowUpRight size={16} /></a>
                   <p className="mt-3 text-xs">{language === "pt" ? "Consulte também a " : "See also the "}<a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer" className="underline">Google API Services User Data Policy</a>.</p>
                 </aside>
               )}
@@ -189,10 +189,10 @@ function LegalPage({ kind }: { kind: Kind }) {
           </div>
         </div>
       </main>
-      <footer className="border-t border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col justify-between gap-3 px-5 py-7 text-sm text-slate-600 sm:flex-row sm:items-center sm:px-8">
+      <footer className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        <div className="mx-auto flex max-w-6xl flex-col justify-between gap-3 px-5 py-7 text-sm text-slate-600 dark:text-slate-300 sm:flex-row sm:items-center sm:px-8">
           <p>© {new Date().getFullYear()} GEOLÍTHICA · GeoMoz Explorer</p>
-          <a href="/" className="inline-flex items-center gap-2 font-semibold text-sky-700 hover:text-sky-950"><ArrowLeft size={16} />{language === "pt" ? "Página inicial" : "Homepage"}</a>
+          <a href="/" className="inline-flex items-center gap-2 font-semibold text-sky-700 dark:text-sky-300 hover:text-sky-950 dark:text-sky-100"><ArrowLeft size={16} />{language === "pt" ? "Página inicial" : "Homepage"}</a>
         </div>
       </footer>
     </div>

@@ -14,6 +14,8 @@ function fixture(html) {
   mkdirSync(src, { recursive: true });
   writeFileSync(join(src, "index.html"), html);
   writeFileSync(join(src, "asset.txt"), "raster worker sample");
+  mkdirSync(join(src, "assets"));
+  writeFileSync(join(src, "assets/app.js"), 'console.log("geomoz-workbench-chrome","geomoz-layer-catalog");');
   writeFileSync(join(src, "manifest.webmanifest"), JSON.stringify({name:"GeoLibre",short_name:"GeoLibre",start_url:"/gis-workspace/",scope:"/gis-workspace/",theme_color:"#2f8f85",icons:[{src:"pwa-192x192.png",sizes:"192x192"}]}));
   const license = join(work, "LICENSE");
   writeFileSync(license, "MIT License\nCopyright (c) 2026 Qiusheng Wu\n");
@@ -28,12 +30,9 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     const html = readFileSync(join(f.dst, "index.html"), "utf8");
     const cfg = JSON.parse(readFileSync(join(f.dst, "deployment.json"), "utf8"));
     assert.match(html, /geomoz-brand\.css/);
-    assert.match(html, /href="\/mapa"/);
-    assert.match(html, /aria-current="page">GIS Workspace/);
-    assert.match(html, /class="geomoz-gis-commandbar"/);
-    assert.match(html, /data-geomoz-menu="Processing"/);
-    assert.match(html, /geomoz-shell\.js\?v=[a-f0-9]{12}/);
-    assert.doesNotMatch(html, /class="geomoz-back-link"/);
+    assert.match(html, /data-geomoz-app="workbench"/);
+    assert.match(html, /geomoz-theme\.js\?v=[a-f0-9]{12}/);
+    assert.doesNotMatch(html, /geomoz-shell|geomoz-gis-commandbar|data-geomoz-menu/);
     assert.equal(cfg.branding.appName, "GeoMoz GIS Workspace");
     assert.equal(cfg.sharing.shareUrl, "off");
     assert.equal(cfg.ai.enabled, false);
@@ -44,16 +43,13 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     const manifest = JSON.parse(readFileSync(join(f.dst, "manifest.webmanifest"), "utf8"));
     assert.match(css, /--geomoz-navy: #020617/);
     assert.match(css, /--geomoz-blue: #0284c7/);
-    assert.match(css, /#root header\[class~="bg-card"\]/);
     assert.match(css, /html\.dark/);
     assert.match(css, /prefers-reduced-motion/);
-    assert.match(css, /geomoz-portal-top/);
-    assert.match(css, /geomoz-gis-commandbar/);
-    assert.match(css, /data-workspace-row/);
-    assert.match(css, /body > #root/);
-    const shellJs = readFileSync(join(f.dst, "geomoz-shell.js"), "utf8");
-    assert.match(shellJs, /getNativeHeader/);
-    assert.match(shellJs, /button\.click\(\)/);
+    assert.match(css, /gm-workbench-chrome/);
+    assert.match(css, /gm-catalog/);
+    assert.equal(cfg.interface.name, "geomoz-workbench");
+    assert.ok(existsSync(join(f.dst, "geomoz-theme.js")));
+    assert.ok(!existsSync(join(f.dst, "geomoz-shell.js")));
     assert.match(html, /GeoMoz GIS Workspace<\/title>/);
     assert.match(html, /href="\/gis-workspace\/favicon\.svg"/);
     assert.match(html, /geomoz-brand\.css\?v=[a-f0-9]{12}/);
@@ -92,4 +88,15 @@ test("refuses to delete outside dedicated workspace destination", () => {
   } finally {
     rmSync(f.work, { recursive: true, force: true });
   }
+});
+
+test("refuses an unmodified engine build and preserves an existing destination",()=>{
+ const f=fixture('<html><head><script src="/gis-workspace/assets/app.js"></script></head><body><div id="root"></div></body></html>');
+ try{
+  writeFileSync(join(f.src,"assets/app.js"),'console.log("Original interface");');
+  mkdirSync(f.dst,{recursive:true});writeFileSync(join(f.dst,"keep.txt"),"previous valid build");
+  const result=spawnSync(process.execPath,[brandScript,f.src,f.dst,f.license],{encoding:"utf8"});
+  assert.notEqual(result.status,0);assert.match(result.stderr,/GeoMoz-owned React interface/);
+  assert.equal(readFileSync(join(f.dst,"keep.txt"),"utf8"),"previous valid build");
+ }finally{rmSync(f.work,{recursive:true,force:true});}
 });

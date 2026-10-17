@@ -1,3 +1,4 @@
+import {useGeoMozTheme} from "@/hooks/useGeoMozTheme";
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import {
@@ -70,13 +71,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
   const { canInstall, isStandalone, promptInstall, isIos } = usePwa();
 
   // Default theme is LIGHT (primary executive mode), secondary DARK
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("geomoz_theme");
-      if (saved === "dark" || saved === "light") return saved;
-    }
-    return "light";
-  });
+  const {theme,toggleTheme} = useGeoMozTheme();
 
   // Default language is Portuguese (PT), with English (EN) toggle
   const [lang, setLang] = useState<Lang>(() => {
@@ -97,31 +92,6 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
       setAuthModalOpen(true);
     }
   }, [initialAuthMode]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (theme === "dark") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  }, [theme]);
-
-  const toggleTheme = () => {
-    const next = theme === "light" ? "dark" : "light";
-    setTheme(next);
-    localStorage.setItem("geomoz_theme", next);
-    if (typeof window !== "undefined") {
-      if (next === "dark") {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-      }
-      window.dispatchEvent(
-        new CustomEvent("geomoz_theme_changed", { detail: next })
-      );
-    }
-  };
 
   const toggleLang = () => {
     const next = lang === "pt" ? "en" : "pt";

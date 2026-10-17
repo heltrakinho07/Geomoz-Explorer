@@ -1,9 +1,11 @@
-name: GeoLibre Web Upstream CI
+name: GeoMoz Workbench CI
 
 on:
   pull_request:
     branches: [main]
     paths:
+      - "scripts/**"
+      - "artifacts/geomoz-react/public/geomoz-theme.js"
       - "scripts/brand-geolibre-web.mjs"
       - "scripts/assets/geolibre-geomoz-theme.css"
       - "scripts/assets/geomoz-gis-shell.html"
@@ -18,7 +20,7 @@ on:
 
 jobs:
   upstream-build:
-    name: Original GeoLibre Web build and packaging
+    name: GeoMoz Workbench build and browser validation
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
@@ -39,13 +41,16 @@ jobs:
           cache-dependency-path: .geolibre-upstream/package-lock.json
 
       - name: Test GeoMoz build integration
-        run: node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs
+        run: node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs
 
       - name: Install upstream with pinned package-lock
         run: npm ci --no-audit --no-fund
         working-directory: .geolibre-upstream
 
-      - name: Build GeoLibre browser application, not a replacement UI
+      - name: Prepare GeoMoz-owned React interface
+        run: node scripts/prepare-geomoz-workbench.mjs .geolibre-upstream
+
+      - name: Build GeoMoz Workbench with pinned GIS engine
         working-directory: .geolibre-upstream
         env:
           GEOLIBRE_APP_BASE: "/gis-workspace/"
@@ -62,10 +67,8 @@ jobs:
             .geolibre-upstream/LICENSE
           test -s artifacts/geomoz-react/dist/public/gis-workspace/index.html
           test -s artifacts/geomoz-react/dist/public/gis-workspace/GEOLIBRE-LICENSE.txt
-          grep -q 'href="/mapa"' artifacts/geomoz-react/dist/public/gis-workspace/index.html
-          grep -q 'data-geomoz-shell="true"' artifacts/geomoz-react/dist/public/gis-workspace/index.html
-          grep -q 'data-geomoz-menu="Processing"' artifacts/geomoz-react/dist/public/gis-workspace/index.html
-          test -s artifacts/geomoz-react/dist/public/gis-workspace/geomoz-shell.js
+          grep -q 'data-geomoz-app="workbench"' artifacts/geomoz-react/dist/public/gis-workspace/index.html
+          test -s artifacts/geomoz-react/dist/public/gis-workspace/geomoz-theme.js
           grep -q '/gis-workspace/' artifacts/geomoz-react/dist/public/gis-workspace/index.html
           grep -q '"GeoMoz GIS Workspace"' artifacts/geomoz-react/dist/public/gis-workspace/deployment.json
 
@@ -74,12 +77,23 @@ jobs:
           test -s artifacts/geomoz-react/dist/public/gis-workspace/geomoz-brand.css
           ! grep -q 'geoprocessamento-426809.firebasestorage.app' artifacts/geomoz-react/dist/public/gis-workspace/index.html
 
-      - name: Upload GeoLibre HTML report
+      - name: Install browser test runtime
+        run: |
+          npm install --prefix "$RUNNER_TEMP/gis-browser" playwright@1.51.1
+          node "$RUNNER_TEMP/gis-browser/node_modules/playwright/cli.js" install --with-deps chromium
+
+      - name: Validate the built GeoMoz interface in Chromium
+        run: node scripts/integration/geomoz-workbench-browser.cjs
+        env:
+          GIS_PLAYWRIGHT_ROOT: ${{ runner.temp }}/gis-browser
+
+      - name: Upload GeoMoz browser evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: geolibre-web-integration-checks
+          name: geomoz-workbench-browser-checks
           path: |
+            workbench-browser-artifacts/
             artifacts/geomoz-react/dist/public/gis-workspace/index.html
             artifacts/geomoz-react/dist/public/gis-workspace/deployment.json
             artifacts/geomoz-react/dist/public/gis-workspace/GEOLIBRE-LICENSE.txt

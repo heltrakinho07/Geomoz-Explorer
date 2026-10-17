@@ -82,7 +82,10 @@ jobs:
         working-directory: .geolibre-upstream
         run: npm ci --no-audit --no-fund
 
-      - name: Build original GeoLibre Web app
+      - name: Prepare GeoMoz-owned React interface
+        run: node scripts/prepare-geomoz-workbench.mjs .geolibre-upstream
+
+      - name: Build GeoMoz Workbench
         working-directory: .geolibre-upstream
         env:
           GEOLIBRE_APP_BASE: "/gis-workspace/"
@@ -91,9 +94,9 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run build
 
-      - name: Add GeoMoz branding and original license to published GeoLibre
+      - name: Package GeoMoz Workbench and retain engine license
         run: |
-          node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs
+          node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs
           node scripts/brand-geolibre-web.mjs \
             .geolibre-upstream/apps/geolibre-desktop/dist \
             artifacts/geomoz-react/dist/public/gis-workspace \
@@ -102,8 +105,8 @@ jobs:
           test -s artifacts/geomoz-react/dist/public/gis-workspace/GEOLIBRE-LICENSE.txt
           test -s artifacts/geomoz-react/dist/public/gis-workspace/geomoz-brand.css
           test -s artifacts/geomoz-react/dist/public/gis-workspace/favicon.svg
-          test -s artifacts/geomoz-react/dist/public/gis-workspace/geomoz-shell.js
-          grep -q 'data-geomoz-shell="true"' artifacts/geomoz-react/dist/public/gis-workspace/index.html
+          test -s artifacts/geomoz-react/dist/public/gis-workspace/geomoz-theme.js
+          grep -q 'data-geomoz-app="workbench"' artifacts/geomoz-react/dist/public/gis-workspace/index.html
           grep -q '"GeoMoz GIS Workspace"' artifacts/geomoz-react/dist/public/gis-workspace/manifest.webmanifest
           grep -q '/gis-workspace/' artifacts/geomoz-react/dist/public/gis-workspace/index.html
           grep -q '"GeoMoz GIS Workspace"' artifacts/geomoz-react/dist/public/gis-workspace/deployment.json
@@ -124,13 +127,12 @@ jobs:
           echo "$RESPONSE" | python3 -c 'import sys,json; data=json.load(sys.stdin); assert data.get("status") == "ok", "Firebase served HTML or an unhealthy API instead of Cloud Run JSON"'
           echo "Firebase Hosting forwards /geomoz-api/health to Cloud Run successfully"
 
-      - name: Verify deployed original GeoLibre Web workspace
+      - name: Verify deployed GeoMoz Workbench
         run: |
           BASE="https://geoprocessamento-426809.web.app/gis-workspace"
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/" -o "$RUNNER_TEMP/geolibre-index.html"
           grep -q 'id="root"' "$RUNNER_TEMP/geolibre-index.html"
-          grep -q 'data-geomoz-shell="true"' "$RUNNER_TEMP/geolibre-index.html"
-          grep -q 'aria-current="page">GIS Workspace' "$RUNNER_TEMP/geolibre-index.html"
+          grep -q 'data-geomoz-app="workbench"' "$RUNNER_TEMP/geolibre-index.html"
           grep -q '/gis-workspace/assets/' "$RUNNER_TEMP/geolibre-index.html"
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/deployment.json" -o "$RUNNER_TEMP/geolibre-policy.json"
           python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["branding"]["appName"]=="GeoMoz GIS Workspace"; assert d["sharing"]["shareUrl"]=="off"' "$RUNNER_TEMP/geolibre-policy.json"
@@ -138,15 +140,24 @@ jobs:
           test -s "$RUNNER_TEMP/geolibre-sw.js"
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/geomoz-brand.css" -o "$RUNNER_TEMP/geomoz-gis-theme.css"
           grep -q -- '--geomoz-blue: #0284c7' "$RUNNER_TEMP/geomoz-gis-theme.css"
-          grep -q -- '#root header' "$RUNNER_TEMP/geomoz-gis-theme.css"
-          grep -q -- 'geomoz-portal-top' "$RUNNER_TEMP/geomoz-gis-theme.css"
-          curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/geomoz-shell.js" -o "$RUNNER_TEMP/geomoz-gis-shell.js"
-          grep -q -- 'getNativeHeader' "$RUNNER_TEMP/geomoz-gis-shell.js"
+          grep -q -- 'gm-workbench-chrome' "$RUNNER_TEMP/geomoz-gis-theme.css"
+          grep -q -- 'gm-catalog' "$RUNNER_TEMP/geomoz-gis-theme.css"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/geomoz-theme.js" -o "$RUNNER_TEMP/geomoz-gis-shell.js"
+          grep -q -- 'GeoMozTheme' "$RUNNER_TEMP/geomoz-gis-shell.js"
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/manifest.webmanifest" -o "$RUNNER_TEMP/geomoz-gis-manifest.json"
           python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["name"]=="GeoMoz GIS Workspace" and d["scope"]=="/gis-workspace/"' "$RUNNER_TEMP/geomoz-gis-manifest.json"
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/favicon.svg" -o "$RUNNER_TEMP/geomoz-gis-favicon.svg"
           grep -q 'linearGradient' "$RUNNER_TEMP/geomoz-gis-favicon.svg"
-          echo "GeoLibre Web is being served from the GeoMoz Hosting origin"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "https://geomoz.geolithica.com/gis-workspace/" -o "$RUNNER_TEMP/geomoz-custom-index.html"
+          grep -q 'data-geomoz-app="workbench"' "$RUNNER_TEMP/geomoz-custom-index.html"
+          ! grep -q 'geomoz-shell.js' "$RUNNER_TEMP/geomoz-custom-index.html"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "https://geomoz.geolithica.com/gis-workspace/deployment.json" -o "$RUNNER_TEMP/geomoz-custom-policy.json"
+          python3 -c 'import json,sys,os; d=json.load(open(sys.argv[1])); assert d["interface"]["name"]=="geomoz-workbench"; assert d["interface"]["revision"]==os.environ["GITHUB_SHA"]' "$RUNNER_TEMP/geomoz-custom-policy.json"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "https://geomoz.geolithica.com/geomoz-theme.js" -o "$RUNNER_TEMP/geomoz-global-theme.js"
+          grep -q 'GeoMozTheme' "$RUNNER_TEMP/geomoz-global-theme.js"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "https://geomoz.geolithica.com/privacy" -o "$RUNNER_TEMP/geomoz-privacy.html"
+          grep -q '/geomoz-theme.js' "$RUNNER_TEMP/geomoz-privacy.html"
+          echo "GeoMoz Workbench and global theme are live on geomoz.geolithica.com"
 
       - name: Show deployed URL
         run: |
