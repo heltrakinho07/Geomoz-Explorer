@@ -128,6 +128,9 @@ export function GeeAuthProvider({ children }: { children: ReactNode }) {
       setGeeAccount(data.account || null);
       setIsPermanent(Boolean(data.is_permanent));
       setHasRefreshToken(Boolean(data.has_refresh_token));
+      // An earlier HTTP 503 (e.g. before Firestore (default) was created)
+      // must not remain visible after this authenticated status request works.
+      setError(null);
     } catch (caught) {
       if (epoch !== generation.current) return;
       setGeeConnected(false);
