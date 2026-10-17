@@ -252,7 +252,8 @@ export async function loadGISWorkspaceSnapshot(
 }
 
 export async function saveGISWorkspaceSnapshot(
-  snapshot: Omit<GISWorkspaceSnapshot, "version" | "updatedAt">
+  snapshot: Omit<GISWorkspaceSnapshot, "version" | "updatedAt">,
+  options: { strict?: boolean } = {}
 ): Promise<void> {
   if (!snapshot.projectId) return;
   const payload: GISWorkspaceSnapshot = {
@@ -270,11 +271,13 @@ export async function saveGISWorkspaceSnapshot(
     );
   } catch (error) {
     console.warn("GIS Workspace: falha ao persistir snapshot local:", error);
+    if (options.strict) throw error;
   }
 }
 
 export async function deleteGISWorkspaceSnapshot(
-  projectId: string
+  projectId: string,
+  options: { strict?: boolean } = {}
 ): Promise<void> {
   if (!projectId) return;
   try {
@@ -283,6 +286,7 @@ export async function deleteGISWorkspaceSnapshot(
     );
   } catch (error) {
     console.warn("GIS Workspace: falha ao remover snapshot local:", error);
+    if (options.strict) throw error;
   }
 }
 
