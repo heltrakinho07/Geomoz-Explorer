@@ -8,6 +8,8 @@
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 
 const [sourceArg, destinationArg, licenseArg] = process.argv.slice(2);
 if (!sourceArg || !destinationArg || !licenseArg) {
@@ -36,9 +38,22 @@ if (!html.includes("/gis-workspace/") || !html.includes('id="root"')) {
 rmSync(destination, { recursive: true, force: true });
 mkdirSync(destination, { recursive: true });
 cpSync(source, destination, { recursive: true, dereference: false });
-const themeHref = '<link rel="stylesheet" href="/gis-workspace/geomoz-brand.css" />';
-const backLink = '<a class="geomoz-back-link" href="/mapa" aria-label="Regressar ao GeoMoz" title="Regressar ao GeoMoz">← GeoMoz</a>';
-let branded = html.replace("</head>", "  " + themeHref + "\n  </head>");
+const brandingCss = readFileSync(new URL("./assets/geolibre-geomoz-theme.css", import.meta.url), "utf8");
+const cssVersion = createHash("sha256").update(brandingCss).digest("hex").slice(0, 12);
+const themeHref = `<link rel="stylesheet" href="/gis-workspace/geomoz-brand.css?v=${cssVersion}" />`;
+const backLink = '<a class="geomoz-back-link" href="/mapa" aria-label="Regressar ao GeoMoz" title="Regressar ao GeoMoz">← Voltar ao GeoMoz</a>';
+const identityHead = [
+  '<link rel="icon" type="image/svg+xml" href="/gis-workspace/favicon.svg" />',
+  '<link rel="apple-touch-icon" href="/gis-workspace/apple-touch-icon.png" />',
+  '<meta name="theme-color" content="#082f49" />',
+  themeHref,
+].join("\n  ");
+let branded = html
+  // Replace GeoLibre favicons, preserving all script and worker references.
+  .replace(/<link\b[^>]*\brel=["'](?:icon|apple-touch-icon)["'][^>]*>/gi, "")
+  .replace(/<meta\b[^>]*\bname=["']theme-color["'][^>]*>/gi, "")
+  .replace(/<title>[^<]*<\/title>/i, "<title>GeoMoz GIS Workspace</title>")
+  .replace("</head>", "  " + identityHead + "\n  </head>");
 branded = branded.replace("</body>", "  " + backLink + "\n  </body>");
 if (branded === html || !branded.includes(backLink) || !branded.includes(themeHref)) {
   throw new Error("Unable to brand the built GeoLibre HTML");
@@ -59,21 +74,40 @@ writeFileSync(
     2
   ) + "\n"
 );
-writeFileSync(
-  resolve(destination, "geomoz-brand.css"),
-  [
-    "/* GeoMoz branding only. GeoLibre application UI and processing code remain upstream. */",
-    ":root { --primary: 209 92% 43%; --ring: 209 92% 43%; }",
-    ".dark { --primary: 204 97% 65%; --ring: 204 97% 65%; }",
-    ".geomoz-back-link { position: fixed; right: 16px; bottom: 36px; z-index: 9999;",
-    "  padding: 7px 11px; border: 1px solid #075985; border-radius: 8px;",
-    "  color: white; background: #082f49; box-shadow: 0 2px 10px #0004;",
-    "  font: 600 12px/1.4 system-ui, sans-serif; text-decoration: none; }",
-    ".geomoz-back-link:hover, .geomoz-back-link:focus-visible { background: #075985; }",
-    "@media (max-width: 600px) { .geomoz-back-link { right: 8px; bottom: 44px; padding: 6px 8px; } }",
-    ""
-  ].join("\n")
-);
+writeFileSync(resolve(destination, "geomoz-brand.css"), brandingCss);
+
+const publicAssets = fileURLToPath(new URL("../artifacts/geomoz-react/public/", import.meta.url));
+const iconMappings = [
+  ["favicon.svg", "favicon.svg"],
+  ["favicon.png", "favicon.png"],
+  ["favicon.ico", "favicon.ico"],
+  ["apple-touch-icon.png", "apple-touch-icon.png"],
+  ["icon-192.png", "pwa-192x192.png"],
+  ["icon-512.png", "pwa-512x512.png"],
+  ["icon-maskable.png", "maskable-icon-512x512.png"],
+];
+for (const [sourceName, destinationName] of iconMappings) {
+  const logoFile = resolve(publicAssets, sourceName);
+  if (!existsSync(logoFile)) throw new Error("Missing GeoMoz branding asset: " + sourceName);
+  cpSync(logoFile, resolve(destination, destinationName));
+}
+
+// The app is installed as GeoMoz GIS Workspace; retain GeoLibre PWA runtime.
+const manifestFile = resolve(destination, "manifest.webmanifest");
+if (existsSync(manifestFile)) {
+  const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
+  Object.assign(manifest, {
+    name: "GeoMoz GIS Workspace",
+    short_name: "GeoMoz GIS",
+    description: "Ambiente SIG profissional do GeoMoz, baseado no GeoLibre Web.",
+    start_url: "/gis-workspace/",
+    scope: "/gis-workspace/",
+    theme_color: "#0284c7",
+    background_color: "#020617",
+  });
+  writeFileSync(manifestFile, JSON.stringify(manifest, null, 2) + "\n");
+}
+
 cpSync(license, resolve(destination, "GEOLIBRE-LICENSE.txt"));
 writeFileSync(
   resolve(destination, "GEOLIBRE-NOTICE.txt"),
