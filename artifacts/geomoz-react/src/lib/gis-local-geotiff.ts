@@ -79,8 +79,16 @@ export async function prepareLocalGeoTiff(file: File): Promise<PreparedLocalRast
   try {
     const builder = new module.CogBuilder(reader.width, reader.height, reader.bands);
     try {
-      if (typeof reader.epsg === "number" && Number.isFinite(reader.epsg)) builder.set_epsg(reader.epsg);
-      else if (reader.proj_string) builder.set_proj_string(reader.proj_string);
+      // geolibre-wasm 1.6.0 has set_epsg but no set_proj_string. Reject
+      // non-EPSG CRS rather than writing a silently misgeoreferenced COG.
+      if (typeof reader.epsg !== "number" || !Number.isInteger(reader.epsg) ||
+          reader.epsg <= 0 || reader.epsg >= 32767) {
+        throw new Error(
+          "Este GeoTIFF utiliza um CRS personalizado ou não identificado. " +
+          "Converta-o para um EPSG conhecido (por exemplo, 4326 ou um UTM adequado) no QGIS/GDAL antes de importar."
+        );
+      }
+      builder.set_epsg(reader.epsg);
       const transform = reader.geo_transform();
       if (transform.length >= 6) builder.set_geo_transform(transform);
       if (typeof reader.nodata === "number" && Number.isFinite(reader.nodata)) builder.set_nodata(reader.nodata);
