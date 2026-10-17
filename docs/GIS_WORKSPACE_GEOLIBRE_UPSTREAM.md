@@ -26,3 +26,13 @@ O GeoLibre gere projectos e dados SIG localmente no navegador por defeito; a apl
 4. Depois do deploy, confirmar /gis-workspace/ no domínio GeoMoz, recursos estáticos sem erro 404 e ausência de tráfego Firebase não autorizado.
 
 **Limitação:** equivalência funcional das ferramentas web upstream não implica integração automática com a biblioteca Python/R GeoMoz, nem com os projectos legados. Ferramentas dependentes de APIs externas, modelos ou credenciais continuam com as limitações próprias do GeoLibre.
+
+## Identidade visual GeoMoz
+
+O empacotamento preserva os ficheiros JavaScript, WASM, processamento e estrutura de UI do GeoLibre; aplica apenas a camada `scripts/assets/geolibre-geomoz-theme.css` na publicação. A cor primária de GeoMoz é **#0284c7**, com azul-claro **#38bdf8**, azul-marinho **#020617** e azul-escuro **#082f49**; a versão escura respeita a preferência do utilizador. A barra de menus e os painéis usam essas cores, mas não se altera qualquer rampa de elevação, simbologia geológica, paleta raster ou interpretação de dados.
+
+O tema é carregado depois das folhas originais e utiliza as variáveis HSL sem conversões para hex dentro das variáveis `--primary`, `--background` etc. Não são feitas substituições generalizadas das classes Tailwind compiladas ou das cores científicas.
+
+O script copia os favicons do GeoMoz para a aplicação GeoLibre, muda o nome e as cores do `manifest.webmanifest` para «GeoMoz GIS Workspace» e preserva o âmbito isolado `/gis-workspace/`. O stylesheet inclui uma versão baseada no hash de conteúdo para evitar cache de CSS antigo, além de estilos acessíveis para foco, dispositivos móveis e movimento reduzido.
+
+Ao alterar a identidade no futuro, editar **somente** `scripts/assets/geolibre-geomoz-theme.css` e os ícones oficiais em `artifacts/geomoz-react/public`, executar `node --test scripts/tests/brand-geolibre-web.test.mjs` e validar o build original no CI.
