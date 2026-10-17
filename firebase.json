@@ -18,6 +18,14 @@
         }
       },
       {
+        "source": "/gis-workspace",
+        "destination": "/gis-workspace/index.html"
+      },
+      {
+        "source": "/gis-workspace/**",
+        "destination": "/gis-workspace/index.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
@@ -31,6 +39,18 @@
             "value": "public, max-age=31536000, immutable"
           }
         ]
+      },
+      {
+        "source": "/gis-workspace/assets/**",
+        "headers": [{"key": "Cache-Control", "value": "public, max-age=31536000, immutable"}]
+      },
+      {
+        "source": "/gis-workspace/sw.js",
+        "headers": [{"key": "Cache-Control", "value": "no-cache"}]
+      },
+      {
+        "source": "/gis-workspace/deployment.json",
+        "headers": [{"key": "Cache-Control", "value": "no-cache"}]
       },
       {
         "source": "**/*.html",
