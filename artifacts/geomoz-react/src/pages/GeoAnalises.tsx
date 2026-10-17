@@ -3805,10 +3805,10 @@ export default function GeoAnalises({
         /* ════════════════════════════════════════════════════════════════════
            CATALOG VIEW (Cards Persuasivos e Modernos)
            ════════════════════════════════════════════════════════════════════ */
-        <div className="flex-1 flex flex-col overflow-y-auto bg-slate-50 dark:bg-slate-950">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-slate-50 dark:bg-slate-950">
 
           {/* Catalog Content */}
-          <div className="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6">
+          <div className="mx-auto w-full max-w-7xl flex-1 space-y-4 p-3 sm:space-y-6 sm:p-6 md:p-8">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-gradient-to-r from-sky-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-md relative overflow-hidden">
               <div className="relative z-10 max-w-xl">
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 text-[11px] font-semibold mb-2 border border-sky-400/30">
@@ -3934,9 +3934,9 @@ export default function GeoAnalises({
         /* ════════════════════════════════════════════════════════════════════
            DEDICATED CATEGORY WORKSPACE (Ambiente Especializado)
            ════════════════════════════════════════════════════════════════════ */
-        <div className="flex-1 flex flex-col overflow-hidden relative">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {/* Workspace Top Header Bar */}
-          <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-2 flex items-center justify-between gap-2 shrink-0 z-[550]">
+          <div className="z-[550] flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-2 py-2 dark:border-slate-800 dark:bg-slate-900 sm:flex-nowrap sm:px-4">
             <div className="flex items-center gap-3 min-w-0">
               <button
                 onClick={() => setSelectedCategory(null)}
@@ -3960,8 +3960,26 @@ export default function GeoAnalises({
               </div>
             </div>
 
-            {/* Subtabs for only this category */}
-            <div className="flex-1 flex items-center gap-1.5 overflow-x-auto px-2 py-0.5 no-scrollbar">
+            {/* Mobile category selector prevents clipped tabs and narrow touch targets. */}
+            <label className="order-3 w-full min-w-0 sm:hidden">
+              <span className="sr-only">Escolher índice ou análise</span>
+              <select
+                value={activeTab}
+                onChange={event => {
+                  setActiveTab(event.target.value as SpectralTab);
+                  setSidebarOpen(false);
+                }}
+                aria-label="Escolher índice ou análise"
+                className="min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              >
+                {activeCategory.tabIds.map(tabId => (
+                  <option key={tabId} value={tabId}>{descriptiveIndexName(tabId)}</option>
+                ))}
+              </select>
+            </label>
+
+            {/* Desktop subtabs retain horizontal scroll and descriptive names. */}
+            <div className="hidden min-w-0 flex-1 items-center gap-1.5 overflow-x-auto px-2 py-0.5 no-scrollbar sm:flex">
               {activeCategory.tabIds.map(tabId => {
                 const def = INDEX_DEFS.find(d => d.id === tabId);
                 const label = descriptiveIndexName(tabId);
@@ -3986,7 +4004,22 @@ export default function GeoAnalises({
             </div>
 
             {/* Right Header Actions */}
-            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setResultsPanelOpen(value => !value);
+                  setSidebarOpen(false);
+                }}
+                aria-expanded={resultsPanelOpen}
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-2.5 text-xs font-semibold text-sky-700 hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300"
+                title={resultsPanelOpen ? "Ocultar resultados sem perder os dados" : "Mostrar resultados mantidos na página"}
+              >
+                <BarChart2 size={15} />
+                <span className="hidden lg:inline">{resultsPanelOpen ? "Ocultar resultados" : "Mostrar resultados"}</span>
+                <span className="lg:hidden">Resultados</span>
+                {resultsPanelOpen ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+              </button>
               <button
                 onClick={() => setStoryMapOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 text-xs font-semibold shadow-2xs cursor-pointer transition-all"
@@ -4009,7 +4042,7 @@ export default function GeoAnalises({
           </div>
 
           {/* Main workspace content */}
-          <div className="flex flex-1 overflow-hidden relative">
+          <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
             {/* Mobile backdrop */}
             {sidebarOpen && (
               <div
@@ -4031,10 +4064,10 @@ export default function GeoAnalises({
 
             {/* Controls sidebar */}
             <div
-              className={`fixed md:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
+              className={`fixed md:relative inset-y-0 left-0 z-[700] flex w-[min(88vw,22rem)] min-h-0 flex-col overflow-y-auto overscroll-contain bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
                 sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
               } ${
-                desktopSidebarOpen ? "md:w-72 overflow-y-auto" : "md:w-0 overflow-hidden md:border-r-0"
+                desktopSidebarOpen ? "md:w-72" : "md:w-0 md:overflow-hidden md:border-r-0"
               }`}
             >
               {/* Mobile Header with Close Button */}
@@ -4046,7 +4079,8 @@ export default function GeoAnalises({
                 <button
                   type="button"
                   onClick={() => setSidebarOpen(false)}
-                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
+                  aria-label="Fechar filtros"
+                  className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                 >
                   <X size={18} />
                 </button>
@@ -4724,7 +4758,7 @@ export default function GeoAnalises({
         )}
 
         {/* Map */}
-        <div className="flex-1 relative overflow-hidden" ref={mapContainerRef}>
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden" ref={mapContainerRef}>
           {/* Loading indicators */}
           {isFetching && activeTab !== "s2" && !geeReady && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[600] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-md rounded-full px-4 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 flex items-center gap-2 pointer-events-none">
@@ -4804,15 +4838,35 @@ export default function GeoAnalises({
             />
           )}
 
-          {/* Mobile floating sidebar toggle */}
-          <button
-            type="button"
-            onClick={() => setSidebarOpen(v => !v)}
-            className="md:hidden absolute top-3 left-3 z-[600] flex items-center gap-1.5 px-3 py-1.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl shadow-md border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
-          >
-            <SlidersHorizontal size={13} className="text-sky-600 dark:text-sky-400" />
-            Filtros
-          </button>
+          {/* Mobile map controls remain reachable if the inspector is hidden. */}
+          <div className="absolute left-3 top-3 z-[600] flex max-w-[calc(100%-24px)] flex-wrap gap-2 md:hidden">
+            <button
+              type="button"
+              onClick={() => {
+                setResultsPanelOpen(false);
+                setSidebarOpen(true);
+              }}
+              className="flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/95 px-3 text-xs font-semibold text-slate-700 shadow-md backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200"
+              aria-label="Abrir filtros e parâmetros"
+            >
+              <SlidersHorizontal size={15} className="text-sky-600 dark:text-sky-400" />
+              Filtros
+            </button>
+            {!resultsPanelOpen && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSidebarOpen(false);
+                  setResultsPanelOpen(true);
+                }}
+                className="flex min-h-11 items-center gap-1.5 rounded-xl border border-sky-200 bg-white/95 px-3 text-xs font-semibold text-sky-700 shadow-md backdrop-blur-md dark:border-sky-800 dark:bg-slate-900/95 dark:text-sky-300"
+                aria-label="Mostrar painel de resultados"
+              >
+                <BarChart2 size={15} />
+                Resultados
+              </button>
+            )}
+          </div>
 
           {/* Basemap Switcher (Google Maps / Cesium) */}
           <BasemapSwitcher
@@ -5371,7 +5425,7 @@ export default function GeoAnalises({
       </div>
 
       {/* Status bar */}
-      <div className="shrink-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-4 py-2 flex items-center gap-4 text-xs text-slate-400">
+      <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-1 border-t border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-400 dark:border-slate-800 dark:bg-slate-900 sm:gap-4 sm:px-4 sm:text-xs">
         <span>
           {activeTab === "s2"
             ? `Sentinel-2 cloudless ${selectedYear} — EOX IT Services (CC BY 4.0)`
