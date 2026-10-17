@@ -165,3 +165,284 @@ html.dark #root footer[class*="bg-muted"] {
   }
   .geomoz-back-link:hover { transform: none; }
 }
+
+
+/* ==========================================================================
+   GeoMoz · QGIS-inspired integrated application shell (not a second portal).
+   Stacks shared GeoMoz navigation + quick tools ABOVE the original GIS app.
+   Keep React's DOM and GeoLibre's dock/processing/event handlers untouched.
+   ========================================================================== */
+html, body {
+  height: 100%;
+}
+body:has(.geomoz-portal-shell) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #e8edf3;
+}
+body > .geomoz-portal-shell {
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  color: #f8fafc;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  z-index: 42;
+  position: relative;
+}
+body > #root {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto !important;
+  width: 100%;
+  overflow: hidden;
+}
+.geomoz-portal-top {
+  display: flex;
+  align-items: center;
+  min-height: 47px;
+  padding: 0 14px;
+  gap: 18px;
+  background: linear-gradient(108deg, #020617, #082f49 64%, #0b456c);
+  box-shadow: 0 1px 6px rgb(2 6 23 / 22%);
+  border-bottom: 1px solid rgb(125 211 252 / 22%);
+}
+.geomoz-portal-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  color: white;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 780;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+}
+.geomoz-portal-brand img {
+  width: 27px;
+  height: 27px;
+  border-radius: 7px;
+  background: white;
+}
+.geomoz-portal-brand-name { color: #f8fafc; }
+.geomoz-portal-brand-separator {
+  display: block; height: 20px; width: 1px; margin: 0 2px;
+  background: rgb(203 213 225 / 35%);
+}
+.geomoz-portal-brand-context {
+  color: #9ddfff;
+  font-size: 11px;
+  font-weight: 600;
+}
+.geomoz-portal-nav {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  gap: 4px;
+}
+.geomoz-portal-nav::-webkit-scrollbar { display: none; }
+.geomoz-portal-nav a {
+  color: #cbd5e1;
+  white-space: nowrap;
+  text-decoration: none;
+  font: 600 11px/1.4 system-ui, sans-serif;
+  border-radius: 6px;
+  padding: 8px 12px;
+  transition: background-color 0.16s ease;
+}
+.geomoz-portal-nav a:is(:hover, :focus-visible) {
+  color: white;
+  background: rgb(148 163 184 / 14%);
+}
+.geomoz-portal-nav a[aria-current="page"] {
+  color: #f0f9ff;
+  background: #0369a1;
+  box-shadow: inset 0 -2px 0 #7dd3fc;
+}
+.geomoz-portal-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 700;
+  color: #bae6fd;
+}
+.geomoz-mode-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: #38bdf8;
+  box-shadow: 0 0 0 3px rgb(56 189 248 / 17%);
+}
+.geomoz-gis-commandbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  min-width: 0;
+  padding: 0 13px;
+  background: #f1f5f9;
+  color: #1e293b;
+  border-bottom: 1px solid #cbd5e1;
+  box-shadow: inset 0 1px 0 #fff;
+}
+.geomoz-gis-commandbar-title {
+  flex: none;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: .055em;
+  white-space: nowrap;
+}
+.geomoz-gis-commandbar-items {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.geomoz-gis-commandbar-items::-webkit-scrollbar { display: none; }
+.geomoz-gis-commandbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: none;
+  min-height: 29px;
+  padding: 3px 9px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #334155;
+  background: transparent;
+  font: 600 11px/1.3 system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.geomoz-gis-commandbar button svg {
+  width: 15px; height: 15px; flex: none;
+  stroke: #0369a1; fill: none; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.geomoz-gis-commandbar button:is(:hover, :focus-visible) {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #0c4a6e;
+}
+.geomoz-gis-commandbar button:focus-visible {
+  outline: 2px solid #0284c7; outline-offset: 1px;
+}
+.geomoz-gis-divider {
+  flex: none;
+  display: block;
+  height: 19px;
+  width: 1px;
+  margin: 0 5px;
+  background: #cbd5e1;
+}
+.geomoz-command-status {
+  color: #9a3412;
+  font-size: 10px;
+  flex: none;
+}
+.geomoz-command-status:empty { display: none; }
+
+/* Original menu row becomes a QGIS-style light menu bar, not a separate
+   dark product header. Its REAL React menu triggers remain interactive. */
+html:not(.dark) #root header[class~="bg-card"][class~="border-b"] {
+  background: #ffffff !important;
+  color: #334155;
+  border-color: #cbd5e1;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 5%);
+  min-height: 40px;
+}
+html:not(.dark) #root header[class~="bg-card"][class~="border-b"] > span {
+  color: #075985;
+  letter-spacing: -0.01em;
+  font-size: 11px;
+}
+html:not(.dark) #root header[class~="bg-card"][class~="border-b"] > span svg {
+  color: #0284c7;
+}
+html:not(.dark) #root header[class~="bg-card"][class~="border-b"] button {
+  color: #334155;
+  border-radius: 4px;
+}
+html:not(.dark) #root header[class~="bg-card"][class~="border-b"] button:is(:hover, [aria-expanded="true"], [data-state="open"]) {
+  color: #075985;
+  background: #e0f2fe;
+}
+html:not(.dark) #root header[class~="bg-card"][class~="border-b"] input {
+  color: #334155;
+}
+html.dark #root header[class~="bg-card"][class~="border-b"] {
+  background: #0c2034 !important;
+  border-color: #214563;
+  box-shadow: 0 1px 4px #02061780;
+}
+
+/* Desktop GIS dock surfaces: technical, compact, QGIS-like and legible.
+   Do not reposition native panel elements: their resize/collapse and
+   dock-reordering logic are implemented inside the original GeoLibre. */
+html:not(.dark) #root [data-workspace-row] {
+  background: #e5eaf0;
+}
+html:not(.dark) #root [data-workspace-row] > :not(main) {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+}
+html:not(.dark) #root [data-workspace-row] [class*="border-r"],
+html:not(.dark) #root [data-workspace-row] [class*="border-l"] {
+  border-color: #cbd5e1;
+}
+html:not(.dark) #root [data-workspace-row] [class*="bg-muted"] {
+  background-color: #edf2f7;
+}
+html:not(.dark) #root [data-workspace-row] [class*="bg-card"] {
+  background-color: #f8fafc;
+}
+html:not(.dark) #root [data-workspace-row] main {
+  background: #e8eef4;
+}
+html:not(.dark) #root footer[class*="bg-muted"] {
+  background: #e9eef4;
+  color: #475569;
+  border-top: 1px solid #cbd5e1;
+}
+html.dark #root footer[class*="bg-muted"] {
+  color: #b7d0e2;
+  border-top: 1px solid #214563;
+}
+/* No floating "Voltar ao GeoMoz" badge: GeoMoz module navigation lives
+   permanently in the upper application bar. */
+.geomoz-back-link { display: none !important; }
+
+@media (max-width: 900px) {
+  .geomoz-portal-top { gap: 10px; padding: 0 8px; }
+  .geomoz-portal-context { display: none; }
+  .geomoz-gis-commandbar-title { display: none; }
+  .geomoz-gis-commandbar { padding: 0 7px; gap: 3px; }
+}
+@media (max-width: 640px) {
+  .geomoz-portal-top {
+    min-height: 49px;
+    flex-wrap: nowrap;
+  }
+  .geomoz-portal-brand-context, .geomoz-portal-brand-separator { display: none; }
+  .geomoz-portal-brand { gap: 5px; font-size: 12px; }
+  .geomoz-portal-brand img { width: 23px; height: 23px; }
+  .geomoz-portal-nav a { padding: 7px 10px; font-size: 10px; }
+  .geomoz-gis-commandbar { height: 37px; }
+  .geomoz-gis-commandbar button { min-height: 29px; padding: 3px 7px; }
+  .geomoz-gis-commandbar button span { display: none; }
+  .geomoz-gis-commandbar button svg { width: 17px; height: 17px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .geomoz-portal-nav a { transition: none; }
+}
