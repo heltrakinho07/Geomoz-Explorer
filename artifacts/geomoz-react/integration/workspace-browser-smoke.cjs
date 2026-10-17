@@ -29,10 +29,12 @@ const server = createServer(async (req, res) => {
     await page.getByRole("button",{name:"Continuar como Convidado (Explorar sem conta)",exact:true}).click();
     await page.getByRole("button",{name:"GIS Workspace",exact:true}).click();
     await page.getByRole("heading",{name:"Da área de estudo ao resultado.",exact:true}).waitFor();
-    await page.locator("canvas.maplibregl-canvas").waitFor();
+    await page.locator('[data-testid="cesium-workspace"] .cesium-widget canvas').waitFor();
+    await page.getByText("CesiumJS · 2D",{exact:true}).waitFor();
+    if(await page.locator("canvas.maplibregl-canvas").count()) throw Error("Legacy renderer still mounted.");
     await page.screenshot({path:"workspace-browser-artifacts/01-workspace.png",fullPage:true});
     await page.getByRole("button",{name:/01 · ÁREA/}).click();
-    const map = page.locator("canvas.maplibregl-canvas");
+    const map = page.locator('[data-testid="cesium-workspace"] .cesium-widget canvas');
     const box = await map.boundingBox();
     if (!box) throw Error("Map canvas has no visible bounds.");
     for (const [x,y] of [[0.40,0.42],[0.60,0.42],[0.60,0.62]])
@@ -45,17 +47,21 @@ const server = createServer(async (req, res) => {
     const side=1201, hgt=Buffer.alloc(side*side*2);
     for(let y=0;y<side;y++) for(let x=0;x<side;x++) hgt.writeInt16BE(1500-Math.floor(x/4)-Math.floor(y/8),(y*side+x)*2);
     await page.locator('.geomoz-workspace input[type="file"][multiple][accept*=".hgt"]').setInputFiles({name:"S20E035.hgt",mimeType:"application/octet-stream",buffer:hgt});
-    console.log("HGT attached; opening processing");
+    await page.waitForFunction(()=>Number(document.querySelector('[data-testid="cesium-workspace"]')?.dataset.rasterCount)>0);
+    await page.waitForFunction(()=>Number(document.querySelector('[data-testid="cesium-workspace"]')?.dataset.rasterTiles)>0);
+    console.log("HGT imported and rendered as Cesium imagery; opening processing");
     await page.getByRole("button",{name:"Processamento",exact:true}).click();
     await page.getByText("Declive (Slope)",{exact:true}).first().click();
     console.log("Slope selected; starting WASM");
     await page.getByRole("button",{name:"Executar no browser",exact:true}).click();
     await page.getByText("Whitebox Raster concluído",{exact:true}).waitFor();
     await page.getByRole("button",{name:/1 resultado\(s\)/}).waitFor();
+    await page.waitForFunction(()=>Number(document.querySelector('[data-testid="cesium-workspace"]')?.dataset.rasterCount)>=2);
+    await page.waitForFunction(()=>window.Cesium?.VERSION==="1.127");
     await page.screenshot({path:"workspace-browser-artifacts/03-result.png",fullPage:true});
     const selected = await page.locator(".gw-input-card strong").innerText();
     if (!selected.includes("Declive")) throw Error("The output raster was not automatically selected: "+selected);
-    console.log(JSON.stringify({drawing:"visible",hgt:"imported",slope:"completed",selected}));
+    console.log(JSON.stringify({engine:"CesiumJS 1.127 in 2D",drawing:"visible",hgt:"imported and rendered",slope:"completed",selected}));
   } catch (error) {
     console.error("Rendered workspace state:", (await page.locator("body").innerText()).slice(-14000));
     throw error;

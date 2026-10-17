@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useRef, useMemo, useCallback } from "react";
-import GISWorkspaceMapLibre from "@/components/GISWorkspaceMapLibre";
+import GISWorkspaceCesium from "@/components/GISWorkspaceCesium";
 import GISWorkspaceOverview from "@/components/GISWorkspaceOverview";
 import "@/styles/gis-workspace.css";
 import TerrainWorkflowPanel from "@/components/TerrainWorkflowPanel";
@@ -5852,7 +5852,7 @@ export default function GeoProcessamento({
           <span>Ferramentas</span>
         </button>
 
-        <GISWorkspaceMapLibre
+        <GISWorkspaceCesium
           layers={layers}
           rasterLayers={rasterLayers}
           serviceLayers={serviceLayers}
