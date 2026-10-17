@@ -296,7 +296,10 @@ interface RasterFileRecord {
   rasterId: string;
   fileName: string;
   mimeType: string;
-  blob: Blob;
+  /** Modern cache format: portable binary bytes, not a runtime-specific File object. */
+  bytes?: ArrayBuffer;
+  /** Legacy IndexedDB cache from older GeoMoz versions; retained for recovery. */
+  blob?: Blob;
 }
 
 function rasterFileKey(projectId: string, rasterId: string): string {
@@ -315,7 +318,9 @@ export async function saveGISWorkspaceRasterFile(
     rasterId,
     fileName: file.name,
     mimeType: file.type || "image/tiff",
-    blob: file,
+    // Using raw bytes avoids File/Blob structured-clone differences in browsers
+    // and fake-indexeddb, while preserving exact GeoTIFF binary content.
+    bytes: await file.arrayBuffer(),
   };
   await withStore<IDBValidKey>(RASTER_FILE_STORE, "readwrite", (store) =>
     store.put(record)
@@ -333,10 +338,14 @@ export async function loadGISWorkspaceRasterFiles(
   const result = new Map<string, File>();
   for (const record of records) {
     if (record.projectId !== projectId) continue;
+    const source = record.bytes instanceof ArrayBuffer ? record.bytes : record.blob;
+    if (!(source instanceof ArrayBuffer) && !(source instanceof Blob)) {
+      throw new Error(`Ficheiro raster local ${record.fileName} não pôde ser recuperado.`);
+    }
     result.set(
       record.rasterId,
-      new File([record.blob], record.fileName, {
-        type: record.mimeType || record.blob.type || "image/tiff",
+      new File([source], record.fileName, {
+        type: record.mimeType || (source instanceof Blob ? source.type : "image/tiff"),
       })
     );
   }
