@@ -1091,14 +1091,14 @@ function GeospatialAnalyticsPanel({
   const hasStats = Object.keys(stats).length > 0;
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {/* Header with Title and Sensor Resolution */}
       <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex flex-wrap items-center gap-2 mb-1">
           <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
             {def.short}
           </span>
-          <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">{def.label}</span>
+          <span className="min-w-0 break-words text-xs font-semibold text-slate-800 dark:text-slate-100">{INDEX_FULL_NAMES[activeIndex] || def.label}</span>
         </div>
         <p className="text-[11px] text-slate-500 dark:text-slate-400">
           {def.group === "landsat" || def.group === "minerals" || def.id.endsWith("_l8")
@@ -1115,14 +1115,14 @@ function GeospatialAnalyticsPanel({
       {isCalculating && (
         <div className="bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 rounded-xl p-3 text-xs text-sky-700 dark:text-sky-300 leading-relaxed flex items-center gap-2">
           <Loader2 size={16} className="animate-spin text-sky-600 shrink-0" />
-          <span>O GEE está a processar a composição multitemporal e a extrair as estatísticas zonais (5–20 s)…</span>
+          <span>O Google Earth Engine está a processar dados reais. A duração depende da área, das datas e do modo de processamento seleccionado.</span>
         </div>
       )}
 
       {/* Status banner when result is available */}
       {result && !isCalculating && (
         <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3">
-          <div className="flex items-center justify-between mb-1">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
             <div className="flex items-center gap-1.5 font-semibold text-emerald-800 dark:text-emerald-300 text-xs">
               <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" />
               <span>Processamento GEE Concluído</span>
@@ -1146,8 +1146,8 @@ function GeospatialAnalyticsPanel({
         </h4>
 
         {hasStats ? (
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
+          <div className="grid min-w-0 grid-cols-2 gap-2">
+            <div className="min-w-0 bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
               <div className="text-[10px] text-slate-400 uppercase font-semibold">Área Recortada</div>
               <div className="text-sm font-bold text-slate-800 dark:text-slate-100 font-mono mt-0.5 truncate">
                 {stats.areaKm2 ? `${stats.areaKm2.toLocaleString()} km²` : district ? `${district}` : province ? `${province}` : "Moçambique"}
@@ -1189,7 +1189,7 @@ function GeospatialAnalyticsPanel({
                   style={{ left: "10%", right: "10%" }}
                 />
               </div>
-              <div className="flex justify-between text-[9px] text-slate-400 mt-1 font-mono">
+              <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] text-slate-400 font-mono sm:grid-cols-4">
                 <span>P10: {stats.p10 != null ? stats.p10.toFixed(2) : "—"}</span>
                 <span>P25: {stats.p25 != null ? stats.p25.toFixed(2) : "—"}</span>
                 <span>P75: {stats.p75 != null ? stats.p75.toFixed(2) : "—"}</span>
@@ -1202,7 +1202,7 @@ function GeospatialAnalyticsPanel({
             <BarChart2 size={24} className="mx-auto text-slate-400 mb-1.5" />
             <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">Aguardando cálculo zonal</p>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Clique em <strong>Calcular {def.short}</strong> na barra lateral esquerda para gerar as métricas geoestatísticas.
+              Clique em <strong>Calcular {def.short}</strong> nos filtros para gerar as métricas geoestatísticas. O modo Rápido mostra primeiro o mapa e dispensa as estatísticas extensas.
             </p>
           </div>
         )}
@@ -5294,8 +5294,8 @@ export default function GeoAnalises({
 
           {/* SPI × NDVI scatter overlay */}
           {isSpiNdvi && spiNdviResult && showSpiChart && spiNdviResult.pairs.length > 0 && (
-            <div className="absolute bottom-8 left-4 z-[500] bg-white/97 dark:bg-slate-900/97 backdrop-blur rounded-xl shadow-lg border border-orange-200 dark:border-orange-900/50 px-4 pt-3 pb-1"
-                 style={{ height: 230, width: 380 }}>
+            <div className="absolute bottom-8 left-4 z-[500] w-[calc(100%-2rem)] max-w-[380px] bg-white/97 dark:bg-slate-900/97 backdrop-blur rounded-xl shadow-lg border border-orange-200 dark:border-orange-900/50 px-4 pt-3 pb-1"
+                 style={{ height: 230 }}>
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1.5">
                   <Droplets size={12} className="text-orange-600 dark:text-orange-400" />
