@@ -33,14 +33,12 @@ interface Props {
   aoi: AreaOfInterest;
   province: string | null;
   district: string | null;
-  viewMode?: "2d" | "3d";
-  onViewModeChange?: (m: "2d" | "3d") => void;
   onProvinceChange: (p: string | null) => void;
   onDistrictChange: (d: string | null) => void;
   onAOIChange: (a: AreaOfInterest) => void;
 }
 
-export default function AguaSubterranea({ aoi, province, district, viewMode = "2d", onViewModeChange, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
+export default function AguaSubterranea({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
   const { toast } = useToast();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const [year, setYear] = useState(2023);
