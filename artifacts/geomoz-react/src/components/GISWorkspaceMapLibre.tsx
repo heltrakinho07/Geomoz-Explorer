@@ -35,6 +35,7 @@ interface Props {
   onSelectLayer?: (layerId: string) => void;
   onDrawComplete?: (geometry: GeoJSON.GeoJSON, label: string) => void;
   onDrawCancel?: () => void;
+  onViewportBbox?: (bbox: [number, number, number, number]) => void;
   onRasterMetadata?: (metadata: GISWorkspaceRasterMetadata) => void;
   onRasterError?: (layerId: string, message: string) => void;
 }
@@ -165,6 +166,7 @@ export default function GISWorkspaceMapLibre({
   onSelectLayer,
   onDrawComplete,
   onDrawCancel,
+  onViewportBbox,
   onRasterMetadata,
   onRasterError,
 }: Props) {
@@ -183,6 +185,7 @@ export default function GISWorkspaceMapLibre({
   const onSelectLayerRef = useRef(onSelectLayer);
   const onDrawCompleteRef = useRef(onDrawComplete);
   const onDrawCancelRef = useRef(onDrawCancel);
+  const onViewportBboxRef = useRef(onViewportBbox);
   const onRasterMetadataRef = useRef(onRasterMetadata);
   const onRasterErrorRef = useRef(onRasterError);
   const renderedLayerLookupRef = useRef(new Map<string, string>());
@@ -196,6 +199,7 @@ export default function GISWorkspaceMapLibre({
   onSelectLayerRef.current = onSelectLayer;
   onDrawCompleteRef.current = onDrawComplete;
   onDrawCancelRef.current = onDrawCancel;
+  onViewportBboxRef.current = onViewportBbox;
   onRasterMetadataRef.current = onRasterMetadata;
   onRasterErrorRef.current = onRasterError;
 
@@ -434,6 +438,15 @@ export default function GISWorkspaceMapLibre({
       setCoords({ lng: event.lngLat.lng, lat: event.lngLat.lat });
     });
     map.on("mouseout", () => setCoords(null));
+    const notifyViewport = () => {
+      if (typeof map.getBounds !== "function") return;
+      const extent = map.getBounds();
+      onViewportBboxRef.current?.([
+        extent.getWest(), extent.getSouth(), extent.getEast(), extent.getNorth(),
+      ]);
+    };
+    map.on("moveend", notifyViewport);
+    map.on("load", notifyViewport);
     map.on("move", () => syncDomPreview(map));
     map.on("resize", () => syncDomPreview(map));
 

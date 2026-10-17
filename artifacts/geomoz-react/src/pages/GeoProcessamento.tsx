@@ -1,5 +1,5 @@
 /**
- * GeoMoz GIS Workspace — ambiente GIS integrado e persistente.
+ * GeoMoz GIS Workspace — ambiente SIG local, independente e sem base de dados.
  *
  * Engines: Turf.js for verified vector tools, DuckDB-WASM Spatial for SQL,
  * Whitebox WASM for a curated geoprocessing catalog, and MapLibre for mapping.
@@ -146,8 +146,6 @@ import {
   runVectorPointsInPolygon,
 } from "@/lib/wasm-geoprocessing";
 import { runGISVectorCommand } from "@/lib/gis-vector-runner";
-import { createLastWriteWinsQueue } from "@/lib/gis-workspace-sync-queue";
-import { canSyncGISWorkspaceToCloud } from "@/lib/gis-workspace-sync-readiness";
 import { exportToCsv, exportToGeoJson, QueryResult } from "@/lib/cloud-native-loader";
 import {
   executeDuckDbSpatialQuery,
@@ -166,19 +164,14 @@ import {
   CONTENT_W,
 } from "@/lib/pdf-export";
 import type { FeatureCollection, Feature } from "geojson";
-import { useProject } from "@/context/ProjectContext";
-import { useAuth } from "@/hooks/useAuth";
 import {
-  loadGISWorkspaceFromCloud,
-  syncGISWorkspaceToCloud,
-} from "@/services/gisWorkspaceCloudService";
-import {
-  loadGISWorkspaceSnapshot,
-  saveGISWorkspaceSnapshot,
-  loadGISWorkspaceRasterFiles,
-  syncGISWorkspaceRasterFiles,
-  type PersistedGISRasterLayer,
-} from "@/lib/gis-workspace-persistence";
+  getGISSessionWorkspace,
+  setGISSessionWorkspace,
+  exportPortableGISProject,
+  parsePortableGISProject,
+} from "@/lib/gis-workspace-session";
+import { downloadGlobalDem, globalDemTileRange } from "@/lib/gis-global-dem";
+import { prepareLocalGeoTiff } from "@/lib/gis-local-geotiff";
 import {
   listWhiteboxWasmManifests,
   runWhiteboxRasterTool,
@@ -291,22 +284,19 @@ export default function GeoProcessamento({
   onAOIChange,
 }: Props) {
   const { toast } = useToast();
-  const { activeProject } = useProject();
-  const { user } = useAuth();
-  const workspaceProjectId = activeProject?.id ?? "session-default";
-  const cloudUid =
-    user?.uid && user.uid !== "guest_user" && !user.uid.startsWith("guest_")
-      ? user.uid
-      : null;
-  // IndexedDB belongs to the signed-in UID as well as the project. Two
-  // different users with the same project ID must never share offline data.
-  const workspaceCacheId =
-    (cloudUid ?? "guest") + "::" + workspaceProjectId;
+  // This GIS workbench intentionally does not use accounts, cloud projects,
+  // Firestore, Storage, IndexedDB or any automatic data persistence.
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const projectInputRef = useRef<HTMLInputElement>(null);
+  const demAbortRef = useRef<AbortController | null>(null);
+  const [demProgress, setDemProgress] = useState<{ completed: number; total: number } | null>(null);
+  const [demLoading, setDemLoading] = useState(false);
+  const [mapViewportBbox, setMapViewportBbox] = useState<[number, number, number, number]>([33.0, -20.8, 36.0, -16.0]);
+  const [projectNotice, setProjectNotice] = useState<string | null>(null);
   const rasterErrorToastRef = useRef(new Set<string>());
 
   // Main UI Navigation
-  const [activeTab, setActiveTab] = useState<MainTab>("vector_toolbox");
+  const [activeTab, setActiveTab] = useState<MainTab>("layers");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [basemap, setBasemap] = useState<BasemapType>("hybrid");
@@ -393,17 +383,9 @@ export default function GeoProcessamento({
   const [heavyJob, setHeavyJob] = useState<GISHeavyProcessingJob | null>(null);
   const heavyJobAbortRef = useRef<AbortController | null>(null);
 
-  // Processing History
+  // Processing history and transient browser session; no database writes.
   const [history, setHistory] = useState<ProcessingHistoryEntry[]>([]);
   const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
-  const hydratedProjectRef = useRef<string | null>(null);
-  const cloudSyncReadyRef = useRef<string | null>(null);
-  const cloudSyncSequenceRef = useRef(0);
-  const [cloudSyncStatus, setCloudSyncStatus] = useState<"loading" | "local-only" | "ready" | "saving" | "saved" | "error">("loading");
-  const cloudSyncQueue = useMemo(() => createLastWriteWinsQueue(
-    (job: { uid: string; snapshot: Parameters<typeof syncGISWorkspaceToCloud>[1] }) => syncGISWorkspaceToCloud(job.uid, job.snapshot),
-    (job) => JSON.stringify([job.uid, job.snapshot.projectId]),
-  ), []);
 
   // Model Builder — typed DAG (vector + raster).
   const [modelGraph, setModelGraph] = useState<GISModelGraph>(
@@ -415,254 +397,35 @@ export default function GeoProcessamento({
   const [modelLog, setModelLog] = useState<string[]>([]);
   const modelAbortRef = useRef<AbortController | null>(null);
 
-  // Restore the newest available workspace snapshot. IndexedDB is the fast
-  // offline cache; authenticated projects additionally use Firestore + Storage.
+  // Restore only RAM state when the component remounts in the same tab.
+  // Refreshing/closing the tab clears it; use Exportar Projecto for backup.
   React.useEffect(() => {
-    let cancelled = false;
-    setWorkspaceHydrated(false);
-    hydratedProjectRef.current = null;
-    cloudSyncReadyRef.current = null;
-    cloudSyncSequenceRef.current += 1;
-    setCloudSyncStatus("loading");
+    const snapshot = getGISSessionWorkspace();
+    if (snapshot) {
+      setLayers(snapshot.layers as UserLayer[]);
+      setRasterLayers(snapshot.rasters);
+      setServiceLayers(snapshot.services);
+      setSelectedLayerId(snapshot.selectedLayerId);
+      setSecondLayerId(snapshot.secondLayerId);
+      setTableLayerId(snapshot.tableLayerId);
+      setHistory(snapshot.history as ProcessingHistoryEntry[]);
+      setModelGraph(snapshot.modelGraph);
+      setActiveTab(snapshot.activeTab as MainTab);
+      setBasemap(snapshot.basemap as BasemapType);
+    }
+    setWorkspaceHydrated(true);
+  }, []);
 
-    const load = async () => {
-      const localPromise = loadGISWorkspaceSnapshot(workspaceCacheId);
-      const rasterFilesPromise = loadGISWorkspaceRasterFiles(workspaceCacheId).catch((error) => {
-        console.warn("GIS Workspace: raster cache indisponível:", error);
-        return new Map<string, File>();
-      });
-      // Fail closed: a failed cloud restore must never trigger a destructive
-      // autosave from an empty or stale local cache.
-      const cloudPromise = cloudUid && activeProject?.id
-        ? loadGISWorkspaceFromCloud(cloudUid, workspaceProjectId)
-            .then((snapshot) => ({ succeeded: true, snapshot }))
-            .catch((error) => {
-              console.warn("GIS Workspace: cloud restore unavailable, local-only:", error);
-              return { succeeded: false, snapshot: null };
-            })
-        : Promise.resolve({ succeeded: false, snapshot: null });
-
-      const [localSnapshot, rasterFiles, cloudRestore] = await Promise.all([
-        localPromise, rasterFilesPromise, cloudPromise,
-      ]);
-      const cloudSnapshot = cloudRestore.snapshot;
-      if (cancelled) return;
-
-      const localTime = localSnapshot ? Date.parse(localSnapshot.updatedAt) || 0 : 0;
-      const cloudTime = cloudSnapshot ? Date.parse(cloudSnapshot.updatedAt) || 0 : 0;
-      const snapshot =
-        cloudSnapshot && cloudTime > localTime ? cloudSnapshot : localSnapshot ?? cloudSnapshot;
-
-      if (snapshot) {
-        setLayers(snapshot.layers as UserLayer[]);
-        setServiceLayers(snapshot.services ?? []);
-        const rasterMetadata = (snapshot.rasters ?? []) as PersistedGISRasterLayer[];
-        setRasterLayers(
-          rasterMetadata.map((raster) => {
-            // A cloud URL may refer to newer bytes than the local file cache.
-            const file = raster.remoteUrl ? undefined : rasterFiles.get(raster.id);
-            return {
-                id: raster.id,
-                name: raster.name,
-                file,
-                remoteUrl: raster.remoteUrl,
-                sourceType: raster.sourceType,
-                stacSource: raster.stacSource,
-                fileName: raster.fileName,
-                mimeType: raster.mimeType || "image/tiff",
-                sizeBytes: file?.size ?? raster.sizeBytes ?? 0,
-                visible: raster.visible,
-                opacity: raster.opacity,
-                isResult: raster.isResult,
-                bandCount: raster.bandCount ?? null,
-                bounds: raster.bounds ?? null,
-                error: !file && !raster.remoteUrl
-                  ? "Fonte raster indisponível; metadados preservados."
-                  : raster.error ?? null,
-                rasterState: raster.rasterState as GISWorkspaceRasterLayer["rasterState"],
-                rasterSymbology:
-                  raster.rasterSymbology as GISWorkspaceRasterLayer["rasterSymbology"],
-              } satisfies GISWorkspaceRasterLayer;
-          })
-        );
-        setSelectedLayerId(snapshot.selectedLayerId || snapshot.layers[0]?.id || "");
-        setSecondLayerId(snapshot.secondLayerId || "");
-        setTableLayerId(snapshot.tableLayerId || null);
-        setHistory(snapshot.history as ProcessingHistoryEntry[]);
-        setModelGraph(
-          snapshot.modelNodes.length || snapshot.modelEdges.length
-            ? {
-                version: 1,
-                nodes: snapshot.modelNodes,
-                edges: snapshot.modelEdges,
-              }
-            : createDefaultGISModelGraph()
-        );
-        if (snapshot.activeTab) {
-          const supportedTabs: MainTab[] = [
-            "terrain_workflow",
-            "data_sources",
-            "vector_toolbox",
-            "whitebox_toolbox",
-            "model_builder",
-            "sql_workspace",
-            "dashboard",
-            "history",
-            "layers",
-          ];
-          setActiveTab(
-            supportedTabs.includes(snapshot.activeTab as MainTab)
-              ? (snapshot.activeTab as MainTab)
-              : "vector_toolbox"
-          );
-        }
-        if (snapshot.basemap) setBasemap(snapshot.basemap as BasemapType);
-
-        // Refresh the local offline cache when the cloud copy is newer.
-        if (snapshot === cloudSnapshot) {
-          void saveGISWorkspaceSnapshot({
-            projectId: workspaceCacheId,
-            layers: snapshot.layers,
-            rasters: snapshot.rasters ?? [],
-            services: snapshot.services ?? [],
-            selectedLayerId: snapshot.selectedLayerId,
-            secondLayerId: snapshot.secondLayerId,
-            tableLayerId: snapshot.tableLayerId,
-            history: snapshot.history,
-            modelNodes: snapshot.modelNodes,
-            modelEdges: snapshot.modelEdges,
-            activeTab: snapshot.activeTab,
-            basemap: snapshot.basemap,
-          });
-        }
-      } else {
-        setLayers([]);
-        setRasterLayers([]);
-        setServiceLayers([]);
-        setSelectedLayerId("");
-        setSecondLayerId("");
-        setTableLayerId(null);
-        setHistory([]);
-        setModelGraph(createDefaultGISModelGraph());
-        setModelNodeStatus({});
-        setModelLog([]);
-      }
-
-      const missingRaster = (snapshot?.rasters ?? []).some(
-        (raster) => !raster.remoteUrl && !rasterFiles.has(raster.id)
-      );
-      const cloudReady = cloudRestore.succeeded && !missingRaster;
-      // This ref records restore success only. Source readiness is checked on
-      // every save so removing/replacing a missing raster can recover sync.
-      cloudSyncReadyRef.current = cloudRestore.succeeded ? workspaceCacheId : null;
-      setCloudSyncStatus(cloudReady ? "ready" : "local-only");
-      hydratedProjectRef.current = workspaceCacheId;
-      setWorkspaceHydrated(true);
-    };
-
-    void load();
-    return () => {
-      cancelled = true;
-      vectorAbortRef.current?.abort();
-    };
-  }, [workspaceProjectId, workspaceCacheId, cloudUid, activeProject?.id]);
-
-  // Persist project workspace changes without blocking map interaction.
   React.useEffect(() => {
-    if (!workspaceHydrated || hydratedProjectRef.current !== workspaceCacheId) return;
-
-    const timer = window.setTimeout(() => {
-      const rasterSnapshot: PersistedGISRasterLayer[] = rasterLayers.map((raster) => ({
-        id: raster.id,
-        name: raster.name,
-        fileName: raster.file?.name ?? raster.fileName,
-        mimeType: raster.file?.type || raster.mimeType || "image/tiff",
-        sizeBytes: raster.file?.size ?? raster.sizeBytes ?? 0,
-        visible: raster.visible,
-        opacity: raster.opacity,
-        isResult: raster.isResult,
-        bandCount: raster.bandCount ?? null,
-        bounds: raster.bounds ?? null,
-        error: raster.error ?? null,
-        rasterState: raster.rasterState ? { ...raster.rasterState } : undefined,
-        rasterSymbology: raster.rasterSymbology
-          ? { ...raster.rasterSymbology }
-          : undefined,
-        remoteUrl: raster.remoteUrl,
-        sourceType: raster.sourceType,
-        stacSource: raster.stacSource,
-      }));
-
-      const snapshot = {
-        projectId: workspaceProjectId,
-        layers,
-        rasters: rasterSnapshot,
-        services: serviceLayers,
-        selectedLayerId,
-        secondLayerId,
-        tableLayerId,
-        history,
-        modelNodes: modelGraph.nodes,
-        modelEdges: modelGraph.edges,
-        activeTab,
-        basemap,
-      };
-
-      // Capture the edit order before asynchronous IndexedDB operations:
-      // a slow older save must not enqueue its stale cloud snapshot last.
-      const sequence = ++cloudSyncSequenceRef.current;
-      void (async () => {
-        await saveGISWorkspaceSnapshot({ ...snapshot, projectId: workspaceCacheId });
-        await syncGISWorkspaceRasterFiles(workspaceCacheId, rasterLayers).catch((error) => {
-          console.warn("GIS Workspace: falha ao persistir rasters localmente:", error);
-        });
-
-        if (hydratedProjectRef.current !== workspaceCacheId ||
-            cloudSyncSequenceRef.current !== sequence) return;
-        if (cloudUid && activeProject?.id &&
-            canSyncGISWorkspaceToCloud(
-              cloudSyncReadyRef.current === workspaceCacheId, rasterLayers,
-            )) {
-          setCloudSyncStatus("saving");
-          try {
-            await cloudSyncQueue.enqueue({ uid: cloudUid, snapshot });
-            if (hydratedProjectRef.current === workspaceCacheId &&
-                cloudSyncSequenceRef.current === sequence) {
-              setCloudSyncStatus("saved");
-            }
-          } catch (error) {
-            console.warn("GIS Workspace: cloud sync deferred; local cache retained:", error);
-            if (hydratedProjectRef.current === workspaceCacheId &&
-                cloudSyncSequenceRef.current === sequence) {
-              setCloudSyncStatus("error");
-            }
-          }
-        } else if (hydratedProjectRef.current === workspaceCacheId) {
-          setCloudSyncStatus("local-only");
-        }
-      })();
-    }, 900);
-
-    return () => window.clearTimeout(timer);
-  }, [
-    workspaceHydrated,
-    workspaceProjectId,
-    workspaceCacheId,
-    cloudUid,
-    activeProject?.id,
-    layers,
-    rasterLayers,
-    serviceLayers,
-    selectedLayerId,
-    secondLayerId,
-    tableLayerId,
-    history,
-    modelGraph,
-    activeTab,
-    basemap,
-    cloudSyncQueue,
-  ]);
-
+    if (!workspaceHydrated) return;
+    setGISSessionWorkspace({
+      layers, rasters: rasterLayers, services: serviceLayers,
+      selectedLayerId, secondLayerId, tableLayerId,
+      history, modelGraph, activeTab, basemap,
+    });
+  }, [workspaceHydrated, layers, rasterLayers, serviceLayers,
+      selectedLayerId, secondLayerId, tableLayerId, history, modelGraph,
+      activeTab, basemap]);
 
   // Spatial SQL Workspace
   const [sqlQuery, setSqlQuery] = useState<string>("");
@@ -1698,7 +1461,7 @@ export default function GeoProcessamento({
     setServiceLayers((previous) => [service, ...previous]);
     toast({
       title: "WMS adicionado",
-      description: `${service.name} foi registado como camada persistente do projeto.`,
+      description: `${service.name} foi adicionado à sessão local do GIS Workspace.`,
     });
   }, [toast, wmsCapabilities, wmsSelectedLayer, wmsStyle]);
 
@@ -1779,8 +1542,7 @@ export default function GeoProcessamento({
   }, [rasterUrl, toast]);
 
   // ── Handle File Upload ───────────────────────────────────────────────────
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
+  const importGISFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
     const selectedFiles = Array.from(files);
@@ -1793,17 +1555,19 @@ export default function GeoProcessamento({
         if (shapefileSidecars.has(extension)) continue;
 
         if (extension === "tif" || extension === "tiff") {
+          // As in GeoLibre: preserve already-tiled COG files; convert a
+          // striped DEM into a real COG inside the browser via WASM.
+          const prepared = await prepareLocalGeoTiff(file);
           const raster: GISWorkspaceRasterLayer = {
             id: `raster_${crypto.randomUUID().slice(0, 12)}`,
             name: file.name.replace(/\.[^/.]+$/, ""),
-            file,
-            sourceType: "storage",
-            fileName: file.name,
-            mimeType: file.type || "image/tiff",
-            sizeBytes: file.size,
+            file: prepared.file,
+            fileName: prepared.file.name,
+            mimeType: "image/tiff",
+            sizeBytes: prepared.file.size,
             visible: true,
             opacity: 1,
-            bandCount: null,
+            bandCount: prepared.bands,
             bounds: null,
             error: null,
             rasterState: {
@@ -1821,7 +1585,9 @@ export default function GeoProcessamento({
           setSelectedWhiteboxRasterId(raster.id);
           toast({
             title: "Raster adicionado",
-            description: `${raster.name} será lido como GeoTIFF/COG no mapa do GIS Workspace.`,
+            description: prepared.converted
+              ? `${raster.name}: GeoTIFF convertido para COG no navegador; sem upload.`
+              : `${raster.name}: GeoTIFF/COG local disponível no mapa; sem upload.`,
           });
           continue;
         }
@@ -1881,6 +1647,9 @@ export default function GeoProcessamento({
     }
 
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    void importGISFiles(event.target.files);
   };
 
   const updateRasterState = useCallback(
@@ -2376,7 +2145,7 @@ export default function GeoProcessamento({
             id: `model_raster_${crypto.randomUUID().slice(0, 12)}`,
             name: node.name.trim() || value.name || "Resultado raster do modelo",
             file,
-            sourceType: "storage",
+            
             fileName,
             mimeType: "image/tiff",
             sizeBytes: file.size,
@@ -2567,7 +2336,7 @@ export default function GeoProcessamento({
           whiteboxManifestName(selectedWhiteboxTool!) +
           " — Backend GDAL",
         file: resultFile,
-        sourceType: "storage",
+        
         fileName: resultFile.name,
         mimeType: resultFile.type || "image/tiff",
         sizeBytes: resultFile.size,
@@ -2714,7 +2483,7 @@ export default function GeoProcessamento({
             id: `whitebox_raster_${crypto.randomUUID().slice(0, 12)}`,
             name: `${whiteboxManifestName(selectedWhiteboxTool)} — ${output.parameter}`,
             file,
-            sourceType: "storage",
+            
             fileName: file.name,
             mimeType: "image/tiff",
             sizeBytes: file.size,
@@ -2922,6 +2691,141 @@ export default function GeoProcessamento({
     }
   }, [layers, sqlQuery, toast]);
 
+  // ── GeoLibre-inspired local project lifecycle (no DB) ────────────────────
+  const exportWorkspaceProject = useCallback(() => {
+    const project = exportPortableGISProject({
+      layers, rasters: rasterLayers, services: serviceLayers,
+      selectedLayerId, secondLayerId, tableLayerId,
+      history, modelGraph, activeTab, basemap,
+    });
+    const blob = new Blob([JSON.stringify(project)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `GeoMoz_GIS_${new Date().toISOString().slice(0, 10)}.geomoz.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Some browsers need another event-loop turn to begin downloading a blob.
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const localRasters = rasterLayers.filter(r => r.file);
+    const notice = localRasters.length
+      ? `Projecto exportado. ${localRasters.length} raster(s) locais não estão incorporados; conserve os GeoTIFFs e reimporte-os ao reabrir.`
+      : "Projecto exportado para um ficheiro no seu dispositivo.";
+    setProjectNotice(notice);
+    toast({ title: "Projecto GIS descarregado", description: notice });
+  }, [layers, rasterLayers, serviceLayers, selectedLayerId, secondLayerId, tableLayerId,
+      history, modelGraph, activeTab, basemap, toast]);
+
+  const importWorkspaceProject = useCallback(async (file: File) => {
+    if (file.size > 25 * 1024 * 1024) {
+      throw new Error("Projecto demasiado grande (>25 MB). Importe camadas individualmente.");
+    }
+    const project = parsePortableGISProject(JSON.parse(await file.text()));
+    setLayers(project.layers as UserLayer[]);
+    setRasterLayers(project.rasters.map(r => ({
+      id: r.id, name: r.name, fileName: r.fileName,
+      remoteUrl: r.remoteUrl && /^https?:\/\//i.test(r.remoteUrl) ? r.remoteUrl : undefined,
+      sourceType: "url" as const,
+      mimeType: "image/tiff", sizeBytes: r.sizeBytes,
+      visible: r.visible, opacity: r.opacity, bounds: r.bounds || null,
+      bandCount: null,
+      error: r.remoteUrl ? null : "Reimporte este ficheiro GeoTIFF local para visualizar.",
+    })));
+    setServiceLayers(project.services);
+    setSelectedLayerId(project.layers[0]?.id || "");
+    setSecondLayerId("");
+    setTableLayerId(null);
+    setHistory([]);
+    setModelGraph(project.modelGraph);
+    // Only known 2D basemaps are supported.
+    if (["roadmap", "satellite", "hybrid", "terrain", "openstreetmap", "dark", "light"].includes(project.basemap))
+      setBasemap(project.basemap as BasemapType);
+    setActiveTab("layers");
+    setProjectNotice("Projecto local importado. GeoTIFFs do computador precisam de ser adicionados novamente.");
+    toast({ title: "Projecto GIS aberto", description: `${project.layers.length} camadas vectoriais carregadas localmente.` });
+  }, [toast]);
+
+  const demExtent = useMemo((): [number, number, number, number] => {
+    if (aoi.source !== "global" && aoi.geometry) {
+      try {
+        const b = turfBbox({ type: "Feature", properties: {}, geometry: aoi.geometry as GeoJSON.Geometry });
+        if (b.length >= 4 && b.every(Number.isFinite))
+          return [b[0], b[1], b[2], b[3]];
+      } catch {}
+    }
+    return mapViewportBbox;
+  }, [aoi, mapViewportBbox]);
+
+  const requestGlobalDem = useCallback(async () => {
+    if (demLoading) return;
+    const controller = new AbortController();
+    demAbortRef.current = controller;
+    setDemLoading(true);
+    setDemProgress({ completed: 0, total: 0 });
+    try {
+      const range = globalDemTileRange(demExtent);
+      const total = (range.maxX - range.minX + 1) * (range.maxY - range.minY + 1);
+      setDemProgress({ completed: 0, total });
+      const result = await downloadGlobalDem(demExtent, {
+        signal: controller.signal,
+        onProgress: (completed, tileTotal) => setDemProgress({ completed, total: tileTotal }),
+      });
+      const id = `dem_${crypto.randomUUID().slice(0, 12)}`;
+      const raster: GISWorkspaceRasterLayer = {
+        id, name: `DEM Global · ${result.resolutionMeters.toFixed(0)} m · z${result.zoom}`,
+        file: result.file, fileName: result.file.name,
+        mimeType: "image/tiff", sizeBytes: result.file.size,
+        visible: true, opacity: 1, bounds: result.bounds, bandCount: 1,
+        rasterState: {
+          mode: "single", bands: [1], colormap: "viridis",
+          nodata: "auto", rescale: null, stretch: "linear", gamma: 1,
+        },
+      };
+      setRasterLayers(prev => [raster, ...prev]);
+      setSelectedWhiteboxRasterId(id);
+      setActiveTab("layers");
+      setSidebarOpen(false);
+      setProjectNotice(`DEM criado no navegador · ${result.width} × ${result.height} píxeis · ${result.tileCount} tiles · ${result.resolutionMeters.toFixed(0)} m/píxel na projecção EPSG:3857.`);
+      toast({ title: "DEM carregado sem servidor", description: "COG real adicionado às camadas. Nenhum ficheiro foi enviado ao Firebase." });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        toast({ title: "Transferência DEM cancelada", description: "Não foi feita nenhuma gravação em base de dados." });
+      } else {
+        toast({
+          title: "Não foi possível carregar o DEM",
+          description: error instanceof Error ? error.message : String(error),
+          variant: "destructive",
+        });
+      }
+    } finally {
+      demAbortRef.current = null;
+      setDemLoading(false);
+      setDemProgress(null);
+    }
+  }, [demLoading, demExtent, toast]);
+
+  // The immersive GIS shell can use toolbar actions without coupling its
+  // navigation UI to the internal GIS tools. No cloud persistence is involved.
+  React.useEffect(() => {
+    const handleAction = (event: Event) => {
+      const action = (event as CustomEvent<string>).detail;
+      switch (action) {
+        case "add-file": fileInputRef.current?.click(); break;
+        case "import-project": projectInputRef.current?.click(); break;
+        case "export-project": exportWorkspaceProject(); break;
+        case "download-dem": void requestGlobalDem(); break;
+        case "processing": setActiveTab("whitebox_toolbox"); setDesktopSidebarOpen(true); break;
+        case "layers": setActiveTab("layers"); setDesktopSidebarOpen(true); break;
+        case "data": setActiveTab("data_sources"); setDesktopSidebarOpen(true); break;
+        case "terrain": setActiveTab("terrain_workflow"); setDesktopSidebarOpen(true); break;
+        default: break;
+      }
+    };
+    window.addEventListener("geomoz:gis-workspace-action", handleAction);
+    return () => window.removeEventListener("geomoz:gis-workspace-action", handleAction);
+  }, [exportWorkspaceProject, requestGlobalDem]);
+
   // ── Export PDF Report ────────────────────────────────────────────────────
   const exportPdf = () => {
     const reportTitle = "Dossiê Avançado de Geoprocessamento";
@@ -2965,7 +2869,7 @@ export default function GeoProcessamento({
       return {
         id, name: `${product.name} — ${result.report.source.name}`, file,
         fileName: file.name, mimeType: file.type, sizeBytes: file.size,
-        sourceType: "storage", visible: product.id === "slope", opacity: 1,
+         visible: product.id === "slope", opacity: 1,
         isResult: true, bandCount: 1, bounds: product.bounds, error: null,
         rasterState: { mode: "single", bands: [1],
           colormap: product.id === "hillshade" ? "gray" : product.id === "streams" ? "blues" : "viridis",
@@ -3011,7 +2915,35 @@ export default function GeoProcessamento({
   }, [activeLayer]);
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-slate-50 dark:bg-slate-950 relative font-sans">
+    <div
+      className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-50 font-sans dark:bg-slate-950"
+      onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
+      onDrop={event => {
+        if (!event.dataTransfer.files.length) return;
+        event.preventDefault();
+        void importGISFiles(event.dataTransfer.files);
+      }}
+    >
+      {/* Local project file only — no database or cloud upload. */}
+      <input
+        ref={projectInputRef}
+        type="file"
+        accept=".json,.geomoz.json"
+        className="hidden"
+        data-testid="gis-local-project-input"
+        onChange={event => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (!file) return;
+          void importWorkspaceProject(file).catch(error => {
+            toast({
+              title: "Erro ao abrir projecto",
+              description: error instanceof Error ? error.message : String(error),
+              variant: "destructive",
+            });
+          });
+        }}
+      />
       {/* Hidden File Input */}
       <input
         ref={fileInputRef}
@@ -3067,17 +2999,32 @@ export default function GeoProcessamento({
           </button>
         </div>
 
-        {/* Explicit local-vs-cloud state: an offline cache is not a confirmed backup. */}
-        <div role="status" aria-live="polite" className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 text-[10px] text-slate-600 dark:text-slate-300">
-          {cloudSyncStatus === "loading" && "Projecto GIS: a restaurar dados..."}
-          {cloudSyncStatus === "ready" && "Projecto GIS: sincronização disponível"}
-          {cloudSyncStatus === "saving" && "Projecto GIS: a guardar no Firebase..."}
-          {cloudSyncStatus === "saved" && "Projecto GIS: guardado no Firebase"}
-          {cloudSyncStatus === "local-only" && (
-            <span className="text-amber-700 dark:text-amber-400">Projecto GIS: apenas cache local; nuvem indisponível ou sessão anónima</span>
-          )}
-          {cloudSyncStatus === "error" && (
-            <span className="text-rose-700 dark:text-rose-400">Falha na sincronização Firebase; cache local mantida. Altere o projecto para tentar novamente.</span>
+        <div role="status" aria-live="polite"
+          className="border-b border-slate-100 bg-sky-50/60 px-3 py-2 text-[10px] leading-relaxed text-sky-800 dark:border-slate-800 dark:bg-sky-950/20 dark:text-sky-300">
+          <strong>Modo local:</strong> dados e resultados permanecem apenas na memória
+          deste separador; não são enviados ao Firestore nem ao Storage.
+          Exporte o projecto antes de fechar ou actualizar a página.
+          {projectNotice && <span className="mt-1 block font-semibold">{projectNotice}</span>}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-800">
+          <button type="button" onClick={exportWorkspaceProject}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-sky-200 px-2.5 text-[11px] font-semibold text-sky-800 hover:bg-sky-50 dark:border-sky-800 dark:text-sky-300">
+            <Download size={13} /> Exportar projecto
+          </button>
+          <button type="button" onClick={() => projectInputRef.current?.click()}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200">
+            <Upload size={13} /> Abrir projecto
+          </button>
+          <button type="button" disabled={demLoading} onClick={() => void requestGlobalDem()}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-sky-600 px-2.5 text-[11px] font-semibold text-white disabled:opacity-50">
+            <Mountain size={13} /> {demLoading ? "DEM a processar…" : "Obter DEM Global"}
+          </button>
+          {demLoading && (
+            <div role="status" aria-live="polite" className="min-w-0 text-[11px] text-sky-800 dark:text-sky-300">
+              <span>{demProgress?.completed ?? 0} / {demProgress?.total ?? 0} tiles descarregados</span>
+              <button type="button" className="ml-2 underline" onClick={() => demAbortRef.current?.abort()}>Cancelar</button>
+            </div>
           )}
         </div>
 
@@ -3184,7 +3131,7 @@ export default function GeoProcessamento({
           <Mountain size={16} /> Terreno e Hidrologia
         </button>
         {workspaceHydrated && <div hidden={activeTab !== "terrain_workflow"}>
-          <TerrainWorkflowPanel key={workspaceCacheId} aoi={aoi} rasters={rasterLayers}
+          <TerrainWorkflowPanel aoi={aoi} rasters={rasterLayers}
             onComplete={handleTerrainComplete} onShowProduct={handleShowTerrainProduct}
             onDraw={() => { setDrawingEnabled(true); setSidebarOpen(false); setDesktopSidebarOpen(false); }} />
         </div>}
@@ -3194,8 +3141,8 @@ export default function GeoProcessamento({
           <div className="p-3 space-y-3 flex-1">
             <div className="rounded-xl border border-cyan-100 bg-cyan-50 p-2.5 text-[11px] text-cyan-900 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-300">
               <span className="font-semibold block mb-0.5">Data Sources do projeto</span>
-              Adicione ficheiros, dados cloud-native e serviços OGC. As fontes ficam
-              persistidas com o GIS Workspace.
+              Adicione ficheiros locais, COGs e serviços OGC. Os dados ficam na
+              memória do navegador; nenhum upload ou sincronização automática.
             </div>
 
             <div className="grid grid-cols-2 gap-2">
@@ -3848,7 +3795,7 @@ export default function GeoProcessamento({
                 disabled={!tileServiceUrl.trim()}
                 className="w-full rounded-lg bg-amber-600 px-3 py-2 text-[10px] font-bold text-white hover:bg-amber-700 disabled:opacity-50"
               >
-                Adicionar tiles persistentes
+                Adicionar serviço de tiles à sessão
               </button>
             </div>
           </div>
@@ -5020,7 +4967,7 @@ export default function GeoProcessamento({
                                       Classificação Raster
                                     </span>
                                     <span className="text-[9px] text-slate-400">
-                                      Classes discretas e legenda persistente
+                                      Classes discretas e legenda da camada
                                     </span>
                                   </div>
                                   <label className="flex items-center gap-1.5 text-[9px] font-semibold text-slate-600 dark:text-slate-300">
@@ -5759,6 +5706,7 @@ export default function GeoProcessamento({
           activeLayerId={selectedLayerId}
           activeRasterId={selectedWhiteboxRasterId}
           basemap={basemap}
+          onViewportBbox={setMapViewportBbox}
           aoiGeometry={aoi.source !== "global" ? aoi.geometry : null}
           drawingEnabled={drawingEnabled}
           onSelectLayer={setSelectedLayerId}
