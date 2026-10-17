@@ -24,7 +24,7 @@ function localWorkspace(label: string): GISLocalWorkspace {
     }],
     rasters: [{
       id: "local-dem", name: "DEM", fileName: "dem.tif",
-      file: new File([new Uint8Array([73, 73, 42, 0])], "dem.tif", { type: "image/tiff" }),
+      file: new File([new Uint8Array([73, 73, 42, 0]).buffer], "dem.tif", { type: "image/tiff" }),
       mimeType: "image/tiff", sizeBytes: 4, visible: true, opacity: 0.8,
       bounds: [32.5, -26, 32.6, -25.9],
     }],
