@@ -100,6 +100,9 @@ jobs:
             .geolibre-upstream/LICENSE
           test -s artifacts/geomoz-react/dist/public/gis-workspace/index.html
           test -s artifacts/geomoz-react/dist/public/gis-workspace/GEOLIBRE-LICENSE.txt
+          test -s artifacts/geomoz-react/dist/public/gis-workspace/geomoz-brand.css
+          test -s artifacts/geomoz-react/dist/public/gis-workspace/favicon.svg
+          grep -q '"GeoMoz GIS Workspace"' artifacts/geomoz-react/dist/public/gis-workspace/manifest.webmanifest
           grep -q '/gis-workspace/' artifacts/geomoz-react/dist/public/gis-workspace/index.html
           grep -q '"GeoMoz GIS Workspace"' artifacts/geomoz-react/dist/public/gis-workspace/deployment.json
 
@@ -130,6 +133,13 @@ jobs:
           python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["branding"]["appName"]=="GeoMoz GIS Workspace"; assert d["sharing"]["shareUrl"]=="off"' "$RUNNER_TEMP/geolibre-policy.json"
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/sw.js" -o "$RUNNER_TEMP/geolibre-sw.js"
           test -s "$RUNNER_TEMP/geolibre-sw.js"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/geomoz-brand.css" -o "$RUNNER_TEMP/geomoz-gis-theme.css"
+          grep -q -- '--geomoz-blue: #0284c7' "$RUNNER_TEMP/geomoz-gis-theme.css"
+          grep -q -- '#root header' "$RUNNER_TEMP/geomoz-gis-theme.css"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/manifest.webmanifest" -o "$RUNNER_TEMP/geomoz-gis-manifest.json"
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["name"]=="GeoMoz GIS Workspace" and d["scope"]=="/gis-workspace/"' "$RUNNER_TEMP/geomoz-gis-manifest.json"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/favicon.svg" -o "$RUNNER_TEMP/geomoz-gis-favicon.svg"
+          grep -q 'linearGradient' "$RUNNER_TEMP/geomoz-gis-favicon.svg"
           echo "GeoLibre Web is being served from the GeoMoz Hosting origin"
 
       - name: Show deployed URL

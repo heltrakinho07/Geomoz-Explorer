@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "scripts/brand-geolibre-web.mjs"
+      - "scripts/assets/geolibre-geomoz-theme.css"
       - "scripts/tests/brand-geolibre-web.test.mjs"
       - ".github/workflows/geolibre-upstream-ci.yml"
       - ".github/workflows/firebase-deploy.yml"
