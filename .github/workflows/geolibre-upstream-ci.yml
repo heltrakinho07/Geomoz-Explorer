@@ -6,6 +6,9 @@ on:
     paths:
       - "scripts/brand-geolibre-web.mjs"
       - "scripts/assets/geolibre-geomoz-theme.css"
+      - "scripts/assets/geomoz-gis-shell.html"
+      - "scripts/assets/geomoz-gis-shell.js"
+      - "scripts/tests/geomoz-gis-shell.test.mjs"
       - "scripts/tests/brand-geolibre-web.test.mjs"
       - ".github/workflows/geolibre-upstream-ci.yml"
       - ".github/workflows/firebase-deploy.yml"
@@ -36,7 +39,7 @@ jobs:
           cache-dependency-path: .geolibre-upstream/package-lock.json
 
       - name: Test GeoMoz build integration
-        run: node --test scripts/tests/brand-geolibre-web.test.mjs
+        run: node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs
 
       - name: Install upstream with pinned package-lock
         run: npm ci --no-audit --no-fund
@@ -60,6 +63,9 @@ jobs:
           test -s artifacts/geomoz-react/dist/public/gis-workspace/index.html
           test -s artifacts/geomoz-react/dist/public/gis-workspace/GEOLIBRE-LICENSE.txt
           grep -q 'href="/mapa"' artifacts/geomoz-react/dist/public/gis-workspace/index.html
+          grep -q 'data-geomoz-shell="true"' artifacts/geomoz-react/dist/public/gis-workspace/index.html
+          grep -q 'data-geomoz-menu="Processing"' artifacts/geomoz-react/dist/public/gis-workspace/index.html
+          test -s artifacts/geomoz-react/dist/public/gis-workspace/geomoz-shell.js
           grep -q '/gis-workspace/' artifacts/geomoz-react/dist/public/gis-workspace/index.html
           grep -q '"GeoMoz GIS Workspace"' artifacts/geomoz-react/dist/public/gis-workspace/deployment.json
 
