@@ -10,7 +10,7 @@ Código de origem: https://github.com/opengeos/GeoLibre . Licença: https://gith
 
 ## Navegação
 
-No Firebase Hosting /gis-workspace/ é uma aplicação estática independente. O menu GIS Workspace de GeoMoz navega para essa rota na compilação de produção (VITE_GIS_WORKSPACE_ENGINE=geolibre). /geoprocessamento continua a funcionar com o motor GIS legado para compatibilidade e recuperação das cópias IndexedDB antigas. O botão fixo «← GeoMoz» regressa a /mapa. O bundle tem base /gis-workspace/ para carregar JS, CSS, workers e modelos sem apontar para a raiz do portal.
+No Firebase Hosting /gis-workspace/ é uma aplicação estática independente. O menu GIS Workspace de GeoMoz navega para essa rota na compilação de produção (VITE_GIS_WORKSPACE_ENGINE=geolibre). /geoprocessamento continua a funcionar com o motor GIS legado para compatibilidade e recuperação das cópias IndexedDB antigas. O topo apresenta navegação permanente entre módulos GeoMoz; deixou de existir o botão flutuante de saída. Embora a aplicação use o mesmo domínio e esteja visualmente integrada, o motor GeoLibre continua a ser um bundle React independente (não é ainda o mesmo runtime que o Explorer). A navegação entre módulos provoca uma nova carga de página. Antes de mudar de módulo, guardar explicitamente o projecto GIS. O bundle tem base /gis-workspace/ para carregar JS, CSS, workers e modelos sem apontar para a raiz do portal.
 
 No desenvolvimento local do portal (onde o bundle GeoLibre não está construído), o menu usa o motor GIS existente; para validar a versão integral, servir o directório de publicação com um servidor HTTP que suporte SPA e caminhos relativos.
 
@@ -36,3 +36,13 @@ O tema é carregado depois das folhas originais e utiliza as variáveis HSL sem 
 O script copia os favicons do GeoMoz para a aplicação GeoLibre, muda o nome e as cores do `manifest.webmanifest` para «GeoMoz GIS Workspace» e preserva o âmbito isolado `/gis-workspace/`. O stylesheet inclui uma versão baseada no hash de conteúdo para evitar cache de CSS antigo, além de estilos acessíveis para foco, dispositivos móveis e movimento reduzido.
 
 Ao alterar a identidade no futuro, editar **somente** `scripts/assets/geolibre-geomoz-theme.css` e os ícones oficiais em `artifacts/geomoz-react/public`, executar `node --test scripts/tests/brand-geolibre-web.test.mjs` e validar o build original no CI.
+
+
+## Interface QGIS-like e navegação integrada
+
+- `scripts/assets/geomoz-gis-shell.html` é o cabeçalho GeoMoz comum, com separadores para Painel, Mapa, GIS Workspace, GeoAnálises, Hidrografia e GeoMoz AI (todos no mesmo domínio). Ao abrir a rota SIG, o estado visual é **GIS Workspace** activo, sem «Voltar ao GeoMoz».
+- `scripts/assets/geolibre-geomoz-theme.css` reorganiza o chrome em camadas: header GeoMoz azul-marinho, barra compacta de ferramentas SIG, barra original de menus em cinza/branco QGIS-like, painéis dockados e barra de coordenadas. Os painéis, o renderer cartográfico e as rampas científicas continuam a ser os originais.
+- `scripts/assets/geomoz-gis-shell.js` delega os ícones de acesso rápido nos **menus React originais** Project, Add Data, Edit, View, Processing, Controls, Plugins e Settings. Assim a navegação visual não recria os processamentos nem ignora permissões, modais e opções internas. Em caso de layout ou tradução diferente, o menu original continua disponível.
+- A UI responde a dispositivos móveis, mantém os temas claro/escuro e as opções do GeoLibre. O mapa/globo e a opção 2D/3D são controlados pelo motor original; alterar o modo de projeção por defeito requer uma alteração upstream testada à parte.
+- Não são representadas unidades locais tipo C:/D: como acessíveis automaticamente num navegador: o Browser usa apenas origens que o GeoLibre realmente suporta no browser (ficheiros carregados, serviços remotos e stores locais).
+- Os testes `scripts/tests/geomoz-gis-shell.test.mjs` verificam os menus nativos e os links GeoMoz; os testes de empacotamento verificam a presença do shell na página final. O deploy verifica também `geomoz-shell.js` no Firebase Hosting.
