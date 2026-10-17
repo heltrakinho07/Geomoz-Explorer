@@ -14,13 +14,14 @@ function fixture(html) {
   mkdirSync(src, { recursive: true });
   writeFileSync(join(src, "index.html"), html);
   writeFileSync(join(src, "asset.txt"), "raster worker sample");
+  writeFileSync(join(src, "manifest.webmanifest"), JSON.stringify({name:"GeoLibre",short_name:"GeoLibre",start_url:"/gis-workspace/",scope:"/gis-workspace/",theme_color:"#2f8f85",icons:[{src:"pwa-192x192.png",sizes:"192x192"}]}));
   const license = join(work, "LICENSE");
   writeFileSync(license, "MIT License\nCopyright (c) 2026 Qiusheng Wu\n");
   return { work, src, dst, license };
 }
 
 test("bundles the real web shell under the GIS subpath with branding and MIT notice", () => {
-  const f = fixture('<html><head><script src="/gis-workspace/assets/app.js"></script></head><body><div id="root"></div></body></html>');
+  const f = fixture('<html><head><title>GeoLibre</title><link rel="icon" type="image/png" href="/gis-workspace/favicon.png"><meta name="theme-color" content="#2f8f85"><script src="/gis-workspace/assets/app.js"></script></head><body><div id="root"></div></body></html>');
   try {
     const result = spawnSync(process.execPath, [brandScript, f.src, f.dst, f.license], { encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
@@ -34,6 +35,27 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     assert.equal(cfg.capabilities, undefined);
     assert.ok(existsSync(join(f.dst, "GEOLIBRE-LICENSE.txt")));
     assert.equal(readFileSync(join(f.dst, "asset.txt"), "utf8"), "raster worker sample");
+    const css = readFileSync(join(f.dst, "geomoz-brand.css"), "utf8");
+    const manifest = JSON.parse(readFileSync(join(f.dst, "manifest.webmanifest"), "utf8"));
+    assert.match(css, /--geomoz-navy: #020617/);
+    assert.match(css, /--geomoz-blue: #0284c7/);
+    assert.match(css, /#root header\[class~="bg-card"\]/);
+    assert.match(css, /html\.dark/);
+    assert.match(css, /prefers-reduced-motion/);
+    assert.match(html, /GeoMoz GIS Workspace<\/title>/);
+    assert.match(html, /href="\/gis-workspace\/favicon\.svg"/);
+    assert.match(html, /geomoz-brand\.css\?v=[a-f0-9]{12}/);
+    assert.doesNotMatch(html, /name="theme-color" content="#2f8f85"/);
+    assert.match(html, /name="theme-color" content="#082f49"/);
+    assert.equal(manifest.name, "GeoMoz GIS Workspace");
+    assert.equal(manifest.short_name, "GeoMoz GIS");
+    assert.equal(manifest.start_url, "/gis-workspace/");
+    assert.equal(manifest.scope, "/gis-workspace/");
+    assert.equal(manifest.theme_color, "#0284c7");
+    assert.ok(existsSync(join(f.dst, "favicon.svg")));
+    assert.ok(existsSync(join(f.dst, "pwa-192x192.png")));
+    assert.ok(existsSync(join(f.dst, "pwa-512x512.png")));
+    assert.ok(existsSync(join(f.dst, "maskable-icon-512x512.png")));
   } finally {
     rmSync(f.work, { recursive: true, force: true });
   }
