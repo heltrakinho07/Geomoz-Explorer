@@ -28,3 +28,18 @@ it('cancels the active worker and never adds partial products', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('Análise cancelada');
   expect(props.onComplete).not.toHaveBeenCalled();
 });
+it('uses the newly drawn AOI as the local DEM crop', async () => {
+  vi.mocked(runTerrainWorkflow).mockRejectedValue(new Error('end test'));
+  const view = render(<TerrainWorkflowPanel {...props} />);
+  fireEvent.click(screen.getByText('Desenhar área no mapa'));
+  expect(props.onDraw).toHaveBeenCalledOnce();
+  view.rerender(<TerrainWorkflowPanel {...props} aoi={{...props.aoi, source: 'draw', geometry: {type: 'Polygon', coordinates: [[[32,-25],[33,-25],[33,-24],[32,-25]]]}, label: 'Área desenhada no mapa'}} />);
+  expect(screen.getByLabelText('Recortar pela extensão rectangular desenhada')).toBeChecked();
+  const file = new File(['dem'], 'dem.tif');
+  Object.defineProperty(file, 'arrayBuffer', {value: async () => new Uint8Array([1]).buffer});
+  fireEvent.change(screen.getByLabelText(/GeoTIFF de elevação, uma banda/), {target: {files: [file]}});
+  fireEvent.click(screen.getByText('Executar análise completa'));
+  await waitFor(() => expect(runTerrainWorkflow).toHaveBeenCalledOnce());
+  expect(vi.mocked(runTerrainWorkflow).mock.calls[0][2].bbox).toEqual([32,-25,33,-24]);
+  await screen.findByRole('alert');
+});

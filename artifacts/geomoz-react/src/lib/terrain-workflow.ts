@@ -37,7 +37,7 @@ export interface TerrainReport {
   engine: string;
   startedAt: string;
   durationMs: number;
-  source: { name: string; sha256: string; epsg: number; width: number; height: number };
+  source: { name: string; sha256: string; epsg: number; width: number; height: number; geoTransform: number[] };
   options: TerrainOptions;
   grid: { epsg: number; resolution: number; bounds: Bounds; width: number; height: number };
   steps: Array<{ tool: string; args: string[]; durationMs: number; log: string[] }>;
@@ -95,19 +95,36 @@ export async function executeTerrainWorkflow(
   await lib.default();
   const reader = new lib.GeoTiffReader(bytes);
   let source: TerrainReport["source"];
-  let normalized: Uint8Array;
+  let elevations: Float32Array;
+  let sourceTransform: Float64Array;
   let bounds: Bounds;
   try {
     if (reader.bands !== 1) throw new Error("O DEM deve ter uma única banda de elevação.");
-    if (!reader.epsg || reader.epsg === 32767) throw new Error("O GeoTIFF deve declarar um CRS EPSG válido.");
+    // GeoLibre 1.6 reads scale/tiepoint georeferencing, but does not expose
+    // ModelTransformationTag. Read that standard TIFF tag before validating.
+    const { fromArrayBuffer } = await import("geotiff");
+    const image = await (await fromArrayBuffer(new Uint8Array(bytes).buffer)).getImage();
+    const keys = image.getGeoKeys();
+    const sourceEpsg = reader.epsg && reader.epsg !== 32767 ? reader.epsg : Number(keys?.ProjectedCSTypeGeoKey ?? keys?.GeographicTypeGeoKey);
+    if (!sourceEpsg || sourceEpsg === 32767) throw new Error("O GeoTIFF deve declarar um CRS EPSG válido.");
     if (reader.width * reader.height > MAX_SOURCE_CELLS) throw new Error("O DEM excede 4 milhões de células. Recorte-o antes de importar.");
-    const gt = reader.geo_transform();
-    if (gt.length !== 6 || gt[2] !== 0 || gt[4] !== 0 || gt[1] <= 0 || gt[5] >= 0)
-      throw new Error("Use um GeoTIFF orientado a norte, sem rotação da grelha.");
-    const lonlat = reader.bounds_lonlat();
+    const matrix = image.getFileDirectory().getValue("ModelTransformation");
+    if (matrix && (matrix.length !== 16 || matrix[12] !== 0 || matrix[13] !== 0 || matrix[15] !== 1))
+      throw new Error("A transformação do GeoTIFF não é uma grelha afim válida.");
+    const gt = matrix ? new Float64Array([matrix[3], matrix[0], matrix[1], matrix[7], matrix[4], matrix[5]]) : reader.geo_transform();
+    const determinant = gt[1] * gt[5] - gt[2] * gt[4];
+    const pixelScale = Math.max(Math.abs(gt[1]), Math.abs(gt[2]), Math.abs(gt[4]), Math.abs(gt[5]));
+    if (gt.length !== 6 || !Array.from(gt).every(Number.isFinite) || !pixelScale || Math.abs(determinant) <= Number.EPSILON * pixelScale ** 2 * 16)
+      throw new Error("O GeoTIFF não tem uma transformação geográfica válida. Exporte-o com CRS e georreferenciação.");
+    sourceTransform = gt;
+    const corners = [[0, 0], [reader.width, 0], [0, reader.height], [reader.width, reader.height]]
+      .map(([x, y]) => [gt[0] + x * gt[1] + y * gt[2], gt[3] + x * gt[4] + y * gt[5]]);
+    const extent = new Float64Array([Math.min(...corners.map(c => c[0])), Math.min(...corners.map(c => c[1])),
+      Math.max(...corners.map(c => c[0])), Math.max(...corners.map(c => c[1]))]);
+    const lonlat = lib.transform_bbox_epsg(sourceEpsg, 4326, extent);
     if (lonlat.length !== 4) throw new Error("Não foi possível transformar a extensão do DEM para WGS84.");
     bounds = intersectBounds(Array.from(lonlat) as Bounds, options.bbox);
-    source = { name, sha256: await sha256(bytes), epsg: reader.epsg, width: reader.width, height: reader.height };
+    source = { name, sha256: await sha256(bytes), epsg: sourceEpsg, width: reader.width, height: reader.height, geoTransform: Array.from(gt) };
     const values = reader.read_band_f64(0);
     const transform = reader.value_transform();
     const scale = transform.length === 2 ? transform[0] : 1;
@@ -116,7 +133,7 @@ export async function executeTerrainWorkflow(
     const converted = new Float32Array(values.length);
     let valid = 0;
     for (let i = 0; i < values.length; i++) {
-      if (!Number.isFinite(values[i]) || values[i] === reader.nodata) converted[i] = -9999;
+      if (!Number.isFinite(values[i]) || values[i] === reader.nodata) converted[i] = -32768;
       else {
         const value = (values[i] * scale + offset) * factor;
         if (!Number.isFinite(value) || value < -12000 || value > 10000)
@@ -126,15 +143,7 @@ export async function executeTerrainWorkflow(
       }
     }
     if (!valid) throw new Error("O DEM só contém NoData.");
-    const builder = new lib.CogBuilder(reader.width, reader.height, 1);
-    try {
-      builder.set_epsg(reader.epsg);
-      builder.set_geo_transform(gt);
-      builder.set_nodata(-9999);
-      builder.set_compression("deflate");
-      builder.set_overview_levels(new Uint32Array());
-      normalized = builder.write_f32(converted);
-    } finally { builder.free(); }
+    elevations = converted;
   } finally { reader.free(); }
   completed++;
   notify("A preparar a grelha UTM em metros…");
@@ -150,13 +159,41 @@ export async function executeTerrainWorkflow(
   // otherwise fits pixels to the bbox and silently changes the requested size.
   const targetBounds: Bounds = [projected[0], projected[3] - expectedHeight * options.resolution,
     projected[0] + expectedWidth * options.resolution, projected[3]];
-  const dem = await tools.extractCogSubset(normalized!, {
-    bbox: targetBounds, bboxCrs: epsg, outputCrs: epsg, resolution: options.resolution, nodata: -9999,
-  });
+  // Invert the complete affine transform, including rotation, south-up and west-up
+  // sources. GeoLibre's subset helper assumes a north-up input, so do not use it here.
+  const gt = sourceTransform!;
+  const determinant = gt[1] * gt[5] - gt[2] * gt[4];
+  const output = new Float32Array(expectedWidth * expectedHeight).fill(-32768);
+  for (let row0 = 0; row0 < expectedHeight; row0 += 32) {
+    const row1 = Math.min(row0 + 32, expectedHeight);
+    const xy = new Float64Array((row1 - row0) * expectedWidth * 2);
+    let k = 0;
+    for (let row = row0; row < row1; row++) for (let col = 0; col < expectedWidth; col++) {
+      xy[k++] = targetBounds[0] + (col + 0.5) * options.resolution;
+      xy[k++] = targetBounds[3] - (row + 0.5) * options.resolution;
+    }
+    const transformed = epsg === source!.epsg ? xy : lib.transform_points_epsg(epsg, source!.epsg, xy);
+    k = 0;
+    for (let row = row0; row < row1; row++) for (let col = 0; col < expectedWidth; col++) {
+      const dx = transformed[k++] - gt[0], dy = transformed[k++] - gt[3];
+      const x = Math.floor((gt[5] * dx - gt[2] * dy) / determinant);
+      const y = Math.floor((-gt[4] * dx + gt[1] * dy) / determinant);
+      if (Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x < source!.width && y < source!.height)
+        output[row * expectedWidth + col] = elevations![y * source!.width + x];
+    }
+  }
+  const builder = new lib.CogBuilder(expectedWidth, expectedHeight, 1);
+  let dem: Uint8Array;
+  try {
+    builder.set_epsg(epsg);
+    builder.set_geo_transform(new Float64Array([targetBounds[0], options.resolution, 0, targetBounds[3], 0, -options.resolution]));
+    builder.set_nodata(-32768); builder.set_compression("deflate");
+    builder.set_overview_levels(new Uint32Array()); dem = builder.write_f32(output);
+  } finally { builder.free(); }
   const report: TerrainReport = {
     version: 1, engine: TERRAIN_ENGINE, startedAt, durationMs: 0, source: source!, options: { ...options },
     grid: { epsg, resolution: options.resolution, bounds: bounds!, width: 0, height: 0 },
-    steps: [{ tool: "extract_cog_subset", args: [`bbox=${targetBounds.join(",")}`, `bbox_crs=${epsg}`, `output_crs=${epsg}`, `resolution=${options.resolution}`, "nodata=-9999", "resampling=nearest"], durationMs: Math.round(performance.now() - preparationStart), log: [] }],
+    steps: [{ tool: "affine_reproject_nearest", args: [`bbox=${targetBounds.join(",")}`, `bbox_crs=${epsg}`, `output_crs=${epsg}`, `resolution=${options.resolution}`, "nodata=-32768", "resampling=nearest", `source_transform=${Array.from(gt).join(",")}`], durationMs: Math.round(performance.now() - preparationStart), log: [] }],
     products: [],
     notes: [
       "Elevações convertidas para metros; grelha UTM, reamostragem por vizinho mais próximo. A resolução escolhida não aumenta o detalhe do DEM original.",

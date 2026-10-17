@@ -114,7 +114,8 @@ export default function TerrainWorkflowPanel({ aoi, rasters, onComplete, onShowP
       </label>}
       <div className="rounded-lg bg-slate-100 p-2 text-xs dark:bg-slate-800">
         <strong>Área seleccionada:</strong> {aoi.label}
-        <button type="button" className={button + " mt-2 block"} onClick={onDraw}><MapPin size={12} className="mr-1 inline" /> Desenhar área no mapa</button>
+        {bbox && <p className="mt-1 font-mono">{bbox.map(v => v.toFixed(4)).join(", ")} (W, S, E, N)</p>}
+        <button type="button" className={button + " mt-2 block"} onClick={() => { setClip(true); setError(null); onDraw(); }}><MapPin size={12} className="mr-1 inline" /> Desenhar área no mapa</button>
       </div>
       {source === "gee" ? <p className="text-xs text-slate-500">Requer ligação ao Earth Engine nas definições. Áreas grandes podem exceder o limite de download; use um recorte menor ou uma resolução maior.</p> : <label className="flex gap-2 text-xs">
         <input type="checkbox" checked={clip && !!bbox} disabled={!bbox} onChange={e => setClip(e.target.checked)} /> Recortar pela extensão rectangular desenhada
