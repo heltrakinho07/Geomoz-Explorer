@@ -7,6 +7,7 @@ import {
   clearGISWorkspaceOnDevice,
 } from "../gis-workspace-device-storage";
 import type { GISLocalWorkspace } from "../gis-workspace-session";
+import { getGISSessionWorkspace, setGISSessionWorkspace, clearGISSessionWorkspace } from "../gis-workspace-session";
 import type { FeatureCollection } from "geojson";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -43,6 +44,18 @@ describe("GeoMoz opt-in IndexedDB for local GIS Workspace", () => {
     expect(gisDeviceCacheKey("bob", "p1")).toBe("bob::p1");
     expect(gisDeviceCacheKey(null, null)).toBe("guest::session-default");
     expect(gisDeviceCacheKey("guest_user", "p1")).toBe("guest::p1");
+  });
+
+  it("keeps volatile GIS sessions separate when a user or project changes", () => {
+    const alice = key("memory-alice"), bob = key("memory-bob");
+    setGISSessionWorkspace(localWorkspace("Alice"), alice);
+    setGISSessionWorkspace(localWorkspace("Bob"), bob);
+    expect(getGISSessionWorkspace(alice)?.layers[0].name).toBe("Alice");
+    expect(getGISSessionWorkspace(bob)?.layers[0].name).toBe("Bob");
+    clearGISSessionWorkspace(alice);
+    expect(getGISSessionWorkspace(alice)).toBeNull();
+    expect(getGISSessionWorkspace(bob)?.layers[0].name).toBe("Bob");
+    clearGISSessionWorkspace(bob);
   });
 
   it("round-trips GeoJSON metadata and raw local GeoTIFF bytes without a server", async () => {
