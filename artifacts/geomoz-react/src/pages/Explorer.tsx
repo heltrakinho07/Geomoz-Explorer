@@ -754,8 +754,6 @@ export default function Explorer() {
                 }}
                 onDistrictChange={setDistrict}
                 onAOIChange={handleAOIChange}
-                viewMode="2d"
-                onViewModeChange={() => {}}
               />
             </Suspense>
           )}
@@ -772,7 +770,6 @@ export default function Explorer() {
                 }}
                 onDistrictChange={setDistrict}
                 onAOIChange={handleAOIChange}
-                viewMode="2d"
               />
             </Suspense>
           )}
@@ -789,7 +786,6 @@ export default function Explorer() {
                 }}
                 onDistrictChange={setDistrict}
                 onAOIChange={handleAOIChange}
-                viewMode="2d"
               />
             </Suspense>
           )}
@@ -806,7 +802,6 @@ export default function Explorer() {
                 }}
                 onDistrictChange={setDistrict}
                 onAOIChange={handleAOIChange}
-                viewMode="2d"
               />
             </Suspense>
           )}
@@ -823,7 +818,6 @@ export default function Explorer() {
                 }}
                 onDistrictChange={setDistrict}
                 onAOIChange={handleAOIChange}
-                viewMode="2d"
               />
             </Suspense>
           )}
