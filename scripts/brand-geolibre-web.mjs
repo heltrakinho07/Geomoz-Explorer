@@ -6,7 +6,7 @@
  *
  * Usage: node scripts/brand-geolibre-web.mjs <geolibre-dist> <geomoz-output> <geolibre-license>
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -35,6 +35,17 @@ const html = readFileSync(resolve(source, "index.html"), "utf8");
 if (!html.includes("/gis-workspace/") || !html.includes('id="root"')) {
   throw new Error("GeoLibre was not built with GEOLIBRE_APP_BASE=/gis-workspace/");
 }
+// Refuse to publish the original visual shell if source preparation was omitted.
+const required = new Set(["geomoz-workbench-chrome", "geomoz-layer-catalog"]);
+const assetsDir = resolve(source, "assets");
+if (existsSync(assetsDir)) {
+  for (const file of readdirSync(assetsDir).filter(name => name.endsWith(".js"))) {
+    const code = readFileSync(resolve(assetsDir, file), "utf8");
+    for (const marker of required) if (code.includes(marker)) required.delete(marker);
+    if (!required.size) break;
+  }
+}
+if (required.size) throw new Error("Build the GeoMoz-owned React interface before packaging: missing " + [...required].join(", "));
 rmSync(destination, { recursive: true, force: true });
 mkdirSync(destination, { recursive: true });
 cpSync(source, destination, { recursive: true, dereference: false });
@@ -74,7 +85,7 @@ writeFileSync(
     {
       version: 1,
       branding: { appName: "GeoMoz GIS Workspace", welcome: false },
-      interface: { name: "geomoz-workbench", version: 1 },
+      interface: { name: "geomoz-workbench", version: 1, revision: process.env.GITHUB_SHA || "local" },
       // Sharing requires its own hosted backend; do not send free GIS projects
       // to another platform. The original local file workflow stays available.
       sharing: { shareUrl: "off" },

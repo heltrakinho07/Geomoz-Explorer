@@ -14,6 +14,8 @@ function fixture(html) {
   mkdirSync(src, { recursive: true });
   writeFileSync(join(src, "index.html"), html);
   writeFileSync(join(src, "asset.txt"), "raster worker sample");
+  mkdirSync(join(src, "assets"));
+  writeFileSync(join(src, "assets/app.js"), 'console.log("geomoz-workbench-chrome","geomoz-layer-catalog");');
   writeFileSync(join(src, "manifest.webmanifest"), JSON.stringify({name:"GeoLibre",short_name:"GeoLibre",start_url:"/gis-workspace/",scope:"/gis-workspace/",theme_color:"#2f8f85",icons:[{src:"pwa-192x192.png",sizes:"192x192"}]}));
   const license = join(work, "LICENSE");
   writeFileSync(license, "MIT License\nCopyright (c) 2026 Qiusheng Wu\n");
@@ -86,4 +88,15 @@ test("refuses to delete outside dedicated workspace destination", () => {
   } finally {
     rmSync(f.work, { recursive: true, force: true });
   }
+});
+
+test("refuses an unmodified engine build and preserves an existing destination",()=>{
+ const f=fixture('<html><head><script src="/gis-workspace/assets/app.js"></script></head><body><div id="root"></div></body></html>');
+ try{
+  writeFileSync(join(f.src,"assets/app.js"),'console.log("Original interface");');
+  mkdirSync(f.dst,{recursive:true});writeFileSync(join(f.dst,"keep.txt"),"previous valid build");
+  const result=spawnSync(process.execPath,[brandScript,f.src,f.dst,f.license],{encoding:"utf8"});
+  assert.notEqual(result.status,0);assert.match(result.stderr,/GeoMoz-owned React interface/);
+  assert.equal(readFileSync(join(f.dst,"keep.txt"),"utf8"),"previous valid build");
+ }finally{rmSync(f.work,{recursive:true,force:true});}
 });

@@ -148,7 +148,16 @@ jobs:
           python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["name"]=="GeoMoz GIS Workspace" and d["scope"]=="/gis-workspace/"' "$RUNNER_TEMP/geomoz-gis-manifest.json"
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/favicon.svg" -o "$RUNNER_TEMP/geomoz-gis-favicon.svg"
           grep -q 'linearGradient' "$RUNNER_TEMP/geomoz-gis-favicon.svg"
-          echo "GeoMoz Workbench is being served from the GeoMoz Hosting origin"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "https://geomoz.geolithica.com/gis-workspace/" -o "$RUNNER_TEMP/geomoz-custom-index.html"
+          grep -q 'data-geomoz-app="workbench"' "$RUNNER_TEMP/geomoz-custom-index.html"
+          ! grep -q 'geomoz-shell.js' "$RUNNER_TEMP/geomoz-custom-index.html"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "https://geomoz.geolithica.com/gis-workspace/deployment.json" -o "$RUNNER_TEMP/geomoz-custom-policy.json"
+          python3 -c 'import json,sys,os; d=json.load(open(sys.argv[1])); assert d["interface"]["name"]=="geomoz-workbench"; assert d["interface"]["revision"]==os.environ["GITHUB_SHA"]' "$RUNNER_TEMP/geomoz-custom-policy.json"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "https://geomoz.geolithica.com/geomoz-theme.js" -o "$RUNNER_TEMP/geomoz-global-theme.js"
+          grep -q 'GeoMozTheme' "$RUNNER_TEMP/geomoz-global-theme.js"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "https://geomoz.geolithica.com/privacy" -o "$RUNNER_TEMP/geomoz-privacy.html"
+          grep -q '/geomoz-theme.js' "$RUNNER_TEMP/geomoz-privacy.html"
+          echo "GeoMoz Workbench and global theme are live on geomoz.geolithica.com"
 
       - name: Show deployed URL
         run: |
