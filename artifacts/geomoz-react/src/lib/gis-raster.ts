@@ -15,7 +15,6 @@ import {
 } from "@/lib/gis-raster-classification";
 import type {
   RasterControl,
-  AutoStats,
   RasterLayerInfo,
   RasterLayerState,
 } from "maplibre-gl-raster";
@@ -57,7 +56,7 @@ export interface GISWorkspaceRasterMetadata {
 type RasterControlConstructor = new (options?: Record<string, unknown>) => RasterControl;
 
 const controls = new WeakMap<MapLibreMap, Promise<RasterControl>>();
-const statsCache = new Map<string, AutoStats>();
+const statsCache = new Map<string, GISRasterBandStats>();
 
 function rasterBounds(info: RasterLayerInfo): [number, number, number, number] | null {
   if (!info.bounds) return null;
@@ -224,48 +223,43 @@ function rasterStatsCacheKey(layer: GISWorkspaceRasterLayer): string {
   return `${layer.id}:url:${layer.remoteUrl ?? ""}`;
 }
 
-function bandStatsFromAutoStats(
-  stats: AutoStats,
-  band: number
-): GISRasterBandStats | null {
-  const candidate = stats.perBand ? stats.perBand.get(band) ?? null : stats.global;
-  if (!candidate) return null;
-  return {
-    min: candidate.min,
-    max: candidate.max,
-    histogram: [...candidate.histogram],
-  };
-}
-
+/** Independent of the map renderer; TIFF bands are zero-based at the decoder boundary. */
 export async function getGISRasterBandStats(
-  layer: GISWorkspaceRasterLayer,
-  band: number,
-  signal?: AbortSignal
+  layer: GISWorkspaceRasterLayer, band: number, signal?: AbortSignal
 ): Promise<GISRasterBandStats | null> {
-  const key = rasterStatsCacheKey(layer);
-  const cached = statsCache.get(key);
-  if (cached) return bandStatsFromAutoStats(cached, band);
-
-  let objectUrl: string | null = null;
-  const source = layer.file
-    ? (objectUrl = URL.createObjectURL(layer.file))
-    : await resolveGISRasterRemoteUrl(layer);
+  const key = rasterStatsCacheKey(layer) + ":band:" + band;
+  const cached = statsCache.get(key); if (cached) return cached;
+  if (signal?.aborted) throw new DOMException("Operação cancelada.", "AbortError");
+  const source = layer.file ?? await resolveGISRasterRemoteUrl(layer);
   if (!source) return null;
-
+  const { fromBlob, fromUrl } = await import("geotiff");
+  const tiff = typeof source === "string" ? await fromUrl(source, { allowFullFile: false }) : await fromBlob(source);
   try {
-    const { computeAutoStats, loadGeoTIFF } = await import("maplibre-gl-raster");
-    const tiff = await loadGeoTIFF(source);
-    const controller = new AbortController();
-    if (signal) {
-      if (signal.aborted) controller.abort();
-      else signal.addEventListener("abort", () => controller.abort(), { once: true });
+    let image = await tiff.getImage();
+    if (!Number.isInteger(band) || band < 1 || band > image.getSamplesPerPixel()) return null;
+    const count = Math.min(32, await tiff.getImageCount());
+    for (let index = 1; index < count; index++) {
+      const candidate = await tiff.getImage(index);
+      if (candidate.getSamplesPerPixel() >= band && candidate.getWidth() >= 256 &&
+          candidate.getWidth() < image.getWidth()) image = candidate;
     }
-    const stats = await computeAutoStats(tiff, controller.signal);
-    statsCache.set(key, stats);
-    return bandStatsFromAutoStats(stats, band);
-  } finally {
-    if (objectUrl) URL.revokeObjectURL(objectUrl);
-  }
+    const values = await image.readRasters({samples:[band - 1], interleave:true,
+      width:Math.min(512,image.getWidth()), height:Math.min(512,image.getHeight()), signal});
+    const nodata = image.getGDALNoData();
+    let min = Infinity, max = -Infinity;
+    for (let i=0;i<values.length;i++) {
+      const value = Number(values[i]);
+      if (Number.isFinite(value) && value !== nodata) { min=Math.min(min,value);max=Math.max(max,value); }
+    }
+    if (!Number.isFinite(min)) return null;
+    const histogram = Array<number>(256).fill(0), span = max-min;
+    for (let i=0;i<values.length;i++) {
+      const value = Number(values[i]);if(!Number.isFinite(value)||value===nodata)continue;
+      const bin = span > 0 ? Math.min(255,Math.floor((value-min)/span*256)) : 0;
+      histogram[bin]++;
+    }
+    const stats = {min,max,histogram};statsCache.set(key,stats);return stats;
+  } finally { await tiff.close(); }
 }
 
 export function rasterHistogramPercentile(

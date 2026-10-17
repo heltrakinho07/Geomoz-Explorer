@@ -118,6 +118,10 @@
     "react-error-boundary": "^4.1.2",
     "shpjs": "^6.2.0",
     "whitebox-wasm": "^0.6.0",
-    "zstddec": "^0.2.0"
+    "zstddec": "^0.2.0",
+    "cesium": "1.127.0",
+    "@mapbox/vector-tile": "2.0.4",
+    "pbf": "4.0.1",
+    "@maplibre/mlt": "1.2.1"
   }
 }
