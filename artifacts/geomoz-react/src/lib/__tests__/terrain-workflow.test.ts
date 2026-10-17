@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import init, { CogBuilder, GeoTiffReader } from "geolibre-wasm";
 import { writeArrayBuffer } from "geotiff";
+import { hgtMetadata, hgtToGeoTiff } from "../srtm-hgt";
 import { initTools } from "geolibre-wasm/tools";
 import { beforeAll, describe, expect, it } from "vitest";
 import { executeTerrainWorkflow, DEFAULT_TERRAIN_OPTIONS, validateTerrainOptions, utmForBounds, intersectBounds } from "../terrain-workflow";
@@ -112,4 +113,28 @@ describe("GeoLibre real DEM pipeline", () => {
     expect(() => validateTerrainOptions({ ...DEFAULT_TERRAIN_OPTIONS, resolution: NaN })).toThrow();
     expect(() => intersectBounds([32,-26,33,-25], [40,-26,41,-25])).toThrow("não intersecta");
   });
+});
+
+describe("SRTM HGT inputs", () => {
+  it("recognises S20E035 and SRTM1 dimensions", () => {
+    expect(hgtMetadata("S20E035.hgt", 3601 * 3601 * 2)).toMatchObject({side:3601,west:35,south:-20,bounds:[35,-20,36,-19]});
+    expect(() => hgtMetadata("renamed.hgt",1201*1201*2)).toThrow("nome SRTM");
+    expect(() => hgtMetadata("S20E035.hgt",1200*1200*2)).toThrow("1201");
+  });
+  it("decodes big-endian metres, preserves voids and centres, and processes a crop", async () => {
+    const side=1201, raw=new Uint8Array(side*side*2);
+    const view=new DataView(raw.buffer);
+    for(let y=0;y<side;y++)for(let x=0;x<side;x++)view.setInt16((y*side+x)*2,1000-Math.floor(x/4)-Math.floor(y/8),false);
+    view.setInt16(0,-32768,false);
+    const bytes=await hgtToGeoTiff(raw,"S20E035.hgt");
+    const reader=new GeoTiffReader(bytes);
+    const values=reader.read_band_f64(0),gt=reader.geo_transform();
+    expect(reader.epsg).toBe(4326);expect(reader.nodata).toBe(-32768);
+    expect(values[0]).toBe(-32768);expect(values[4]).toBe(999);
+    expect(gt[0]+gt[1]/2).toBeCloseTo(35,10);
+    expect(gt[3]+gt[5]/2).toBeCloseTo(-19,10);reader.free();
+    const result=await executeTerrainWorkflow(raw,"S20E035.hgt",{...DEFAULT_TERRAIN_OPTIONS,bbox:[35.3,-19.7,35.32,-19.68],hydrology:false});
+    expect(result.products).toHaveLength(4);
+    expect(result.report.notes.some(n=>n.includes("SRTM HGT"))).toBe(true);
+  },60000);
 });

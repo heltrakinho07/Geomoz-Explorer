@@ -4123,11 +4123,22 @@ def get_index_download_url(
     if "rivers" in needs:
         rivers = _build_rivers_raster(region)
 
-    idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers).clip(region)
+    idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers).clip(region).toFloat()
+    from gee_download_grid import bounded_download_grid
+    grid_geometry = region_geojson or {
+        "type": "Polygon", "coordinates": [[
+            [MZ_BBOX[0], MZ_BBOX[1]], [MZ_BBOX[2], MZ_BBOX[1]],
+            [MZ_BBOX[2], MZ_BBOX[3]], [MZ_BBOX[0], MZ_BBOX[3]],
+            [MZ_BBOX[0], MZ_BBOX[1]],
+        ]],
+    }
+    grid = bounded_download_grid(grid_geometry, scale, 900_000 if index == "elevation" else 4_000_000)
+
 
     download_params = {
         "name": f"geomoz_{index}_{start_date}_{end_date}",
-        "scale": scale,
+        "dimensions": grid["dimensions"],
+        "crs_transform": grid["crsTransform"],
         "crs": "EPSG:4326",
         "region": region,
         "format": "GEO_TIFF",
@@ -4138,7 +4149,7 @@ def get_index_download_url(
         "downloadUrl": url,
         "index": index,
         "name": cfg["name"],
-        "scale": scale,
+        **grid,
         "format": "GEO_TIFF",
         "dateRange": f"{start_date} → {end_date}",
     }

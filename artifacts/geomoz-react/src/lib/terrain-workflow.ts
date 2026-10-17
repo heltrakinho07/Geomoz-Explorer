@@ -1,7 +1,7 @@
 /** Reproducible DEM workflow using the same GeoLibre Rust engine as RustGIS. */
 export const TERRAIN_ENGINE = "geolibre-wasm@1.6.0";
 export const MAX_DEM_BYTES = 64 * 1024 * 1024;
-export const MAX_SOURCE_CELLS = 4_194_304;
+export const MAX_SOURCE_CELLS = 13_000_000;
 export const MAX_ANALYSIS_CELLS = 1_048_576;
 export type Bounds = [number, number, number, number];
 export interface TerrainOptions {
@@ -93,6 +93,9 @@ export async function executeTerrainWorkflow(
   const lib = await import("geolibre-wasm");
   const tools = await import("geolibre-wasm/tools");
   await lib.default();
+  const originalHash = await sha256(bytes);
+  const isHgt = /\.hgt$/i.test(name);
+  if (isHgt) bytes = await (await import("./srtm-hgt")).hgtToGeoTiff(bytes, name, options.bbox);
   const reader = new lib.GeoTiffReader(bytes);
   let source: TerrainReport["source"];
   let elevations: Float32Array;
@@ -107,7 +110,7 @@ export async function executeTerrainWorkflow(
     const keys = image.getGeoKeys();
     const sourceEpsg = reader.epsg && reader.epsg !== 32767 ? reader.epsg : Number(keys?.ProjectedCSTypeGeoKey ?? keys?.GeographicTypeGeoKey);
     if (!sourceEpsg || sourceEpsg === 32767) throw new Error("O GeoTIFF deve declarar um CRS EPSG válido.");
-    if (reader.width * reader.height > MAX_SOURCE_CELLS) throw new Error("O DEM excede 4 milhões de células. Recorte-o antes de importar.");
+    if (reader.width * reader.height > MAX_SOURCE_CELLS) throw new Error("O DEM excede 13 milhões de células. Recorte-o antes de importar.");
     const matrix = image.getFileDirectory().getValue("ModelTransformation");
     if (matrix && (matrix.length !== 16 || matrix[12] !== 0 || matrix[13] !== 0 || matrix[15] !== 1))
       throw new Error("A transformação do GeoTIFF não é uma grelha afim válida.");
@@ -124,12 +127,12 @@ export async function executeTerrainWorkflow(
     const lonlat = lib.transform_bbox_epsg(sourceEpsg, 4326, extent);
     if (lonlat.length !== 4) throw new Error("Não foi possível transformar a extensão do DEM para WGS84.");
     bounds = intersectBounds(Array.from(lonlat) as Bounds, options.bbox);
-    source = { name, sha256: await sha256(bytes), epsg: sourceEpsg, width: reader.width, height: reader.height, geoTransform: Array.from(gt) };
+    source = { name, sha256: originalHash, epsg: sourceEpsg, width: reader.width, height: reader.height, geoTransform: Array.from(gt) };
     const values = reader.read_band_f64(0);
     const transform = reader.value_transform();
     const scale = transform.length === 2 ? transform[0] : 1;
     const offset = transform.length === 2 ? transform[1] : 0;
-    const factor = options.elevationUnit === "feet" ? 0.3048 : 1;
+    const factor = !isHgt && options.elevationUnit === "feet" ? 0.3048 : 1;
     const converted = new Float32Array(values.length);
     let valid = 0;
     for (let i = 0; i < values.length; i++) {
@@ -149,6 +152,13 @@ export async function executeTerrainWorkflow(
   notify("A preparar a grelha UTM em metros…");
   const epsg = utmForBounds(bounds!);
   const projected = lib.transform_bbox_epsg(4326, epsg, new Float64Array(bounds!));
+  const requestedResolution = options.resolution;
+  const metresWidth = projected[2] - projected[0], metresHeight = projected[3] - projected[1];
+  let resolution = options.resolution;
+  while (Math.ceil(metresWidth / resolution) * Math.ceil(metresHeight / resolution) > MAX_ANALYSIS_CELLS)
+    resolution = Math.ceil(Math.max(resolution + 1, Math.sqrt(metresWidth * metresHeight / MAX_ANALYSIS_CELLS) * 1.02));
+  if (resolution > 1000) throw new Error("A área é demasiado grande. Desenhe uma área menor para analisar o terreno.");
+  options = { ...options, resolution, elevationUnit: isHgt ? "metres" : options.elevationUnit };
   const expectedWidth = Math.ceil((projected[2] - projected[0]) / options.resolution);
   const expectedHeight = Math.ceil((projected[3] - projected[1]) / options.resolution);
   if (expectedWidth < 3 || expectedHeight < 3) throw new Error("A área tem menos de 3 × 3 células nesta resolução.");
@@ -196,6 +206,8 @@ export async function executeTerrainWorkflow(
     steps: [{ tool: "affine_reproject_nearest", args: [`bbox=${targetBounds.join(",")}`, `bbox_crs=${epsg}`, `output_crs=${epsg}`, `resolution=${options.resolution}`, "nodata=-32768", "resampling=nearest", `source_transform=${Array.from(gt).join(",")}`], durationMs: Math.round(performance.now() - preparationStart), log: [] }],
     products: [],
     notes: [
+      ...(isHgt ? ["SRTM HGT: inteiros assinados big-endian, metros, WGS84, NoData -32768; localização pelo nome original do ficheiro."] : []),
+      ...(resolution !== requestedResolution ? [`Resolução solicitada: ${requestedResolution} m; efectiva: ${resolution} m, ajustada ao limite de células.`] : []),
       "Elevações convertidas para metros; grelha UTM, reamostragem por vizinho mais próximo. A resolução escolhida não aumenta o detalhe do DEM original.",
       "O recorte usa a extensão rectangular seleccionada; NoData do ficheiro de origem é preservado.",
       "Drenagem e bacias são modeladas pelo relevo disponível: os limites do DEM e zonas NoData truncam contribuições exteriores. Use um DEM com margem a montante.",
