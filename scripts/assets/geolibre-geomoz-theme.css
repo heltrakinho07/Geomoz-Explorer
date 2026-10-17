@@ -1,0 +1,167 @@
+/*
+ * GeoMoz GIS Workspace · camada de identidade visual (GeoLibre Web).
+ * Identidade do GeoMoz: #020617 / #082f49 / #0284c7 / #38bdf8 / #ffffff.
+ * Apenas a interface recebe este tema; não alterar estilos de mapas,
+ * rampas científicas, gráficos, simbologia ou as ferramentas do GeoLibre.
+ * Tema independente dos ficheiros upstream (MIT).
+ */
+:root {
+  --geomoz-navy: #020617;
+  --geomoz-deep-blue: #082f49;
+  --geomoz-blue: #0284c7;
+  --geomoz-sky: #38bdf8;
+  --geomoz-blue-soft: #e0f2fe;
+
+  --background: 210 40% 98%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 199 96% 39%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 199 96% 39%;
+  --secondary: 210 38% 95%;
+  --secondary-foreground: 222 47% 16%;
+  --muted: 210 35% 95%;
+  --muted-foreground: 215 19% 36%;
+  --accent: 204 94% 93%;
+  --accent-foreground: 201 93% 24%;
+  --border: 210 24% 85%;
+  --input: 210 19% 72%;
+  --radius: 0.5rem;
+  --elev-penumbra: hsl(212 65% 22% / 0.06);
+  --elev-umbra: hsl(212 65% 22% / 0.11);
+}
+html.dark {
+  --background: 222 47% 7%;
+  --foreground: 210 40% 98%;
+  --card: 213 44% 11%;
+  --card-foreground: 210 40% 98%;
+  --popover: 211 40% 15%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 199 95% 63%;
+  --primary-foreground: 222 47% 11%;
+  --ring: 199 95% 63%;
+  --secondary: 211 32% 18%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 213 29% 19%;
+  --muted-foreground: 213 21% 76%;
+  --accent: 207 38% 25%;
+  --accent-foreground: 204 95% 95%;
+  --border: 211 26% 29%;
+  --input: 211 22% 42%;
+  --elev-penumbra: hsl(0 0% 0% / 0.36);
+  --elev-umbra: hsl(0 0% 0% / 0.53);
+}
+/*
+ * As variáveis definidas pelo GeoLibre estão no @layer base. Esta camada,
+ * não estratificada e carregada depois, prevalece mesmo que o utilizador
+ * tenha escolhido outro data-theme. O branding fica azul em qualquer tema,
+ * mas a preferência claro/escuro continua a ser respeitada.
+ */
+:root[data-theme], html.dark[data-theme] {
+  --primary: 199 96% 39%;
+  --ring: 199 96% 39%;
+}
+html.dark[data-theme] {
+  --primary: 199 95% 63%;
+  --ring: 199 95% 63%;
+}
+
+/* Barra principal identificável sem interferir com cartões e mapas. */
+#root header[class~="bg-card"][class~="border-b"] {
+  background: linear-gradient(106deg, #020617 0%, #082f49 48%, #075985 100%) !important;
+  color: #f8fafc;
+  border-bottom: 1px solid rgb(56 189 248 / 24%);
+  box-shadow: 0 2px 16px rgb(2 6 23 / 17%);
+}
+#root header[class~="bg-card"][class~="border-b"] > span {
+  color: #e0f2fe;
+  font-weight: 750;
+  letter-spacing: -0.015em;
+}
+#root header[class~="bg-card"][class~="border-b"] > span svg {
+  color: #38bdf8;
+}
+#root header[class~="bg-card"][class~="border-b"] button {
+  color: #e2e8f0;
+  border-radius: 8px;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+#root header[class~="bg-card"][class~="border-b"] button:hover,
+#root header[class~="bg-card"][class~="border-b"] button[data-state="open"],
+#root header[class~="bg-card"][class~="border-b"] button[aria-expanded="true"] {
+  background-color: rgb(56 189 248 / 16%);
+  color: #ffffff;
+}
+#root header[class~="bg-card"][class~="border-b"] button:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: -2px;
+}
+/* Menus, janelas e painéis conservam o espaçamento do GeoLibre. */
+#root [role="menu"],
+#root [role="dialog"] {
+  border-color: hsl(var(--border));
+  box-shadow: 0 16px 36px rgb(2 6 23 / 15%);
+}
+#root :is(button, a, input, select, textarea):focus-visible {
+  outline-color: hsl(var(--ring));
+}
+#root footer[class*="bg-muted"] {
+  border-top-color: hsl(var(--border));
+  background-color: hsl(var(--muted) / 0.88);
+}
+html.dark #root footer[class*="bg-muted"] {
+  background-color: hsl(var(--card) / 0.94);
+}
+/* Botão de retorno do portal, deliberadamente separado dos controlos do mapa. */
+.geomoz-back-link {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(39px, calc(env(safe-area-inset-bottom) + 39px));
+  z-index: 999;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 39px;
+  padding: 0 14px;
+  border: 1px solid rgb(125 211 252 / 38%);
+  border-radius: 999px;
+  background: linear-gradient(110deg, #082f49, #075985);
+  color: #ffffff;
+  box-shadow: 0 5px 18px rgb(2 6 23 / 27%);
+  text-decoration: none;
+  font: 650 12px/1.4 system-ui, sans-serif;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition: background 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+.geomoz-back-link:hover {
+  background: #0284c7;
+  box-shadow: 0 8px 22px rgb(2 6 23 / 33%);
+  transform: translateY(-1px);
+}
+.geomoz-back-link:focus-visible {
+  outline: 3px solid #7dd3fc;
+  outline-offset: 3px;
+}
+@media (max-width: 639px) {
+  #root header[class~="bg-card"][class~="border-b"] {
+    min-height: 44px;
+  }
+  .geomoz-back-link {
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(39px, calc(env(safe-area-inset-bottom) + 39px));
+    min-height: 38px;
+    padding: 0 11px;
+    font-size: 11px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .geomoz-back-link, #root header[class~="bg-card"][class~="border-b"] button {
+    transition: none;
+  }
+  .geomoz-back-link:hover { transform: none; }
+}
