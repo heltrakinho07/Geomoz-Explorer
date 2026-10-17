@@ -2659,6 +2659,141 @@ export default function GeoProcessamento({
     }
   }, [layers, sqlQuery, toast]);
 
+  // ── GeoLibre-inspired local project lifecycle (no DB) ────────────────────
+  const exportWorkspaceProject = useCallback(() => {
+    const project = exportPortableGISProject({
+      layers, rasters: rasterLayers, services: serviceLayers,
+      selectedLayerId, secondLayerId, tableLayerId,
+      history, modelGraph, activeTab, basemap,
+    });
+    const blob = new Blob([JSON.stringify(project)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `GeoMoz_GIS_${new Date().toISOString().slice(0, 10)}.geomoz.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Some browsers need another event-loop turn to begin downloading a blob.
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const localRasters = rasterLayers.filter(r => r.file);
+    const notice = localRasters.length
+      ? `Projecto exportado. ${localRasters.length} raster(s) locais não estão incorporados; conserve os GeoTIFFs e reimporte-os ao reabrir.`
+      : "Projecto exportado para um ficheiro no seu dispositivo.";
+    setProjectNotice(notice);
+    toast({ title: "Projecto GIS descarregado", description: notice });
+  }, [layers, rasterLayers, serviceLayers, selectedLayerId, secondLayerId, tableLayerId,
+      history, modelGraph, activeTab, basemap, toast]);
+
+  const importWorkspaceProject = useCallback(async (file: File) => {
+    if (file.size > 25 * 1024 * 1024) {
+      throw new Error("Projecto demasiado grande (>25 MB). Importe camadas individualmente.");
+    }
+    const project = parsePortableGISProject(JSON.parse(await file.text()));
+    setLayers(project.layers as UserLayer[]);
+    setRasterLayers(project.rasters.map(r => ({
+      id: r.id, name: r.name, fileName: r.fileName,
+      remoteUrl: r.remoteUrl && /^https?:\/\//i.test(r.remoteUrl) ? r.remoteUrl : undefined,
+      sourceType: "url" as const,
+      mimeType: "image/tiff", sizeBytes: r.sizeBytes,
+      visible: r.visible, opacity: r.opacity, bounds: r.bounds || null,
+      bandCount: null,
+      error: r.remoteUrl ? null : "Reimporte este ficheiro GeoTIFF local para visualizar.",
+    })));
+    setServiceLayers(project.services);
+    setSelectedLayerId(project.layers[0]?.id || "");
+    setSecondLayerId("");
+    setTableLayerId(null);
+    setHistory([]);
+    setModelGraph(project.modelGraph);
+    // Only known 2D basemaps are supported.
+    if (["roadmap", "satellite", "hybrid", "terrain", "openstreetmap", "dark", "light"].includes(project.basemap))
+      setBasemap(project.basemap as BasemapType);
+    setActiveTab("layers");
+    setProjectNotice("Projecto local importado. GeoTIFFs do computador precisam de ser adicionados novamente.");
+    toast({ title: "Projecto GIS aberto", description: `${project.layers.length} camadas vectoriais carregadas localmente.` });
+  }, [toast]);
+
+  const demExtent = useMemo((): [number, number, number, number] => {
+    if (aoi.source !== "global" && aoi.geometry) {
+      try {
+        const b = turfBbox({ type: "Feature", properties: {}, geometry: aoi.geometry as GeoJSON.Geometry });
+        if (b.length >= 4 && b.every(Number.isFinite))
+          return [b[0], b[1], b[2], b[3]];
+      } catch {}
+    }
+    return mapViewportBbox;
+  }, [aoi, mapViewportBbox]);
+
+  const requestGlobalDem = useCallback(async () => {
+    if (demLoading) return;
+    const controller = new AbortController();
+    demAbortRef.current = controller;
+    setDemLoading(true);
+    setDemProgress({ completed: 0, total: 0 });
+    try {
+      const range = globalDemTileRange(demExtent);
+      const total = (range.maxX - range.minX + 1) * (range.maxY - range.minY + 1);
+      setDemProgress({ completed: 0, total });
+      const result = await downloadGlobalDem(demExtent, {
+        signal: controller.signal,
+        onProgress: (completed, tileTotal) => setDemProgress({ completed, total: tileTotal }),
+      });
+      const id = `dem_${crypto.randomUUID().slice(0, 12)}`;
+      const raster: GISWorkspaceRasterLayer = {
+        id, name: `DEM Global · ${result.resolutionMeters.toFixed(0)} m · z${result.zoom}`,
+        file: result.file, fileName: result.file.name,
+        mimeType: "image/tiff", sizeBytes: result.file.size,
+        visible: true, opacity: 1, bounds: result.bounds, bandCount: 1,
+        rasterState: {
+          mode: "single", bands: [1], colormap: "viridis",
+          nodata: "auto", rescale: null, stretch: "linear", gamma: 1,
+        },
+      };
+      setRasterLayers(prev => [raster, ...prev]);
+      setSelectedWhiteboxRasterId(id);
+      setActiveTab("layers");
+      setSidebarOpen(false);
+      setProjectNotice(`DEM criado no navegador · ${result.width} × ${result.height} píxeis · ${result.tileCount} tiles · ${result.resolutionMeters.toFixed(0)} m/píxel na projecção EPSG:3857.`);
+      toast({ title: "DEM carregado sem servidor", description: "COG real adicionado às camadas. Nenhum ficheiro foi enviado ao Firebase." });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        toast({ title: "Transferência DEM cancelada", description: "Não foi feita nenhuma gravação em base de dados." });
+      } else {
+        toast({
+          title: "Não foi possível carregar o DEM",
+          description: error instanceof Error ? error.message : String(error),
+          variant: "destructive",
+        });
+      }
+    } finally {
+      demAbortRef.current = null;
+      setDemLoading(false);
+      setDemProgress(null);
+    }
+  }, [demLoading, demExtent, toast]);
+
+  // The immersive GIS shell can use toolbar actions without coupling its
+  // navigation UI to the internal GIS tools. No cloud persistence is involved.
+  React.useEffect(() => {
+    const handleAction = (event: Event) => {
+      const action = (event as CustomEvent<string>).detail;
+      switch (action) {
+        case "add-file": fileInputRef.current?.click(); break;
+        case "import-project": projectInputRef.current?.click(); break;
+        case "export-project": exportWorkspaceProject(); break;
+        case "download-dem": void requestGlobalDem(); break;
+        case "processing": setActiveTab("whitebox_toolbox"); setDesktopSidebarOpen(true); break;
+        case "layers": setActiveTab("layers"); setDesktopSidebarOpen(true); break;
+        case "data": setActiveTab("data_sources"); setDesktopSidebarOpen(true); break;
+        case "terrain": setActiveTab("terrain_workflow"); setDesktopSidebarOpen(true); break;
+        default: break;
+      }
+    };
+    window.addEventListener("geomoz:gis-workspace-action", handleAction);
+    return () => window.removeEventListener("geomoz:gis-workspace-action", handleAction);
+  }, [exportWorkspaceProject, requestGlobalDem]);
+
   // ── Export PDF Report ────────────────────────────────────────────────────
   const exportPdf = () => {
     const reportTitle = "Dossiê Avançado de Geoprocessamento";
@@ -2749,6 +2884,26 @@ export default function GeoProcessamento({
 
   return (
     <div className="flex-1 flex overflow-hidden bg-slate-50 dark:bg-slate-950 relative font-sans">
+      {/* Local project file only — no database or cloud upload. */}
+      <input
+        ref={projectInputRef}
+        type="file"
+        accept=".json,.geomoz.json"
+        className="hidden"
+        data-testid="gis-local-project-input"
+        onChange={event => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (!file) return;
+          void importWorkspaceProject(file).catch(error => {
+            toast({
+              title: "Erro ao abrir projecto",
+              description: error instanceof Error ? error.message : String(error),
+              variant: "destructive",
+            });
+          });
+        }}
+      />
       {/* Hidden File Input */}
       <input
         ref={fileInputRef}
@@ -2810,6 +2965,27 @@ export default function GeoProcessamento({
           deste separador; não são enviados ao Firestore nem ao Storage.
           Exporte o projecto antes de fechar ou actualizar a página.
           {projectNotice && <span className="mt-1 block font-semibold">{projectNotice}</span>}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-800">
+          <button type="button" onClick={exportWorkspaceProject}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-sky-200 px-2.5 text-[11px] font-semibold text-sky-800 hover:bg-sky-50 dark:border-sky-800 dark:text-sky-300">
+            <Download size={13} /> Exportar projecto
+          </button>
+          <button type="button" onClick={() => projectInputRef.current?.click()}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200">
+            <Upload size={13} /> Abrir projecto
+          </button>
+          <button type="button" disabled={demLoading} onClick={() => void requestGlobalDem()}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-sky-600 px-2.5 text-[11px] font-semibold text-white disabled:opacity-50">
+            <Mountain size={13} /> {demLoading ? "DEM a processar…" : "Obter DEM Global"}
+          </button>
+          {demLoading && (
+            <div role="status" aria-live="polite" className="min-w-0 text-[11px] text-sky-800 dark:text-sky-300">
+              <span>{demProgress?.completed ?? 0} / {demProgress?.total ?? 0} tiles descarregados</span>
+              <button type="button" className="ml-2 underline" onClick={() => demAbortRef.current?.abort()}>Cancelar</button>
+            </div>
+          )}
         </div>
 
         {/* Top Processing Menu Tabs */}
@@ -5490,6 +5666,7 @@ export default function GeoProcessamento({
           activeLayerId={selectedLayerId}
           activeRasterId={selectedWhiteboxRasterId}
           basemap={basemap}
+          onViewportBbox={setMapViewportBbox}
           aoiGeometry={aoi.source !== "global" ? aoi.geometry : null}
           drawingEnabled={drawingEnabled}
           onSelectLayer={setSelectedLayerId}
