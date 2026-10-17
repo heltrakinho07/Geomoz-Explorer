@@ -306,6 +306,20 @@ function rasterFileKey(projectId: string, rasterId: string): string {
   return `${projectId}:${rasterId}`;
 }
 
+/** Read native browser File bytes; FileReader remains the compatibility
+ * fallback for environments without Blob.arrayBuffer(). */
+function bytesFromFile(file: File): Promise<ArrayBuffer> {
+  if (typeof file.arrayBuffer === "function") return file.arrayBuffer();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => reader.result instanceof ArrayBuffer
+      ? resolve(reader.result)
+      : reject(new Error("O ficheiro raster não forneceu dados binários."));
+    reader.onerror = () => reject(reader.error ?? new Error("Falha ao ler GeoTIFF."));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
 export async function saveGISWorkspaceRasterFile(
   projectId: string,
   rasterId: string,
@@ -320,7 +334,7 @@ export async function saveGISWorkspaceRasterFile(
     mimeType: file.type || "image/tiff",
     // Using raw bytes avoids File/Blob structured-clone differences in browsers
     // and fake-indexeddb, while preserving exact GeoTIFF binary content.
-    bytes: await file.arrayBuffer(),
+    bytes: await bytesFromFile(file),
   };
   await withStore<IDBValidKey>(RASTER_FILE_STORE, "readwrite", (store) =>
     store.put(record)
