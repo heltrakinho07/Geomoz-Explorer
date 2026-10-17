@@ -45,6 +45,7 @@ const AOI_LINE = "__geomoz_aoi_line";
 const DRAW_SOURCE = "__geomoz_draw";
 const DRAW_FILL = "__geomoz_draw_fill";
 const DRAW_LINE = "__geomoz_draw_line";
+const DRAW_POINTS = "__geomoz_draw_points";
 
 function safeId(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -97,6 +98,45 @@ function appendTextRow(root: HTMLElement, key: string, value: unknown) {
   root.appendChild(row);
 }
 
+type PreviewPixel = { x: number; y: number };
+interface AOIVisualPreview {
+  draftPath: string;
+  draftIsPolygon: boolean;
+  vertices: PreviewPixel[];
+  completedPaths: string[];
+}
+const EMPTY_AOI_PREVIEW: AOIVisualPreview = {
+  draftPath: "", draftIsPolygon: false, vertices: [], completedPaths: [],
+};
+
+/** SVG preview only; actual analysis always uses the original AOI geometry. */
+function polygonRings(geometry?: GeoJSON.GeoJSON | null): number[][][] {
+  if (!geometry) return [];
+  switch (geometry.type) {
+    case "Polygon": return geometry.coordinates;
+    case "MultiPolygon": return geometry.coordinates.flat();
+    case "Feature": return polygonRings(geometry.geometry);
+    case "FeatureCollection": return geometry.features.flatMap(f => polygonRings(f.geometry));
+    default: return [];
+  }
+}
+
+function displayRing(ring: number[][]): number[][] {
+  if (ring.length <= 800) return ring;
+  const stride = Math.ceil((ring.length - 1) / 799);
+  return [...ring.slice(0, -1).filter((_, i) => i % stride === 0), ring[ring.length - 1]];
+}
+function svgPath(project: (coords: [number, number]) => PreviewPixel, ring: number[][], closed: boolean): string {
+  const parts: string[] = [];
+  for (const pair of ring) {
+    if (!Number.isFinite(pair[0]) || !Number.isFinite(pair[1])) continue;
+    const pixel = project([pair[0], pair[1]]);
+    if (!Number.isFinite(pixel.x) || !Number.isFinite(pixel.y)) continue;
+    parts.push(`${parts.length ? "L" : "M"}${pixel.x.toFixed(1)},${pixel.y.toFixed(1)}`);
+  }
+  return parts.length ? parts.join(" ") + (closed ? " Z" : "") : "";
+}
+
 function polygonFeature(coords: [number, number][]): Feature<Polygon> | null {
   if (coords.length < 3) return null;
   const ring = [...coords];
@@ -138,6 +178,7 @@ export default function GISWorkspaceMapLibre({
   const styleReadyRef = useRef(false);
   const [drawVertexCount, setDrawVertexCount] = useState(0);
   const [drawError, setDrawError] = useState<string | null>(null);
+  const [visualPreview, setVisualPreview] = useState<AOIVisualPreview>(EMPTY_AOI_PREVIEW);
   const drawCoordsRef = useRef<[number, number][]>([]);
   const onSelectLayerRef = useRef(onSelectLayer);
   const onDrawCompleteRef = useRef(onDrawComplete);
@@ -199,7 +240,28 @@ export default function GISWorkspaceMapLibre({
     });
   };
 
+  // SVG sits above MapLibre GL: drawing cannot be obscured by raster/OGC
+  // layers or lost during an asynchronous basemap style transition.
+  const syncDomPreview = (map: MapLibreMap) => {
+    const project = (p: [number, number]): PreviewPixel => map.project(p);
+    const points = drawCoordsRef.current;
+    setVisualPreview({
+      draftPath: svgPath(project, points, points.length >= 3),
+      draftIsPolygon: points.length >= 3,
+      vertices: points.map(project).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y)),
+      completedPaths: polygonRings(aoiGeometryRef.current).slice(0, 12)
+        .map(ring => svgPath(project, displayRing(ring), true)).filter(Boolean),
+    });
+  };
+
+  const raiseAoiLayers = (map: MapLibreMap) => {
+    for (const id of [AOI_FILL, AOI_LINE, DRAW_FILL, DRAW_LINE, DRAW_POINTS]) {
+      if (map.getLayer(id)) map.moveLayer(id);
+    }
+  };
+
   const syncDrawPreview = (map: MapLibreMap) => {
+    syncDomPreview(map);
     if (!styleReadyRef.current) return;
     const points = drawCoordsRef.current;
     const feature = polygonFeature(points);
@@ -227,9 +289,10 @@ export default function GISWorkspaceMapLibre({
       filter: ["!=", ["geometry-type"], "Point"],
       paint: { "line-color": "#4f46e5", "line-width": 2.5 },
     });
-    map.addLayer({ id: "__geomoz_draw_points", type: "circle", source: DRAW_SOURCE,
+    map.addLayer({ id: DRAW_POINTS, type: "circle", source: DRAW_SOURCE,
       filter: ["==", ["geometry-type"], "Point"],
       paint: { "circle-radius": 5, "circle-color": "#4f46e5", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
+    raiseAoiLayers(map);
   };
 
   const finishDraw = () => {
@@ -338,6 +401,7 @@ export default function GISWorkspaceMapLibre({
     renderedLayerLookupRef.current = lookup;
     syncAoi(map);
     syncDrawPreview(map);
+    raiseAoiLayers(map);
   };
 
   useEffect(() => {
@@ -351,7 +415,7 @@ export default function GISWorkspaceMapLibre({
       attributionControl: { compact: true },
     });
     mapRef.current = map;
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
 
     map.on("style.load", () => {
@@ -370,6 +434,8 @@ export default function GISWorkspaceMapLibre({
       setCoords({ lng: event.lngLat.lng, lat: event.lngLat.lat });
     });
     map.on("mouseout", () => setCoords(null));
+    map.on("move", () => syncDomPreview(map));
+    map.on("resize", () => syncDomPreview(map));
 
     map.on("click", (event: MapMouseEvent) => {
       if (drawingRef.current) {
@@ -446,6 +512,7 @@ export default function GISWorkspaceMapLibre({
     const map = mapRef.current;
     if (!map || !styleReadyRef.current) return;
     syncLayers(map);
+    syncDomPreview(map);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layers, aoiGeometry]);
 
@@ -455,13 +522,14 @@ export default function GISWorkspaceMapLibre({
     void syncGISWorkspaceRasters(map, rasterLayers, {
       onMetadata: (metadata) => onRasterMetadataRef.current?.(metadata),
       onError: (layerId, message) => onRasterErrorRef.current?.(layerId, message),
-    });
+    }).then(() => { if (mapRef.current === map) raiseAoiLayers(map); });
   }, [rasterLayers]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
     syncGISWorkspaceServiceLayers(map, serviceLayers);
+    raiseAoiLayers(map);
   }, [serviceLayers]);
 
   useEffect(() => {
@@ -525,6 +593,29 @@ export default function GISWorkspaceMapLibre({
   return (
     <div className="absolute inset-0">
       <div ref={containerRef} className="h-full w-full" />
+      {(visualPreview.draftPath || visualPreview.completedPaths.length > 0) && (
+        <svg
+          data-testid="gis-aoi-visible-overlay"
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-[8] h-full w-full overflow-hidden"
+        >
+          {visualPreview.completedPaths.map((path, index) => (
+            <path key={index} d={path} fill="rgba(244,63,94,0.16)"
+              stroke="#fb7185" strokeWidth={3.5} strokeDasharray="8 5"
+              strokeLinejoin="round" fillRule="evenodd" />
+          ))}
+          {visualPreview.draftPath && (
+            <path data-testid="gis-aoi-drawing-path" d={visualPreview.draftPath}
+              fill={visualPreview.draftIsPolygon ? "rgba(79,70,229,0.2)" : "none"}
+              stroke="#a5b4fc" strokeWidth={4} strokeDasharray="9 5"
+              strokeLinejoin="round" strokeLinecap="round" />
+          )}
+          {visualPreview.vertices.map((vertex, index) => (
+            <circle key={index} data-testid="gis-aoi-drawing-vertex" cx={vertex.x}
+              cy={vertex.y} r={7} fill="#ffffff" stroke="#4338ca" strokeWidth={3} />
+          ))}
+        </svg>
+      )}
       <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-1.5 text-[10px] text-slate-600 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/90 dark:text-slate-300">
         MapLibre GL · {visibleCount} camada(s) visível(is)
       </div>

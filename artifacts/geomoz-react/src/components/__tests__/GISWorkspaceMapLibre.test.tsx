@@ -25,6 +25,9 @@ vi.mock('maplibre-gl', () => ({
     getStyle() { return {sources: this.sources}; }
     setStyle() { this.sources = {}; this.layers = {}; }
     getCanvas() { return this.canvas; }
+    project(coords: [number, number]) { return { x: coords[0] * 2 + 200, y: coords[1] * -2 + 100 }; }
+    moveLayer(id: string) { this.moveCalls.push(id); }
+    moveCalls: string[] = [];
     addControl() {} remove() {} resize() {}
   },
 }));
@@ -44,15 +47,23 @@ describe('GIS AOI drawing', () => {
     click(32, -25);
     expect(mock.map.getSource('__geomoz_draw').data.features[0].geometry.type).toBe('Point');
     expect(screen.getByRole('status')).toHaveTextContent('1 ponto');
+    expect(screen.getByTestId('gis-aoi-visible-overlay')).toBeInTheDocument();
+    expect(screen.getAllByTestId('gis-aoi-drawing-vertex')).toHaveLength(1);
     click(33, -25);
     expect(mock.map.getSource('__geomoz_draw').data.features[0].geometry.type).toBe('LineString');
+    expect(screen.getAllByTestId('gis-aoi-drawing-vertex')).toHaveLength(2);
+    expect(screen.getByTestId('gis-aoi-drawing-path').getAttribute('d')).toContain(' L');
     click(33, -24);
     expect(finish).toBeEnabled();
+    expect(screen.getAllByTestId('gis-aoi-drawing-vertex')).toHaveLength(3);
+    expect(screen.getByTestId('gis-aoi-drawing-path').getAttribute('d')).toContain('Z');
     fireEvent.click(finish);
     expect(complete).toHaveBeenCalledOnce();
     expect(complete.mock.calls[0][0]).toEqual({type: 'Polygon', coordinates: [[[32,-25],[33,-25],[33,-24],[32,-25]]]});
     rerender(<GISWorkspaceMapLibre layers={[]} basemap="terrain" drawingEnabled={false} aoiGeometry={complete.mock.calls[0][0]} />);
     expect(mock.map.getSource('__geomoz_aoi').data.type).toBe('Polygon');
+    expect(screen.getByTestId('gis-aoi-visible-overlay').querySelector('path')).toHaveAttribute('stroke', '#fb7185');
+    expect(mock.map.moveCalls).toContain('__geomoz_draw_points');
     // A delayed double-click cannot finish the same polygon twice.
     act(() => mock.map.emit('dblclick', {preventDefault: vi.fn()}));
     expect(complete).toHaveBeenCalledOnce();
@@ -65,7 +76,22 @@ describe('GIS AOI drawing', () => {
     fireEvent.click(screen.getByText('Cancelar desenho'));
     expect(cancel).toHaveBeenCalledOnce(); expect(complete).not.toHaveBeenCalled();
     expect(mock.map.getSource('__geomoz_draw').data.features).toEqual([]);
+    expect(screen.queryByTestId('gis-aoi-visible-overlay')).toBeNull();
   });
+  it('reprojects the visible polygon on map move and keeps it above map imagery', () => {
+    const { click } = setup();
+    click(32, -25);
+    click(33, -25);
+    click(33, -24);
+    const shape = screen.getByTestId('gis-aoi-drawing-path');
+    const prior = shape.getAttribute('d');
+    mock.map.project = ([lng, lat]: [number, number]) => ({ x: lng * 3 + 300, y: lat * -3 + 120 });
+    act(() => mock.map.emit('move'));
+    expect(screen.getByTestId('gis-aoi-drawing-path').getAttribute('d')).not.toEqual(prior);
+    expect(screen.getAllByTestId('gis-aoi-drawing-vertex')).toHaveLength(3);
+    expect(mock.map.moveCalls).toContain('__geomoz_draw_line');
+  });
+
   it('keeps double-click completion and explains an invalid area', () => {
     const {click, complete} = setup();
     click(32, -25); click(33, -25); click(34, -25);
