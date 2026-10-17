@@ -210,6 +210,73 @@ html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0
 .gm-workbench summary:focus-visible { outline:2px solid var(--gm-accent);outline-offset:2px; }
 @media(max-width:767px){.gm-shared-rail{padding-top:3px;padding-bottom:3px;}}
 
+
+/* Seismic events: GeoMoz-owned FDSN catalog panel. The renderer and layer tree
+   remain GeoLibre's actual React store, not a parallel map overlay. */
+.gm-seismic-panel {
+  position: absolute;
+  z-index: 62;
+  top: 100%;
+  left: 18px;
+  width: min(780px, calc(100vw - 36px));
+  max-height: min(72vh, 710px);
+  overflow-y: auto;
+  border: 1px solid var(--gm-line);
+  border-radius: 0 0 12px 12px;
+  background: var(--gm-surface);
+  color: var(--gm-text);
+  box-shadow: 0 18px 38px #02061750;
+  padding: 15px 19px 18px;
+}
+.gm-seismic-header { display:flex;align-items:flex-start;justify-content:space-between;gap:14px;border-bottom:1px solid var(--gm-line);padding-bottom:10px;margin-bottom:12px; }
+.gm-seismic-header small { display:block;color:var(--gm-subtle);font-size:9px;letter-spacing:1.3px;font-weight:750; }
+.gm-seismic-header h2 { display:flex;align-items:center;gap:8px;font-size:17px;font-weight:760;line-height:1.5; }
+.gm-seismic-header h2 svg {color:var(--gm-accent);}
+.gm-seismic-header p {font-size:11px;color:var(--gm-subtle);line-height:1.55;}
+.gm-seismic-header>button {display:grid;place-items:center;min-width:29px;min-height:29px;border:1px solid var(--gm-line);border-radius:6px;color:var(--gm-subtle);}
+.gm-seismic-filters {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px 12px;}
+.gm-seismic-filters>label {min-width:0;display:flex;flex-direction:column;gap:4px;font-size:10px;color:var(--gm-subtle);font-weight:650;}
+.gm-seismic-filters>label:nth-child(1),.gm-seismic-filters>label:nth-child(2){grid-column:span 2;}
+.gm-seismic-filters .gm-seismic-span {grid-column:1/-1;}
+.gm-seismic-filters :is(input,select) {
+  display:block;width:100%;min-width:0;min-height:33px;padding:6px 8px;
+  background:var(--gm-surface);border:1px solid var(--gm-line);
+  border-radius:5px;color:var(--gm-text);font:500 11px/1.35 inherit;
+}
+.gm-seismic-filters :is(input,select):focus-visible {outline:2px solid var(--gm-accent);outline-offset:1px;}
+.gm-seismic-actions {display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;}
+.gm-seismic-actions>button {
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-height:32px;padding:6px 12px;background:var(--gm-accent);color:#fff;
+  border:1px solid transparent;border-radius:6px;font-size:11px;font-weight:700;
+}
+.gm-seismic-actions>button:hover:not(:disabled) {filter:brightness(1.07);}
+.gm-seismic-actions>button:not(:first-child) {background:var(--gm-muted);border-color:var(--gm-line);color:var(--gm-text);}
+.gm-seismic-actions>a {display:inline-flex;align-items:center;gap:4px;color:var(--gm-accent);font-size:11px;font-weight:600;margin-left:auto;}
+.gm-seismic-notice,.gm-seismic-error {display:flex;align-items:flex-start;gap:7px;padding:9px 11px;margin-top:10px;border-radius:7px;font-size:11px;line-height:1.5;}
+.gm-seismic-notice {background:color-mix(in srgb,var(--gm-accent) 8%,transparent);color:var(--gm-text);}
+.gm-seismic-error {background:#fee2e2;color:#991b1b;border:1px solid #fecaca;}
+.gm-seismic-results {margin-top:12px;border-top:1px solid var(--gm-line);padding-top:10px;}
+.gm-seismic-count {display:flex;align-items:baseline;flex-wrap:wrap;gap:6px;font-size:12px;}
+.gm-seismic-count strong {font-size:22px;color:var(--gm-accent);}
+.gm-seismic-count em {display:block;flex-basis:100%;font-size:10px;color:#b45309;font-style:normal;}
+.gm-seismic-results p {font-size:10px;color:var(--gm-subtle);margin:8px 0;}
+.gm-seismic-events {margin-top:10px;max-height:170px;overflow:auto;border:1px solid var(--gm-line);border-radius:7px;}
+.gm-seismic-event {display:flex;align-items:flex-start;gap:10px;border-bottom:1px solid var(--gm-line);padding:8px 10px;font-size:11px;}
+.gm-seismic-event i {width:9px;height:9px;flex:none;border-radius:50%;margin-top:4px;}
+.gm-seismic-event strong {font-weight:760;}
+.gm-seismic-event small {display:block;color:var(--gm-subtle);font-size:10px;margin-top:3px;}
+.gm-seismic-panel>footer {margin-top:13px;color:var(--gm-subtle);font-size:10px;line-height:1.5;}
+.gm-seismic-spin {animation:gm-seismic-spin 1s linear infinite;}
+@keyframes gm-seismic-spin {to{transform:rotate(360deg);}}
+@media(max-width:640px){
+  .gm-seismic-panel {left:6px;width:calc(100vw - 12px);max-height:65vh;padding:12px;}
+  .gm-seismic-filters {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .gm-seismic-filters>label:nth-child(1),.gm-seismic-filters>label:nth-child(2){grid-column:1/-1;}
+  .gm-seismic-actions>a {margin-left:0;}
+}
+@media(prefers-reduced-motion:reduce){.gm-seismic-spin{animation:none;}}
+
 /* GeoMoz essential workflow. Original engine surfaces are controlled in React. */
 .gm-project-menu{display:flex;align-items:center;flex:none;}
 .gm-project-menu .gm-menu-slot>button{color:#c6d9e9;font-size:11px;}

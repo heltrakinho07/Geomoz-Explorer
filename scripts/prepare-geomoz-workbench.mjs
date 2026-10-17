@@ -31,7 +31,7 @@ for(const [tag,area] of Object.entries(menuAreas)){
   if(!count)throw Error("Missing engine menu: "+tag);
 }
 toolbar=toolbar.slice(0,start)+`    <GeoMozWorkbenchChrome commands={paletteCommands.commands} themeMode={themeMode}
-      onToggleThemeMode={onToggleThemeMode} onSearch={() => dialogs.setCommandPaletteOpen(true)} viewer={viewer}>
+      onToggleThemeMode={onToggleThemeMode} onSearch={() => dialogs.setCommandPaletteOpen(true)} viewer={viewer} mapControllerRef={mapControllerRef}>
 `+children+"    </GeoMozWorkbenchChrome>"+toolbar.slice(end+"    </header>".length);
 // Drop symbols that belonged exclusively to the replaced visual chrome.
 toolbar=toolbar.replace('  DEFAULT_PROJECT_NAME,\n','').replace('import { Button, cn, Input } from "@geolibre/ui";','import { cn } from "@geolibre/ui";').replace('import { Map, Moon, Sun } from "lucide-react";','');
@@ -47,7 +47,7 @@ write("components/layout/DesktopShell.tsx",shell);
 let rail=read("components/panels/SharedSidebar.tsx");
 rail=once(rail,'"flex w-full shrink-0 items-center gap-1 border-t bg-card','"gm-shared-rail flex w-full shrink-0 items-center gap-1 border-t bg-card',"GeoMoz activity rail");
 write("components/panels/SharedSidebar.tsx",rail);
-for(const name of ["GeoMozWorkbenchChrome.tsx","GeoMozLayerPanel.tsx","GeoMozLayerProperties.tsx"]){
+for(const name of ["GeoMozWorkbenchChrome.tsx","GeoMozLayerPanel.tsx","GeoMozLayerProperties.tsx","GeoMozSeismicPanel.tsx","seismic-data.ts"]){
   write("components/geomoz/"+name,readFileSync(new URL("./assets/workbench/"+name,import.meta.url),"utf8"));
 }
 write("hooks/useThemeMode.ts",readFileSync(new URL("./assets/workbench/useThemeMode.ts",import.meta.url),"utf8"));

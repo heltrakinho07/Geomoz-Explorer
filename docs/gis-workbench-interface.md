@@ -47,3 +47,5 @@ O mesmo filtro abrange a faixa superior, pesquisa fixa e dinâmica, atalhos, men
 As propriedades próprias mantêm renomeação, ordem, grupo e exportação GeoJSON com os guardas de colaboração, permissões e modo de leitura. O painel completo original continua montado e oculto. O tema global permanece partilhado com todo o sistema.
 
 O editor de área oferece polígono, linha, rectângulo e ponto, com selecção, deslocação, edição de vértices e remoção. Modos avançados e volumetria 3D, incluindo o formulário de altura, ficam ocultos através de advancedDrawing; os modos e atributos originais são preservados.
+
+A integração de sismicidade USGS/ISC publicada em paralelo é preservada em Dados → Catálogos sísmicos. Os clientes, estilos e testes de sismicidade continuam activos; não foi criada uma quinta etapa no fluxo principal.

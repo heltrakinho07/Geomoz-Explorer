@@ -1,13 +1,16 @@
+import type {RefObject} from "react";
+import type {MapEngine} from "@geolibre/map";
+import {GeoMozSeismicPanel} from "./GeoMozSeismicPanel";
 import { GEOMOZ_ROLLOUT, curateGeoMozCommands } from "../../lib/geomoz-workbench-profile";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useAppStore, DEFAULT_PROJECT_NAME } from "@geolibre/core";
-import { ArrowUpRight, Search, Moon, Sun, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass } from "lucide-react";
+import { ArrowUpRight, Search, Moon, Sun, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass, Activity } from "lucide-react";
 import type { Command } from "../../lib/commands";
 import type { ThemeMode } from "../../hooks/useThemeMode";
 
-type Task = "project" | "data" | "map" | "analysis" | "output" | "settings";
+type Task = "project" | "data" | "map" | "analysis" | "output" | "settings" | "seismic";
 const TaskContext = createContext<Task>("data");
-const LEGACY_TASKS: [Task, string][] = [["project","Projecto"],["data","Dados"],["map","Mapa"],["analysis","Análise"],["output","Publicar"],["settings","Definições"]];
+const LEGACY_TASKS: [Task, string][] = [["project","Projecto"],["data","Dados"],["map","Mapa"],["analysis","Análise"],["seismic","Sismicidade"],["output","Publicar"],["settings","Definições"]];
 const LEGACY_ACTIONS: Record<Task, {label:string; ids:string[]}[]> = {
   project: [
     {label:"Criar",ids:["project.new","project.examples"]},
@@ -29,6 +32,7 @@ const LEGACY_ACTIONS: Record<Task, {label:string; ids:string[]}[]> = {
     {label:"Terreno",ids:["proc.raster.slope","proc.raster.hillshade","proc.raster.aspect"]},
     {label:"Ferramentas",ids:["proc.whitebox","proc.sql","proc.python","proc.modelBuilder"]},
   ],
+  seismic: [],
   output: [
     {label:"Entregar resultados",ids:["project.print-layout","project.save-as","project.share"]},
     {label:"Apresentação",ids:["control.legend","control.colorbar"]},
@@ -75,15 +79,16 @@ export function GeoMozMenuSlot({area,children}:{area:Task;children:ReactNode}) {
   return <div className="gm-menu-slot" data-area={area} hidden={area==="project"?false:!GEOMOZ_ROLLOUT.fullMenus||active !== area}>{children}</div>;
 }
 
-export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleThemeMode,onSearch,viewer}:{
+export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleThemeMode,onSearch,viewer,mapControllerRef}:{
   children:ReactNode; commands:Command[]; themeMode:ThemeMode;
-  onToggleThemeMode:()=>void; onSearch:()=>void; viewer:boolean;
+  onToggleThemeMode:()=>void; onSearch:()=>void; viewer:boolean; mapControllerRef:RefObject<MapEngine|null>;
 }) {
   const [task,setTask]=useState<Task>("data");
   const name=useAppStore(s=>s.projectName);
   const setName=useAppStore(s=>s.setProjectName);
   const layers=useAppStore(s=>s.layers);
   const [more,setMore]=useState(false);
+  const [seismicOpen,setSeismicOpen]=useState(false);
   const activeTask:Task=viewer?"map":task;
   const curated=curateGeoMozCommands(commands);
   const visibleCommands=viewer?curated.filter(command=>command.id.startsWith("view.")):curated;
@@ -112,7 +117,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
         </div>
       </div>
       <div className="gm-taskbar"><nav aria-label="Tarefas GIS" className="gm-task-tabs">{TASKS.filter(([id])=>!viewer||id==="map").map(([id,label])=>
-        <button key={id} type="button" aria-current={activeTask===id?"page":undefined} onClick={()=>{setTask(id);setMore(false);window.dispatchEvent(new CustomEvent("geomoz:task",{detail:id}));}} data-task={id}>{label}</button>)}</nav>
+        <button key={id} type="button" aria-current={activeTask===id?"page":undefined} onClick={()=>{setTask(id);setMore(false);setSeismicOpen(id==="seismic");window.dispatchEvent(new CustomEvent("geomoz:task",{detail:id}));}} data-task={id}>{label}</button>)}</nav>
         <span className="gm-session-badge"><i/>{viewer?"Vista de leitura":"Projecto aberto"}<span className="gm-session-detail"> · {layers.length} camada{layers.length===1?"":"s"}</span></span>
       </div>
       <div className="gm-command-ribbon" aria-label={"Comandos de "+TASKS.find(([id])=>id===activeTask)?.[1]}>
@@ -121,10 +126,12 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
           return <button key={command.id} type="button" data-command={command.id} disabled={!!command.disabledReason}
             title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={19}/><span>{LABELS[command.id]??command.title}</span></button>;
         })}</div><small>{group.label}</small></section>)}
+        {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-seismic" aria-expanded={seismicOpen} onClick={()=>setSeismicOpen(!seismicOpen)}><Activity size={19}/><span>Catálogos sísmicos</span></button></div><small>Dados GeoMoz · USGS / ISC</small></section>}
         {!groups.length&&<p className="gm-ribbon-empty"><Compass size={22}/> As opções disponíveis estão nos menus desta tarefa.</p>}</div>
         {GEOMOZ_ROLLOUT.fullMenus&&<button type="button" className="gm-more-tools" aria-expanded={more} onClick={()=>setMore(!more)}>Mais opções <ChevronDown size={14}/></button>}
       </div>
       <p className="gm-task-guidance" role="status" hidden={more}>{viewer?"Explore as camadas e navegue no mapa. Esta sessão está em modo de leitura.":GUIDANCE[activeTask]}</p>
+      {seismicOpen&&!viewer&&<GeoMozSeismicPanel mapControllerRef={mapControllerRef} onClose={()=>{setSeismicOpen(false);if(task==="seismic")setTask("data");}}/>}
     </header>
   </TaskContext.Provider>;
 }
