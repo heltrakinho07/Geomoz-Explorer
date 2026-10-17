@@ -1,0 +1,30 @@
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import TerrainWorkflowPanel from '../TerrainWorkflowPanel';
+import { runTerrainWorkflow } from '@/lib/terrain-workflow-client';
+vi.mock('@/lib/api', () => ({apiFetch: vi.fn()}));
+vi.mock('@/lib/terrain-workflow-client', () => ({runTerrainWorkflow: vi.fn(), readBoundedDem: vi.fn()}));
+vi.mock('@/lib/terrain-report', () => ({downloadTerrainBlob: vi.fn(), exportTerrainPdf: vi.fn(), exportTerrainPng: vi.fn()}));
+const props = {aoi: {source: 'global' as const, label: 'Global'}, rasters: [], onComplete: vi.fn(), onShowProduct: vi.fn(), onDraw: vi.fn()};
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
+it('requires a DEM and prevents whole-world Earth Engine requests', async () => {
+  render(<TerrainWorkflowPanel {...props} />);
+  fireEvent.click(screen.getByText('Executar análise completa'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Seleccione um GeoTIFF');
+  fireEvent.change(screen.getByLabelText('Fonte'), {target: {value: 'gee'}});
+  fireEvent.click(screen.getByText('Executar análise completa'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Seleccione um distrito');
+  expect(runTerrainWorkflow).not.toHaveBeenCalled();
+});
+it('cancels the active worker and never adds partial products', async () => {
+  vi.mocked(runTerrainWorkflow).mockImplementation((_bytes, _name, _opts, signal) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new DOMException('cancel', 'AbortError')))));
+  render(<TerrainWorkflowPanel {...props} />);
+  const file = new File(['dem'], 'dem.tif');
+  Object.defineProperty(file, 'arrayBuffer', {value: async () => new Uint8Array([1]).buffer});
+  fireEvent.change(screen.getByLabelText(/GeoTIFF de elevação, uma banda/), {target: {files: [file]}});
+  fireEvent.click(screen.getByText('Executar análise completa'));
+  await waitFor(() => expect(runTerrainWorkflow).toHaveBeenCalledOnce());
+  fireEvent.click(screen.getByText('Cancelar'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Análise cancelada');
+  expect(props.onComplete).not.toHaveBeenCalled();
+});

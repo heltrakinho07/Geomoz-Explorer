@@ -8,6 +8,8 @@
 
 import React, { useState, useRef, useMemo, useCallback } from "react";
 import GISWorkspaceMapLibre from "@/components/GISWorkspaceMapLibre";
+import TerrainWorkflowPanel from "@/components/TerrainWorkflowPanel";
+import type { TerrainResult } from "@/lib/terrain-workflow";
 import GISModelBuilderPanel from "@/components/GISModelBuilderPanel";
 import {
   fetchWfsCapabilities,
@@ -238,6 +240,7 @@ export interface ProcessingHistoryEntry {
 }
 
 type MainTab =
+  | "terrain_workflow"
   | "data_sources"
   | "vector_toolbox"
   | "whitebox_toolbox"
@@ -501,6 +504,7 @@ export default function GeoProcessamento({
         );
         if (snapshot.activeTab) {
           const supportedTabs: MainTab[] = [
+            "terrain_workflow",
             "data_sources",
             "vector_toolbox",
             "whitebox_toolbox",
@@ -2955,6 +2959,44 @@ export default function GeoProcessamento({
     toast({ title: "Dossiê Gerado", description: "Relatório técnico PDF descarregado." });
   };
 
+  const terrainLayerIds = useRef<Record<string, string>>({});
+  const handleTerrainComplete = useCallback((result: TerrainResult) => {
+    const runId = crypto.randomUUID().slice(0, 12);
+    const generated: GISWorkspaceRasterLayer[] = result.products.map(product => {
+      const file = new File([new Uint8Array(product.bytes).buffer], product.fileName, { type: "image/tiff" });
+      const id = `terrain_${runId}_${product.id}`;
+      terrainLayerIds.current[product.id] = id;
+      return {
+        id, name: `${product.name} — ${result.report.source.name}`, file,
+        fileName: file.name, mimeType: file.type, sizeBytes: file.size,
+        sourceType: "storage", visible: product.id === "slope", opacity: 1,
+        isResult: true, bandCount: 1, bounds: product.bounds, error: null,
+        rasterState: { mode: "single", bands: [1],
+          colormap: product.id === "hillshade" ? "gray" : product.id === "streams" ? "blues" : "viridis",
+          rescale: product.min !== null && product.max !== null && product.min < product.max ? [[product.min, product.max] as [number, number]] : null,
+          nodata: "auto", stretch: "linear", gamma: 1,
+        },
+      };
+    });
+    setRasterLayers(previous => [...generated, ...previous]);
+    setSelectedWhiteboxRasterId(terrainLayerIds.current.slope);
+    setHistory(previous => [{
+      id: `terrain_${runId}`, toolId: "terrain_workflow", toolName: "Terreno e Hidrologia · GeoLibre Rust",
+      engine: "WASM", timestamp: result.report.startedAt, durationMs: result.report.durationMs,
+      inputLayerName: result.report.source.name, outputCount: generated.length, outputLabel: "rasters",
+      status: "success", parameters: { report: result.report },
+    }, ...previous]);
+    toast({ title: "Análise de terreno concluída", description: `${generated.length} GeoTIFFs adicionados ao projecto.` });
+  }, [toast]);
+  const handleShowTerrainProduct = useCallback((productId: string) => {
+    const id = terrainLayerIds.current[productId];
+    if (!id) return;
+    const ids = new Set(Object.values(terrainLayerIds.current));
+    setRasterLayers(previous => previous.map(layer => ids.has(layer.id) ? { ...layer, visible: layer.id === id } : layer));
+    setSelectedWhiteboxRasterId(id);
+    setSidebarOpen(false);
+  }, []);
+
   // Dashboard Chart Data
   const chartData = useMemo(() => {
     if (!activeLayer || activeLayer.geojson.features.length === 0) return [];
@@ -2994,7 +3036,7 @@ export default function GeoProcessamento({
 
       {/* ── Sidebar: Full Processing Menu Layout ─────────────────────────── */}
       <div
-        className={`fixed md:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
+        className={`fixed md:relative inset-y-0 left-0 z-[700] w-[min(100vw,24rem)] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         } ${
           desktopSidebarOpen
@@ -3140,6 +3182,16 @@ export default function GeoProcessamento({
             
           </div>
         </div>
+
+        <button type="button" onClick={() => setActiveTab("terrain_workflow")}
+          className={`mx-3 mt-3 flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-bold ${activeTab === "terrain_workflow" ? "border-teal-500 bg-teal-50 text-teal-800 dark:bg-teal-950 dark:text-teal-200" : "border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300"}`}>
+          <Mountain size={16} /> Terreno e Hidrologia
+        </button>
+        {workspaceHydrated && <div hidden={activeTab !== "terrain_workflow"}>
+          <TerrainWorkflowPanel key={workspaceCacheId} aoi={aoi} rasters={rasterLayers}
+            onComplete={handleTerrainComplete} onShowProduct={handleShowTerrainProduct}
+            onDraw={() => { setDrawingEnabled(true); setSidebarOpen(false); }} />
+        </div>}
 
         {/* ── Data Sources: local, URL and OGC services ─────────────────── */}
         {activeTab === "data_sources" && (
