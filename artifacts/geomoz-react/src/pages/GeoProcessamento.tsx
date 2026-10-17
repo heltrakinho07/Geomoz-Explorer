@@ -171,6 +171,7 @@ import {
   parsePortableGISProject,
 } from "@/lib/gis-workspace-session";
 import { downloadGlobalDem, globalDemTileRange } from "@/lib/gis-global-dem";
+import { prepareLocalGeoTiff } from "@/lib/gis-local-geotiff";
 import {
   listWhiteboxWasmManifests,
   runWhiteboxRasterTool,
@@ -1541,8 +1542,7 @@ export default function GeoProcessamento({
   }, [rasterUrl, toast]);
 
   // ── Handle File Upload ───────────────────────────────────────────────────
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
+  const importGISFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
     const selectedFiles = Array.from(files);
@@ -1555,17 +1555,19 @@ export default function GeoProcessamento({
         if (shapefileSidecars.has(extension)) continue;
 
         if (extension === "tif" || extension === "tiff") {
+          // As in GeoLibre: preserve already-tiled COG files; convert a
+          // striped DEM into a real COG inside the browser via WASM.
+          const prepared = await prepareLocalGeoTiff(file);
           const raster: GISWorkspaceRasterLayer = {
             id: `raster_${crypto.randomUUID().slice(0, 12)}`,
             name: file.name.replace(/\.[^/.]+$/, ""),
-            file,
-            
-            fileName: file.name,
-            mimeType: file.type || "image/tiff",
-            sizeBytes: file.size,
+            file: prepared.file,
+            fileName: prepared.file.name,
+            mimeType: "image/tiff",
+            sizeBytes: prepared.file.size,
             visible: true,
             opacity: 1,
-            bandCount: null,
+            bandCount: prepared.bands,
             bounds: null,
             error: null,
             rasterState: {
@@ -1583,7 +1585,9 @@ export default function GeoProcessamento({
           setSelectedWhiteboxRasterId(raster.id);
           toast({
             title: "Raster adicionado",
-            description: `${raster.name} será lido como GeoTIFF/COG no mapa do GIS Workspace.`,
+            description: prepared.converted
+              ? `${raster.name}: GeoTIFF convertido para COG no navegador; sem upload.`
+              : `${raster.name}: GeoTIFF/COG local disponível no mapa; sem upload.`,
           });
           continue;
         }
@@ -1643,6 +1647,9 @@ export default function GeoProcessamento({
     }
 
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    void importGISFiles(event.target.files);
   };
 
   const updateRasterState = useCallback(
@@ -2908,7 +2915,15 @@ export default function GeoProcessamento({
   }, [activeLayer]);
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-slate-50 dark:bg-slate-950 relative font-sans">
+    <div
+      className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-50 font-sans dark:bg-slate-950"
+      onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
+      onDrop={event => {
+        if (!event.dataTransfer.files.length) return;
+        event.preventDefault();
+        void importGISFiles(event.dataTransfer.files);
+      }}
+    >
       {/* Local project file only — no database or cloud upload. */}
       <input
         ref={projectInputRef}
