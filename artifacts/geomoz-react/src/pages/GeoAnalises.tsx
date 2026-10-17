@@ -542,6 +542,60 @@ const INDEX_DEFS: IndexDef[] = [
     lowLabel: "Sem sílica", highLabel: "Alta silicificação" },
 ];
 
+// Descriptive PT labels alongside stable scientific abbreviations.
+// Avoid showing cryptic codes such as SAVI/EVI alone in the tab selectors.
+const INDEX_FULL_NAMES: Record<string, string> = {
+  ndvi: "Índice de Vegetação por Diferença Normalizada",
+  ndvi_l8: "NDVI Landsat 8 — Vegetação",
+  evi: "Índice de Vegetação Melhorado",
+  savi: "Índice de Vegetação Ajustado ao Solo",
+  ndmi: "Índice de Humidade por Diferença Normalizada",
+  ndwi: "Índice de Água por Diferença Normalizada",
+  mndwi: "Índice de Água Modificado",
+  nddi: "Índice de Seca por Diferença Normalizada",
+  nbr: "Índice Normalizado de Área Queimada",
+  dnbr: "Diferença do Índice de Área Queimada",
+  bsi: "Índice de Solo Exposto",
+  bare_soil: "Índice de Solo Exposto",
+  vci: "Índice de Condição da Vegetação",
+  tci: "Índice de Condição Térmica",
+  vhi: "Índice de Saúde da Vegetação",
+  lai: "Índice de Área Foliar",
+  cwsi: "Índice de Stress Hídrico das Culturas",
+  ndti: "Índice de Turbidez por Diferença Normalizada",
+  awei_nsh: "Índice Automático de Extração de Água (sem sombra)",
+  awei_sh: "Índice Automático de Extração de Água (com sombra)",
+  urban_heat_island: "Ilha de Calor Urbana",
+  impervious_surface: "Superfícies Impermeáveis",
+  urban_expansion: "Expansão Urbana",
+  precipitation: "Precipitação Acumulada",
+  temperature_lst: "Temperatura da Superfície Terrestre",
+  wind_speed: "Velocidade do Vento",
+};
+
+function descriptiveIndexName(id: string): string {
+  const def = INDEX_DEFS.find(item => item.id === id);
+  if (!def) {
+    const names: Record<string, string> = {
+      s2: "Mosaicos ópticos Sentinel-2",
+      lineaments: "Lineamentos Estruturais",
+      targeting: "Prospectividade Mineral",
+      profile: "Perfil Topográfico",
+      contours: "Curvas de Nível",
+      topo_custom: "Classes Topográficas",
+      landcover: "Cobertura e Uso do Solo",
+      spi_ndvi: "Seca e Vegetação (SPI × NDVI)",
+    };
+    return names[id] || id.replaceAll("_", " ");
+  }
+  const full = INDEX_FULL_NAMES[id];
+  if (!full) return def.label === def.short ? def.label : `${def.label} — ${def.short}`;
+  const code = def.short.toUpperCase() === id.toUpperCase()
+    ? def.short.toUpperCase()
+    : (id === "ndvi_l8" ? "NDVI L8" : id.toUpperCase());
+  return `${code} — ${full}`;
+}
+
 const TERRAIN_CLASS_NAMES = [
   "Planície / < 5 m",
   "Planície Baixa / 5–10 m",
@@ -2955,7 +3009,10 @@ export default function GeoAnalises({
   const [showSpiChart, setShowSpiChart]     = useState(true);
   const [overlapResult, setOverlapResult]   = useState<OverlapResult | null>(null);
   const [rightPanelDocked, setRightPanelDocked] = useState(false);
-  const [sidebarOpen, setSidebarOpen]       = useState(true);
+  const [sidebarOpen, setSidebarOpen]       = useState(false);
+  const [resultsPanelOpen, setResultsPanelOpen] = useState(() =>
+    typeof window === "undefined" || window.innerWidth >= 768
+  );
   const [openGroup, setOpenGroup]           = useState<string | null>(null);
   const [profilePoints, setProfilePoints]   = useState<LonLat[]>([]);
   const [profileSamples, setProfileSamples] = useState(200);
@@ -3490,6 +3547,8 @@ export default function GeoAnalises({
       }
       if (!controller.signal.aborted) {
         setLastProcessingDuration(Math.round((Date.now() - beganAt) / 1000));
+        setResultsPanelOpen(true);
+        setSidebarOpen(false);
       }
     } catch (err: any) {
       const aborted = controller.signal.aborted || err?.name === "AbortError";
@@ -3905,7 +3964,7 @@ export default function GeoAnalises({
             <div className="flex-1 flex items-center gap-1.5 overflow-x-auto px-2 py-0.5 no-scrollbar">
               {activeCategory.tabIds.map(tabId => {
                 const def = INDEX_DEFS.find(d => d.id === tabId);
-                const label = def?.short || (tabId === "s2" ? "S-2 Cloudless" : tabId === "lineaments" ? "Lineamentos" : tabId === "targeting" ? "Targeting" : tabId === "profile" ? "Perfil A→B" : tabId === "contours" ? "Curvas Nível" : tabId === "topo_custom" ? "Classes Custom" : tabId === "landcover" ? "Cobertura Solo" : tabId === "spi_ndvi" ? "SPI × NDVI" : tabId);
+                const label = descriptiveIndexName(tabId);
                 const icon = def?.icon || (tabId === "s2" ? <Satellite size={12} /> : tabId === "lineaments" ? <Activity size={12} /> : tabId === "targeting" ? <Target size={12} /> : tabId === "profile" ? <Route size={12} /> : tabId === "contours" ? <Waves size={12} /> : tabId === "topo_custom" ? <Sliders size={12} /> : tabId === "landcover" ? <Sprout size={12} /> : <Droplets size={12} />);
                 const isActive = activeTab === tabId;
 
@@ -4122,7 +4181,7 @@ export default function GeoAnalises({
                 <div className="space-y-1">
                   {activeCategory.tabIds.map(tabId => {
                     const def = INDEX_DEFS.find(d => d.id === tabId);
-                    const label = def?.short || (tabId === "s2" ? "S-2 Cloudless" : tabId === "lineaments" ? "Lineamentos" : tabId === "targeting" ? "Targeting" : tabId === "profile" ? "Perfil A→B" : tabId === "contours" ? "Curvas Nível" : tabId === "topo_custom" ? "Classes Custom" : tabId === "landcover" ? "Cobertura Solo" : tabId === "spi_ndvi" ? "SPI × NDVI" : tabId);
+                    const label = descriptiveIndexName(tabId);
                     const icon = def?.icon || (tabId === "s2" ? <Satellite size={13} /> : tabId === "lineaments" ? <Activity size={13} /> : tabId === "targeting" ? <Target size={13} /> : tabId === "profile" ? <Route size={13} /> : tabId === "contours" ? <Waves size={13} /> : tabId === "topo_custom" ? <Sliders size={13} /> : tabId === "landcover" ? <Sprout size={13} /> : <Droplets size={13} />);
                     const isActive = activeTab === tabId;
                     return (
@@ -4264,16 +4323,16 @@ export default function GeoAnalises({
             </div>
 
         {/* Draggable Results Panel */}
-        {((activeDef || isComposite || isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || activeTab === "s2")) && (
+        {resultsPanelOpen && (activeDef || isComposite || isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || activeTab === "s2") && (
           <DraggablePanel
-            title={`Análise: ${activeDef?.label || (isLineaments ? "Lineamentos" : isProfile ? "Perfil Topográfico" : isTargeting ? "Alvo Mineral" : isSpiNdvi ? "SPI×NDVI" : isContours ? "Curvas de Nível" : isTopoCustom ? "Classes Topo" : isLandCover ? "Cobertura do Solo" : "Resultados")}`}
-            icon={<Activity size={16} className="text-sky-500" />}
+            title={`Análise: ${descriptiveIndexName(activeTab)}`}
+            icon={<Activity size={16} className="shrink-0 text-sky-500" />}
             isDocked={rightPanelDocked}
             onDockToggle={() => setRightPanelDocked(d => !d)}
-            defaultWidth={360}
-            className="right-4"
+            onClose={() => setResultsPanelOpen(false)}
+            defaultWidth={390}
           >
-            <div className="flex flex-col w-full bg-white/50 dark:bg-slate-900/50 space-y-4 pb-4">
+            <div className="flex min-w-0 w-full flex-col space-y-4 bg-white/50 pb-4 dark:bg-slate-900/50">
           {/* Lineaments Panel */}
           {isLineaments && (
             <div className="p-4 border-b border-slate-100 dark:border-slate-800">
@@ -4414,7 +4473,7 @@ export default function GeoAnalises({
           {/* GEE Analysis Panel (real mode, single index) */}
           {/* GEE Geospatial Analytics Dashboard Panel (real mode, single index) */}
           {!isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !isTopoCustom && geeReady && activeTab !== "s2" && activeDef && (
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="min-w-0 p-3 sm:p-4 border-b border-slate-100 dark:border-slate-800">
               <GeospatialAnalyticsPanel
                 activeIndex={activeTab as SpectralIndex}
                 province={province}
