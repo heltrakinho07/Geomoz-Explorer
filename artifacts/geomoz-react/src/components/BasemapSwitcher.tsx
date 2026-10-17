@@ -66,7 +66,8 @@ export default function BasemapSwitcher({
   onViewModeChange,
   className = "",
   position = "bottom-left",
-  show3dToggle = true,
+  // 3D is opt-in: only the main /mapa view explicitly enables it.
+  show3dToggle = false,
 }: BasemapSwitcherProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -114,7 +115,10 @@ export default function BasemapSwitcher({
   }, [open]);
 
   // Current basemap visual helper
-  const currentOption = MAP_TYPE_OPTIONS.find((o) => o.id === current) || MAP_TYPE_OPTIONS[3];
+  const visibleMapOptions = show3dToggle
+    ? MAP_TYPE_OPTIONS
+    : MAP_TYPE_OPTIONS.filter(option => option.id !== "cesium");
+  const currentOption = visibleMapOptions.find((o) => o.id === current) || visibleMapOptions[3];
 
   return (
     <div
@@ -200,7 +204,7 @@ export default function BasemapSwitcher({
           <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-2 font-bold text-xs sm:text-sm">
               <Layers size={16} className="text-sky-600" />
-              <span>Tipo de Mapa (Google Maps / Cesium)</span>
+              <span>{show3dToggle ? "Tipo de Mapa (Google Maps / Cesium)" : "Tipo de Mapa"}</span>
             </div>
             <button
               type="button"
@@ -213,7 +217,7 @@ export default function BasemapSwitcher({
 
           {/* Grid of Map Types */}
           <div className="grid grid-cols-2 gap-2 my-3">
-            {MAP_TYPE_OPTIONS.map((opt) => {
+            {visibleMapOptions.map((opt) => {
               const isSelected = current === opt.id;
               return (
                 <button

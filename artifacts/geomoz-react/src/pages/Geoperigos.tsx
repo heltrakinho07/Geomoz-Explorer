@@ -156,14 +156,12 @@ interface Props {
   aoi: AreaOfInterest;
   province: string | null;
   district: string | null;
-  viewMode?: "2d" | "3d";
-  onViewModeChange?: (m: "2d" | "3d") => void;
   onProvinceChange: (p: string | null) => void;
   onDistrictChange: (d: string | null) => void;
   onAOIChange: (aoi: AreaOfInterest) => void;
 }
 
-export default function Geoperigos({ aoi, province, district, viewMode = "2d", onViewModeChange, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
+export default function Geoperigos({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
   const { toast } = useToast();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const { geeConnected: isGeeConnected, loading: geeAuthLoading } = useGeeAuth();

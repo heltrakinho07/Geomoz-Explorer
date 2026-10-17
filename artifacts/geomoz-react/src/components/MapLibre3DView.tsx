@@ -1031,6 +1031,7 @@ export default function MapLibre3DView({
           onChange={onBasemapChange}
           viewMode={viewMode}
           onViewModeChange={onViewModeChange}
+          show3dToggle
           className="absolute bottom-6 left-4 z-[600]"
           position="bottom-left"
         />

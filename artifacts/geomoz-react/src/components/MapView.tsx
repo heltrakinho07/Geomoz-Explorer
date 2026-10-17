@@ -51,6 +51,8 @@ interface MapViewProps {
   aoi: AreaOfInterest;
   drawingEnabled: boolean;
   finishRequest?: number;
+  /** Restrict interactive 3D rendering to the main /mapa route. */
+  enable3d?: boolean;
   initialViewMode?: "2d" | "3d";
   viewMode?: "2d" | "3d";
   onViewModeChange?: (mode: "2d" | "3d") => void;
@@ -275,6 +277,7 @@ export default function MapView({
   aoi,
   drawingEnabled,
   finishRequest,
+  enable3d = false,
   initialViewMode,
   viewMode: propViewMode,
   onViewModeChange,
@@ -310,9 +313,11 @@ export default function MapView({
     }
   });
 
-  const activeViewMode = propViewMode ?? internalViewMode;
+  // Never render the 3D globe outside the explicitly enabled main map.
+  const activeViewMode = enable3d ? (propViewMode ?? internalViewMode) : "2d";
 
   const handleViewModeChange = (mode: "2d" | "3d") => {
+    if (!enable3d) return;
     if (onViewModeChange) {
       onViewModeChange(mode);
     } else {
@@ -520,6 +525,7 @@ export default function MapView({
             onChange={setBasemap}
             viewMode={activeViewMode}
             onViewModeChange={handleViewModeChange}
+            show3dToggle={enable3d}
             className="absolute bottom-6 left-4 z-[600]"
             position="bottom-left"
           />

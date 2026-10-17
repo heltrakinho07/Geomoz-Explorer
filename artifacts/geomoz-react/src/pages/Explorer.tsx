@@ -213,7 +213,7 @@ export default function Explorer() {
   const searchRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
 
-  // Global 2D / 3D mode state
+  // Global 2D / 3D mode is consumed ONLY by the dedicated /mapa route.
   const [globalViewMode, setGlobalViewMode] = useState<"2d" | "3d">(() => {
     try {
       return (localStorage.getItem("geomoz_view_mode") as "2d" | "3d") || "3d";
@@ -736,6 +736,7 @@ export default function Explorer() {
                 setMapCenter(c);
                 setMapZoom(z);
               }}
+              enable3d={typeof window !== "undefined" && window.location.pathname === "/mapa"}
               viewMode={globalViewMode}
               onViewModeChange={handleGlobalViewModeChange}
             />
@@ -753,8 +754,6 @@ export default function Explorer() {
                 }}
                 onDistrictChange={setDistrict}
                 onAOIChange={handleAOIChange}
-                viewMode="2d"
-                onViewModeChange={() => {}}
               />
             </Suspense>
           )}
@@ -771,8 +770,6 @@ export default function Explorer() {
                 }}
                 onDistrictChange={setDistrict}
                 onAOIChange={handleAOIChange}
-                viewMode={globalViewMode}
-                onViewModeChange={handleGlobalViewModeChange}
               />
             </Suspense>
           )}
@@ -789,8 +786,6 @@ export default function Explorer() {
                 }}
                 onDistrictChange={setDistrict}
                 onAOIChange={handleAOIChange}
-                viewMode={globalViewMode}
-                onViewModeChange={handleGlobalViewModeChange}
               />
             </Suspense>
           )}
@@ -807,8 +802,6 @@ export default function Explorer() {
                 }}
                 onDistrictChange={setDistrict}
                 onAOIChange={handleAOIChange}
-                viewMode={globalViewMode}
-                onViewModeChange={handleGlobalViewModeChange}
               />
             </Suspense>
           )}
@@ -825,8 +818,6 @@ export default function Explorer() {
                 }}
                 onDistrictChange={setDistrict}
                 onAOIChange={handleAOIChange}
-                viewMode={globalViewMode}
-                onViewModeChange={handleGlobalViewModeChange}
               />
             </Suspense>
           )}
