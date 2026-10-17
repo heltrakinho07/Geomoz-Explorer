@@ -352,14 +352,27 @@ export async function loadGISWorkspaceRasterFiles(
   const result = new Map<string, File>();
   for (const record of records) {
     if (record.projectId !== projectId) continue;
-    const source = record.bytes instanceof ArrayBuffer ? record.bytes : record.blob;
-    if (!(source instanceof ArrayBuffer) && !(source instanceof Blob)) {
+    // fake-indexeddb, jsdom and cross-origin realms may clone an ArrayBuffer
+    // with a different prototype. Normalize to this realm before creating File.
+    const raw = record.bytes as unknown;
+    const isBuffer = raw != null && typeof raw === "object" &&
+      Object.prototype.toString.call(raw) === "[object ArrayBuffer]";
+    let source: BlobPart;
+    if (isBuffer) {
+      source = Uint8Array.from(new Uint8Array(raw as ArrayBuffer)).buffer;
+    } else if (ArrayBuffer.isView(raw)) {
+      source = Uint8Array.from(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength)).buffer;
+    } else if (record.blob && typeof record.blob === "object" &&
+               typeof record.blob.size === "number") {
+      // Old GeoMoz IndexedDB snapshots stored the native File/Blob directly.
+      source = record.blob;
+    } else {
       throw new Error(`Ficheiro raster local ${record.fileName} não pôde ser recuperado.`);
     }
     result.set(
       record.rasterId,
       new File([source], record.fileName, {
-        type: record.mimeType || (source instanceof Blob ? source.type : "image/tiff"),
+        type: record.mimeType || "image/tiff",
       })
     );
   }
