@@ -145,6 +145,12 @@ export default function Explorer() {
   const [activeTab, setActiveTabState] = useState<Tab>(getInitialTab);
 
   const setActiveTab = (tab: Tab) => {
+    // Production uses the actual GeoLibre Web application on a separate route.
+    // Local Vite development and /geoprocessamento retain the existing engine.
+    if (tab === "GIS Workspace" && import.meta.env.VITE_GIS_WORKSPACE_ENGINE === "geolibre") {
+      window.location.assign("/gis-workspace/");
+      return;
+    }
     setActiveTabState(tab);
     try {
       const slugMap: Record<Tab, string> = {

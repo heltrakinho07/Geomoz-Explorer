@@ -1,0 +1,80 @@
+name: GeoLibre Web Upstream CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/brand-geolibre-web.mjs"
+      - "scripts/tests/brand-geolibre-web.test.mjs"
+      - ".github/workflows/geolibre-upstream-ci.yml"
+      - ".github/workflows/firebase-deploy.yml"
+      - "firebase.json"
+      - "artifacts/geomoz-react/src/pages/Explorer.tsx"
+  workflow_dispatch:
+
+jobs:
+  upstream-build:
+    name: Original GeoLibre Web build and packaging
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout GeoLibre source at reviewed SHA
+        uses: actions/checkout@v4
+        with:
+          repository: opengeos/GeoLibre
+          ref: f69688ed5be750c496b51b865cee513d910a433f
+          path: .geolibre-upstream
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: .geolibre-upstream/package-lock.json
+
+      - name: Test GeoMoz build integration
+        run: node --test scripts/tests/brand-geolibre-web.test.mjs
+
+      - name: Install upstream with pinned package-lock
+        run: npm ci --no-audit --no-fund
+        working-directory: .geolibre-upstream
+
+      - name: Build GeoLibre browser application, not a replacement UI
+        working-directory: .geolibre-upstream
+        env:
+          GEOLIBRE_APP_BASE: "/gis-workspace/"
+          VITE_GEOLIBRE_APP_NAME: "GeoMoz GIS Workspace"
+          GEOLIBRE_STRIP_CREDENTIALS: "1"
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: npm run build
+
+      - name: Package, brand, verify retained upstream license
+        run: |
+          node scripts/brand-geolibre-web.mjs \
+            .geolibre-upstream/apps/geolibre-desktop/dist \
+            artifacts/geomoz-react/dist/public/gis-workspace \
+            .geolibre-upstream/LICENSE
+          test -s artifacts/geomoz-react/dist/public/gis-workspace/index.html
+          test -s artifacts/geomoz-react/dist/public/gis-workspace/GEOLIBRE-LICENSE.txt
+          grep -q 'href="/mapa"' artifacts/geomoz-react/dist/public/gis-workspace/index.html
+          grep -q '/gis-workspace/' artifacts/geomoz-react/dist/public/gis-workspace/index.html
+          grep -q '"GeoMoz GIS Workspace"' artifacts/geomoz-react/dist/public/gis-workspace/deployment.json
+
+      - name: Validate no old GeoMoz cloud storage is coupled to GeoLibre bundle
+        run: |
+          test -s artifacts/geomoz-react/dist/public/gis-workspace/geomoz-brand.css
+          ! grep -q 'geoprocessamento-426809.firebasestorage.app' artifacts/geomoz-react/dist/public/gis-workspace/index.html
+
+      - name: Upload GeoLibre HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: geolibre-web-integration-checks
+          path: |
+            artifacts/geomoz-react/dist/public/gis-workspace/index.html
+            artifacts/geomoz-react/dist/public/gis-workspace/deployment.json
+            artifacts/geomoz-react/dist/public/gis-workspace/GEOLIBRE-LICENSE.txt
+          if-no-files-found: warn
+          retention-days: 5

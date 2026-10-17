@@ -45,6 +45,7 @@ jobs:
           NODE_ENV: "production"
           # Same-origin /geomoz-api/** is forwarded by Firebase Hosting to Cloud Run.
           VITE_API_BASE: ""
+          VITE_GIS_WORKSPACE_ENGINE: "geolibre"
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_AUTH_DOMAIN: "geomoz.geolithica.com"
           VITE_FIREBASE_PROJECT_ID: geoprocessamento-426809
@@ -62,6 +63,46 @@ jobs:
           grep -q 'href="/privacy"' artifacts/geomoz-react/dist/public/index.html
           grep -q '"cleanUrls": true' firebase.json
 
+      - name: Checkout pinned GeoLibre Web source (MIT)
+        uses: actions/checkout@v4
+        with:
+          repository: opengeos/GeoLibre
+          ref: f69688ed5be750c496b51b865cee513d910a433f
+          path: .geolibre-upstream
+          persist-credentials: false
+
+      - name: Set up Node.js 24 for upstream GeoLibre
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: .geolibre-upstream/package-lock.json
+
+      - name: Install upstream GeoLibre dependencies
+        working-directory: .geolibre-upstream
+        run: npm ci --no-audit --no-fund
+
+      - name: Build original GeoLibre Web app
+        working-directory: .geolibre-upstream
+        env:
+          GEOLIBRE_APP_BASE: "/gis-workspace/"
+          VITE_GEOLIBRE_APP_NAME: "GeoMoz GIS Workspace"
+          GEOLIBRE_STRIP_CREDENTIALS: "1"
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: npm run build
+
+      - name: Add GeoMoz branding and original license to published GeoLibre
+        run: |
+          node --test scripts/tests/brand-geolibre-web.test.mjs
+          node scripts/brand-geolibre-web.mjs \
+            .geolibre-upstream/apps/geolibre-desktop/dist \
+            artifacts/geomoz-react/dist/public/gis-workspace \
+            .geolibre-upstream/LICENSE
+          test -s artifacts/geomoz-react/dist/public/gis-workspace/index.html
+          test -s artifacts/geomoz-react/dist/public/gis-workspace/GEOLIBRE-LICENSE.txt
+          grep -q '/gis-workspace/' artifacts/geomoz-react/dist/public/gis-workspace/index.html
+          grep -q '"GeoMoz GIS Workspace"' artifacts/geomoz-react/dist/public/gis-workspace/deployment.json
+
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
@@ -77,6 +118,19 @@ jobs:
           RESPONSE=$(curl --fail --silent --show-error --max-time 45 --retry 2 "$HEALTH_URL")
           echo "$RESPONSE" | python3 -c 'import sys,json; data=json.load(sys.stdin); assert data.get("status") == "ok", "Firebase served HTML or an unhealthy API instead of Cloud Run JSON"'
           echo "Firebase Hosting forwards /geomoz-api/health to Cloud Run successfully"
+
+      - name: Verify deployed original GeoLibre Web workspace
+        run: |
+          BASE="https://geoprocessamento-426809.web.app/gis-workspace"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/" -o "$RUNNER_TEMP/geolibre-index.html"
+          grep -q 'id="root"' "$RUNNER_TEMP/geolibre-index.html"
+          grep -q 'geomoz-back-link' "$RUNNER_TEMP/geolibre-index.html"
+          grep -q '/gis-workspace/assets/' "$RUNNER_TEMP/geolibre-index.html"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/deployment.json" -o "$RUNNER_TEMP/geolibre-policy.json"
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["branding"]["appName"]=="GeoMoz GIS Workspace"; assert d["sharing"]["shareUrl"]=="off"' "$RUNNER_TEMP/geolibre-policy.json"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/sw.js" -o "$RUNNER_TEMP/geolibre-sw.js"
+          test -s "$RUNNER_TEMP/geolibre-sw.js"
+          echo "GeoLibre Web is being served from the GeoMoz Hosting origin"
 
       - name: Show deployed URL
         run: |

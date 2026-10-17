@@ -161,6 +161,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Verify GeoLibre branding and local-build protection
+        run: node --test scripts/tests/brand-geolibre-web.test.mjs
+
       - name: Build frontend
         run: pnpm run build
         env:

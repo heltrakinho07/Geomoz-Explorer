@@ -79,6 +79,16 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // The original GeoLibre Web application lives in its own /gis-workspace/
+  // scope and registers its own service worker. GeoMoz's root-scoped PWA
+  // must never cache or rewrite its HTML, JS, tiles or WASM responses.
+  if (
+    url.origin === self.location.origin &&
+    (url.pathname === "/gis-workspace" || url.pathname.startsWith("/gis-workspace/"))
+  ) {
+    return;
+  }
+
   // A. Navigation Requests (HTML Pages): Network-first with cache fallback
   if (request.mode === "navigate") {
     event.respondWith(
