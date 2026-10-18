@@ -1,6 +1,6 @@
 import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
 import React, { useState, useEffect } from "react";
-import { Download, X, Smartphone, WifiOff, RefreshCw, Share, PlusSquare } from "lucide-react";
+import { Download, X, WifiOff, RefreshCw, Share, PlusSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePwa } from "@/lib/pwa";
 
