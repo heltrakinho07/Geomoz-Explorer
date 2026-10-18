@@ -48,7 +48,7 @@ write("components/layout/DesktopShell.tsx",shell);
 let rail=read("components/panels/SharedSidebar.tsx");
 rail=once(rail,'"flex w-full shrink-0 items-center gap-1 border-t bg-card','"gm-shared-rail flex w-full shrink-0 items-center gap-1 border-t bg-card',"GeoMoz activity rail");
 write("components/panels/SharedSidebar.tsx",rail);
-for(const name of ["GeoMozWorkbenchChrome.tsx","GeoMozLayerPanel.tsx","GeoMozLayerProperties.tsx","GeoMozSeismicPanel.tsx","GeoMozSeismicAnalysis.tsx","GeoMozEarthscopeStations.tsx","seismic-data.ts","seismic-analytics.ts","earthscope-stations.ts"]){
+for(const name of ["GeoMozWorkbenchChrome.tsx","GeoMozLayerPanel.tsx","GeoMozLayerProperties.tsx","GeoMozSeismicPanel.tsx","GeoMozSeismicAnalysis.tsx","GeoMozEarthscopeStations.tsx","seismic-data.ts","seismic-analytics.ts","earthscope-stations.ts","geomoz-layer-templates.ts","GeoMozDigitizingPanel.tsx"]){
   write("components/geomoz/"+name,readFileSync(new URL("./assets/workbench/"+name,import.meta.url),"utf8"));
 }
 write("hooks/useThemeMode.ts",readFileSync(new URL("./assets/workbench/useThemeMode.ts",import.meta.url),"utf8"));
@@ -118,13 +118,18 @@ history=once(history,'{AUTO_RERUN_KINDS.has(run.kind) ? (','{isGeoMozCommandVisi
 history=once(history,'{EDIT_RERUN_KINDS.has(run.kind) ? (','{isGeoMozCommandVisible("proc."+run.kind+"."+run.toolId) && EDIT_RERUN_KINDS.has(run.kind) ? (',"curated history edit");
 history=once(history,'{PYTHON_ELIGIBLE_KINDS.has(run.kind) &&','{GEOMOZ_ROLLOUT.specialistProcessing && PYTHON_ELIGIBLE_KINDS.has(run.kind) &&',"retain hidden Python export");
 write("components/processing/ProcessingHistoryDialog.tsx",history);
-// Keep the editor implementation and every mode; offer only study-area drawing.
+// Preserve the engine GeoEditor and enable professional geological/thematic digitization.
 writeFileSync(resolve(root,"packages/plugins/src/geomoz-workbench-profile.ts"),readFileSync(new URL("./assets/workbench/geomoz-workbench-profile.ts",import.meta.url),"utf8"));
+writeFileSync(resolve(root,"packages/plugins/src/geomoz-layer-templates.ts"),readFileSync(new URL("./assets/workbench/geomoz-layer-templates.ts",import.meta.url),"utf8"));
 const editorPath=resolve(root,"packages/plugins/src/plugins/maplibre-geo-editor.ts");
 let editor=readFileSync(editorPath,"utf8");
-editor='import { GEOMOZ_ROLLOUT } from "../geomoz-workbench-profile";\n'+editor;
+editor='import { GEOMOZ_ROLLOUT } from "../geomoz-workbench-profile";\nimport { geomozNewFeatureProperties } from "../geomoz-layer-templates";\n'+editor;
 editor=once(editor,"    ...GEO_EDITOR_OPTIONS,","    ...GEO_EDITOR_OPTIONS,\n    ...(!GEOMOZ_ROLLOUT.advancedDrawing ? {\n      drawModes: GEO_EDITOR_OPTIONS.drawModes.filter(mode => [\"polygon\",\"line\",\"rectangle\",\"marker\"].includes(mode)),\n      editModes: GEO_EDITOR_OPTIONS.editModes.filter(mode => [\"select\",\"drag\",\"change\",\"delete\"].includes(mode)),\n      showFeatureProperties: false,\n      enableAttributeEditing: false,\n    } : {}),","curated study-area editor");
 editor=once(editor,"if (isGeometryEditSession) geoEditorControl?.closeAttributeEditor();","if (isGeometryEditSession || !GEOMOZ_ROLLOUT.advancedDrawing) geoEditorControl?.closeAttributeEditor();","hide massing attribute form");
+editor=once(editor,
+  '  if (layer.metadata.sourceKind !== ARCGIS_FEATURE_SOURCE_KIND) return undefined;',
+  '  if (layer.metadata.geomozDigitizingTemplate && layer.attributeForm?.fields) {\n    return (properties) => geomozNewFeatureProperties(layer.attributeForm!.fields, properties);\n  }\n  if (layer.metadata.sourceKind !== ARCGIS_FEATURE_SOURCE_KIND) return undefined;',
+  "GeoMoz new-feature schema applied to editable geological/thematic layers");
 writeFileSync(editorPath,editor);
 // Product identity is owned by GeoMoz; the engine remains the attributed MIT fork.
 brandUpstreamLocales(resolve(app,"i18n/locales"));
