@@ -1,7 +1,7 @@
-import {useCallback,useEffect,useState} from "react";
+import {useCallback,useEffect,useState,type CSSProperties} from "react";
 import {createPortal} from "react-dom";
 import html2canvas from "html2canvas";
-import {Check, Download, FileText, Image as ImageIcon, Loader2, Printer, RefreshCw, X} from "lucide-react";
+import {Image as ImageIcon, Loader2, Printer, RefreshCw, X} from "lucide-react";
 import "./geomoz-print-layout.css";
 
 export type GeoMozPrintPaper = "a4"|"a3";
@@ -40,7 +40,6 @@ export default function GeoMozPrintLayout({open,onClose,moduleName,projectName,p
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   const [warning,setWarning]=useState("");
-  const [isReady,setIsReady]=useState(false);
   const [isCapturing,setIsCapturing]=useState(false);
   const [revision,setRevision]=useState(0);
   const [date,setDate]=useState("");
@@ -52,7 +51,7 @@ export default function GeoMozPrintLayout({open,onClose,moduleName,projectName,p
     setSubtitle(projectName??"");
     setSourceText("GeoMoz Explorer · indicar a origem dos dados e o fundo cartográfico utilizado");
     setNotes("");setCrs("");setScale("");setNorth(false);setShowLegend(false);setLegend("");
-    setError("");setWarning("");setSnapshot(null);setIsReady(false);
+    setError("");setWarning("");setSnapshot(null);
     setDate(new Date().toLocaleDateString("pt-PT"));
   },[open,moduleName,projectName]);
   const capture=useCallback(async()=>{
@@ -73,11 +72,10 @@ export default function GeoMozPrintLayout({open,onClose,moduleName,projectName,p
       if(!canvas.width||!canvas.height)throw Error("Imagem vazia.");
       const img=canvas.toDataURL("image/png");
       if(img.length<2000)throw Error("Não foi possível obter uma imagem válida.");
-      setSnapshot(img);setIsReady(true);
+      setSnapshot(img);
       setWarning("Confirme visualmente a imagem antes de imprimir. Alguns mapas WebGL ou fundos externos podem não ser capturados pelo navegador.");
     }catch(e){
       setError("O navegador não conseguiu capturar esta vista. Verifique a ligação e as permissões CORS dos mapas, ou utilize a «Composição de mapa» nativa do GIS Workspace. "+(e instanceof Error?e.message:""));
-      setIsReady(false);
     }finally{setBusy(false);setIsCapturing(false);}
   },[open,printSourceId,isCapturing]);
   useEffect(()=>{
@@ -141,7 +139,7 @@ export default function GeoMozPrintLayout({open,onClose,moduleName,projectName,p
           {error&&<p role="alert" className="gm-print-error">{error}</p>}
         </aside>
         <div className="gm-print-stage" aria-label="Pré-visualização para impressão">
-          <article className="gm-print-page" data-testid="geomoz-print-page" style={{"--gm-paper-w":size.width+"mm","--gm-paper-h":size.height+"mm"} as React.CSSProperties}>
+          <article className="gm-print-page" data-testid="geomoz-print-page" style={{"--gm-paper-w":size.width+"mm","--gm-paper-h":size.height+"mm"} as CSSProperties}>
             <div className="gm-print-paper-header">
               <div className="gm-print-logo"><img src="/favicon.svg" alt="" width="31" height="31"/><div><strong>GeoMoz</strong><span>EXPLORER · GEOLÍTHICA</span></div></div>
               <span className="gm-print-doc-type">COMPOSIÇÃO CARTOGRÁFICA / RELATÓRIO</span>
