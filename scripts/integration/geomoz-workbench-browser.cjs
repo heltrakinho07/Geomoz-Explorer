@@ -43,6 +43,17 @@ async function settleRecovery(page){
  try{
   await page.goto("http://127.0.0.1:4182/gis-workspace/");
   await page.getByTestId("geomoz-workbench-chrome").waitFor();
+  const workspaceBrand=page.locator(".gm-workbench-chrome .gm-brand img");
+  assert.equal(await workspaceBrand.getAttribute("src"),"/favicon.svg");
+  const iconMatches=await page.evaluate(async()=>{
+    const [siteIcon,workspaceIcon]=await Promise.all([
+      fetch("/favicon.svg").then(r=>r.text()),
+      fetch("/gis-workspace/favicon.svg").then(r=>r.text())
+    ]);
+    return siteIcon===workspaceIcon&&siteIcon.includes("#0284c7");
+  });
+  assert.ok(iconMatches,"Canonical GeoMoz icon must match across main portal and GIS Workspace");
+
   await page.getByTestId("geomoz-layer-catalog").waitFor();
   await page.locator("main canvas").first().waitFor();
   assert.equal(await page.locator(".geomoz-portal-shell").count(),0,"Old shell must not coexist with the new UI");
