@@ -1,3 +1,4 @@
+import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
 import {useGeoMozTheme} from "@/hooks/useGeoMozTheme";
 import React, { useRef, useState, useEffect, Suspense } from "react";
 import { Link } from "wouter";
@@ -495,6 +496,7 @@ export default function Explorer() {
               aria-label="Sair do GIS Workspace"
               className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-bold hover:bg-slate-800">
               <ArrowLeft size={15} />
+              <GeoMozBrandIcon className="h-6 w-6 rounded-md" width={24} height={24} />
               <span className="hidden sm:inline text-sky-400">GeoMoz</span>
               <span className="text-white">GIS</span>
             </button>
