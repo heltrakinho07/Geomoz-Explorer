@@ -1,3 +1,4 @@
+import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
 import React, { useState, useEffect } from "react";
 import { Download, X, Smartphone, WifiOff, RefreshCw, Share, PlusSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -96,9 +97,7 @@ export default function PwaInstallPrompt() {
       <div className="p-4 rounded-2xl bg-white/95 dark:bg-slate-900/95 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 shadow-2xl backdrop-blur-xl">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-sky-500/20 shrink-0">
-              <Smartphone size={20} />
-            </div>
+<GeoMozBrandIcon className="h-10 w-10 rounded-xl shadow-md shadow-sky-500/20" width={40} height={40} />
             <div>
               <h4 className="text-xs font-bold leading-tight">Instalar GeoMoz Explorer</h4>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
