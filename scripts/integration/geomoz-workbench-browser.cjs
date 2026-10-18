@@ -60,7 +60,8 @@ async function settleRecovery(page){
   assert.equal(await page.locator("[data-command='add.vector']").count(),1);
   assert.deepEqual(await page.locator(".gm-task-tabs button").allTextContents(),["Área de estudo","Dados","Análise","Resultados"]);
   assert.equal(await page.getByRole("button",{name:"Mais opções",exact:true}).count(),0);
-  assert.equal(await page.getByRole("button",{name:"Gestão",exact:true}).count(),0);
+  assert.equal(await page.getByRole("button",{name:"Gestão",exact:true}).count(),1);
+  assert.equal(await page.getByTestId("geomoz-create-vector-layer").count(),1);
   await page.keyboard.press("Control+k");
   const search=page.getByRole("combobox");
   await search.waitFor();
@@ -250,13 +251,59 @@ async function settleRecovery(page){
   await (await areaDownload).saveAs("workbench-browser-artifacts/study-area.geojson");
   const area=JSON.parse(await readFile("workbench-browser-artifacts/study-area.geojson","utf8"));
   assert.ok(area.features.some(feature=>["Polygon","MultiPolygon"].includes(feature.geometry?.type)),"The drawn area must contain real polygon geometry");
-  assert.equal(await page.locator(".geo-editor-attribute-panel:not(.attribute-panel--hidden)").isVisible(),false,"The 3D height form must stay hidden");
-  console.log("Study polygon drawn and exported with real geometry; 3D controls hidden.");
+  // Attribute editing is now enabled for professional GeoMoz vector workflows.\n  assert.equal(await editor.locator('button[data-mode="polygon"]').count(),1);
+  console.log("Study polygon drawn and exported with real geometry; attribute editor enabled.");
   await page.screenshot({path:"workbench-browser-artifacts/03c-geomoz-study-area.png",fullPage:true});
   await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').click();
   console.log("Drawing command state after finishing:",await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').getAttribute("aria-pressed"));
   await editor.waitFor({state:"hidden",timeout:15000});
   console.log("Drawing ended; ordinary map navigation restored.");
+
+  // QGIS-style GeoMoz workflow: create a zero-feature geological layer,
+  // configure a typed field, digitize an actual feature into that layer and
+  // verify field defaults survive the engine's geometry-save path.
+  await page.getByTestId("geomoz-create-vector-layer").click();
+  const wizard=page.getByTestId("geomoz-digitizing-wizard");
+  await wizard.waitFor();
+  await wizard.getByLabel("Tipo de camada").selectOption("unidades-geologicas");
+  await wizard.getByLabel("Nome da nova camada").fill("Unidades geologicas CI");
+  await wizard.getByLabel("Novo campo",{exact:true}).fill("mineralizacao");
+  await wizard.getByLabel("Descrição do novo campo").fill("Mineralizacao observada");
+  await wizard.getByLabel("Tipo do novo campo").selectOption("string");
+  await wizard.getByRole("button",{name:"Campo",exact:true}).click();
+  await wizard.getByRole("button",{name:/Criar camada vazia/}).click();
+  await wizard.waitFor({state:"hidden"});
+  const geologicalRow=page.locator('.gm-layer-row[data-layer-name="Unidades geologicas CI"]');
+  await geologicalRow.waitFor();
+  await geologicalRow.locator(".gm-layer-select").click();
+  await page.getByTestId("geomoz-geometry-edit").click();
+  const geoDraw=page.locator(".geo-editor-toolbar");
+  await geoDraw.waitFor();
+  await page.getByTestId("geomoz-geometry-edit").getByText("Guardar geometria").waitFor();
+  await geoDraw.locator('button[data-mode="polygon"]').click();
+  const paper=await page.locator("main canvas").first().boundingBox();
+  const gp=(x,y)=>({x:paper.x+paper.width*x,y:paper.y+paper.height*y});
+  const g1=gp(.34,.24),g2=gp(.48,.24),g3=gp(.48,.38),g4=gp(.34,.38);
+  await page.mouse.click(g1.x,g1.y);
+  await page.mouse.click(g2.x,g2.y);
+  await page.mouse.click(g3.x,g3.y);
+  await page.mouse.dblclick(g4.x,g4.y);
+  await page.getByTestId("geomoz-geometry-edit").click();
+  await page.getByTestId("geomoz-geometry-edit").getByText("Editar geometria").waitFor();
+  await geologicalRow.locator(".gm-layer-select").click();
+  await page.locator(".gm-layer-properties summary").click();
+  const geoDownload=page.waitForEvent("download",{timeout:15000});
+  await page.getByRole("button",{name:"Exportar GeoJSON",exact:true}).click();
+  await (await geoDownload).saveAs("workbench-browser-artifacts/geomoz-geological-digitization.geojson");
+  const geologicalJson=JSON.parse(await readFile("workbench-browser-artifacts/geomoz-geological-digitization.geojson","utf8"));
+  assert.ok(geologicalJson.features.length>=1,"New geological layer must store real digitized features");
+  const geology=geologicalJson.features.find(f=>["Polygon","MultiPolygon"].includes(f.geometry?.type));
+  assert.ok(geology,"Geological mapping creates polygon features: "+geologicalJson.features.map(f=>f.geometry?.type).join(", "));
+  assert.equal(geology.properties.litologia,"","The geological attribute schema must survive save");
+  assert.equal(geology.properties.mineralizacao,"","Custom fields must survive native engine save/export");
+  await page.screenshot({path:"workbench-browser-artifacts/04-geological-digitalization.png",fullPage:true});
+  console.log("Real geological polygon, custom fields, native save and GeoJSON export verified.");
+
   await page.locator('.gm-menu-slot:not([hidden]) button').first().click();
   await page.getByRole("menu").first().waitFor();
   await page.keyboard.press("Escape");

@@ -59,7 +59,7 @@ test("plugin lifecycle keeps the enumerable App API while callbacks remain live"
  assert.equal(context.name,"second");
 });
 
-test("GIS Workspace exposes original digitization and print layout without implying advanced attribute editing",()=>{
+test("GIS Workspace exposes native digitization, field editing, layer management and map output",()=>{
  assert.equal(isGeoMozCommandVisible("plugin.maplibre-gl-geo-editor"),true);
  assert.equal(isGeoMozCommandVisible("project.print-layout"),true);
  const chrome=readFileSync(new URL("../assets/workbench/GeoMozWorkbenchChrome.tsx",import.meta.url),"utf8");
@@ -67,8 +67,9 @@ test("GIS Workspace exposes original digitization and print layout without imply
  assert.match(chrome,/Digitalizar \/ editar/);
  assert.match(chrome,/Layout de impressão/);
  assert.match(prepare,/drawModes: GEO_EDITOR_OPTIONS.drawModes.filter/);
- assert.match(prepare,/editModes: GEO_EDITOR_OPTIONS.editModes.filter/);
- assert.match(prepare,/enableAttributeEditing: false/);
- assert.match(prepare,/showFeatureProperties: false/);
- assert.equal(GEOMOZ_ROLLOUT.advancedDrawing,false,"Advanced attribute digitizing has not been certified");
+ assert.match(prepare,/geomozNewFeatureProperties/);
+ assert.match(prepare,/enableAttributeEditing: GEOMOZ_ROLLOUT.advancedDrawing/);
+ assert.match(prepare,/showFeatureProperties: GEOMOZ_ROLLOUT.advancedDrawing/);
+ assert.equal(GEOMOZ_ROLLOUT.advancedDrawing,true,"Attribute editing enabled");
+ assert.equal(GEOMOZ_ROLLOUT.fullLayerManager,true,"Native advanced layer management visible");
 });

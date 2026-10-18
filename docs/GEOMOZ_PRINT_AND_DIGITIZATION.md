@@ -17,14 +17,13 @@ O modo SIG Web dedicado em `/gis-workspace/` preserva a sua composição cartogr
 - `src/styles/gis-workspace.css` passa de verde/teal a azul GeoMoz, sem alterar rampas raster, simbologia geológica ou cores de dados científicos.
 - O layout de impressão adapta o painel de opções a ecrãs pequenos, com pré-visualização rolável.
 
-## Auditoria real da digitalização
+## Digitalização geológica e temática — fase avançada
 
-Existem duas capacidades diferentes já presentes antes desta alteração:
+O GIS Workspace utiliza agora o editor geométrico e a tabela de atributos do motor original, com **criação de camadas vazias especializadas e campos tipados**, gestão de camadas SIG e edição de geometrias activas na camada seleccionada. A interface GeoMoz inclui o assistente «Nova camada geológica / temática», «Editar geometria», «Tabela», «Simbologia» e «Gestão».
 
-1. No Mapa 2D, `src/components/MapDraw.tsx` permite delinear AOI como polígono, rectângulo ou linha. Não é um editor completo de atributos de camadas.
-2. No GeoMoz GIS Workspace, o comando real `plugin.maplibre-gl-geo-editor` mantém modos de desenho `polygon`, `line`, `rectangle`, `marker` e de edição geométrica `select`, `drag`, `change`, `delete`. A configuração `GEOMOZ_ROLLOUT.advancedDrawing=false` desactiva propriedades/atributos (`showFeatureProperties:false`, `enableAttributeEditing:false`).
+A geometria e os atributos são editados de forma sequencial: guardar/concluir a digitalização antes de actualizar valores na tabela, para evitar perda de dados numa edição simultânea. A persistência continua local por defeito e exige guardar/exportar o projecto.
 
-O comando passa a ser apresentado como «Digitalizar / editar», com informação clara de que a edição de atributos, topologia e gravação avançada ainda não estão certificadas. Não se activou essa funcionalidade silenciosamente.
+Consultar a descrição completa, os passos de trabalho e as limitações de topologia, escala e projecção em [GIS_WORKSPACE_DIGITALIZATION.md](GIS_WORKSPACE_DIGITALIZATION.md).
 
 ## Verificações
 
