@@ -19,6 +19,8 @@ export function GeoMozLayerPanel(props:Props) {
   const select=useAppStore(s=>s.selectLayer);
   const visibility=useAppStore(s=>s.setLayerVisibility);
   const opacity=useAppStore(s=>s.setLayerOpacity);
+  const setLayerStyle=useAppStore(s=>s.setLayerStyle);
+  const [quickStyle,setQuickStyle]=useState(false);
   const openTable=useAppStore(s=>s.setAttributeTableOpen);
   const runs=useAppStore(s=>s.processingHistory);
   const openHistory=useAppStore(s=>s.setProcessingHistoryOpen);
@@ -65,7 +67,13 @@ export function GeoMozLayerPanel(props:Props) {
       </div>
       {selected&&<section className="gm-layer-inspector" aria-label="Camada seleccionada"><small>CAMADA SELECCIONADA</small><h3 title={selected.name}>{selected.name}</h3>
         {(!pluginOwnsPaint(selected)||supportsBridgedOpacity(selected.id)||rendererAppliesOpacity(selected,renderer))&&<label className="gm-opacity">Opacidade <output>{Math.round(selected.opacity*100)}%</output><input aria-label="Opacidade da camada" type="range" min="0" max="1" step="0.01" value={selected.opacity} onChange={event=>opacity(selected.id,Number(event.target.value))}/></label>}
-        <div className="gm-inspector-actions">{resolveLayerCapabilities(selected).query&&["geojson","duckdb-query","geoparquet","flatgeobuf"].includes(selected.type)&&<button type="button" onClick={()=>openTable(true)}><Table2 size={14}/> Tabela</button>}{!viewer&&props.onOpenStylePanel&&<button type="button" onClick={props.onOpenStylePanel}><Palette size={14}/> Estilo</button>}{GEOMOZ_ROLLOUT.fullLayerManager&&<button type="button" onClick={()=>setAdvanced(true)}><SlidersHorizontal size={14}/> Propriedades</button>}</div>
+        <div className="gm-inspector-actions">{resolveLayerCapabilities(selected).query&&["geojson","duckdb-query","geoparquet","flatgeobuf"].includes(selected.type)&&<button type="button" onClick={()=>openTable(true)}><Table2 size={14}/> Tabela</button>}{!viewer&&selected.type==="geojson"&&<button type="button" aria-expanded={quickStyle} aria-label="Editar simbologia" onClick={()=>setQuickStyle(!quickStyle)}><Palette size={14}/> Simbologia</button>}{!viewer&&props.onOpenStylePanel&&<button type="button" onClick={()=>{select(selected.id);props.onOpenStylePanel?.();}}><Palette size={14}/> Estilos avançados</button>}{GEOMOZ_ROLLOUT.fullLayerManager&&<button type="button" onClick={()=>setAdvanced(true)}><SlidersHorizontal size={14}/> Propriedades</button>}</div>
+        {quickStyle&&!viewer&&selected.type==="geojson"&&<div className="gm-quick-style" role="group" aria-label="Estilo rápido da camada">
+          <label>Cor do símbolo<input aria-label="Cor do símbolo" type="color" value={selected.style.fillColor||"#0284c7"} onChange={e=>setLayerStyle(selected.id,{fillColor:e.target.value,vectorStyleMode:"single",proportionalSizeEnabled:false})}/></label>
+          <label>Cor do contorno<input aria-label="Cor do contorno" type="color" value={selected.style.strokeColor||"#0f172a"} onChange={e=>setLayerStyle(selected.id,{strokeColor:e.target.value})}/></label>
+          <label>Tamanho dos pontos<input aria-label="Tamanho dos pontos" type="range" min="2" max="24" step="1" value={selected.style.circleRadius} onChange={e=>setLayerStyle(selected.id,{circleRadius:Number(e.target.value),proportionalSizeEnabled:false})}/></label>
+          <p>Alterações aplicadas ao renderer original. Para classes, regras ou tamanho proporcional, use os estilos avançados.</p>
+        </div>}
         <GeoMozLayerProperties key={selected.id} layer={selected} props={props}/>
       </section>}
       <div className="gm-catalog-footer"><span><i/>{layers.filter(rendered).length} visíveis de {layers.length}</span><span title="Altere a ordem e os grupos nas propriedades da camada">SIG LOCAL</span></div>
