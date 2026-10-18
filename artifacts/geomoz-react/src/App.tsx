@@ -1,4 +1,5 @@
 import React, { Component, type ReactNode, type ErrorInfo } from "react";
+import "@/styles/geomoz-system.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Switch, Route } from "wouter";
 import { Toaster } from "@/components/ui/toaster";
