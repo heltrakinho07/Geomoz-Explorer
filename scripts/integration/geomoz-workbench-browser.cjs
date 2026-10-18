@@ -267,7 +267,7 @@ async function settleRecovery(page){
   await wizard.waitFor();
   await wizard.getByLabel("Tipo de camada").selectOption("unidades-geologicas");
   await wizard.getByLabel("Nome da nova camada").fill("Unidades geologicas CI");
-  await wizard.getByLabel("Novo campo").fill("mineralizacao");
+  await wizard.getByLabel("Novo campo",{exact:true}).fill("mineralizacao");
   await wizard.getByLabel("Descrição do novo campo").fill("Mineralizacao observada");
   await wizard.getByLabel("Tipo do novo campo").selectOption("string");
   await wizard.getByRole("button",{name:"Campo",exact:true}).click();
