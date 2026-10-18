@@ -29,6 +29,7 @@ import {
   DatabaseZap,
   ArrowLeft,
   Upload,
+  Printer,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -37,6 +38,7 @@ import Sidebar, { LayerState } from "@/components/Sidebar";
 import MapView from "@/components/MapView";
 import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
+import GeoMozPrintLayout from "@/components/GeoMozPrintLayout";
 import DashboardPanel from "@/components/DashboardPanel";
 import {
   LazyGeoAnalises,
@@ -190,6 +192,7 @@ export default function Explorer() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [printOpen,setPrintOpen] = useState(false);
 
   // Sync AOI and map view when active project changes (keyed on id to prevent circular re-renders)
   const activeProjectId = activeProject?.id;
@@ -471,6 +474,7 @@ export default function Explorer() {
 
   return (
     <div
+      data-geomoz-system="explorer"
       className={`flex h-[100dvh] min-h-0 w-full min-w-0 font-sans overflow-hidden transition-colors duration-200 ${
         theme === "dark" ? "dark bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900"
       }`}
@@ -520,6 +524,7 @@ export default function Explorer() {
                 </button>
               ))}
             </nav>
+            <button type="button" data-testid="geomoz-gis-print-open" onClick={()=>setPrintOpen(true)} className="gm-system-print-button inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-sky-800 px-2.5 text-[11px] font-semibold text-sky-100 hover:bg-sky-900" title="Abrir layout de impressão do módulo GIS"><Printer size={15}/> <span className="hidden sm:inline">Imprimir</span></button>
             <span className="hidden shrink-0 text-[10px] font-semibold text-emerald-400 lg:inline" title="Sem sincronização automática. Cópia opcional no dispositivo; nuvem PRO em preparação.">GIS local · nuvem PRO em preparação</span>
           </header>
         )}
@@ -576,6 +581,7 @@ export default function Explorer() {
             )}
           </div>
 
+          <button type="button" data-testid="geomoz-print-open" onClick={()=>setPrintOpen(true)} className="gm-system-print-button inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 shadow-sm hover:border-sky-400 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" aria-label="Abrir layout de impressão" title="Composição cartográfica / relatório A4 ou A3"><Printer size={16}/><span className="hidden xl:inline">Layout de impressão</span></button>
           {/* Right: Geocoding Search Input (only on Mapa) */}
           {activeTab === "Mapa" && (
             <div className="flex items-center gap-2">
@@ -741,7 +747,7 @@ export default function Explorer() {
         )}
 
         {/* 3. Main Content Views */}
-        <main className="flex-1 flex overflow-hidden">
+        <main id="geomoz-active-module" data-geomoz-print-source="true" className="flex-1 flex min-w-0 min-h-0 overflow-hidden">
           {activeTab === "Dashboard" && (
             <DashboardPanel
               province={province}
@@ -894,6 +900,7 @@ export default function Explorer() {
         </main>
       </div>
 
+      <GeoMozPrintLayout open={printOpen} onClose={()=>setPrintOpen(false)} moduleName={activeTab} projectName={activeProject?.name} printSourceId="geomoz-active-module"/>
       {/* 4. Modals & Dialogs */}
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <GeeCredentialsDialog open={geeDialogOpen} onOpenChange={setGeeDialogOpen} />
