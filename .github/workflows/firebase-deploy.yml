@@ -96,13 +96,15 @@ jobs:
 
       - name: Package GeoMoz Workbench and retain engine license
         run: |
-          node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs scripts/tests/seismic-data.test.mjs scripts/tests/seismic-analytics.test.mjs scripts/tests/geomoz-workbench-profile.test.mjs
+          node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs scripts/tests/geomoz-brand-locales.test.mjs scripts/tests/seismic-data.test.mjs scripts/tests/seismic-analytics.test.mjs scripts/tests/geomoz-workbench-profile.test.mjs
           node scripts/brand-geolibre-web.mjs \
             .geolibre-upstream/apps/geolibre-desktop/dist \
             artifacts/geomoz-react/dist/public/gis-workspace \
             .geolibre-upstream/LICENSE
           test -s artifacts/geomoz-react/dist/public/gis-workspace/index.html
           test -s artifacts/geomoz-react/dist/public/gis-workspace/GEOLIBRE-LICENSE.txt
+          test -s artifacts/geomoz-react/dist/public/gis-workspace/third-party-notices.html
+          grep -q 'Créditos e licenças de terceiros' artifacts/geomoz-react/dist/public/gis-workspace/third-party-notices.html
           test -s artifacts/geomoz-react/dist/public/gis-workspace/geomoz-brand.css
           test -s artifacts/geomoz-react/dist/public/gis-workspace/favicon.svg
           test -s artifacts/geomoz-react/dist/public/gis-workspace/geomoz-theme.js
@@ -133,6 +135,8 @@ jobs:
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/" -o "$RUNNER_TEMP/geolibre-index.html"
           grep -q 'id="root"' "$RUNNER_TEMP/geolibre-index.html"
           grep -q 'data-geomoz-app="workbench"' "$RUNNER_TEMP/geolibre-index.html"
+          grep -q 'content="GeoMoz GIS Workspace"' "$RUNNER_TEMP/geolibre-index.html"
+          grep -q 'GeoMoz GIS Workspace:' "$RUNNER_TEMP/geolibre-index.html"
           grep -q '/gis-workspace/assets/' "$RUNNER_TEMP/geolibre-index.html"
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/deployment.json" -o "$RUNNER_TEMP/geolibre-policy.json"
           python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["branding"]["appName"]=="GeoMoz GIS Workspace"; assert d["sharing"]["shareUrl"]=="off"' "$RUNNER_TEMP/geolibre-policy.json"
@@ -146,6 +150,8 @@ jobs:
           grep -q -- 'GeoMozTheme' "$RUNNER_TEMP/geomoz-gis-shell.js"
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/manifest.webmanifest" -o "$RUNNER_TEMP/geomoz-gis-manifest.json"
           python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["name"]=="GeoMoz GIS Workspace" and d["scope"]=="/gis-workspace/"' "$RUNNER_TEMP/geomoz-gis-manifest.json"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/third-party-notices.html" -o "$RUNNER_TEMP/geomoz-thirdparty.html"
+          grep -q 'Qiusheng Wu' "$RUNNER_TEMP/geomoz-thirdparty.html"
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/favicon.svg" -o "$RUNNER_TEMP/geomoz-gis-favicon.svg"
           grep -q 'linearGradient' "$RUNNER_TEMP/geomoz-gis-favicon.svg"
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "https://geomoz.geolithica.com/gis-workspace/" -o "$RUNNER_TEMP/geomoz-custom-index.html"

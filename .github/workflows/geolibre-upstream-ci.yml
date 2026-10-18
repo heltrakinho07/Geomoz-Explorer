@@ -8,6 +8,9 @@ on:
       - "artifacts/geomoz-react/public/geomoz-theme.js"
       - "scripts/brand-geolibre-web.mjs"
       - "scripts/assets/geolibre-geomoz-theme.css"
+      - "scripts/geomoz-brand-locales.mjs"
+      - "scripts/assets/workbench/GeoMozAboutDialog.tsx"
+      - "scripts/tests/geomoz-brand-locales.test.mjs"
       - "scripts/assets/geomoz-gis-shell.html"
       - "scripts/assets/geomoz-gis-shell.js"
       - "scripts/tests/geomoz-gis-shell.test.mjs"
@@ -41,7 +44,7 @@ jobs:
           cache-dependency-path: .geolibre-upstream/package-lock.json
 
       - name: Test GeoMoz build integration
-        run: node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs scripts/tests/seismic-data.test.mjs scripts/tests/seismic-analytics.test.mjs scripts/tests/geomoz-workbench-profile.test.mjs
+        run: node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs scripts/tests/geomoz-brand-locales.test.mjs scripts/tests/seismic-data.test.mjs scripts/tests/seismic-analytics.test.mjs scripts/tests/geomoz-workbench-profile.test.mjs
 
       - name: Install upstream with pinned package-lock
         run: npm ci --no-audit --no-fund

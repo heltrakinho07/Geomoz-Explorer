@@ -5,6 +5,7 @@
  */
 import { readFileSync,writeFileSync,mkdirSync,existsSync } from "node:fs";
 import { resolve,dirname } from "node:path";
+import { brandUpstreamLocales } from "./geomoz-brand-locales.mjs";
 const root=resolve(process.argv[2]??".geolibre-upstream");
 const app=resolve(root,"apps/geolibre-desktop/src");
 const read=path=>readFileSync(resolve(app,path),"utf8");
@@ -125,6 +126,23 @@ editor='import { GEOMOZ_ROLLOUT } from "../geomoz-workbench-profile";\n'+editor;
 editor=once(editor,"    ...GEO_EDITOR_OPTIONS,","    ...GEO_EDITOR_OPTIONS,\n    ...(!GEOMOZ_ROLLOUT.advancedDrawing ? {\n      drawModes: GEO_EDITOR_OPTIONS.drawModes.filter(mode => [\"polygon\",\"line\",\"rectangle\",\"marker\"].includes(mode)),\n      editModes: GEO_EDITOR_OPTIONS.editModes.filter(mode => [\"select\",\"drag\",\"change\",\"delete\"].includes(mode)),\n      showFeatureProperties: false,\n      enableAttributeEditing: false,\n    } : {}),","curated study-area editor");
 editor=once(editor,"if (isGeometryEditSession) geoEditorControl?.closeAttributeEditor();","if (isGeometryEditSession || !GEOMOZ_ROLLOUT.advancedDrawing) geoEditorControl?.closeAttributeEditor();","hide massing attribute form");
 writeFileSync(editorPath,editor);
+// Product identity is owned by GeoMoz; the engine remains the attributed MIT fork.
+brandUpstreamLocales(resolve(app,"i18n/locales"));
+const about=read("components/layout/AboutDialog.tsx");
+if(!about.includes("https://geolibre.app")||!about.includes("github.com/opengeos/GeoLibre")){
+  throw Error("Upstream About dialog has drifted; review product branding integration");
+}
+write("components/layout/AboutDialog.tsx",readFileSync(new URL("./assets/workbench/GeoMozAboutDialog.tsx",import.meta.url),"utf8"));
+let links=read("components/layout/toolbar/constants.ts");
+for(const [oldValue,newValue] of [
+  ['export const FEEDBACK_URL = "https://github.com/opengeos/GeoLibre/issues";','export const FEEDBACK_URL = "https://github.com/heltrakinho07/Geomoz-Explorer/issues";'],
+  ['export const WEBSITE_URL = "https://geolibre.app";','export const WEBSITE_URL = "https://geomoz.geolithica.com/";'],
+  ['export const GITHUB_URL = "https://github.com/opengeos/GeoLibre";','export const GITHUB_URL = "https://github.com/heltrakinho07/Geomoz-Explorer";'],
+]){
+  links=once(links,oldValue,newValue,"GeoMoz public site and support links");
+}
+write("components/layout/toolbar/constants.ts",links);
+
 const marker=resolve(root,"geomoz-workbench.json");
 writeFileSync(marker,JSON.stringify({interface:"geomoz-workbench",version:1,engine:"f69688ed5be750c496b51b865cee513d910a433f"},null,2)+"\n");
 console.log("GeoMoz Workbench React interface prepared; engine capability gates, dialogs and map APIs retained.");

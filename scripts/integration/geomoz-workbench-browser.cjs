@@ -63,6 +63,21 @@ async function settleRecovery(page){
   await page.keyboard.press("Escape");
   console.log("Curated workflow and searchable catalog verified.");
 
+  // GeoMoz product identity is shown within the real React UI. Legacy engine
+  // branding appears only in the explicit third-party attribution document.
+  await page.locator(".gm-help-menu summary").click();
+  await page.getByTestId("geomoz-about-trigger").click();
+  const about=page.getByTestId("geomoz-about-dialog");
+  await about.waitFor();
+  assert.match(await about.innerText(),/GeoMoz GIS Workspace/);
+  assert.equal(await about.getByRole("link",{name:/Créditos e licenças de terceiros/}).count(),1);
+  assert.doesNotMatch(await about.innerText(),/GeoLibre/);
+  await page.keyboard.press("Escape");
+  await about.waitFor({state:"hidden"});
+  await page.locator(".gm-help-menu summary").click();
+  console.log("GeoMoz About modal and preserved third-party notice navigation verified.");
+
+
   await page.getByRole("textbox",{name:"Nome do projecto"}).fill("Estudo do território");
   await page.getByRole("textbox",{name:"Nome do projecto"}).press("Enter");
   const light=await page.getByTestId("geomoz-layer-catalog").evaluate(node=>getComputedStyle(node).backgroundColor);
@@ -270,7 +285,7 @@ async function settleRecovery(page){
   await viewer.close();
   console.log("Read-only viewer keeps camera and theme controls while withholding authoring commands.");
   assert.deepEqual(errors,[],"No uncaught React/runtime errors");
-  await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,resultNavigator:true,seismicUsgs:true,seismicAnalytics:true,earthscopeStation:true,layerStyleEditor:true,curatedMenus:true,searchCurated:true,studyAreaDrawing:true,layerProperties:true,geojsonExport:true,themePersistence:true,crossTabTheme:true,mobile:true,viewerReadOnly:true,duplicateNamesGuarded:true,errors},null,2));
+  await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,resultNavigator:true,seismicUsgs:true,seismicAnalytics:true,earthscopeStation:true,layerStyleEditor:true,curatedMenus:true,searchCurated:true,studyAreaDrawing:true,layerProperties:true,geojsonExport:true,themePersistence:true,crossTabTheme:true,geomozOwnedAbout:true,mobile:true,viewerReadOnly:true,duplicateNamesGuarded:true,errors},null,2));
   console.log("GeoMoz Workbench: owned UI, real import, layer controls, analysis dialog, menus, dark/light persistence and mobile layout passed.");
  }catch(error){
   try{await page.locator(".gm-help-menu summary").click({timeout:2000});await page.getByRole("button",{name:"Diagnóstico",exact:true}).click({timeout:2000});await page.getByRole("dialog").waitFor({timeout:2000});console.error("Application diagnostics:",(await page.getByRole("dialog").innerText()).slice(-14000));}catch{}

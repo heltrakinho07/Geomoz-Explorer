@@ -23,7 +23,7 @@ function fixture(html) {
 }
 
 test("bundles the real web shell under the GIS subpath with branding and MIT notice", () => {
-  const f = fixture('<html><head><title>GeoLibre</title><link rel="icon" type="image/png" href="/gis-workspace/favicon.png"><meta name="theme-color" content="#2f8f85"><script src="/gis-workspace/assets/app.js"></script></head><body><div id="root"></div></body></html>');
+  const f = fixture('<html lang="en"><head><title>GeoLibre</title><meta name="description" content="GeoLibre platform"/><meta name="apple-mobile-web-app-title" content="GeoLibre"/><link rel="icon" type="image/png" href="/gis-workspace/favicon.png"><meta name="theme-color" content="#2f8f85"><script src="/gis-workspace/assets/app.js"></script></head><body><div id="root"></div></body></html>');
   try {
     const result = spawnSync(process.execPath, [brandScript, f.src, f.dst, f.license], { encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
@@ -38,6 +38,16 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     assert.equal(cfg.ai.enabled, false);
     assert.equal(cfg.capabilities, undefined);
     assert.ok(existsSync(join(f.dst, "GEOLIBRE-LICENSE.txt")));
+    assert.ok(existsSync(join(f.dst, "third-party-notices.html")));
+    const legal = readFileSync(join(f.dst, "third-party-notices.html"), "utf8");
+    assert.match(legal,/GeoLibre — motor GIS de código aberto/);
+    assert.match(legal,/Qiusheng Wu/);
+    assert.match(legal,/GEOLIBRE-LICENSE\.txt/);
+    assert.match(html,/<html lang="pt">/);
+    assert.match(html,/content="GeoMoz GIS Workspace"\s*\/>/);
+    assert.match(html,/meta name="description" content="GeoMoz GIS Workspace:/);
+    assert.doesNotMatch(html,/GeoLibre platform|content="GeoLibre"/);
+
     assert.equal(readFileSync(join(f.dst, "asset.txt"), "utf8"), "raster worker sample");
     const css = readFileSync(join(f.dst, "geomoz-brand.css"), "utf8");
     const manifest = JSON.parse(readFileSync(join(f.dst, "manifest.webmanifest"), "utf8"));
