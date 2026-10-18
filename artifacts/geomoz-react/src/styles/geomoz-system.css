@@ -1,0 +1,85 @@
+/* GeoMoz platform identity — shared across authenticated modules.
+ * Do not recolor data layers, raster color ramps, SVG plots or map canvases.
+ */
+:root{
+ --geomoz-navy:#020617;
+ --geomoz-deep:#082f49;
+ --geomoz-accent:#0284c7;
+ --geomoz-sky:#38bdf8;
+ --geomoz-outline:#cbd5e1;
+ --geomoz-surface:#f8fafc;
+}
+[data-geomoz-system="explorer"]{
+ min-width:0;
+ min-height:0;
+ max-width:100vw;
+ background-color:#f8fafc;
+}
+.dark [data-geomoz-system="explorer"]{
+ background-color:#020617;
+}
+[data-geomoz-system="explorer"] > div{min-width:0}
+[data-geomoz-system="explorer"] main{
+ flex:1 1 auto;
+ min-width:0;
+ min-height:0;
+}
+[data-geomoz-system="explorer"] main > *{
+ min-width:0;
+ max-width:100%;
+}
+[data-geomoz-system="explorer"] button,
+[data-geomoz-system="explorer"] input,
+[data-geomoz-system="explorer"] select,
+[data-geomoz-system="explorer"] textarea{
+ font-family:var(--app-font-sans,system-ui,sans-serif);
+}
+[data-geomoz-system="explorer"] :is(button,a,input,select,textarea,[role="switch"]):focus-visible{
+ outline:2px solid var(--geomoz-accent);
+ outline-offset:2px;
+}
+[data-geomoz-system="explorer"] [role="dialog"]{
+ max-width:min(96vw,1100px);
+ max-height:94dvh;
+ overflow-y:auto;
+}
+[data-geomoz-system="explorer"] .gm-system-print-button{
+ transition:border-color .15s,color .15s,background-color .15s;
+}
+[data-geomoz-system="explorer"] [data-geomoz-print-source="true"]{
+ isolation:isolate;
+}
+@media(max-width:1024px){
+ [data-geomoz-system="explorer"] main > :not(.leaflet-container){
+  min-width:0;
+ }
+ [data-geomoz-system="explorer"] :is(.grid,.flex) > *{
+  min-width:0;
+ }
+}
+@media(max-width:767px){
+ [data-geomoz-system="explorer"]{
+  width:100vw;
+  min-width:0;
+ }
+ [data-geomoz-system="explorer"] main{
+  overflow-y:auto;
+  overscroll-behavior:contain;
+ }
+ [data-geomoz-system="explorer"] main:has(.leaflet-container),
+ [data-geomoz-system="explorer"] main:has(.cesium-widget){
+  overflow:hidden;
+ }
+ [data-geomoz-system="explorer"] [data-testid="gis-workspace-app-toolbar"]{
+  padding-inline:6px;
+  gap:4px;
+ }
+ [data-geomoz-system="explorer"] [data-testid="gis-workspace-app-toolbar"] nav{
+  -webkit-overflow-scrolling:touch;
+ }
+}
+@media(prefers-reduced-motion:reduce){
+ [data-geomoz-system="explorer"] .gm-system-print-button{
+  transition:none;
+ }
+}
