@@ -1310,7 +1310,7 @@ function RoseDiagram({ rose }: { rose: RoseBin[] }) {
 }
 
 function dominantOrientation(rose: RoseBin[]): string {
-  if (!rose.length) return "—";
+  if (!rose.some(bin => Number.isFinite(bin.count) && bin.count > 0)) return "—";
   const top = rose.reduce((a, b) => (b.count > a.count ? b : a));
   const deg = top.bin_deg;
   // Compass quadrant label
@@ -1320,136 +1320,16 @@ function dominantOrientation(rose: RoseBin[]): string {
   return "NW–SE";
 }
 
-function LineamentsPanel({
-  province, district, geometry, onResult,
-}: {
-  province: string | null;
-  district: string | null;
-  geometry?: Record<string, unknown> | null;
-  onResult: (r: LineamentsResult | null) => void;
-}) {
-  const [smoothM, setSmoothM]   = useState(30);
-  const [radiusM, setRadiusM]   = useState(750);
-  const [running, setRunning]   = useState(false);
-  const [error, setError]       = useState<string | null>(null);
-  const [result, setResult]     = useState<LineamentsResult | null>(null);
-
-  async function run() {
-    setRunning(true); setError(null); onResult(null);
-    try {
-      const res = await apiFetch("/geomoz-api/gee/lineaments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          province: province || null, district: district || null, geometry: geometry ?? null,
-          smooth_m: smoothM, density_radius_m: radiusM, rose_samples: 4000,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail ?? "Erro GEE");
-      }
-      const data: LineamentsResult = await res.json();
-      setResult(data); onResult(data);
-    } catch (e) {
-      setError(String(e instanceof Error ? e.message : e));
-    } finally { setRunning(false); }
-  }
-
+function LineamentsPanel() {
   return (
-    <div className="space-y-4">
-      <div>
-        <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2.5">
-          Parâmetros Estruturais
-        </h4>
-        <div className="space-y-2.5">
-          <div>
-            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
-              Suavização DEM — <strong className="text-slate-700 dark:text-slate-200">{smoothM} m</strong>
-            </label>
-            <input type="range" min={10} max={120} step={10} value={smoothM}
-              onChange={e => setSmoothM(Number(e.target.value))}
-              className="w-full accent-fuchsia-500" />
-            <p className="text-[10px] text-slate-400 mt-0.5">
-              Filtra ruído. 30 m = detalhe fino, 120 m = grandes lineamentos.
-            </p>
-          </div>
-          <div>
-            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
-              Raio densidade — <strong className="text-slate-700 dark:text-slate-200">{radiusM} m</strong>
-            </label>
-            <input type="range" min={250} max={2500} step={250} value={radiusM}
-              onChange={e => setRadiusM(Number(e.target.value))}
-              className="w-full accent-fuchsia-500" />
-          </div>
-          <div>
-            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Área (clipping)</label>
-            <div className="text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-              <MapPin size={12} className="text-fuchsia-500" />
-              {district
-                ? <span>{district} <span className="text-slate-400">·</span> {province}</span>
-                : province
-                  ? <span>{province} <span className="text-slate-400">(toda a província)</span></span>
-                  : <span className="text-slate-500">Moçambique (toda)</span>}
-            </div>
-          </div>
-        </div>
+    <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+      <div className="flex items-center gap-2 text-sm font-semibold">
+        <Clock size={16} /> Lineamentos Estruturais — Em desenvolvimento
       </div>
-
-      <button onClick={run} disabled={running}
-        className="w-full flex items-center justify-center gap-2 py-2.5 bg-fuchsia-600 hover:bg-fuchsia-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-fuchsia-200 cursor-pointer">
-        {running
-          ? <><Loader2 size={14} className="animate-spin" /> A detectar estruturas…</>
-          : <><Activity size={14} /> Detectar Lineamentos</>}
-      </button>
-
-      {running && (
-        <div className="bg-fuchsia-50 dark:bg-fuchsia-950/40 border border-fuchsia-200 dark:border-fuchsia-800 rounded-xl p-3 text-xs text-fuchsia-700 dark:text-fuchsia-300 leading-relaxed">
-          <Loader2 size={12} className="inline animate-spin mr-1.5" />
-          Hillshade multi-azimute + Canny + Sobel. Tipicamente 15–40 s.
-        </div>
-      )}
-
-      {error && (
-        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl p-3 text-xs text-red-700 dark:text-red-300">
-          <strong>Erro:</strong> {error}
-        </div>
-      )}
-
-      {result && !running && (
-        <div className="space-y-3">
-          <div className="bg-fuchsia-50 dark:bg-fuchsia-950/40 border border-fuchsia-200 dark:border-fuchsia-800 rounded-xl p-3">
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <CheckCircle2 size={13} className="text-fuchsia-600 dark:text-fuchsia-400" />
-              <span className="text-xs font-semibold text-fuchsia-700 dark:text-fuchsia-300">Lineamentos detectados</span>
-            </div>
-            <div className="grid grid-cols-2 gap-1.5 mt-2">
-              <div className="bg-white/70 dark:bg-slate-800/80 rounded-lg p-2 text-center">
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">Orientação</div>
-                <div className="text-sm font-bold text-fuchsia-700 dark:text-fuchsia-400">{dominantOrientation(result.rose)}</div>
-              </div>
-              <div className="bg-white/70 dark:bg-slate-800/80 rounded-lg p-2 text-center">
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">Densidade média</div>
-                <div className="text-sm font-bold text-fuchsia-700 dark:text-fuchsia-400">
-                  {result.meanDensity != null ? result.meanDensity.toFixed(3) : "—"}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h5 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-              <Compass size={12} /> Rosa de Direcções
-            </h5>
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2">
-              <RoseDiagram rose={result.rose} />
-              <p className="text-[10px] text-center text-slate-400 mt-1">
-                {result.sampleCount.toLocaleString()} pixels amostrados
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      <p className="mt-2 text-xs leading-relaxed">
+        A detecção automática e a rosa de direcções estão em revisão e validação.
+        O processamento e a apresentação de resultados estão temporariamente indisponíveis.
+      </p>
     </div>
   );
 }
@@ -3281,7 +3161,7 @@ export default function GeoAnalises({
     activeTab
   );
 
-  const hasActiveResult = Boolean(
+  const hasActiveResult = !isLineaments && Boolean(
     (geeTile && activeDef && !isLineaments && !isProfile && !isContours && !isTopoCustom && !isLandCover && !isTargeting && !isSpiNdvi) ||
     (isLineaments && lineamentsTile) ||
     (isContours && contoursTile) ||
@@ -3294,6 +3174,7 @@ export default function GeoAnalises({
   );
 
   const handleCalculateActiveIndex = async () => {
+    if (isLineaments) return;
     setIsCalculatingActiveIndex(true);
     setActiveIndexError(null);
     try {
@@ -3847,6 +3728,7 @@ export default function GeoAnalises({
             {/* Right Header Actions */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <button
+                disabled={isLineaments}
                 onClick={() => setStoryMapOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 text-xs font-semibold shadow-2xs cursor-pointer transition-all"
                 title="Apresentação Executiva (StoryMap)"
@@ -3857,6 +3739,7 @@ export default function GeoAnalises({
               </button>
 
               <button
+                disabled={isLineaments}
                 onClick={exportGeoAnalisesPdf}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-medium shadow-2xs cursor-pointer"
                 title="Exportar Relatório PDF"
@@ -3969,7 +3852,7 @@ export default function GeoAnalises({
                   <button
                     type="button"
                     onClick={handleCalculateActiveIndex}
-                    disabled={isCalculatingActiveIndex}
+                    disabled={isCalculatingActiveIndex || isLineaments}
                     className="w-full mt-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 dark:hover:bg-sky-900/80 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
                     title={`Recalcular análise para o período ${geeStartDate} a ${geeEndDate}`}
                   >
@@ -3981,7 +3864,7 @@ export default function GeoAnalises({
                     ) : (
                       <>
                         <RefreshCw size={13} />
-                        <span>Recalcular Análise ({geeStartDate} a {geeEndDate})</span>
+                        <span>{isLineaments ? "Em desenvolvimento" : `Recalcular Análise (${geeStartDate} a ${geeEndDate})`}</span>
                       </>
                     )}
                   </button>
@@ -4047,10 +3930,12 @@ export default function GeoAnalises({
                 <button
                   type="button"
                   onClick={handleCalculateActiveIndex}
-                  disabled={isCalculatingActiveIndex}
+                  disabled={isCalculatingActiveIndex || isLineaments}
                   className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 disabled:from-slate-300 dark:disabled:from-slate-700 disabled:to-slate-400 dark:disabled:to-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-sky-500/20 active:scale-[0.98] cursor-pointer"
                 >
-                  {isCalculatingActiveIndex ? (
+                  {isLineaments ? (
+                    <><Clock size={14} /><span>Em desenvolvimento</span></>
+                  ) : isCalculatingActiveIndex ? (
                     <>
                       <Loader2 size={14} className="animate-spin" />
                       <span>A processar no GEE...</span>
@@ -4095,7 +3980,7 @@ export default function GeoAnalises({
                     {activeIndexLabel}
                   </span>
                 </div>
-                <IndexLegendView
+                {!isLineaments && <IndexLegendView
                   activeTab={activeTab}
                   activeDef={activeDef}
                   topoClassesTile={topoClassesTile}
@@ -4105,7 +3990,7 @@ export default function GeoAnalises({
                   spiNdviResult={spiNdviResult}
                   spiLayerMode={spiLayerMode}
                   geeReady={geeReady}
-                />
+                />}
               </div>
             </div>
 
@@ -4123,25 +4008,7 @@ export default function GeoAnalises({
           {/* Lineaments Panel */}
           {isLineaments && (
             <div className="p-4 border-b border-slate-100 dark:border-slate-800">
-              {!geeStatus?.connected ? (
-                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
-                  <strong>GEE necessário.</strong> Detecção estrutural requer DEM via Google Earth Engine.
-                </div>
-              ) : (
-                <>
-                  <LineamentsPanel province={province} district={district} geometry={apiParams.geometry} onResult={setLineamentsTile} />
-                  {lineamentsTile && (
-                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                      <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-600 dark:text-slate-300">
-                        <input type="checkbox" checked={showEdges}
-                          onChange={e => setShowEdges(e.target.checked)}
-                          className="accent-fuchsia-500" />
-                        Mostrar linhas (edges)
-                      </label>
-                    </div>
-                  )}
-                </>
-              )}
+              <LineamentsPanel />
             </div>
           )}
 
@@ -4403,31 +4270,6 @@ export default function GeoAnalises({
               </div>
             );
           })()}
-
-          {/* Lineaments info */}
-          {isLineaments && (
-            <div className="p-4 flex-1 space-y-3">
-              <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-xl p-3">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <Activity size={12} className="text-fuchsia-600" />
-                  <span className="text-xs font-semibold text-fuchsia-700">Detecção Estrutural</span>
-                </div>
-                <p className="text-xs text-fuchsia-700 leading-relaxed">
-                  Lineamentos topográficos (falhas, fracturas, drenagens) extraídos do
-                  DEM Copernicus GLO-30 com Canny multi-azimute e Sobel.
-                </p>
-              </div>
-              <div>
-                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Escala — densidade</h4>
-                <div className="h-3 w-full rounded" style={{
-                  background: "linear-gradient(to right, #000033, #330099, #9933cc, #ff3366, #ff6600, #ffff00)",
-                }} />
-                <div className="flex justify-between text-xs text-slate-400 mt-0.5">
-                  <span>Baixa</span><span>Alta densidade estrutural</span>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Targeting info */}
           {isTargeting && (
@@ -5164,7 +5006,7 @@ export default function GeoAnalises({
             : isLineaments
               ? lineamentsTile
                 ? `Lineamentos · ${lineamentsTile.formula} · ${lineamentsTile.sampleCount.toLocaleString()} pixels`
-                : "Lineamentos · pronto para executar"
+                : "Lineamentos · Em desenvolvimento"
               : isTargeting
                 ? targetingTile
                   ? `Targeting · ${targetingTile.formula}${overlapResult ? ` · ${overlapResult.report.zoneCount} zonas cruzadas` : ""}`
