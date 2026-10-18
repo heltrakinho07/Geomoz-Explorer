@@ -2,6 +2,9 @@ import { useEffect, useState, type RefObject } from "react";
 import { Activity, AlertCircle, Check, CircleDot, Download, ExternalLink, Loader2, Search, X } from "lucide-react";
 import { useAppStore } from "@geolibre/core";
 import type { MapEngine } from "@geolibre/map";
+import {seismicSymbologyStyle} from "./seismic-analytics";
+import {GeoMozSeismicAnalysis} from "./GeoMozSeismicAnalysis";
+import {GeoMozEarthscopeStations} from "./GeoMozEarthscopeStations";
 import {
   SEISMIC_AREAS, SEISMIC_MAX_RESULTS, buildSeismicQueryUrl, eventsToCSV, eventsToGeoJSON,
   querySeismicCatalog, validateSeismicQuery, type SeismicProvider, type SeismicQuery, type SeismicEvent
@@ -25,6 +28,8 @@ function magnitudeColor(depth:number|null):string {
 export function GeoMozSeismicPanel({onClose,mapControllerRef}:Props) {
   const addLayer=useAppStore(s=>s.addGeoJsonLayer);
   const selectLayer=useAppStore(s=>s.selectLayer);
+  const setLayerStyle=useAppStore(s=>s.setLayerStyle);
+  const [activeView,setActiveView]=useState<"catalog"|"analysis"|"stations">("catalog");
   const allowed=useAppStore(s=>s.deploymentCapabilities.has("data:add"));
   const [provider,setProvider]=useState<SeismicProvider>("usgs");
   const [region,setRegion]=useState<keyof typeof SEISMIC_AREAS|"custom">("mozambique");
@@ -70,6 +75,7 @@ export function GeoMozSeismicPanel({onClose,mapControllerRef}:Props) {
       const fc=eventsToGeoJSON(events);
       const layerName="Sismicidade "+provider.toUpperCase()+" · "+start+" a "+end+" ("+events.length+")";
       const layerId=addLayer(layerName,fc);
+      setLayerStyle(layerId,seismicSymbologyStyle());
       selectLayer(layerId);
       // Use the renderer's own fitLayer path; do not alter its layer lifecycle.
       const layer=useAppStore.getState().layers.find(l=>l.id===layerId);
@@ -77,6 +83,7 @@ export function GeoMozSeismicPanel({onClose,mapControllerRef}:Props) {
       setInfo("Camada «"+layerName+"» adicionada ao catálogo de camadas. Guarde o projecto para conservar o trabalho.");
     }catch(e){setError(e instanceof Error?e.message:"Não foi possível adicionar a camada.");}
   };
+  const buildQuerySafeBounds=():[number,number,number,number]=>{try{const q=buildQuery();validateSeismicQuery(q);return q.bbox;}catch{return SEISMIC_AREAS.mozambique.bounds;}};
   const requestLink=()=>{
     try{return buildSeismicQueryUrl(buildQuery());}catch{return provider==="usgs"?"https://earthquake.usgs.gov/fdsnws/event/1/":"https://www.isc.ac.uk/fdsnws/event/1/";}
   };
@@ -85,7 +92,8 @@ export function GeoMozSeismicPanel({onClose,mapControllerRef}:Props) {
       <div><small>DADOS CIENTÍFICOS / FDSN</small><h2><Activity size={18}/> Eventos sísmicos</h2><p>Catálogos oficiais em tempo real ou históricos, carregados no navegador.</p></div>
       <button type="button" aria-label="Fechar consulta sísmica" onClick={onClose}><X size={18}/></button>
     </div>
-    <form className="gm-seismic-filters" onSubmit={e=>{e.preventDefault();void search();}}>
+    <nav className="gm-seismic-tabs" aria-label="Módulos sísmicos">{[["catalog","Eventos"],["analysis","Análises"],["stations","Estações EarthScope"]].map(([key,label])=><button key={key} type="button" aria-pressed={activeView===key} onClick={()=>setActiveView(key as typeof activeView)}>{label}</button>)}</nav>
+    {activeView==="catalog"&&<form className="gm-seismic-filters" onSubmit={e=>{e.preventDefault();void search();}}>
       <label>Catálogo
         <select aria-label="Catálogo sísmico" value={provider} onChange={e=>{setProvider(e.target.value as SeismicProvider);setEvents(null);setError("");}}>
           <option value="usgs">USGS / NEIC — GeoJSON</option><option value="isc">ISC — FDSN (texto)</option>
@@ -111,11 +119,11 @@ export function GeoMozSeismicPanel({onClose,mapControllerRef}:Props) {
         {busy&&<button type="button" onClick={()=>{request?.abort();setBusy(false);setInfo("Consulta cancelada.");}}>Cancelar</button>}
         <a href={requestLink()} target="_blank" rel="noopener noreferrer" title="Abrir consulta oficial em nova janela">Ver pedido no serviço <ExternalLink size={13}/></a>
       </div>
-    </form>
+    </form>}
     {busy&&<div className="gm-seismic-notice" role="status"><Loader2 className="gm-seismic-spin" size={15}/> A obter eventos da fonte oficial…</div>}
     {error&&<div className="gm-seismic-error" role="alert"><AlertCircle size={16}/>{error}</div>}
     {info&&<div className="gm-seismic-notice" role="status"><Check size={16}/>{info}</div>}
-    {events&&<div className="gm-seismic-results">
+    {activeView==="catalog"&&events&&<div className="gm-seismic-results">
       <div className="gm-seismic-count"><strong>{events.length.toLocaleString("pt-PT")}</strong><span> eventos devolvidos por {provider.toUpperCase()}</span>
         {truncated&&<em>Atenção: limite atingido; reduza a área/período para obter um catálogo completo.</em>}
       </div>
@@ -133,6 +141,8 @@ export function GeoMozSeismicPanel({onClose,mapControllerRef}:Props) {
         {events.length>25&&<p>Mostram-se apenas os primeiros 25 eventos. Todos os {events.length} registos podem ser exportados ou adicionados ao mapa.</p>}
       </div>}
     </div>}
+    {activeView==="analysis"&&(events?.length?<GeoMozSeismicAnalysis events={events} truncated={truncated}/>:<p className="gm-seismic-notice">Consulte primeiro um catálogo de eventos no separador Eventos para activar os gráficos e perfis.</p>)}
+    {activeView==="stations"&&<GeoMozEarthscopeStations bbox={buildQuerySafeBounds()} mapControllerRef={mapControllerRef}/>}
     <footer>Fonte: {provider==="usgs"?"U.S. Geological Survey / NEIC":"International Seismological Centre"} · Dados consultados directamente, sem armazenamento automático no Firebase. Eventos podem ser revistos pelas agências.</footer>
   </section>;
 }
