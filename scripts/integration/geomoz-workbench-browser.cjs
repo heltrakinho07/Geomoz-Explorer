@@ -83,6 +83,14 @@ async function settleRecovery(page){
   await row.waitFor();
   console.log("GeoJSON imported through the real GIS drop handler.");
   await row.locator(".gm-layer-select").click();
+  // Fix regression: layer style must be editable without the hidden specialist panel.
+  await page.getByRole("button",{name:"Editar simbologia"}).click();
+  await page.getByLabel("Cor do símbolo",{exact:true}).fill("#a855f7");
+  assert.equal(await page.getByLabel("Cor do símbolo",{exact:true}).inputValue(),"#a855f7");
+  await page.getByRole("slider",{name:"Tamanho dos pontos"}).fill("11");
+  assert.equal(await page.getByRole("slider",{name:"Tamanho dos pontos"}).inputValue(),"11");
+  await page.getByRole("button",{name:"Editar simbologia"}).click();
+
   await page.getByRole("slider",{name:"Opacidade da camada"}).fill("0.65");
   await page.waitForFunction(()=>document.querySelector(".gm-layer-row[data-selected=true]")?.textContent.includes("65%"));
   await row.locator(".gm-layer-visibility").click();
@@ -132,6 +140,22 @@ async function settleRecovery(page){
   await page.locator('.gm-layer-row[data-layer-name^="Sismicidade USGS"]').first().waitFor();
   assert.equal(await page.locator('.gm-layer-row[data-layer-name^="Sismicidade USGS"]').count(),1);
   await page.screenshot({path:"workbench-browser-artifacts/02b-seismic-usgs.png",fullPage:true});
+  await page.getByRole("button",{name:"Análises",exact:true}).click();
+  await page.getByRole("heading",{name:/Magnitude × tempo/}).waitFor();
+  await page.getByRole("heading",{name:/Perfil hipocentral A/}).waitFor();
+  await page.getByRole("heading",{name:/Gutenberg–Richter/}).waitFor();
+  await page.route("https://service.earthscope.org/fdsnws/station/1/query**",route=>route.fulfill({
+    status:200,contentType:"text/plain",
+    headers:{"access-control-allow-origin":"*"},
+    body:"#Network|Station|Latitude|Longitude|Elevation|SiteName|StartTime|EndTime\n6H|CHM|-19.120|33.480|680|Chimoio|2010-01-01T00:00:00|\n"
+  }));
+  await page.getByRole("button",{name:"Estações EarthScope"}).click();
+  await page.getByRole("button",{name:"Consultar estações"}).click();
+  await page.getByText("6H.CHM").waitFor();
+  await page.getByRole("button",{name:"Adicionar estações ao mapa"}).click();
+  await page.locator('.gm-layer-row[data-layer-name^="Estações EarthScope"]').first().waitFor();
+  await page.screenshot({path:"workbench-browser-artifacts/02c-seismic-earthscope.png",fullPage:true});
+
   await page.getByRole("button",{name:"Fechar consulta sísmica"}).click();
   console.log("USGS catalog normalised and imported through the real GIS layer store.");
 
@@ -246,7 +270,7 @@ async function settleRecovery(page){
   await viewer.close();
   console.log("Read-only viewer keeps camera and theme controls while withholding authoring commands.");
   assert.deepEqual(errors,[],"No uncaught React/runtime errors");
-  await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,resultNavigator:true,seismicUsgs:true,curatedMenus:true,searchCurated:true,studyAreaDrawing:true,layerProperties:true,geojsonExport:true,themePersistence:true,crossTabTheme:true,mobile:true,viewerReadOnly:true,duplicateNamesGuarded:true,errors},null,2));
+  await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,resultNavigator:true,seismicUsgs:true,seismicAnalytics:true,earthscopeStation:true,layerStyleEditor:true,curatedMenus:true,searchCurated:true,studyAreaDrawing:true,layerProperties:true,geojsonExport:true,themePersistence:true,crossTabTheme:true,mobile:true,viewerReadOnly:true,duplicateNamesGuarded:true,errors},null,2));
   console.log("GeoMoz Workbench: owned UI, real import, layer controls, analysis dialog, menus, dark/light persistence and mobile layout passed.");
  }catch(error){
   try{await page.locator(".gm-help-menu summary").click({timeout:2000});await page.getByRole("button",{name:"Diagnóstico",exact:true}).click({timeout:2000});await page.getByRole("dialog").waitFor({timeout:2000});console.error("Application diagnostics:",(await page.getByRole("dialog").innerText()).slice(-14000));}catch{}

@@ -47,7 +47,7 @@ write("components/layout/DesktopShell.tsx",shell);
 let rail=read("components/panels/SharedSidebar.tsx");
 rail=once(rail,'"flex w-full shrink-0 items-center gap-1 border-t bg-card','"gm-shared-rail flex w-full shrink-0 items-center gap-1 border-t bg-card',"GeoMoz activity rail");
 write("components/panels/SharedSidebar.tsx",rail);
-for(const name of ["GeoMozWorkbenchChrome.tsx","GeoMozLayerPanel.tsx","GeoMozLayerProperties.tsx","GeoMozSeismicPanel.tsx","seismic-data.ts"]){
+for(const name of ["GeoMozWorkbenchChrome.tsx","GeoMozLayerPanel.tsx","GeoMozLayerProperties.tsx","GeoMozSeismicPanel.tsx","GeoMozSeismicAnalysis.tsx","GeoMozEarthscopeStations.tsx","seismic-data.ts","seismic-analytics.ts","earthscope-stations.ts"]){
   write("components/geomoz/"+name,readFileSync(new URL("./assets/workbench/"+name,import.meta.url),"utf8"));
 }
 write("hooks/useThemeMode.ts",readFileSync(new URL("./assets/workbench/useThemeMode.ts",import.meta.url),"utf8"));
