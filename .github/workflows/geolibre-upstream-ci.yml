@@ -73,6 +73,7 @@ jobs:
             .geolibre-upstream/apps/geolibre-desktop/dist \
             artifacts/geomoz-react/dist/public/gis-workspace \
             .geolibre-upstream/LICENSE
+          cp artifacts/geomoz-react/public/favicon.svg artifacts/geomoz-react/dist/public/favicon.svg
           test -s artifacts/geomoz-react/dist/public/gis-workspace/index.html
           test -s artifacts/geomoz-react/dist/public/gis-workspace/GEOLIBRE-LICENSE.txt
           grep -q 'data-geomoz-app="workbench"' artifacts/geomoz-react/dist/public/gis-workspace/index.html
