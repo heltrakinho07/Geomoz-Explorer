@@ -1,3 +1,4 @@
+import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
 import {useGeoMozTheme} from "@/hooks/useGeoMozTheme";
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
@@ -692,15 +693,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
           {/* Brand Logo & Name */}
           <Link href="/" className="flex items-center gap-3 group cursor-pointer shrink-0">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 p-0.5 shadow-md shadow-sky-500/20 group-hover:shadow-sky-500/35 transition-all">
-              <div
-                className={`w-full h-full rounded-[10px] flex items-center justify-center transition-colors ${
-                  isDark ? "bg-slate-950 text-sky-400" : "bg-white text-sky-600"
-                }`}
-              >
-                <Globe size={20} className="group-hover:rotate-45 transition-transform duration-500" />
-              </div>
-            </div>
+            <GeoMozBrandIcon className="h-10 w-10 rounded-xl shadow-md shadow-sky-500/20 group-hover:shadow-sky-500/35 transition-shadow" width={40} height={40} />
             <div className="flex flex-col">
               <span className="text-base font-black tracking-tight flex items-center gap-1.5">
                 GeoMoz<span className="text-sky-600 dark:text-sky-400">Explorer</span>
@@ -2249,9 +2242,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                 : "bg-gradient-to-r from-sky-600 via-indigo-600 to-slate-900 text-white border-sky-400/30"
             }`}
           >
-            <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white mb-4">
-              <Globe size={24} />
-            </div>
+            <GeoMozBrandIcon className="h-12 w-12 rounded-2xl mb-4 shadow-lg shadow-sky-950/30" width={48} height={48} />
 
             <h2 className="text-2xl sm:text-4xl font-black tracking-tight mb-3 text-white">
               {t.ctaFinal.title}
@@ -2303,9 +2294,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8 text-left">
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-sky-600 text-white flex items-center justify-center">
-                  <Globe size={16} />
-                </div>
+                <GeoMozBrandIcon className="h-7 w-7 rounded-lg" width={28} height={28} />
                 <span className="font-bold text-slate-900 dark:text-white text-sm">
                   GeoMoz Explorer 3D
                 </span>

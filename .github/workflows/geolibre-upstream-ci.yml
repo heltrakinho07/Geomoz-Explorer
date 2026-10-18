@@ -19,6 +19,11 @@ on:
       - ".github/workflows/firebase-deploy.yml"
       - "firebase.json"
       - "artifacts/geomoz-react/src/pages/Explorer.tsx"
+      - "artifacts/geomoz-react/src/components/GeoMozBrandIcon.tsx"
+      - "artifacts/geomoz-react/src/components/Sidebar.tsx"
+      - "artifacts/geomoz-react/src/pages/LandingPage.tsx"
+      - "artifacts/geomoz-react/src/pages/LegalPages.tsx"
+      - "artifacts/geomoz-react/src/components/PwaInstallPrompt.tsx"
   workflow_dispatch:
 
 jobs:
@@ -28,6 +33,26 @@ jobs:
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install pnpm for GeoMoz Explorer build
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js for GeoMoz Explorer
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install GeoMoz Explorer dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Verify GeoMoz Explorer build with shared icon
+        run: pnpm --filter @workspace/geomoz-react run build
+        env:
+          NODE_ENV: "production"
+          BASE_PATH: "/"
 
       - name: Checkout GeoLibre source at reviewed SHA
         uses: actions/checkout@v4
@@ -44,7 +69,7 @@ jobs:
           cache-dependency-path: .geolibre-upstream/package-lock.json
 
       - name: Test GeoMoz build integration
-        run: node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs scripts/tests/geomoz-brand-locales.test.mjs scripts/tests/seismic-data.test.mjs scripts/tests/seismic-analytics.test.mjs scripts/tests/geomoz-workbench-profile.test.mjs
+        run: node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs scripts/tests/geomoz-unified-brand-icon.test.mjs scripts/tests/geomoz-brand-locales.test.mjs scripts/tests/seismic-data.test.mjs scripts/tests/seismic-analytics.test.mjs scripts/tests/geomoz-workbench-profile.test.mjs
 
       - name: Install upstream with pinned package-lock
         run: npm ci --no-audit --no-fund
@@ -68,6 +93,7 @@ jobs:
             .geolibre-upstream/apps/geolibre-desktop/dist \
             artifacts/geomoz-react/dist/public/gis-workspace \
             .geolibre-upstream/LICENSE
+          cp artifacts/geomoz-react/public/favicon.svg artifacts/geomoz-react/dist/public/favicon.svg
           test -s artifacts/geomoz-react/dist/public/gis-workspace/index.html
           test -s artifacts/geomoz-react/dist/public/gis-workspace/GEOLIBRE-LICENSE.txt
           grep -q 'data-geomoz-app="workbench"' artifacts/geomoz-react/dist/public/gis-workspace/index.html

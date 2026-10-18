@@ -1,5 +1,6 @@
+import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowUpRight, CheckCircle2, FileText, Globe2, Mail, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, CheckCircle2, FileText, Mail, ShieldCheck } from "lucide-react";
 
 type Language = "pt" | "en";
 type Kind = "privacy" | "terms";
@@ -120,7 +121,7 @@ function LegalPage({ kind }: { kind: Kind }) {
       <header className="border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-5 sm:px-8">
           <a href="/" className="flex items-center gap-3 text-slate-950 dark:text-slate-100 hover:text-sky-700 dark:text-sky-300">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-600 text-white"><Globe2 size={22} aria-hidden="true" /></span>
+            <GeoMozBrandIcon className="h-11 w-11 rounded-xl" width={44} height={44} />
             <span><span className="block text-base font-extrabold">GeoMoz Explorer</span><span className="text-xs text-slate-500 dark:text-slate-400">GEOLÍTHICA · Geospatial Intelligence</span></span>
           </a>
           <div className="flex items-center gap-4">

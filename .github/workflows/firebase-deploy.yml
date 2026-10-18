@@ -96,7 +96,7 @@ jobs:
 
       - name: Package GeoMoz Workbench and retain engine license
         run: |
-          node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs scripts/tests/geomoz-brand-locales.test.mjs scripts/tests/seismic-data.test.mjs scripts/tests/seismic-analytics.test.mjs scripts/tests/geomoz-workbench-profile.test.mjs
+          node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs scripts/tests/geomoz-unified-brand-icon.test.mjs scripts/tests/geomoz-brand-locales.test.mjs scripts/tests/seismic-data.test.mjs scripts/tests/seismic-analytics.test.mjs scripts/tests/geomoz-workbench-profile.test.mjs
           node scripts/brand-geolibre-web.mjs \
             .geolibre-upstream/apps/geolibre-desktop/dist \
             artifacts/geomoz-react/dist/public/gis-workspace \
@@ -154,6 +154,10 @@ jobs:
           grep -q 'Qiusheng Wu' "$RUNNER_TEMP/geomoz-thirdparty.html"
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "$BASE/favicon.svg" -o "$RUNNER_TEMP/geomoz-gis-favicon.svg"
           grep -q 'linearGradient' "$RUNNER_TEMP/geomoz-gis-favicon.svg"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 "https://geomoz.geolithica.com/favicon.svg" -o "$RUNNER_TEMP/geomoz-site-favicon.svg"
+          cmp "$RUNNER_TEMP/geomoz-site-favicon.svg" "$RUNNER_TEMP/geomoz-gis-favicon.svg"
+          echo "GeoMoz portal and GIS Workspace publish the exact same canonical icon"
+
           curl --fail --silent --show-error --location --retry 2 --max-time 60 "https://geomoz.geolithica.com/gis-workspace/" -o "$RUNNER_TEMP/geomoz-custom-index.html"
           grep -q 'data-geomoz-app="workbench"' "$RUNNER_TEMP/geomoz-custom-index.html"
           ! grep -q 'geomoz-shell.js' "$RUNNER_TEMP/geomoz-custom-index.html"
