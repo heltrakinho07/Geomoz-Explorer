@@ -43,7 +43,7 @@ test("newly digitized features acquire declared fields without overwriting edits
  assert.equal(data.descricao,"Conjunto observacional");
  assert.ok(!("__gm_id" in data),"Reserved Geoman IDs are never fabricated");
 });
-test("native editor, forms, styles and geometric save remain the original engine operations",()=>{
+test("native editor, forms, styles and geometric save remain the original engine operations",async()=>{
  const fs=await import("node:fs");
  const p=fs.readFileSync("scripts/prepare-geomoz-workbench.mjs","utf8");
  assert.match(p,/enableAttributeEditing: GEOMOZ_ROLLOUT.advancedDrawing/);
