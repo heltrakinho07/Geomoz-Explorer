@@ -1,6 +1,7 @@
 import type {RefObject} from "react";
 import type {MapEngine} from "@geolibre/map";
 import {GeoMozSeismicPanel} from "./GeoMozSeismicPanel";
+import {AboutDialog} from "../layout/AboutDialog";
 import { GEOMOZ_ROLLOUT, curateGeoMozCommands } from "../../lib/geomoz-workbench-profile";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useAppStore, DEFAULT_PROJECT_NAME } from "@geolibre/core";
@@ -88,6 +89,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   const setName=useAppStore(s=>s.setProjectName);
   const layers=useAppStore(s=>s.layers);
   const [more,setMore]=useState(false);
+  const [aboutOpen,setAboutOpen]=useState(false);
   const [seismicOpen,setSeismicOpen]=useState(false);
   const activeTask:Task=viewer?"map":task;
   const curated=curateGeoMozCommands(commands);
@@ -110,7 +112,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
         <div className="gm-project-menu">{children}</div>
         <div className="gm-title-actions">
           {!viewer&&<button type="button" className="gm-command-search" onClick={onSearch}><Search size={15}/><span>Procurar ferramentas…</span><kbd>⌘ / Ctrl K</kbd></button>}
-          {!viewer&&<details className="gm-module-switch gm-help-menu"><summary aria-label="Ajuda GeoMoz">?</summary><nav aria-label="Ajuda GeoMoz"><small>APOIO AO ESTUDO</small>{["help.shortcuts","help.diagnostics"].map(id=>{const command=registry.get(id);return command?<button key={id} type="button" disabled={!!command.disabledReason} title={command.disabledReason} onClick={()=>{if(!command.disabledReason)command.run();}}>{LABELS[id]}</button>:null;})}<a href="/documentacao">Documentação <ArrowUpRight size={12}/></a></nav></details>}
+          <details className="gm-module-switch gm-help-menu"><summary aria-label="Ajuda GeoMoz">?</summary><nav aria-label="Ajuda GeoMoz"><small>APOIO AO ESTUDO</small>{["help.shortcuts","help.diagnostics"].map(id=>{const command=registry.get(id);return command?<button key={id} type="button" disabled={!!command.disabledReason} title={command.disabledReason} onClick={()=>{if(!command.disabledReason)command.run();}}>{LABELS[id]}</button>:null;})}<a href="/documentacao">Documentação <ArrowUpRight size={12}/></a><button type="button" data-testid="geomoz-about-trigger" onClick={()=>setAboutOpen(true)}>Sobre o GeoMoz GIS Workspace</button></nav></details>
           <details className="gm-module-switch"><summary aria-label="Abrir módulos GeoMoz"><Grid2X2 size={16}/><span>Módulos</span></summary><nav aria-label="Módulos GeoMoz"><small>PLATAFORMA GEOMOZ</small>{[["/dashboard","Visão geral"],["/mapa","Explorador de mapas"],["/analises","GeoAnálises"],["/hidrografia","Bacias hidrográficas"],["/agua-subterranea","Água subterrânea"],["/geoperigos","Geoperigos"],["/geomoz-ai","GeoMoz AI"],["/documentacao","Documentação"]].map(([href,label])=><a key={href} href={href}>{label}<ArrowUpRight size={12}/></a>)}</nav></details>
           <button type="button" className="gm-icon-button" data-testid="geomoz-theme-toggle" onClick={onToggleThemeMode}
             aria-label={themeMode==="dark"?"Activar modo claro":"Activar modo nocturno"} title={themeMode==="dark"?"Activar modo claro":"Activar modo nocturno"}>{themeMode==="dark"?<Sun size={18}/>:<Moon size={18}/>}</button>
@@ -133,5 +135,6 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
       <p className="gm-task-guidance" role="status" hidden={more}>{viewer?"Explore as camadas e navegue no mapa. Esta sessão está em modo de leitura.":GUIDANCE[activeTask]}</p>
       {seismicOpen&&!viewer&&<GeoMozSeismicPanel mapControllerRef={mapControllerRef} onClose={()=>{setSeismicOpen(false);if(task==="seismic")setTask("data");}}/>}
     </header>
+    <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} renderTrigger={false}/>
   </TaskContext.Provider>;
 }
