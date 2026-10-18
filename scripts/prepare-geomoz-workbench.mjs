@@ -128,7 +128,7 @@ editor=once(editor,"    ...GEO_EDITOR_OPTIONS,","    ...GEO_EDITOR_OPTIONS,\n   
 editor=once(editor,"if (isGeometryEditSession) geoEditorControl?.closeAttributeEditor();","if (isGeometryEditSession || !GEOMOZ_ROLLOUT.advancedDrawing) geoEditorControl?.closeAttributeEditor();","hide massing attribute form");
 editor=once(editor,
   '  if (layer.metadata.sourceKind !== ARCGIS_FEATURE_SOURCE_KIND) return undefined;',
-  '  if (layer.metadata.geomozDigitizingTemplate && layer.attributeForm?.fields) {\n    return (properties) => geomozNewFeatureProperties(layer.attributeForm!.fields, properties);\n  }\n  if (layer.metadata.sourceKind !== ARCGIS_FEATURE_SOURCE_KIND) return undefined;',
+  '  if (layer.metadata.geomozDigitizingTemplate && layer.attributeForm?.fields) {\n    return (properties) => geomozNewFeatureProperties(layer.attributeForm!.fields, properties ?? {});\n  }\n  if (layer.metadata.sourceKind !== ARCGIS_FEATURE_SOURCE_KIND) return undefined;',
   "GeoMoz new-feature schema applied to editable geological/thematic layers");
 writeFileSync(editorPath,editor);
 // Product identity is owned by GeoMoz; the engine remains the attributed MIT fork.
