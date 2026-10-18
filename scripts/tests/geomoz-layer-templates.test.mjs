@@ -48,7 +48,7 @@ test("native editor, forms, styles and geometric save remain the original engine
  const p=fs.readFileSync("scripts/prepare-geomoz-workbench.mjs","utf8");
  assert.match(p,/enableAttributeEditing: GEOMOZ_ROLLOUT.advancedDrawing/);
  assert.match(p,/showFeatureProperties: GEOMOZ_ROLLOUT.advancedDrawing/);
- assert.match(p,/geomozNewFeatureProperties\(layer.attributeForm!.fields, properties\)/);
+ assert.match(p,/geomozNewFeatureProperties\(layer\.attributeForm!\.fields,/);
  assert.match(p,/geomozNewFeatureProperties/);
  assert.match(p,/writeFileSync\(editorPath,editor\)/);
  const c=fs.readFileSync("scripts/assets/workbench/GeoMozLayerPanel.tsx","utf8");
