@@ -19,6 +19,11 @@ on:
       - ".github/workflows/firebase-deploy.yml"
       - "firebase.json"
       - "artifacts/geomoz-react/src/pages/Explorer.tsx"
+      - "artifacts/geomoz-react/src/components/GeoMozBrandIcon.tsx"
+      - "artifacts/geomoz-react/src/components/Sidebar.tsx"
+      - "artifacts/geomoz-react/src/pages/LandingPage.tsx"
+      - "artifacts/geomoz-react/src/pages/LegalPages.tsx"
+      - "artifacts/geomoz-react/src/components/PwaInstallPrompt.tsx"
   workflow_dispatch:
 
 jobs:
@@ -44,7 +49,7 @@ jobs:
           cache-dependency-path: .geolibre-upstream/package-lock.json
 
       - name: Test GeoMoz build integration
-        run: node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs scripts/tests/geomoz-brand-locales.test.mjs scripts/tests/seismic-data.test.mjs scripts/tests/seismic-analytics.test.mjs scripts/tests/geomoz-workbench-profile.test.mjs
+        run: node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs scripts/tests/geomoz-unified-brand-icon.test.mjs scripts/tests/geomoz-brand-locales.test.mjs scripts/tests/seismic-data.test.mjs scripts/tests/seismic-analytics.test.mjs scripts/tests/geomoz-workbench-profile.test.mjs
 
       - name: Install upstream with pinned package-lock
         run: npm ci --no-audit --no-fund
