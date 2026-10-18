@@ -68,6 +68,11 @@ let branded = html
   .replace(/<link\b[^>]*\brel=["'](?:icon|apple-touch-icon)["'][^>]*>/gi, "")
   .replace(/<meta\b[^>]*\bname=["']theme-color["'][^>]*>/gi, "")
   .replace(/<title>[^<]*<\/title>/i, "<title>GeoMoz GIS Workspace</title>")
+  .replace(/<html\s+lang=["'][^"']*["']/i, '<html lang="pt"')
+  .replace(/<meta\s+name=["']apple-mobile-web-app-title["']\s+content=["'][^"']*["']\s*\/>/i,
+    '<meta name="apple-mobile-web-app-title" content="GeoMoz GIS Workspace" />')
+  .replace(/<meta\s+name=["']description["']\s+content=["'][^"']*["']\s*\/>/i,
+    '<meta name="description" content="GeoMoz GIS Workspace: explore dados geoespaciais, faça análises vectoriais e raster e construa mapas no navegador." />')
   .replace("</head>", "  " + identityHead + "\n  </head>")
   .replace("<body>", '<body data-geomoz-app="workbench">');
 if (
@@ -130,6 +135,26 @@ if (existsSync(manifestFile)) {
   writeFileSync(manifestFile, JSON.stringify(manifest, null, 2) + "\n");
 }
 
+// Keep upstream attribution and copyright text accessible in the product,
+ // rather than presenting the open-source engine as an unlicensed proprietary component.
+writeFileSync(resolve(destination, "third-party-notices.html"), `<!doctype html>
+<html lang="pt"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#082f49"/><title>GeoMoz · Licenças de terceiros</title>
+<link rel="icon" href="/gis-workspace/favicon.svg" type="image/svg+xml"/>
+<style>body{font:15px/1.65 system-ui,sans-serif;max-width:850px;padding:30px 20px;margin:auto;background:#f8fafc;color:#0f172a}
+a{color:#0369a1}h1{font-size:1.75rem}h2{margin-top:2rem}article{border:1px solid #cbd5e1;border-radius:10px;padding:20px;background:#fff}
+small{color:#475569}nav{display:flex;gap:16px;flex-wrap:wrap}</style></head><body>
+<nav><a href="/gis-workspace/">← GIS Workspace</a><a href="/mapa">GeoMoz Explorer</a><a href="/terms">Termos</a></nav>
+<h1>Créditos e licenças de terceiros</h1>
+<p>O GeoMoz GIS Workspace possui interface, navegação e integração de dados desenvolvidas para o GeoMoz. Alguns motores SIG e bibliotecas derivam de software de código aberto e continuam sujeitos às respectivas licenças.</p>
+<article><h2>GeoLibre — motor GIS de código aberto</h2><p>Copyright © 2026 Qiusheng Wu. Licença MIT.</p>
+<p>Parte da infraestrutura geoespacial é baseada no projecto <a href="https://github.com/opengeos/GeoLibre" rel="noopener noreferrer">GeoLibre</a>, adaptado e integrado no GeoMoz.</p>
+<p><a href="/gis-workspace/GEOLIBRE-LICENSE.txt">Ler a licença MIT original</a> ·
+<a href="/gis-workspace/GEOLIBRE-NOTICE.txt">Aviso de atribuição do motor</a></p></article>
+<h2>Outras bibliotecas e provedores de dados</h2>
+<p>MapLibre, ferramentas WebAssembly, dados públicos e serviços de mapas podem utilizar licenças e atribuições próprias. As atribuições cartográficas dos mapas e serviços utilizados devem continuar visíveis.</p>
+<small>Esta página documenta dependências abertas. Não altera os termos GeoMoz nem concede direitos sobre marcas de terceiros.</small>
+</body></html>`);
 cpSync(license, resolve(destination, "GEOLIBRE-LICENSE.txt"));
 writeFileSync(
   resolve(destination, "GEOLIBRE-NOTICE.txt"),
