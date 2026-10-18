@@ -299,3 +299,39 @@ html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0
 .gm-layer-properties .gm-group-visibility{flex-direction:row;align-items:center;}.gm-layer-properties .gm-group-visibility input{width:12px;accent-color:var(--gm-accent);}
 
 .gm-ribbon-group button[aria-pressed=true]{border-color:var(--gm-accent);background:var(--gm-muted);color:var(--gm-accent);}
+
+
+/* GeoMoz Seismic Workbench: data-driven native symbology and scientific plots. */
+.gm-seismic-tabs{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:0 0 14px;border-bottom:1px solid var(--gm-line);padding-bottom:8px;}
+.gm-seismic-tabs>button{border:1px solid var(--gm-line);border-radius:6px;padding:7px 12px;background:var(--gm-muted);font-size:11px;color:var(--gm-text);font-weight:650;}
+.gm-seismic-tabs>button[aria-pressed="true"]{background:var(--gm-accent);border-color:var(--gm-accent);color:#fff;}
+.gm-seismic-analytics{display:grid;gap:11px;font-size:11px;}
+.gm-seismic-analytics>h3{font-size:15px;font-weight:750;}
+.gm-seismic-analytics>h3 small{color:var(--gm-subtle);font-weight:400;font-size:10px;}
+.gm-seismic-analytics article{background:var(--gm-surface);border:1px solid var(--gm-line);border-radius:8px;padding:10px;min-width:0;overflow:hidden;}
+.gm-seismic-analytics article h4,.gm-seismic-gr h4{font-size:12px;font-weight:700;margin-bottom:6px;}
+.gm-seismic-analytics article p{font-size:10px;color:var(--gm-subtle);line-height:1.5;margin-top:5px;}
+.gm-seismic-plot-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.gm-seismic-plot-grid svg,.gm-seismic-analytics article>svg{display:block;width:100%;max-height:205px;overflow:visible;color:var(--gm-text);}
+.gm-seismic-analysis-inputs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;}
+.gm-seismic-analysis-inputs label,.gm-seismic-gr>label,.gm-seismic-stations label{font-size:10px;color:var(--gm-subtle);display:flex;flex-direction:column;gap:4px;}
+.gm-seismic-analysis-inputs input,.gm-seismic-gr input,.gm-seismic-stations input{min-width:0;width:100%;border:1px solid var(--gm-line);border-radius:5px;padding:7px;background:var(--gm-surface);color:var(--gm-text);font-size:11px;}
+.gm-seismic-gr{display:grid;grid-template-columns:170px 1fr;gap:14px;border:1px solid var(--gm-line);border-radius:8px;padding:12px;}
+.gm-seismic-gr strong{font-size:15px;font-weight:750;color:var(--gm-accent);}
+.gm-seismic-gr p{margin-top:4px;font-size:10px;line-height:1.5;}
+.gm-seismic-science-warning{color:#b45309!important;font-size:10px;line-height:1.5;}
+.dark .gm-seismic-science-warning{color:#fbbf24!important;}
+.gm-seismic-stations{font-size:11px;}
+.gm-seismic-stations>h3{font-size:14px;font-weight:750;}
+.gm-seismic-stations>p{font-size:10px;color:var(--gm-subtle);margin:7px 0;}
+.gm-seismic-stations>.gm-seismic-actions label{flex:1 1 100px;}
+.gm-quick-style{border-top:1px solid var(--gm-line);padding:9px 0;display:grid;gap:8px;}
+.gm-quick-style label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10px;color:var(--gm-text);}
+.gm-quick-style input[type=color]{height:27px;width:47px;border:1px solid var(--gm-line);background:transparent;cursor:pointer;}
+.gm-quick-style input[type=range]{max-width:125px;accent-color:var(--gm-accent);}
+.gm-quick-style p{font-size:9px;color:var(--gm-subtle);line-height:1.45;}
+@media(max-width:640px){
+  .gm-seismic-plot-grid{grid-template-columns:1fr;}
+  .gm-seismic-analysis-inputs{grid-template-columns:1fr 1fr;}
+  .gm-seismic-gr{grid-template-columns:1fr;}
+}
