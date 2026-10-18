@@ -62,7 +62,7 @@
 @media(max-width:760px){.gm-print-body{display:flex;flex-direction:column;overflow-y:auto}.gm-print-settings{min-height:auto;overflow:visible;flex:none;border-right:0;border-bottom:1px solid #cbd5e1}.gm-print-stage{min-height:390px;overflow:auto;padding:14px}.gm-print-topbar{padding:10px;align-items:flex-start}.gm-print-topbar strong{font-size:12px}.gm-print-top-actions button{min-height:36px;padding:5px 9px;font-size:10px}.gm-print-doc-type{font-size:7px}}
 @media print {
   html,body{height:auto!important;overflow:visible!important;margin:0!important;padding:0!important;background:white!important}
-  body > #root,body > [data-sonner-toaster],body > [role=status]{display:none!important}
+  body:has(> .gm-print-portal) > :not(.gm-print-portal){display:none!important}
   .gm-print-portal{position:static!important;inset:auto!important;display:block!important;background:#fff!important;height:auto!important;width:auto!important;isolation:auto!important}
   .gm-print-backdrop,.gm-print-topbar,.gm-print-settings{display:none!important}
   .gm-print-frame{position:static!important;display:block!important;overflow:visible!important;background:white!important;border-radius:0!important;box-shadow:none!important}
