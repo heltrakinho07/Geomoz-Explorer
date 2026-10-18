@@ -71,6 +71,9 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     assert.equal(manifest.scope, "/gis-workspace/");
     assert.equal(manifest.theme_color, "#0284c7");
     assert.ok(existsSync(join(f.dst, "favicon.svg")));
+    assert.equal(readFileSync(join(f.dst, "favicon.svg"), "utf8"),
+      readFileSync(resolve("artifacts/geomoz-react/public/favicon.svg"), "utf8"),
+      "GIS Workspace and Explorer must ship exactly the same GeoMoz SVG icon");
     assert.ok(existsSync(join(f.dst, "pwa-192x192.png")));
     assert.ok(existsSync(join(f.dst, "pwa-512x512.png")));
     assert.ok(existsSync(join(f.dst, "maskable-icon-512x512.png")));
