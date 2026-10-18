@@ -49,7 +49,7 @@ test("native editor, forms, styles and geometric save remain the original engine
  assert.match(p,/enableAttributeEditing: GEOMOZ_ROLLOUT.advancedDrawing/);
  assert.match(p,/showFeatureProperties: GEOMOZ_ROLLOUT.advancedDrawing/);
  assert.match(p,/geomozNewFeatureProperties\(layer.attributeForm!.fields, properties\)/);
- assert.match(p,/newFeaturePreparer/);
+ assert.match(p,/geomozNewFeatureProperties/);
  assert.match(p,/writeFileSync\(editorPath,editor\)/);
  const c=fs.readFileSync("scripts/assets/workbench/GeoMozLayerPanel.tsx","utf8");
  assert.match(c,/GeoMozDigitizingPanel/);
