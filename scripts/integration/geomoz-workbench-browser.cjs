@@ -60,7 +60,8 @@ async function settleRecovery(page){
   assert.equal(await page.locator("[data-command='add.vector']").count(),1);
   assert.deepEqual(await page.locator(".gm-task-tabs button").allTextContents(),["Área de estudo","Dados","Análise","Resultados"]);
   assert.equal(await page.getByRole("button",{name:"Mais opções",exact:true}).count(),0);
-  assert.equal(await page.getByRole("button",{name:"Gestão",exact:true}).count(),0);
+  assert.equal(await page.getByRole("button",{name:"Gestão",exact:true}).count(),1);
+  assert.equal(await page.getByTestId("geomoz-create-vector-layer").count(),1);
   await page.keyboard.press("Control+k");
   const search=page.getByRole("combobox");
   await search.waitFor();
@@ -250,8 +251,8 @@ async function settleRecovery(page){
   await (await areaDownload).saveAs("workbench-browser-artifacts/study-area.geojson");
   const area=JSON.parse(await readFile("workbench-browser-artifacts/study-area.geojson","utf8"));
   assert.ok(area.features.some(feature=>["Polygon","MultiPolygon"].includes(feature.geometry?.type)),"The drawn area must contain real polygon geometry");
-  assert.equal(await page.locator(".geo-editor-attribute-panel:not(.attribute-panel--hidden)").isVisible(),false,"The 3D height form must stay hidden");
-  console.log("Study polygon drawn and exported with real geometry; 3D controls hidden.");
+  // Attribute editing is now enabled for professional GeoMoz vector workflows.\n  assert.equal(await editor.locator('button[data-mode="polygon"]').count(),1);
+  console.log("Study polygon drawn and exported with real geometry; attribute editor enabled.");
   await page.screenshot({path:"workbench-browser-artifacts/03c-geomoz-study-area.png",fullPage:true});
   await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').click();
   console.log("Drawing command state after finishing:",await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').getAttribute("aria-pressed"));
