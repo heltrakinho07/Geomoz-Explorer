@@ -2656,6 +2656,7 @@ export interface GeoAnaliseCategory {
   highlights: string[];
   defaultTab: SpectralTab;
   tabIds: SpectralTab[];
+  status?: "development";
 }
 
 export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
@@ -2713,13 +2714,14 @@ export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
   },
   {
     id: "fire",
+    status: "development",
     title: "Incêndios, Queimadas & Uso do Solo",
     subtitle: "Sentinel-2, MODIS & ESA WorldCover",
-    badge: "Multi-Sensor · Fogo & Solo",
+    badge: "Em desenvolvimento",
     badgeColor: "bg-rose-100 text-rose-800 border-rose-200",
     icon: Flame,
     gradient: "from-rose-500 to-red-600",
-    description: "Detecção e estimativa de severidade de queimadas por dNBR (USGS), histórico de áreas queimadas MODIS, perda florestal Hansen e uso do solo ESA 10m.",
+    description: "Módulo em revisão. A comparação pré/pós-incêndio, os períodos dos dados e a interpretação dos resultados estão em validação. Análises temporariamente indisponíveis.",
     highlights: ["dNBR Severidade Fogo", "Cicatrizes NBR", "Área Queimada MODIS", "Perda Florestal Hansen", "Uso do Solo ESA 10m"],
     defaultTab: "nbr",
     tabIds: ["nbr", "dnbr", "burn_severity", "burned_area", "forest_loss", "fire_risk", "landcover"],
@@ -2774,6 +2776,7 @@ export default function GeoAnalises({
   const handleViewModeChange = onViewModeChange ?? setInternalViewMode;
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const categoryInDevelopment = GEO_CATEGORIES.some(cat => cat.id === selectedCategory && cat.status === "development");
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState("");
 
@@ -2870,7 +2873,7 @@ export default function GeoAnalises({
   // Fetch GEE status on mount
   // ── PDF Export (universal for all analysis types) ────────────────
   async function exportGeoAnalisesPdf() {
-    if (!mapContainerRef.current) return;
+    if (categoryInDevelopment || !mapContainerRef.current) return;
     const ctx = createPDFContext(`${activeTab} — ${aoi.label}`);
     drawCover(ctx, `Relatório de Análise — ${activeTab}`, [
       `Análise: ${activeTab}`,
@@ -2963,6 +2966,7 @@ export default function GeoAnalises({
   }, [activeTab]);
 
   const runCompareGee = useCallback(async () => {
+    if (categoryInDevelopment) return;
     if (!geeReady) {
       setCompareGeeError("Google Earth Engine não conectado. Ligue a sua conta Google no topo.");
       toast({
@@ -3054,7 +3058,7 @@ export default function GeoAnalises({
       clearTimeout(timeoutId);
       setIsProcessingCompareGee(false);
     }
-  }, [geeReady, activeTab, province, district, aoi, compareStartDateLeft, compareEndDateLeft, compareStartDateRight, compareEndDateRight, toast]);
+  }, [categoryInDevelopment, geeReady, activeTab, province, district, aoi, compareStartDateLeft, compareEndDateLeft, compareStartDateRight, compareEndDateRight, toast]);
 
   // Trigger comparison without infinite loop
   useEffect(() => {
@@ -3174,7 +3178,7 @@ export default function GeoAnalises({
   );
 
   const handleCalculateActiveIndex = async () => {
-    if (isLineaments) return;
+    if (categoryInDevelopment || isLineaments) return;
     setIsCalculatingActiveIndex(true);
     setActiveIndexError(null);
     try {
@@ -3537,7 +3541,7 @@ export default function GeoAnalises({
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
       <GeeCredentialsDialog open={geeCredsOpen} onOpenChange={setGeeCredsOpen} />
       <StoryMapModal
-        open={storyMapOpen}
+        open={storyMapOpen && !categoryInDevelopment}
         onOpenChange={setStoryMapOpen}
         context={dynamicStoryMapContext}
       />
@@ -3622,6 +3626,9 @@ export default function GeoAnalises({
                   <div
                     key={cat.id}
                     onClick={() => {
+                      setCompareActive(false);
+                      setStoryMapOpen(false);
+                      setShowS2(false);
                       setSelectedCategory(cat.id);
                       setActiveTab(cat.defaultTab);
                       if (cat.id === "optical" || cat.id === "satellite") {
@@ -3661,7 +3668,7 @@ export default function GeoAnalises({
                     </div>
 
                     <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold text-sky-600 dark:text-sky-400 group-hover:text-sky-700 dark:group-hover:text-sky-300">
-                      <span>Abrir Análise Especializada</span>
+                      <span>{cat.status === "development" ? "Ver estado do módulo" : "Abrir Análise Especializada"}</span>
                       <span className="group-hover:translate-x-1 transition-transform">→</span>
                     </div>
                   </div>
@@ -3669,6 +3676,23 @@ export default function GeoAnalises({
               })}
             </div>
           </div>
+        </div>
+      ) : categoryInDevelopment ? (
+        <div className="flex-1 overflow-y-auto bg-slate-50 p-6 dark:bg-slate-950 md:p-8">
+          <button type="button" onClick={() => setSelectedCategory(null)}
+            className="mb-6 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+            <ArrowLeft size={16} /> Voltar ao catálogo
+          </button>
+          <section aria-labelledby="module-development-title" className="mx-auto max-w-2xl rounded-2xl border border-amber-200 bg-white p-6 dark:border-amber-900 dark:bg-slate-900">
+            <span role="status" className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              <Clock size={14} /> Em desenvolvimento
+            </span>
+            <h2 id="module-development-title" className="mt-4 text-xl font-bold text-slate-900 dark:text-slate-100">{activeCategory.title}</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{activeCategory.description}</p>
+            <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+              O cálculo, os mapas de resultados e a exportação deste módulo estão temporariamente desactivados.
+            </p>
+          </section>
         </div>
       ) : (
         /* ════════════════════════════════════════════════════════════════════
