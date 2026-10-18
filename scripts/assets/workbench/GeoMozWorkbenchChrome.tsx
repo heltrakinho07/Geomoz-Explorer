@@ -102,7 +102,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   return <TaskContext.Provider value={activeTask}>
     <header className="gm-workbench-chrome" data-testid="geomoz-workbench-chrome">
       <div className="gm-titlebar">
-        <a className="gm-brand" href="/" aria-label="GeoMoz — página inicial"><img src="/gis-workspace/favicon.svg" alt="" /><span>Geo<span>Moz</span><small>GIS WORKSPACE</small></span></a>
+        <a className="gm-brand" href="/" aria-label="GeoMoz — página inicial"><img src="/favicon.svg" alt="" /><span>Geo<span>Moz</span><small>GIS WORKSPACE</small></span></a>
         <div className="gm-project-title"><span className="gm-project-symbol"><Layers3 size={17}/></span>
           <label className="gm-project-field"><span>PROJECTO ACTUAL</span><input aria-label="Nome do projecto" value={name} readOnly={viewer}
             onChange={event=>{if(!viewer)setName(event.target.value);}}
