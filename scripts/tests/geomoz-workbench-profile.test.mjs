@@ -67,7 +67,7 @@ test("GIS Workspace exposes native digitization, field editing, layer management
  assert.match(chrome,/Digitalizar \/ editar/);
  assert.match(chrome,/Layout de impressão/);
  assert.match(prepare,/drawModes: GEO_EDITOR_OPTIONS.drawModes.filter/);
- assert.match(prepare,/newFeaturePreparer/);
+ assert.match(prepare,/geomozNewFeatureProperties/);
  assert.match(prepare,/enableAttributeEditing: GEOMOZ_ROLLOUT.advancedDrawing/);
  assert.match(prepare,/showFeatureProperties: GEOMOZ_ROLLOUT.advancedDrawing/);
  assert.equal(GEOMOZ_ROLLOUT.advancedDrawing,true,"Attribute editing enabled");
