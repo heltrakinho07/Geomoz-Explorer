@@ -1,3 +1,4 @@
+import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
 import {useGeoMozTheme} from "@/hooks/useGeoMozTheme";
 import React, { useState, useEffect } from "react";
 import { Link } from "wouter";
@@ -123,9 +124,7 @@ export default function Sidebar({
           className="flex items-center gap-3 overflow-hidden hover:opacity-90 transition-opacity cursor-pointer"
           title="GeoMoz Explorer — Início"
         >
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-sky-500/20 shrink-0">
-            <Globe size={20} />
-          </div>
+          <GeoMozBrandIcon className="h-9 w-9 rounded-xl shadow-md shadow-sky-500/20" width={36} height={36} />
           {!collapsed && (
             <div className="flex flex-col min-w-0">
               <span className="font-black text-slate-900 dark:text-white tracking-tight text-base whitespace-nowrap">
