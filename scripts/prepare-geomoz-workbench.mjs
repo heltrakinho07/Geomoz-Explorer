@@ -124,7 +124,7 @@ writeFileSync(resolve(root,"packages/plugins/src/geomoz-layer-templates.ts"),rea
 const editorPath=resolve(root,"packages/plugins/src/plugins/maplibre-geo-editor.ts");
 let editor=readFileSync(editorPath,"utf8");
 editor='import { GEOMOZ_ROLLOUT } from "../geomoz-workbench-profile";\nimport { geomozNewFeatureProperties } from "../geomoz-layer-templates";\n'+editor;
-editor=once(editor,"    ...GEO_EDITOR_OPTIONS,","    ...GEO_EDITOR_OPTIONS,\n    ...(!GEOMOZ_ROLLOUT.advancedDrawing ? {\n      drawModes: GEO_EDITOR_OPTIONS.drawModes.filter(mode => [\"polygon\",\"line\",\"rectangle\",\"marker\"].includes(mode)),\n      editModes: GEO_EDITOR_OPTIONS.editModes.filter(mode => [\"select\",\"drag\",\"change\",\"delete\"].includes(mode)),\n      showFeatureProperties: false,\n      enableAttributeEditing: false,\n    } : {}),","curated study-area editor");
+editor=once(editor,"    ...GEO_EDITOR_OPTIONS,","    ...GEO_EDITOR_OPTIONS,\n    drawModes: GEO_EDITOR_OPTIONS.drawModes.filter(mode => [\"polygon\",\"line\",\"rectangle\",\"circle\",\"marker\",\"freehand\",\"text_marker\"].includes(mode)),\n    showFeatureProperties: GEOMOZ_ROLLOUT.advancedDrawing,\n    enableAttributeEditing: GEOMOZ_ROLLOUT.advancedDrawing,","geological digitization modes and attribute editor");
 editor=once(editor,"if (isGeometryEditSession) geoEditorControl?.closeAttributeEditor();","if (isGeometryEditSession || !GEOMOZ_ROLLOUT.advancedDrawing) geoEditorControl?.closeAttributeEditor();","hide massing attribute form");
 editor=once(editor,
   '  if (layer.metadata.sourceKind !== ARCGIS_FEATURE_SOURCE_KIND) return undefined;',
