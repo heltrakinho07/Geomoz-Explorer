@@ -34,6 +34,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install pnpm for GeoMoz Explorer build
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js for GeoMoz Explorer
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install GeoMoz Explorer dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Verify GeoMoz Explorer build with shared icon
+        run: pnpm --filter @workspace/geomoz-react run build
+        env:
+          NODE_ENV: "production"
+          BASE_PATH: "/"
+
       - name: Checkout GeoLibre source at reviewed SHA
         uses: actions/checkout@v4
         with:
