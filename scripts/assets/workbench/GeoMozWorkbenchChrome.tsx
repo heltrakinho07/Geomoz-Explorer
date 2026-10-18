@@ -45,14 +45,14 @@ const LEGACY_ACTIONS: Record<Task, {label:string; ids:string[]}[]> = {
 };
 const TASKS: [Task,string][] = GEOMOZ_ROLLOUT.fullMenus ? LEGACY_TASKS : [["map","Área de estudo"],["data","Dados"],["analysis","Análise"],["output","Resultados"]];
 const CORE_ACTIONS: Partial<typeof LEGACY_ACTIONS> = {
-  map:[{label:"Definir a área",ids:["plugin.maplibre-gl-geo-editor","add.vector"]},{label:"Explorar o território",ids:["control.measure","control.search","view.previous","view.reset-north"]}],
+  map:[{label:"Digitalização e área de estudo",ids:["plugin.maplibre-gl-geo-editor","add.vector"]},{label:"Explorar o território",ids:["control.measure","control.search","view.previous","view.reset-north"]}],
   data:[{label:"Ficheiros locais",ids:["add.vector","add.raster","add.delimited-text"]},{label:"Serviços de mapas",ids:["add.wms","add.wfs","add.xyz","add.wmts"]}],
   analysis:[{label:"Análise vectorial",ids:["proc.vector.buffer","proc.vector.clip","proc.vector.intersection","proc.vector.dissolve","proc.vector.reproject"]},{label:"Análise do terreno",ids:["proc.raster.slope","proc.raster.hillshade","proc.raster.contour","proc.raster.clip-mask"]}],
   output:[{label:"Mapa e projecto",ids:["project.print-layout","project.save-as"]},{label:"Elementos do mapa",ids:["control.legend","control.colorbar"]}],
 };
 const ACTIONS = GEOMOZ_ROLLOUT.fullMenus ? LEGACY_ACTIONS : {...LEGACY_ACTIONS,...CORE_ACTIONS};
 const GUIDANCE:Partial<Record<Task,string>> = {
-  map:"Desenhe ou importe uma área e enquadre o território de estudo.",
+  map:"Digitalize pontos, linhas, polígonos e rectângulos ou importe uma camada. A edição geométrica básica está disponível; a edição de atributos ainda não foi activada.",
   data:"Adicione os dados do estudo. Organize as camadas no catálogo.",
   analysis:"Escolha uma ferramenta, confirme os dados e execute a análise.",
   output:"Consulte as execuções no catálogo e exporte as camadas ou a composição do mapa.",
@@ -60,8 +60,8 @@ const GUIDANCE:Partial<Record<Task,string>> = {
 const LABELS: Record<string,string> = {
   "project.new":"Novo projecto","project.examples":"Exemplos","project.open-file":"Abrir ficheiro","project.open-url":"Abrir URL",
   "project.save":"Guardar","project.save-as":"Guardar como","project.share":"Partilhar","project.collaborate":"Colaborar",
-  "project.print-layout":"Composição de mapa",
-  "plugin.maplibre-gl-geo-editor":"Desenhar área","add.delimited-text":"Tabela / CSV","add.wms":"WMS","add.wfs":"WFS","add.xyz":"XYZ","add.wmts":"WMTS","proc.vector.intersection":"Intersecção","proc.vector.reproject":"Reprojectar","proc.raster.contour":"Curvas de nível","proc.raster.clip-mask":"Recortar DEM",
+  "project.print-layout":"Layout de impressão",
+  "plugin.maplibre-gl-geo-editor":"Digitalizar / editar","add.delimited-text":"Tabela / CSV","add.wms":"WMS","add.wfs":"WFS","add.xyz":"XYZ","add.wmts":"WMTS","proc.vector.intersection":"Intersecção","proc.vector.reproject":"Reprojectar","proc.raster.contour":"Curvas de nível","proc.raster.clip-mask":"Recortar DEM",
   "add.vector":"Vector / GeoPackage","add.raster":"Raster / DEM","add.geoparquet":"GeoParquet","add.flatgeobuf":"FlatGeobuf",
   "add.stac":"Catálogo STAC","add.duckdb":"SQL / DuckDB","add.pmtiles":"PMTiles","add.zarr":"Zarr",
   "proc.planetary-computer":"Dados globais","proc.earth-engine":"Earth Engine",
