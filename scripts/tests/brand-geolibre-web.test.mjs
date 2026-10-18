@@ -42,9 +42,9 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     const legal = readFileSync(join(f.dst, "third-party-notices.html"), "utf8");
     assert.match(legal,/GeoLibre — motor GIS de código aberto/);
     assert.match(legal,/Qiusheng Wu/);
-    assert.match(legal,/GEOLIBRE-LICENSE\\.txt/);
+    assert.match(legal,/GEOLIBRE-LICENSE\.txt/);
     assert.match(html,/<html lang="pt">/);
-    assert.match(html,/content="GeoMoz GIS Workspace" \\/>/);
+    assert.match(html,/content="GeoMoz GIS Workspace"\s*\/>/);
     assert.match(html,/meta name="description" content="GeoMoz GIS Workspace:/);
     assert.doesNotMatch(html,/GeoLibre platform|content="GeoLibre"/);
 
