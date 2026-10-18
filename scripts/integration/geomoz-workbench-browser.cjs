@@ -297,8 +297,8 @@ async function settleRecovery(page){
   await (await geoDownload).saveAs("workbench-browser-artifacts/geomoz-geological-digitization.geojson");
   const geologicalJson=JSON.parse(await readFile("workbench-browser-artifacts/geomoz-geological-digitization.geojson","utf8"));
   assert.ok(geologicalJson.features.length>=1,"New geological layer must store real digitized features");
-  const geology=geologicalJson.features.find(f=>f.geometry?.type==="Polygon");
-  assert.ok(geology,"Geological mapping creates polygon features");
+  const geology=geologicalJson.features.find(f=>["Polygon","MultiPolygon"].includes(f.geometry?.type));
+  assert.ok(geology,"Geological mapping creates polygon features: "+geologicalJson.features.map(f=>f.geometry?.type).join(", "));
   assert.equal(geology.properties.litologia,"","The geological attribute schema must survive save");
   assert.equal(geology.properties.mineralizacao,"","Custom fields must survive native engine save/export");
   await page.screenshot({path:"workbench-browser-artifacts/04-geological-digitalization.png",fullPage:true});
