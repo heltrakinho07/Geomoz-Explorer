@@ -5,6 +5,7 @@
  */
 import { readFileSync,writeFileSync,mkdirSync,existsSync } from "node:fs";
 import { resolve,dirname } from "node:path";
+import { brandUpstreamLocales } from "./geomoz-brand-locales.mjs";
 const root=resolve(process.argv[2]??".geolibre-upstream");
 const app=resolve(root,"apps/geolibre-desktop/src");
 const read=path=>readFileSync(resolve(app,path),"utf8");
@@ -14,6 +15,22 @@ function once(source,needle,replacement,label){
   return source.replace(needle,replacement);
 }
 if(!existsSync(resolve(root,"LICENSE")))throw Error("Expected the pinned GeoLibre checkout with its MIT license");
+// Product identity is owned by GeoMoz; the engine remains the attributed MIT fork.
+brandUpstreamLocales(resolve(app,"i18n/locales"));
+const about=read("components/layout/AboutDialog.tsx");
+if(!about.includes("https://geolibre.app")||!about.includes("github.com/opengeos/GeoLibre")){
+  throw Error("Upstream About dialog has drifted; review product branding integration");
+}
+write("components/layout/AboutDialog.tsx",readFileSync(new URL("./assets/workbench/GeoMozAboutDialog.tsx",import.meta.url),"utf8"));
+let links=read("components/layout/toolbar/constants.ts");
+for(const [oldValue,newValue] of [
+  ['export const FEEDBACK_URL = "https://github.com/opengeos/GeoLibre/issues";','export const FEEDBACK_URL = "https://github.com/heltrakinho07/Geomoz-Explorer/issues";'],
+  ['export const WEBSITE_URL = "https://geolibre.app";','export const WEBSITE_URL = "https://geomoz.geolithica.com/";'],
+  ['export const GITHUB_URL = "https://github.com/opengeos/GeoLibre";','export const GITHUB_URL = "https://github.com/heltrakinho07/Geomoz-Explorer";'],
+]){
+  links=once(links,oldValue,newValue,"GeoMoz public site and support links");
+}
+write("components/layout/toolbar/constants.ts",links);
 let toolbar=read("components/layout/TopToolbar.tsx");
 if(toolbar.includes("GeoMozWorkbenchChrome"))throw Error("GeoMoz interface is already prepared; use a clean pinned checkout");
 toolbar='import { GeoMozWorkbenchChrome, GeoMozMenuSlot } from "../geomoz/GeoMozWorkbenchChrome";\n'+toolbar;
