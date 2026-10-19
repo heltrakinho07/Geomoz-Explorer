@@ -59,7 +59,7 @@ test("plugin lifecycle keeps the enumerable App API while callbacks remain live"
  assert.equal(context.name,"second");
 });
 
-test("GIS Workspace exposes original digitization and print layout without implying advanced attribute editing",()=>{
+test("GIS Workspace enables polygon attribute editing and advanced geometry tools",()=>{
  assert.equal(isGeoMozCommandVisible("plugin.maplibre-gl-geo-editor"),true);
  assert.equal(isGeoMozCommandVisible("project.print-layout"),true);
  const chrome=readFileSync(new URL("../assets/workbench/GeoMozWorkbenchChrome.tsx",import.meta.url),"utf8");
@@ -68,7 +68,8 @@ test("GIS Workspace exposes original digitization and print layout without imply
  assert.match(chrome,/Layout de impressão/);
  assert.match(prepare,/drawModes: GEO_EDITOR_OPTIONS.drawModes.filter/);
  assert.match(prepare,/editModes: GEO_EDITOR_OPTIONS.editModes.filter/);
- assert.match(prepare,/enableAttributeEditing: false/);
- assert.match(prepare,/showFeatureProperties: false/);
- assert.equal(GEOMOZ_ROLLOUT.advancedDrawing,false,"Advanced attribute digitizing has not been certified");
+ assert.match(prepare,/attributeSchema/);
+ assert.match(prepare,/name: "litologia"/);
+ assert.equal(GEOMOZ_ROLLOUT.advancedDrawing,true);
+ assert.equal(GEOMOZ_ROLLOUT.fullLayerManager,true);
 });
