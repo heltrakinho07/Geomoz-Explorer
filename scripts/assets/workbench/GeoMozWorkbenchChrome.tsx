@@ -52,7 +52,7 @@ const CORE_ACTIONS: Partial<typeof LEGACY_ACTIONS> = {
 };
 const ACTIONS = GEOMOZ_ROLLOUT.fullMenus ? LEGACY_ACTIONS : {...LEGACY_ACTIONS,...CORE_ACTIONS};
 const GUIDANCE:Partial<Record<Task,string>> = {
-  map:"Digitalize pontos, linhas, polígonos e rectângulos ou importe uma camada. A edição geométrica básica está disponível; a edição de atributos ainda não foi activada.",
+  map:"Digitalize pontos, linhas, polígonos e rectângulos, edite geometrias e preencha atributos no formulário do editor. Organize unidades geológicas e falhas em camadas, configure simbologia e guarde o projecto.",
   data:"Adicione os dados do estudo. Organize as camadas no catálogo.",
   analysis:"Escolha uma ferramenta, confirme os dados e execute a análise.",
   output:"Consulte as execuções no catálogo e exporte as camadas ou a composição do mapa.",
