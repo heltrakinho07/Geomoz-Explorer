@@ -51,7 +51,7 @@ describe("GeoAnálises: scroll and responsive inspector", () => {
   });
 
   it("fixes mobile filter drawer width and avoids static 100vh on smartphone shell", () => {
-    expect(analytics).toContain("w-[min(88vw,22rem)]");
+    expect(analytics).toContain("w-[min(94vw,26rem)]");
     expect(analytics).toContain('useState(false);\n  const [resultsPanelOpen');
     expect(analytics).toContain('aria-label="Abrir filtros e parâmetros"');
     expect(shell).toContain("h-[100dvh]");
