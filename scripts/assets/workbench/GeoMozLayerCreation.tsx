@@ -1,10 +1,8 @@
 import {useState} from "react";
 import {useAppStore} from "@geolibre/core";
-import type {MapEngine} from "@geolibre/map";
-import type {RefObject} from "react";
-import {Layers3,Plus,Info,X,PenLine} from "lucide-react";
+import {Layers3,Plus,Info,X} from "lucide-react";
 import {CARTOGRAPHIC_TEMPLATES,newCartographicGeoJSON,specById,validateCartographicName,type CartographicTemplate,type CartographicGeometry} from "./geomoz-cartography";
-export function GeoMozLayerCreation({onClose,mapControllerRef}:{onClose:()=>void;mapControllerRef:RefObject<MapEngine|null>}){
+export function GeoMozLayerCreation({onClose}:{onClose:()=>void}){
  const [kind,setKind]=useState<CartographicTemplate>("geology");
  const [title,setTitle]=useState("Unidades geológicas");
  const [geometry,setGeometry]=useState<CartographicGeometry>("Polygon");
@@ -43,9 +41,9 @@ export function GeoMozLayerCreation({onClose,mapControllerRef}:{onClose:()=>void
   <div className="gm-cartography-fields"><strong>Atributos recomendados</strong>
    <div>{specById(kind).fields.map(f=><span key={f.name} title={f.description}>{f.name}<small>{f.type==="number"?"numérico":"texto"}</small></span>)}</div>
   </div>
-  <p className="gm-cartography-note"><Info size={14}/> Depois de criar, seleccione «Digitalizar / editar», use a ferramenta geométrica adequada e preencha os atributos no formulário nativo. Guarde o projecto e exporte GeoJSON para partilhar.</p>
+  <p className="gm-cartography-note"><Info size={14}/> Depois de criar, seleccione a camada no catálogo e clique em «Digitalizar nesta camada». Desenhe geometrias reais, preencha os atributos no editor nativo e termine com «Concluir e guardar edição». Exporte GeoJSON e guarde o projecto.</p>
   {error&&<p role="alert" className="gm-cartography-error">{error}</p>}
-  {created&&<p role="status" className="gm-cartography-created">Camada «{created}» criada. Seleccione Digitalizar / editar para desenhar as feições.</p>}
+  {created&&<p role="status" className="gm-cartography-created">Camada «{created}» criada. No catálogo, seleccione «Digitalizar nesta camada» para desenhar e editar as feições.</p>}
   <button type="button" onClick={create} disabled={!canAdd} className="gm-cartography-create"><Plus size={16}/> Criar camada vazia</button>
  </section>;
 }
