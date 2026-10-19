@@ -9,7 +9,7 @@ export const GEOMOZ_ROLLOUT = Object.freeze({
   immersive: false,
   advancedDrawing: true,
   fullMenus: false,
-  fullLayerManager: false,
+  fullLayerManager: true,
 });
 export type Rollout = {readonly [K in keyof typeof GEOMOZ_ROLLOUT]:boolean};
 export const CORE_VECTOR_TOOLS = Object.freeze(["buffer","clip","intersection","dissolve","reproject"]);
