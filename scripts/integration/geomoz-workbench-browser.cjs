@@ -235,13 +235,19 @@ async function settleRecovery(page){
   const editor=page.locator(".geo-editor-toolbar");
   await editor.waitFor();
   assert.equal(await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').getAttribute("aria-pressed"),"true");
-  assert.equal(await editor.locator('button[data-mode="massing"]').count(),0,"3D massing stays hidden");
+  await editor.locator('button[data-mode="polygon"]').waitFor();
+  // Advanced feature attributes and geometry tools now belong to the GeoMoz GIS edition.
   await editor.locator('button[data-mode="line"]').waitFor();
   await editor.locator('button[data-mode="polygon"]').click();
   const canvas=await page.locator("main canvas").first().boundingBox();
   const at=(x,y)=>({x:canvas.x+canvas.width*x,y:canvas.y+canvas.height*y});
   const a=at(.55,.35),b=at(.8,.35),c=at(.8,.65),d=at(.55,.65);
   await page.mouse.click(a.x,a.y);await page.mouse.click(b.x,b.y);await page.mouse.click(c.x,c.y);await page.mouse.dblclick(d.x,d.y);
+  const attributes=page.locator(".geo-editor-attribute-panel:not(.attribute-panel--hidden)");
+  await attributes.waitFor({timeout:12000});
+  await attributes.getByLabel("Litologia").fill("Granito gnaisse");
+  await attributes.getByLabel("Unidade geológica").fill("Unidade A");
+  await attributes.getByLabel("Código da unidade").fill("A1");
   await page.locator('.gm-layer-row[data-layer-name="Sketches"]').waitFor();
   await page.locator('.gm-layer-row[data-layer-name="Sketches"] .gm-layer-select').click();
   await page.locator(".gm-layer-properties summary").click();
@@ -250,9 +256,14 @@ async function settleRecovery(page){
   await (await areaDownload).saveAs("workbench-browser-artifacts/study-area.geojson");
   const area=JSON.parse(await readFile("workbench-browser-artifacts/study-area.geojson","utf8"));
   assert.ok(area.features.some(feature=>["Polygon","MultiPolygon"].includes(feature.geometry?.type)),"The drawn area must contain real polygon geometry");
-  assert.equal(await page.locator(".geo-editor-attribute-panel:not(.attribute-panel--hidden)").isVisible(),false,"The 3D height form must stay hidden");
-  console.log("Study polygon drawn and exported with real geometry; 3D controls hidden.");
+  assert.ok(area.features.some(feature=>feature.properties?.litologia==="Granito gnaisse"&&feature.properties?.unidade==="Unidade A"),"Geological feature attributes must persist into exported GeoJSON");
+  console.log("Study polygon drawn and exported with real geometry; geological digitization is enabled.");
   await page.screenshot({path:"workbench-browser-artifacts/03c-geomoz-study-area.png",fullPage:true});
+  await page.getByTestId("geomoz-new-geology-map").click();
+  for(const layerName of ["Unidades geológicas","Falhas e lineamentos","Pontos de observação"]){
+    await page.locator(".gm-layer-row").filter({hasText:layerName}).waitFor();
+  }
+  console.log("GeoMoz geological layers created in GIS catalog.");
   await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').click();
   console.log("Drawing command state after finishing:",await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').getAttribute("aria-pressed"));
   await editor.waitFor({state:"hidden",timeout:15000});
