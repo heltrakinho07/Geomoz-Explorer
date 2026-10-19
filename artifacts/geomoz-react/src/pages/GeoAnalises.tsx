@@ -5,9 +5,8 @@ import { useProject } from "@/context/ProjectContext";
 /**
  * GeoAnálises — Sentinel-2 spectral analysis module.
  *
- * Two modes:
- *  GEE Mode  — real Sentinel-2 imagery from Google Earth Engine (requires credentials)
- *  Proxy Mode — synthetic spectral maps derived from geological attributes (always available)
+ * Real satellite products from Google Earth Engine (requires credentials).
+ * Unvalidated analyses are blocked by the scientific catalogue.
  *
  * GEE tile URLs returned by the Python API are valid for ~24 h and served
  * directly by Google's infrastructure — Leaflet fetches them with no additional auth.
@@ -4067,6 +4066,50 @@ export default function GeoAnalises({
                       onChange={e => setGeeCloudPct(Number(e.target.value))}
                       className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
                     />
+                  </div>
+
+                  <div className="space-y-2.5 rounded-xl border border-slate-200 bg-white/70 p-2.5 dark:border-slate-700 dark:bg-slate-900/40">
+                    <label htmlFor="gee-processing-mode" className="flex items-center justify-between gap-2 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                      <span>Profundidade da análise</span>
+                      <Clock size={13} className="text-sky-500" />
+                    </label>
+                    <select
+                      id="gee-processing-mode"
+                      value={processingMode}
+                      onChange={e => setProcessingMode(e.target.value as "fast" | "balanced" | "detailed")}
+                      disabled={isCalculatingActiveIndex}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    >
+                      <option value="fast">Rápido — mapa primeiro</option>
+                      <option value="balanced">Equilibrado — estatísticas básicas</option>
+                      <option value="detailed">Detalhado — percentis e análise completa</option>
+                    </select>
+                    <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+                      {processingMode === "fast"
+                        ? "Reduz consultas de estatísticas; os píxeis e as cenas continuam reais."
+                        : processingMode === "balanced"
+                          ? "Calcula média e extremos numa amostragem de 250 m; não altera a resolução do mapa."
+                          : "Calcula percentis, dispersão e área. Pode demorar mais em regiões extensas."}
+                      {" "}Aplica-se a índices espectrais, não a ferramentas especializadas.
+                    </p>
+                    <div className="flex items-center justify-between text-[10px] text-slate-600 dark:text-slate-300">
+                      <label htmlFor="gee-wait-limit">Limite de espera</label>
+                      <strong>{processingTimeLimit} s</strong>
+                    </div>
+                    <input
+                      id="gee-wait-limit"
+                      type="range"
+                      min={60}
+                      max={240}
+                      step={30}
+                      value={processingTimeLimit}
+                      onChange={e => setProcessingTimeLimit(Number(e.target.value))}
+                      disabled={isCalculatingActiveIndex}
+                      className="w-full accent-sky-600"
+                    />
+                    <p className="text-[10px] text-slate-400">
+                      Este limite interrompe a espera no navegador, não garante cancelar o processamento no servidor.
+                    </p>
                   </div>
 
                   {needsPrePeriod && (
