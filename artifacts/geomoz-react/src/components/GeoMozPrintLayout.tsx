@@ -75,7 +75,10 @@ export default function GeoMozPrintLayout({open,onClose,moduleName,projectName,p
       setSnapshot(img);
       setWarning("Confirme visualmente a imagem antes de imprimir. Alguns mapas WebGL ou fundos externos podem não ser capturados pelo navegador.");
     }catch(e){
-      setError("O navegador não conseguiu capturar esta vista. Verifique a ligação e as permissões CORS dos mapas, ou utilize a «Composição de mapa» nativa do GIS Workspace. "+(e instanceof Error?e.message:""));
+      const detail=e instanceof Error?e.message:"";
+      setError(/unsupported color|parse.*color/i.test(detail)
+        ? "Não foi possível interpretar as cores desta vista. Actualize a página e tente novamente. "+detail
+        : "O navegador não conseguiu capturar esta vista. Verifique a ligação e as permissões CORS dos mapas, ou utilize a «Composição de mapa» nativa do GIS Workspace. "+detail);
     }finally{setBusy(false);setIsCapturing(false);}
   },[open,printSourceId,isCapturing]);
   useEffect(()=>{
