@@ -123,7 +123,7 @@ writeFileSync(resolve(root,"packages/plugins/src/geomoz-workbench-profile.ts"),r
 const editorPath=resolve(root,"packages/plugins/src/plugins/maplibre-geo-editor.ts");
 let editor=readFileSync(editorPath,"utf8");
 editor='import { GEOMOZ_ROLLOUT } from "../geomoz-workbench-profile";\n'+editor;
-editor=once(editor,"    ...GEO_EDITOR_OPTIONS,","    ...GEO_EDITOR_OPTIONS,\n    ...(!GEOMOZ_ROLLOUT.advancedDrawing ? {\n      drawModes: GEO_EDITOR_OPTIONS.drawModes.filter(mode => [\"polygon\",\"line\",\"rectangle\",\"marker\"].includes(mode)),\n      editModes: GEO_EDITOR_OPTIONS.editModes.filter(mode => [\"select\",\"drag\",\"change\",\"delete\"].includes(mode)),\n      showFeatureProperties: false,\n      enableAttributeEditing: false,\n    } : {}),","curated study-area editor");
+editor=once(editor,"    ...GEO_EDITOR_OPTIONS,","    ...GEO_EDITOR_OPTIONS,\n    ...(!GEOMOZ_ROLLOUT.advancedDrawing ? {\n      drawModes: GEO_EDITOR_OPTIONS.drawModes.filter(mode => [\"polygon\",\"line\",\"rectangle\",\"marker\"].includes(mode)),\n      editModes: GEO_EDITOR_OPTIONS.editModes.filter(mode => [\"select\",\"drag\",\"change\",\"delete\"].includes(mode)),\n      showFeatureProperties: false,\n      enableAttributeEditing: false,\n    } : { drawModes: GEO_EDITOR_OPTIONS.drawModes.filter(mode => mode !== "massing") }),","curated study-area editor");
 editor=once(editor,"if (isGeometryEditSession) geoEditorControl?.closeAttributeEditor();","if (isGeometryEditSession || !GEOMOZ_ROLLOUT.advancedDrawing) geoEditorControl?.closeAttributeEditor();","hide massing attribute form");
 writeFileSync(editorPath,editor);
 // Product identity is owned by GeoMoz; the engine remains the attributed MIT fork.
