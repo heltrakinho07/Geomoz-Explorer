@@ -1,6 +1,7 @@
 import type {RefObject} from "react";
 import type {MapEngine} from "@geolibre/map";
 import {GeoMozSeismicPanel} from "./GeoMozSeismicPanel";
+import {GeoMozLayerCreation} from "./GeoMozLayerCreation";
 import {AboutDialog} from "../layout/AboutDialog";
 import { GEOMOZ_ROLLOUT, curateGeoMozCommands } from "../../lib/geomoz-workbench-profile";
 import { createContext, useContext, useState, type ReactNode } from "react";
@@ -52,7 +53,7 @@ const CORE_ACTIONS: Partial<typeof LEGACY_ACTIONS> = {
 };
 const ACTIONS = GEOMOZ_ROLLOUT.fullMenus ? LEGACY_ACTIONS : {...LEGACY_ACTIONS,...CORE_ACTIONS};
 const GUIDANCE:Partial<Record<Task,string>> = {
-  map:"Digitalize pontos, linhas, polígonos e rectângulos ou importe uma camada. A edição geométrica básica está disponível; a edição de atributos ainda não foi activada.",
+  map:"Digitalize camadas geológicas e temáticas com ferramentas de criação, edição geométrica e formulário de atributos. Guarde o projecto e exporte resultados reais.",
   data:"Adicione os dados do estudo. Organize as camadas no catálogo.",
   analysis:"Escolha uma ferramenta, confirme os dados e execute a análise.",
   output:"Consulte as execuções no catálogo e exporte as camadas ou a composição do mapa.",
@@ -91,6 +92,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   const [more,setMore]=useState(false);
   const [aboutOpen,setAboutOpen]=useState(false);
   const [seismicOpen,setSeismicOpen]=useState(false);
+  const [layerWizardOpen,setLayerWizardOpen]=useState(false);
   const activeTask:Task=viewer?"map":task;
   const curated=curateGeoMozCommands(commands);
   const visibleCommands=viewer?curated.filter(command=>command.id.startsWith("view.")):curated;
@@ -128,11 +130,13 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
           return <button key={command.id} type="button" data-command={command.id} aria-pressed={command.id==="plugin.maplibre-gl-geo-editor"?command.keywords?.includes("deactivate"):undefined} disabled={!!command.disabledReason}
             title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={19}/><span>{command.id==="plugin.maplibre-gl-geo-editor"&&command.keywords?.includes("deactivate")?"Terminar desenho":LABELS[command.id]??command.title}</span></button>;
         })}</div><small>{group.label}</small></section>)}
+        {!viewer&&(activeTask==="data"||activeTask==="map")&&<section className="gm-ribbon-group"><div><button type="button" data-testid="geomoz-create-layer" onClick={()=>setLayerWizardOpen(true)}><Layers3 size={19}/><span>Nova camada</span></button></div><small>Cartografia geológica / temática</small></section>}
         {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-seismic" aria-expanded={seismicOpen} onClick={()=>setSeismicOpen(!seismicOpen)}><Activity size={19}/><span>Catálogos sísmicos</span></button></div><small>Dados GeoMoz · USGS / ISC</small></section>}
         {!groups.length&&<p className="gm-ribbon-empty"><Compass size={22}/> As opções disponíveis estão nos menus desta tarefa.</p>}</div>
         {GEOMOZ_ROLLOUT.fullMenus&&<button type="button" className="gm-more-tools" aria-expanded={more} onClick={()=>setMore(!more)}>Mais opções <ChevronDown size={14}/></button>}
       </div>
       <p className="gm-task-guidance" role="status" hidden={more}>{viewer?"Explore as camadas e navegue no mapa. Esta sessão está em modo de leitura.":GUIDANCE[activeTask]}</p>
+      {layerWizardOpen&&!viewer&&<GeoMozLayerCreation onClose={()=>setLayerWizardOpen(false)}/>}
       {seismicOpen&&!viewer&&<GeoMozSeismicPanel mapControllerRef={mapControllerRef} onClose={()=>{setSeismicOpen(false);if(task==="seismic")setTask("data");}}/>}
     </header>
     <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} renderTrigger={false}/>

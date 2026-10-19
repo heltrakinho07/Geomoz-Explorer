@@ -250,13 +250,33 @@ async function settleRecovery(page){
   await (await areaDownload).saveAs("workbench-browser-artifacts/study-area.geojson");
   const area=JSON.parse(await readFile("workbench-browser-artifacts/study-area.geojson","utf8"));
   assert.ok(area.features.some(feature=>["Polygon","MultiPolygon"].includes(feature.geometry?.type)),"The drawn area must contain real polygon geometry");
-  assert.equal(await page.locator(".geo-editor-attribute-panel:not(.attribute-panel--hidden)").isVisible(),false,"The 3D height form must stay hidden");
+  assert.ok(await editor.locator('button[data-mode="line"]').isVisible(),"GIS editor remains active for attribute digitization");
   console.log("Study polygon drawn and exported with real geometry; 3D controls hidden.");
   await page.screenshot({path:"workbench-browser-artifacts/03c-geomoz-study-area.png",fullPage:true});
   await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').click();
   console.log("Drawing command state after finishing:",await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').getAttribute("aria-pressed"));
   await editor.waitFor({state:"hidden",timeout:15000});
   console.log("Drawing ended; ordinary map navigation restored.");
+  await page.getByTestId("geomoz-create-layer").click();
+  const wizard=page.getByTestId("geomoz-cartography-wizard");
+  await wizard.waitFor();
+  await wizard.getByLabel("Modelo cartográfico").selectOption("faults");
+  assert.equal(await wizard.getByLabel("Geometria da camada").inputValue(),"LineString");
+  await wizard.getByRole("button",{name:"Criar camada vazia"}).click();
+  await wizard.getByText(/Camada «Falhas e lineamentos» criada/).waitFor();
+  await page.locator('.gm-layer-row[data-layer-name="Falhas e lineamentos"]').first().waitFor();
+  await wizard.getByRole("button",{name:"Fechar assistente"}).click();
+  console.log("QGIS-style geological line layer created in the native GeoJSON store.");
+  // Native in-place session writes to the selected geological layer,
+  // rather than silently accumulating all sketches in a generic layer.
+  await page.getByTestId("geomoz-edit-layer").click();
+  await page.getByTestId("geomoz-edit-layer").getByText("Concluir e guardar edição").waitFor();
+  await page.locator(".geo-editor-toolbar").waitFor();
+  await page.getByTestId("geomoz-edit-layer").click();
+  await page.getByTestId("geomoz-edit-layer").getByText("Digitalizar nesta camada").waitFor();
+  console.log("In-place geological layer editing toggles with native save callback.");
+
+
   await page.locator('.gm-menu-slot:not([hidden]) button').first().click();
   await page.getByRole("menu").first().waitFor();
   await page.keyboard.press("Escape");

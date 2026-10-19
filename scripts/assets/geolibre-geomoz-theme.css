@@ -335,3 +335,24 @@ html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0
   .gm-seismic-analysis-inputs{grid-template-columns:1fr 1fr;}
   .gm-seismic-gr{grid-template-columns:1fr;}
 }
+
+/* Cartografia GeoMoz: assistente de digitalização integrado no ribbon. */
+.gm-cartography-wizard{position:absolute;top:calc(100% + 6px);left:clamp(12px,14vw,280px);z-index:1400;width:min(430px,calc(100vw - 24px));max-height:calc(100dvh - 190px);overflow:auto;border-radius:12px;border:1px solid var(--gm-line);background:var(--gm-surface);box-shadow:0 18px 50px #02061750;padding:15px;display:grid;gap:11px;font-size:11px;color:var(--gm-text)}
+.gm-cartography-wizard>header{display:flex;align-items:center;justify-content:space-between;gap:9px}
+.gm-cartography-wizard h3{display:flex;gap:8px;align-items:center;font-weight:800;font-size:14px}
+.gm-cartography-wizard>p{line-height:1.6;color:var(--gm-subtle)}
+.gm-cartography-wizard>header button{display:inline-flex;align-items:center;justify-content:center;border-radius:7px;border:1px solid var(--gm-line);min-height:32px;min-width:32px}
+.gm-cartography-wizard>label{display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:650}
+.gm-cartography-wizard :is(input,select){border:1px solid var(--gm-line);background:var(--gm-muted);color:var(--gm-text);min-width:0;width:100%;padding:9px;border-radius:7px;font-size:12px;min-height:36px}
+.gm-cartography-fields{padding:11px;border:1px solid var(--gm-line);border-radius:8px}
+.gm-cartography-fields strong{display:block;margin-bottom:8px;font-weight:700}
+.gm-cartography-fields>div{display:flex;gap:5px;flex-wrap:wrap}
+.gm-cartography-fields span{display:flex;gap:5px;align-items:center;padding:4px 6px;background:var(--gm-muted);border:1px solid var(--gm-line);border-radius:5px;font-size:10px}
+.gm-cartography-fields small{color:var(--gm-subtle);font-size:9px}
+.gm-cartography-wizard .gm-cartography-note{display:flex;align-items:flex-start;gap:7px;padding:9px;background:var(--gm-muted);border-radius:7px}
+.gm-cartography-wizard .gm-cartography-note svg{flex:none;margin-top:1px}
+.gm-cartography-wizard .gm-cartography-created{color:#16a34a}
+.gm-cartography-wizard .gm-cartography-error{color:#ef4444}
+.gm-cartography-wizard button.gm-cartography-create{display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid #0369a1;border-radius:7px;background:#0284c7;color:white;font-weight:750;padding:10px;min-height:38px}
+.gm-cartography-wizard button:focus-visible{outline:2px solid #0284c7;outline-offset:2px}
+@media(max-width:720px){.gm-cartography-wizard{left:12px;top:100%;width:calc(100vw - 24px);max-height:55dvh}}
