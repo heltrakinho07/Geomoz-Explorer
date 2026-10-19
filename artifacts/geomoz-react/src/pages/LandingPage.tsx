@@ -307,7 +307,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
       ctaFinal: {
         title: "Pronto para elevar a sua análise geoespacial a outro nível?",
         subtitle:
-          "Sem necessidade de downloads pesados ou configurações complexas de servidores SIG. Abra o GeoMoz Explorer e processe inteligência planetária em segundos.",
+          "Sem necessidade de downloads pesados ou configurações complexas de servidores SIG. Abra o GeoMoz e processe inteligência planetária em segundos.",
         ctaLaunch: "Entrar na Plataforma",
         ctaRegister: "Criar Conta Gratuita",
         disclaimer: "Aceleração WebGL 3D • Google Earth Engine API • Dados abertos da ESA e NASA",
@@ -499,7 +499,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
       ctaFinal: {
         title: "Ready to elevate your territorial intelligence?",
         subtitle:
-          "No bulky desktop GIS installations, no license hurdles. Open GeoMoz Explorer and start processing planetary intelligence in seconds.",
+          "No bulky desktop GIS installations, no license hurdles. Open GeoMoz and start processing planetary intelligence in seconds.",
         ctaLaunch: "Enter Platform",
         ctaRegister: "Create Free Account",
         disclaimer: "3D WebGL Acceleration • Google Earth Engine API • Open datasets from ESA & NASA",
@@ -728,12 +728,12 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                   isDark ? "bg-slate-950 text-sky-400" : "bg-white text-sky-600"
                 }`}
               >
-                <Globe size={20} className="group-hover:rotate-45 transition-transform duration-500" />
+                <img src="/favicon.svg" alt="" aria-hidden="true" className="w-full h-full object-contain" />
               </div>
             </div>
             <div className="flex flex-col">
               <span className="text-base font-black tracking-tight flex items-center gap-1.5">
-                GeoMoz<span className="text-sky-600 dark:text-sky-400">Explorer</span>
+                GeoMoz
                 <span className="text-[9px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/30">
                   3D
                 </span>
@@ -814,7 +814,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
               <button
                 type="button"
                 onClick={promptInstall}
-                title={lang === "pt" ? "Instalar GeoMoz Explorer no Computador / Telemóvel" : "Install GeoMoz Explorer App"}
+                title={lang === "pt" ? "Instalar GeoMoz no Computador / Telemóvel" : "Install GeoMoz App"}
                 className="hidden sm:flex h-9 px-2.5 rounded-xl border border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 text-xs font-bold items-center gap-1.5 hover:bg-sky-100 dark:hover:bg-sky-900/60 transition-all shadow-xs cursor-pointer"
               >
                 <Download size={14} className="text-sky-500" />
@@ -2333,11 +2333,9 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8 text-left">
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-sky-600 text-white flex items-center justify-center">
-                  <Globe size={16} />
-                </div>
+                <img src="/favicon.svg" alt="" aria-hidden="true" className="w-7 h-7 rounded-lg" />
                 <span className="font-bold text-slate-900 dark:text-white text-sm">
-                  GeoMoz Explorer 3D
+                  GeoMoz
                 </span>
               </div>
               <p className="text-[11px] leading-relaxed">{t.footer.desc}</p>
