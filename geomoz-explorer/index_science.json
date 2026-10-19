@@ -383,7 +383,7 @@
     "source": "https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MOD11A2",
     "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
     "name": "Temperatura Superficial (MODIS LST)",
-    "formula": "LST_Day_1km × 0.02 − 273.15; média do período, QC válido",
+    "formula": "MODIS MOD11A2: LST_Day_1km × 0.02 − 273.15; média do período, QC válido",
     "bands": "MODIS LST diurno e QC_Day (°C)"
   },
   "cyclone_tracks": {
