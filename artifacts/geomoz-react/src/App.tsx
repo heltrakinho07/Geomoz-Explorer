@@ -135,6 +135,7 @@ export default function App() {
                 <Route path="/view/hidro">{() => <HidroWebGisViewer />}</Route>
                 <Route path="/share/hidro/:id">{(params) => <HidroWebGisViewer id={params.id} />}</Route>
                 <Route path="/app">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+                <Route path="/gis-workspace">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/explorer">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/mapa">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/estatisticas">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>

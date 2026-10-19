@@ -200,7 +200,7 @@ export default function DashboardPanel({
                 <span>Centro de Comando Geoespacial</span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-                GeoMoz <span className="text-sky-400">Explorer</span>
+                GeoMoz
               </h1>
               <p className="text-sm text-slate-300 leading-relaxed">
                 Plataforma profissional de estudos geoespaciais integrados. Conduza projetos desde a delimitação da área de estudo, processamento de satélite, modelação hidrológica até à emissão de dossiês técnicos.
@@ -599,7 +599,7 @@ export default function DashboardPanel({
 
         {/* 6. Footer */}
         <div className="text-center text-xs text-slate-400 dark:text-slate-600 pb-4">
-          GeoMoz Explorer · Infraestrutura Geoespacial de Moçambique · {new Date().getFullYear()}
+          GeoMoz · Infraestrutura Geoespacial de Moçambique · {new Date().getFullYear()}
         </div>
       </div>
     </div>

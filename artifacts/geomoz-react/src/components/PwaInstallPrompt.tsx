@@ -100,7 +100,7 @@ export default function PwaInstallPrompt() {
               <Smartphone size={20} />
             </div>
             <div>
-              <h4 className="text-xs font-bold leading-tight">Instalar GeoMoz Explorer</h4>
+              <h4 className="text-xs font-bold leading-tight">Instalar GeoMoz</h4>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
                 Acesso rápido no ecrã principal e funcionamento offline.
               </p>

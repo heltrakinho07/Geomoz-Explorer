@@ -141,20 +141,18 @@ export default function Sidebar({
       {/* 1. Header: Brand Logo & Collapse Toggle */}
       <div className="h-16 px-4 flex items-center justify-between border-b border-slate-200/80 dark:border-slate-850 shrink-0">
         <Link
-          href="/"
+          href="/app"
           className="flex items-center gap-3 overflow-hidden hover:opacity-90 transition-opacity cursor-pointer"
-          title="GeoMoz Explorer — Início"
+          title="GeoMoz — Início"
         >
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-sky-500/20 shrink-0">
-            <Globe size={20} />
-          </div>
+          <img src="/favicon.svg" alt="" aria-hidden="true" className="w-9 h-9 rounded-xl shadow-md shadow-sky-500/20 shrink-0" />
           {!collapsed && (
             <div className="flex flex-col min-w-0">
               <span className="font-black text-slate-900 dark:text-white tracking-tight text-base whitespace-nowrap">
-                GeoMoz <span className="text-sky-600 dark:text-sky-400">Explorer</span>
+                GeoMoz
               </span>
               <span className="text-xs text-slate-500 dark:text-slate-400 font-medium tracking-normal truncate">
-                Estudos Geoespaciais
+                Plataforma Geoespacial
               </span>
             </div>
           )}
@@ -332,7 +330,7 @@ export default function Sidebar({
               className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border border-sky-300 dark:border-sky-800 text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 dark:hover:bg-sky-900/60 transition-all cursor-pointer shadow-xs ${
                 collapsed ? "w-full justify-center px-0 mt-1" : ""
               }`}
-              title="Instalar GeoMoz Explorer como Aplicação"
+              title="Instalar GeoMoz como Aplicação"
             >
               <Download size={15} className="shrink-0 text-sky-500" />
               {!collapsed && <span>Instalar App</span>}

@@ -378,6 +378,12 @@ export default function Explorer() {
           title: "Mapa Geoespacial",
           subtitle: "2D / 3D Hipsometria & Relevo",
         };
+      case "GIS Workspace":
+        return {
+          icon: <Layers size={18} className="text-sky-500 shrink-0" />,
+          title: "GIS Workspace",
+          subtitle: "Cartografia, camadas e geoprocessamento num só ambiente",
+        };
       case "GeoAnálises":
         return {
           icon: <Satellite size={18} className="text-indigo-500 shrink-0" />,
@@ -424,7 +430,7 @@ export default function Explorer() {
       default:
         return {
           icon: <LayoutDashboard size={18} className="text-sky-500 shrink-0" />,
-          title: "GeoMoz Explorer",
+          title: "GeoMoz",
           subtitle: "Plataforma de Estudos Geoespaciais",
         };
     }
