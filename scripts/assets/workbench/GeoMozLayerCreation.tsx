@@ -10,6 +10,7 @@ export function GeoMozLayerCreation({onClose}:{onClose:()=>void}){
  const [created,setCreated]=useState("");
  const add=useAppStore(s=>s.addGeoJsonLayer);
  const setStyle=useAppStore(s=>s.setLayerStyle);
+ const updateLayer=useAppStore(s=>s.updateLayer);
  const select=useAppStore(s=>s.selectLayer);
  const canAdd=useAppStore(s=>s.deploymentCapabilities.has("data:add"));
  const selectKind=(id:CartographicTemplate)=>{
@@ -25,6 +26,7 @@ export function GeoMozLayerCreation({onClose}:{onClose:()=>void}){
      // GeoEditor, not prepopulated with fabricated field observations.
      const fc=newCartographicGeoJSON({...template,geometry});
      const id=add(name,fc);
+     updateLayer(id,{attributeForm:{fields:template.fields.map(field=>({field:field.name,widget:field.type==="number"?"number" as const:"text" as const,alias:field.description,valueType:field.type==="number"?"number" as const:"string" as const}))}});
      setStyle(id,{fillColor:template.color,strokeColor:template.id==="faults"?"#991b1b":"#334155",strokeWidth:1.7,circleRadius:6});
      select(id);
      setCreated(name);setError("");
