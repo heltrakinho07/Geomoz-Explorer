@@ -25,7 +25,7 @@ export function GeoMozLayerCreation({onClose}:{onClose:()=>void}){
      // GeoEditor, not prepopulated with fabricated field observations.
      const fc=newCartographicGeoJSON({...template,geometry});
      const id=add(name,fc);
-     setStyle(id,{fillColor:template.color,strokeColor:template.id==="faults"?"#991b1b":"#334155",strokeWidth:1.7,circleRadius:6,labelField:template.labelField});
+     setStyle(id,{fillColor:template.color,strokeColor:template.id==="faults"?"#991b1b":"#334155",strokeWidth:1.7,circleRadius:6});
      select(id);
      setCreated(name);setError("");
    }catch(e){setError(e instanceof Error?e.message:"Não foi possível criar a camada.");}
