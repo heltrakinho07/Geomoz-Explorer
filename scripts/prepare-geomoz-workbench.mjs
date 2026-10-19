@@ -125,6 +125,10 @@ let editor=readFileSync(editorPath,"utf8");
 editor='import { GEOMOZ_ROLLOUT } from "../geomoz-workbench-profile";\n'+editor;
 editor=once(editor,"    ...GEO_EDITOR_OPTIONS,","    ...GEO_EDITOR_OPTIONS,\n    ...(!GEOMOZ_ROLLOUT.advancedDrawing ? {\n      drawModes: GEO_EDITOR_OPTIONS.drawModes.filter(mode => [\"polygon\",\"line\",\"rectangle\",\"marker\"].includes(mode)),\n      editModes: GEO_EDITOR_OPTIONS.editModes.filter(mode => [\"select\",\"drag\",\"change\",\"delete\"].includes(mode)),\n      showFeatureProperties: false,\n      enableAttributeEditing: false,\n    } : {}),","curated study-area editor");
 editor=once(editor,"if (isGeometryEditSession) geoEditorControl?.closeAttributeEditor();","if (isGeometryEditSession || !GEOMOZ_ROLLOUT.advancedDrawing) geoEditorControl?.closeAttributeEditor();","hide massing attribute form");
+// The GeoMoz lithology/structural inventory requires typed attributes on newly
+// digitalized features. Keep the upstream editor callbacks and sketch sync intact.
+editor=once(editor,'    attributeSchema: {\\n      polygon: [\\n        {\\n          name: "height",','    attributeSchema: {\\n      polygon: [\\n        {\\n          name: "unidade", label: "Unidade geológica", type: "text" },\\n        { name: "litologia", label: "Litologia", type: "text" },\\n        { name: "idade", label: "Idade geológica", type: "text" },\\n        { name: "codigo", label: "Código da unidade", type: "text" },\\n        {\\n          name: "height",',"geological polygon attribute fields");
+
 writeFileSync(editorPath,editor);
 // Product identity is owned by GeoMoz; the engine remains the attributed MIT fork.
 brandUpstreamLocales(resolve(app,"i18n/locales"));
