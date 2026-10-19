@@ -136,7 +136,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
         {GEOMOZ_ROLLOUT.fullMenus&&<button type="button" className="gm-more-tools" aria-expanded={more} onClick={()=>setMore(!more)}>Mais opções <ChevronDown size={14}/></button>}
       </div>
       <p className="gm-task-guidance" role="status" hidden={more}>{viewer?"Explore as camadas e navegue no mapa. Esta sessão está em modo de leitura.":GUIDANCE[activeTask]}</p>
-      {layerWizardOpen&&!viewer&&<GeoMozLayerCreation mapControllerRef={mapControllerRef} onClose={()=>setLayerWizardOpen(false)}/>}
+      {layerWizardOpen&&!viewer&&<GeoMozLayerCreation onClose={()=>setLayerWizardOpen(false)}/>}
       {seismicOpen&&!viewer&&<GeoMozSeismicPanel mapControllerRef={mapControllerRef} onClose={()=>{setSeismicOpen(false);if(task==="seismic")setTask("data");}}/>}
     </header>
     <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} renderTrigger={false}/>
