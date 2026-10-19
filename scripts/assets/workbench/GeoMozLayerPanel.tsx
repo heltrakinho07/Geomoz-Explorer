@@ -1,6 +1,7 @@
 import {useLayoutOptions} from "../../hooks/useLayoutOptions";
 import { GEOMOZ_ROLLOUT } from "../../lib/geomoz-workbench-profile";
 import {GeoMozLayerProperties} from "./GeoMozLayerProperties";
+import {GEOLOGICAL_LAYER_TEMPLATES,emptyGeologyLayer,uniqueGeologicalLayerName} from "./geomoz-geological-templates";
 import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { useAppStore, effectiveLayerRenderState, resolveLayerCapabilities, pluginOwnsPaint, rendererAppliesOpacity, supportsBridgedOpacity } from "@geolibre/core";
 import { Layers3, Search, ChevronLeft, ChevronRight, Eye, EyeOff, Crosshair, SlidersHorizontal, Table2, Palette, FileStack, Map as MapIcon, FolderOpen, History, CheckCircle2, AlertCircle } from "lucide-react";
@@ -20,6 +21,9 @@ export function GeoMozLayerPanel(props:Props) {
   const visibility=useAppStore(s=>s.setLayerVisibility);
   const opacity=useAppStore(s=>s.setLayerOpacity);
   const setLayerStyle=useAppStore(s=>s.setLayerStyle);
+  const addGeoJsonLayer=useAppStore(s=>s.addGeoJsonLayer);
+  const addGeologicalGroup=useAppStore(s=>s.addLayerGroup);
+  const canCreateLayers=useAppStore(s=>s.deploymentCapabilities.has("data:add"))&&!viewer;
   const [quickStyle,setQuickStyle]=useState(false);
   const openTable=useAppStore(s=>s.setAttributeTableOpen);
   const runs=useAppStore(s=>s.processingHistory);
@@ -49,12 +53,29 @@ export function GeoMozLayerPanel(props:Props) {
   },[props.autoCollapse,props.collapsed,internalCollapsed]);
   useEffect(()=>{setLayersPanelCollapsed(collapsed);return ()=>setLayersPanelCollapsed(false);},[collapsed,advanced]);
   const selected=layers.find(layer=>layer.id===selectedId);
+  const createGeologicalMap=()=>{
+    if(!canCreateLayers)return;
+    const existing=layers.map(l=>l.name);
+    const ids:string[]=[];
+    for(const definition of GEOLOGICAL_LAYER_TEMPLATES){
+      const name=uniqueGeologicalLayerName(existing,definition.name);
+      existing.push(name);
+      const id=addGeoJsonLayer(name,emptyGeologyLayer());
+      setLayerStyle(id,{...definition.style});
+      ids.push(id);
+    }
+    addGeologicalGroup("Cartografia geológica",ids);
+    select(ids[0]);setResults(false);setAdvanced(false);
+    setNotice("Três camadas geológicas vazias criadas. Abra «Edição SIG» para digitalizar cada camada, registar atributos e guardar o projecto.");
+  };
   const filtered=[...layers].reverse().filter(layer=>(tab==="all"||rendered(layer))&&layer.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   if(collapsed)return props.hideOwnRail?null:<aside className="gm-layer-rail" aria-label="Catálogo recolhido"><button className="gm-icon-button" aria-label="Expandir catálogo" onClick={()=>changeCollapsed(false)}><Layers3 size={19}/></button><span>CATÁLOGO</span></aside>;
   return <aside className="gm-catalog" data-testid="geomoz-layer-catalog" aria-label="Catálogo de camadas">
     <div className="gm-catalog-heading"><div><small>ÁREA DE TRABALHO</small><h2><Layers3 size={18}/> Catálogo</h2></div><button type="button" className="gm-icon-button" aria-label="Recolher catálogo" onClick={()=>changeCollapsed(true)}><ChevronLeft size={17}/></button></div>
     <div className="gm-catalog-nav"><button type="button" aria-pressed={!advanced&&!results} onClick={()=>{setAdvanced(false);setResults(false);}}><FileStack size={14}/>Camadas <b>{layers.length}</b></button><button type="button" aria-pressed={results} onClick={()=>{setResults(true);setAdvanced(false);}}><History size={14}/>Resultados</button>{GEOMOZ_ROLLOUT.fullLayerManager&&<button type="button" aria-pressed={advanced} onClick={()=>{setAdvanced(true);setResults(false);}}><SlidersHorizontal size={14}/>Edição SIG</button>}</div>
     {!advanced&&!results&&<>
+      {canCreateLayers&&<div className="gm-geology-create"><button type="button" data-testid="geomoz-new-geology-map" onClick={createGeologicalMap}><Layers3 size={15}/> Novo mapa geológico</button><small>Unidades · Falhas · Observações</small></div>}
+      {notice&&<p role="status" className="gm-geology-notice">{notice}</p>}
       <div className="gm-catalog-search"><Search size={15}/><input aria-label="Pesquisar camadas" placeholder="Pesquisar neste projecto…" value={query} onChange={event=>setQuery(event.target.value)}/></div>
       <div className="gm-catalog-filter"><button type="button" aria-pressed={tab==="all"} onClick={()=>setTab("all")}>Todas</button><button type="button" aria-pressed={tab==="visible"} onClick={()=>setTab("visible")}>Visíveis <b>{layers.filter(rendered).length}</b></button><span>ORDEM DO MAPA</span></div>
       <div className="gm-layer-list">
