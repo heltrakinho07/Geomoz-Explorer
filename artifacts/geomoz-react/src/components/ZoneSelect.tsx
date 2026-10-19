@@ -76,7 +76,7 @@ export default function ZoneSelect({
           title={isCustom ? "Recentralizar na Área de Estudo" : "Globo 3D (Visão Global)"}
         >
           {isCustom ? <Crosshair size={13} className="text-emerald-500" /> : <Globe size={13} className="text-sky-500" />}
-          <span className="max-w-[130px] truncate">{aoi.label}</span>
+          <span className="min-w-0 whitespace-normal break-words text-left">{aoi.label}</span>
         </button>
 
         {isCustom && (
@@ -155,10 +155,10 @@ export default function ZoneSelect({
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate leading-tight">
+            <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 whitespace-normal break-words leading-tight">
               {isCustom ? aoi.label : "Cobertura Planetária (Globo 3D)"}
             </h3>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-normal break-words mt-0.5">
               {isCustom
                 ? "Recorte Zonal Ativo · Google Earth Engine"
                 : "Navegue pelo globo, faça o traçado ou carregue um arquivo vetorial."}
@@ -188,9 +188,9 @@ export default function ZoneSelect({
                 {metrics.vertexCount} pontos
               </span>
             </div>
-            <div className="bg-white/80 dark:bg-slate-900/60 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800 truncate">
+            <div className="bg-white/80 dark:bg-slate-900/60 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800 whitespace-normal break-words">
               <span className="text-slate-400 block text-[9px] uppercase font-semibold">Centroide</span>
-              <span className="font-bold text-slate-700 dark:text-slate-200 truncate block">
+              <span className="font-bold text-slate-700 dark:text-slate-200 whitespace-normal break-words block">
                 {metrics.centroid[0]}°, {metrics.centroid[1]}°
               </span>
             </div>

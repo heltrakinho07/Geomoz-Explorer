@@ -1,3 +1,5 @@
+import { validateFirePeriods, precedingFirePeriod } from "@/lib/fire-periods";
+import "./geoanalises-sidebar.css";
 import scienceCatalog from "@/lib/index-science.json";
 type ScienceEntry = { status: string; kind: string; source: string; note: string; name?: string; formula?: string; bands?: string };
 const SCIENCE: Record<string, ScienceEntry> = scienceCatalog;
@@ -359,7 +361,7 @@ const INDEX_DEFS: IndexDef[] = [
     formula: "dNBR reclassificado → 5 classes USGS",
     bands: "dNBR com thresholds USGS",
     interpretation: "Classificação USGS de severidade de queimadas: não queimado (<0.1), baixo (0.1–0.27), moderado-baixo (0.27–0.44), moderado-alto (0.44–0.66), alto (>0.66).",
-    lowLabel: "Não queimado", highLabel: "Alta severidade" },
+    lowLabel: "Aumento de verdor", highLabel: "Alta severidade" },
   { id: "burned_area", label: "Área Queimada", short: "MODIS BA", icon: <BarChart2 size={13} />, group: "fire",
     formula: "MODIS MCD64A1 — BurnDate mensal",
     bands: "MODIS Aqua/Terra — 500 m",
@@ -568,7 +570,7 @@ const INDEX_FULL_NAMES: Record<string, string> = {
   ndwi: "Índice de Água por Diferença Normalizada",
   mndwi: "Índice de Água Modificado",
   nddi: "Índice de Seca por Diferença Normalizada",
-  nbr: "Índice Normalizado de Área Queimada",
+  nbr: "Razão de Queimada Normalizada",
   dnbr: "Diferença do Índice de Área Queimada",
   bsi: "Índice de Solo Exposto",
   bare_soil: "Índice de Solo Exposto",
@@ -604,7 +606,7 @@ function descriptiveIndexName(id: string): string {
     return names[id] || id.replaceAll("_", " ");
   }
   const full = INDEX_FULL_NAMES[id];
-  if (!full) return def.label === def.short ? def.label : `${def.label} — ${def.short}`;
+  if (!full) return SCIENCE[id]?.name || def.label;
   const code = def.short.toUpperCase() === id.toUpperCase()
     ? def.short.toUpperCase()
     : (id === "ndvi_l8" ? "NDVI L8" : id.toUpperCase());
@@ -623,6 +625,7 @@ const TERRAIN_CLASS_NAMES = [
 // ── Colormap legend ────────────────────────────────────────────────────────────
 
 function ColormapLegend({ index }: { index: SpectralIndex }) {
+  if (index === "burn_severity") return <IndexLegendView activeTab="burn_severity" />;
   const def = INDEX_DEFS.find(d => d.id === index)!;
   const stops = Array.from({ length: 10 }, (_, i) =>
     applyColormap(i / 9, index)
@@ -661,6 +664,13 @@ function IndexLegendView({
   spiLayerMode?: "spi" | "ndvi";
   geeReady?: boolean;
 }) {
+  if (activeTab === "burn_severity") {
+    return <div className="space-y-1 text-xs">{[
+      ["#006400", "Aumento de verdor (< −0,10)"], ["#cccccc", "Sem alteração / baixa (−0,10 a < 0,10)"],
+      ["#91cf60", "Baixa (0,10 a < 0,27)"], ["#fee08b", "Moderada-baixa (0,27 a < 0,44)"],
+      ["#fc8d59", "Moderada-alta (0,44 a < 0,66)"], ["#d73027", "Alta (≥ 0,66)"]
+    ].map(([color, label]) => <div key={color} className="flex items-start gap-2"><span className="mt-0.5 h-3 w-3 shrink-0 rounded-sm" style={{backgroundColor:color}} /><span className="leading-relaxed">{label}</span></div>)}<p className="pt-1 text-slate-500">Classes exploratórias; não calibradas localmente.</p></div>;
+  }
   if (activeTab === "topo_class" || activeTab === "topo_custom") {
     const classes = [
       { name: "Planície (< 5 m)", color: "#1a9850" },
@@ -2890,6 +2900,10 @@ export default function GeoAnalises({
   const [geeStartDate, setGeeStartDate] = useState("2023-01-01");
   const [geeEndDate, setGeeEndDate]     = useState(() => new Date().toISOString().split("T")[0]);
   const [geeCloudPct, setGeeCloudPct]   = useState(30);
+  const periodError = needsPrePeriod ? validateFirePeriods(geeStartDate, geeEndDate, preStartDate, preEndDate) : null;
+  const studyAreaError = INDEX_DEFS.some(d => d.id === activeTab) && !aoi.geometry && !province
+    ? "Defina a área de estudo: desenhe um polígono ou carregue um GeoJSON. A vista do globo não delimita a análise." : null;
+
 
   // Sanitize activeTab against removed coastal indices
   useEffect(() => {
@@ -3032,6 +3046,7 @@ export default function GeoAnalises({
   // Clear GEE tiles when switching index
   useEffect(() => {
     setGeeTile(null);
+    setActiveIndexError(null);
     setLineamentsTile(null);
     setTargetingTile(null);
     if (activeTab !== "contours") setContoursTile(null);
@@ -3250,7 +3265,7 @@ export default function GeoAnalises({
     return () => window.clearInterval(interval);
   }, [isCalculatingActiveIndex]);
 
-  useEffect(() => () => { analysisAbortRef.current?.abort(); }, []);
+  useEffect(() => () => { analysisAbortRef.current?.abort(); }, [activeTab, geeStartDate, geeEndDate, preStartDate, preEndDate, geeCloudPct, aoi]);
 
   const cancelActiveProcessing = () => {
     if (analysisAbortRef.current) {
@@ -3285,6 +3300,7 @@ export default function GeoAnalises({
 
   const handleCalculateActiveIndex = async () => {
     if (isCalculatingActiveIndex || isLineaments || categoryInDevelopment || indexBlocked) return;
+    if (periodError || studyAreaError) { setActiveIndexError(periodError || studyAreaError); return; }
     const controller = new AbortController();
     analysisAbortRef.current = controller;
     abortReasonRef.current = null;
@@ -3992,10 +4008,11 @@ export default function GeoAnalises({
 
             {/* Controls sidebar */}
             <div
-              className={`fixed md:relative inset-y-0 left-0 z-[700] flex w-[min(88vw,22rem)] min-h-0 flex-col overflow-y-auto overscroll-contain bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
+              aria-label="Parâmetros da análise"
+              className={`geomoz-analysis-sidebar fixed md:relative inset-y-0 left-0 z-[700] flex w-[min(94vw,26rem)] min-h-0 flex-col overflow-y-auto overscroll-contain bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
                 sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
               } ${
-                desktopSidebarOpen ? "md:w-72" : "md:w-0 md:overflow-hidden md:border-r-0"
+                desktopSidebarOpen ? "md:w-[clamp(20rem,28vw,26rem)]" : "md:w-0 md:overflow-hidden md:border-r-0"
               }`}
             >
               {/* Mobile Header with Close Button */}
@@ -4032,9 +4049,9 @@ export default function GeoAnalises({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="period-grid grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">Data início</label>
+                      <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">{needsPrePeriod ? "Pós-incêndio: início" : "Data início"}</label>
                       <input
                         type="date"
                         value={geeStartDate}
@@ -4043,7 +4060,7 @@ export default function GeoAnalises({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">Data fim</label>
+                      <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">{needsPrePeriod ? "Pós-incêndio: fim exclusivo" : "Data fim (exclusiva)"}</label>
                       <input
                         type="date"
                         value={geeEndDate}
@@ -4073,17 +4090,14 @@ export default function GeoAnalises({
                       <span>Profundidade da análise</span>
                       <Clock size={13} className="text-sky-500" />
                     </label>
-                    <select
-                      id="gee-processing-mode"
-                      value={processingMode}
-                      onChange={e => setProcessingMode(e.target.value as "fast" | "balanced" | "detailed")}
-                      disabled={isCalculatingActiveIndex}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                    >
-                      <option value="fast">Rápido — mapa primeiro</option>
-                      <option value="balanced">Equilibrado — estatísticas básicas</option>
-                      <option value="detailed">Detalhado — percentis e análise completa</option>
-                    </select>
+                    <div id="gee-processing-mode" role="radiogroup" aria-label="Profundidade da análise" className="space-y-1">
+                      {([['fast', 'Rápido — mapa primeiro'], ['balanced', 'Equilibrado — estatísticas básicas'], ['detailed', 'Detalhado — percentis e análise completa']] as const).map(([mode, label]) => (
+                        <label key={mode} className="flex items-start gap-2 rounded-lg border border-slate-200 p-2 text-xs leading-relaxed dark:border-slate-700 cursor-pointer">
+                          <input type="radio" name="gee-processing-mode" value={mode} checked={processingMode === mode} onChange={() => setProcessingMode(mode)} disabled={isCalculatingActiveIndex} className="mt-0.5 shrink-0" />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                    </div>
                     <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
                       {processingMode === "fast"
                         ? "Reduz consultas de estatísticas; os píxeis e as cenas continuam reais."
@@ -4116,15 +4130,21 @@ export default function GeoAnalises({
                     <fieldset className="space-y-2 rounded-lg border border-slate-200 p-2 dark:border-slate-700">
                       <legend className="text-xs font-semibold">Período pré-incêndio</legend>
                       <label className="block text-xs">Início<input aria-label="Início pré-incêndio" type="date" value={preStartDate} onChange={e => setPreStartDate(e.target.value)} className="block w-full rounded border p-1 text-slate-900" /></label>
-                      <label className="block text-xs">Fim exclusivo<input aria-label="Fim pré-incêndio" type="date" value={preEndDate} onChange={e => setPreEndDate(e.target.value)} className="block w-full rounded border p-1 text-slate-900" /></label>
+                      <label className="block text-xs">Fim exclusivo<input aria-label="Fim pré-incêndio" type="date" max={geeStartDate || undefined} value={preEndDate} onChange={e => setPreEndDate(e.target.value)} className="block w-full rounded border p-1 text-slate-900" /></label>
+                      <button type="button" className="w-full rounded-lg border border-sky-200 p-2 text-left text-xs font-semibold text-sky-700 dark:text-sky-300" onClick={() => {
+                        const previous = precedingFirePeriod(geeStartDate, geeEndDate);
+                        if (previous) { setPreStartDate(previous.start); setPreEndDate(previous.end); setActiveIndexError(null); }
+                      }}>Preencher período anterior com igual duração</button>
+                      <p className="text-xs text-slate-500">Reveja a época e a data do incêndio: esta sugestão apenas evita sobreposição e não garante comparabilidade sazonal.</p>
                       <p className="text-xs text-slate-500">As datas principais acima definem o período pós-incêndio. Use períodos comparáveis, sem sobreposição; todas as datas finais são exclusivas.</p>
                     </fieldset>
                   )}
+                  {(periodError || studyAreaError) && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs leading-relaxed text-amber-900 dark:bg-amber-950 dark:text-amber-200">{periodError || studyAreaError}</p>}
                   {/* Botão Recalcular Análise com o período selecionado */}
                   <button
                     type="button"
                     onClick={handleCalculateActiveIndex}
-                    disabled={isCalculatingActiveIndex || isLineaments || indexBlocked || (needsPrePeriod && (!preStartDate || !preEndDate))}
+                    disabled={isCalculatingActiveIndex || isLineaments || indexBlocked || Boolean(periodError || studyAreaError)}
                     className="w-full mt-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 dark:hover:bg-sky-900/80 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
                     title={`Recalcular análise para o período ${geeStartDate} a ${geeEndDate}`}
                   >
@@ -4164,9 +4184,9 @@ export default function GeoAnalises({
                             : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60"
                         }`}
                       >
-                        <div className="flex items-center gap-2 truncate">
+                        <div className="flex min-w-0 items-start gap-2 [&>svg]:shrink-0 [&>svg]:mt-0.5">
                           {icon}
-                          <span className="truncate">{label}</span>
+                          <span className="whitespace-normal break-words leading-relaxed">{label}{SCIENCE[tabId]?.status === "experimental" && <small className="block font-medium text-amber-700 dark:text-amber-300">Em revisão</small>}</span>
                         </div>
                         {isActive && <span className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />}
                       </button>
@@ -4210,7 +4230,7 @@ export default function GeoAnalises({
                 <button
                   type="button"
                   onClick={handleCalculateActiveIndex}
-                  disabled={isCalculatingActiveIndex || isLineaments || indexBlocked || (needsPrePeriod && (!preStartDate || !preEndDate))}
+                  disabled={isCalculatingActiveIndex || isLineaments || indexBlocked || Boolean(periodError || studyAreaError)}
                   className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 disabled:from-slate-300 dark:disabled:from-slate-700 disabled:to-slate-400 dark:disabled:to-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-sky-500/20 active:scale-[0.98] cursor-pointer"
                 >
                   {(isLineaments || indexBlocked) ? (
@@ -4284,7 +4304,7 @@ export default function GeoAnalises({
                   <h4 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Legenda
                   </h4>
-                  <span className="text-[9px] text-slate-400 truncate max-w-[120px]">
+                  <span className="text-[9px] text-slate-400 whitespace-normal break-words text-right max-w-[65%]">
                     {activeIndexLabel}
                   </span>
                 </div>

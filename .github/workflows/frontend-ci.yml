@@ -196,8 +196,12 @@ jobs:
           path: artifacts/geomoz-react/dist/public
       - name: Install pinned browser test runtime
         run: |
-          npm install --prefix "$RUNNER_TEMP/gis-browser" playwright@1.51.1
+          npm install --prefix "$RUNNER_TEMP/gis-browser" playwright@1.51.1 html2canvas-pro@1.5.13
           node "$RUNNER_TEMP/gis-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Verify real OKLCH screenshot capture
+        run: node artifacts/geomoz-react/integration/capture-color-smoke.cjs
+        env:
+          GIS_PLAYWRIGHT_ROOT: ${{ runner.temp }}/gis-browser
       - name: Verify drawing, HGT import and slope output
         run: node artifacts/geomoz-react/integration/workspace-browser-smoke.cjs
         env:
