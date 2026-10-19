@@ -636,7 +636,7 @@ class GeoMozAgent:
                           if output.get(key) is not None]
                 summary = output.get("summary") or "; ".join(values) or "Resultado disponível no mapa."
             step["resultSummary"] = str(summary)
-            summaries.append(f"- {run['tool']}: {summary}")
+            summaries.append(f"- {step['name']}: {summary}")
         synthesis = "Resultados das ferramentas:\n" + "\n".join(summaries)
         if failed:
             synthesis += "\n\nAnálise incompleta: não é possível concluir sobre os indicadores indisponíveis."
