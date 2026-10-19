@@ -267,6 +267,15 @@ async function settleRecovery(page){
   await page.locator('.gm-layer-row[data-layer-name="Falhas e lineamentos"]').first().waitFor();
   await wizard.getByRole("button",{name:"Fechar assistente"}).click();
   console.log("QGIS-style geological line layer created in the native GeoJSON store.");
+  // Native in-place session writes to the selected geological layer,
+  // rather than silently accumulating all sketches in a generic layer.
+  await page.getByTestId("geomoz-edit-layer").click();
+  await page.getByTestId("geomoz-edit-layer").getByText("Concluir e guardar edição").waitFor();
+  await page.locator(".geo-editor-toolbar").waitFor();
+  await page.getByTestId("geomoz-edit-layer").click();
+  await page.getByTestId("geomoz-edit-layer").getByText("Digitalizar nesta camada").waitFor();
+  console.log("In-place geological layer editing toggles with native save callback.");
+
 
   await page.locator('.gm-menu-slot:not([hidden]) button').first().click();
   await page.getByRole("menu").first().waitFor();
