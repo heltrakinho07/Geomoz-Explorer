@@ -375,7 +375,7 @@ class ToolDispatcher:
                 region = api._region_geojson(province=province, district=district, geometry=region_geom)
                 rad = int(args.get("density_radius_m", 750))
                 result = gee_module.compute_lineaments_tile(region_geojson=region, density_radius_m=rad)
-                dominant_dir = "NE-SW / N-S"
+                dominant_dir = None
                 return {
                     "status": "success",
                     "name": result.get("name"),

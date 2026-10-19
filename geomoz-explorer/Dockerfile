@@ -47,6 +47,7 @@ COPY gee_presets.py .
 # GeoMoz Agent is lazily imported by /geomoz-api/ai/agent-chat.
 # Omission passes the /health check but breaks every GEOAGENTE chat with HTTP 500.
 COPY agent/ agent/
+COPY index_science.json .
 COPY utils/ utils/
 
 # ── Health check ─────────────────────────────────────────────────────────────

@@ -336,6 +336,8 @@ export function computeSpectralValue(
 
 /** Indices that require real GEE (no meaningful proxy from geology attributes). */
 export const GEE_ONLY_INDICES: SpectralIndex[] = [
+  "ndvi", "fe_oxide", "clay", "hydrothermal", "bare_soil",
+  "fe_oxide_l8", "clay_l8", "ferrous_l8", "hydrothermal_l8", "gossan_l8", "carbonate_chlorite_l8", "silica_l8",
   "al_oh", "ferrous", "gossan",
   "ndvi_l8", "fe_oxide_l8", "clay_l8", "ferrous_l8", "hydrothermal_l8", "gossan_l8", "carbonate_chlorite_l8", "silica_l8",
   "elevation", "hipsometry", "slope", "hillshade", "topo_class",

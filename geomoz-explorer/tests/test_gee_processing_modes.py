@@ -21,7 +21,7 @@ class FakeImage:
 
     def reduceRegion(self, **options):
         self.reductions.append(options)
-        return SimpleNamespace(getInfo=lambda: {"index_mean": 0.41, "index_min": 0.02, "index_max": 0.83})
+        return SimpleNamespace(getInfo=lambda: {"index_mean": 0.41, "index_min": 0.02, "index_max": 0.83, "index_count": 12})
 
     def visualize(self, **_options):
         return self
@@ -36,6 +36,7 @@ def fake_gee(monkeypatch):
 
     image = FakeImage()
     reducer = SimpleNamespace(
+        count=lambda: Reducer(),
         mean=lambda: Reducer(),
         stdDev=lambda: Reducer(),
         percentile=lambda _: Reducer(),

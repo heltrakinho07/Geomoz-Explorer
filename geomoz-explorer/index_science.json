@@ -1,0 +1,584 @@
+{
+  "ndvi": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "NDVI — Vegetation (Sentinel-2)",
+    "formula": "NDVI = (B8 − B4) / (B8 + B4)",
+    "bands": "NIR (B8) e Vermelho (B4)"
+  },
+  "ndwi": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "NDWI — Water Index (McFeeters)",
+    "formula": "NDWI = (B3 − B8) / (B3 + B8)",
+    "bands": "Verde (B3) e NIR (B8)"
+  },
+  "mndwi": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "MNDWI — Modified Water Index (Xu, 2006)",
+    "formula": "MNDWI = (B3 − B11) / (B3 + B11)",
+    "bands": "Verde (B3) e SWIR1 (B11)"
+  },
+  "fe_oxide": {
+    "status": "available",
+    "kind": "Razão espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Razão entre bandas; não identifica minerais nem confirma jazigos. Exige verificação geológica e de campo.",
+    "name": "Índice de Óxidos de Ferro (B4/B2)",
+    "formula": "Fe-Oxide = B4 / B2",
+    "bands": "Vermelho (B4) e Azul (B2)"
+  },
+  "clay": {
+    "status": "available",
+    "kind": "Razão espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Razão entre bandas; não identifica minerais nem confirma jazigos. Exige verificação geológica e de campo.",
+    "name": "Razão SWIR1/NIR — Sentinel-2",
+    "formula": "B11 / B8A (razão espectral, não identificação de argilas)",
+    "bands": "SWIR1 (B11) e Red-Edge3 (B8A)"
+  },
+  "hydrothermal": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Alteração Hidrotermal — (B11+B4)/(B8A+B3)",
+    "formula": "(B11 + B4) / (B8A + B3)  [Crosta et al.]",
+    "bands": "SWIR1, Vermelho, Red-Edge3, Verde"
+  },
+  "bare_soil": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "Índice de Solo Exposto (BSI)",
+    "formula": "(B11+B4 − B8−B2) / (B11+B4 + B8+B2)",
+    "bands": "SWIR1, Vermelho, NIR, Azul"
+  },
+  "al_oh": {
+    "status": "available",
+    "kind": "Razão espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Razão entre bandas; não identifica minerais nem confirma jazigos. Exige verificação geológica e de campo.",
+    "name": "Alteração Argílica/Fílica — Al-OH (B11/B12)",
+    "formula": "Al-OH = B11 / B12",
+    "bands": "SWIR1 (B11 ~1610 nm) e SWIR2 (B12 ~2190 nm)"
+  },
+  "ferrous": {
+    "status": "available",
+    "kind": "Razão espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Razão entre bandas; não identifica minerais nem confirma jazigos. Exige verificação geológica e de campo.",
+    "name": "Ferro Ferroso (Fe²⁺) — B12/B8A",
+    "formula": "Ferrous = B12 / B8A",
+    "bands": "SWIR2 (B12) e Red-Edge3 (B8A)"
+  },
+  "gossan": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Gossan / Capa de Ferro — (B4/B2)·(B11/B12)",
+    "formula": "Gossan = (B4 / B2) × (B11 / B12)",
+    "bands": "Vermelho (B4), Azul (B2), SWIR1 (B11), SWIR2 (B12)"
+  },
+  "ndvi_l8": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LC08_C02_T1_L2",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "NDVI — Vegetação (Landsat 8)",
+    "formula": "NDVI = (SR_B5 − SR_B4) / (SR_B5 + SR_B4)",
+    "bands": "NIR (SR_B5) e Vermelho (SR_B4)"
+  },
+  "fe_oxide_l8": {
+    "status": "available",
+    "kind": "Razão espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LC08_C02_T1_L2",
+    "note": "Razão entre bandas; não identifica minerais nem confirma jazigos. Exige verificação geológica e de campo.",
+    "name": "Óxidos de Ferro / Gossan (Landsat 8 - B4/B2)",
+    "formula": "Fe-Oxide = SR_B4 / SR_B2",
+    "bands": "Vermelho (SR_B4) e Azul (SR_B2)"
+  },
+  "clay_l8": {
+    "status": "available",
+    "kind": "Razão espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LC08_C02_T1_L2",
+    "note": "Razão entre bandas; não identifica minerais nem confirma jazigos. Exige verificação geológica e de campo.",
+    "name": "Argilominerais / Al-OH (Landsat 8 - B6/B7)",
+    "formula": "Clay = SR_B6 / SR_B7",
+    "bands": "SWIR1 (SR_B6) e SWIR2 (SR_B7)"
+  },
+  "ferrous_l8": {
+    "status": "available",
+    "kind": "Razão espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LC08_C02_T1_L2",
+    "note": "Razão entre bandas; não identifica minerais nem confirma jazigos. Exige verificação geológica e de campo.",
+    "name": "Minerais Ferrosos / Silicatos (Landsat 8 - B6/B5)",
+    "formula": "Ferrous Iron = SR_B6 / SR_B5",
+    "bands": "SWIR1 (SR_B6) e NIR (SR_B5)"
+  },
+  "hydrothermal_l8": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LC08_C02_T1_L2",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Alteração Hidrotermal Sabins (Landsat 8)",
+    "formula": "Hydrothermal = (SR_B6 / SR_B7) × (SR_B4 / SR_B2)",
+    "bands": "SWIR1, SWIR2, Vermelho, Azul"
+  },
+  "gossan_l8": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LC08_C02_T1_L2",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Índice de Gossan / Capa de Ferro (Landsat 8)",
+    "formula": "Gossan = (SR_B4 / SR_B2) × (SR_B6 / SR_B7)",
+    "bands": "Vermelho, Azul, SWIR1, SWIR2"
+  },
+  "carbonate_chlorite_l8": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LC08_C02_T1_L2",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Carbonatos & Clorite / Propilítica (Landsat 8)",
+    "formula": "(SR_B5 + SR_B7) / SR_B6",
+    "bands": "NIR (SR_B5), SWIR2 (SR_B7), SWIR1 (SR_B6)"
+  },
+  "silica_l8": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LC08_C02_T1_L2",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Silicificação & Quartzo (Landsat 8)",
+    "formula": "(SR_B6 / SR_B5) × (SR_B6 / SR_B7)",
+    "bands": "SWIR1, NIR, SWIR2"
+  },
+  "elevation": {
+    "status": "available",
+    "kind": "Produto de terreno",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_DEM_GLO30",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "Elevação — DEM Copernicus GLO-30",
+    "formula": "DEM smoothed (focal_mean 3m)",
+    "bands": "Copernicus GLO-30 DEM"
+  },
+  "hipsometry": {
+    "status": "available",
+    "kind": "Produto de terreno",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_DEM_GLO30",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "Hipsometria — Elevação Normalizada",
+    "formula": "(DEM − min) / (max − min)",
+    "bands": "Copernicus GLO-30 DEM"
+  },
+  "slope": {
+    "status": "available",
+    "kind": "Produto de terreno",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_DEM_GLO30",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "Declive (Slope) — graus",
+    "formula": "ee.Terrain.slope(DEM)",
+    "bands": "Copernicus GLO-30 DEM"
+  },
+  "hillshade": {
+    "status": "available",
+    "kind": "Produto de terreno",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_DEM_GLO30",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "Hillshade (Sombreado de Relevo)",
+    "formula": "ee.Terrain.hillshade(DEM, azimuth=315, elevation=45)",
+    "bands": "Copernicus GLO-30 DEM"
+  },
+  "topo_class": {
+    "status": "available",
+    "kind": "Produto de terreno",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_DEM_GLO30",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "Classificação Topográfica (5 classes + água)",
+    "formula": "DEM em [<5, 5–10, 10–30, 30–60, >60] m + água (HydroSHEDS)",
+    "bands": "DEM + HydroSHEDS FreeFlowingRivers"
+  },
+  "evi": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "EVI — Enhanced Vegetation Index",
+    "formula": "EVI = 2.5 × (B8 − B4) / (B8 + 6×B4 − 7.5×B2 + 1)",
+    "bands": "NIR (B8), Vermelho (B4), Azul (B2)"
+  },
+  "ndmi": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "NDMI — Normalized Difference Moisture Index",
+    "formula": "NDMI = (B8 − B11) / (B8 + B11)",
+    "bands": "NIR (B8) e SWIR1 (B11)"
+  },
+  "savi": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "SAVI — Soil Adjusted Vegetation Index",
+    "formula": "SAVI = ((B8 − B4) / (B8 + B4 + 0.5)) × 1.5",
+    "bands": "NIR (B8) e Vermelho (B4)"
+  },
+  "gci": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "GCI — Green Chlorophyll Index",
+    "formula": "GCI = (B8 / B3) − 1",
+    "bands": "NIR (B8) e Verde (B3)"
+  },
+  "nddi": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "NDDI — Normalized Difference Drought Index",
+    "formula": "NDDI = (NDVI − NDMI) / (NDVI + NDMI + 0.01)",
+    "bands": "NIR (B8), Vermelho (B4), SWIR1 (B11) — derivado NDVI + NDMI"
+  },
+  "msavi": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "MSAVI2 — Modified Soil Adjusted Vegetation Index 2",
+    "formula": "MSAVI2 = (2×B8 + 1 − sqrt((2×B8 + 1)² − 8×(B8 − B4))) / 2",
+    "bands": "NIR (B8) e Vermelho (B4)"
+  },
+  "crop_health": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Saúde das Culturas (EVI+NDMI+NDVI)",
+    "formula": "0.40×EVI + 0.35×NDMI + 0.25×NDVI",
+    "bands": "EVI, NDMI, NDVI — todos normalizados para [0,1]"
+  },
+  "drought_severity": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Severidade de Seca (NDDI+NDMI inverso)",
+    "formula": "0.60×NDDI + 0.40×(1 − NDMI_norm)",
+    "bands": "NDDI e NDMI inverso — ambos normalizados"
+  },
+  "nbr": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "NBR — Normalized Burn Ratio",
+    "formula": "NBR = (B8 − B12) / (B8 + B12)",
+    "bands": "NIR (B8) e SWIR2 (B12)"
+  },
+  "dnbr": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://burnseverity.cr.usgs.gov/glossary",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "dNBR — Burn Severity (pré-pós fogo)",
+    "formula": "dNBR = NBR_pré − NBR_pós",
+    "bands": "Duas composições NBR: pré-fogo e pós-fogo"
+  },
+  "burn_severity": {
+    "status": "available",
+    "kind": "Classificação derivada",
+    "source": "https://burnseverity.cr.usgs.gov/glossary",
+    "note": "Classes exploratórias de dNBR. Limiares não calibrados para os ecossistemas de Moçambique.",
+    "name": "Severidade dNBR — classes exploratórias",
+    "formula": "dNBR pré − pós; limiares exploratórios, sem calibração local",
+    "bands": "dNBR thresholded"
+  },
+  "forest_loss": {
+    "status": "available",
+    "kind": "Produto de dados",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/UMD_hansen_global_forest_change_2023_v1_11",
+    "note": "Produto anual 2001–2023: perda de cobertura arbórea, sem atribuição de causa. Seleccione anos completos dentro desta cobertura.",
+    "name": "Perda de cobertura arbórea — Hansen 2001–2023",
+    "formula": "Hansen Global Forest Change v1.11 (2000–2023)",
+    "bands": "Global Forest Change — bandas: treecover2000, loss, lossyear"
+  },
+  "burned_area": {
+    "status": "available",
+    "kind": "Produto de dados",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MCD64A1",
+    "note": "Máscara de área queimada no período, MODIS 500 m. Não corresponde a focos activos nem detecta todas as pequenas queimadas.",
+    "name": "Área Queimada (MODIS MCD64A1)",
+    "formula": "União dos píxeis queimados no período (QA válido)",
+    "bands": "MODIS MCD64A1 BurnDate + QA"
+  },
+  "fire_risk": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Risco de Incêndio (NDVI+NDMI+NDDI inverso)",
+    "formula": "0.40×(1−NDVI_norm) + 0.35×(1−NDMI_norm) + 0.25×NDDI_norm",
+    "bands": "NDVI, NDMI, NDDI — composto de risco"
+  },
+  "awei_nsh": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "AWEI_nsh — Água sem Sombra (Feyisa et al., 2014)",
+    "formula": "AWEI_nsh = 4×(B3 − B11) − (0.25×B8 + 2.75×B12)",
+    "bands": "Verde (B3), NIR (B8), SWIR1 (B11), SWIR2 (B12)"
+  },
+  "awei_sh": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "AWEI_sh — Água com Supressão de Sombra (Feyisa et al., 2014)",
+    "formula": "AWEI_sh = B2 + 2.5×B3 − 1.5×(B8 + B11) − 0.25×B12",
+    "bands": "Azul (B2), Verde (B3), NIR (B8), SWIR1 (B11), SWIR2 (B12)"
+  },
+  "wri": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "WRI — Water Ratio Index (Shen & Li, 2010)",
+    "formula": "WRI = (B3 + B4) / (B8 + B11)",
+    "bands": "Verde (B3), Vermelho (B4), NIR (B8), SWIR1 (B11)"
+  },
+  "wi2015": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "WI2015 — Water Index 2015 (Fisher et al., 2016)",
+    "formula": "WI2015 = 1.7204 + 171×B3 + 3×B4 − 70×B8 − 45×B11 − 71×B12",
+    "bands": "Azul, Verde, Vermelho, NIR, SWIR1, SWIR2 (Sentinel-2)"
+  },
+  "precipitation": {
+    "status": "available",
+    "kind": "Produto de dados",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/UCSB-CHG_CHIRPS_DAILY",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "Precipitação Anual (CHIRPS)",
+    "formula": "Soma CHIRPS no período seleccionado (mm)",
+    "bands": "UCSB-CHG/CHIRPS/DAILY — precipitação acumulada"
+  },
+  "temperature_lst": {
+    "status": "available",
+    "kind": "Produto de dados",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MOD11A2",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "Temperatura Superficial (MODIS LST)",
+    "formula": "MODIS MOD11A2: LST_Day_1km × 0.02 − 273.15; média do período, QC válido",
+    "bands": "MODIS LST diurno e QC_Day (°C)"
+  },
+  "cyclone_tracks": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Rotas de Ciclones (IBTrACS)",
+    "formula": "IBTrACS v4 — densidade de passagens históricas (1980–2024)",
+    "bands": "NOAA/IBTrACS/v4 — tracks de ciclones tropicais"
+  },
+  "cyclone_risk": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_DEM_GLO30",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Risco Composto de Ciclone",
+    "formula": "0.35×precip_extrema + 0.30×ciclones_dens + 0.20×(1−elev_norm) + 0.15×(1−NDVI_proxy)",
+    "bands": "CHIRPS + IBTrACS + DEM Copernicus + proxy vegetação"
+  },
+  "urban_expansion": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Expansão Urbana (NBI — New Built-up Index)",
+    "formula": "NBI = B11 / (B8 + B11 + B4) — proxy de área construída",
+    "bands": "Sentinel-2 SWIR1 (B11), NIR (B8), Vermelho (B4)"
+  },
+  "impervious_surface": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "NDBI: contraste espectral de áreas construídas. Não é uma medição da percentagem de superfície impermeável.",
+    "name": "NDBI — Índice de áreas construídas",
+    "formula": "NDBI = (B11 − B8) / (B11 + B8) — áreas impermeáveis/construídas",
+    "bands": "Sentinel-2 SWIR1 (B11), NIR (B8)"
+  },
+  "urban_heat_island": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Ilha de Calor Urbano (LST − NDVI)",
+    "formula": "UHI = MODIS_LST_norm − NDVI_norm — contraste térmico urbano-rural",
+    "bands": "MODIS MOD11A2 + Sentinel-2 NDVI"
+  },
+  "malaria_risk": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_DEM_GLO30",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Risco de Malária (habitat vectorial)",
+    "formula": "0.30×precip_n + 0.25×temp_n + 0.20×ndwi_n + 0.15×(1−elev_n) + 0.10×(1−ndvi_n)",
+    "bands": "CHIRPS + MODIS LST + Sentinel-2 NDWI/NDVI + DEM"
+  },
+  "healthcare_access": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Acesso a Cuidados de Saúde (prox. urbana)",
+    "formula": "Proximidade a áreas urbanas via NDBI + ESA WorldCover",
+    "bands": "Sentinel-2 NDBI + ESA WorldCover"
+  },
+  "sanitation_index": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_DEM_GLO30",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Índice de Saneamento (água + infraestrutura)",
+    "formula": "0.40×NDWI_n + 0.30×built_n + 0.20×(1−NDVI_n) + 0.10×(1−elev_n)",
+    "bands": "Sentinel-2 NDWI + NDBI + NDVI + DEM"
+  },
+  "epidemic_risk": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_DEM_GLO30",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Risco Epidémico Composto",
+    "formula": "0.35×malaria_cond + 0.25×inund_prox + 0.20×(1−acesso_saude) + 0.20×pop_dens_proxy",
+    "bands": "CHIRPS + MODIS LST + Sentinel-2 + DEM + JRC GSW"
+  },
+  "vci": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "VCI — Vegetation Condition Index (MODIS)",
+    "formula": "VCI = ((NDVI − NDVI_min) / (NDVI_max − NDVI_min)) × 100",
+    "bands": "MODIS MOD13A2 — NDVI multi-year"
+  },
+  "tci": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "TCI — Thermal Condition Index (MODIS)",
+    "formula": "TCI = ((LST_max − LST) / (LST_max − LST_min)) × 100",
+    "bands": "MODIS MOD11A2 — LST multi-year"
+  },
+  "vhi": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "VHI — Vegetation Health Index (MODIS)",
+    "formula": "VHI = 0.5 × VCI + 0.5 × TCI",
+    "bands": "MODIS MOD13A2 (NDVI) + MOD11A2 (LST)"
+  },
+  "cwsi": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "CWSI — Crop Water Stress Index (MODIS)",
+    "formula": "CWSI = 1 − (ET / PET)",
+    "bands": "MODIS MOD16A2GF — ET e PET"
+  },
+  "lai": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LC08_C02_T1_L2",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "LAI — Leaf Area Index (Landsat)",
+    "formula": "LAI = 3.618 × EVI − 0.118",
+    "bands": "Landsat 8/9 — SR_B2 (Blue), SR_B4 (Red), SR_B5 (NIR)"
+  },
+  "canopy_height": {
+    "status": "experimental",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Implementação em revisão: método, calibração ou fonte ainda não validados. Cálculo indisponível.",
+    "name": "Canopy Height — Altura do Dossel (Meta)",
+    "formula": "Meta Forest Monitoring v1 — altura do dossel 1m",
+    "bands": "projects/meta-forest-monitoring-1m"
+  },
+  "ndti": {
+    "status": "available",
+    "kind": "Índice espectral",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "NDTI — Normalized Difference Turbidity Index",
+    "formula": "NDTI = (B4 − B3) / (B4 + B3)  [aplicado em máscara de água]",
+    "bands": "Sentinel-2 — Vermelho (B4) e Verde (B3) + NDWI"
+  },
+  "wind_speed": {
+    "status": "available",
+    "kind": "Produto de dados",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/ECMWF_ERA5_LAND_DAILY_AGGR",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "Velocidade do Vento (ERA5)",
+    "formula": "Média da magnitude das componentes médias diárias sqrt(u10² + v10²)",
+    "bands": "ERA5-Land DAILY_AGGR — u/v a 10 m (m/s)"
+  },
+  "night_light": {
+    "status": "available",
+    "kind": "Produto de dados",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/NOAA_VIIRS_DNB_MONTHLY_V1_VCMCFG",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "Luz Noturna — Urbanização (VIIRS)",
+    "formula": "Média VIIRS avg_rad no período, cf_cvg > 0",
+    "bands": "VIIRS DNB mensal — nW/cm²/sr"
+  },
+  "spei": {
+    "status": "available",
+    "kind": "Produto de dados",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/CSIC_SPEI_2_11",
+    "note": "Interpretação dependente da área, época e qualidade dos dados; não substitui validação local.",
+    "name": "SPEI — Standardized Precipitation-Evapotranspiration Index",
+    "formula": "SPEIbase 2.11 — SPEI_12_month do último mês disponível no intervalo",
+    "bands": "CSIC/SPEI/2_11 · SPEI_12_month"
+  },
+  "landcover": {
+    "status": "available",
+    "kind": "Produto de dados",
+    "source": "https://developers.google.com/earth-engine/datasets/catalog/ESA_WorldCover_v200",
+    "note": "Cobertura terrestre de 2021, 10 m. Não representa o uso do solo actual."
+  },
+  "targeting": {
+    "status": "experimental",
+    "kind": "Modelo em revisão",
+    "source": "",
+    "note": "Implementação em desenvolvimento; resultados indisponíveis até validação."
+  },
+  "spi_ndvi": {
+    "status": "experimental",
+    "kind": "Modelo em revisão",
+    "source": "",
+    "note": "Implementação em desenvolvimento; resultados indisponíveis até validação."
+  },
+  "lineaments": {
+    "status": "experimental",
+    "kind": "Modelo em revisão",
+    "source": "",
+    "note": "Implementação em desenvolvimento; resultados indisponíveis até validação."
+  }
+}

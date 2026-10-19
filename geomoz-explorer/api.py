@@ -940,6 +940,8 @@ class GEEIndexRequest(BaseModel):
     end_date:   str = "2023-12-31"
     cloud_pct:  int = 30
     processing_mode: Literal["fast", "balanced", "detailed"] = "detailed"
+    pre_start_date: Optional[str] = None
+    pre_end_date: Optional[str] = None
 
     @field_validator('cloud_pct')
     @classmethod
@@ -991,6 +993,8 @@ class GEERenderRequest(BaseModel):
     start_date: str = "2023-01-01"
     end_date:   str = "2023-12-31"
     cloud_pct:  int = 30
+    pre_start_date: Optional[str] = None
+    pre_end_date: Optional[str] = None
     vis_params: dict = {}
 
     @field_validator('cloud_pct')
@@ -1325,7 +1329,7 @@ async def gee_index(req: GEEIndexRequest, uid: str = Depends(require_gee_auth)):
             _thread_pool_executor,
             lambda: compute_index_tile(
                 req.index, region, req.start_date, req.end_date, req.cloud_pct,
-                processing_mode=req.processing_mode,
+                processing_mode=req.processing_mode, pre_start_date=req.pre_start_date, pre_end_date=req.pre_end_date,
             ),
         )
         result["province"] = req.province
@@ -1356,7 +1360,7 @@ async def gee_download_url(req: GEEDownloadRequest, uid: str = Depends(require_g
         result = await loop.run_in_executor(
             _thread_pool_executor,
             lambda: get_index_download_url(
-                req.index, region, req.start_date, req.end_date, req.cloud_pct, req.scale or 30
+                req.index, region, req.start_date, req.end_date, req.cloud_pct, req.scale or 30, req.pre_start_date, req.pre_end_date
             ),
         )
         return result
@@ -1531,7 +1535,7 @@ async def gee_render(req: GEERenderRequest, uid: str = Depends(require_gee_auth)
             _thread_pool_executor,
             lambda: compute_index_tile_vis(
                 req.index, region, req.vis_params,
-                req.start_date, req.end_date, req.cloud_pct,
+                req.start_date, req.end_date, req.cloud_pct, req.pre_start_date, req.pre_end_date,
             ),
         )
         result["province"] = req.province
@@ -1839,6 +1843,7 @@ async def gee_landcover(req: GEELandcoverRequest, uid: str = Depends(require_gee
 def gee_indices():
     """List available indices with metadata, grouped (spectral/landsat/terrain)."""
     from gee_presets import INDEX_REGISTRY
+    from gee_module import INDEX_SCIENCE
     return {
         "indices": [
             {
@@ -1848,6 +1853,7 @@ def gee_indices():
                 "bands":   v["bands"],
                 "group":   v["group"],
                 "classNames": v.get("class_names"),
+                "science": INDEX_SCIENCE[k],
             }
             for k, v in INDEX_REGISTRY.items()
         ]
