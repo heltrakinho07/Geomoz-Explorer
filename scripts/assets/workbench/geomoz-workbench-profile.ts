@@ -7,7 +7,7 @@ export const GEOMOZ_ROLLOUT = Object.freeze({
   advancedData: false,
   specialistProcessing: false,
   immersive: false,
-  advancedDrawing: false,
+  advancedDrawing: true,
   fullMenus: false,
   fullLayerManager: false,
 });
