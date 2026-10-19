@@ -126,6 +126,20 @@ editor='import { GEOMOZ_ROLLOUT } from "../geomoz-workbench-profile";\n'+editor;
 editor=once(editor,"    ...GEO_EDITOR_OPTIONS,","    ...GEO_EDITOR_OPTIONS,\n    ...(!GEOMOZ_ROLLOUT.advancedDrawing ? {\n      drawModes: GEO_EDITOR_OPTIONS.drawModes.filter(mode => [\"polygon\",\"line\",\"rectangle\",\"marker\"].includes(mode)),\n      editModes: GEO_EDITOR_OPTIONS.editModes.filter(mode => [\"select\",\"drag\",\"change\",\"delete\"].includes(mode)),\n      showFeatureProperties: false,\n      enableAttributeEditing: false,\n    } : { drawModes: GEO_EDITOR_OPTIONS.drawModes.filter(mode => mode !== \"massing\") }),","curated study-area editor");
 editor=once(editor,"if (isGeometryEditSession) geoEditorControl?.closeAttributeEditor();","if (isGeometryEditSession || !GEOMOZ_ROLLOUT.advancedDrawing) geoEditorControl?.closeAttributeEditor();","hide massing attribute form");
 writeFileSync(editorPath,editor);
+// A new deployed worker may emit several controllerchange / update events in
+// quick succession. Upstream deduplication increments a visible "×2" counter
+// instead of suppressing a duplicate notice. Keep one actionable prompt per
+// open GeoMoz GIS Workspace tab; NEVER auto-reload unsaved edits.
+let entry=read("main.tsx");
+entry=once(entry,
+  "async function offerReloadIfNewBuild(): Promise<void> {",
+  "let geomozUpdateNoticeShown = false;\nasync function offerReloadIfNewBuild(): Promise<void> {\n  if (geomozUpdateNoticeShown) return;",
+  "one GeoMoz update notice per tab");
+entry=once(entry,
+  "  await i18nReady;\n  offerAppUpdate({",
+  "  await i18nReady;\n  if (geomozUpdateNoticeShown) return;\n  geomozUpdateNoticeShown = true;\n  offerAppUpdate({",
+  "dedupe concurrent service worker update checks");
+write("main.tsx",entry);
 // Product identity is owned by GeoMoz; the engine remains the attributed MIT fork.
 brandUpstreamLocales(resolve(app,"i18n/locales"));
 const about=read("components/layout/AboutDialog.tsx");

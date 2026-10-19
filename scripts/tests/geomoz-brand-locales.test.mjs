@@ -45,3 +45,25 @@ test("pinned upstream is adapted at source rather than through client-side DOM r
   assert.match(chrome,/geomoz-about-trigger/);
   assert.match(chrome,/data-testid="geomoz-workbench-chrome"/);
 });
+
+test("GeoMoz web/PWA update notice uses product identity and the user's language",()=>{
+  const notifications={
+    appUpdateAvailable:"A new version of GeoLibre is available.",
+    appUpdateReload:"Reload"
+  };
+  const en=brandLocaleCatalog({notifications},"en");
+  const pt=brandLocaleCatalog({notifications},"pt");
+  assert.equal(en.notifications.appUpdateAvailable,"A new version of GeoMoz GIS Workspace is available.");
+  assert.equal(en.notifications.appUpdateReload,"Reload now");
+  assert.equal(pt.notifications.appUpdateAvailable,"Está disponível uma nova versão do GeoMoz GIS Workspace.");
+  assert.equal(pt.notifications.appUpdateReload,"Actualizar agora");
+  assert.equal(notifications.appUpdateAvailable,"A new version of GeoLibre is available.");
+});
+test("GIS Workspace offers its PWA update notice only once per browser session",()=>{
+  const source=readFileSync("scripts/prepare-geomoz-workbench.mjs","utf8");
+  assert.match(source,/let geomozUpdateNoticeShown = false/);
+  assert.match(source,/if \(geomozUpdateNoticeShown\) return/);
+  assert.match(source,/geomozUpdateNoticeShown = true/);
+  assert.match(source,/one GeoMoz update notice per tab/);
+  assert.doesNotMatch(source,/window\.location\.reload\(\)/);
+});
