@@ -41,7 +41,7 @@ export function GeoMozLayerCreation({onClose}:{onClose:()=>void}){
   <div className="gm-cartography-fields"><strong>Atributos recomendados</strong>
    <div>{specById(kind).fields.map(f=><span key={f.name} title={f.description}>{f.name}<small>{f.type==="number"?"numérico":"texto"}</small></span>)}</div>
   </div>
-  <p className="gm-cartography-note"><Info size={14}/> Depois de criar, seleccione a camada no catálogo e clique em «Digitalizar nesta camada». Desenhe geometrias reais, preencha os atributos no editor nativo e termine com «Concluir e guardar edição». Exporte GeoJSON e guarde o projecto.</p>
+  <p className="gm-cartography-note"><Info size={14}/> Depois de criar, seleccione a camada no catálogo e clique em «Digitalizar nesta camada». Desenhe as feições e termine com «Concluir e guardar edição». Em seguida abra «Tabela» na camada para criar campos e preencher os atributos, e use «Simbologia» para representar as classes. Guarde o projecto e exporte GeoJSON.</p>
   {error&&<p role="alert" className="gm-cartography-error">{error}</p>}
   {created&&<p role="status" className="gm-cartography-created">Camada «{created}» criada. No catálogo, seleccione «Digitalizar nesta camada» para desenhar e editar as feições.</p>}
   <button type="button" onClick={create} disabled={!canAdd} className="gm-cartography-create"><Plus size={16}/> Criar camada vazia</button>
