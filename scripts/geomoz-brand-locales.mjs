@@ -44,6 +44,22 @@ export function brandLocaleCatalog(catalog,lang){
     result.about.title=title;
     result.about.description=description;
   }
+  // The PWA update prompt is a GeoMoz product notice. The upstream English
+  // fallback otherwise mentions GeoLibre when an older SW refreshes a tab.
+  // Keep labels localized for the two default UI languages.
+  if (result.notifications && typeof result.notifications==="object") {
+    const labels={
+      pt:["Está disponível uma nova versão do GeoMoz GIS Workspace.","Actualizar agora"],
+      en:["A new version of GeoMoz GIS Workspace is available.","Reload now"],
+      es:["Hay una nueva versión de GeoMoz GIS Workspace disponible.","Recargar ahora"],
+      fr:["Une nouvelle version de GeoMoz GIS Workspace est disponible.","Recharger"]
+    };
+    if (labels[lang]) {
+      const [message,reload]=labels[lang];
+      result.notifications.appUpdateAvailable=message;
+      result.notifications.appUpdateReload=reload;
+    }
+  }
   return result;
 }
 export function brandUpstreamLocales(localesDirectory){
