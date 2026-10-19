@@ -18,6 +18,28 @@ import json
 import logging
 import threading
 import time
+from pathlib import Path
+from datetime import date
+
+INDEX_SCIENCE = json.loads(Path(__file__).with_name("index_science.json").read_text())
+
+def require_scientific_index(index):
+    meta = INDEX_SCIENCE.get(index)
+    if not meta or meta["status"] != "available":
+        raise ValueError(f"{index}: em desenvolvimento; implementação não validada.")
+
+def validate_period(start, end):
+    if date.fromisoformat(start) >= date.fromisoformat(end):
+        raise ValueError("A data inicial deve preceder a final (fim exclusivo).")
+
+def _checked_collection(asset, region, start, end):
+    import ee
+    validate_period(start, end)
+    col = ee.ImageCollection(asset).filterBounds(region).filterDate(start, end)
+    if not col.size().getInfo():
+        raise ValueError(f"Sem dados {asset} no período seleccionado.")
+    return col
+
 from typing import Optional, Any
 
 from gee_presets import (
@@ -377,10 +399,9 @@ def _compute_dynamic_scale(region: 'ee.Geometry') -> int:
 
 def _mask_s2_clouds(image):
     import ee
-    qa = image.select("QA60")
-    cloud_bit = 1 << 10
-    cirrus_bit = 1 << 11
-    mask = qa.bitwiseAnd(cloud_bit).eq(0).And(qa.bitwiseAnd(cirrus_bit).eq(0))
+    # QA60 is masked for 2022–February 2024. SCL is available throughout L2A.
+    scl = image.select("SCL")
+    mask = scl.gte(4).And(scl.lte(6))
     return image.updateMask(mask).divide(10000).copyProperties(image, ["system:time_start"])
 
 
@@ -406,10 +427,9 @@ def _build_s2_composite(region, start: str, end: str, cloud_pct: int):
 def _mask_l8_clouds(image):
     import ee
     qa = image.select("QA_PIXEL")
-    mask = (qa.bitwiseAnd(1 << 3).eq(0)
-            .And(qa.bitwiseAnd(1 << 5).eq(0)))
-    optical = image.select("SR_B.*").multiply(0.0000275).add(-0.2).max(0.0001)
-    return image.updateMask(mask).addBands(optical, overwrite=True)
+    mask = qa.bitwiseAnd(63).eq(0).And(image.select("QA_RADSAT").eq(0))
+    optical = image.select("SR_B.").multiply(0.0000275).add(-0.2)
+    return image.addBands(optical, None, True).updateMask(mask)
 
 
 def _build_l8_composite(region, start: str, end: str, cloud_pct: int):
@@ -451,8 +471,12 @@ def _build_rivers_raster(region):
 
 # ── Index image builder ────────────────────────────────────────────────────────
 
-def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=None):
+def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=None,
+                       start_date="2023-01-01", end_date="2023-12-31",
+                       pre_start_date=None, pre_end_date=None, cloud_pct=30):
     """Build the raw index image (1 band 'index'). Caller is responsible for clip."""
+    require_scientific_index(index)
+    validate_period(start_date, end_date)
     import ee
 
     if index == "ndvi":
@@ -613,48 +637,45 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         # NBR = (B8 - B12) / (B8 + B12) — Normalized Burn Ratio
         return s2.normalizedDifference(["B8", "B12"]).rename("index")
 
-    if index == "dnbr":
-        # dNBR = pre_NBR - post_NBR
-        # Uses the same S2 composite for both (since single-date), but dNBR
-        # is really a multi-date operation. We compute a single-date proxy first.
-        nbr_img = s2.normalizedDifference(["B8", "B12"]).rename("index")
-        # For a single composite this just shows NBR; real dNBR requires two API calls
-        return nbr_img
-
-    if index == "burn_severity":
-        # Classify NBR into dNBR severity classes
-        nbr_raw = s2.normalizedDifference(["B8", "B12"])
-        return nbr_raw.expression(
-            "(n < -0.1) ? 1"     # unburned / regrowth
-            ": (n < 0.1) ? 1"     # unburned
-            ": (n < 0.27) ? 2"    # low
-            ": (n < 0.44) ? 3"    # moderate-low
-            ": (n < 0.66) ? 4"    # moderate-high
-            ": 5",                # high
-            {"n": nbr_raw}
-        ).rename("index")
+    if index in ("dnbr", "burn_severity"):
+        if not pre_start_date or not pre_end_date:
+            raise ValueError("dNBR exige períodos explícitos pré e pós-incêndio.")
+        validate_period(pre_start_date, pre_end_date)
+        if pre_end_date > start_date:
+            raise ValueError("Os períodos pré e pós-incêndio não podem sobrepor-se.")
+        pre, _ = _build_s2_composite(region, pre_start_date, pre_end_date, cloud_pct)
+        dnbr = pre.normalizedDifference(["B8", "B12"]).subtract(
+            s2.normalizedDifference(["B8", "B12"])).rename("index")
+        if index == "dnbr":
+            return dnbr
+        return dnbr.expression(
+            "d < -0.1 ? 0 : d < 0.1 ? 1 : d < 0.27 ? 2 : d < 0.44 ? 3 : d < 0.66 ? 4 : 5",
+            {"d": dnbr}).rename("index")
 
     if index == "forest_loss":
-        # Hansen Global Forest Change — loss year (2000–2023)
-        # This is a pre-made dataset, not computed from S2/DEM
-        import ee
+        start, end = date.fromisoformat(start_date), date.fromisoformat(end_date)
+        if start.month != 1 or start.day != 1 or end.month != 1 or end.day != 1:
+            raise ValueError("Hansen tem resolução anual: seleccione 1 de Janeiro a 1 de Janeiro do ano seguinte (fim exclusivo).")
+        if start.year < 2001 or end.year > 2024:
+            raise ValueError("Hansen v1.11 cobre 2001–2023; não há dados posteriores nesta versão.")
         hansen = ee.Image("UMD/hansen/global_forest_change_2023_v1_11")
-        # treecover2000 >= 30% is considered forest
-        treecover = hansen.select("treecover2000")
-        loss_year = hansen.select("lossyear").rename("index")
-        # Mask: only show where treecover >= 30% and loss > 0
-        masked = loss_year.updateMask(treecover.gte(30)).updateMask(loss_year.gt(0))
-        return masked
+        loss = hansen.select("lossyear")
+        mask = hansen.select("treecover2000").gte(30).And(loss.gte(start.year - 2000)).And(loss.lt(end.year - 2000))
+        return loss.add(2000).updateMask(mask).rename("index")
 
     if index == "burned_area":
-        # MODIS MCD64A1 burned area
-        import ee
-        burned = (ee.ImageCollection("MODIS/061/MCD64A1")
-                  .filterBounds(region)
-                  .select("BurnDate"))
-        # Composite: take latest available month
-        composite = burned.sort("system:time_start", False).first()
-        return composite.rename("index").selfMask()
+        # Monthly products contain day-of-year, not an area or a timestamp.
+        first_month = start_date[:8] + "01"
+        col = _checked_collection("MODIS/061/MCD64A1", region, first_month, end_date)
+        start_ms, end_ms = ee.Date(start_date).millis(), ee.Date(end_date).millis()
+        def mask_burn(image):
+            burn = image.select("BurnDate")
+            year_start = ee.Date.fromYMD(ee.Date(image.get("system:time_start")).get("year"), 1, 1).millis()
+            day_ms = burn.subtract(1).multiply(86400000).add(year_start)
+            qa = image.select("QA")
+            valid = qa.bitwiseAnd(1).eq(1).And(qa.bitwiseAnd(2).neq(0))
+            return burn.gt(0).And(day_ms.gte(start_ms)).And(day_ms.lt(end_ms)).updateMask(valid).rename("index")
+        return col.map(mask_burn).max().selfMask().rename("index")
 
     if index == "fire_risk":
         # Composite: high risk = dry + low vegetation + high flammability
@@ -728,21 +749,14 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
     # ── Climate & Disasters indices ─────────────────────────────────────────
 
     if index == "precipitation":
-        # CHIRPS — mean annual precipitation
-        import ee
-        chirps = (ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY")
-                  .filterDate("2022-01-01", "2023-01-01")
-                  .sum())
-        return chirps.rename("index")
+        return _checked_collection("UCSB-CHG/CHIRPS/DAILY", region, start_date, end_date).select("precipitation").sum().rename("index")
 
     if index == "temperature_lst":
-        # MODIS MOD11A2 — land surface temperature
-        import ee
-        lst_coll = (ee.ImageCollection("MODIS/061/MOD11A2")
-                     .filterDate("2022-01-01", "2023-01-01")
-                     .select("LST_Day_1km"))
-        lst_mean = lst_coll.mean().multiply(0.02)
-        return lst_mean.rename("index")
+        col = _checked_collection("MODIS/061/MOD11A2", region, start_date, end_date)
+        def valid_lst(image):
+            qc = image.select("QC_Day")
+            return image.select("LST_Day_1km").updateMask(qc.bitwiseAnd(3).eq(0).And(qc.rightShift(6).bitwiseAnd(3).eq(0)))
+        return col.map(valid_lst).mean().multiply(0.02).subtract(273.15).rename("index")
 
     if index == "cyclone_tracks":
         # IBTrACS — cyclone track density (1980–2024)
@@ -1049,41 +1063,18 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
     # Formula: Wind = sqrt(u² + v²)  where u=u_10, v=v_10
     # Source: script 00014_daily_wind_speed
     if index == "wind_speed":
-        import ee
-        era5 = (ee.ImageCollection("ECMWF/ERA5/DAILY")
-                .filterBounds(region)
-                .filterDate("2022-01-01", "2023-01-01")
-                .select(["u_10", "v_10"])
-                .mean())
-        wind = era5.expression(
-            "sqrt(u_10 * u_10 + v_10 * v_10)",
-            {"u_10": era5.select("u_10"), "v_10": era5.select("v_10")}
-        )
-        return wind.clamp(0, 30).rename("index")
+        col = _checked_collection("ECMWF/ERA5_LAND/DAILY_AGGR", region, start_date, end_date)
+        def magnitude(image):
+            return image.select("u_component_of_wind_10m").pow(2).add(image.select("v_component_of_wind_10m").pow(2)).sqrt().rename("index")
+        return col.map(magnitude).mean().rename("index")
 
-    # ── Night Light — VIIRS annual composite ──────────────────────────
-    # Formula: avg_rad from VIIRS DNB monthly composite, annualised
-    # Source: script 00034_night_light
     if index == "night_light":
-        import ee
-        viirs = (ee.ImageCollection("NOAA/VIIRS/DNB/MONTHLY_V1/VCMCFG")
-                 .filterBounds(region)
-                 .filterDate("2022-01-01", "2023-01-01")
-                 .select("avg_rad"))
-        count = viirs.size().getInfo()
-        if count == 0:
-            raise ValueError(
-                "Sem dados VIIRS DNB disponíveis para a região. "
-                "Tente uma área maior."
-            )
-        return viirs.mean().clamp(0, 100).rename("index")
+        col = _checked_collection("NOAA/VIIRS/DNB/MONTHLY_V1/VCMCFG", region, start_date, end_date)
+        return col.map(lambda image: image.select("avg_rad").updateMask(image.select("cf_cvg").gt(0))).mean().rename("index")
 
-    # ── SPEI — Standardized Precipitation-Evapotranspiration Index ────
-    # Source: script 00059_spei_classification
     if index == "spei":
-        import ee
-        spei_img = ee.Image("CSIC/SPEI/SPEI_12_month")
-        return spei_img.clamp(-5, 5).rename("index")
+        col = _checked_collection("CSIC/SPEI/2_11", region, start_date, end_date)
+        return ee.Image(col.sort("system:time_start", False).first()).select("SPEI_12_month").rename("index")
 
     # ── Canopy Height — Meta Forest Monitoring 1m ────────────────────
     # Source: script 00031_canopy_height_1m
@@ -1577,6 +1568,8 @@ def compute_index_tile(
     end_date: str = "2023-12-31",
     cloud_pct: int = 30,
     processing_mode: str = "detailed",
+    pre_start_date: Optional[str] = None,
+    pre_end_date: Optional[str] = None,
 ) -> dict:
     """Compute a real GEE tile with a configurable statistics workload.
 
@@ -1594,6 +1587,8 @@ def compute_index_tile(
     if index not in INDEX_REGISTRY:
         raise ValueError(f"Índice desconhecido '{index}'. Disponíveis: {list(INDEX_REGISTRY)}")
 
+    require_scientific_index(index)
+    validate_period(start_date, end_date)
     cfg = INDEX_REGISTRY[index]
     region = _to_ee_region(region_geojson)
 
@@ -1610,27 +1605,28 @@ def compute_index_tile(
     if "rivers" in needs:
         rivers = _build_rivers_raster(region)
 
-    idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers).clip(region)
+    idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers, start_date=start_date, end_date=end_date, pre_start_date=pre_start_date, pre_end_date=pre_end_date, cloud_pct=cloud_pct).clip(region)
 
     # Store in cache so that compute_index_tile_vis can re-render without
     # rebuilding the heavy satellite composite.
-    ck = _build_cache_key_for_request(index, region_geojson, start_date, end_date, cloud_pct)
+    ck = _build_cache_key_for_request(f"v2:{index}:{pre_start_date}:{pre_end_date}", region_geojson, start_date, end_date, cloud_pct)
     _cache_put(ck, idx_img)
 
     stats: dict = {}
+    statistics_warning = "Modo rápido: estatísticas e cobertura válida não verificadas." if processing_mode == "fast" else None
     if processing_mode != "fast":
         try:
             if processing_mode == "balanced":
                 # Do not ask EE to compute AOI area or expensive percentiles.
                 # 250 m is the statistics sampling scale, not tile resolution.
                 stats_reducer = (
-                    ee.Reducer.mean()
+                    ee.Reducer.mean().combine(ee.Reducer.count(), "", True)
                     .combine(ee.Reducer.minMax(), "", True)
                 )
                 dyn_scale = 250
             else:
                 stats_reducer = (
-                    ee.Reducer.mean()
+                    ee.Reducer.mean().combine(ee.Reducer.count(), "", True)
                     .combine(ee.Reducer.stdDev(), "", True)
                     .combine(ee.Reducer.percentile([2, 10, 25, 50, 75, 90, 98]), "", True)
                     .combine(ee.Reducer.minMax(), "", True)
@@ -1656,11 +1652,24 @@ def compute_index_tile(
                 except Exception:
                     pass
         except Exception as exc:
+            statistics_warning = "Estatísticas indisponíveis; não interpretar valores ausentes como zero."
             logger.warning(
                 "Earth Engine %s statistics unavailable for %s: %s",
                 processing_mode, index, type(exc).__name__,
             )
 
+    if processing_mode != "fast" and not statistics_warning:
+        if stats.get("count", 0) == 0:
+            statistics_warning = "Sem píxeis válidos/detecções no recorte. Verifique a cobertura e qualidade."
+        if index in ("burned_area", "forest_loss"):
+            try:
+                value = idx_img.gt(0).multiply(ee.Image.pixelArea()).reduceRegion(
+                    reducer=ee.Reducer.sum(), geometry=region,
+                    scale=500 if index == "burned_area" else 30,
+                    maxPixels=1e9, tileScale=4).get("index").getInfo()
+                stats["detectedAreaKm2"] = round(float(value or 0) / 1e6, 4)
+            except Exception:
+                statistics_warning = "Área detectada não calculada; reduza a área de estudo."
     vis_params = dict(cfg["vis"])
     # Dynamic 2%–98% linear stretch for mineral & spectral ratio indices
     # to maximize contrast across diverse lithological backgrounds.
@@ -1695,7 +1704,10 @@ def compute_index_tile(
         "dateRange":  f"{start_date} → {end_date}" if cfg["group"] != "terrain" else "Estático (DEM)",
         "stats":      stats,
         "vis":        vis_params,
+        "warning": statistics_warning,
         "classNames": cfg.get("class_names"),
+        "science": INDEX_SCIENCE[index],
+        "preDateRange": f"{pre_start_date} → {pre_end_date}" if pre_start_date else None,
     }
 
 
@@ -1708,6 +1720,8 @@ def compute_index_tile_vis(
     start_date: str = "2023-01-01",
     end_date: str = "2023-12-31",
     cloud_pct: int = 30,
+    pre_start_date: Optional[str] = None,
+    pre_end_date: Optional[str] = None,
 ) -> dict:
     """Same as compute_index_tile but uses an explicit vis_params dict
     instead of the registry default.  Useful for the RasterVisPanel:
@@ -1726,12 +1740,14 @@ def compute_index_tile_vis(
     if index not in INDEX_REGISTRY:
         raise ValueError(f"Índice desconhecido '{index}'. Disponíveis: {list(INDEX_REGISTRY)}")
 
+    require_scientific_index(index)
+    validate_period(start_date, end_date)
     cfg = INDEX_REGISTRY[index]
     region = _to_ee_region(region_geojson)
 
     # ── Check cache FIRST — skip building composites if we already have
     # the index image.  This is the key performance fix vs. GEE Code Editor.
-    ck = _build_cache_key_for_request(index, region_geojson, start_date, end_date, cloud_pct)
+    ck = _build_cache_key_for_request(f"v2:{index}:{pre_start_date}:{pre_end_date}", region_geojson, start_date, end_date, cloud_pct)
     cached = _cache_get(ck)
 
     if cached is not None:
@@ -1754,7 +1770,7 @@ def compute_index_tile_vis(
         if "rivers" in needs:
             rivers = _build_rivers_raster(region)
 
-        idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers).clip(region)
+        idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers, start_date=start_date, end_date=end_date, pre_start_date=pre_start_date, pre_end_date=pre_end_date, cloud_pct=cloud_pct).clip(region)
         _cache_put(ck, idx_img)
 
     # Build the .visualize() kwargs from vis_params, falling back to
@@ -1818,6 +1834,8 @@ def compute_index_tile_vis(
         "visParams":  final_vis,
         "stats":      {},
         "classNames": cfg.get("class_names"),
+        "science": INDEX_SCIENCE[index],
+        "preDateRange": f"{pre_start_date} → {pre_end_date}" if pre_start_date else None,
     }
 
 
@@ -1867,7 +1885,7 @@ def compute_composite_tile(
     composite = None
     for k, w in pos.items():
         cfg = INDEX_REGISTRY[k]
-        img = _build_index_image(k, region, s2=s2, l8=l8, dem=dem, rivers=rivers)
+        img = _build_index_image(k, region, s2=s2, l8=l8, dem=dem, rivers=rivers, start_date=start_date, end_date=end_date, cloud_pct=cloud_pct)
         nmin, nmax = cfg["norm"]
         # normalize to [0,1] using fixed registry range, then weight
         norm = img.subtract(nmin).divide(nmax - nmin).clamp(0, 1)
@@ -1954,6 +1972,7 @@ def compute_lineaments_tile(
       - rose-diagram bins (18 × 10°)
       - approximate mean density inside the region
     """
+    require_scientific_index("lineaments")
     import ee
     region = _to_ee_region(region_geojson)
 
@@ -2039,6 +2058,7 @@ def _build_targeting_score(
     compute_targeting_zones (spatial overlap report).
     Returns (score, scene_count, preset, pos_weights, invert_set).
     """
+    require_scientific_index("targeting")
     import ee
 
     if mineral not in MINERAL_PRESETS:
@@ -2097,7 +2117,7 @@ def _build_targeting_score(
             norm = lin_density.multiply(3).clamp(0, 1)
         else:
             cfg = INDEX_REGISTRY[k]
-            img = _build_index_image(k, region, s2=s2, l8=l8, dem=dem, rivers=rivers)
+            img = _build_index_image(k, region, s2=s2, l8=l8, dem=dem, rivers=rivers, start_date=start_date, end_date=end_date, cloud_pct=cloud_pct)
             nmin, nmax = cfg["norm"]
             norm = img.subtract(nmin).divide(nmax - nmin).clamp(0, 1)
         if k in invert_set:
@@ -2123,6 +2143,7 @@ def compute_targeting_tile(
     """Build a mineral favorability score (0–100) by combining normalized indices
     according to a per-mineral preset. Returns tile URL + favorability stats.
     """
+    require_scientific_index("targeting")
     import ee
 
     region = _to_ee_region(region_geojson)
@@ -3904,6 +3925,7 @@ def compute_spi_ndvi(
     NDVI : média anual MODIS MOD13A2 (×0.0001).
     Amostra N pontos de ambas as bandas para scatter + Pearson r (server-side).
     """
+    require_scientific_index("spi_ndvi")
     import ee
 
     if not (1990 <= clim_start <= year - 5):
@@ -4102,6 +4124,8 @@ def get_index_download_url(
     end_date: str = "2023-12-31",
     cloud_pct: int = 30,
     scale: int = 30,
+    pre_start_date: Optional[str] = None,
+    pre_end_date: Optional[str] = None,
 ) -> dict:
     """Generate a direct GeoTIFF raster download URL from GEE for a given index and AOI."""
     import ee
@@ -4109,6 +4133,8 @@ def get_index_download_url(
     if index not in INDEX_REGISTRY:
         raise ValueError(f"Índice desconhecido '{index}'. Disponíveis: {list(INDEX_REGISTRY)}")
 
+    require_scientific_index(index)
+    validate_period(start_date, end_date)
     cfg = INDEX_REGISTRY[index]
     region = _to_ee_region(region_geojson)
 
@@ -4123,7 +4149,7 @@ def get_index_download_url(
     if "rivers" in needs:
         rivers = _build_rivers_raster(region)
 
-    idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers).clip(region).toFloat()
+    idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers, start_date=start_date, end_date=end_date, pre_start_date=pre_start_date, pre_end_date=pre_end_date, cloud_pct=cloud_pct).clip(region).toFloat()
     from gee_download_grid import bounded_download_grid
     grid_geometry = region_geojson or {
         "type": "Polygon", "coordinates": [[
