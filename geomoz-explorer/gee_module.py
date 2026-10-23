@@ -3029,7 +3029,6 @@ def _watershed_hydrobasins(pt, lat: float, lon: float, level: int):
     # Never silently swap the requested hierarchy level for an unrelated one.
     for lvl in (level,):
         for cid in _HYDROBASINS_CANDIDATES[lvl]:
-        for cid in cids:
             try:
                 fc = (ee.FeatureCollection(cid).filterBounds(pt)
                       .select(keep, None, True).limit(1))
