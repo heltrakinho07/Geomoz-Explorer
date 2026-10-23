@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import { geomozProjectedToGeographic, geomozGcpPixelResiduals } from "../assets/workbench/geomoz-georeference.ts";
+import { geomozProjectedToGeographic, geomozGcpPixelResiduals, geomozValidateGeoreferencing } from "../assets/workbench/geomoz-georeference.ts";
 
 test("GeoMoz handles manual geographic and UTM 35S/36S/37S control point coordinates", () => {
   assert.deepEqual(geomozProjectedToGeographic(32.58, -25.97, "EPSG:4326"), [32.58, -25.97]);
@@ -38,4 +38,34 @@ test("native pinned GCP/GDAL pipeline remains integrated in GeoMoz source-level 
   assert.match(prepare,/outputResampling/);
   const chrome=readFileSync("scripts/assets/workbench/GeoMozWorkbenchChrome.tsx","utf8");
   assert.match(chrome,/proc\.georeferencer/);
+});
+
+test("GeoMoz blocks georeferencing with too few or badly distributed GCPs", () => {
+  const wide = [
+    { px: 20, py: 20, lng: 31, lat: -16 },
+    { px: 920, py: 20, lng: 36, lat: -16 },
+    { px: 920, py: 920, lng: 36, lat: -26 },
+    { px: 20, py: 920, lng: 31, lat: -26 },
+  ];
+  assert.match(geomozValidateGeoreferencing(wide.slice(0, 3), 1000, 1000, "affine", 0).message, /pelo menos 4/);
+  assert.equal(geomozValidateGeoreferencing(wide, 1000, 1000, "affine", 1).ok, true);
+  assert.match(geomozValidateGeoreferencing(wide, 1000, 1000, "polynomial", 1).message, /pelo menos 6/);
+  assert.equal(geomozValidateGeoreferencing(wide, 1000, 1000, "tps", 1).ok, true);
+  const clustered = wide.map(g => ({ ...g, px: g.px / 12, py: g.py / 12 }));
+  assert.match(geomozValidateGeoreferencing(clustered, 1000, 1000, "affine", 1).message, /demasiado concentrados/);
+  assert.match(geomozValidateGeoreferencing(wide, 1000, 1000, "affine", 40).message, /RMSE afim elevado/);
+  assert.match(geomozValidateGeoreferencing(wide, 1000, 1000, "affine", Infinity).message, /Não foi possível/);
+  const invalid = wide.map((g, i) => i === 2 ? { ...g, lng: 325 } : g);
+  assert.match(geomozValidateGeoreferencing(invalid, 1000, 1000, "affine", 1).message, /inválidas/);
+});
+
+test("Add to map uses the same selected GDAL warp and native COG importer as export", () => {
+  const prepare = readFileSync("scripts/prepare-geomoz-workbench.mjs", "utf8");
+  assert.match(prepare, /addRasterToMap/);
+  assert.match(prepare, /createAppAPI/);
+  assert.match(prepare, /geomozValidateGeoreferencing/);
+  assert.match(prepare, /outputResampling, true/);
+  assert.match(prepare, /-dstalpha/);
+  assert.match(prepare, /rasterApply/);
+  assert.match(prepare, /imageCornersToMap/); // only the source-replacement guard
 });
