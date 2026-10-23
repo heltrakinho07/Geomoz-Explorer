@@ -1,4 +1,4 @@
-import {useEffect,useState} from "react";
+import {useEffect,useRef,useState} from "react";
 import {createPortal} from "react-dom";
 import {useAppStore,type GeoLibreLayer} from "@geolibre/core";
 import {Pencil,Save,Trash2,Magnet,MapPin,Waypoints,Pentagon,Info,X,Check,Table2} from "lucide-react";
@@ -6,6 +6,14 @@ import {Pencil,Save,Trash2,Magnet,MapPin,Waypoints,Pentagon,Info,X,Check,Table2}
 type Shape="Point"|"LineString"|"Polygon";
 type Field={name:string;type:"text"|"number";description:string};
 type NewFeature={layerId:string;featureKey:string;geometryType:string};
+// Shared across internal panel instances. Only a visible catalogue may show
+// the attributes popup for a native feature-creation event.
+const handledFeatureEvents=new WeakSet<Event>();
+function isActiveSurface(node:HTMLElement|null){
+ if(!node||!node.getClientRects().length||node.closest("[hidden]"))return false;
+ const style=window.getComputedStyle(node);
+ return style.display!=="none"&&style.visibility!=="hidden";
+}
 function layerFields(layer:GeoLibreLayer):Field[]{
  const stored=layer.metadata.geomozFieldSchema;
  if(Array.isArray(stored)){
@@ -33,6 +41,7 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
  layer:GeoLibreLayer;editLayerId:string|null;
  onToggleEdit:(id:string)=>void;onCancelEdit:()=>void;
 }){
+ const rootRef=useRef<HTMLElement|null>(null);
  const [snapping,setSnapping]=useState(true);
  const [tolerance,setTolerance]=useState(10);
  const [pending,setPending]=useState<NewFeature|null>(null);
@@ -46,14 +55,16 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
  useEffect(()=>{
    const listener=(event:Event)=>{
      const feature=(event as CustomEvent<NewFeature>).detail;
-     if(!feature||feature.layerId!==layer.id)return;
+     if(!active||!feature||feature.layerId!==layer.id||!isActiveSurface(rootRef.current)||handledFeatureEvents.has(event))return;
+     handledFeatureEvents.add(event);
      setValues({});setPending(feature);
    };
    window.addEventListener("geomoz:digitizing-feature-created",listener);
    return()=>window.removeEventListener("geomoz:digitizing-feature-created",listener);
- },[layer.id]);
+ },[active,layer.id]);
  useEffect(()=>{
    if(!active){setPending(null);return;}
+   if(!isActiveSurface(rootRef.current))return;
    window.dispatchEvent(new CustomEvent("geomoz:digitizing-snap",{detail:{layerId:layer.id,enabled:snapping,distance:tolerance}}));
  },[active,layer.id,snapping,tolerance]);
  const draw=()=>{
@@ -77,7 +88,7 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
    setPending(null);setNotice("Atributos atribuídos à feição. Guarde as edições da camada para os conservar.");
  };
  const showForm=pending&&pending.layerId===layer.id;
- return <section className="gm-digitizing-tools" data-testid="geomoz-digitizing-tools" data-layer-id={layer.id} aria-label="Fluxo de digitalização">
+ return <section ref={rootRef} className="gm-digitizing-tools" data-testid="geomoz-digitizing-tools" data-layer-id={layer.id} aria-label="Fluxo de digitalização">
   <h4><Pencil size={15}/> Digitalização da camada</h4>
   <p><strong>1. Base cartográfica</strong> · Utilize «Dados» para adicionar raster/ortofoto ou «Georreferenciar imagem» em Digitalizar. Confirme o SRC.</p>
   <p><strong>2. Camada activa</strong> · {layer.name} · {shape==="Point"?"Ponto":shape==="LineString"?"Linha":"Polígono"}</p>
