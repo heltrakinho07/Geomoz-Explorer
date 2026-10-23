@@ -396,3 +396,15 @@ html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0
 .gm-digitizing-attribute-form footer button{display:flex;align-items:center;gap:6px;border:1px solid var(--gm-line);border-radius:7px;padding:9px 12px;font-size:12px}
 .gm-digitizing-attribute-form footer button[type=submit]{background:#0284c7;border-color:#0284c7;color:white;font-weight:750}
 @media(max-width:767px){.gm-cartography-add-field{grid-template-columns:minmax(0,1fr) 78px}.gm-cartography-add-field button{grid-column:1/-1}.gm-digitizing-controls{grid-template-columns:1fr}.gm-digitizing-attribute-form{padding:13px}}
+
+
+/* Digitalizar: compact by default, detailed guidance on demand. */
+.gm-digitizing-tools{gap:8px;padding:10px}
+.gm-digitizing-mode{margin-left:auto;padding:3px 7px;border-radius:6px;font-size:10px;font-weight:650;background:var(--gm-muted);color:var(--gm-subtle);border:1px solid var(--gm-line)}
+.gm-digitizing-layer-name{display:block;color:var(--gm-subtle);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gm-digitizing-help{border-top:1px solid var(--gm-line);padding-top:7px}
+.gm-digitizing-help summary{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;cursor:pointer;color:var(--gm-subtle);list-style:none}
+.gm-digitizing-help summary::-webkit-details-marker{display:none}
+.gm-digitizing-help[open] summary{color:var(--gm-text)}
+.gm-digitizing-help ol{list-style:decimal;padding:8px 0 0 18px;margin:0;display:grid;gap:6px;font-size:10px;line-height:1.5;color:var(--gm-subtle)}
+.gm-digitizing-tools:has(.gm-digitizing-controls button[aria-pressed=false]){min-width:0}
