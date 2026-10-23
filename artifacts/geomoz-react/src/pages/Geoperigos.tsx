@@ -653,6 +653,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
       {/* ── Sidebar ─────────────────────────────────────────────── */}
       {desktopSidebarOpen && <SidebarResize panel={sidebarSize} breakpoint="md" />}
       <div
+        ref={sidebarSize.ref}
         style={sidebarSize.style}
         className={`fixed md:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 shrink-0 shadow-xl md:shadow-none ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"

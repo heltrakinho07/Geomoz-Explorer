@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 
 export function useSidebarWidth(key: string, initial = 320) {
-  const clamp = (value: number) => Math.round(Math.max(260, Math.min(value, 640, window.innerWidth - 320)));
+  const element = useRef<HTMLElement | null>(null);
+  const ref = useCallback((node: HTMLElement | null) => { element.current = node; }, []);
+  const maximum = () => Math.max(260, Math.min(640, (element.current?.parentElement?.clientWidth || window.innerWidth) - 320));
+  const clamp = (value: number) => Math.round(Math.max(260, Math.min(value, maximum())));
   const [width, setWidth] = useState(() => {
     try { const saved = Number(localStorage.getItem(key)); return clamp(saved >= 260 ? saved : initial); }
     catch { return initial; }
@@ -9,10 +12,13 @@ export function useSidebarWidth(key: string, initial = 320) {
   useEffect(() => { try { localStorage.setItem(key, String(width)); } catch { /* Storage may be unavailable. */ } }, [key, width]);
   useEffect(() => {
     const resize = () => setWidth(value => clamp(value));
+    resize();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
+    if (element.current?.parentElement) observer?.observe(element.current.parentElement);
     window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", resize); };
   }, []);
-  return { width, setWidth: (value: number) => setWidth(clamp(value)), reset: () => setWidth(clamp(initial)),
+  return { width, ref, maximum, setWidth: (value: number) => setWidth(clamp(value)), reset: () => setWidth(clamp(initial)),
     style: { "--gm-sidebar-width": `${width}px` } as CSSProperties };
 }
 
@@ -21,7 +27,7 @@ export function SidebarResize({ panel, breakpoint = "md" }: {
 }) {
   const drag = useRef<{ x: number; width: number } | null>(null);
   return <div role="separator" aria-label="Largura do painel lateral" aria-orientation="vertical"
-    aria-valuemin={260} aria-valuemax={Math.max(260, Math.min(640, window.innerWidth - 320))} aria-valuenow={panel.width}
+    aria-valuemin={260} aria-valuemax={panel.maximum()} aria-valuenow={panel.width}
     tabIndex={0} title="Arraste para alargar ou reduzir. Setas ajustam a largura; duplo clique repõe."
     className={`absolute inset-y-0 z-[710] w-2 touch-none cursor-col-resize items-center justify-center hover:bg-sky-500/20 focus-visible:bg-sky-500/20 focus-visible:outline-none ${breakpoint === "lg" ? "hidden lg:flex" : "hidden md:flex"}`}
     style={{ left: panel.width - 4 }} onDoubleClick={panel.reset}

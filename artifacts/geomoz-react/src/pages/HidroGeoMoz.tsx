@@ -1511,6 +1511,7 @@ export default function HidroGeoMoz({
       {/* ── Left Sidebar ─────────────────────────────────────────────────── */}
       {sidebarOpen && <SidebarResize panel={sidebarSize} breakpoint="lg" />}
       <div
+        ref={sidebarSize.ref}
         style={sidebarSize.style}
         className={`fixed lg:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 shadow-2xl lg:shadow-none w-72 max-w-[85vw] ${
           mobileSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"

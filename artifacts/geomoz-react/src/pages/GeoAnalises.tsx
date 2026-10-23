@@ -4011,7 +4011,8 @@ export default function GeoAnalises({
             {/* Controls sidebar */}
             {desktopSidebarOpen && <SidebarResize panel={sidebarSize} breakpoint="md" />}
       <div
-              style={sidebarSize.style}
+              ref={sidebarSize.ref}
+        style={sidebarSize.style}
         aria-label="Parâmetros da análise"
               className={`geomoz-analysis-sidebar fixed md:relative inset-y-0 left-0 z-[700] flex w-[min(94vw,26rem)] min-h-0 flex-col overflow-y-auto overscroll-contain bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 shadow-xl md:shadow-none ${
                 sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
