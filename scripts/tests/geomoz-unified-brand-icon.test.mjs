@@ -35,7 +35,7 @@ test("Portal browser favicon and both PWA manifests use the official GIS Workspa
   const hash=createHash("sha256").update(svg).digest("hex").slice(0,12);
   const base="/gis-workspace/favicon.svg?v="+hash;
   const html=read("index.html");
-  assert.match(html,new RegExp('rel="icon"[^>]*href="'+base.replace(".","\\.")+'"'));
+  assert.ok(html.includes('rel="icon" type="image/svg+xml" sizes="any" href="'+base+'"'),"Root portal must use the official GIS SVG favicon");
   assert.equal((html.match(/rel="icon"/g)||[]).length,1,"Only the official SVG may be selected as tab icon");
   assert.doesNotMatch(html,/rel="shortcut icon"/);
   for(const name of ["manifest.webmanifest","manifest.json"]){
@@ -54,7 +54,7 @@ test("GIS Workspace uses the exact same canonical GeoMoz icon and preserves inst
   assert.match(workspace,/<img src="\/favicon\.svg" alt=""/);
   assert.doesNotMatch(workspace,/<img src="\/gis-workspace\/favicon\.svg"/);
   assert.match(packaging,/\["favicon\.svg", "favicon\.svg"\]/);
-  assert.match(packaging,/href=\\"\/gis-workspace\/favicon\.svg\?v=/);
+  assert.ok(packaging.includes('href="/gis-workspace/favicon.svg?v='),"Workbench must use official GIS favicon URL");
   assert.match(packaging,/cpSync\(logoFile, resolve\(destination, destinationName\)\)/);
   for(const asset of ["icon-192.png","icon-512.png","icon-maskable.png","apple-touch-icon.png"]){
     assert.match(packaging,new RegExp(asset.replace(".","\\.")));
