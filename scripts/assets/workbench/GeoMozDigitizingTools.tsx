@@ -84,7 +84,7 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
   <div className="gm-digitizing-controls">
    <button type="button" data-testid="geomoz-edit-layer" disabled={!canEdit} aria-pressed={active} onClick={()=>onToggleEdit(layer.id)}>
      {active?<Save size={15}/>:<Pencil size={15}/>}
-     {active?"Guardar edições / Sair da edição":"Alternar edição"}
+     {active?"Concluir e guardar edição":"Digitalizar nesta camada"}
    </button>
    {active&&<button type="button" onClick={onCancelEdit}><Trash2 size={15}/> Descartar</button>}
   </div>
