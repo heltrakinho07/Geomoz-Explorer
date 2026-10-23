@@ -63,8 +63,6 @@ const publicAssets = fileURLToPath(new URL("../artifacts/geomoz-react/public/", 
 const faviconVersion = createHash("sha256").update(readFileSync(resolve(publicAssets, "favicon.svg"))).digest("hex").slice(0, 12);
 const identityHead = [
   `<link rel="icon" type="image/svg+xml" sizes="any" href="/gis-workspace/favicon.svg?v=${faviconVersion}" />`,
-  `<link rel="icon" type="image/png" sizes="32x32" href="/gis-workspace/favicon.png?v=${faviconVersion}" />`,
-  `<link rel="shortcut icon" href="/gis-workspace/favicon.ico?v=${faviconVersion}" />`,
   `<link rel="apple-touch-icon" sizes="180x180" href="/gis-workspace/apple-touch-icon.png?v=${faviconVersion}" />`,
   '<meta name="theme-color" content="#082f49" />',
   themeHref,
