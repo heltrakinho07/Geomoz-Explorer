@@ -82,7 +82,7 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
   <p><strong>1. Base cartográfica</strong> · Utilize «Dados» para adicionar raster/ortofoto ou «Georreferenciar imagem» em Digitalizar. Confirme o SRC.</p>
   <p><strong>2. Camada activa</strong> · {layer.name} · {shape==="Point"?"Ponto":shape==="LineString"?"Linha":"Polígono"}</p>
   <div className="gm-digitizing-controls">
-   <button type="button" disabled={!canEdit} aria-pressed={active} onClick={()=>onToggleEdit(layer.id)}>
+   <button type="button" data-testid="geomoz-edit-layer" disabled={!canEdit} aria-pressed={active} onClick={()=>onToggleEdit(layer.id)}>
      {active?<Save size={15}/>:<Pencil size={15}/>}
      {active?"Guardar edições / Sair da edição":"Alternar edição"}
    </button>
