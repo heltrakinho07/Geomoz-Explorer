@@ -1,0 +1,46 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import {patchGeoMozDigitizingEngine} from "../geomoz-digitizing-engine.mjs";
+
+test("native layer editor accepts real drawing, snapping and user-provided feature attributes",()=>{
+ const source=readFileSync(".geolibre-upstream/packages/plugins/src/plugins/maplibre-geo-editor.ts","utf8");
+ // Apply the existing GeoMoz advanced drawing gate before this production patch.
+ const old="if (isGeometryEditSession) geoEditorControl?.closeAttributeEditor();";
+ assert.equal(source.split(old).length,2,"Pinned source changed");
+ const edited=source.replace(old,"if (isGeometryEditSession || !GEOMOZ_ROLLOUT.advancedDrawing) geoEditorControl?.closeAttributeEditor();");
+ const patched=patchGeoMozDigitizingEngine(edited);
+ assert.match(patched,/geomozBindDigitizingEvents\(\)/);
+ assert.match(patched,/geomanInstance\.enableDraw\(mode\)/);
+ assert.match(patched,/options\.settings\.snapDistance = distance/);
+ assert.match(patched,/enableMode\("helper", "snapping"\)/);
+ assert.match(patched,/geomoz:digitizing-feature-created/);
+ assert.match(patched,/geomozDigitizedAttributes\.get/);
+ assert.match(patched,/geojson: withAttributes/);
+ assert.match(patched,/writeBackToVectorSource\(layer, withAttributes\)/);
+ assert.match(patched,/geomozClearDigitizingAttributes\(targetId\)/);
+ assert.throws(()=>patchGeoMozDigitizingEngine(patched),/source drift/,"Integration must fail closed on source changes");
+});
+
+test("layer schema creation and geometry editing retain a single native workflow and Lucide icons",()=>{
+ const wizard=readFileSync("scripts/assets/workbench/GeoMozLayerCreation.tsx","utf8");
+ const tools=readFileSync("scripts/assets/workbench/GeoMozDigitizingTools.tsx","utf8");
+ const navigator=readFileSync("scripts/assets/workbench/GeoMozLayerPanel.tsx","utf8");
+ const prepare=readFileSync("scripts/prepare-geomoz-workbench.mjs","utf8");
+ assert.match(wizard,/SRC de referência para resultados/);
+ assert.match(wizard,/EPSG:32736/);
+ assert.match(wizard,/setFields\(all=>\[/);
+ assert.match(wizard,/geomozFieldSchema:fields/);
+ assert.match(wizard,/GeoJSON em WGS 84/);
+ assert.match(tools,/geomoz:digitizing-snap/);
+ assert.match(tools,/geomoz:digitizing-start-draw/);
+ assert.match(tools,/geomoz:digitizing-feature-created/);
+ assert.match(tools,/geomoz:digitizing-attributes-save/);
+ assert.match(tools,/onToggleEdit\(layer.id\)/);
+ assert.match(tools,/onCancelEdit/);
+ assert.match(tools,/createPortal/);
+ assert.match(navigator,/GeoMozDigitizingTools/);
+ assert.match(prepare,/patchGeoMozDigitizingEngine/);
+ assert.match(prepare,/GeoMozDigitizingTools\.tsx/);
+ assert.doesNotMatch(wizard+tools,/\p{Extended_Pictographic}/u,"Only Lucide icons, no emoji decoration");
+});
