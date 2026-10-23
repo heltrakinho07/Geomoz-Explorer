@@ -59,6 +59,7 @@ export default function GeoReferencer() {
   const [file, setFile] = useState<File | null>(null);
   const [fileUrl, setFileUrl] = useState("");
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 });
   const [gcps, setGcps] = useState<Gcp[]>([]);
   const [pending, setPending] = useState<{ px: number; py: number } | null>(null);
   const [manualX, setManualX] = useState("");
@@ -85,6 +86,14 @@ export default function GeoReferencer() {
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [result]);
+  useEffect(() => {
+    const image = imageRef.current;
+    if (!image || typeof ResizeObserver === "undefined") return;
+    const measure = () => setDisplaySize({ width: image.clientWidth, height: image.clientHeight });
+    const observer = new ResizeObserver(measure);
+    observer.observe(image); measure();
+    return () => observer.disconnect();
+  }, [fileUrl]);
   const calculated = useMemo(() => {
     if (!imageSize.width || gcps.length < MIN_GCPS[method]) return null;
     try { return { transform: fitGcps(gcps, imageSize.width, imageSize.height, method), error: "" }; }
@@ -276,10 +285,10 @@ export default function GeoReferencer() {
                 onError={() => setError("O navegador não conseguiu descodificar esta imagem.")} />
               {imageSize.width > 0 && gcps.map((point, index) => (
                 <span key={point.id} title={"GCP " + (index + 1)} className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-rose-600 ring-2 ring-white text-[10px] text-white font-bold flex items-center justify-center"
-                  style={{ left: (100 * point.px / imageSize.width) + "%", top: (100 * point.py / imageSize.height) + "%" }}>{index + 1}</span>
+                  style={{ left: (point.px / imageSize.width * displaySize.width) + "px", top: (point.py / imageSize.height * displaySize.height) + "px" }}>{index + 1}</span>
               ))}
               {pending && imageSize.width > 0 && <span className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 text-3xl leading-none text-emerald-500 drop-shadow" style={{
-                left: (100 * pending.px / imageSize.width) + "%", top: (100 * pending.py / imageSize.height) + "%",
+                left: (pending.px / imageSize.width * displaySize.width) + "px", top: (pending.py / imageSize.height * displaySize.height) + "px",
               }}>+</span>}
             </div>}
           </div>
