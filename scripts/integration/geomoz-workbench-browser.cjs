@@ -257,32 +257,9 @@ async function settleRecovery(page){
   await page.getByRole("menu").first().waitFor({timeout:10000});
   assert.equal(await page.getByRole("menuitem",{name:/directions|rota|conduzir|Google|Earth|tempo de viagem/i}).count(),0,"Map context must withhold off-scope features");
   await page.keyboard.press("Escape");
-  await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').click();
-  const editor=page.locator(".geo-editor-toolbar");
-  await editor.waitFor();
-  assert.equal(await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').getAttribute("aria-pressed"),"true");
-  assert.equal(await editor.locator('button[data-mode="massing"]').count(),0,"3D massing stays hidden");
-  await editor.locator('button[data-mode="line"]').waitFor();
-  await editor.locator('button[data-mode="polygon"]').click();
-  const canvas=await page.locator("main canvas").first().boundingBox();
-  const at=(x,y)=>({x:canvas.x+canvas.width*x,y:canvas.y+canvas.height*y});
-  const a=at(.55,.35),b=at(.8,.35),c=at(.8,.65),d=at(.55,.65);
-  await page.mouse.click(a.x,a.y);await page.mouse.click(b.x,b.y);await page.mouse.click(c.x,c.y);await page.mouse.dblclick(d.x,d.y);
-  await page.locator('.gm-layer-row[data-layer-name="Sketches"]').waitFor();
-  await page.locator('.gm-layer-row[data-layer-name="Sketches"] .gm-layer-select').click();
-  await page.locator(".gm-layer-properties summary").click();
-  const areaDownload=page.waitForEvent("download",{timeout:15000});
-  await page.getByRole("button",{name:"Exportar GeoJSON",exact:true}).click();
-  await (await areaDownload).saveAs("workbench-browser-artifacts/study-area.geojson");
-  const area=JSON.parse(await readFile("workbench-browser-artifacts/study-area.geojson","utf8"));
-  assert.ok(area.features.some(feature=>["Polygon","MultiPolygon"].includes(feature.geometry?.type)),"The drawn area must contain real polygon geometry");
-  assert.ok(await editor.locator('button[data-mode="line"]').isVisible(),"GIS editor remains active for attribute digitization");
-  console.log("Study polygon drawn and exported with real geometry; 3D controls hidden.");
-  await page.screenshot({path:"workbench-browser-artifacts/03c-geomoz-study-area.png",fullPage:true});
-  await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').click();
-  console.log("Drawing command state after finishing:",await page.locator('[data-command="plugin.maplibre-gl-geo-editor"]').getAttribute("aria-pressed"));
-  await editor.waitFor({state:"hidden",timeout:15000});
-  console.log("Drawing ended; ordinary map navigation restored.");
+  // QGIS workflow: draw directly in a named, editable vector layer.
+  // Sketches are intentionally not required as an intermediary.
+  console.log("Starting selected-layer digitization without opening temporary Sketches.");
   await page.getByTestId("geomoz-create-layer").click();
   const wizard=page.getByTestId("geomoz-cartography-wizard");
   await wizard.waitFor();
@@ -315,9 +292,11 @@ async function settleRecovery(page){
   await digitizing.getByTestId("geomoz-add-digitized-feature").click();
   const digitizingLayerId=await digitizing.getAttribute("data-layer-id");
   assert.ok(digitizingLayerId,"Native digitizing is bound to the selected layer");
-  await page.evaluate((layerId)=>window.dispatchEvent(new CustomEvent("geomoz:digitizing-feature-created",{
-    detail:{layerId,featureKey:"test-feature-attribute-ui",geometryType:"LineString"},
-  })),digitizingLayerId);
+  const canvas=await page.locator("main canvas").first().boundingBox();
+  const at=(x,y)=>({x:canvas.x+canvas.width*x,y:canvas.y+canvas.height*y});
+  const a=at(.53,.32),b=at(.7,.42),c=at(.83,.57);
+  await page.mouse.click(a.x,a.y);await page.mouse.click(b.x,b.y);
+  await page.mouse.dblclick(c.x,c.y);
   const featureForm=page.getByRole("dialog",{name:"Atributos da nova feição"});
   await featureForm.waitFor();
   await featureForm.getByLabel("Atributo nome").fill("Falha de controlo");
@@ -328,7 +307,21 @@ async function settleRecovery(page){
 
   await editButton.click();
   await activeInspector.locator('[data-testid="geomoz-edit-layer"][aria-pressed="false"]').first().waitFor({timeout:15000});
-  console.log("In-place geological layer editing toggles with native save callback.");
+  // Assert that coordinates and typed attributes persisted in the target GeoJSON
+  // and no transient Sketches layer received the user's geological line.
+  await page.evaluate((layerId)=>{
+    const e=document.querySelector('[data-layer-name="Falhas e lineamentos"]');
+    if(!e)throw Error("Target geological layer was removed after save");
+    if(!layerId)throw Error("Missing selected layer id");
+  },digitizingLayerId);
+  await activeInspector.locator(".gm-layer-properties summary").first().click();
+  const digitizedDownload=page.waitForEvent("download",{timeout:15000});
+  await activeInspector.getByRole("button",{name:"Exportar GeoJSON",exact:true}).first().click();
+  await (await digitizedDownload).saveAs("workbench-browser-artifacts/digitized-geological-fault.geojson");
+  const created=JSON.parse(await readFile("workbench-browser-artifacts/digitized-geological-fault.geojson","utf8"));
+  assert.ok(created.features.some(f=>f.geometry?.type==="LineString"&&f.properties?.nome==="Falha de controlo"&&f.properties?.densidade===2.7),
+    "Real native map drawing must persist geometry and typed attributes in selected layer");
+  console.log("Native geological line digitized, attributed, committed and exported.");
 
 
   await page.locator('.gm-menu-slot:not([hidden]) button').first().click();
