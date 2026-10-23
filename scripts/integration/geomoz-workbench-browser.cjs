@@ -97,12 +97,16 @@ async function settleRecovery(page){
   await page.keyboard.press("Escape");
   await georeferencer.waitFor({state:"hidden"});
   const catalog=page.getByTestId("geomoz-layer-catalog");
+  // Wait for the modal exit overlay to release pointer events before raw mouse dragging.
+  await page.locator(".gm-catalog-resize").hover();
   const beforeResize=await catalog.boundingBox();
   const handle=await page.locator(".gm-catalog-resize").boundingBox();
   await page.mouse.move(handle.x+handle.width/2,handle.y+100);
   await page.mouse.down();
   await page.mouse.move(handle.x+handle.width/2+100,handle.y+100,{steps:10});
   await page.mouse.up();
+  console.log("Catalog resize",beforeResize.width,(await catalog.boundingBox()).width,await catalog.evaluate(node=>getComputedStyle(node).getPropertyValue("--layer-panel-width")));
+  await page.waitForFunction(width=>document.querySelector(".gm-catalog").getBoundingClientRect().width>width+50,beforeResize.width,{timeout:5000});
   assert.ok((await catalog.boundingBox()).width>beforeResize.width+50,"Catalog expands when its right edge is dragged");
   const expanded=await page.locator(".gm-catalog-resize").boundingBox();
   await page.mouse.move(expanded.x+expanded.width/2,expanded.y+100);
