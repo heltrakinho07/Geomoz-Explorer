@@ -23,7 +23,7 @@ function fixture(html) {
 }
 
 test("bundles the real web shell under the GIS subpath with branding and MIT notice", () => {
-  const f = fixture('<html lang="en"><head><title>GeoLibre</title><meta name="description" content="GeoLibre platform"/><meta name="apple-mobile-web-app-title" content="GeoLibre"/><link rel="icon" type="image/png" href="/gis-workspace/favicon.png"><meta name="theme-color" content="#2f8f85"><script src="/gis-workspace/assets/app.js"></script></head><body><div id="root"></div></body></html>');
+  const f = fixture('<html lang="en"><head><title>GeoLibre</title><meta name="description" content="GeoLibre platform"/><meta name="apple-mobile-web-app-title" content="GeoLibre"/><link rel="icon" type="image/png" href="/gis-workspace/favicon.png"><link rel="shortcut icon" href="/gis-workspace/favicon.ico"><link rel="apple-touch-icon" href="/gis-workspace/apple-touch-icon.png"><meta name="theme-color" content="#2f8f85"><script src="/gis-workspace/assets/app.js"></script></head><body><div id="root"></div></body></html>');
   try {
     const result = spawnSync(process.execPath, [brandScript, f.src, f.dst, f.license], { encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
@@ -61,7 +61,20 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     assert.ok(existsSync(join(f.dst, "geomoz-theme.js")));
     assert.ok(!existsSync(join(f.dst, "geomoz-shell.js")));
     assert.match(html, /GeoMoz GIS Workspace<\/title>/);
-    assert.match(html, /href="\/gis-workspace\/favicon\.svg"/);
+    const iconHref = html.match(/href="(\/favicon\.svg\?v=[a-f0-9]{12})"/)?.[1];
+    assert.ok(iconHref, "Workspace favicon must point to the root portal icon with revision");
+    const version = iconHref.split("?v=")[1];
+    for (const [relation, target] of [
+      ["icon", "/favicon.svg"], ["icon", "/favicon.png"],
+      ["shortcut icon", "/favicon.ico"], ["apple-touch-icon", "/apple-touch-icon.png"],
+    ]) {
+      const tag = [...html.matchAll(/<link\b[^>]*>/g)].map(match => match[0])
+        .filter(link => link.includes(`rel="${relation}"`) && link.includes(`href="${target}?v=${version}"`));
+      assert.equal(tag.length, 1, `Expected one canonical ${relation} pointing to ${target}`);
+    }
+    assert.doesNotMatch(html, /href="\/gis-workspace\/(?:favicon|apple-touch-icon)\./);
+    assert.equal([...html.matchAll(/rel="(?:icon|shortcut icon|apple-touch-icon)"/g)].length, 4);
+
     assert.match(html, /geomoz-brand\.css\?v=[a-f0-9]{12}/);
     assert.doesNotMatch(html, /name="theme-color" content="#2f8f85"/);
     assert.match(html, /name="theme-color" content="#082f49"/);
@@ -70,6 +83,13 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     assert.equal(manifest.start_url, "/gis-workspace/");
     assert.equal(manifest.scope, "/gis-workspace/");
     assert.equal(manifest.theme_color, "#0284c7");
+    for (const [size, target] of [
+      ["any", "/favicon.svg"], ["32x32", "/favicon.png"], ["192x192", "/icon-192.png"],
+      ["512x512", "/icon-512.png"],
+    ]) {
+      assert.ok(manifest.icons.some(icon => icon.sizes === size && icon.src === `${target}?v=${version}`));
+    }
+    assert.ok(manifest.icons.some(icon => icon.purpose === "maskable" && icon.src === `/icon-maskable.png?v=${version}`));
     assert.ok(existsSync(join(f.dst, "favicon.svg")));
     assert.equal(readFileSync(join(f.dst, "favicon.svg"), "utf8"),
       readFileSync(resolve("artifacts/geomoz-react/public/favicon.svg"), "utf8"),
