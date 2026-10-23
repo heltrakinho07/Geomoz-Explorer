@@ -4,7 +4,7 @@ import {readFileSync} from "node:fs";
 import {GEOMOZ_ROLLOUT,curateGeoMozCommands,isGeoMozCommandVisible,isGeoMozDataSourceVisible,isGeoMozToolVisible,isGeoMozMenuItemVisible} from "../assets/workbench/geomoz-workbench-profile.ts";
 
 test("core actions survive while specialist entries disappear from every command consumer",()=>{
- const ids=["project.open-file","project.save","add.vector","add.raster","add.wms","proc.vector.buffer","proc.vector.intersection","proc.raster.slope","proc.raster.contour","plugin.maplibre-gl-geo-editor","view.theme"];
+ const ids=["project.open-file","project.save","add.vector","add.raster","add.wms","proc.vector.buffer","proc.vector.intersection","proc.raster.slope","proc.raster.contour","plugin.maplibre-gl-geo-editor","proc.georeferencer","view.theme"];
  const hidden=["proc.sql","proc.python","proc.modelBuilder","proc.whitebox","proc.earth-engine","settings.manage-plugins","settings.simplify-interface","project.examples","control.directions","control.effects","control.turn-by-turn","add.splatting","add.3d-tiles","add.duckdb","add.stac","proc.vector.voronoi","proc.network.isochrone","proc.whitebox.FillDepressions"];
  const commands=[...ids,...hidden].map(id=>({id,run(){return id;}}));
  const curated=curateGeoMozCommands(commands);

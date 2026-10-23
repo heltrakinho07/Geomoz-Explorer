@@ -90,6 +90,6 @@ export function GeoMozLayerPanel(props:Props) {
     </section>}
     <div className="gm-engine-panel" hidden={!GEOMOZ_ROLLOUT.fullLayerManager||!advanced}><EngineLayerPanel {...props} autoCollapse={false} collapsed={false} onCollapsedChange={()=>changeCollapsed(true)} hideOwnRail /></div>
     <p className="gm-catalog-notice" role="status">{notice}</p>
-    <div className="gm-catalog-resize" role="separator" aria-label="Redimensionar catálogo" aria-orientation="vertical" onPointerDown={props.onResizeStart}/>
+    <div className="gm-catalog-resize" role="separator" aria-label="Redimensionar catálogo" title="Arraste para alargar ou reduzir o catálogo" aria-orientation="vertical" onPointerDown={props.onResizeStart}/>
   </aside>;
 }

@@ -1,3 +1,4 @@
+import { SidebarResize, useSidebarWidth } from "@/components/SidebarResize";
 /**
  * HidroGeoMoz — Módulo de Análise de Bacias Hidrográficas
  *
@@ -237,6 +238,7 @@ export default function HidroGeoMoz({
 
 
   // Layout
+  const sidebarSize = useSidebarWidth("geomoz-HidroGeoMoz-sidebar", 272);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileRightPanelOpen, setMobileRightPanelOpen] = useState(false);
@@ -1500,18 +1502,21 @@ export default function HidroGeoMoz({
       <button
         onClick={() => setSidebarOpen(o => !o)}
         className="hidden lg:flex z-[550] absolute top-1/2 -translate-y-1/2 w-5 h-16 bg-white dark:bg-slate-900 border border-l-0 border-slate-200 dark:border-slate-700 rounded-r-lg items-center justify-center shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
-        style={{ left: sidebarOpen ? "272px" : 0 }}
+        style={{ left: sidebarOpen ? sidebarSize.width : 0 }}
         title={sidebarOpen ? "Recolher" : "Expandir"}
       >
         {sidebarOpen ? <ChevronLeft size={12} className="text-slate-400" /> : <ChevronRight size={12} className="text-slate-400" />}
       </button>
 
       {/* ── Left Sidebar ─────────────────────────────────────────────────── */}
+      {sidebarOpen && <SidebarResize panel={sidebarSize} breakpoint="lg" />}
       <div
-        className={`fixed lg:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-2xl lg:shadow-none w-72 max-w-[85vw] ${
+        ref={sidebarSize.ref}
+        style={sidebarSize.style}
+        className={`fixed lg:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 shadow-2xl lg:shadow-none w-72 max-w-[85vw] ${
           mobileSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         } ${
-          sidebarOpen ? "lg:w-[272px] overflow-y-auto" : "lg:w-0 overflow-hidden lg:border-r-0"
+          sidebarOpen ? "lg:w-[var(--gm-sidebar-width)] overflow-y-auto" : "lg:w-0 overflow-hidden lg:border-r-0"
         }`}
       >
 

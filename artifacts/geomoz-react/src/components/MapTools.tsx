@@ -14,6 +14,17 @@ import { LocateFixed, Loader2, Maximize2, Minimize2, Copy, Check } from "lucide-
  */
 export default function MapTools() {
   const map = useMap();
+  // Leaflet watches window resizing, but sidebar dragging changes only its container.
+  useEffect(() => {
+    if (typeof ResizeObserver === "undefined") return;
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => map.invalidateSize({ animate: false, debounceMoveend: true }));
+    });
+    observer.observe(map.getContainer());
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
+  }, [map]);
   const [cursor, setCursor] = useState<{ lat: number; lng: number } | null>(null);
   const [zoom, setZoom] = useState<number>(map.getZoom());
   const [loc, setLoc] = useState<{ lat: number; lng: number; acc: number } | null>(null);

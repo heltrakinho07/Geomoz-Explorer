@@ -1,3 +1,4 @@
+import { SidebarResize, useSidebarWidth } from "./SidebarResize";
 import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
 import {useGeoMozTheme} from "@/hooks/useGeoMozTheme";
 import React, { useState, useEffect } from "react";
@@ -80,6 +81,7 @@ export default function Sidebar({
   mobileOpen = false,
   onMobileClose,
 }: SidebarProps) {
+  const sidebarSize = useSidebarWidth("geomoz-navigation-sidebar", 288);
   const [collapsed, setCollapsed] = useState(false);
   const { user, signOut } = useAuth();
   const { geeConnected, geeProject } = useGeeAuth();
@@ -392,11 +394,14 @@ export default function Sidebar({
     <>
       {/* Desktop Sidebar (Fixed Left) */}
       <aside
-        className={`hidden md:flex flex-col shrink-0 transition-all duration-300 z-40 ${
-          collapsed ? "w-[72px]" : "w-64 xl:w-72"
+        ref={sidebarSize.ref}
+        style={sidebarSize.style}
+        className={`relative hidden md:flex flex-col shrink-0 z-40 ${
+          collapsed ? "w-[72px]" : "w-[var(--gm-sidebar-width)]"
         }`}
       >
         {sidebarContent}
+        {!collapsed && <SidebarResize panel={sidebarSize} />}
       </aside>
 
       {/* Mobile Drawer */}
