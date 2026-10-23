@@ -16,7 +16,6 @@ function once(source,needle,replacement,label){
   return source.replace(needle,replacement);
 }
 if(!existsSync(resolve(root,"LICENSE")))throw Error("Expected the pinned GeoLibre checkout with its MIT license");
-prepareGeoMozProjectFormat(root);
 let toolbar=read("components/layout/TopToolbar.tsx");
 if(toolbar.includes("GeoMozWorkbenchChrome"))throw Error("GeoMoz interface is already prepared; use a clean pinned checkout");
 toolbar='import { GeoMozWorkbenchChrome, GeoMozMenuSlot } from "../geomoz/GeoMozWorkbenchChrome";\n'+toolbar;
@@ -25,6 +24,7 @@ const logoEnd=toolbar.indexOf("      {!viewer && isMenuVisible(uiProfile, \"proj
 const tail=toolbar.indexOf('      <div className="ms-auto flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">',logoEnd);
 const end=toolbar.indexOf("    </header>",tail);
 if(start<0||logoEnd<start||tail<logoEnd||end<tail)throw Error("GeoMoz toolbar source anchors changed");
+prepareGeoMozProjectFormat(root);
 let children=toolbar.slice(logoEnd,tail);
 const menuAreas={ProjectMenu:"project",EditMenu:"map",ViewMenu:"map",AddDataMenu:"data",ProcessingMenu:"analysis",ControlsMenu:"map",PluginsMenu:"settings",PluginToolbarMenus:"settings",SettingsDialog:"settings",HelpMenu:"settings"};
 for(const [tag,area] of Object.entries(menuAreas)){
