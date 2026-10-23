@@ -89,9 +89,8 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
  };
  const showForm=pending&&pending.layerId===layer.id;
  return <section ref={rootRef} className="gm-digitizing-tools" data-testid="geomoz-digitizing-tools" data-layer-id={layer.id} aria-label="Fluxo de digitalização">
-  <h4><Pencil size={15}/> Digitalização da camada</h4>
-  <p><strong>1. Base cartográfica</strong> · Utilize «Dados» para adicionar raster/ortofoto ou «Georreferenciar imagem» em Digitalizar. Confirme o SRC.</p>
-  <p><strong>2. Camada activa</strong> · {layer.name} · {shape==="Point"?"Ponto":shape==="LineString"?"Linha":"Polígono"}</p>
+  <h4><Pencil size={15}/> Digitalizar <span className="gm-digitizing-mode">{shape==="Point"?"Ponto":shape==="LineString"?"Linha":"Polígono"}</span></h4>
+  <small className="gm-digitizing-layer-name" title={layer.name}>{layer.name}</small>
   <div className="gm-digitizing-controls">
    <button type="button" data-testid="geomoz-edit-layer" disabled={!canEdit} aria-pressed={active} onClick={()=>onToggleEdit(layer.id)}>
      {active?<Save size={15}/>:<Pencil size={15}/>}
@@ -99,12 +98,12 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
    </button>
    {active&&<button type="button" onClick={onCancelEdit}><Trash2 size={15}/> Descartar</button>}
   </div>
-  <div className="gm-digitizing-snap" role="group" aria-label="Configuração de aderência">
+  {active&&<div className="gm-digitizing-snap" role="group" aria-label="Configuração de aderência">
    <label><input type="checkbox" checked={snapping} onChange={e=>setSnapping(e.target.checked)} disabled={!active}/>
      <Magnet size={15}/> Aderência (snapping)</label>
    <label>Tolerância (pixels)<input type="number" min={2} max={40} step={1} value={tolerance} disabled={!active||!snapping}
      onChange={e=>setTolerance(Math.max(2,Math.min(40,Math.round(Number(e.target.value)||10))))}/></label>
-  </div>
+  </div>}
   <div className="gm-digitizing-controls">
    <button type="button" data-testid="geomoz-add-digitized-feature" disabled={!active} onClick={draw}>
      <activeShape.icon size={16}/>{activeShape.name}
@@ -114,7 +113,11 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
     <Table2 size={15}/> Tabela de atributos
    </button>
   </div>
-  <p className="gm-digitizing-hint"><Info size={14}/> <span><strong>3. Aderência · 4. Desenho · 5. Guardar.</strong> Depois de concluir cada feição, introduza os atributos. Guarde as edições antes de fechar o projecto e use «Resultados → Guardar como» para guardar o projecto no computador.</span></p>
+  <details className="gm-digitizing-help"><summary><Info size={14}/> Como digitalizar esta camada</summary>
+   <ol><li>Carregue a carta georreferenciada ou um mapa base em «Dados».</li>
+   <li>Seleccione a camada e active a edição.</li><li>Configure a aderência e desenhe no mapa.</li>
+   <li>Preencha os atributos quando concluir a feição.</li><li>Guarde as edições da camada e depois guarde ou exporte o projecto.</li></ol>
+  </details>
   {notice&&<p role="status" className="gm-digitizing-notice">{notice}</p>}
   {showForm&&createPortal(<div className="gm-digitizing-overlay">
    <form className="gm-digitizing-attribute-form" role="dialog" aria-modal="true" aria-label="Atributos da nova feição"
