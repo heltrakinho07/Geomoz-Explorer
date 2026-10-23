@@ -192,7 +192,7 @@ export default function GeoReferencer() {
         throw new Error("Os GCPs importados não correspondem às dimensões desta imagem.");
       }
       if (!crsOptions.some(option => option.value === project.epsg)
-        || !["helmert", "affine", "polynomial2"].includes(project.method)) {
+        || !["linear", "helmert", "affine", "polynomial2"].includes(project.method)) {
         throw new Error("SRC ou algoritmo do projecto inválido.");
       }
       const imported: Gcp[] = project.gcps.map((item: Gcp) => ({
@@ -236,6 +236,7 @@ export default function GeoReferencer() {
         </label>
         <label className="text-xs font-semibold space-y-1">Transformação
           <select className={input} value={method} onChange={event => { setMethod(event.target.value as TransformMethod); setResult(null); }}>
+            <option value="linear">Linear · posição e escala (mín. 2)</option>
             <option value="helmert">Helmert (mín. 2 GCPs)</option>
             <option value="affine">Polinomial 1 · Afim (mín. 3)</option>
             <option value="polynomial2">Polinomial 2 (mín. 6)</option>
