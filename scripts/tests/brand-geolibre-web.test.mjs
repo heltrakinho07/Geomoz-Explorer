@@ -61,18 +61,18 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     assert.ok(existsSync(join(f.dst, "geomoz-theme.js")));
     assert.ok(!existsSync(join(f.dst, "geomoz-shell.js")));
     assert.match(html, /GeoMoz GIS Workspace<\/title>/);
-    const iconHref = html.match(/href="(\/favicon\.svg\?v=[a-f0-9]{12})"/)?.[1];
+    const iconHref = html.match(/href="(\/gis-workspace\/favicon\.svg\?v=[a-f0-9]{12})"/)?.[1];
     assert.ok(iconHref, "Workspace favicon must point to the root portal icon with revision");
     const version = iconHref.split("?v=")[1];
     for (const [relation, target] of [
-      ["icon", "/favicon.svg"], ["icon", "/favicon.png"],
-      ["shortcut icon", "/favicon.ico"], ["apple-touch-icon", "/apple-touch-icon.png"],
+      ["icon", "/gis-workspace/favicon.svg"], ["icon", "/gis-workspace/favicon.png"],
+      ["shortcut icon", "/gis-workspace/favicon.ico"], ["apple-touch-icon", "/gis-workspace/apple-touch-icon.png"],
     ]) {
       const tag = [...html.matchAll(/<link\b[^>]*>/g)].map(match => match[0])
         .filter(link => link.includes(`rel="${relation}"`) && link.includes(`href="${target}?v=${version}"`));
       assert.equal(tag.length, 1, `Expected one canonical ${relation} pointing to ${target}`);
     }
-    assert.doesNotMatch(html, /href="\/gis-workspace\/(?:favicon|apple-touch-icon)\./);
+    assert.doesNotMatch(html, /href="\/(?:favicon|apple-touch-icon)\./);
     assert.equal([...html.matchAll(/rel="(?:icon|shortcut icon|apple-touch-icon)"/g)].length, 4);
 
     assert.match(html, /geomoz-brand\.css\?v=[a-f0-9]{12}/);
@@ -84,12 +84,12 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     assert.equal(manifest.scope, "/gis-workspace/");
     assert.equal(manifest.theme_color, "#0284c7");
     for (const [size, target] of [
-      ["any", "/favicon.svg"], ["32x32", "/favicon.png"], ["192x192", "/icon-192.png"],
-      ["512x512", "/icon-512.png"],
+      ["any", "/favicon.svg"], ["32x32", "/favicon.png"], ["192x192", "/gis-workspace/pwa-192x192.png"],
+      ["512x512", "/gis-workspace/pwa-512x512.png"],
     ]) {
       assert.ok(manifest.icons.some(icon => icon.sizes === size && icon.src === `${target}?v=${version}`));
     }
-    assert.ok(manifest.icons.some(icon => icon.purpose === "maskable" && icon.src === `/icon-maskable.png?v=${version}`));
+    assert.ok(manifest.icons.some(icon => icon.purpose === "maskable" && icon.src === `/gis-workspace/maskable-icon-512x512.png?v=${version}`));
     assert.ok(existsSync(join(f.dst, "favicon.svg")));
     assert.equal(readFileSync(join(f.dst, "favicon.svg"), "utf8"),
       readFileSync(resolve("artifacts/geomoz-react/public/favicon.svg"), "utf8"),
