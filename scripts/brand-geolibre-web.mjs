@@ -55,9 +55,15 @@ const themeHref = `<link rel="stylesheet" href="/gis-workspace/geomoz-brand.css?
 const themeJs = readFileSync(new URL("../artifacts/geomoz-react/public/geomoz-theme.js", import.meta.url), "utf8");
 const themeVersion = createHash("sha256").update(themeJs).digest("hex").slice(0, 12);
 const themeScript = `<script src="/gis-workspace/geomoz-theme.js?v=${themeVersion}"></script>`;
+// Point every browser/PWA identity at the same top-level files as the GeoMoz portal.
+// A new URL also bypasses stale favicons previously served below /gis-workspace/.
+const publicAssets = fileURLToPath(new URL("../artifacts/geomoz-react/public/", import.meta.url));
+const faviconVersion = createHash("sha256").update(readFileSync(resolve(publicAssets, "favicon.svg"))).digest("hex").slice(0, 12);
 const identityHead = [
-  '<link rel="icon" type="image/svg+xml" href="/gis-workspace/favicon.svg" />',
-  '<link rel="apple-touch-icon" href="/gis-workspace/apple-touch-icon.png" />',
+  `<link rel="icon" type="image/svg+xml" sizes="any" href="/favicon.svg?v=${faviconVersion}" />`,
+  `<link rel="icon" type="image/png" sizes="32x32" href="/favicon.png?v=${faviconVersion}" />`,
+  `<link rel="shortcut icon" href="/favicon.ico?v=${faviconVersion}" />`,
+  `<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=${faviconVersion}" />`,
   '<meta name="theme-color" content="#082f49" />',
   themeHref,
   '<meta name="geomoz-interface" content="workbench-v1" />',
@@ -65,7 +71,8 @@ const identityHead = [
 ].join("\n  ");
 let branded = html
   // Replace GeoLibre favicons, preserving all script and worker references.
-  .replace(/<link\b[^>]*\brel=["'](?:icon|apple-touch-icon)["'][^>]*>/gi, "")
+  // Discard every upstream icon variant, including shortcut and mask icons.
+  .replace(/<link\b(?=[^>]*\brel\s*=\s*["'][^"']*\b(?:icon|apple-touch-icon|mask-icon)\b[^"']*["'])[^>]*>/gi, "")
   .replace(/<meta\b[^>]*\bname=["']theme-color["'][^>]*>/gi, "")
   .replace(/<title>[^<]*<\/title>/i, "<title>GeoMoz GIS Workspace</title>")
   .replace(/<html\s+lang=["'][^"']*["']/i, '<html lang="pt"')
@@ -103,7 +110,6 @@ writeFileSync(
 writeFileSync(resolve(destination, "geomoz-brand.css"), brandingCss);
 writeFileSync(resolve(destination, "geomoz-theme.js"), themeJs);
 
-const publicAssets = fileURLToPath(new URL("../artifacts/geomoz-react/public/", import.meta.url));
 const iconMappings = [
   ["favicon.svg", "favicon.svg"],
   ["favicon.png", "favicon.png"],
@@ -131,6 +137,13 @@ if (existsSync(manifestFile)) {
     scope: "/gis-workspace/",
     theme_color: "#0284c7",
     background_color: "#020617",
+    icons: [
+      { src: `/favicon.svg?v=${faviconVersion}`, sizes: "any", type: "image/svg+xml", purpose: "any" },
+      { src: `/favicon.png?v=${faviconVersion}`, sizes: "32x32", type: "image/png", purpose: "any" },
+      { src: `/icon-192.png?v=${faviconVersion}`, sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: `/icon-512.png?v=${faviconVersion}`, sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: `/icon-maskable.png?v=${faviconVersion}`, sizes: "512x512", type: "image/png", purpose: "maskable" },
+    ],
   });
   writeFileSync(manifestFile, JSON.stringify(manifest, null, 2) + "\n");
 }
@@ -140,7 +153,7 @@ if (existsSync(manifestFile)) {
 writeFileSync(resolve(destination, "third-party-notices.html"), `<!doctype html>
 <html lang="pt"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="theme-color" content="#082f49"/><title>GeoMoz · Licenças de terceiros</title>
-<link rel="icon" href="/gis-workspace/favicon.svg" type="image/svg+xml"/>
+<link rel="icon" href="/favicon.svg?v=${faviconVersion}" type="image/svg+xml"/>
 <style>body{font:15px/1.65 system-ui,sans-serif;max-width:850px;padding:30px 20px;margin:auto;background:#f8fafc;color:#0f172a}
 a{color:#0369a1}h1{font-size:1.75rem}h2{margin-top:2rem}article{border:1px solid #cbd5e1;border-radius:10px;padding:20px;background:#fff}
 small{color:#475569}nav{display:flex;gap:16px;flex-wrap:wrap}</style></head><body>
