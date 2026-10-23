@@ -10,6 +10,13 @@ const points = (fn: (x: number, y: number) => { x: number; y: number }): Gcp[] =
   pixelPoints.map(([px, py], i) => ({ id: String(i), px, py, ...fn(px, py) }));
 
 describe("GeoMoz GCP transformation engine", () => {
+  it("fits linear scale and translation without rotation", () => {
+    const gcps = points((x, y) => ({ x: 350000 + 3 * x, y: 7800000 - 3 * y }));
+    const model = fitGcps(gcps, 200, 100, "linear");
+    expect(model.rmsPixels).toBeLessThan(1e-6);
+    expect(model.forward(40, 70).x).toBeCloseTo(350120, 5);
+    expect(model.forward(40, 70).y).toBeCloseTo(7799790, 5);
+  });
   it("fits Helmert rotation+scale with near-zero pixel residuals", () => {
     const gcps = points((x, y) => ({ x: 430000 + 2 * x - 3 * y, y: 7120000 + 3 * x + 2 * y }));
     const model = fitGcps(gcps, 200, 100, "helmert");
