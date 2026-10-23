@@ -67,9 +67,10 @@ export function geomozGcpPixelResiduals(affine: Affine, gcps: GCP[]): {
 }
 
 /**
- * Prevent misleading georeferencing results caused by incomplete, clustered,
- * invalid or inconsistent control points. The GDAL output still requires a
- * visual check against known reference features on the map.
+ * Classify GCP quality without rejecting legitimate georeferencing of small
+ * map frames surrounded by a border, title or legend. Coverage and RMSE are
+ * advisory only; invalid coordinates, too few GCPs or a degenerate affine
+ * solution still block GDAL.
  */
 export function geomozValidateGeoreferencing(
   gcps: GCP[],
@@ -77,13 +78,13 @@ export function geomozValidateGeoreferencing(
   height: number,
   transform: "affine" | "polynomial" | "tps",
   pixelRms: number | null,
-): { ok: boolean; message: string } {
+): { ok: boolean; message: string; warning?: string } {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
     return { ok: false, message: "As dimensões da imagem são inválidas." };
   }
-  const minimum = transform === "polynomial" ? 6 : 4;
+  const minimum = transform === "polynomial" ? 6 : transform === "tps" ? 4 : 3;
   if (gcps.length < minimum) {
-    return { ok: false, message: `Para rectificar com ${transform === "affine" ? "transformação afim" : transform === "polynomial" ? "polinomial" : "TPS"}, indique pelo menos ${minimum} GCPs bem distribuídos.` };
+    return { ok: false, message: `Para rectificar com ${transform === "affine" ? "transformação afim" : transform === "polynomial" ? "polinomial" : "TPS"}, indique pelo menos ${minimum} GCPs válidos.` };
   }
   for (const gcp of gcps) {
     if (!([gcp.px, gcp.py, gcp.lng, gcp.lat] as number[]).every(Number.isFinite) ||
@@ -92,20 +93,21 @@ export function geomozValidateGeoreferencing(
       return { ok: false, message: "Há GCPs fora da imagem ou com coordenadas geográficas inválidas. Reveja X/Y, zona UTM e hemisfério." };
     }
   }
-  const xRange = Math.max(...gcps.map(g => g.px)) - Math.min(...gcps.map(g => g.px));
-  const yRange = Math.max(...gcps.map(g => g.py)) - Math.min(...gcps.map(g => g.py));
-  if (xRange < width * 0.3 || yRange < height * 0.3) {
-    return { ok: false, message: "Os GCPs estão demasiado concentrados. Distribua-os por diferentes quadrantes e, se possível, perto dos quatro cantos da carta." };
-  }
   if (pixelRms === null || !Number.isFinite(pixelRms)) {
     return { ok: false, message: "Não foi possível validar o ajustamento afim. Verifique pontos colineares ou coordenadas trocadas." };
   }
-  const threshold = Math.max(5, Math.hypot(width, height) * 0.015);
-  // The preliminary affine RMSE is not a valid quality metric for a nonlinear
-  // polynomial/TPS warp. Large affine residuals may be precisely why those
-  // methods were selected; GDAL will fit the actual method.
-  if (transform === "affine" && pixelRms > threshold) {
-    return { ok: false, message: `RMSE afim elevado (${pixelRms.toFixed(1)} px; limite indicativo ${threshold.toFixed(1)} px). Reveja os GCPs antes de adicionar a carta.` };
+  const messages: string[] = [];
+  if (gcps.length === 3) {
+    messages.push("Três GCPs são suficientes para uma transformação afim, mas um quarto ponto independente ajuda a confirmar a precisão.");
   }
-  return { ok: true, message: "" };
+  const xRange = Math.max(...gcps.map(g => g.px)) - Math.min(...gcps.map(g => g.px));
+  const yRange = Math.max(...gcps.map(g => g.py)) - Math.min(...gcps.map(g => g.py));
+  if (xRange < width * 0.3 || yRange < height * 0.3) {
+    messages.push("Os GCPs cobrem uma parte reduzida da imagem. A rectificação será permitida, mas a precisão fora da área dos pontos pode ser inferior. Distribua mais pontos pela área cartográfica, não necessariamente pelas margens ou legenda.");
+  }
+  const threshold = Math.max(5, Math.hypot(width, height) * 0.015);
+  if (pixelRms > threshold) {
+    messages.push(`O RMSE do ajustamento afim é elevado (${pixelRms.toFixed(1)} px). Verifique os GCPs e o alinhamento com o mapa de referência antes de utilizar o resultado.`);
+  }
+  return { ok: true, message: "", ...(messages.length ? { warning: messages.join(" ") } : {}) };
 }
