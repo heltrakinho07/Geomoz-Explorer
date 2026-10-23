@@ -8,6 +8,7 @@ import {
 } from "@/lib/gis-workspace-engine";
 import { runWorkspaceOperationAsync } from "@/lib/gis-workspace-runner";
 import { parseWorkspaceFile, workspaceColumns, type WorkspaceLayer } from "@/lib/gis-workspace";
+import GeoReferencer from "@/components/GeoReferencer";
 
 interface Props {
   layers: WorkspaceLayer[];
@@ -32,6 +33,7 @@ function FitSelectedLayer({ layer }: { layer: WorkspaceLayer | null }) {
 
 export default function GISWorkspacePanel({ layers, setLayers }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [workspaceMode, setWorkspaceMode] = useState<"layers" | "georeference">("layers");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -152,7 +154,21 @@ export default function GISWorkspacePanel({ layers, setLayers }: Props) {
   };
 
   return (
-    <div className="h-full min-h-0 w-full overflow-auto bg-slate-50 dark:bg-slate-950 p-3 md:p-4">
+    <div className="h-full min-h-0 w-full overflow-hidden flex flex-col bg-slate-50 dark:bg-slate-950">
+      <div className="flex flex-wrap items-center gap-2 px-3 md:px-4 pt-3" role="tablist" aria-label="Ferramentas do GIS Workspace">
+        <button type="button" role="tab" aria-selected={workspaceMode === "layers"} onClick={() => setWorkspaceMode("layers")}
+          className={workspaceMode === "layers" ? "rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white" : "rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-xs font-bold"}>
+          Camadas e geoprocessamento
+        </button>
+        <button type="button" role="tab" aria-selected={workspaceMode === "georeference"} onClick={() => setWorkspaceMode("georeference")}
+          className={workspaceMode === "georeference" ? "rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white" : "rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-xs font-bold"}>
+          Georreferenciar raster (GCPs)
+        </button>
+      </div>
+      <div className={workspaceMode === "georeference" ? "flex-1 min-h-0" : "hidden"}>
+        <GeoReferencer />
+      </div>
+      <div className={workspaceMode === "layers" ? "flex-1 min-h-0 w-full overflow-auto bg-slate-50 dark:bg-slate-950 p-3 md:p-4" : "hidden"}>
       <div className="h-full min-h-[600px] grid grid-cols-1 xl:grid-cols-[300px_minmax(0,1fr)] gap-3">
         <aside className="min-h-[240px] rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden">
           <div className="p-4 border-b border-slate-200 dark:border-slate-800">
@@ -356,6 +372,7 @@ export default function GISWorkspacePanel({ layers, setLayers }: Props) {
             )}
           </div>
         </section>
+      </div>
       </div>
     </div>
   );
