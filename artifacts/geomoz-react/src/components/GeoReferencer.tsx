@@ -27,6 +27,14 @@ function ReferenceInteractions({
   const map = useMapEvents({ click(event) { if (picking) onPick(event.latlng.lng, event.latlng.lat); } });
   const fittedOnce = useRef<string>("");
   useEffect(() => {
+    // Leaflet precisa recalcular o tamanho quando o utilizador abre esta aba.
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => map.invalidateSize({ pan: false }));
+    observer.observe(map.getContainer());
+    if (map.getContainer().parentElement) observer.observe(map.getContainer().parentElement!);
+    return () => observer.disconnect();
+  }, [map]);
+  useEffect(() => {
     if (!resultBounds) { fittedOnce.current = ""; return; }
     const key = JSON.stringify(resultBounds);
     if (fittedOnce.current !== key) {
