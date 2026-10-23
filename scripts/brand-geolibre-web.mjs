@@ -56,14 +56,16 @@ const themeJs = readFileSync(new URL("../artifacts/geomoz-react/public/geomoz-th
 const themeVersion = createHash("sha256").update(themeJs).digest("hex").slice(0, 12);
 const themeScript = `<script src="/gis-workspace/geomoz-theme.js?v=${themeVersion}"></script>`;
 // Point every browser/PWA identity at the same top-level files as the GeoMoz portal.
-// A new URL also bypasses stale favicons previously served below /gis-workspace/.
+// The official GIS Workspace favicon is shared across both URLs.
 const publicAssets = fileURLToPath(new URL("../artifacts/geomoz-react/public/", import.meta.url));
+// /gis-workspace/favicon.svg is the official public icon for both experiences.
+// Keep the same hashed cache key across the portal and Workbench.
 const faviconVersion = createHash("sha256").update(readFileSync(resolve(publicAssets, "favicon.svg"))).digest("hex").slice(0, 12);
 const identityHead = [
-  `<link rel="icon" type="image/svg+xml" sizes="any" href="/favicon.svg?v=${faviconVersion}" />`,
-  `<link rel="icon" type="image/png" sizes="32x32" href="/favicon.png?v=${faviconVersion}" />`,
-  `<link rel="shortcut icon" href="/favicon.ico?v=${faviconVersion}" />`,
-  `<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=${faviconVersion}" />`,
+  `<link rel="icon" type="image/svg+xml" sizes="any" href="/gis-workspace/favicon.svg?v=${faviconVersion}" />`,
+  `<link rel="icon" type="image/png" sizes="32x32" href="/gis-workspace/favicon.png?v=${faviconVersion}" />`,
+  `<link rel="shortcut icon" href="/gis-workspace/favicon.ico?v=${faviconVersion}" />`,
+  `<link rel="apple-touch-icon" sizes="180x180" href="/gis-workspace/apple-touch-icon.png?v=${faviconVersion}" />`,
   '<meta name="theme-color" content="#082f49" />',
   themeHref,
   '<meta name="geomoz-interface" content="workbench-v1" />',
@@ -138,11 +140,11 @@ if (existsSync(manifestFile)) {
     theme_color: "#0284c7",
     background_color: "#020617",
     icons: [
-      { src: `/favicon.svg?v=${faviconVersion}`, sizes: "any", type: "image/svg+xml", purpose: "any" },
-      { src: `/favicon.png?v=${faviconVersion}`, sizes: "32x32", type: "image/png", purpose: "any" },
-      { src: `/icon-192.png?v=${faviconVersion}`, sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: `/icon-512.png?v=${faviconVersion}`, sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: `/icon-maskable.png?v=${faviconVersion}`, sizes: "512x512", type: "image/png", purpose: "maskable" },
+      { src: `/gis-workspace/favicon.svg?v=${faviconVersion}`, sizes: "any", type: "image/svg+xml", purpose: "any" },
+      { src: `/gis-workspace/favicon.png?v=${faviconVersion}`, sizes: "32x32", type: "image/png", purpose: "any" },
+      { src: `/gis-workspace/pwa-192x192.png?v=${faviconVersion}`, sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: `/gis-workspace/pwa-512x512.png?v=${faviconVersion}`, sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: `/gis-workspace/maskable-icon-512x512.png?v=${faviconVersion}`, sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   });
   writeFileSync(manifestFile, JSON.stringify(manifest, null, 2) + "\n");
@@ -153,7 +155,7 @@ if (existsSync(manifestFile)) {
 writeFileSync(resolve(destination, "third-party-notices.html"), `<!doctype html>
 <html lang="pt"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="theme-color" content="#082f49"/><title>GeoMoz · Licenças de terceiros</title>
-<link rel="icon" href="/favicon.svg?v=${faviconVersion}" type="image/svg+xml"/>
+<link rel="icon" href="/gis-workspace/favicon.svg?v=${faviconVersion}" type="image/svg+xml"/>
 <style>body{font:15px/1.65 system-ui,sans-serif;max-width:850px;padding:30px 20px;margin:auto;background:#f8fafc;color:#0f172a}
 a{color:#0369a1}h1{font-size:1.75rem}h2{margin-top:2rem}article{border:1px solid #cbd5e1;border-radius:10px;padding:20px;background:#fff}
 small{color:#475569}nav{display:flex;gap:16px;flex-wrap:wrap}</style></head><body>
