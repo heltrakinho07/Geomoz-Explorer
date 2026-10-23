@@ -77,7 +77,7 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
    setPending(null);setNotice("Atributos atribuídos à feição. Guarde as edições da camada para os conservar.");
  };
  const showForm=pending&&pending.layerId===layer.id;
- return <section className="gm-digitizing-tools" data-testid="geomoz-digitizing-tools" aria-label="Fluxo de digitalização">
+ return <section className="gm-digitizing-tools" data-testid="geomoz-digitizing-tools" data-layer-id={layer.id} aria-label="Fluxo de digitalização">
   <h4><Pencil size={15}/> Digitalização da camada</h4>
   <p><strong>1. Base cartográfica</strong> · Utilize «Dados» para adicionar raster/ortofoto ou «Georreferenciar imagem» em Digitalizar. Confirme o SRC.</p>
   <p><strong>2. Camada activa</strong> · {layer.name} · {shape==="Point"?"Ponto":shape==="LineString"?"Linha":"Polígono"}</p>
