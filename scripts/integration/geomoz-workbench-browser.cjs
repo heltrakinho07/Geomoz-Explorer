@@ -288,6 +288,10 @@ async function settleRecovery(page){
   await wizard.waitFor();
   await wizard.getByLabel("Modelo cartográfico").selectOption("faults");
   assert.equal(await wizard.getByLabel("Geometria da camada").inputValue(),"LineString");
+  await wizard.getByLabel("Novo campo").fill("densidade");
+  await wizard.getByLabel("Tipo do novo campo").selectOption("number");
+  await wizard.getByRole("button",{name:"Adicionar à lista de campos"}).click();
+  assert.ok(await wizard.getByText("densidade").count()>0,"New numeric column is listed in layer schema");
   await wizard.getByRole("button",{name:"Criar camada vazia"}).click();
   await wizard.getByText(/Camada «Falhas e lineamentos» criada/).waitFor();
   await page.locator('.gm-layer-row[data-layer-name="Falhas e lineamentos"]').first().waitFor();
@@ -298,6 +302,24 @@ async function settleRecovery(page){
   await page.getByTestId("geomoz-edit-layer").click();
   await page.getByTestId("geomoz-edit-layer").getByText("Concluir e guardar edição").waitFor();
   await page.locator(".geo-editor-toolbar").waitFor();
+  const digitizing=page.getByTestId("geomoz-digitizing-tools");
+  await digitizing.waitFor();
+  assert.ok(await digitizing.getByRole("group",{name:"Configuração de aderência"}).count()>0);
+  await digitizing.getByLabel("Tolerância (pixels)").fill("14");
+  await digitizing.getByTestId("geomoz-add-digitized-feature").click();
+  const digitizingLayerId=await digitizing.getAttribute("data-layer-id");
+  assert.ok(digitizingLayerId,"Native digitizing is bound to the selected layer");
+  await page.evaluate((layerId)=>window.dispatchEvent(new CustomEvent("geomoz:digitizing-feature-created",{
+    detail:{layerId,featureKey:"test-feature-attribute-ui",geometryType:"LineString"},
+  })),digitizingLayerId);
+  const featureForm=page.getByRole("dialog",{name:"Atributos da nova feição"});
+  await featureForm.waitFor();
+  await featureForm.getByLabel("Atributo nome").fill("Falha de controlo");
+  await featureForm.getByLabel("Atributo densidade").fill("2.7");
+  await featureForm.getByRole("button",{name:"Guardar atributos"}).click();
+  await featureForm.waitFor({state:"hidden"});
+  console.log("Layer schema, native snapping, draw tool and per-feature attribute UI verified.");
+
   await page.getByTestId("geomoz-edit-layer").click();
   await page.getByTestId("geomoz-edit-layer").getByText("Digitalizar nesta camada").waitFor();
   console.log("In-place geological layer editing toggles with native save callback.");
