@@ -301,7 +301,7 @@ async function settleRecovery(page){
   // rather than silently accumulating all sketches in a generic layer.
   const editButton=page.locator('[data-testid="geomoz-edit-layer"]:visible').first();
   await editButton.click();
-  await editButton.getByText("Concluir e guardar edição").waitFor();
+  await page.locator('[data-testid="geomoz-edit-layer"][aria-pressed="true"]:visible').first().waitFor({timeout:15000});
   await page.locator(".geo-editor-toolbar").waitFor();
   const digitizing=page.locator('[data-testid="geomoz-digitizing-tools"]:visible').first();
   await digitizing.waitFor();
@@ -322,7 +322,7 @@ async function settleRecovery(page){
   console.log("Layer schema, native snapping, draw tool and per-feature attribute UI verified.");
 
   await editButton.click();
-  await editButton.getByText("Digitalizar nesta camada").waitFor();
+  await page.locator('[data-testid="geomoz-edit-layer"][aria-pressed="false"]:visible').first().waitFor({timeout:15000});
   console.log("In-place geological layer editing toggles with native save callback.");
 
 
