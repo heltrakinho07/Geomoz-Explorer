@@ -50,6 +50,19 @@ for (const [path, edits] of Object.entries({"components/layout/GeoreferencerDial
   write(path,source);
 }
 
+// Ensure out-of-bounds pixels are transparent when a scanned, rotated map
+// is warped into a north-up GeoTIFF for the native raster layer.
+let georefGdal=read("lib/georeference-gdal.ts");
+georefGdal=once(georefGdal,
+  '  resampling: "near" | "bilinear" | "cubic" = "bilinear",\n): Promise<Uint8Array>',
+  '  resampling: "near" | "bilinear" | "cubic" = "bilinear",\n  transparent = false,\n): Promise<Uint8Array>',
+  "GDAL warp transparent background option");
+georefGdal=once(georefGdal,
+  '    const warped = await Gdal.gdalwarp(gcpDs, warpArgsForTransform(transform, targetCrs, resampling), "georeferenced.tif");',
+  '    const warpArgs = warpArgsForTransform(transform, targetCrs, resampling);\n    if (transparent) warpArgs.splice(warpArgs.length - 2, 0, "-dstalpha");\n    const warped = await Gdal.gdalwarp(gcpDs, warpArgs, "georeferenced.tif");',
+  "GDAL destination alpha instead of opaque black corners");
+write("lib/georeference-gdal.ts",georefGdal);
+
 // "Adicionar ao mapa" needs a genuinely rectified, north-up COG. The pinned
 // engine's original button only pins the source scan by four affine corners,
 // even when the user selected polynomial or TPS for a warp.
