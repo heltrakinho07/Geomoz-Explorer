@@ -299,10 +299,11 @@ async function settleRecovery(page){
   console.log("QGIS-style geological line layer created in the native GeoJSON store.");
   // Native in-place session writes to the selected geological layer,
   // rather than silently accumulating all sketches in a generic layer.
-  await page.getByTestId("geomoz-edit-layer").click();
-  await page.getByTestId("geomoz-edit-layer").getByText("Concluir e guardar edição").waitFor();
+  const editButton=page.locator('[data-testid="geomoz-edit-layer"]:visible').first();
+  await editButton.click();
+  await editButton.getByText("Concluir e guardar edição").waitFor();
   await page.locator(".geo-editor-toolbar").waitFor();
-  const digitizing=page.getByTestId("geomoz-digitizing-tools");
+  const digitizing=page.locator('[data-testid="geomoz-digitizing-tools"]:visible').first();
   await digitizing.waitFor();
   assert.ok(await digitizing.getByRole("group",{name:"Configuração de aderência"}).count()>0);
   await digitizing.getByLabel("Tolerância (pixels)").fill("14");
@@ -320,8 +321,8 @@ async function settleRecovery(page){
   await featureForm.waitFor({state:"hidden"});
   console.log("Layer schema, native snapping, draw tool and per-feature attribute UI verified.");
 
-  await page.getByTestId("geomoz-edit-layer").click();
-  await page.getByTestId("geomoz-edit-layer").getByText("Digitalizar nesta camada").waitFor();
+  await editButton.click();
+  await editButton.getByText("Digitalizar nesta camada").waitFor();
   console.log("In-place geological layer editing toggles with native save callback.");
 
 
