@@ -65,3 +65,44 @@ export function geomozGcpPixelResiduals(affine: Affine, gcps: GCP[]): {
   });
   return { perPoint, rms: Math.sqrt(perPoint.reduce((s, v) => s + v * v, 0) / (perPoint.length || 1)) };
 }
+
+/**
+ * Prevent misleading georeferencing results caused by incomplete, clustered,
+ * invalid or inconsistent control points. The GDAL output still requires a
+ * visual check against known reference features on the map.
+ */
+export function geomozValidateGeoreferencing(
+  gcps: GCP[],
+  width: number,
+  height: number,
+  transform: "affine" | "polynomial" | "tps",
+  pixelRms: number | null,
+): { ok: boolean; message: string } {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return { ok: false, message: "As dimensões da imagem são inválidas." };
+  }
+  const minimum = transform === "polynomial" ? 6 : 4;
+  if (gcps.length < minimum) {
+    return { ok: false, message: `Para rectificar com ${transform === "affine" ? "transformação afim" : transform === "polynomial" ? "polinomial" : "TPS"}, indique pelo menos ${minimum} GCPs bem distribuídos.` };
+  }
+  for (const gcp of gcps) {
+    if (!([gcp.px, gcp.py, gcp.lng, gcp.lat] as number[]).every(Number.isFinite) ||
+      gcp.px < 0 || gcp.px >= width || gcp.py < 0 || gcp.py >= height ||
+      Math.abs(gcp.lng) > 180 || Math.abs(gcp.lat) > 85.051129) {
+      return { ok: false, message: "Há GCPs fora da imagem ou com coordenadas geográficas inválidas. Reveja X/Y, zona UTM e hemisfério." };
+    }
+  }
+  const xRange = Math.max(...gcps.map(g => g.px)) - Math.min(...gcps.map(g => g.px));
+  const yRange = Math.max(...gcps.map(g => g.py)) - Math.min(...gcps.map(g => g.py));
+  if (xRange < width * 0.3 || yRange < height * 0.3) {
+    return { ok: false, message: "Os GCPs estão demasiado concentrados. Distribua-os por diferentes quadrantes e, se possível, perto dos quatro cantos da carta." };
+  }
+  if (pixelRms === null || !Number.isFinite(pixelRms)) {
+    return { ok: false, message: "Não foi possível validar o ajustamento afim. Verifique pontos colineares ou coordenadas trocadas." };
+  }
+  const threshold = Math.max(5, Math.hypot(width, height) * 0.015);
+  if (pixelRms > threshold) {
+    return { ok: false, message: `RMSE afim elevado (${pixelRms.toFixed(1)} px; limite indicativo ${threshold.toFixed(1)} px). Reveja os GCPs antes de adicionar a carta.` };
+  }
+  return { ok: true, message: "" };
+}
