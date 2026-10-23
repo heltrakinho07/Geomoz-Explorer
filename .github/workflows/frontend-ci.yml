@@ -78,7 +78,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Validate GIS Workspace importer and real GIS algorithms
-        run: pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/gis-workspace.test.ts src/lib/__tests__/gis-workspace-engine.test.ts
+        run: pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/gis-workspace.test.ts src/lib/__tests__/gis-workspace-engine.test.ts src/lib/__tests__/georeferencing.test.ts
         env:
           CI: "true"
 
