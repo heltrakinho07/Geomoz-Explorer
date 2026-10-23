@@ -296,12 +296,16 @@ async function settleRecovery(page){
   await wizard.getByText(/Camada «Falhas e lineamentos» criada/).waitFor();
   await page.locator('.gm-layer-row[data-layer-name="Falhas e lineamentos"]').first().waitFor();
   await wizard.getByRole("button",{name:"Fechar assistente"}).click();
-  console.log("QGIS-style geological line layer created in the native GeoJSON store.");
+  // Explicitly select the newly created target instead of depending on a
+  // previous Sketches selection that may survive geometry-editor teardown.
+  await page.locator('.gm-layer-row[data-layer-name="Falhas e lineamentos"]:visible .gm-layer-select').first().click();
+  await page.locator('.gm-layer-inspector:visible h3').first().getByText("Falhas e lineamentos",{exact:true}).waitFor({timeout:10000});
+  console.log("QGIS-style geological line layer created and selected in the native GeoJSON store.");
   // Native in-place session writes to the selected geological layer,
   // rather than silently accumulating all sketches in a generic layer.
   const editButton=page.locator('[data-testid="geomoz-edit-layer"]:visible').first();
   await editButton.click();
-  await page.locator('[data-testid="geomoz-edit-layer"][aria-pressed="true"]:visible').first().waitFor({timeout:15000});
+  await page.locator('[data-testid="geomoz-edit-layer"][aria-pressed="true"]:visible').first().waitFor({timeout:12000});
   await page.locator(".geo-editor-toolbar").waitFor();
   const digitizing=page.locator('[data-testid="geomoz-digitizing-tools"]:visible').first();
   await digitizing.waitFor();
