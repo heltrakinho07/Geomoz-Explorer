@@ -362,9 +362,9 @@ export default function GeoReferencer() {
                 <td className="p-2">{index + 1}</td><td className="p-2 tabular-nums">{point.px.toFixed(1)}</td>
                 <td className="p-2 tabular-nums">{point.py.toFixed(1)}</td>
                 <td className="p-1"><input className={input + " min-w-[110px]"} aria-label={"GCP " + (index + 1) + " X"} type="number" step="any"
-                  value={Number.isNaN(point.x) ? "" : point.x} onChange={event => updateGcp(point.id, "x", event.target.value)} /></td>
+                  key={point.id + "-x-" + crs} defaultValue={Number.isNaN(point.x) ? "" : point.x} onBlur={event => updateGcp(point.id, "x", event.target.value)} /></td>
                 <td className="p-1"><input className={input + " min-w-[110px]"} aria-label={"GCP " + (index + 1) + " Y"} type="number" step="any"
-                  value={Number.isNaN(point.y) ? "" : point.y} onChange={event => updateGcp(point.id, "y", event.target.value)} /></td>
+                  key={point.id + "-y-" + crs} defaultValue={Number.isNaN(point.y) ? "" : point.y} onBlur={event => updateGcp(point.id, "y", event.target.value)} /></td>
                 <td className="p-2 tabular-nums">{residualById.has(point.id) ? residualById.get(point.id)!.toFixed(2) : "—"}</td>
                 <td className="p-2 text-center"><button type="button" aria-label={"Eliminar GCP " + (index + 1)}
                   onClick={() => { setGcps(existing => existing.filter(g => g.id !== point.id)); setResult(null); }}
