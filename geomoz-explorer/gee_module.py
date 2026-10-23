@@ -2536,32 +2536,35 @@ _HYDROBASINS_CANDIDATES: dict = {
         f"WWF/HydroSHEDS/v1/Basins/hybas_af_lev{lv:02d}_v1c",
         f"WWF/HydroSHEDS/v1/Basins/hybas_af_lev{lv:02d}",
     ]
-    for lv in (5, 6, 7, 8)
+    for lv in range(1, 13)
 }
 
 
 def compute_basins(region_geojson: Optional[dict], level: int = 6) -> dict:
-    """Return HydroBASINS polygons (level 5–8) that intersect the region."""
+    """Return polygons at the explicitly requested HydroBASINS level (1–12)."""
     import ee
     region = _to_ee_region(region_geojson)
 
-    candidates = _HYDROBASINS_CANDIDATES.get(level, _HYDROBASINS_CANDIDATES[6])
+    if level not in _HYDROBASINS_CANDIDATES:
+        raise ValueError("O nível HydroBASINS deve estar entre 1 e 12.")
+    candidates = _HYDROBASINS_CANDIDATES[level]
     last_error = "Collection not found"
 
-    keep_props = ["HYBAS_ID", "UP_AREA", "SUB_AREA", "ORDER_", "MAIN_BAS", "NEXT_DOWN"]
+    keep_props = ["HYBAS_ID", "PFAF_ID", "UP_AREA", "SUB_AREA", "ORDER_", "MAIN_BAS", "NEXT_DOWN"]
 
     for coll_id in candidates:
         try:
             basins_fc = (ee.FeatureCollection(coll_id).filterBounds(region)
                          .select(keep_props, None, True))
             count     = basins_fc.size().getInfo()
-            geojson   = basins_fc.limit(300).getInfo()
+            geojson   = basins_fc.limit(300).getInfo()  # feature preview only; the tile uses all AOI basins
             styled    = basins_fc.style(color="1a73e8", fillColor="1a73e818", width=1.5)
             tile_url  = styled.getMapId()["tile_fetcher"].url_format
             return {
                 "tileUrl":  tile_url,
                 "geojson":  geojson,
                 "count":    count,
+                "previewCount": len(geojson.get("features", [])),
                 "level":    level,
                 "source":   "hydrobasins",
                 "collId":   coll_id,
@@ -3002,6 +3005,9 @@ def compute_watershed_from_point(
     """Delineate the basin at a clicked location with double fallback hierarchy."""
     import ee
 
+    if level not in _HYDROBASINS_CANDIDATES:
+        raise ValueError("O nível HydroBASINS deve estar entre 1 e 12.")
+
     pt = ee.Geometry.Point([lon, lat])
     try:
         hb = _watershed_hydrobasins(pt, lat, lon, level)
@@ -3010,23 +3016,19 @@ def compute_watershed_from_point(
     except Exception as e:
         logger.warning("HydroBASINS lookup failed, falling back to D8: %s", e)
 
-    return _watershed_d8(lat, lon, region_geojson, max_iter)
+    result = _watershed_d8(lat, lon, region_geojson, max_iter)
+    result["source"] = "d8"
+    result["requestedLevel"] = level  # D8 is NOT a HydroBASINS Pfafstetter level
+    return result
 
 
 def _watershed_hydrobasins(pt, lat: float, lon: float, level: int):
     """Containing HydroBASINS / HydroATLAS sub-basin (instant, real boundary). None if absent."""
     import ee
-    keep = ["HYBAS_ID", "SUB_AREA", "UP_AREA", "ORDER_"]
-    seen: list = []
-    order = [level] + [l for l in (10, 8, 6, 12) if l != level]
-    for lvl in order:
-        if lvl in seen or not (1 <= lvl <= 12):
-            continue
-        seen.append(lvl)
-        cids = [
-            f"WWF/HydroATLAS/v1/Basins/level{lvl:02d}",
-            f"WWF/HydroSHEDS/v1/Basins/hybas_af_lev{lvl:02d}_v1c",
-        ]
+    keep = ["HYBAS_ID", "PFAF_ID", "SUB_AREA", "UP_AREA", "ORDER_"]
+    # Never silently swap the requested hierarchy level for an unrelated one.
+    for lvl in (level,):
+        for cid in _HYDROBASINS_CANDIDATES[lvl]:
         for cid in cids:
             try:
                 fc = (ee.FeatureCollection(cid).filterBounds(pt)
