@@ -42,7 +42,7 @@ def test_containing_basin_uses_exact_requested_level(level: int) -> None:
         fc.filterBounds.return_value.select.return_value.limit.return_value.getInfo.return_value = {
             "type": "FeatureCollection",
             "features": [{"type": "Feature", "properties": {"SUB_AREA": 43.5}, "geometry": {
-                "type": "Polygon", "coordinates": [[[33, -20], [34, -20], [34, -19], [33, -20]]
+                "type": "Polygon", "coordinates": [[[33, -20], [34, -20], [34, -19], [33, -20]]]
             }}],
         }
         fc.filterBounds.return_value.select.return_value.limit.return_value.style.return_value.getMapId.return_value = {
