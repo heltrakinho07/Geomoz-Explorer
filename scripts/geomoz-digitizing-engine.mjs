@@ -22,6 +22,10 @@ export function patchGeoMozDigitizingEngine(input) {
     ].join("\n"),
     "open attribute form after each new feature");
   source=once(source,
+    '  applySketchesMapDisplay();\n  notifyGeometryEdit();\n  return true;\n}',
+    '  // Entering a selected-layer edit session must not retain a Sketches popup.\n  geoEditorControl?.closeAttributeEditor();\n  applySketchesMapDisplay();\n  notifyGeometryEdit();\n  return true;\n}',
+    "clear stale native Sketches property editor before selected layer edit");
+  source=once(source,
     "  // Flush sketches to the store, stash them out of the editor, and restore the",
     "  geomozClearDigitizingAttributes(layerId);\n\n  // Flush sketches to the store, stash them out of the editor, and restore the",
     "clear drafts at session start");
