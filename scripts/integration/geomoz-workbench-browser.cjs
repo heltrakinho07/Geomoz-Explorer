@@ -303,11 +303,12 @@ async function settleRecovery(page){
   console.log("QGIS-style geological line layer created and selected in the native GeoJSON store.");
   // Native in-place session writes to the selected geological layer,
   // rather than silently accumulating all sketches in a generic layer.
-  const editButton=page.locator('[data-testid="geomoz-edit-layer"]:visible').first();
+  const activeInspector=page.locator('.gm-layer-inspector:visible').filter({has:page.getByRole("heading",{name:"Falhas e lineamentos",exact:true})}).first();
+  const editButton=activeInspector.getByTestId("geomoz-edit-layer");
   await editButton.click();
-  await page.locator('[data-testid="geomoz-edit-layer"][aria-pressed="true"]:visible').first().waitFor({timeout:12000});
+  await activeInspector.locator('[data-testid="geomoz-edit-layer"][aria-pressed="true"]').waitFor({timeout:12000});
   await page.locator(".geo-editor-toolbar").waitFor();
-  const digitizing=page.locator('[data-testid="geomoz-digitizing-tools"]:visible').first();
+  const digitizing=activeInspector.getByTestId("geomoz-digitizing-tools");
   await digitizing.waitFor();
   assert.ok(await digitizing.getByRole("group",{name:"Configuração de aderência"}).count()>0);
   await digitizing.getByLabel("Tolerância (pixels)").fill("14");
@@ -326,7 +327,7 @@ async function settleRecovery(page){
   console.log("Layer schema, native snapping, draw tool and per-feature attribute UI verified.");
 
   await editButton.click();
-  await page.locator('[data-testid="geomoz-edit-layer"][aria-pressed="false"]:visible').first().waitFor({timeout:15000});
+  await activeInspector.locator('[data-testid="geomoz-edit-layer"][aria-pressed="false"]').waitFor({timeout:15000});
   console.log("In-place geological layer editing toggles with native save callback.");
 
 
