@@ -6,6 +6,7 @@
 import { readFileSync,writeFileSync,mkdirSync,existsSync } from "node:fs";
 import { resolve,dirname } from "node:path";
 import { brandUpstreamLocales } from "./geomoz-brand-locales.mjs";
+import { prepareGeoMozProjectFormat } from "./geomoz-project-format.mjs";
 const root=resolve(process.argv[2]??".geolibre-upstream");
 const app=resolve(root,"apps/geolibre-desktop/src");
 const read=path=>readFileSync(resolve(app,path),"utf8");
@@ -15,6 +16,7 @@ function once(source,needle,replacement,label){
   return source.replace(needle,replacement);
 }
 if(!existsSync(resolve(root,"LICENSE")))throw Error("Expected the pinned GeoLibre checkout with its MIT license");
+prepareGeoMozProjectFormat(root);
 let toolbar=read("components/layout/TopToolbar.tsx");
 if(toolbar.includes("GeoMozWorkbenchChrome"))throw Error("GeoMoz interface is already prepared; use a clean pinned checkout");
 toolbar='import { GeoMozWorkbenchChrome, GeoMozMenuSlot } from "../geomoz/GeoMozWorkbenchChrome";\n'+toolbar;
