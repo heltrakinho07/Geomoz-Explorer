@@ -101,7 +101,10 @@ export function geomozValidateGeoreferencing(
     return { ok: false, message: "Não foi possível validar o ajustamento afim. Verifique pontos colineares ou coordenadas trocadas." };
   }
   const threshold = Math.max(5, Math.hypot(width, height) * 0.015);
-  if (pixelRms > threshold) {
+  // The preliminary affine RMSE is not a valid quality metric for a nonlinear
+  // polynomial/TPS warp. Large affine residuals may be precisely why those
+  // methods were selected; GDAL will fit the actual method.
+  if (transform === "affine" && pixelRms > threshold) {
     return { ok: false, message: `RMSE afim elevado (${pixelRms.toFixed(1)} px; limite indicativo ${threshold.toFixed(1)} px). Reveja os GCPs antes de adicionar a carta.` };
   }
   return { ok: true, message: "" };
