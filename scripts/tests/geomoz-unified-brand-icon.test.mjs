@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
+import {createHash} from "node:crypto";
 
 const root="artifacts/geomoz-react/";
 function read(path){return readFileSync(root+path,"utf8");}
@@ -29,14 +30,21 @@ test("all GeoMoz identity surfaces use the same component, not separate globe sy
   }
   assert.doesNotMatch(read("src/components/Sidebar.tsx"),/w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500/);
 });
-test("main PWA entrypoints and installed icons use the GeoMoz root identity asset",()=>{
+test("Portal browser favicon and both PWA manifests use the official GIS Workspace icon",()=>{
+  const svg=read("public/favicon.svg");
+  const hash=createHash("sha256").update(svg).digest("hex").slice(0,12);
+  const base="/gis-workspace/favicon.svg?v="+hash;
   const html=read("index.html");
-  assert.match(html,/rel="icon" type="image\/svg\+xml" href="\/favicon\.svg"/);
+  assert.match(html,new RegExp('rel="icon"[^>]*href="'+base.replace(".","\\.")+'"'));
+  assert.equal((html.match(/rel="icon"/g)||[]).length,1,"Only the official SVG may be selected as tab icon");
+  assert.doesNotMatch(html,/rel="shortcut icon"/);
   for(const name of ["manifest.webmanifest","manifest.json"]){
     const data=JSON.parse(read("public/"+name));
-    assert.ok(data.icons.some(x=>x.src==="/favicon.svg"),name);
-    for(const size of ["192","512"]){
-      assert.ok(data.icons.some(x=>x.sizes===size+"x"+size),name+" "+size);
+    assert.ok(data.icons.some(x=>x.src===base && x.type==="image/svg+xml"),name);
+    for(const [size,target] of [
+      ["192","/gis-workspace/pwa-192x192.png"],["512","/gis-workspace/pwa-512x512.png"],
+    ]){
+      assert.ok(data.icons.some(x=>x.sizes===size+"x"+size&&x.src===target+"?v="+hash),name+" "+size);
     }
   }
 });
@@ -46,6 +54,7 @@ test("GIS Workspace uses the exact same canonical GeoMoz icon and preserves inst
   assert.match(workspace,/<img src="\/favicon\.svg" alt=""/);
   assert.doesNotMatch(workspace,/<img src="\/gis-workspace\/favicon\.svg"/);
   assert.match(packaging,/\["favicon\.svg", "favicon\.svg"\]/);
+  assert.match(packaging,/href=\\"\/gis-workspace\/favicon\.svg\?v=/);
   assert.match(packaging,/cpSync\(logoFile, resolve\(destination, destinationName\)\)/);
   for(const asset of ["icon-192.png","icon-512.png","icon-maskable.png","apple-touch-icon.png"]){
     assert.match(packaging,new RegExp(asset.replace(".","\\.")));
