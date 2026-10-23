@@ -288,7 +288,7 @@ async function settleRecovery(page){
   await wizard.waitFor();
   await wizard.getByLabel("Modelo cartográfico").selectOption("faults");
   assert.equal(await wizard.getByLabel("Geometria da camada").inputValue(),"LineString");
-  await wizard.getByLabel("Novo campo").fill("densidade");
+  await wizard.getByLabel("Novo campo",{exact:true}).fill("densidade");
   await wizard.getByLabel("Tipo do novo campo").selectOption("number");
   await wizard.getByRole("button",{name:"Adicionar à lista de campos"}).click();
   assert.ok(await wizard.getByText("densidade").count()>0,"New numeric column is listed in layer schema");
