@@ -4,13 +4,13 @@
  * WGS84/UTM ou Web Mercator e exportação GeoTIFF TIFF 6.0/GeoKeys OGC.
  */
 export type TargetCrs = 4326 | 3857 | 32735 | 32736 | 32737;
-export type TransformMethod = "helmert" | "affine" | "polynomial2";
+export type TransformMethod = "linear" | "helmert" | "affine" | "polynomial2";
 export type Resampling = "nearest" | "bilinear";
 export type Gcp = { id: string; px: number; py: number; x: number; y: number };
 export type ControlResidual = { id: string; pixelError: number; worldError: number };
 export type XY = { x: number; y: number };
 export type Extent = { minX: number; minY: number; maxX: number; maxY: number };
-export const MIN_GCPS: Record<TransformMethod, number> = { helmert: 2, affine: 3, polynomial2: 6 };
+export const MIN_GCPS: Record<TransformMethod, number> = { linear: 2, helmert: 2, affine: 3, polynomial2: 6 };
 
 const rad = Math.PI / 180;
 const A = 6378137;
@@ -117,7 +117,16 @@ export function fitGcps(gcps: Gcp[], width: number, height: number, method: Tran
   const terms = (u: number, v: number): number[] => method === "affine"
     ? [1, u, v] : [1, u, v, u * u, u * v, v * v];
   let ax: number[], ay: number[];
-  if (method === "helmert") {
+  if (method === "linear") {
+    const rows: number[][] = [], values: number[] = [];
+    normalized.forEach(p => {
+      rows.push([1, 0, p.u], [0, 1, -p.v]);
+      values.push(p.x, p.y);
+    });
+    const params = solveLeastSquares(rows, values, 3);
+    ax = [params[0], params[2], 0];
+    ay = [params[1], 0, -params[2]];
+  } else if (method === "helmert") {
     const rows: number[][] = [], values: number[] = [];
     normalized.forEach(p => {
       rows.push([1, 0, p.u, -p.v], [0, 1, p.v, p.u]);
@@ -133,7 +142,7 @@ export function fitGcps(gcps: Gcp[], width: number, height: number, method: Tran
     ay = solveLeastSquares(rows, normalized.map(p => p.y), size);
   }
   const forward = (px: number, py: number): XY => {
-    const basis = method === "helmert" ? [1, (px - width / 2) / dimension, (py - height / 2) / dimension]
+    const basis = method === "helmert" || method === "linear" ? [1, (px - width / 2) / dimension, (py - height / 2) / dimension]
       : terms((px - width / 2) / dimension, (py - height / 2) / dimension);
     const evaluate = (coefficients: number[]) => coefficients.reduce((sum, a, i) => sum + a * basis[i], 0);
     return { x: cx + worldScale * evaluate(ax), y: cy + worldScale * evaluate(ay) };
