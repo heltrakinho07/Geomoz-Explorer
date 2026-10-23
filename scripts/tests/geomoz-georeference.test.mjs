@@ -40,23 +40,39 @@ test("native pinned GCP/GDAL pipeline remains integrated in GeoMoz source-level 
   assert.match(chrome,/proc\.georeferencer/);
 });
 
-test("GeoMoz blocks georeferencing with too few or badly distributed GCPs", () => {
+test("GeoMoz separates invalid GCPs from nonblocking coverage and RMSE warnings", () => {
   const wide = [
     { px: 20, py: 20, lng: 31, lat: -16 },
     { px: 920, py: 20, lng: 36, lat: -16 },
     { px: 920, py: 920, lng: 36, lat: -26 },
     { px: 20, py: 920, lng: 31, lat: -26 },
   ];
-  assert.match(geomozValidateGeoreferencing(wide.slice(0, 3), 1000, 1000, "affine", 0).message, /pelo menos 4/);
-  assert.equal(geomozValidateGeoreferencing(wide, 1000, 1000, "affine", 1).ok, true);
+  assert.match(geomozValidateGeoreferencing(wide.slice(0, 2), 1000, 1000, "affine", 0).message, /pelo menos 3/);
+  const three = geomozValidateGeoreferencing(wide.slice(0, 3), 1000, 1000, "affine", 0);
+  assert.equal(three.ok, true);
+  assert.match(three.warning, /quarto ponto independente/);
+  assert.deepEqual(geomozValidateGeoreferencing(wide, 1000, 1000, "affine", 1), { ok: true, message: "" });
   assert.match(geomozValidateGeoreferencing(wide, 1000, 1000, "polynomial", 1).message, /pelo menos 6/);
   assert.equal(geomozValidateGeoreferencing(wide, 1000, 1000, "tps", 1).ok, true);
+
+  // Real scanned geological maps often have generous legends/margins.
+  // Small areas should warn about extrapolation but must not be rejected.
   const clustered = wide.map(g => ({ ...g, px: g.px / 12, py: g.py / 12 }));
-  assert.match(geomozValidateGeoreferencing(clustered, 1000, 1000, "affine", 1).message, /demasiado concentrados/);
-  assert.match(geomozValidateGeoreferencing(wide, 1000, 1000, "affine", 40).message, /RMSE afim elevado/);
+  const c = geomozValidateGeoreferencing(clustered, 1000, 1000, "affine", 1);
+  assert.equal(c.ok, true);
+  assert.equal(c.message, "");
+  assert.match(c.warning, /parte reduzida/);
+
+  const high = geomozValidateGeoreferencing(wide, 1000, 1000, "affine", 40);
+  assert.equal(high.ok, true);
+  assert.match(high.warning, /RMSE/);
   assert.match(geomozValidateGeoreferencing(wide, 1000, 1000, "affine", Infinity).message, /Não foi possível/);
+  assert.match(geomozValidateGeoreferencing(wide, 1000, 1000, "affine", null).message, /Não foi possível/);
+
   const invalid = wide.map((g, i) => i === 2 ? { ...g, lng: 325 } : g);
+  assert.equal(geomozValidateGeoreferencing(invalid, 1000, 1000, "affine", 1).ok, false);
   assert.match(geomozValidateGeoreferencing(invalid, 1000, 1000, "affine", 1).message, /inválidas/);
+  assert.match(geomozValidateGeoreferencing(wide, 0, 1000, "affine", 1).message, /dimensões/);
 });
 
 test("Add to map uses the same selected GDAL warp and native COG importer as export", () => {
@@ -68,4 +84,11 @@ test("Add to map uses the same selected GDAL warp and native COG importer as exp
   assert.match(prepare, /-dstalpha/);
   assert.match(prepare, /rasterApply/);
   assert.match(prepare, /imageCornersToMap/); // only the source-replacement guard
+});
+
+test("The real GIS Workspace georeferencer surfaces nonblocking GCP warnings next to point entry", () => {
+  const prepare = readFileSync("scripts/prepare-geomoz-workbench.mjs", "utf8");
+  assert.match(prepare, /geomozGcpValidation = useMemo/);
+  assert.match(prepare, /geomozGcpValidation\?\.warning/);
+  assert.match(prepare, /role=\\\"status\\\"/);
 });
