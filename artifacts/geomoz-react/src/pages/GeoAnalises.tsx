@@ -1,3 +1,4 @@
+import { SidebarResize, useSidebarWidth } from "@/components/SidebarResize";
 import { validateFirePeriods, precedingFirePeriod } from "@/lib/fire-periods";
 import "./geoanalises-sidebar.css";
 import scienceCatalog from "@/lib/index-science.json";
@@ -2859,6 +2860,7 @@ export default function GeoAnalises({
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const categoryInDevelopment = GEO_CATEGORIES.some(cat => cat.id === selectedCategory && cat.status === "development");
+  const sidebarSize = useSidebarWidth("geomoz-GeoAnalises-sidebar", 360);
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState("");
 
@@ -3999,7 +4001,7 @@ export default function GeoAnalises({
             <button
               type="button"
               onClick={() => setDesktopSidebarOpen(v => !v)}
-              style={{ left: desktopSidebarOpen ? "18rem" : "0px" }}
+              style={{ left: desktopSidebarOpen ? sidebarSize.width : 0 }}
               title={desktopSidebarOpen ? "Recolher painel lateral" : "Expandir painel lateral"}
               className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-l-0 border-slate-200 dark:border-slate-800 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 cursor-pointer"
             >
@@ -4007,12 +4009,14 @@ export default function GeoAnalises({
             </button>
 
             {/* Controls sidebar */}
-            <div
-              aria-label="Parâmetros da análise"
-              className={`geomoz-analysis-sidebar fixed md:relative inset-y-0 left-0 z-[700] flex w-[min(94vw,26rem)] min-h-0 flex-col overflow-y-auto overscroll-contain bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
+            {desktopSidebarOpen && <SidebarResize panel={sidebarSize} breakpoint="md" />}
+      <div
+              style={sidebarSize.style}
+        aria-label="Parâmetros da análise"
+              className={`geomoz-analysis-sidebar fixed md:relative inset-y-0 left-0 z-[700] flex w-[min(94vw,26rem)] min-h-0 flex-col overflow-y-auto overscroll-contain bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 shadow-xl md:shadow-none ${
                 sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
               } ${
-                desktopSidebarOpen ? "md:w-[clamp(20rem,28vw,26rem)]" : "md:w-0 md:overflow-hidden md:border-r-0"
+                desktopSidebarOpen ? "md:w-[var(--gm-sidebar-width)]" : "md:w-0 md:overflow-hidden md:border-r-0"
               }`}
             >
               {/* Mobile Header with Close Button */}

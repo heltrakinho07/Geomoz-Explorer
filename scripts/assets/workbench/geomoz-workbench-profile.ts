@@ -20,7 +20,7 @@ const CORE_COMMANDS = new Set([
   ...CORE_DATA_SOURCES.map(id=>"add."+id),
   ...CORE_VECTOR_TOOLS.map(id=>"proc.vector."+id),
   ...CORE_RASTER_TOOLS.map(id=>"proc.raster."+id),
-  "plugin.maplibre-gl-geo-editor","plugin.maplibre-basemap-control",
+  "plugin.maplibre-gl-geo-editor","plugin.maplibre-basemap-control","proc.georeferencer",
   "control.measure","control.search","control.legend","control.colorbar",
   "view.zoom-in","view.zoom-out","view.previous","view.next","view.reset-north","view.reset-pitch","view.theme",
   "help.shortcuts","help.diagnostics",

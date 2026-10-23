@@ -1,3 +1,4 @@
+import { SidebarResize, useSidebarWidth } from "@/components/SidebarResize";
 /**
  * Geoperigos — Módulo de Geoperigos / Geohazards
  *
@@ -169,6 +170,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
   const [tool, setTool] = useState<Tool>("flood");
   const [basemap, setBasemap] = useState<BasemapType>("terrain");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebarSize = useSidebarWidth("geomoz-Geoperigos-sidebar", 288);
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
 
   // Flood params
@@ -649,11 +651,13 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
       )}
 
       {/* ── Sidebar ─────────────────────────────────────────────── */}
+      {desktopSidebarOpen && <SidebarResize panel={sidebarSize} breakpoint="md" />}
       <div
-        className={`fixed md:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
+        style={sidebarSize.style}
+        className={`fixed md:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 shrink-0 shadow-xl md:shadow-none ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         } ${
-          desktopSidebarOpen ? "md:w-72 overflow-y-auto" : "md:w-0 overflow-hidden md:border-r-0"
+          desktopSidebarOpen ? "md:w-[var(--gm-sidebar-width)] overflow-y-auto" : "md:w-0 overflow-hidden md:border-r-0"
         }`}
       >
         <div className="px-4 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
@@ -1086,7 +1090,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
       <button
         type="button"
         onClick={() => setDesktopSidebarOpen(v => !v)}
-        style={{ left: desktopSidebarOpen ? "18rem" : "0px" }}
+        style={{ left: desktopSidebarOpen ? sidebarSize.width : 0 }}
         title={desktopSidebarOpen ? "Recolher painel" : "Expandir painel"}
         className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-l-0 border-slate-200 dark:border-slate-700 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
       >

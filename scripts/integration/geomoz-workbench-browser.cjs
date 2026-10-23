@@ -58,7 +58,7 @@ async function settleRecovery(page){
   await page.locator("main canvas").first().waitFor();
   assert.equal(await page.locator(".geomoz-portal-shell").count(),0,"Old shell must not coexist with the new UI");
   assert.equal(await page.locator("[data-command='add.vector']").count(),1);
-  assert.deepEqual(await page.locator(".gm-task-tabs button").allTextContents(),["Área de estudo","Dados","Análise","Resultados"]);
+  assert.deepEqual(await page.locator(".gm-task-tabs button").allTextContents(),["Digitalizar","Dados","Análise","Resultados"]);
   assert.equal(await page.getByRole("button",{name:"Mais opções",exact:true}).count(),0);
   assert.equal(await page.getByRole("button",{name:"Gestão",exact:true}).count(),0);
   await page.keyboard.press("Control+k");
@@ -88,6 +88,28 @@ async function settleRecovery(page){
   await page.locator(".gm-help-menu summary").click();
   console.log("GeoMoz About modal and preserved third-party notice navigation verified.");
 
+
+  await page.getByRole("button",{name:"Digitalizar",exact:true}).click();
+  await page.locator("[data-command='proc.georeferencer']").click();
+  const georeferencer=page.getByRole("dialog");
+  await georeferencer.waitFor();
+  assert.ok(await georeferencer.locator("input[type=file]").count()>0,"Real georeferencer accepts a source image");
+  await page.keyboard.press("Escape");
+  await georeferencer.waitFor({state:"hidden"});
+  const catalog=page.getByTestId("geomoz-layer-catalog");
+  const beforeResize=await catalog.boundingBox();
+  const handle=await page.locator(".gm-catalog-resize").boundingBox();
+  await page.mouse.move(handle.x+handle.width/2,handle.y+100);
+  await page.mouse.down();
+  await page.mouse.move(handle.x+handle.width/2+100,handle.y+100,{steps:10});
+  await page.mouse.up();
+  assert.ok((await catalog.boundingBox()).width>beforeResize.width+50,"Catalog expands when its right edge is dragged");
+  const expanded=await page.locator(".gm-catalog-resize").boundingBox();
+  await page.mouse.move(expanded.x+expanded.width/2,expanded.y+100);
+  await page.mouse.down();
+  await page.mouse.move(expanded.x+expanded.width/2-100,expanded.y+100,{steps:10});
+  await page.mouse.up();
+  assert.ok(Math.abs((await catalog.boundingBox()).width-beforeResize.width)<5,"Catalog can shrink again");
 
   await page.getByRole("textbox",{name:"Nome do projecto"}).fill("Estudo do território");
   await page.getByRole("textbox",{name:"Nome do projecto"}).press("Enter");
