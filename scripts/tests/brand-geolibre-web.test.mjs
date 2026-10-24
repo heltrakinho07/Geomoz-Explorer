@@ -150,7 +150,7 @@ test("gates the Vite module entry and rejects unguarded inline app code", () => 
     const built = spawnSync(process.execPath, [brandScript, moduleFixture.src, moduleFixture.dst, moduleFixture.license], { encoding: "utf8" });
     assert.equal(built.status, 0, built.stderr);
     const html = readFileSync(join(moduleFixture.dst, "index.html"), "utf8");
-    assert.doesNotMatch(html, /<script\\b[^>]*src="\\/gis-workspace\\/assets\\//);
+    assert.equal(html.includes('src="/gis-workspace/assets/'), false);
     const boot = readFileSync(join(moduleFixture.dst, "geomoz-auth-gate.js"), "utf8");
     assert.match(boot, /"module":true/);
     assert.ok(boot.includes('"src":"/gis-workspace/assets/index-abc.js"'));
