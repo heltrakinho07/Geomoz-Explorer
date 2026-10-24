@@ -43,7 +43,7 @@ const appEntrypoints = [];
 const guardedHtml = html.replace(
   /<script\b[^>]*\bsrc\s*=\s*(["'])(.*?)\1[^>]*>\s*<\/script>/gi,
   (tag, _quote, src) => {
-    if (!src.startsWith("/gis-workspace/assets/")) {
+    if (!(src.startsWith("/gis-workspace/assets/") || src === "/gis-workspace/geolibre-runtime-config.js")) {
       throw new Error("Unexpected GeoMoz Workspace startup script: " + src);
     }
     appEntrypoints.push({
@@ -54,7 +54,7 @@ const guardedHtml = html.replace(
     return "";
   }
 );
-if (!appEntrypoints.length || /<script\b/i.test(guardedHtml)) {
+if (!appEntrypoints.some(entry => entry.src.startsWith("/gis-workspace/assets/")) || /<script\b/i.test(guardedHtml)) {
   throw new Error("GIS Workspace entrypoints must be gated before publication");
 }
 // Refuse to publish the original visual shell if source preparation was omitted.
