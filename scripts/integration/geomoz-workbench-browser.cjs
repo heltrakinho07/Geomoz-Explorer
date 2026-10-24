@@ -302,7 +302,10 @@ async function settleRecovery(page){
     };
   })));
   await page.locator(digitizingSelector+' [data-testid="geomoz-edit-layer"][aria-pressed="true"]:visible').last().waitFor({timeout:60000});
-  await page.locator(".geo-editor-toolbar").waitFor();
+  // The native Geoman toolbar is loaded but intentionally visually hidden:
+  // the user's only draw tools are contextual to the active vector layer.
+  await page.locator(".geo-editor-toolbar").waitFor({state:"attached"});
+  assert.equal(await page.locator(".geo-editor-toolbar:visible").count(),0);
   const digitizing=page.locator(digitizingSelector+':visible').last();
   await digitizing.waitFor();
   assert.ok(await digitizing.getByRole("group",{name:"Configuração de aderência"}).count()>0);
