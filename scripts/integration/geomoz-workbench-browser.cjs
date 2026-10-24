@@ -260,6 +260,9 @@ async function settleRecovery(page){
   // QGIS workflow: draw directly in a named, editable vector layer.
   // Sketches are intentionally not required as an intermediary.
   console.log("Starting selected-layer digitization without opening temporary Sketches.");
+  // QGIS: outside the Digitalizar task there are no drawing controls.
+  assert.equal(await page.locator('[data-testid="geomoz-add-digitized-feature"]:visible').count(),0);
+  await page.getByRole("navigation",{name:"Tarefas GIS"}).getByRole("button",{name:"Digitalizar"}).click();
   await page.getByTestId("geomoz-create-layer").click();
   const wizard=page.getByTestId("geomoz-cartography-wizard");
   await wizard.waitFor();
@@ -281,11 +284,12 @@ async function settleRecovery(page){
   // Native in-place session writes to the selected geological layer,
   // rather than silently accumulating all sketches in a generic layer.
   const activeInspector=page.locator('.gm-layer-inspector[data-selected-layer-name="Falhas e lineamentos"]:visible').first();
-  const editButton=activeInspector.locator(':scope > .gm-digitizing-tools [data-testid="geomoz-edit-layer"]').first();
+  assert.equal(await activeInspector.locator('[data-testid="geomoz-add-digitized-feature"]:visible').count(),0,"Draw toolbar must be hidden until edit mode");
+  const editButton=activeInspector.locator('[data-testid="geomoz-edit-layer"]').first();
   await editButton.click();
-  await activeInspector.locator(':scope > .gm-digitizing-tools [data-testid="geomoz-edit-layer"][aria-pressed="true"]').first().waitFor({timeout:15000});
+  await activeInspector.locator('[data-testid="geomoz-edit-layer"][aria-pressed="true"]').first().waitFor({timeout:15000});
   await page.locator(".geo-editor-toolbar").waitFor();
-  const digitizing=activeInspector.locator(':scope > .gm-digitizing-tools').first();
+  const digitizing=activeInspector.locator(".gm-digitizing-tools").first();
   await digitizing.waitFor();
   assert.ok(await digitizing.getByRole("group",{name:"Configuração de aderência"}).count()>0);
   await digitizing.getByLabel("Tolerância (pixels)").fill("14");
@@ -306,7 +310,7 @@ async function settleRecovery(page){
   console.log("Layer schema, native snapping, draw tool and per-feature attribute UI verified.");
 
   await editButton.click();
-  await activeInspector.locator(':scope > .gm-digitizing-tools [data-testid="geomoz-edit-layer"][aria-pressed="false"]').first().waitFor({timeout:15000});
+  await activeInspector.locator('[data-testid="geomoz-edit-layer"][aria-pressed="false"]').first().waitFor({timeout:15000});
   // Assert that coordinates and typed attributes persisted in the target GeoJSON
   // and no transient Sketches layer received the user's geological line.
   await page.evaluate((layerId)=>{
