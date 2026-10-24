@@ -6,7 +6,7 @@ import {AboutDialog} from "../layout/AboutDialog";
 import { GEOMOZ_ROLLOUT, curateGeoMozCommands } from "../../lib/geomoz-workbench-profile";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useAppStore, DEFAULT_PROJECT_NAME } from "@geolibre/core";
-import { ArrowUpRight, Search, Moon, Sun, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass, Activity } from "lucide-react";
+import { ArrowUpRight, Search, Moon, Sun, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass, Activity, Image, Database, Info } from "lucide-react";
 import type { Command } from "../../lib/commands";
 import type { ThemeMode } from "../../hooks/useThemeMode";
 
@@ -46,15 +46,15 @@ const LEGACY_ACTIONS: Record<Task, {label:string; ids:string[]}[]> = {
 };
 const TASKS: [Task,string][] = GEOMOZ_ROLLOUT.fullMenus ? LEGACY_TASKS : [["map","Digitalizar"],["data","Dados"],["analysis","Análise"],["output","Resultados"]];
 const CORE_ACTIONS: Partial<typeof LEGACY_ACTIONS> = {
-  map:[{label:"Digitalização e área de estudo",ids:["proc.georeferencer","plugin.maplibre-gl-geo-editor","add.vector"]},{label:"Explorar o território",ids:["control.measure","control.search","view.previous","view.reset-north"]}],
-  data:[{label:"Ficheiros locais",ids:["add.vector","add.raster","add.delimited-text"]},{label:"Serviços de mapas",ids:["add.wms","add.wfs","add.xyz","add.wmts"]}],
+  map:[{label:"Preparação cartográfica",ids:["proc.georeferencer"]}],
+  data:[{label:"Adicionar dados",ids:["add.vector","add.raster","add.delimited-text"]},{label:"Serviços de mapas",ids:["add.wms","add.wfs","add.xyz","add.wmts"]},{label:"Ferramentas raster",ids:["proc.raster.reproject","proc.raster.clip-mask","proc.raster.slope","proc.raster.hillshade","proc.raster.contour"]}],
   analysis:[{label:"Análise vectorial",ids:["proc.vector.buffer","proc.vector.clip","proc.vector.intersection","proc.vector.dissolve","proc.vector.reproject"]},{label:"Análise do terreno",ids:["proc.raster.slope","proc.raster.hillshade","proc.raster.contour","proc.raster.clip-mask"]}],
   output:[{label:"Mapa e projecto",ids:["project.print-layout","project.save-as"]},{label:"Elementos do mapa",ids:["control.legend","control.colorbar"]}],
 };
 const ACTIONS = GEOMOZ_ROLLOUT.fullMenus ? LEGACY_ACTIONS : {...LEGACY_ACTIONS,...CORE_ACTIONS};
 const GUIDANCE:Partial<Record<Task,string>> = {
-  map:"Georreferencie uma imagem com pontos de controlo e use-a como base. Digitalize camadas geológicas e temáticas com ferramentas de criação, edição geométrica e formulário de atributos. Guarde o projecto e exporte resultados reais.",
-  data:"Adicione os dados do estudo. Organize as camadas no catálogo.",
+  map:"1 · Prepare a carta base e crie uma camada vectorial. 2 · Seleccione-a no catálogo e active a edição. 3 · Configure a aderência e desenhe, preenchendo os atributos. 4 · Guarde as edições da camada e, separadamente, o projecto.",
+  data:"Adicione dados vectoriais e raster. Expanda «Ferramentas raster» apenas quando precisar de processar DEM, recortar, reprojectar ou gerar produtos derivados.",
   analysis:"Escolha uma ferramenta, confirme os dados e execute a análise.",
   output:"Consulte as execuções no catálogo e exporte as camadas ou a composição do mapa.",
 };
@@ -126,14 +126,16 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
         <span className="gm-session-badge"><i/>{viewer?"Vista de leitura":"Projecto aberto"}<span className="gm-session-detail"> · {layers.length} camada{layers.length===1?"":"s"}</span></span>
       </div>
       <div className="gm-command-ribbon" aria-label={"Comandos de "+TASKS.find(([id])=>id===activeTask)?.[1]}>
-        <div className="gm-ribbon-groups">{groups.map(group=><section className="gm-ribbon-group" key={group.label}><div>{group.items.map(command=>{
+        <div className="gm-ribbon-groups">{groups.map(group=><section className={"gm-ribbon-group"+(activeTask==="data"&&group.label!=="Adicionar dados"?" gm-ribbon-optional":"")} key={group.label}>
+          {activeTask==="data"&&group.label!=="Adicionar dados"?<details className="gm-ribbon-accordion"><summary>{group.label==="Ferramentas raster"?<Image size={16}/>:<Database size={16}/>} {group.label}<ChevronDown size={13}/></summary><div>{group.items.map(command=>{const Icon=command.icon??CommandIcon;return <button key={command.id} type="button" data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={17}/><span>{LABELS[command.id]??command.title}</span></button>;})}</div></details>:<><div>{group.items.map(command=>{
           const Icon=command.icon??CommandIcon;
           return <button key={command.id} type="button" data-command={command.id} aria-pressed={command.id==="plugin.maplibre-gl-geo-editor"?command.keywords?.includes("deactivate"):undefined} disabled={!!command.disabledReason}
             title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={19}/><span>{command.id==="plugin.maplibre-gl-geo-editor"&&command.keywords?.includes("deactivate")?"Terminar desenho":LABELS[command.id]??command.title}</span></button>;
-        })}</div><small>{group.label}</small></section>)}
-        {!viewer&&(activeTask==="data"||activeTask==="map")&&<section className="gm-ribbon-group"><div><button type="button" data-testid="geomoz-create-layer" onClick={()=>setLayerWizardOpen(true)}><Layers3 size={19}/><span>Nova camada</span></button></div><small>Cartografia geológica / temática</small></section>}
+        })}</div><small>{group.label}</small></>}</section>)}
+        {!viewer&&activeTask==="map"&&<section className="gm-ribbon-group"><div><button type="button" data-testid="geomoz-create-layer" onClick={()=>setLayerWizardOpen(true)}><Layers3 size={19}/><span>Nova camada</span></button></div><small>Cartografia geológica / temática</small></section>}
         {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-seismic" aria-expanded={seismicOpen} onClick={()=>setSeismicOpen(!seismicOpen)}><Activity size={19}/><span>Catálogos sísmicos</span></button></div><small>Dados GeoMoz · USGS / ISC</small></section>}
-        {!groups.length&&<p className="gm-ribbon-empty"><Compass size={22}/> As opções disponíveis estão nos menus desta tarefa.</p>}</div>
+        {!groups.length&&<p className="gm-ribbon-empty"><Compass size={22}/> As opções disponíveis estão nos menus desta tarefa.</p>}
+        {activeTask==="map"&&<span className="gm-digitizing-ribbon-tip"><Info size={15}/> As ferramentas de desenho aparecem após seleccionar uma camada e activar a edição.</span>}</div>
         {GEOMOZ_ROLLOUT.fullMenus&&<button type="button" className="gm-more-tools" aria-expanded={more} onClick={()=>setMore(!more)}>Mais opções <ChevronDown size={14}/></button>}
       </div>
       <p className="gm-task-guidance" role="status" hidden={more}>{viewer?"Explore as camadas e navegue no mapa. Esta sessão está em modo de leitura.":GUIDANCE[activeTask]}</p>
