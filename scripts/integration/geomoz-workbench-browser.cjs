@@ -115,6 +115,39 @@ async function settleRecovery(page){
   await page.mouse.up();
   assert.ok(Math.abs((await catalog.boundingBox()).width-beforeResize.width)<5,"Catalog can shrink again");
 
+  // Save the actual project, then reopen its unchanged schema under the new and legacy extensions.
+  await page.getByRole("button",{name:"Resultados",exact:true}).first().click();
+  await page.locator('[data-command="project.save-as"]').click();
+  const saveDialog=page.getByRole("dialog").filter({has:page.locator("#save-project-name")});
+  await saveDialog.waitFor();
+  assert.equal(await page.locator("#save-project-name").inputValue(),"Untitled_Projecto.geomoz");
+  const projectDownloadPromise=page.waitForEvent("download");
+  await saveDialog.locator('button[type="submit"]').click();
+  const projectDownload=await projectDownloadPromise;
+  assert.equal(projectDownload.suggestedFilename(),"Untitled_Projecto.geomoz");
+  await projectDownload.saveAs("workbench-browser-artifacts/Untitled_Projecto.geomoz");
+  const savedProject=JSON.parse(await readFile("workbench-browser-artifacts/Untitled_Projecto.geomoz","utf8"));
+  await saveDialog.waitFor({state:"hidden"});
+  for(const extension of ["geomoz","geolibre","geolibre.json"]){
+    const name="Compatibilidade "+extension;
+    const text=JSON.stringify({...savedProject,name});
+    await page.evaluate(({text,extension})=>{
+      const transfer=new DataTransfer();
+      transfer.items.add(new File([text],"project."+extension,{type:"application/json"}));
+      const shell=document.querySelector('[data-testid="desktop-shell"]');
+      for(const type of ["dragenter","dragover","drop"])shell.dispatchEvent(new DragEvent(type,{bubbles:true,cancelable:true,dataTransfer:transfer}));
+    },{text,extension});
+    await page.waitForFunction(name=>document.querySelector('input[aria-label="Nome do projecto"]')?.value===name,name);
+  }
+  console.log("GeoMoz project download and new/legacy project reopening passed.");
+  // Start the independent digitizing regression with freshly mounted map controls.
+  await page.reload();
+  await page.getByTestId("geomoz-workbench-chrome").waitFor();
+  await settleRecovery(page);
+  await page.getByTestId("geomoz-layer-catalog").waitFor();
+  await page.getByRole("button",{name:"Digitalizar",exact:true}).click();
+  await page.locator(".gm-catalog-nav").getByRole("button",{name:/^Camadas/}).click();
+
   await page.getByRole("textbox",{name:"Nome do projecto"}).fill("Estudo do território");
   await page.getByRole("textbox",{name:"Nome do projecto"}).press("Enter");
   const light=await page.getByTestId("geomoz-layer-catalog").evaluate(node=>getComputedStyle(node).backgroundColor);

@@ -96,7 +96,7 @@ jobs:
 
       - name: Package GeoMoz Workbench and retain engine license
         run: |
-          node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs scripts/tests/geomoz-unified-brand-icon.test.mjs scripts/tests/geomoz-brand-locales.test.mjs scripts/tests/seismic-data.test.mjs scripts/tests/seismic-analytics.test.mjs scripts/tests/geomoz-workbench-profile.test.mjs scripts/tests/geomoz-cartography.test.mjs scripts/tests/geomoz-georeference.test.mjs scripts/tests/geomoz-digitizing.test.mjs
+          node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs scripts/tests/geomoz-unified-brand-icon.test.mjs scripts/tests/geomoz-brand-locales.test.mjs scripts/tests/seismic-data.test.mjs scripts/tests/seismic-analytics.test.mjs scripts/tests/geomoz-workbench-profile.test.mjs scripts/tests/geomoz-cartography.test.mjs scripts/tests/geomoz-georeference.test.mjs scripts/tests/geomoz-digitizing.test.mjs scripts/tests/geomoz-project-format.test.mjs
           node scripts/brand-geolibre-web.mjs \
             .geolibre-upstream/apps/geolibre-desktop/dist \
             artifacts/geomoz-react/dist/public/gis-workspace \
