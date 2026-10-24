@@ -117,6 +117,7 @@ export default function GeoMozAIAgentTab() {
   const [activeTileName, setActiveTileName] = useState<string>("");
   const [completedRuns, setCompletedRuns] = useState<any[]>([]);
   const [selectedLayerIndex, setSelectedLayerIndex] = useState<number>(0);
+  const [lastMapActions, setLastMapActions] = useState<any[]>([]);
 
   const [geminiApiKey, setGeminiApiKey] = useState<string>(() => {
     try {
@@ -217,8 +218,13 @@ export default function GeoMozAIAgentTab() {
           }
 
           const data = await res.json();
-          const meanVal = data.stats?.p50 ?? data.stats?.mean;
-          const summaryStr = meanVal !== undefined ? `Média: ${Number(meanVal).toFixed(3)}` : "Processado";
+          if (!data.tileUrl && !data.tile_url) {
+            throw new Error("GEE não devolveu uma camada válida");
+          }
+          const meanVal = data.stats?.mean;
+          const summaryStr = typeof meanVal === "number"
+            ? `Média: ${meanVal.toFixed(3)}`
+            : "Camada disponível · estatísticas indisponíveis";
 
           setSteps((prev) =>
             prev.map((s, idx) =>
@@ -235,10 +241,12 @@ export default function GeoMozAIAgentTab() {
             code: targetIdx.code,
             dateRange: { start: startDate, end: endDate },
             metrics: {
-              min: data.stats?.p10,
-              max: data.stats?.p90,
-              mean: data.stats?.p50,
-              cloudCoverPercentage: 30,
+              min: data.stats?.min,
+              max: data.stats?.max,
+              mean: data.stats?.mean,
+              p10: data.stats?.p10,
+              p90: data.stats?.p90,
+              sceneCount: data.sceneCount,
             },
             tileUrl: data.tileUrl || data.tile_url,
           };
@@ -258,6 +266,12 @@ export default function GeoMozAIAgentTab() {
       }
 
       setCompletedRuns(computedRuns);
+      setLastMapActions(computedRuns.filter((run) => !!run.tileUrl).map((run) => ({
+        type: "ADD_LAYER",
+        id: run.code,
+        name: run.name,
+        tileUrl: run.tileUrl,
+      })));
 
       // Step Synthesis
       const synthStepIdx = workflow.indices.length + 1;
@@ -279,22 +293,25 @@ export default function GeoMozAIAgentTab() {
           }),
         });
 
-        if (synthRes.ok) {
-          const synthData = await synthRes.json();
-          setSynthesis(synthData.synthesis);
-          setSteps((prev) =>
-            prev.map((s, idx) =>
-              idx === synthStepIdx
-                ? { ...s, status: "completed", resultSummary: "Diagnóstico gerado" }
-                : s
-            )
-          );
+        if (!synthRes.ok) {
+          throw new Error(`Síntese indisponível (HTTP ${synthRes.status})`);
         }
+        const synthData = await synthRes.json();
+        setSynthesis(synthData.synthesis);
+        const hasAnalysis = synthData.status === "completed";
+        setSteps((prev) =>
+          prev.map((s, idx) =>
+            idx === synthStepIdx
+              ? { ...s, status: hasAnalysis ? "completed" : "error",
+                  resultSummary: hasAnalysis ? "Diagnóstico baseado em dados" : "Sem resultados verificáveis" }
+              : s
+          )
+        );
       } catch (err: any) {
         setSteps((prev) =>
           prev.map((s, idx) =>
             idx === synthStepIdx
-              ? { ...s, status: "completed", resultSummary: "Síntese padrão concluída" }
+              ? { ...s, status: "error", resultSummary: err.message }
               : s
           )
         );
@@ -329,10 +346,12 @@ export default function GeoMozAIAgentTab() {
 
     setIsRunning(true);
     setSynthesis(null);
-    setCompletedRuns([]);
-    setActiveTileUrl(null);
-
     const userMsg = prompt.trim();
+    const isMapFollowUp = /(?:ver|mostrar|visualizar|abrir|exibir).*mapa/i.test(userMsg);
+    if (!isMapFollowUp) {
+      setCompletedRuns([]);
+      setActiveTileUrl(null);
+    }
     setSteps([
       { id: "planner", name: "Formulação do Plano Geoespacial (GeoMoz Agent)...", status: "running" },
     ]);
@@ -349,6 +368,7 @@ export default function GeoMozAIAgentTab() {
         temporalWindow: activeProject?.period || { startDate: "2024-01-01", endDate: "2024-12-31" },
         gee_token: (typeof window !== "undefined" ? localStorage.getItem("geomoz_gee_token") : null) || undefined,
         gee_project: (typeof window !== "undefined" ? localStorage.getItem("geomoz_gee_project") : null) || "geoprocessamento-426809",
+        priorMapActions: lastMapActions,
       };
 
       const effectiveGeminiKey = geminiApiKey.trim() || undefined;
@@ -374,6 +394,7 @@ export default function GeoMozAIAgentTab() {
       }
 
       if (data.map_actions && data.map_actions.length > 0) {
+        setLastMapActions(data.map_actions.filter((a: any) => a.type === "ADD_LAYER" && a.tileUrl));
         const computed: any[] = [];
         data.map_actions.forEach((act: any) => {
           if (act.type === "ADD_LAYER" && act.tileUrl) {
@@ -391,6 +412,7 @@ export default function GeoMozAIAgentTab() {
 
         if (computed.length > 0) {
           setCompletedRuns(computed);
+          setSelectedLayerIndex(0);
           setActiveTileUrl(computed[0].tileUrl);
           setActiveTileName(computed[0].name);
 
@@ -636,7 +658,7 @@ export default function GeoMozAIAgentTab() {
             <div className="p-4 bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl space-y-2">
               <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
                 <ShieldCheck size={15} />
-                <span>Síntese Técnica Concluída e Gravada no Estudo</span>
+                <span>Parecer técnico e estado da análise</span>
               </div>
               <div className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
                 {synthesis}
