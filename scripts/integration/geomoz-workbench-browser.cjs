@@ -140,6 +140,11 @@ async function settleRecovery(page){
     await page.waitForFunction(name=>document.querySelector('input[aria-label="Nome do projecto"]')?.value===name,name);
   }
   console.log("GeoMoz project download and new/legacy project reopening passed.");
+  // Start the independent digitizing regression with freshly mounted map controls.
+  await page.reload();
+  await page.getByTestId("geomoz-workbench-chrome").waitFor();
+  await settleRecovery(page);
+  await page.getByTestId("geomoz-layer-catalog").waitFor();
   await page.getByRole("button",{name:"Digitalizar",exact:true}).click();
   await page.locator(".gm-catalog-nav").getByRole("button",{name:/^Camadas/}).click();
 
