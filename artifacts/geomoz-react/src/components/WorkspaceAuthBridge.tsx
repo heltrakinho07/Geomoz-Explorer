@@ -19,7 +19,7 @@ export default function WorkspaceAuthBridge() {
     if (loading) return;
 
     const authenticated = Boolean(
-      user && !isGuest && auth.currentUser && auth.currentUser.uid === user.uid
+      user && !isGuest && !user.isAnonymous && auth.currentUser && auth.currentUser.uid === user.uid
     );
 
     if (window.parent === window) {
@@ -27,10 +27,9 @@ export default function WorkspaceAuthBridge() {
       return;
     }
 
-    // Only the same-origin GeoMoz workspace is an intended recipient.
-    if (window.parent.location.origin === window.location.origin) {
-      window.parent.postMessage({ type: MESSAGE_TYPE, authenticated }, window.location.origin);
-    }
+    // targetOrigin ensures this message is delivered only to a same-origin
+    // parent. Reading parent.location would throw if another site framed us.
+    window.parent.postMessage({ type: MESSAGE_TYPE, authenticated }, window.location.origin);
   }, [user, isGuest, loading]);
 
   return (
