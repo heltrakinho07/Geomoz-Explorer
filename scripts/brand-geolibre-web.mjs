@@ -133,6 +133,28 @@ if (
 }
 writeFileSync(resolve(destination, "index.html"), branded);
 writeFileSync(resolve(destination, "geomoz-auth-gate.js"), gateSource);
+
+/*
+ * VitePWA/Workbox generated sw.js before GeoMoz added its auth gate.
+ * Refresh the revisioned index.html precache entry to the *guarded* HTML.
+ * Otherwise the SW could continue to serve an unguarded legacy index.
+ */
+const swPath = resolve(destination, "sw.js");
+if (!existsSync(swPath)) throw new Error("Missing GeoMoz GIS service worker; cannot ensure auth-safe offline shell");
+let swSource = readFileSync(swPath, "utf8");
+const guardedIndexMd5 = createHash("md5").update(branded).digest("hex");
+let revisionCount = 0;
+swSource = swSource.replace(/\\{[^{}]{0,250}\\}/g, (entry) => {
+  if (!/(?:url|"url")\\s*:\\s*["'](?:\\/gis-workspace\\/)?index\\.html["']/.test(entry)) return entry;
+  const updated = entry.replace(/((?:"revision"|revision)\\s*:\\s*["'])[a-f0-9]{32}(["'])/, "$1" + guardedIndexMd5 + "$2");
+  if (updated !== entry) revisionCount++;
+  return updated;
+});
+if (revisionCount !== 1) {
+  throw new Error("Cannot secure Workbox index.html precache (expected exactly one revision)");
+}
+writeFileSync(swPath, swSource);
+
 writeFileSync(
   resolve(destination, "deployment.json"),
   JSON.stringify(
