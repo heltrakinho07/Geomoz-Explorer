@@ -315,9 +315,12 @@ async function settleRecovery(page){
   assert.ok(digitizingLayerId,"Native digitizing is bound to the selected layer");
   const canvas=await page.locator("main canvas").first().boundingBox();
   const at=(x,y)=>({x:canvas.x+canvas.width*x,y:canvas.y+canvas.height*y});
-  const a=at(.53,.32),b=at(.7,.42),c=at(.83,.57);
-  await page.mouse.click(a.x,a.y);await page.mouse.click(b.x,b.y);
-  await page.mouse.dblclick(c.x,c.y);
+  const a=at(.53,.32),b=at(.7,.42);
+  // Geoman Free completes a LineString by clicking the final vertex again.
+  // Double-clicking an unrelated third position does not commit the line.
+  await page.mouse.click(a.x,a.y);
+  await page.mouse.click(b.x,b.y);
+  await page.mouse.click(b.x,b.y);
   const featureForm=page.getByRole("dialog",{name:"Atributos da nova feição"});
   await featureForm.waitFor();
   await featureForm.getByLabel("Atributo nome").fill("Falha de controlo");
