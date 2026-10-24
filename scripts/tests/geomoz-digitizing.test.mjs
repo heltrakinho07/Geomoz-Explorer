@@ -57,7 +57,7 @@ test("QGIS-like four-stage workflow gates creation, editing, drawing and raster 
   assert.match(chrome,/gm-ribbon-accordion/);
   assert.match(chrome,/document\.documentElement\.dataset\.geomozTask=activeTask/);
   const theme=readFileSync("scripts/assets/geolibre-geomoz-theme.css","utf8");
-  assert.match(theme,/html:not\(\[data-geomoz-task="map"\]\) \.geo-editor-toolbar/);
+  assert.match(theme,/html \.geo-editor-toolbar\{display:none!important\}/);
   assert.match(chrome,/Ferramentas raster/);
   assert.match(layers,/activeTask==="map"&&<GeoMozDigitizingTools/);
   assert.match(layers,/setActiveTask\(task\)/);
