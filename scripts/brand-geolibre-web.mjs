@@ -144,9 +144,9 @@ if (!existsSync(swPath)) throw new Error("Missing GeoMoz GIS service worker; can
 let swSource = readFileSync(swPath, "utf8");
 const guardedIndexMd5 = createHash("md5").update(branded).digest("hex");
 let revisionCount = 0;
-swSource = swSource.replace(/\\{[^{}]{0,250}\\}/g, (entry) => {
-  if (!/(?:url|"url")\\s*:\\s*["'](?:\\/gis-workspace\\/)?index\\.html["']/.test(entry)) return entry;
-  const updated = entry.replace(/((?:"revision"|revision)\\s*:\\s*["'])[a-f0-9]{32}(["'])/, "$1" + guardedIndexMd5 + "$2");
+swSource = swSource.replace(/\{[^{}]{0,250}\}/g, (entry) => {
+  if (!/(?:url|"url")\s*:\s*["'](?:\/gis-workspace\/)?index\.html["']/.test(entry)) return entry;
+  const updated = entry.replace(/((?:"revision"|revision)\s*:\s*["'])[a-f0-9]{32}(["'])/, "$1" + guardedIndexMd5 + "$2");
   if (updated !== entry) revisionCount++;
   return updated;
 });
