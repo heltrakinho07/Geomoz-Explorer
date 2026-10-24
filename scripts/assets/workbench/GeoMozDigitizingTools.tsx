@@ -114,9 +114,10 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
    </button>
   </div>}
   <details className="gm-digitizing-help"><summary><Info size={14}/> Como digitalizar esta camada</summary>
-   <ol><li>Carregue a carta georreferenciada ou um mapa base em «Dados».</li>
-   <li>Seleccione a camada e active a edição.</li><li>Configure a aderência e desenhe no mapa.</li>
-   <li>Preencha os atributos quando concluir a feição.</li><li>Guarde as edições da camada e depois guarde ou exporte o projecto.</li></ol>
+   <ol><li><strong>Preparação:</strong> carregue a carta em «Dados», crie uma camada com geometria, SRC de referência e campos, e seleccione-a.</li>
+   <li><strong>Configuração:</strong> active a edição e configure a aderência e a tolerância.</li>
+   <li><strong>Desenho:</strong> active o ponto, a linha ou o polígono, conclua a geometria e preencha os atributos da nova feição.</li>
+   <li><strong>Finalização:</strong> grave as edições da camada, saia do modo de edição e guarde o projecto ou exporte a camada.</li></ol>
   </details>
   {notice&&<p role="status" className="gm-digitizing-notice">{notice}</p>}
   {showForm&&createPortal(<div className="gm-digitizing-overlay">
