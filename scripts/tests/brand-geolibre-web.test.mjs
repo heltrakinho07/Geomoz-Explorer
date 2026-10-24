@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 
 const brandScript = resolve("scripts/brand-geolibre-web.mjs");
 
@@ -16,6 +17,7 @@ function fixture(html) {
   writeFileSync(join(src, "asset.txt"), "raster worker sample");
   mkdirSync(join(src, "assets"));
   writeFileSync(join(src, "assets/app.js"), 'console.log("geomoz-workbench-chrome","geomoz-layer-catalog");');
+  writeFileSync(join(src, "sw.js"), 'self.__WB_MANIFEST=[{revision:"' + "a".repeat(32) + '",url:"index.html"}];');
   writeFileSync(join(src, "manifest.webmanifest"), JSON.stringify({name:"GeoLibre",short_name:"GeoLibre",start_url:"/gis-workspace/",scope:"/gis-workspace/",theme_color:"#2f8f85",icons:[{src:"pwa-192x192.png",sizes:"192x192"}]}));
   const license = join(work, "LICENSE");
   writeFileSync(license, "MIT License\nCopyright (c) 2026 Qiusheng Wu\n");
@@ -35,6 +37,8 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     assert.match(html, /geomoz-auth-splash/);
     assert.doesNotMatch(html, /<script\b[^>]*src="\/gis-workspace\/assets\//);
     const gate = readFileSync(join(f.dst, "geomoz-auth-gate.js"), "utf8");
+    const securedIndexRevision = createHash("md5").update(html).digest("hex");
+    assert.match(readFileSync(join(f.dst, "sw.js"), "utf8"), new RegExp(securedIndexRevision));
     assert.match(gate, /geomoz:workspace-auth-state/);
     assert.match(gate, /\/auth\/workspace-check/);
     assert.match(gate, /\/gis-workspace\/assets\/app\.js/);
