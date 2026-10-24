@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { auth } from "@/lib/firebase";
 import { usePwa } from "@/lib/pwa";
 import AuthModal, { type AuthMode } from "@/components/AuthModal";
 
@@ -65,6 +66,11 @@ type Theme = "light" | "dark";
 export default function LandingPage({ initialAuthMode = null }: LandingPageProps) {
   const [, setLocation] = useLocation();
   const { user, signOut } = useAuth();
+  // Only this explicitly allowed path may be used after authentication.
+  // Never trust arbitrary redirect destinations supplied in the query string.
+  const resumeGisWorkspace =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("next") === "/gis-workspace/";
   const [authModalOpen, setAuthModalOpen] = useState(Boolean(initialAuthMode));
   const [authMode, setAuthMode] = useState<AuthMode>(initialAuthMode || "login");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -93,6 +99,12 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
       setAuthModalOpen(true);
     }
   }, [initialAuthMode]);
+
+  useEffect(() => {
+    if (resumeGisWorkspace && user && user.uid !== "guest_user" && auth.currentUser) {
+      window.location.replace("/gis-workspace/");
+    }
+  }, [resumeGisWorkspace, user]);
 
   const toggleLang = () => {
     const next = lang === "pt" ? "en" : "pt";
@@ -2804,7 +2816,11 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         onClose={() => setAuthModalOpen(false)}
         initialMode={authMode}
         onSuccess={() => {
-          setLocation("/app");
+          if (resumeGisWorkspace && auth.currentUser) {
+            window.location.replace("/gis-workspace/");
+          } else {
+            setLocation("/app");
+          }
         }}
       />
       {/* ── 12. High-Resolution Screenshot Lightbox Modal ────────────────────── */}
