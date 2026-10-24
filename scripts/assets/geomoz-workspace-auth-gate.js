@@ -32,18 +32,27 @@
     loaded = true;
     document.body.dataset.geomozAuth = "allowed";
     splash()?.remove();
-    // Preserve the build's original module/classic order, no GIS JS before auth.
-    for (const entry of ENTRYPOINTS) {
+
+    // Load runtime configuration before the application. Dynamic classic
+    // scripts are async by default; chain onload to retain source order.
+    const loadEntry = (index) => {
+      if (!authorized) return;
+      if (index >= ENTRYPOINTS.length) return;
+      const entry = ENTRYPOINTS[index];
       const script = document.createElement("script");
       if (entry.module) script.type = "module";
+      else script.async = false;
       if (entry.crossorigin) script.crossOrigin = "anonymous";
       script.src = entry.src;
+      script.onload = () => loadEntry(index + 1);
       script.onerror = () => {
+        authorized = false;
         document.body.dataset.geomozAuth = "pending";
-        setStatus("Não foi possível carregar o GIS Workspace. Recarregue a página.", true);
+        window.location.replace(LOGIN_URL);
       };
       document.body.appendChild(script);
-    }
+    };
+    loadEntry(0);
   }
 
   function handleMessage(event) {
