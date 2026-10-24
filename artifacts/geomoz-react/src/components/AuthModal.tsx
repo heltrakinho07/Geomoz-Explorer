@@ -152,7 +152,8 @@ export default function AuthModal({
 
   const handleGuestEntry = () => {
     continueAsGuest();
-    onSuccess?.();
+    // Guest/demo mode is not a successful Firebase sign-in. In particular,
+    // never invoke the return-to-GIS callback reserved for real accounts.
     onClose();
     setLocation("/app");
   };
