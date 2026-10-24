@@ -7,6 +7,7 @@ import { readFileSync,writeFileSync,mkdirSync,existsSync } from "node:fs";
 import { resolve,dirname } from "node:path";
 import { brandUpstreamLocales } from "./geomoz-brand-locales.mjs";
 import { prepareGeoMozProjectFormat } from "./geomoz-project-format.mjs";
+import { patchGeoMozDigitizingEngine } from "./geomoz-digitizing-engine.mjs";
 const root=resolve(process.argv[2]??".geolibre-upstream");
 const app=resolve(root,"apps/geolibre-desktop/src");
 const read=path=>readFileSync(resolve(app,path),"utf8");
@@ -40,6 +41,120 @@ toolbar=toolbar.slice(0,start)+`    <GeoMozWorkbenchChrome commands={paletteComm
 toolbar=toolbar.replace('  DEFAULT_PROJECT_NAME,\n','').replace('import { Button, cn, Input } from "@geolibre/ui";','import { cn } from "@geolibre/ui";').replace('import { Map, Moon, Sun } from "lucide-react";','');
 toolbar=toolbar.replace('  const projectNameComposingRef = useRef(false);\n','');
 write("components/layout/TopToolbar.tsx",toolbar);
+
+// GeoMoz: preserve the pinned georeferencer and extend the real GCP/GDAL workflow
+// at TypeScript source level (no HTML or minified-bundle replacements).
+write("lib/geomoz-georeference.ts",readFileSync(new URL("./assets/workbench/geomoz-georeference.ts",import.meta.url),"utf8"));
+for (const [path, edits] of Object.entries({"components/layout/GeoreferencerDialog.tsx":[["import { releaseBodyPointerEvents } from \"../../lib/radix-compat\";","import { releaseBodyPointerEvents } from \"../../lib/radix-compat\";\nimport { geomozProjectedToGeographic, geomozGcpPixelResiduals, geomozValidateGeoreferencing, type GeoMozGeorefCrs } from \"../../lib/geomoz-georeference\";"],["  const [transform, setTransform] = useState<GeoTransform>(\"affine\");","  const [transform, setTransform] = useState<GeoTransform>(\"affine\");\n  const [coordinateCrs, setCoordinateCrs] = useState<GeoMozGeorefCrs>(\"EPSG:4326\");\n  const [outputCrs, setOutputCrs] = useState<GeoMozGeorefCrs>(\"EPSG:4326\");\n  const [outputResampling, setOutputResampling] = useState<\"near\" | \"bilinear\" | \"cubic\">(\"bilinear\");\n  const [manualX, setManualX] = useState(\"\");\n  const [manualY, setManualY] = useState(\"\");"],["  const affine = useMemo(() => solveAffine(gcps), [gcps]);","  const affine = useMemo(() => solveAffine(gcps), [gcps]);\n  const geomozPixelResiduals = useMemo(() => affine ? geomozGcpPixelResiduals(affine, gcps) : null, [affine, gcps]);\n  const geomozGcpValidation = useMemo(() => image ? geomozValidateGeoreferencing(gcps, image.width, image.height, transform, geomozPixelResiduals?.rms ?? null) : null, [image, gcps, transform, geomozPixelResiduals]);\n\n  const handleGeoMozManualGcp = () => {\n    if (!pendingPixel) return;\n    if (!manualX.trim() || !manualY.trim()) {\n      setNotice({ msg: \"Preencha X e Y para adicionar o ponto.\", kind: \"error\" });\n      return;\n    }\n    try {\n      const [lng, lat] = geomozProjectedToGeographic(Number(manualX), Number(manualY), coordinateCrs);\n      const key = (gcpKeyRef.current += 1);\n      setGcps(gs => [...gs, { px: pendingPixel.px, py: pendingPixel.py, lng, lat, key }]);\n      setPendingPixel(null);\n      setManualX(\"\"); setManualY(\"\");\n      setNotice(null);\n    } catch (error) {\n      setNotice({ msg: error instanceof Error ? error.message : \"Coordenadas inválidas.\", kind: \"error\" });\n    }\n  };\n"],["                  </Button>\n                </div>\n\n                {/* GCP table */}","                  </Button>\n                </div>\n\n                {/* GeoMoz: GCP manual no SRC escolhido (equivalente ao QGIS). */}\n                <div className=\"grid grid-cols-1 gap-2 rounded-md border bg-muted/20 p-3 sm:grid-cols-4\">\n                  <label className=\"space-y-1 text-xs\">\n                    <span className=\"font-semibold\">SRC dos GCPs</span>\n                    <Select aria-label=\"SRC das coordenadas manuais\" value={coordinateCrs}\n                      onChange={e => setCoordinateCrs(e.target.value as GeoMozGeorefCrs)} className=\"w-full\">\n                      <option value=\"EPSG:4326\">WGS 84 · Longitude / Latitude</option>\n                        <option value=\"EPSG:3857\">Web Mercator (m)</option>\n                        <option value=\"EPSG:32735\">WGS 84 / UTM 35S (m)</option>\n                        <option value=\"EPSG:32736\">WGS 84 / UTM 36S (m)</option>\n                        <option value=\"EPSG:32737\">WGS 84 / UTM 37S (m)</option>\n                    </Select>\n                  </label>\n                  <label className=\"space-y-1 text-xs\">\n                    <span className=\"font-semibold\">X · Este / Longitude</span>\n                    <input aria-label=\"Coordenada X do GCP\" className=\"w-full rounded-md border bg-background p-2\"\n                      type=\"number\" step=\"any\" value={manualX} onChange={e => setManualX(e.target.value)} />\n                  </label>\n                  <label className=\"space-y-1 text-xs\">\n                    <span className=\"font-semibold\">Y · Norte / Latitude</span>\n                    <input aria-label=\"Coordenada Y do GCP\" className=\"w-full rounded-md border bg-background p-2\"\n                      type=\"number\" step=\"any\" value={manualY} onChange={e => setManualY(e.target.value)} />\n                  </label>\n                  <div className=\"flex items-end\">\n                    <Button type=\"button\" className=\"w-full\" disabled={!pendingPixel || !manualX.trim() || !manualY.trim()}\n                      onClick={handleGeoMozManualGcp}>Adicionar GCP manual</Button>\n                  </div>\n                  <p className=\"text-xs text-muted-foreground sm:col-span-4\">Também pode clicar em «Associar no mapa». As coordenadas UTM são convertidas para WGS 84 para alinhar o raster com as camadas do mapa.</p>\n                  {geomozGcpValidation?.warning && (\n                    <p role=\"status\" className=\"text-xs text-amber-700 dark:text-amber-300 sm:col-span-4\">{geomozGcpValidation.warning}</p>\n                  )}\n                </div>\n\n                {/* GCP table */}"],["{t(\"georeferencer.rms\", {\n                            rms: residuals.rms.toFixed(1),\n                          })}","{\"RMSE: \" + (geomozPixelResiduals?.rms.toFixed(2) ?? \"—\") + \" px\"}"],["{residuals ? `${residuals.perPoint[i].toFixed(1)} m` : \"—\"}","{geomozPixelResiduals ? geomozPixelResiduals.perPoint[i].toFixed(2) + \" px\" : \"—\"}"],["<Label htmlFor=\"georef-transform\">{t(\"georeferencer.exportTiff\")}</Label>","<Label htmlFor=\"georef-transform\">{t(\"georeferencer.exportTiff\")}</Label>\n\n                  <div className=\"grid grid-cols-1 gap-2 sm:grid-cols-2\">\n                    <label className=\"space-y-1 text-xs\">\n                      <span className=\"font-semibold\">SRC de saída (GeoTIFF)</span>\n                      <Select aria-label=\"SRC de saída do GeoTIFF\" className=\"w-full\" value={outputCrs}\n                        disabled={exporting} onChange={e => setOutputCrs(e.target.value as GeoMozGeorefCrs)}>\n                        <option value=\"EPSG:4326\">WGS 84 · Longitude / Latitude</option>\n                        <option value=\"EPSG:3857\">Web Mercator (m)</option>\n                        <option value=\"EPSG:32735\">WGS 84 / UTM 35S (m)</option>\n                        <option value=\"EPSG:32736\">WGS 84 / UTM 36S (m)</option>\n                        <option value=\"EPSG:32737\">WGS 84 / UTM 37S (m)</option>\n                      </Select>\n                    </label>\n                    <label className=\"space-y-1 text-xs\">\n                      <span className=\"font-semibold\">Reamostragem</span>\n                      <Select aria-label=\"Método de reamostragem\" className=\"w-full\" value={outputResampling}\n                        disabled={exporting} onChange={e => setOutputResampling(e.target.value as \"near\" | \"bilinear\" | \"cubic\")}>\n                        <option value=\"near\">Vizinho mais próximo</option>\n                        <option value=\"bilinear\">Bilinear</option>\n                        <option value=\"cubic\">Cúbica</option>\n                      </Select>\n                    </label>\n                  </div>\n"],["exportGeoTiff(image.url, image.name || \"georeferenced\", gcps, transform)","exportGeoTiff(image.url, image.name || \"georeferenced\", gcps, transform, outputCrs, outputResampling)"],["[affine, image, exporting, gcps, transform, t]","[affine, image, exporting, gcps, transform, outputCrs, outputResampling, t]"]],"lib/georeference-gdal.ts":[["  transform: GeoTransform,\n): Promise<Uint8Array>","  transform: GeoTransform,\n  targetCrs = \"EPSG:4326\",\n  resampling: \"near\" | \"bilinear\" | \"cubic\" = \"bilinear\",\n): Promise<Uint8Array>"],["warpArgsForTransform(transform)","warpArgsForTransform(transform, targetCrs, resampling)"]],"lib/georeference.ts":[["export function warpArgsForTransform(transform: GeoTransform): string[] {","export function warpArgsForTransform(transform: GeoTransform, targetCrs = \"EPSG:4326\", resampling: \"near\" | \"bilinear\" | \"cubic\" = \"bilinear\"): string[] {"],["return [...method, \"-t_srs\", \"EPSG:4326\", \"-r\", \"bilinear\", \"-of\", \"COG\"];","return [...method, \"-t_srs\", targetCrs, \"-r\", resampling, \"-of\", \"COG\"];"]]})) {
+  let source=read(path);
+  for (const [from,to] of edits) {
+    source=once(source,from,to,"GeoMoz georeferencer "+path);
+  }
+  write(path,source);
+}
+
+// Ensure out-of-bounds pixels are transparent when a scanned, rotated map
+// is warped into a north-up GeoTIFF for the native raster layer.
+let georefGdal=read("lib/georeference-gdal.ts");
+georefGdal=once(georefGdal,
+  '  resampling: "near" | "bilinear" | "cubic" = "bilinear",\n): Promise<Uint8Array>',
+  '  resampling: "near" | "bilinear" | "cubic" = "bilinear",\n  transparent = false,\n): Promise<Uint8Array>',
+  "GDAL warp transparent background option");
+georefGdal=once(georefGdal,
+  '    const warped = await Gdal.gdalwarp(gcpDs, warpArgsForTransform(transform, targetCrs, resampling), "georeferenced.tif");',
+  '    const warpArgs = warpArgsForTransform(transform, targetCrs, resampling);\n    if (transparent) warpArgs.splice(warpArgs.length - 2, 0, "-dstalpha");\n    const warped = await Gdal.gdalwarp(gcpDs, warpArgs, "georeferenced.tif");',
+  "GDAL destination alpha instead of opaque black corners");
+write("lib/georeference-gdal.ts",georefGdal);
+
+// "Adicionar ao mapa" needs a genuinely rectified, north-up COG. The pinned
+// engine's original button only pins the source scan by four affine corners,
+// even when the user selected polynomial or TPS for a warp.
+let georeferencer=read("components/layout/GeoreferencerDialog.tsx");
+georeferencer=once(georeferencer,
+  'import { releaseBodyPointerEvents } from "../../lib/radix-compat";',
+  'import { releaseBodyPointerEvents } from "../../lib/radix-compat";\nimport { addRasterToMap } from "@geolibre/plugins";\nimport { createAppAPI } from "../../hooks/usePlugins";',
+  "use production raster pipeline");
+georeferencer=once(georeferencer,
+  'import {\n  DEFAULT_LAYER_STYLE,\n  type GeoLibreLayer,\n  shouldZoomToNewLayers,\n  useAppStore,\n} from "@geolibre/core";\n',
+  "",
+  "drop corner-pinned image import");
+georeferencer=once(georeferencer,'  cornersInRange,\n  cornersToBounds,\n',"","drop affine corners");
+georeferencer=once(georeferencer,'  imageCornersToMap,\n',"","drop corner mapping");
+georeferencer=once(georeferencer,'  const addLayer = useAppStore((s) => s.addLayer);\n',"","remove unused image store action");
+const idStart=georeferencer.indexOf("function createId(): string {");
+const idEnd=georeferencer.indexOf("/** A GCP plus a stable React key",idStart);
+if(idStart<0 || idEnd<idStart || !georeferencer.slice(idStart,idEnd).includes("randomUUID")) {
+  throw Error("GeoMoz georeferencer source changed: image overlay createId");
+}
+georeferencer=georeferencer.slice(0,idStart)+georeferencer.slice(idEnd);
+const applyStart=georeferencer.indexOf("  const handleApply = useCallback(() => {");
+const applyEnd=georeferencer.indexOf("\n  const removeGcp =",applyStart);
+if(applyStart<0 || applyEnd<applyStart || !georeferencer.slice(applyStart,applyEnd).includes('type: "image"') ||
+  !georeferencer.slice(applyStart,applyEnd).includes("imageCornersToMap")) {
+  throw Error("GeoMoz georeferencer source changed: affine-only image overlay");
+}
+const rasterApply=[
+'  const handleApply = useCallback(async () => {',
+'    if (!affine || !image || exporting) return;',
+'    const validity = geomozValidateGeoreferencing(',
+'      gcps, image.width, image.height, transform, geomozPixelResiduals?.rms ?? null,',
+'    );',
+'    if (!validity.ok) {',
+'      setNotice({ msg: validity.message, kind: "error" });',
+'      return;',
+'    }',
+'    setExporting(true);',
+'    setNotice({ msg: "A rectificar o raster com GDAL e a adicionar o GeoTIFF ao mapa…", kind: "info" });',
+'    try {',
+'      // Never pin the raw scan to four corners: run the selected GDAL warp.',
+'      // Map layers use EPSG:4326; the user-selected output CRS is for export.',
+'      const bytes = await exportGeoTiff(',
+'        image.url, image.name || "carta-rectificada", gcps, transform,',
+'        "EPSG:4326", outputResampling, true,',
+'      );',
+'      if (!bytes.byteLength) throw new Error("O GDAL gerou um raster vazio.");',
+'      const name = (image.name || "Carta") + " · rectificada";',
+'      const cog = new File([bytes as BlobPart], name + ".tif", { type: "image/tiff" });',
+'      await addRasterToMap(createAppAPI(mapControllerRef), cog, {',
+'        name, zoomTo: true, state: { opacity },',
+'      });',
+'      setNotice(null);',
+'      onOpenChange(false);',
+'    } catch (error) {',
+'      console.error("GeoMoz: falha ao rectificar e carregar a carta", error);',
+'      setNotice({',
+'        msg: "Não foi possível rectificar e adicionar o GeoTIFF. " +',
+'          (error instanceof Error ? error.message : "Verifique os GCPs e a ligação ao motor GDAL."),',
+'        kind: "error",',
+'      });',
+'    } finally {',
+'      setExporting(false);',
+'    }',
+'  }, [affine, image, exporting, gcps, transform, outputResampling, geomozPixelResiduals, opacity, mapControllerRef, onOpenChange]);',
+''].join("\n");
+georeferencer=georeferencer.slice(0,applyStart)+rasterApply+georeferencer.slice(applyEnd);
+georeferencer=once(georeferencer,
+  '<Button onClick={handleApply} disabled={!affine || !image}>',
+  '<Button onClick={handleApply} disabled={!affine || !image || exporting}>',
+  "disable map addition during GDAL");
+georeferencer=once(georeferencer,
+  '{t("georeferencer.addToMap")}',
+  '{exporting ? "A processar raster…" : t("georeferencer.addToMap")}',
+  "show raster processing");
+georeferencer=once(georeferencer,
+  '                  <p className="text-xs text-muted-foreground sm:col-span-4">Também pode clicar em «Associar no mapa». As coordenadas UTM são convertidas para WGS 84 para alinhar o raster com as camadas do mapa.</p>',
+  '                  <p className="text-xs text-muted-foreground sm:col-span-4">Também pode clicar em «Associar no mapa». As coordenadas UTM são convertidas para WGS 84. Distribua pelo menos quatro GCPs, preferencialmente perto dos quatro cantos da carta, e confira o RMS.</p>',
+  "georeferencing guidance");
+georeferencer=once(georeferencer,
+  '{"RMSE: " + (geomozPixelResiduals?.rms.toFixed(2) ?? "—") + " px"}',
+  '{"RMSE afim (referência): " + (geomozPixelResiduals?.rms.toFixed(2) ?? "—") + " px"}',
+  "label preliminary affine fit RMS");
+georeferencer=once(georeferencer,
+  '                  <p className="text-xs text-muted-foreground">\n                    {affine && gcps.length < minGcpsForTransform(transform)',
+  '                  <p className="text-xs text-muted-foreground">«Adicionar ao mapa» rectifica com o método escolhido e cria um GeoTIFF WGS 84. O SRC de saída acima é usado apenas no ficheiro descarregado. A precisão depende dos GCPs.</p>\n                  <p className="text-xs text-muted-foreground">\n                    {affine && gcps.length < minGcpsForTransform(transform)',
+  "explain the two output destinations");
+write("components/layout/GeoreferencerDialog.tsx",georeferencer);
+
 let shell=read("components/layout/DesktopShell.tsx");
 shell=once(shell,'import { LayerPanel } from "../panels/LayerPanel";','import { GeoMozLayerPanel as LayerPanel } from "../geomoz/GeoMozLayerPanel";',"layer navigator");
 shell=once(shell,'className="relative flex h-full min-w-0 flex-col overflow-hidden bg-background"','className="gm-workbench relative flex h-full min-w-0 flex-col overflow-hidden bg-background"',"workspace root");
@@ -50,7 +165,7 @@ write("components/layout/DesktopShell.tsx",shell);
 let rail=read("components/panels/SharedSidebar.tsx");
 rail=once(rail,'"flex w-full shrink-0 items-center gap-1 border-t bg-card','"gm-shared-rail flex w-full shrink-0 items-center gap-1 border-t bg-card',"GeoMoz activity rail");
 write("components/panels/SharedSidebar.tsx",rail);
-for(const name of ["GeoMozWorkbenchChrome.tsx","GeoMozLayerPanel.tsx","GeoMozLayerProperties.tsx","GeoMozSeismicPanel.tsx","GeoMozSeismicAnalysis.tsx","GeoMozEarthscopeStations.tsx","seismic-data.ts","seismic-analytics.ts","earthscope-stations.ts","GeoMozLayerCreation.tsx","geomoz-cartography.ts"]){
+for(const name of ["GeoMozWorkbenchChrome.tsx","GeoMozLayerPanel.tsx","GeoMozLayerProperties.tsx","GeoMozSeismicPanel.tsx","GeoMozSeismicAnalysis.tsx","GeoMozEarthscopeStations.tsx","seismic-data.ts","seismic-analytics.ts","earthscope-stations.ts","GeoMozLayerCreation.tsx","GeoMozDigitizingTools.tsx","geomoz-cartography.ts"]){
   write("components/geomoz/"+name,readFileSync(new URL("./assets/workbench/"+name,import.meta.url),"utf8"));
 }
 write("hooks/useThemeMode.ts",readFileSync(new URL("./assets/workbench/useThemeMode.ts",import.meta.url),"utf8"));
@@ -127,6 +242,7 @@ let editor=readFileSync(editorPath,"utf8");
 editor='import { GEOMOZ_ROLLOUT } from "../geomoz-workbench-profile";\n'+editor;
 editor=once(editor,"    ...GEO_EDITOR_OPTIONS,","    ...GEO_EDITOR_OPTIONS,\n    ...(!GEOMOZ_ROLLOUT.advancedDrawing ? {\n      drawModes: GEO_EDITOR_OPTIONS.drawModes.filter(mode => [\"polygon\",\"line\",\"rectangle\",\"marker\"].includes(mode)),\n      editModes: GEO_EDITOR_OPTIONS.editModes.filter(mode => [\"select\",\"drag\",\"change\",\"delete\"].includes(mode)),\n      showFeatureProperties: false,\n      enableAttributeEditing: false,\n    } : { drawModes: GEO_EDITOR_OPTIONS.drawModes.filter(mode => mode !== \"massing\") }),","curated study-area editor");
 editor=once(editor,"if (isGeometryEditSession) geoEditorControl?.closeAttributeEditor();","if (isGeometryEditSession || !GEOMOZ_ROLLOUT.advancedDrawing) geoEditorControl?.closeAttributeEditor();","hide massing attribute form");
+editor=patchGeoMozDigitizingEngine(editor);
 writeFileSync(editorPath,editor);
 // A new deployed worker may emit several controllerchange / update events in
 // quick succession. Upstream deduplication increments a visible "×2" counter

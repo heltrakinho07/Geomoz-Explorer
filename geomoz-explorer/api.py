@@ -142,7 +142,7 @@ def handle_gee_api_error(exc: Exception, prefix: str = "Cálculo GEE", uid: str 
             detail="A sua sessão do Google Earth Engine expirou. Por favor clique em 'Reconectar Google Earth Engine' nas Definições ou no cabeçalho para renovar o acesso."
         )
     raise HTTPException(500, f"{prefix} falhou: {exc}")
-from pydantic import BaseModel, field_validator, constr
+from pydantic import BaseModel, field_validator, constr, Field
 
 from processing_jobs import (
     cleanup_expired_jobs,
@@ -1866,7 +1866,7 @@ class GEEBasinsRequest(BaseModel):
     province:  Optional[str] = None
     district:  Optional[str] = None
     geometry:  Optional[dict] = None
-    level:     int            = 6   # HydroBASINS level 5–8
+    level:     int            = Field(default=6, ge=1, le=12)  # Pfafstetter 1–12
 
 
 class GEEBasinStatsRequest(BaseModel):
@@ -2009,7 +2009,7 @@ class GEEWatershedRequest(BaseModel):
     district: Optional[str] = None
     geometry: Optional[dict] = None
     max_iter: int            = 60
-    level:    int            = 10
+    level:    int            = Field(default=10, ge=1, le=12)
 
 
 @app.post("/geomoz-api/gee/watershed")
@@ -2018,7 +2018,9 @@ async def gee_watershed(req: GEEWatershedRequest, uid: str = Depends(require_gee
     Basin delineation at a clicked point. Primary method returns the containing
     HydroBASINS sub-basin (instant, real boundary); falls back to iterative D8
     on HydroSHEDS 15DIR if HydroBASINS is unavailable. Returns tile URL +
-    GeoJSON polygon + area km². `level` (6–12) controls HydroBASINS detail.
+    GeoJSON polygon + area km². `level` (1–12) controls the exact HydroBASINS
+    hierarchy; if the collection is unavailable, the result explicitly reports
+    a D8 fallback rather than claiming a different Pfafstetter level.
     """
     import asyncio
     from gee_module import compute_watershed_from_point

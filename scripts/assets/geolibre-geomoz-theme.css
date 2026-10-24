@@ -357,3 +357,70 @@ html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0
 .gm-cartography-wizard button.gm-cartography-create{display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid #0369a1;border-radius:7px;background:#0284c7;color:white;font-weight:750;padding:10px;min-height:38px}
 .gm-cartography-wizard button:focus-visible{outline:2px solid #0284c7;outline-offset:2px}
 @media(max-width:720px){.gm-cartography-wizard{left:12px;top:100%;width:calc(100vw - 24px);max-height:55dvh}}
+
+
+/* GeoMoz guided digitizing · native Geoman, one workflow, no duplicate canvas. */
+.gm-digitizing-tools{display:grid;gap:10px;border:1px solid var(--gm-line);border-radius:9px;padding:12px;background:var(--gm-surface);color:var(--gm-text);margin:8px 0}
+.gm-digitizing-tools h4{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:750}
+.gm-digitizing-tools p{font-size:10px;line-height:1.65;color:var(--gm-subtle)}
+.gm-digitizing-tools p strong{color:var(--gm-text)}
+.gm-digitizing-controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:7px}
+.gm-digitizing-controls button{display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 8px;border:1px solid var(--gm-line);border-radius:7px;background:var(--gm-muted);font-size:10px;font-weight:700;text-align:center;min-height:38px}
+.gm-digitizing-controls button[aria-pressed=true]{color:#075985;background:#e0f2fe;border-color:#38bdf8}
+.gm-digitizing-controls button:hover:not(:disabled){border-color:#0284c7}
+.gm-digitizing-controls button:disabled{opacity:.45;cursor:not-allowed}
+.gm-digitizing-snap{display:grid;gap:8px;padding:10px;border-radius:8px;border:1px solid var(--gm-line);background:var(--gm-muted)}
+.gm-digitizing-snap label{display:flex;align-items:center;gap:7px;font-size:11px;min-width:0}
+.gm-digitizing-snap input[type=number]{margin-left:auto;max-width:66px;padding:5px 6px;border:1px solid var(--gm-line);border-radius:6px;background:var(--gm-surface);color:var(--gm-text)}
+.gm-digitizing-snap input[type=checkbox]{accent-color:#0284c7}
+.gm-digitizing-hint{display:flex;gap:8px;align-items:flex-start}
+.gm-digitizing-hint svg{flex-shrink:0;margin-top:2px}
+.gm-digitizing-notice{border-radius:6px;padding:8px;background:var(--gm-muted)}
+.gm-cartography-field-list{display:grid!important;gap:5px!important}
+.gm-cartography-field-list>span{width:100%;display:flex;justify-content:space-between;padding:6px 8px}
+.gm-cartography-field-list>span>span{display:inline-flex;align-items:center;gap:8px}
+.gm-cartography-field-list button{margin-left:auto;display:inline-flex;padding:4px;border:1px solid var(--gm-line);border-radius:5px}
+.gm-cartography-add-field{display:grid!important;grid-template-columns:minmax(0,1fr) 85px auto;gap:5px!important;margin-top:10px;align-items:center}
+.gm-cartography-add-field button{display:flex;align-items:center;justify-content:center;gap:3px;border:1px solid var(--gm-line);border-radius:7px;padding:8px;font-size:10px;min-height:36px}
+.gm-cartography-add-field input,.gm-cartography-add-field select{min-height:36px}
+.gm-digitizing-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:#02061778;z-index:11000;overflow-y:auto}
+.gm-digitizing-attribute-form{display:grid;gap:11px;width:min(450px,100%);max-height:min(80dvh,750px);overflow-y:auto;border:1px solid var(--gm-line);background:var(--gm-surface);color:var(--gm-text);border-radius:13px;padding:19px;box-shadow:0 20px 65px #02061775}
+.gm-digitizing-attribute-form header{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.gm-digitizing-attribute-form h3{display:flex;gap:8px;align-items:center;font-size:15px;font-weight:800}
+.gm-digitizing-attribute-form header button{display:inline-flex;padding:6px;border:1px solid var(--gm-line);border-radius:7px}
+.gm-digitizing-attribute-form>p{font-size:12px;line-height:1.6;color:var(--gm-subtle)}
+.gm-digitizing-attribute-form label{display:grid;gap:5px;font-size:12px;font-weight:700}
+.gm-digitizing-attribute-form label small{font-size:10px;font-weight:400;color:var(--gm-subtle)}
+.gm-digitizing-attribute-form input{padding:9px;border:1px solid var(--gm-line);background:var(--gm-muted);color:var(--gm-text);border-radius:7px;min-height:36px}
+.gm-digitizing-attribute-form footer{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.gm-digitizing-attribute-form footer button{display:flex;align-items:center;gap:6px;border:1px solid var(--gm-line);border-radius:7px;padding:9px 12px;font-size:12px}
+.gm-digitizing-attribute-form footer button[type=submit]{background:#0284c7;border-color:#0284c7;color:white;font-weight:750}
+@media(max-width:767px){.gm-cartography-add-field{grid-template-columns:minmax(0,1fr) 78px}.gm-cartography-add-field button{grid-column:1/-1}.gm-digitizing-controls{grid-template-columns:1fr}.gm-digitizing-attribute-form{padding:13px}}
+
+
+/* Digitalizar: compact by default, detailed guidance on demand. */
+.gm-digitizing-tools{gap:8px;padding:10px}
+.gm-digitizing-mode{margin-left:auto;padding:3px 7px;border-radius:6px;font-size:10px;font-weight:650;background:var(--gm-muted);color:var(--gm-subtle);border:1px solid var(--gm-line)}
+.gm-digitizing-layer-name{display:block;color:var(--gm-subtle);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gm-digitizing-help{border-top:1px solid var(--gm-line);padding-top:7px}
+.gm-digitizing-help summary{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;cursor:pointer;color:var(--gm-subtle);list-style:none}
+.gm-digitizing-help summary::-webkit-details-marker{display:none}
+.gm-digitizing-help[open] summary{color:var(--gm-text)}
+.gm-digitizing-help ol{list-style:decimal;padding:8px 0 0 18px;margin:0;display:grid;gap:6px;font-size:10px;line-height:1.5;color:var(--gm-subtle)}
+.gm-digitizing-tools:has(.gm-digitizing-controls button[aria-pressed=false]){min-width:0}
+
+
+/* QGIS-inspired, map-first task contextual ribbon. Raster tools and external
+   services are disclosed only on demand rather than occupying toolbar space. */
+.gm-ribbon-optional{justify-content:center;padding-right:8px;margin-right:8px}
+.gm-ribbon-accordion{position:relative;min-width:118px;align-self:center}
+.gm-ribbon-accordion>summary{display:flex;align-items:center;gap:7px;min-height:42px;cursor:pointer;white-space:nowrap;list-style:none;padding:6px 9px;border:1px solid var(--gm-line);background:var(--gm-muted);border-radius:7px;color:var(--gm-text);font-size:11px;font-weight:650}
+.gm-ribbon-accordion>summary::-webkit-details-marker{display:none}
+.gm-ribbon-accordion>summary svg:last-child{margin-left:auto;transition:transform .18s}
+.gm-ribbon-accordion[open]>summary svg:last-child{transform:rotate(180deg)}
+.gm-ribbon-accordion[open]{z-index:120}
+.gm-ribbon-accordion>div{position:absolute;z-index:120;top:calc(100% + 6px);left:0;display:grid;grid-template-columns:repeat(2,minmax(108px,1fr));gap:5px;max-height:min(65vh,420px);min-width:min(260px,85vw);overflow:auto;padding:8px;border:1px solid var(--gm-line);border-radius:9px;background:var(--gm-surface);box-shadow:0 14px 36px #0206173b}
+.gm-ribbon-accordion>div>button{flex-direction:row;max-width:none;min-height:40px;padding:7px 9px;justify-content:flex-start;gap:8px;text-align:left;white-space:normal}
+.gm-digitizing-ribbon-tip{display:flex;align-items:center;gap:7px;max-width:300px;margin:auto 6px;padding:5px 6px;font-size:10px;line-height:1.35;color:var(--gm-subtle)}
+.gm-digitizing-ribbon-tip svg{flex:none;color:var(--gm-accent)}
+@media(max-width:767px){.gm-ribbon-accordion{min-width:95px}.gm-ribbon-accordion>summary{font-size:10px;padding:5px 7px}.gm-ribbon-accordion>div{min-width:min(240px,90vw);grid-template-columns:1fr}.gm-digitizing-ribbon-tip{max-width:155px;font-size:9px}}

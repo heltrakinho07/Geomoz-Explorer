@@ -61,6 +61,7 @@ interface BasinsResult {
   tileUrl:  string | null;
   geojson:  GeoJSON.FeatureCollection | null;
   count:    number;
+  previewCount?: number;
   level:    number;
   source:   "hydrobasins" | "unavailable";
   error?:   string;
@@ -83,7 +84,7 @@ interface BasinStats {
 
 interface DrainageResult   { tileUrl: string; threshold: number }
 interface RiverNetResult   { tileUrl: string; majorTileUrl: string; orders: Record<string, number>; palette: string[] }
-interface WatershedResult  { tileUrl: string; geojson: GeoJSON.FeatureCollection; pourPoint: [number, number]; areaKm2: number; maxIter?: number; level?: number; source?: string }
+interface WatershedResult  { tileUrl: string; geojson: GeoJSON.FeatureCollection; pourPoint: [number, number]; areaKm2: number; maxIter?: number; level?: number; requestedLevel?: number; source?: "hydrobasins" | "d8" | "polygon" | string }
 interface LandCoverClass   { code: number; label: string; color: string; areaKm2: number; pct: number }
 interface BasinReport {
   morphometry: {
@@ -1590,9 +1591,19 @@ export default function HidroGeoMoz({
               <span>As bacias pré-definidas (HydroBASINS) podem não estar disponíveis neste projeto. Se nada aparecer, use <strong>Delimitar</strong> para delinear por DEM.</span>
             </div>
             <div>
-              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">HydroBASINS — <strong className="text-slate-700 dark:text-slate-200">Nível {basinLevel}</strong></label>
-              <input type="range" min={5} max={8} step={1} value={basinLevel} onChange={e => setBasinLevel(+e.target.value)} className="w-full accent-blue-500" />
-              <div className="flex justify-between text-[10px] text-slate-400"><span>Grandes (5)</span><span>Detalhe (8)</span></div>
+              <label htmlFor="hydrobasins-explore-level" className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Nível de bacias HydroBASINS (Pfafstetter)</label>
+              <select
+                id="hydrobasins-explore-level"
+                value={basinLevel}
+                onChange={e => { setBasinLevel(Number(e.target.value)); setBasinsData(null); setSelectedFeat(null); setBasinStats(null); }}
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-800 dark:text-slate-100"
+              >
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
+                  <option key={n} value={n}>Nível {n} — {n <= 4 ? "bacias principais" : n <= 8 ? "sub-bacias intermédias" : "sub-bacias detalhadas"}</option>
+                ))}
+              </select>
+              <div className="flex justify-between text-[10px] text-slate-400"><span>1 · Macro-bacias</span><span>12 · Maior detalhe</span></div>
+              {basinLevel >= 9 && <p className="text-[10px] text-amber-600 dark:text-amber-400">Nos níveis 9–12, escolha uma área de estudo menor para reduzir o tempo de processamento e a quantidade de polígonos.</p>}
             </div>
             <div className="flex items-center justify-between">
               <label className="text-[10px] text-slate-500 dark:text-slate-400">Rede de Drenagem</label>
@@ -1653,9 +1664,19 @@ export default function HidroGeoMoz({
                   <span>Clique num rio ou ponto no mapa para traçar a sub-bacia a montante (HydroBASINS/D8).</span>
                 </div>
                 <div>
-                  <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Detalhe — <strong className="text-slate-700 dark:text-slate-200">nível {level}</strong></label>
-                  <input type="range" min={6} max={12} step={1} value={level} onChange={e => setLevel(+e.target.value)} className="w-full accent-blue-500" />
-                  <div className="flex justify-between text-[10px] text-slate-400"><span>Grande (6)</span><span>Pequena (12)</span></div>
+                  <label htmlFor="hydrobasins-point-level" className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Nível da bacia no ponto (Pfafstetter)</label>
+                  <select
+                    id="hydrobasins-point-level"
+                    value={level}
+                    onChange={e => { setLevel(Number(e.target.value)); setPourPoint(null); setWatershedData(null); setWsStats(null); setBasinReport(null); }}
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-800 dark:text-slate-100"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
+                      <option key={n} value={n}>Nível {n} — {n <= 4 ? "bacia principal" : n <= 8 ? "sub-bacia intermédia" : "sub-bacia detalhada"}</option>
+                    ))}
+                  </select>
+                  <div className="flex justify-between text-[10px] text-slate-400"><span>1 · Macro-bacia</span><span>12 · Maior detalhe</span></div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Ao alterar o nível, clique novamente no mapa. Se o nível escolhido não estiver disponível, o GeoMoz identifica a alternativa D8.</p>
                 </div>
                 {pourPoint && (
                   <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 text-[11px] font-mono text-slate-600 dark:text-slate-300 space-y-0.5">
@@ -1935,7 +1956,7 @@ export default function HidroGeoMoz({
         )}
         {mode === "explore" && basinsData?.source === "hydrobasins" && (
           <div className="absolute top-4 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-sm border border-blue-100 dark:border-blue-900/40 px-3 py-1.5 text-[11px] text-blue-700 dark:text-blue-300 flex items-center gap-1.5 pointer-events-none">
-            <Layers size={11} />{basinsData.count} bacias · Nível {basinsData.level}
+            <Layers size={11} />{basinsData.count} bacias · Nível {basinsData.level}{basinsData.previewCount !== undefined && basinsData.previewCount < basinsData.count ? ` · ${basinsData.previewCount} seleccionáveis` : ""}
           </div>
         )}
 
@@ -2018,7 +2039,7 @@ export default function HidroGeoMoz({
                         ? `HydroBASINS · nível ${watershedData.level ?? level}`
                         : watershedData.source === "polygon"
                         ? "Delimitação por Polígono / Área de Estudo"
-                        : "D8 · HydroSHEDS"}
+                        : `D8 · HydroSHEDS (nível ${watershedData.requestedLevel ?? level} não aplicado)`}
                     </div>
                   </div>
 
