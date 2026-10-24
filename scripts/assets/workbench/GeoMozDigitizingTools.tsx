@@ -51,6 +51,7 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
  const shape=layerShape(layer);
  const fields=layerFields(layer);
  const canEdit=useAppStore(s=>s.deploymentCapabilities.has("project:edit"));
+ const selectedLayerId=useAppStore(s=>s.selectedLayerId);
  const activeShape=SHAPES.find(s=>s.key===shape)!;
  useEffect(()=>{
    const listener=(event:Event)=>{
@@ -88,6 +89,8 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
    setPending(null);setNotice("Atributos atribuídos à feição. Guarde as edições da camada para os conservar.");
  };
  const showForm=pending&&pending.layerId===layer.id;
+ // Discard stale editor panels when the user selects a different layer.
+ if (selectedLayerId!==layer.id) return null;
  return <section ref={rootRef} className="gm-digitizing-tools" data-testid="geomoz-digitizing-tools" data-layer-id={layer.id} aria-label="Fluxo de digitalização">
   <h4><Pencil size={15}/> {active?"Edição activa":"Preparação"} <span className="gm-digitizing-mode">{shape==="Point"?"Ponto":shape==="LineString"?"Linha":"Polígono"}</span></h4>
   <small className="gm-digitizing-layer-name" title={layer.name}>{layer.name}</small>
