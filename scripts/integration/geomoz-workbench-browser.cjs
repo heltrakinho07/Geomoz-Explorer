@@ -41,6 +41,27 @@ async function settleRecovery(page){
  page.on("pageerror",error=>{errors.push(error.message);console.error("Runtime error:",error.message);});
  page.setDefaultTimeout(90000);
  try{
+  const portalMessage = authenticated =>
+    '<!doctype html><html><body><script>window.parent.postMessage(' +
+    JSON.stringify({type:"geomoz:workspace-auth-state",authenticated}) +
+    ',window.location.origin);</script></body></html>';
+
+  // Test an unauthenticated deep link: the real engine must never start.
+  const visitor = await context.newPage();
+  await visitor.route("**/auth/workspace-check", route =>
+    route.fulfill({status:200,contentType:"text/html",body:portalMessage(false)}));
+  await visitor.goto("http://127.0.0.1:4182/gis-workspace/");
+  await visitor.waitForURL(url => url.pathname === "/login" &&
+    url.searchParams.get("next") === "/gis-workspace/", {timeout:10000});
+  assert.equal(await visitor.getByTestId("geomoz-workbench-chrome").count(),0,
+    "Unauthenticated visitors must not run the GIS engine");
+  await visitor.close();
+
+  // Only the CI browser harness simulates a real Firebase session; this route
+  // never exists in the deployed application. The actual portal bridge checks
+  // Firebase Auth, rejects guests, and communicates with the same message type.
+  await page.route("**/auth/workspace-check", route =>
+    route.fulfill({status:200,contentType:"text/html",body:portalMessage(true)}));
   await page.goto("http://127.0.0.1:4182/gis-workspace/");
   await page.getByTestId("geomoz-workbench-chrome").waitFor();
   const workspaceBrand=page.locator(".gm-workbench-chrome .gm-brand img");

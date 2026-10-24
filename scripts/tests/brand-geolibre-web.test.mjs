@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 
 const brandScript = resolve("scripts/brand-geolibre-web.mjs");
 
@@ -16,6 +17,7 @@ function fixture(html) {
   writeFileSync(join(src, "asset.txt"), "raster worker sample");
   mkdirSync(join(src, "assets"));
   writeFileSync(join(src, "assets/app.js"), 'console.log("geomoz-workbench-chrome","geomoz-layer-catalog");');
+  writeFileSync(join(src, "sw.js"), 'self.__WB_MANIFEST=[{revision:"' + "a".repeat(32) + '",url:"index.html"}];');
   writeFileSync(join(src, "manifest.webmanifest"), JSON.stringify({name:"GeoLibre",short_name:"GeoLibre",start_url:"/gis-workspace/",scope:"/gis-workspace/",theme_color:"#2f8f85",icons:[{src:"pwa-192x192.png",sizes:"192x192"}]}));
   const license = join(work, "LICENSE");
   writeFileSync(license, "MIT License\nCopyright (c) 2026 Qiusheng Wu\n");
@@ -23,13 +25,26 @@ function fixture(html) {
 }
 
 test("bundles the real web shell under the GIS subpath with branding and MIT notice", () => {
-  const f = fixture('<html lang="en"><head><title>GeoLibre</title><meta name="description" content="GeoLibre platform"/><meta name="apple-mobile-web-app-title" content="GeoLibre"/><link rel="icon" type="image/png" href="/gis-workspace/favicon.png"><link rel="shortcut icon" href="/gis-workspace/favicon.ico"><link rel="apple-touch-icon" href="/gis-workspace/apple-touch-icon.png"><meta name="theme-color" content="#2f8f85"><script src="/gis-workspace/assets/app.js"></script></head><body><div id="root"></div></body></html>');
+  const f = fixture('<html lang="en"><head><title>GeoLibre</title><meta name="description" content="GeoLibre platform"/><meta name="apple-mobile-web-app-title" content="GeoLibre"/><link rel="icon" type="image/png" href="/gis-workspace/favicon.png"><link rel="shortcut icon" href="/gis-workspace/favicon.ico"><link rel="apple-touch-icon" href="/gis-workspace/apple-touch-icon.png"><meta name="theme-color" content="#2f8f85"><script src="/gis-workspace/geolibre-runtime-config.js"></script><script src="/gis-workspace/assets/app.js"></script></head><body><div id="root"></div></body></html>');
   try {
     const result = spawnSync(process.execPath, [brandScript, f.src, f.dst, f.license], { encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
     const html = readFileSync(join(f.dst, "index.html"), "utf8");
     const cfg = JSON.parse(readFileSync(join(f.dst, "deployment.json"), "utf8"));
     assert.match(html, /geomoz-brand\.css/);
+    assert.match(html, /data-geomoz-auth="pending"/);
+    assert.match(html, /geomoz-auth-gate\.js\?v=[a-f0-9]{12}/);
+    assert.match(html, /geomoz-auth-splash/);
+    assert.doesNotMatch(html, /<script\b[^>]*src="\/gis-workspace\/assets\//);
+    const gate = readFileSync(join(f.dst, "geomoz-auth-gate.js"), "utf8");
+    const securedIndexRevision = createHash("md5").update(html).digest("hex");
+    assert.match(readFileSync(join(f.dst, "sw.js"), "utf8"), new RegExp(securedIndexRevision));
+    assert.match(gate, /geomoz:workspace-auth-state/);
+    assert.ok(gate.indexOf('"/gis-workspace/geolibre-runtime-config.js"') < gate.indexOf('"/gis-workspace/assets/app.js"'), "Config must load before the app");
+    assert.match(gate, /\/auth\/workspace-check/);
+    assert.match(gate, /\/gis-workspace\/assets\/app\.js/);
+    assert.match(gate, /bridge\?\.contentWindow/);
+    assert.doesNotMatch(gate, /__GEOMOZ_ENTRYPOINTS__/);
     assert.match(html, /data-geomoz-app="workbench"/);
     assert.match(html, /geomoz-theme\.js\?v=[a-f0-9]{12}/);
     assert.doesNotMatch(html, /geomoz-shell|geomoz-gis-commandbar|data-geomoz-menu/);
@@ -131,4 +146,25 @@ test("refuses an unmodified engine build and preserves an existing destination",
   assert.notEqual(result.status,0);assert.match(result.stderr,/GeoMoz-owned React interface/);
   assert.equal(readFileSync(join(f.dst,"keep.txt"),"utf8"),"previous valid build");
  }finally{rmSync(f.work,{recursive:true,force:true});}
+});
+
+test("gates the Vite module entry and rejects unguarded inline app code", () => {
+  const moduleFixture = fixture('<html lang="en"><head><title>GeoLibre</title><script type="module" crossorigin src="/gis-workspace/assets/index-abc.js"></script></head><body><div id="root"></div></body></html>');
+  const badFixture = fixture('<html><head><script>window.unguarded = true</script><script type="module" src="/gis-workspace/assets/index.js"></script></head><body><div id="root"></div></body></html>');
+  try {
+    const built = spawnSync(process.execPath, [brandScript, moduleFixture.src, moduleFixture.dst, moduleFixture.license], { encoding: "utf8" });
+    assert.equal(built.status, 0, built.stderr);
+    const html = readFileSync(join(moduleFixture.dst, "index.html"), "utf8");
+    assert.equal(html.includes('src="/gis-workspace/assets/'), false);
+    const boot = readFileSync(join(moduleFixture.dst, "geomoz-auth-gate.js"), "utf8");
+    assert.match(boot, /"module":true/);
+    assert.ok(boot.includes('"src":"/gis-workspace/assets/index-abc.js"'));
+    const bad = spawnSync(process.execPath, [brandScript, badFixture.src, badFixture.dst, badFixture.license], { encoding: "utf8" });
+    assert.notEqual(bad.status, 0);
+    assert.match(bad.stderr, /entrypoints must be gated/);
+    assert.equal(existsSync(join(badFixture.dst, "index.html")), false);
+  } finally {
+    rmSync(moduleFixture.work, { recursive: true, force: true });
+    rmSync(badFixture.work, { recursive: true, force: true });
+  }
 });
