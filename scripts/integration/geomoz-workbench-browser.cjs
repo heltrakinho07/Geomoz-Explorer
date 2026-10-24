@@ -285,7 +285,10 @@ async function settleRecovery(page){
   // rather than silently accumulating all sketches in a generic layer.
   const activeInspector=page.locator('.gm-layer-inspector[data-selected-layer-name="Falhas e lineamentos"]:visible').first();
   assert.equal(await activeInspector.locator('[data-testid="geomoz-add-digitized-feature"]:visible').count(),0,"Draw toolbar must be hidden until edit mode");
-  const editButton=activeInspector.locator('[data-testid="geomoz-edit-layer"]').first();
+  const selectedLayerId=await activeInspector.getAttribute("data-selected-layer-id");
+  assert.ok(selectedLayerId,"The named layer inspector must resolve an actual layer ID");
+  const digitizingSelector='[data-testid="geomoz-digitizing-tools"][data-layer-id="'+selectedLayerId+'"]';
+  const editButton=page.locator(digitizingSelector+ ' [data-testid="geomoz-edit-layer"]:visible').last();
   await editButton.click();
   await page.waitForTimeout(3500);
   console.log("GeoMoz edit-start diagnostics:", JSON.stringify(await page.evaluate(()=>{
@@ -298,9 +301,9 @@ async function settleRecovery(page){
       nativeToolbar:document.querySelectorAll(".geo-editor-toolbar").length,
     };
   })));
-  await activeInspector.locator('[data-testid="geomoz-edit-layer"][aria-pressed="true"]').first().waitFor({timeout:60000});
+  await page.locator(digitizingSelector+' [data-testid="geomoz-edit-layer"][aria-pressed="true"]:visible').last().waitFor({timeout:60000});
   await page.locator(".geo-editor-toolbar").waitFor();
-  const digitizing=activeInspector.locator(".gm-digitizing-tools").first();
+  const digitizing=page.locator(digitizingSelector+':visible').last();
   await digitizing.waitFor();
   assert.ok(await digitizing.getByRole("group",{name:"Configuração de aderência"}).count()>0);
   await digitizing.getByLabel("Tolerância (pixels)").fill("14");
@@ -321,7 +324,7 @@ async function settleRecovery(page){
   console.log("Layer schema, native snapping, draw tool and per-feature attribute UI verified.");
 
   await editButton.click();
-  await activeInspector.locator('[data-testid="geomoz-edit-layer"][aria-pressed="false"]').first().waitFor({timeout:15000});
+  await page.locator(digitizingSelector+' [data-testid="geomoz-edit-layer"][aria-pressed="false"]:visible').last().waitFor({timeout:15000});
   // Assert that coordinates and typed attributes persisted in the target GeoJSON
   // and no transient Sketches layer received the user's geological line.
   await page.evaluate((layerId)=>{
