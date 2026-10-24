@@ -68,9 +68,9 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
    window.dispatchEvent(new CustomEvent("geomoz:digitizing-snap",{detail:{layerId:layer.id,enabled:snapping,distance:tolerance}}));
  },[active,layer.id,snapping,tolerance]);
  const draw=()=>{
-   if(!active)return;
+   if(!active||pending)return;
    window.dispatchEvent(new CustomEvent("geomoz:digitizing-start-draw",{detail:{layerId:layer.id,mode:activeShape.mode}}));
-   setNotice("Clique no mapa para desenhar. Conclua a geometria com o comando do editor; no polígono pode fechar no primeiro vértice.");
+   setNotice("Clique no mapa para definir os vértices. Conclua a linha com duplo clique ou feche o polígono no primeiro vértice. Depois preencha os atributos da feição.");
  };
  const saveAttributes=()=>{
    if(!pending)return;
@@ -89,7 +89,7 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
  };
  const showForm=pending&&pending.layerId===layer.id;
  return <section ref={rootRef} className="gm-digitizing-tools" data-testid="geomoz-digitizing-tools" data-layer-id={layer.id} aria-label="Fluxo de digitalização">
-  <h4><Pencil size={15}/> Digitalizar <span className="gm-digitizing-mode">{shape==="Point"?"Ponto":shape==="LineString"?"Linha":"Polígono"}</span></h4>
+  <h4><Pencil size={15}/> {active?"Edição activa":"Preparação"} <span className="gm-digitizing-mode">{shape==="Point"?"Ponto":shape==="LineString"?"Linha":"Polígono"}</span></h4>
   <small className="gm-digitizing-layer-name" title={layer.name}>{layer.name}</small>
   <div className="gm-digitizing-controls">
    <button type="button" data-testid="geomoz-edit-layer" disabled={!canEdit} aria-pressed={active} onClick={()=>onToggleEdit(layer.id)}>
@@ -104,7 +104,7 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
    <label>Tolerância (pixels)<input type="number" min={2} max={40} step={1} value={tolerance} disabled={!active||!snapping}
      onChange={e=>setTolerance(Math.max(2,Math.min(40,Math.round(Number(e.target.value)||10))))}/></label>
   </div>}
-  <div className="gm-digitizing-controls">
+  {active&&<div className="gm-digitizing-controls" aria-label="Ferramentas de desenho">
    <button type="button" data-testid="geomoz-add-digitized-feature" disabled={!active} onClick={draw}>
      <activeShape.icon size={16}/>{activeShape.name}
    </button>
@@ -112,7 +112,7 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
     onClick={()=>useAppStore.getState().setAttributeTableOpen(true)}>
     <Table2 size={15}/> Tabela de atributos
    </button>
-  </div>
+  </div>}
   <details className="gm-digitizing-help"><summary><Info size={14}/> Como digitalizar esta camada</summary>
    <ol><li>Carregue a carta georreferenciada ou um mapa base em «Dados».</li>
    <li>Seleccione a camada e active a edição.</li><li>Configure a aderência e desenhe no mapa.</li>
