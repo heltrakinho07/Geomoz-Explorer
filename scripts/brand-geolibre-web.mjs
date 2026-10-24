@@ -35,6 +35,28 @@ const html = readFileSync(resolve(source, "index.html"), "utf8");
 if (!html.includes("/gis-workspace/") || !html.includes('id="root"')) {
   throw new Error("GeoLibre was not built with GEOLIBRE_APP_BASE=/gis-workspace/");
 }
+// Split executable application entrypoints out of the public HTML. The
+// first-party auth gate will inject them only after a valid Firebase session is
+// confirmed by the main GeoMoz portal. Deny unexpected/inline executable
+// scripts instead of accidentally starting GIS before authentication.
+const appEntrypoints = [];
+const guardedHtml = html.replace(
+  /<script\b[^>]*\bsrc\s*=\s*(["'])(.*?)\1[^>]*>\s*<\/script>/gi,
+  (tag, _quote, src) => {
+    if (!src.startsWith("/gis-workspace/assets/")) {
+      throw new Error("Unexpected GeoMoz Workspace startup script: " + src);
+    }
+    appEntrypoints.push({
+      src,
+      module: /\btype\s*=\s*["']module["']/i.test(tag),
+      crossorigin: /\bcrossorigin\b/i.test(tag),
+    });
+    return "";
+  }
+);
+if (!appEntrypoints.length || /<script\b/i.test(guardedHtml)) {
+  throw new Error("GIS Workspace entrypoints must be gated before publication");
+}
 // Refuse to publish the original visual shell if source preparation was omitted.
 const required = new Set(["geomoz-workbench-chrome", "geomoz-layer-catalog"]);
 const assetsDir = resolve(source, "assets");
@@ -55,6 +77,21 @@ const themeHref = `<link rel="stylesheet" href="/gis-workspace/geomoz-brand.css?
 const themeJs = readFileSync(new URL("../artifacts/geomoz-react/public/geomoz-theme.js", import.meta.url), "utf8");
 const themeVersion = createHash("sha256").update(themeJs).digest("hex").slice(0, 12);
 const themeScript = `<script src="/gis-workspace/geomoz-theme.js?v=${themeVersion}"></script>`;
+const gateTemplate = readFileSync(new URL("./assets/geomoz-workspace-auth-gate.js", import.meta.url), "utf8");
+if (gateTemplate.split("__GEOMOZ_ENTRYPOINTS__").length !== 2) {
+  throw new Error("GeoMoz Workspace authentication gate source changed");
+}
+const gateSource = gateTemplate.replace("__GEOMOZ_ENTRYPOINTS__", JSON.stringify(appEntrypoints));
+const gateVersion = createHash("sha256").update(gateSource).digest("hex").slice(0, 12);
+const gateScript = `<script defer src="/gis-workspace/geomoz-auth-gate.js?v=${gateVersion}"></script>`;
+const authStyles = `<style>
+body[data-geomoz-auth="pending"] #root{display:none!important}
+#geomoz-auth-splash{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#020617;color:#e2e8f0;font:14px system-ui,sans-serif;text-align:center}
+#geomoz-auth-splash section{max-width:440px}
+#geomoz-auth-login{display:inline-block;margin-top:18px;border:1px solid #0284c7;border-radius:10px;background:#0369a1;color:white;padding:10px 18px;cursor:pointer}
+#geomoz-auth-login[hidden]{display:none}
+</style>`;
+const authSplash = `<div id="geomoz-auth-splash" role="status" aria-live="polite"><section><h1>GeoMoz GIS Workspace</h1><p id="geomoz-auth-status">A verificar sessão e permissões de acesso…</p><button id="geomoz-auth-login" type="button" hidden>Iniciar sessão</button></section></div>`;
 // Point every browser/PWA identity at the same top-level files as the GeoMoz portal.
 // The official GIS Workspace favicon is shared across both URLs.
 const publicAssets = fileURLToPath(new URL("../artifacts/geomoz-react/public/", import.meta.url));
@@ -67,10 +104,12 @@ const identityHead = [
   '<meta name="theme-color" content="#082f49" />',
   themeHref,
   '<meta name="geomoz-interface" content="workbench-v1" />',
+  authStyles,
+  gateScript,
   themeScript,
 ].join("\n  ");
-let branded = html
-  // Replace GeoLibre favicons, preserving all script and worker references.
+let branded = guardedHtml
+  // Replace GeoLibre favicons; the GIS scripts are auth-gated separately.
   // Discard every upstream icon variant, including shortcut and mask icons.
   .replace(/<link\b(?=[^>]*\brel\s*=\s*["'][^"']*\b(?:icon|apple-touch-icon|mask-icon)\b[^"']*["'])[^>]*>/gi, "")
   .replace(/<meta\b[^>]*\bname=["']theme-color["'][^>]*>/gi, "")
@@ -81,16 +120,19 @@ let branded = html
   .replace(/<meta\s+name=["']description["']\s+content=["'][^"']*["']\s*\/>/i,
     '<meta name="description" content="GeoMoz GIS Workspace: explore dados geoespaciais, faça análises vectoriais e raster e construa mapas no navegador." />')
   .replace("</head>", "  " + identityHead + "\n  </head>")
-  .replace("<body>", '<body data-geomoz-app="workbench">');
+  .replace("<body>", '<body data-geomoz-app="workbench" data-geomoz-auth="pending">' + authSplash);
 if (
   branded === html ||
   !branded.includes('data-geomoz-app="workbench"') ||
   !branded.includes(themeHref) ||
-  !branded.includes(themeScript)
+  !branded.includes(themeScript) ||
+  !branded.includes(gateScript) ||
+  !branded.includes('data-geomoz-auth="pending"')
 ) {
   throw new Error("Unable to brand the built GeoLibre HTML");
 }
 writeFileSync(resolve(destination, "index.html"), branded);
+writeFileSync(resolve(destination, "geomoz-auth-gate.js"), gateSource);
 writeFileSync(
   resolve(destination, "deployment.json"),
   JSON.stringify(
