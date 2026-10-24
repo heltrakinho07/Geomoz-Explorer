@@ -71,7 +71,7 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
  const draw=()=>{
    if(!active||pending)return;
    window.dispatchEvent(new CustomEvent("geomoz:digitizing-start-draw",{detail:{layerId:layer.id,mode:activeShape.mode}}));
-   setNotice("Clique no mapa para definir os vértices. Conclua a linha com duplo clique ou feche o polígono no primeiro vértice. Depois preencha os atributos da feição.");
+   setNotice("Clique no mapa para marcar os vértices. Para concluir a linha, clique novamente no último vértice; para concluir um polígono, feche no primeiro vértice. Depois preencha os atributos da feição.");
  };
  const saveAttributes=()=>{
    if(!pending)return;
