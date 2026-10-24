@@ -25,7 +25,7 @@ function fixture(html) {
 }
 
 test("bundles the real web shell under the GIS subpath with branding and MIT notice", () => {
-  const f = fixture('<html lang="en"><head><title>GeoLibre</title><meta name="description" content="GeoLibre platform"/><meta name="apple-mobile-web-app-title" content="GeoLibre"/><link rel="icon" type="image/png" href="/gis-workspace/favicon.png"><link rel="shortcut icon" href="/gis-workspace/favicon.ico"><link rel="apple-touch-icon" href="/gis-workspace/apple-touch-icon.png"><meta name="theme-color" content="#2f8f85"><script src="/gis-workspace/assets/app.js"></script></head><body><div id="root"></div></body></html>');
+  const f = fixture('<html lang="en"><head><title>GeoLibre</title><meta name="description" content="GeoLibre platform"/><meta name="apple-mobile-web-app-title" content="GeoLibre"/><link rel="icon" type="image/png" href="/gis-workspace/favicon.png"><link rel="shortcut icon" href="/gis-workspace/favicon.ico"><link rel="apple-touch-icon" href="/gis-workspace/apple-touch-icon.png"><meta name="theme-color" content="#2f8f85"><script src="/gis-workspace/geolibre-runtime-config.js"></script><script src="/gis-workspace/assets/app.js"></script></head><body><div id="root"></div></body></html>');
   try {
     const result = spawnSync(process.execPath, [brandScript, f.src, f.dst, f.license], { encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
@@ -40,6 +40,7 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     const securedIndexRevision = createHash("md5").update(html).digest("hex");
     assert.match(readFileSync(join(f.dst, "sw.js"), "utf8"), new RegExp(securedIndexRevision));
     assert.match(gate, /geomoz:workspace-auth-state/);
+    assert.ok(gate.indexOf('"/gis-workspace/geolibre-runtime-config.js"') < gate.indexOf('"/gis-workspace/assets/app.js"'), "Config must load before the app");
     assert.match(gate, /\/auth\/workspace-check/);
     assert.match(gate, /\/gis-workspace\/assets\/app\.js/);
     assert.match(gate, /bridge\?\.contentWindow/);
