@@ -140,6 +140,8 @@ async function settleRecovery(page){
     await page.waitForFunction(name=>document.querySelector('input[aria-label="Nome do projecto"]')?.value===name,name);
   }
   console.log("GeoMoz project download and new/legacy project reopening passed.");
+  await page.getByRole("button",{name:"Digitalizar",exact:true}).click();
+  await page.locator(".gm-catalog-nav").getByRole("button",{name:/^Camadas/}).click();
 
   await page.getByRole("textbox",{name:"Nome do projecto"}).fill("Estudo do território");
   await page.getByRole("textbox",{name:"Nome do projecto"}).press("Enter");
