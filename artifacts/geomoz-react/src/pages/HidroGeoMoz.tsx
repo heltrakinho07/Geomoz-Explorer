@@ -31,6 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useStats } from "@/hooks/useGeoMoz";
 import { apiUrl, apiFetch } from "@/lib/api";
+import { HydroRequestGuard } from "@/lib/hydro-request-guard";
 import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
 import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
@@ -286,6 +287,31 @@ export default function HidroGeoMoz({
   const [showRiverNet,  setShowRiverNet]  = useState(false);
   const [loadingRN,     setLoadingRN]     = useState(false);
   const [showAllOrders, setShowAllOrders] = useState(false);
+
+  // Cancel GEE HTTP requests without allowing late responses to overwrite newer results.
+  const riverRequestRef = useRef(new HydroRequestGuard());
+  const watershedDrainageRequestRef = useRef(new HydroRequestGuard());
+
+  const cancelRiverNetwork = useCallback((notify = false) => {
+    const cancelled = riverRequestRef.current.cancel();
+    if (cancelled) {
+      setLoadingRN(false);
+      if (notify) toast({ title: "Análise cancelada", description: "A geração de linhas de água foi interrompida nesta sessão." });
+    }
+  }, [toast]);
+
+  const cancelWatershedDrainage = useCallback((notify = false) => {
+    const cancelled = watershedDrainageRequestRef.current.cancel();
+    if (cancelled) {
+      setLoadingWatershedDrainage(false);
+      if (notify) toast({ title: "Análise cancelada", description: "O cálculo da drenagem desta bacia foi interrompido nesta sessão." });
+    }
+  }, [toast]);
+
+  useEffect(() => () => {
+    riverRequestRef.current.cancel();
+    watershedDrainageRequestRef.current.cancel();
+  }, []);
 
   // Shared
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -731,18 +757,25 @@ export default function HidroGeoMoz({
     finally { setLoadingStats(false); }
   }
 
-  // River network
+  // River network: the latest request wins. Cancellation hides the spinner
+  // without deleting any previously completed layer.
   async function loadRiverNetwork() {
+    const controller = riverRequestRef.current.start();
     setLoadingRN(true); setError(null);
-    const ok = await checkGEE();
-    if (!ok) { setLoadingRN(false); return; }
     try {
+      const ok = await checkGEE();
+      if (!riverRequestRef.current.isCurrent(controller) || !ok) return;
       const r = await apiFetch("/geomoz-api/gee/river-network", { method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ ...aoiToAPI(aoi) }) });
+      if (!riverRequestRef.current.isCurrent(controller)) return;
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
-      setRiverNet(await r.json()); setShowRiverNet(true);
+      const result: RiverNetResult = await r.json();
+      if (!riverRequestRef.current.isCurrent(controller)) return;
+      setRiverNet(result); setShowRiverNet(true);
     } catch (e) {
+      if (!riverRequestRef.current.isCurrent(controller)) return;
       const errorMsg = String(e instanceof Error ? e.message : e);
       setError(errorMsg);
       toast({
@@ -750,34 +783,45 @@ export default function HidroGeoMoz({
         title: "Erro ao carregar rede fluvial",
         description: errorMsg,
       });
+    } finally {
+      if (riverRequestRef.current.finish(controller)) setLoadingRN(false);
     }
-    finally { setLoadingRN(false); }
   }
 
-  // Watershed drainage network calculation
+  // Watershed drainage also supports cancellation and ignores superseded AOIs.
   const loadWatershedDrainage = useCallback(async (geom: any, thresh = watershedDrainThresh) => {
     if (!geom) return;
+    const controller = watershedDrainageRequestRef.current.start();
     setLoadingWatershedDrainage(true);
     try {
       const r = await apiFetch("/geomoz-api/gee/drainage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ geometry: geom, threshold: thresh }),
       });
+      if (!watershedDrainageRequestRef.current.isCurrent(controller)) return;
       if (r.ok) {
         const data = await r.json();
-        setWatershedDrainageTile(data.tileUrl);
+        if (watershedDrainageRequestRef.current.isCurrent(controller)) {
+          setWatershedDrainageTile(data.tileUrl);
+        }
       }
     } catch (err) {
-      console.error("Erro ao gerar linhas de água da bacia:", err);
+      if (watershedDrainageRequestRef.current.isCurrent(controller)) {
+        console.error("Erro ao gerar linhas de água da bacia:", err);
+      }
     } finally {
-      setLoadingWatershedDrainage(false);
+      if (watershedDrainageRequestRef.current.finish(controller)) {
+        setLoadingWatershedDrainage(false);
+      }
     }
   }, [watershedDrainThresh]);
 
   // Watershed delineation by point (Pour Point)
   async function onMapClick(lat: number, lng: number) {
     if (mode !== "delineate" || drawingEnabled || delineateMethod !== "point") return;
+    cancelWatershedDrainage();
     setError(null); setPourPoint([lat, lng]); setWatershedData(null); setWsStats(null);
     setWatershedDrainageTile(null);
     setBasinReport(null); setReportLayer("none"); setLoadingWS(true);
@@ -828,6 +872,7 @@ export default function HidroGeoMoz({
   // Delineate by Polygon / AOI (Recorte exato pela área de estudo)
   const delineateByPolygon = useCallback(async (geometry: any, label?: string) => {
     if (!geometry) return;
+    cancelWatershedDrainage();
     setError(null);
     setLoadingWS(true);
     setWatershedData(null);
@@ -901,7 +946,7 @@ export default function HidroGeoMoz({
     } finally {
       setLoadingWsSt(false);
     }
-  }, [aoi.label, basinLevel, checkGEE, loadWatershedDrainage, watershedDrainThresh]);
+  }, [aoi.label, basinLevel, cancelWatershedDrainage, checkGEE, loadWatershedDrainage, watershedDrainThresh]);
 
   // Generate the full hydro-environmental report for the delineated basin
   async function runBasinReport(customStartYear?: number, customEndYear?: number) {
@@ -1738,10 +1783,18 @@ export default function HidroGeoMoz({
               <span className="text-[10px] text-slate-600 dark:text-slate-300">Todas as ordens</span>
             </div>
           )}
-          <button onClick={loadRiverNetwork} disabled={loadingRN}
-            className="w-full flex items-center justify-center gap-1.5 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-300 dark:disabled:bg-slate-800 text-white text-xs font-semibold rounded-xl transition-colors">
-            {loadingRN ? <><Loader2 size={11} className="animate-spin" /> A gerar…</> : <><RefreshCw size={11} /> {riverNet ? "Atualizar" : "Gerar Linhas de Água"}</>}
-          </button>
+          {loadingRN ? (
+            <button type="button" onClick={() => cancelRiverNetwork(true)}
+              className="w-full flex items-center justify-center gap-1.5 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-900/40 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold rounded-xl transition-colors"
+              aria-label="Cancelar geração de linhas de água">
+              <X size={13} /> Cancelar análise
+            </button>
+          ) : (
+            <button type="button" onClick={loadRiverNetwork}
+              className="w-full flex items-center justify-center gap-1.5 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-semibold rounded-xl transition-colors">
+              <RefreshCw size={11} /> {riverNet ? "Atualizar" : "Gerar Linhas de Água"}
+            </button>
+          )}
         </div>
 
         {/* Error */}
@@ -1963,13 +2016,22 @@ export default function HidroGeoMoz({
         {/* Loading overlay */}
         {(loadingBasins || loadingWS || loadingRN) && (
           <div className="absolute inset-0 z-[600] bg-white/55 dark:bg-slate-950/70 backdrop-blur-sm flex items-center justify-center">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 px-7 py-5 flex items-center gap-3">
-              <Loader2 size={20} className="text-blue-500 animate-spin" />
-              <span className="text-sm text-slate-700 dark:text-slate-200 font-medium">
-                {loadingBasins ? "A carregar bacias HydroBASINS…"
-                  : loadingWS ? "A delinear sub-bacia (HydroBASINS)…"
-                  : "A gerar rede de linhas de água…"}
-              </span>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 px-7 py-5 flex flex-col sm:flex-row items-center gap-3">
+              <div className="flex items-center gap-3">
+                <Loader2 size={20} className="text-blue-500 animate-spin" />
+                <span role="status" className="text-sm text-slate-700 dark:text-slate-200 font-medium">
+                  {loadingBasins ? "A carregar bacias HydroBASINS…"
+                    : loadingWS ? "A delinear sub-bacia (HydroBASINS)…"
+                    : "A gerar rede de linhas de água…"}
+                </span>
+              </div>
+              {loadingRN && !loadingBasins && !loadingWS && (
+                <button type="button" onClick={() => cancelRiverNetwork(true)}
+                  className="min-h-9 rounded-lg border border-rose-300 dark:border-rose-800 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950"
+                  aria-label="Cancelar geração de linhas de água">
+                  <X size={13} className="inline mr-1" /> Cancelar análise
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -2116,9 +2178,16 @@ export default function HidroGeoMoz({
                         </div>
 
                         {loadingWatershedDrainage ? (
-                          <div className="flex items-center gap-2 text-[11px] text-slate-400 py-1.5">
-                            <Loader2 size={12} className="animate-spin text-cyan-500" />
-                            <span>A traçar canais e afluentes no GEE…</span>
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400 py-1.5">
+                            <div role="status" className="flex items-center gap-2">
+                              <Loader2 size={12} className="animate-spin text-cyan-500" />
+                              <span>A traçar canais e afluentes no GEE…</span>
+                            </div>
+                            <button type="button" onClick={() => cancelWatershedDrainage(true)}
+                              className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-800 px-2 py-1 text-[11px] font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                              aria-label="Cancelar cálculo das linhas de água da bacia">
+                              <X size={12} /> Cancelar
+                            </button>
                           </div>
                         ) : watershedDrainageTile ? (
                           <div className="space-y-2">
