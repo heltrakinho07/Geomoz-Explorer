@@ -1,6 +1,7 @@
 import {useLayoutOptions} from "../../hooks/useLayoutOptions";
 import { GEOMOZ_ROLLOUT } from "../../lib/geomoz-workbench-profile";
 import {GeoMozLayerProperties} from "./GeoMozLayerProperties";
+import {GeoMozDigitizingTools} from "./GeoMozDigitizingTools";
 import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { useAppStore, effectiveLayerRenderState, resolveLayerCapabilities, pluginOwnsPaint, rendererAppliesOpacity, supportsBridgedOpacity } from "@geolibre/core";
 import { Layers3, Search, ChevronLeft, ChevronRight, Eye, EyeOff, Crosshair, SlidersHorizontal, Table2, Palette, FileStack, Map as MapIcon, FolderOpen, History, CheckCircle2, AlertCircle } from "lucide-react";
@@ -29,12 +30,13 @@ export function GeoMozLayerPanel(props:Props) {
   const [query,setQuery]=useState("");
   const [tab,setTab]=useState<"all"|"visible">("all");
   const [advanced,setAdvanced]=useState(false);
+  const [activeTask,setActiveTask]=useState("data");
   const [internalCollapsed,setInternalCollapsed]=useState(()=>window.innerWidth<768);
   const [notice,setNotice]=useState("");
   const collapsed=props.collapsed??internalCollapsed;
   const changeCollapsed=(value:boolean)=>props.collapsed===undefined?setInternalCollapsed(value):props.onCollapsedChange?.(value);
   useEffect(()=>{
-    const onTask=(event:Event)=>{const task=(event as CustomEvent<string>).detail;if(task==="output"){setResults(true);setAdvanced(false);changeCollapsed(false);}else{setResults(false);setAdvanced(false);}};
+    const onTask=(event:Event)=>{const task=(event as CustomEvent<string>).detail;setActiveTask(task);if(task==="output"){setResults(true);setAdvanced(false);changeCollapsed(false);}else{setResults(false);setAdvanced(false);}};
     window.addEventListener("geomoz:task",onTask);
     return ()=>window.removeEventListener("geomoz:task",onTask);
   });
@@ -65,15 +67,17 @@ export function GeoMozLayerPanel(props:Props) {
         </div>)}
         {!filtered.length&&<div className="gm-catalog-empty"><FolderOpen size={32}/><strong>{layers.length?"Nenhuma correspondência":"O seu mapa começa aqui"}</strong><p>{layers.length?"Experimente outro nome ou mostre todas as camadas.":"Adicione dados na faixa superior. As camadas e os resultados ficam organizados neste catálogo."}</p><span>Vector · Raster · DEM · Serviços</span></div>}
       </div>
-      {selected&&<section className="gm-layer-inspector" aria-label="Camada seleccionada"><small>CAMADA SELECCIONADA</small><h3 title={selected.name}>{selected.name}</h3>
+      {selected&&<section className="gm-layer-inspector" data-selected-layer-name={selected.name} data-selected-layer-id={selected.id} aria-label="Camada seleccionada"><small>CAMADA SELECCIONADA</small><h3 title={selected.name}>{selected.name}</h3>
         {(!pluginOwnsPaint(selected)||supportsBridgedOpacity(selected.id)||rendererAppliesOpacity(selected,renderer))&&<label className="gm-opacity">Opacidade <output>{Math.round(selected.opacity*100)}%</output><input aria-label="Opacidade da camada" type="range" min="0" max="1" step="0.01" value={selected.opacity} onChange={event=>opacity(selected.id,Number(event.target.value))}/></label>}
-        <div className="gm-inspector-actions">{resolveLayerCapabilities(selected).query&&["geojson","duckdb-query","geoparquet","flatgeobuf"].includes(selected.type)&&<button type="button" onClick={()=>openTable(true)}><Table2 size={14}/> Tabela</button>}{!viewer&&selected.type==="geojson"&&<button type="button" data-testid="geomoz-edit-layer" aria-pressed={props.geometryEditLayerId===selected.id} onClick={()=>props.onToggleGeometryEdit(selected.id)}><Layers3 size={14}/> {props.geometryEditLayerId===selected.id?"Concluir e guardar edição":"Digitalizar nesta camada"}</button>}{!viewer&&props.geometryEditLayerId===selected.id&&<button type="button" onClick={props.onCancelGeometryEdit}>Descartar alterações</button>}{!viewer&&selected.type==="geojson"&&<button type="button" aria-expanded={quickStyle} aria-label="Editar simbologia" onClick={()=>setQuickStyle(!quickStyle)}><Palette size={14}/> Simbologia</button>}{!viewer&&props.onOpenStylePanel&&<button type="button" onClick={()=>{select(selected.id);props.onOpenStylePanel?.();}}><Palette size={14}/> Estilos avançados</button>}{GEOMOZ_ROLLOUT.fullLayerManager&&<button type="button" onClick={()=>setAdvanced(true)}><SlidersHorizontal size={14}/> Propriedades</button>}</div>
+        <div className="gm-inspector-actions">{resolveLayerCapabilities(selected).query&&["geojson","duckdb-query","geoparquet","flatgeobuf"].includes(selected.type)&&<button type="button" onClick={()=>openTable(true)}><Table2 size={14}/> Tabela</button>}{!viewer&&selected.type==="geojson"&&<button type="button" aria-expanded={quickStyle} aria-label="Editar simbologia" onClick={()=>setQuickStyle(!quickStyle)}><Palette size={14}/> Simbologia</button>}{!viewer&&props.onOpenStylePanel&&<button type="button" onClick={()=>{select(selected.id);props.onOpenStylePanel?.();}}><Palette size={14}/> Estilos avançados</button>}{GEOMOZ_ROLLOUT.fullLayerManager&&<button type="button" onClick={()=>setAdvanced(true)}><SlidersHorizontal size={14}/> Propriedades</button>}</div>
         {quickStyle&&!viewer&&selected.type==="geojson"&&<div className="gm-quick-style" role="group" aria-label="Estilo rápido da camada">
           <label>Cor do símbolo<input aria-label="Cor do símbolo" type="color" value={selected.style.fillColor||"#0284c7"} onChange={e=>setLayerStyle(selected.id,{fillColor:e.target.value,vectorStyleMode:"single",proportionalSizeEnabled:false})}/></label>
           <label>Cor do contorno<input aria-label="Cor do contorno" type="color" value={selected.style.strokeColor||"#0f172a"} onChange={e=>setLayerStyle(selected.id,{strokeColor:e.target.value})}/></label>
           <label>Tamanho dos pontos<input aria-label="Tamanho dos pontos" type="range" min="2" max="24" step="1" value={selected.style.circleRadius} onChange={e=>setLayerStyle(selected.id,{circleRadius:Number(e.target.value),proportionalSizeEnabled:false})}/></label>
           <p>Alterações aplicadas ao renderer original. Para classes, regras ou tamanho proporcional, use os estilos avançados.</p>
         </div>}
+        {!viewer&&selected.type==="geojson"&&activeTask==="map"&&<GeoMozDigitizingTools key={selected.id} layer={selected} editLayerId={props.geometryEditLayerId} onToggleEdit={props.onToggleGeometryEdit} onCancelEdit={props.onCancelGeometryEdit}/>}
+        {!viewer&&activeTask!=="map"&&selected.id===props.geometryEditLayerId&&<p className="gm-digitizing-notice" role="status">A edição da camada continua activa. Regresse a «Digitalizar» para guardar ou descartar as alterações.</p>}
         <GeoMozLayerProperties key={selected.id} layer={selected} props={props}/>
       </section>}
       <div className="gm-catalog-footer"><span><i/>{layers.filter(rendered).length} visíveis de {layers.length}</span><span title="Altere a ordem e os grupos nas propriedades da camada">SIG LOCAL</span></div>
