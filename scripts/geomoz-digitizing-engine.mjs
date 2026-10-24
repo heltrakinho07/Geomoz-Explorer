@@ -30,6 +30,10 @@ export function patchGeoMozDigitizingEngine(input) {
     "  geomozClearDigitizingAttributes(layerId);\n\n  // Flush sketches to the store, stash them out of the editor, and restore the",
     "clear drafts at session start");
   source=once(source,
+    '    await geoEditorControl.loadGeoJson(tagged, SKETCHES_SOURCE_PATH);\\n    loaded = true;',
+    '    // An empty newly-created QGIS-style layer has no features to import.\\n    // The editor is already empty after clearing Sketches, so entering edit\\n    // mode must not fail because Geoman rejects empty GeoJSON imports.\\n    if (tagged.features.length) await geoEditorControl.loadGeoJson(tagged, SKETCHES_SOURCE_PATH);\\n    loaded = true;',
+    "allow edit sessions for newly created empty vector layers");
+  source=once(source,
     "  pushingSketchesToStore = true;\n  try {\n    store.updateLayer(editTargetLayerId, {\n      geojson: edited,",
     [
       "  const withAttributes: FeatureCollection = {",
