@@ -4,7 +4,7 @@ import {GeoMozSeismicPanel} from "./GeoMozSeismicPanel";
 import {GeoMozLayerCreation} from "./GeoMozLayerCreation";
 import {AboutDialog} from "../layout/AboutDialog";
 import { GEOMOZ_ROLLOUT, curateGeoMozCommands } from "../../lib/geomoz-workbench-profile";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useAppStore, DEFAULT_PROJECT_NAME } from "@geolibre/core";
 import { ArrowUpRight, Search, Moon, Sun, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass, Activity, Image, Database, Info } from "lucide-react";
 import type { Command } from "../../lib/commands";
@@ -95,6 +95,10 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   const [seismicOpen,setSeismicOpen]=useState(false);
   const [layerWizardOpen,setLayerWizardOpen]=useState(false);
   const activeTask:Task=viewer?"map":task;
+  useEffect(()=>{
+    document.documentElement.dataset.geomozTask=activeTask;
+    return ()=>{delete document.documentElement.dataset.geomozTask;};
+  },[activeTask]);
   const curated=curateGeoMozCommands(commands);
   const visibleCommands=viewer?curated.filter(command=>command.id.startsWith("view.")):curated;
   const registry=new Map(visibleCommands.map(command=>[command.id,command]));

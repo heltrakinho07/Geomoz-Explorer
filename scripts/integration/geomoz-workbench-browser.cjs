@@ -339,11 +339,28 @@ async function settleRecovery(page){
   // rather than silently accumulating all sketches in a generic layer.
   const activeInspector=page.locator('.gm-layer-inspector[data-selected-layer-name="Falhas e lineamentos"]:visible').first();
   assert.equal(await activeInspector.locator('[data-testid="geomoz-add-digitized-feature"]:visible').count(),0,"Draw toolbar must be hidden until edit mode");
-  const editButton=activeInspector.locator('[data-testid="geomoz-edit-layer"]').first();
+  const selectedLayerId=await activeInspector.getAttribute("data-selected-layer-id");
+  assert.ok(selectedLayerId,"The named layer inspector must resolve an actual layer ID");
+  const digitizingSelector='[data-testid="geomoz-digitizing-tools"][data-layer-id="'+selectedLayerId+'"]';
+  const editButton=page.locator(digitizingSelector+ ' [data-testid="geomoz-edit-layer"]:visible').last();
   await editButton.click();
-  await activeInspector.locator('[data-testid="geomoz-edit-layer"][aria-pressed="true"]').first().waitFor({timeout:15000});
-  await page.locator(".geo-editor-toolbar").waitFor();
-  const digitizing=activeInspector.locator(".gm-digitizing-tools").first();
+  await page.waitForTimeout(3500);
+  console.log("GeoMoz edit-start diagnostics:", JSON.stringify(await page.evaluate(()=>{
+    return {
+      pressed: [...document.querySelectorAll('[data-testid="geomoz-edit-layer"]')].map(el=>({
+        attr: el.getAttribute("aria-pressed"), disabled:el.hasAttribute("disabled"),
+        layer:el.closest(".gm-layer-inspector")?.getAttribute("data-selected-layer-name"),
+      })),
+      errors:[...document.querySelectorAll('[role="alert"],.drop-error,.gm-catalog-notice')].map(el=>(el.textContent||"").trim()).filter(Boolean).slice(0,12),
+      nativeToolbar:document.querySelectorAll(".geo-editor-toolbar").length,
+    };
+  })));
+  await page.locator(digitizingSelector+' [data-testid="geomoz-edit-layer"][aria-pressed="true"]:visible').last().waitFor({timeout:60000});
+  // The native Geoman toolbar is loaded but intentionally visually hidden:
+  // the user's only draw tools are contextual to the active vector layer.
+  await page.locator(".geo-editor-toolbar").waitFor({state:"attached"});
+  assert.equal(await page.locator(".geo-editor-toolbar:visible").count(),0);
+  const digitizing=page.locator(digitizingSelector+':visible').last();
   await digitizing.waitFor();
   assert.ok(await digitizing.getByRole("group",{name:"Configuração de aderência"}).count()>0);
   await digitizing.getByLabel("Tolerância (pixels)").fill("14");
@@ -352,9 +369,12 @@ async function settleRecovery(page){
   assert.ok(digitizingLayerId,"Native digitizing is bound to the selected layer");
   const canvas=await page.locator("main canvas").first().boundingBox();
   const at=(x,y)=>({x:canvas.x+canvas.width*x,y:canvas.y+canvas.height*y});
-  const a=at(.53,.32),b=at(.7,.42),c=at(.83,.57);
-  await page.mouse.click(a.x,a.y);await page.mouse.click(b.x,b.y);
-  await page.mouse.dblclick(c.x,c.y);
+  const a=at(.53,.32),b=at(.7,.42);
+  // Geoman Free completes a LineString by clicking the final vertex again.
+  // Double-clicking an unrelated third position does not commit the line.
+  await page.mouse.click(a.x,a.y);
+  await page.mouse.click(b.x,b.y);
+  await page.mouse.click(b.x,b.y);
   const featureForm=page.getByRole("dialog",{name:"Atributos da nova feição"});
   await featureForm.waitFor();
   await featureForm.getByLabel("Atributo nome").fill("Falha de controlo");
@@ -364,7 +384,7 @@ async function settleRecovery(page){
   console.log("Layer schema, native snapping, draw tool and per-feature attribute UI verified.");
 
   await editButton.click();
-  await activeInspector.locator('[data-testid="geomoz-edit-layer"][aria-pressed="false"]').first().waitFor({timeout:15000});
+  await page.locator(digitizingSelector+' [data-testid="geomoz-edit-layer"][aria-pressed="false"]:visible').last().waitFor({timeout:15000});
   // Assert that coordinates and typed attributes persisted in the target GeoJSON
   // and no transient Sketches layer received the user's geological line.
   await page.evaluate((layerId)=>{
