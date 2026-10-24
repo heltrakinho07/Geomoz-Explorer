@@ -30,6 +30,16 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     const html = readFileSync(join(f.dst, "index.html"), "utf8");
     const cfg = JSON.parse(readFileSync(join(f.dst, "deployment.json"), "utf8"));
     assert.match(html, /geomoz-brand\.css/);
+    assert.match(html, /data-geomoz-auth="pending"/);
+    assert.match(html, /geomoz-auth-gate\.js\?v=[a-f0-9]{12}/);
+    assert.match(html, /geomoz-auth-splash/);
+    assert.doesNotMatch(html, /<script\b[^>]*src="\/gis-workspace\/assets\//);
+    const gate = readFileSync(join(f.dst, "geomoz-auth-gate.js"), "utf8");
+    assert.match(gate, /geomoz:workspace-auth-state/);
+    assert.match(gate, /\/auth\/workspace-check/);
+    assert.match(gate, /\/gis-workspace\/assets\/app\.js/);
+    assert.match(gate, /bridge\?\.contentWindow/);
+    assert.doesNotMatch(gate, /__GEOMOZ_ENTRYPOINTS__/);
     assert.match(html, /data-geomoz-app="workbench"/);
     assert.match(html, /geomoz-theme\.js\?v=[a-f0-9]{12}/);
     assert.doesNotMatch(html, /geomoz-shell|geomoz-gis-commandbar|data-geomoz-menu/);
@@ -131,4 +141,25 @@ test("refuses an unmodified engine build and preserves an existing destination",
   assert.notEqual(result.status,0);assert.match(result.stderr,/GeoMoz-owned React interface/);
   assert.equal(readFileSync(join(f.dst,"keep.txt"),"utf8"),"previous valid build");
  }finally{rmSync(f.work,{recursive:true,force:true});}
+});
+
+test("gates the Vite module entry and rejects unguarded inline app code", () => {
+  const moduleFixture = fixture('<html lang="en"><head><title>GeoLibre</title><script type="module" crossorigin src="/gis-workspace/assets/index-abc.js"></script></head><body><div id="root"></div></body></html>');
+  const badFixture = fixture('<html><head><script>window.unguarded = true</script><script type="module" src="/gis-workspace/assets/index.js"></script></head><body><div id="root"></div></body></html>');
+  try {
+    const built = spawnSync(process.execPath, [brandScript, moduleFixture.src, moduleFixture.dst, moduleFixture.license], { encoding: "utf8" });
+    assert.equal(built.status, 0, built.stderr);
+    const html = readFileSync(join(moduleFixture.dst, "index.html"), "utf8");
+    assert.doesNotMatch(html, /<script\\b[^>]*src="\\/gis-workspace\\/assets\\//);
+    const boot = readFileSync(join(moduleFixture.dst, "geomoz-auth-gate.js"), "utf8");
+    assert.match(boot, /"module":true/);
+    assert.match(boot, /"src":"\\/gis-workspace\\/assets\\/index-abc\\.js"/);
+    const bad = spawnSync(process.execPath, [brandScript, badFixture.src, badFixture.dst, badFixture.license], { encoding: "utf8" });
+    assert.notEqual(bad.status, 0);
+    assert.match(bad.stderr, /entrypoints must be gated/);
+    assert.equal(existsSync(join(badFixture.dst, "index.html")), false);
+  } finally {
+    rmSync(moduleFixture.work, { recursive: true, force: true });
+    rmSync(badFixture.work, { recursive: true, force: true });
+  }
 });
