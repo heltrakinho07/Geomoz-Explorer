@@ -30,12 +30,13 @@ export function GeoMozLayerPanel(props:Props) {
   const [query,setQuery]=useState("");
   const [tab,setTab]=useState<"all"|"visible">("all");
   const [advanced,setAdvanced]=useState(false);
+  const [activeTask,setActiveTask]=useState("data");
   const [internalCollapsed,setInternalCollapsed]=useState(()=>window.innerWidth<768);
   const [notice,setNotice]=useState("");
   const collapsed=props.collapsed??internalCollapsed;
   const changeCollapsed=(value:boolean)=>props.collapsed===undefined?setInternalCollapsed(value):props.onCollapsedChange?.(value);
   useEffect(()=>{
-    const onTask=(event:Event)=>{const task=(event as CustomEvent<string>).detail;if(task==="output"){setResults(true);setAdvanced(false);changeCollapsed(false);}else{setResults(false);setAdvanced(false);}};
+    const onTask=(event:Event)=>{const task=(event as CustomEvent<string>).detail;setActiveTask(task);if(task==="output"){setResults(true);setAdvanced(false);changeCollapsed(false);}else{setResults(false);setAdvanced(false);}};
     window.addEventListener("geomoz:task",onTask);
     return ()=>window.removeEventListener("geomoz:task",onTask);
   });
@@ -75,7 +76,8 @@ export function GeoMozLayerPanel(props:Props) {
           <label>Tamanho dos pontos<input aria-label="Tamanho dos pontos" type="range" min="2" max="24" step="1" value={selected.style.circleRadius} onChange={e=>setLayerStyle(selected.id,{circleRadius:Number(e.target.value),proportionalSizeEnabled:false})}/></label>
           <p>Alterações aplicadas ao renderer original. Para classes, regras ou tamanho proporcional, use os estilos avançados.</p>
         </div>}
-        {!viewer&&selected.type==="geojson"&&<GeoMozDigitizingTools key={selected.id} layer={selected} editLayerId={props.geometryEditLayerId} onToggleEdit={props.onToggleGeometryEdit} onCancelEdit={props.onCancelGeometryEdit}/>}
+        {!viewer&&selected.type==="geojson"&&activeTask==="map"&&<GeoMozDigitizingTools key={selected.id} layer={selected} editLayerId={props.geometryEditLayerId} onToggleEdit={props.onToggleGeometryEdit} onCancelEdit={props.onCancelGeometryEdit}/>}
+        {!viewer&&activeTask!=="map"&&selected.id===props.geometryEditLayerId&&<p className="gm-digitizing-notice" role="status">A edição da camada continua activa. Regresse a «Digitalizar» para guardar ou descartar as alterações.</p>}
         <GeoMozLayerProperties key={selected.id} layer={selected} props={props}/>
       </section>}
       <div className="gm-catalog-footer"><span><i/>{layers.filter(rendered).length} visíveis de {layers.length}</span><span title="Altere a ordem e os grupos nas propriedades da camada">SIG LOCAL</span></div>
