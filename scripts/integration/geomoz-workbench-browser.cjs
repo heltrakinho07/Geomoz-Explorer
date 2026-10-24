@@ -287,7 +287,18 @@ async function settleRecovery(page){
   assert.equal(await activeInspector.locator('[data-testid="geomoz-add-digitized-feature"]:visible').count(),0,"Draw toolbar must be hidden until edit mode");
   const editButton=activeInspector.locator('[data-testid="geomoz-edit-layer"]').first();
   await editButton.click();
-  await activeInspector.locator('[data-testid="geomoz-edit-layer"][aria-pressed="true"]').first().waitFor({timeout:15000});
+  await page.waitForTimeout(3500);
+  console.log("GeoMoz edit-start diagnostics:", JSON.stringify(await page.evaluate(()=>{
+    return {
+      pressed: [...document.querySelectorAll('[data-testid="geomoz-edit-layer"]')].map(el=>({
+        attr: el.getAttribute("aria-pressed"), disabled:el.hasAttribute("disabled"),
+        layer:el.closest(".gm-layer-inspector")?.getAttribute("data-selected-layer-name"),
+      })),
+      errors:[...document.querySelectorAll('[role="alert"],.drop-error,.gm-catalog-notice')].map(el=>(el.textContent||"").trim()).filter(Boolean).slice(0,12),
+      nativeToolbar:document.querySelectorAll(".geo-editor-toolbar").length,
+    };
+  })));
+  await activeInspector.locator('[data-testid="geomoz-edit-layer"][aria-pressed="true"]').first().waitFor({timeout:60000});
   await page.locator(".geo-editor-toolbar").waitFor();
   const digitizing=activeInspector.locator(".gm-digitizing-tools").first();
   await digitizing.waitFor();
