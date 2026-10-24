@@ -428,6 +428,9 @@ html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0
 /* The native Geoman drawing toolbar is task-contextual, never a permanent
    overlay on raster analysis, map navigation, or results. Keep the edit session
    alive so the user can return to Digitalizar to save/discard safely. */
-html:not([data-geomoz-task="map"]) .geo-editor-toolbar{display:none!important}
+/* The old Geoman Sketches toolbar exposes every geometry mode at once.
+   GeoMoz now exposes only the selected-layer tool in Digitalizar's inspector.
+   Geoman remains the underlying editor; only its redundant UI is hidden. */
+html .geo-editor-toolbar{display:none!important}
 .gm-workbench-chrome:has(.gm-ribbon-accordion[open]){z-index:130}
 .gm-ribbon-groups:has(.gm-ribbon-accordion[open]){overflow:visible;z-index:130}
