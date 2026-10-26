@@ -342,10 +342,20 @@ async function settleRecovery(page){
   await digitizing.waitFor();
   assert.ok(await digitizing.getByRole("group",{name:"Configuração de aderência"}).count()>0);
   await digitizing.getByLabel("Tolerância (pixels)").fill("14");
+  await page.evaluate(()=>{
+    window.__geomozDrawReady=null;
+    window.addEventListener("geomoz:digitizing-draw-ready",event=>{window.__geomozDrawReady=event.detail;},{once:true});
+  });
   await digitizing.getByTestId("geomoz-add-digitized-feature").click();
+  await page.waitForFunction(()=>window.__geomozDrawReady!==null,{timeout:20000});
+  const activation=await page.evaluate(()=>window.__geomozDrawReady);
+  assert.equal(activation.ready,true,"Geoman must activate the actual line draw mode before map clicks: "+JSON.stringify(activation));
   const digitizingLayerId=await digitizing.getAttribute("data-layer-id");
   assert.ok(digitizingLayerId,"Native digitizing is bound to the selected layer");
-  const canvas=await page.locator("main canvas").first().boundingBox();
+  const mapCanvas=page.locator("main canvas.maplibregl-canvas:visible").first();
+  assert.ok(await mapCanvas.count(),"MapLibre map canvas is required for native digitalização");
+  const canvas=await mapCanvas.boundingBox();
+  assert.ok(canvas?.width>150&&canvas?.height>150,"GIS map canvas must be visible with real dimensions");
   const at=(x,y)=>({x:canvas.x+canvas.width*x,y:canvas.y+canvas.height*y});
   const a=at(.53,.32),b=at(.66,.39),c=at(.78,.51);
   // Use the pinned Geoman DrawLine.lineFinished handler via the explicit
