@@ -48,6 +48,14 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
  const [savingAttributes,setSavingAttributes]=useState(false);
  const [values,setValues]=useState<Record<string,string>>({});
  const [notice,setNotice]=useState("");
+ useEffect(()=>{
+   const status=(event:Event)=>{
+     const detail=(event as CustomEvent<{layerId:string;message:string}>).detail;
+     if(detail?.layerId===layer.id)setNotice(detail.message);
+   };
+   window.addEventListener("geomoz:digitizing-action-status",status);
+   return()=>window.removeEventListener("geomoz:digitizing-action-status",status);
+ },[layer.id]);
  const active=editLayerId===layer.id;
  const shape=layerShape(layer);
  const fields=layerFields(layer);
