@@ -1,12 +1,13 @@
 import type {RefObject} from "react";
 import type {MapEngine} from "@geolibre/map";
 import {GeoMozSeismicPanel} from "./GeoMozSeismicPanel";
+import {GeoMozToolCatalog,type GeoMozCatalogDefinition} from "./GeoMozToolCatalog";
 import {GeoMozLayerCreation} from "./GeoMozLayerCreation";
 import {AboutDialog} from "../layout/AboutDialog";
 import { GEOMOZ_ROLLOUT, curateGeoMozCommands } from "../../lib/geomoz-workbench-profile";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useAppStore, DEFAULT_PROJECT_NAME } from "@geolibre/core";
-import { ArrowUpRight, Search, Moon, Sun, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass, Activity, Image, Database, Info } from "lucide-react";
+import { ArrowUpRight, Search, Moon, Sun, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass, Activity, Image, Database, Info, Globe2, Mountain, Server, Network, MapPin, Waypoints, ScanLine, RadioTower, Landmark } from "lucide-react";
 import type { Command } from "../../lib/commands";
 import type { ThemeMode } from "../../hooks/useThemeMode";
 
@@ -47,14 +48,14 @@ const LEGACY_ACTIONS: Record<Task, {label:string; ids:string[]}[]> = {
 const TASKS: [Task,string][] = GEOMOZ_ROLLOUT.fullMenus ? LEGACY_TASKS : [["map","Digitalizar"],["data","Dados"],["analysis","Análise"],["output","Resultados"]];
 const CORE_ACTIONS: Partial<typeof LEGACY_ACTIONS> = {
   map:[{label:"Preparação cartográfica",ids:["proc.georeferencer"]}],
-  data:[{label:"Adicionar dados",ids:["add.vector","add.raster","add.delimited-text"]},{label:"Serviços de mapas",ids:["add.wms","add.wfs","add.xyz","add.wmts"]},{label:"Ferramentas raster",ids:["proc.raster.reproject","proc.raster.clip-mask","proc.raster.slope","proc.raster.hillshade","proc.raster.contour"]}],
+  data:[{label:"Adicionar dados",ids:["add.vector","add.raster","add.delimited-text"]}],
   analysis:[{label:"Análise vectorial",ids:["proc.vector.buffer","proc.vector.clip","proc.vector.intersection","proc.vector.dissolve","proc.vector.reproject"]},{label:"Análise do terreno",ids:["proc.raster.slope","proc.raster.hillshade","proc.raster.contour","proc.raster.clip-mask"]}],
   output:[{label:"Mapa e projecto",ids:["project.print-layout","project.save-as"]},{label:"Elementos do mapa",ids:["control.legend","control.colorbar"]}],
 };
 const ACTIONS = GEOMOZ_ROLLOUT.fullMenus ? LEGACY_ACTIONS : {...LEGACY_ACTIONS,...CORE_ACTIONS};
 const GUIDANCE:Partial<Record<Task,string>> = {
   map:"1 · Prepare a carta base e crie uma camada vectorial. 2 · Seleccione-a no catálogo e active a edição. 3 · Configure a aderência e desenhe, preenchendo os atributos. 4 · Guarde as edições da camada e, separadamente, o projecto.",
-  data:"Adicione dados vectoriais e raster. Expanda «Ferramentas raster» apenas quando precisar de processar DEM, recortar, reprojectar ou gerar produtos derivados.",
+  data:"Escolha uma categoria para abrir o cartão das suas ferramentas. Configure os parâmetros da ferramenta seleccionada na etapa seguinte.",
   analysis:"Escolha uma ferramenta, confirme os dados e execute a análise.",
   output:"Consulte as execuções no catálogo e exporte as camadas ou a composição do mapa.",
 };
@@ -93,6 +94,8 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   const [more,setMore]=useState(false);
   const [aboutOpen,setAboutOpen]=useState(false);
   const [seismicOpen,setSeismicOpen]=useState(false);
+  const [openCatalog,setOpenCatalog]=useState<"services"|"raster"|"seismic"|null>(null);
+  const [seismicInitial,setSeismicInitial]=useState<{provider:"usgs"|"isc";view:"catalog"|"stations"}>({provider:"usgs",view:"catalog"});
   const [layerWizardOpen,setLayerWizardOpen]=useState(false);
   const activeTask:Task=viewer?"map":task;
   const curated=curateGeoMozCommands(commands);
