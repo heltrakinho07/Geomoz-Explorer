@@ -45,6 +45,7 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
  const [snapping,setSnapping]=useState(true);
  const [tolerance,setTolerance]=useState(10);
  const [pending,setPending]=useState<NewFeature|null>(null);
+ const [savingAttributes,setSavingAttributes]=useState(false);
  const [values,setValues]=useState<Record<string,string>>({});
  const [notice,setNotice]=useState("");
  const active=editLayerId===layer.id;
@@ -83,10 +84,16 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
      }
      attributes[field.name]=raw===""?null:field.type==="number"?Number(raw):raw;
    }
+   setSavingAttributes(true);
    window.dispatchEvent(new CustomEvent("geomoz:digitizing-attributes-save",{
-     detail:{layerId:pending.layerId,featureKey:pending.featureKey,attributes},
+     detail:{layerId:pending.layerId,featureKey:pending.featureKey,attributes,
+       onApplied:(error?:string)=>{
+         setSavingAttributes(false);
+         if(error){setNotice("Erro ao guardar atributos: "+error);return;}
+         setPending(null);setNotice("Atributos atribuídos à feição. Guarde as edições da camada para os conservar.");
+       },
+     },
    }));
-   setPending(null);setNotice("Atributos atribuídos à feição. Guarde as edições da camada para os conservar.");
  };
  const showForm=pending&&pending.layerId===layer.id;
  // Discard stale editor panels when the user selects a different layer.
@@ -133,8 +140,8 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
     {fields.map(field=><label key={field.name}>{field.description||field.name} <small>({field.name})</small>
       <input autoComplete="off" aria-label={"Atributo "+field.name} type={field.type==="number"?"number":"text"} step={field.type==="number"?"any":undefined}
        value={values[field.name]??""} onChange={e=>setValues(old=>({...old,[field.name]:e.target.value}))}/></label>)}
-    <footer><button type="button" onClick={()=>{setPending(null);setNotice("Feição criada sem atributos. Utilize a tabela depois.");}}>Sem atributos</button>
-      <button type="submit"><Check size={15}/> Guardar atributos</button></footer>
+    <footer><button type="button" onClick={()=>{setPending(null);setNotice("Feição criada sem atributos. Utilize a tabela depois.");}} disabled={savingAttributes}>Sem atributos</button>
+      <button type="submit" disabled={savingAttributes}><Check size={15}/> Guardar atributos</button></footer>
    </form>
   </div>,document.body)}
  </section>;
