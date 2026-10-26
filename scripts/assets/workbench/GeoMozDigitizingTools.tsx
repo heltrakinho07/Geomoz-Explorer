@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from "react";
 import {createPortal} from "react-dom";
 import {useAppStore,type GeoLibreLayer} from "@geolibre/core";
-import {Pencil,Save,Trash2,Magnet,MapPin,Waypoints,Pentagon,Info,X,Check,Table2} from "lucide-react";
+import {Pencil,Save,Trash2,Magnet,MapPin,Waypoints,Pentagon,Info,X,Check,Table2,CheckCircle2} from "lucide-react";
 
 type Shape="Point"|"LineString"|"Polygon";
 type Field={name:string;type:"text"|"number";description:string};
@@ -72,7 +72,7 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
  const draw=()=>{
    if(!active||pending)return;
    window.dispatchEvent(new CustomEvent("geomoz:digitizing-start-draw",{detail:{layerId:layer.id,mode:activeShape.mode}}));
-   setNotice("Clique no mapa para marcar os vértices. Para concluir uma linha ou um polígono, clique novamente no primeiro vértice. Depois preencha os atributos da feição.");
+   setNotice("Clique no mapa para marcar os vértices. Para concluir uma linha ou um polígono, utilize «Concluir feição» ou clique sobre um vértice da geometria. Também pode continuar a desenhar outras feições sem sair do modo de edição. Depois preencha os atributos da feição.");
  };
  const saveAttributes=()=>{
    if(!pending)return;
@@ -118,6 +118,11 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
    <button type="button" data-testid="geomoz-add-digitized-feature" disabled={!active} onClick={draw}>
      <activeShape.icon size={16}/>{activeShape.name}
    </button>
+   {shape!=="Point"&&<button type="button" data-testid="geomoz-finish-digitized-feature"
+    disabled={!active||!!pending}
+    onClick={()=>window.dispatchEvent(new CustomEvent("geomoz:digitizing-finish-feature",{detail:{layerId:layer.id}}))}>
+    <CheckCircle2 size={16}/> Concluir feição
+   </button>}
    <button type="button" disabled={!layer.geojson?.features?.length||active}
     onClick={()=>useAppStore.getState().setAttributeTableOpen(true)}>
     <Table2 size={15}/> Tabela de atributos
