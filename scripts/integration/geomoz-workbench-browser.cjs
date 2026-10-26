@@ -138,6 +138,16 @@ async function settleRecovery(page){
 
   // Save the actual project, then reopen its unchanged schema under the new and legacy extensions.
   await page.getByRole("button",{name:"Resultados",exact:true}).first().click();
+  await page.locator('[data-command="project.print-layout"]').click();
+  const printDialog=page.getByRole("dialog");
+  await printDialog.getByText(/Mapa: \d+ × \d+ píxeis/).waitFor({timeout:30000});
+  assert.equal(await printDialog.getByLabel("Resolução de saída").inputValue(),"300");
+  const [mapWidth,mapHeight]=(await printDialog.getByText(/Mapa: \d+ × \d+ píxeis/).innerText()).match(/Mapa: (\d+) × (\d+)/).slice(1).map(Number);
+  assert.ok(mapWidth>2000 || mapHeight>2000,"Print map is redrawn above screen resolution");
+  await page.screenshot({path:"workbench-browser-artifacts/print-quality.png"});
+  await page.keyboard.press("Escape");
+  await printDialog.waitFor({state:"hidden"});
+  console.log("GeoMoz high-resolution print capture and DPI control verified.");
   await page.locator('[data-command="project.save-as"]').click();
   const saveDialog=page.getByRole("dialog").filter({has:page.locator("#save-project-name")});
   await saveDialog.waitFor();
