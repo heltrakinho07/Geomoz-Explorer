@@ -315,12 +315,17 @@ async function settleRecovery(page){
   assert.ok(digitizingLayerId,"Native digitizing is bound to the selected layer");
   const canvas=await page.locator("main canvas").first().boundingBox();
   const at=(x,y)=>({x:canvas.x+canvas.width*x,y:canvas.y+canvas.height*y});
-  const a=at(.53,.32),b=at(.7,.42);
-  // Geoman Free completes a LineString by clicking the final vertex again.
-  // Double-clicking an unrelated third position does not commit the line.
-  await page.mouse.click(a.x,a.y);
-  await page.mouse.click(b.x,b.y);
-  await page.mouse.click(b.x,b.y);
+  const a=at(.53,.32),b=at(.66,.39),c=at(.78,.51);
+  // Geoman's final-vertex marker requires pointer movement and a render frame
+  // between vertices; instantaneous Playwright clicks can miss it in Chromium.
+  await page.evaluate(()=>{window.__geomozDrawEvents=[];window.addEventListener("geomoz:digitizing-feature-created",e=>window.__geomozDrawEvents.push(e.detail));});
+  for(const p of [a,b,c,c]){
+    await page.mouse.move(p.x,p.y);
+    await page.waitForTimeout(90);
+    await page.mouse.click(p.x,p.y);
+    await page.waitForTimeout(280);
+  }
+  console.log("GeoMoz native draw events",JSON.stringify(await page.evaluate(()=>window.__geomozDrawEvents)));
   const featureForm=page.getByRole("dialog",{name:"Atributos da nova feição"});
   await featureForm.waitFor();
   await featureForm.getByLabel("Atributo nome").fill("Falha de controlo");
