@@ -101,6 +101,49 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   const curated=curateGeoMozCommands(commands);
   const visibleCommands=viewer?curated.filter(command=>command.id.startsWith("view.")):curated;
   const registry=new Map(visibleCommands.map(command=>[command.id,command]));
+  const catalogs:Record<"services"|"raster"|"seismic",GeoMozCatalogDefinition>={
+    services:{
+      id:"services",title:"Serviços de mapas",icon:Globe2,
+      description:"Ligue serviços externos ao mapa. Escolha o protocolo e configure o endereço no formulário de ligação.",
+      items:([
+        ["add.wms","WMS","Mapas renderizados disponibilizados por um serviço Web.",Layers3],
+        ["add.wfs","WFS","Feições vectoriais disponibilizadas por um servidor OGC.",Network],
+        ["add.xyz","XYZ","Camadas base por mosaicos de imagens.",MapPin],
+        ["add.wmts","WMTS","Mosaicos cartográficos do padrão OGC WMTS.",Server],
+      ] as const).flatMap(([id,title,description,icon])=>{
+        const command=registry.get(id);
+        return command?[{id,title,description,icon,disabledReason:command.disabledReason,
+          onSelect:()=>{if(!command.disabledReason)command.run();}}]:[];
+      }),
+    },
+    raster:{
+      id:"raster",title:"Ferramentas raster",icon:Mountain,
+      description:"Seleccione uma operação. O motor GIS abrirá os parâmetros necessários à camada e ao resultado.",
+      items:([
+        ["proc.raster.reproject","Reprojectar","Converter um raster para outro sistema de coordenadas.",Globe2],
+        ["proc.raster.clip-mask","Recortar DEM","Recortar um raster com a máscara de uma camada.",ScanLine],
+        ["proc.raster.slope","Declive","Calcular o declive do terreno a partir do DEM.",Mountain],
+        ["proc.raster.hillshade","Relevo sombreado","Gerar sombreamento do relevo.",Image],
+        ["proc.raster.contour","Curvas de nível","Produzir isolinhas altimétricas a partir do DEM.",Waypoints],
+      ] as const).flatMap(([id,title,description,icon])=>{
+        const command=registry.get(id);
+        return command?[{id,title,description,icon,disabledReason:command.disabledReason,
+          onSelect:()=>{if(!command.disabledReason)command.run();}}]:[];
+      }),
+    },
+    seismic:{
+      id:"seismic",title:"Catálogos sísmicos",icon:Activity,
+      description:"Consulte eventos sísmicos e estações reais. Configure os filtros no passo seguinte.",
+      items:[
+        {id:"seismic.usgs",title:"USGS / NEIC",description:"Eventos sísmicos e importação de resultados.",icon:Activity,
+          onSelect:()=>{setSeismicInitial({provider:"usgs",view:"catalog"});setSeismicOpen(true);}},
+        {id:"seismic.isc",title:"ISC",description:"Catálogo internacional de eventos sísmicos (FDSN).",icon:Landmark,
+          onSelect:()=>{setSeismicInitial({provider:"isc",view:"catalog"});setSeismicOpen(true);}},
+        {id:"seismic.stations",title:"Estações EarthScope",description:"Redes e estações sísmicas.",icon:RadioTower,
+          onSelect:()=>{setSeismicInitial({provider:"usgs",view:"stations"});setSeismicOpen(true);}},
+      ],
+    },
+  };
   const groups=ACTIONS[activeTask].map(group=>({...group,items:group.ids.flatMap(id=>{
     const command=registry.get(id);
     return command ? [command] : [];
