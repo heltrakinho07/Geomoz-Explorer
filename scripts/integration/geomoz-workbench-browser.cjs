@@ -316,15 +316,17 @@ async function settleRecovery(page){
   const canvas=await page.locator("main canvas").first().boundingBox();
   const at=(x,y)=>({x:canvas.x+canvas.width*x,y:canvas.y+canvas.height*y});
   const a=at(.53,.32),b=at(.66,.39),c=at(.78,.51);
-  // Geoman 0.10.1 DrawLine uses LineDrawer({snappingMarkers:"first"}).
-  // Clicking the FIRST vertex completes the LineString (not the last).
+  // Use the pinned Geoman DrawLine.lineFinished handler via the explicit
+  // "Concluir feição" action so that map-marker hit areas and double clicks
+  // cannot make the browser E2E nondeterministic.
   await page.evaluate(()=>{window.__geomozDrawEvents=[];window.addEventListener("geomoz:digitizing-feature-created",e=>window.__geomozDrawEvents.push(e.detail));});
-  for(const p of [a,b,c,a]){
+  for(const p of [a,b,c]){
     await page.mouse.move(p.x,p.y);
-    await page.waitForTimeout(140);
+    await page.waitForTimeout(120);
     await page.mouse.click(p.x,p.y);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(240);
   }
+  await digitizing.getByTestId("geomoz-finish-digitized-feature").click();
   console.log("GeoMoz native draw events",JSON.stringify(await page.evaluate(()=>window.__geomozDrawEvents)));
   const featureForm=page.getByRole("dialog",{name:"Atributos da nova feição"});
   await featureForm.waitFor();
