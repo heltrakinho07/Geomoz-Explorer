@@ -57,7 +57,9 @@ test("QGIS-like four-stage workflow gates creation, editing, drawing and raster 
   assert.match(chrome,/activeTask==="map"&&<section className="gm-ribbon-group"/);
   assert.match(chrome,/label:"Preparação cartográfica",ids:\["proc.georeferencer"\]/);
   assert.doesNotMatch(chrome,/map:\[\{label:"Preparação cartográfica",ids:\[[^\]]*plugin\.maplibre-gl-geo-editor/);
-  assert.match(chrome,/gm-ribbon-accordion/);
+  assert.match(chrome,/gm-tool-category-trigger/);
+  assert.match(chrome,/GeoMozToolCatalog/);
+  assert.match(chrome,/data-catalog=\{id\}/);
   assert.match(chrome,/document\.documentElement\.dataset\.geomozTask=activeTask/);
   const theme=readFileSync("scripts/assets/geolibre-geomoz-theme.css","utf8");
   assert.match(theme,/html \.geo-editor-toolbar\{display:none!important\}/);

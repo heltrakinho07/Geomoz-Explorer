@@ -184,8 +184,31 @@ async function settleRecovery(page){
     ]})
   }));
   await page.locator('[data-task="data"]').click();
+  // Category cards open a tool chooser first; no raster/service commands
+  // should clutter the main ribbon until a category is selected.
+  const catalogCard=page.getByTestId("geomoz-tool-catalog");
+  await page.locator('[data-testid="geomoz-catalog-trigger"][data-catalog="services"]').click();
+  await catalogCard.waitFor();
+  for(const id of ["add.wms","add.wfs","add.xyz","add.wmts"]){
+    assert.equal(await catalogCard.locator('[data-command="'+id+'"]').count(),1,"Service available in one dedicated card: "+id);
+  }
+  assert.equal(await page.locator('.gm-command-ribbon [data-command="add.wms"]').count(),0);
+  await catalogCard.getByRole("button",{name:"Fechar catálogo de ferramentas"}).click();
+  await page.locator('[data-testid="geomoz-catalog-trigger"][data-catalog="raster"]').click();
+  await catalogCard.waitFor();
+  for(const id of ["proc.raster.reproject","proc.raster.clip-mask","proc.raster.slope","proc.raster.hillshade","proc.raster.contour"]){
+    assert.equal(await catalogCard.locator('[data-command="'+id+'"]').count(),1,"Raster processing tool exposed: "+id);
+  }
+  await page.keyboard.press("Escape");
+  await catalogCard.waitFor({state:"hidden"});
   await page.locator('[data-action="geomoz-seismic"]').click();
+  await catalogCard.waitFor();
+  for(const id of ["seismic.usgs","seismic.isc","seismic.stations"]){
+    assert.equal(await catalogCard.locator('[data-command="'+id+'"]').count(),1,"Seismic source choice: "+id);
+  }
+  await catalogCard.locator('[data-command="seismic.usgs"]').click();
   await page.getByTestId("geomoz-seismic-panel").waitFor();
+  assert.equal(await page.getByLabel("Catálogo sísmico").inputValue(),"usgs");
   await page.getByRole("button",{name:"Consultar eventos"}).click();
   await page.getByTestId("geomoz-seismic-panel").getByText("1", {exact:true}).first().waitFor();
   await page.getByRole("button",{name:"Adicionar ao mapa"}).click();
@@ -209,7 +232,16 @@ async function settleRecovery(page){
   await page.screenshot({path:"workbench-browser-artifacts/02c-seismic-earthscope.png",fullPage:true});
 
   await page.getByRole("button",{name:"Fechar consulta sísmica"}).click();
-  console.log("USGS catalog normalised and imported through the real GIS layer store.");
+  await page.locator('[data-action="geomoz-seismic"]').click();
+  await catalogCard.locator('[data-command="seismic.isc"]').click();
+  await page.getByTestId("geomoz-seismic-panel").waitFor();
+  assert.equal(await page.getByLabel("Catálogo sísmico").inputValue(),"isc");
+  await page.getByRole("button",{name:"Fechar consulta sísmica"}).click();
+  await page.locator('[data-action="geomoz-seismic"]').click();
+  await catalogCard.locator('[data-command="seismic.stations"]').click();
+  await page.getByRole("button",{name:"Consultar estações"}).waitFor();
+  await page.getByRole("button",{name:"Fechar consulta sísmica"}).click();
+  console.log("Nested tool catalog: four map services, five raster tools and USGS/ISC/EarthScope workflows verified.");
 
   await page.locator('[data-task="analysis"]').click();
   await page.locator('[data-command="proc.vector.buffer"]').click();

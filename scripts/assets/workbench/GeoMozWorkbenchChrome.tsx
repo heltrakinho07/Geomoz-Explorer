@@ -1,12 +1,13 @@
 import type {RefObject} from "react";
 import type {MapEngine} from "@geolibre/map";
 import {GeoMozSeismicPanel} from "./GeoMozSeismicPanel";
+import {GeoMozToolCatalog,type GeoMozCatalogDefinition} from "./GeoMozToolCatalog";
 import {GeoMozLayerCreation} from "./GeoMozLayerCreation";
 import {AboutDialog} from "../layout/AboutDialog";
 import { GEOMOZ_ROLLOUT, curateGeoMozCommands } from "../../lib/geomoz-workbench-profile";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useAppStore, DEFAULT_PROJECT_NAME } from "@geolibre/core";
-import { ArrowUpRight, Search, Moon, Sun, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass, Activity, Image, Database, Info } from "lucide-react";
+import { ArrowUpRight, Search, Moon, Sun, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass, Activity, Image, Info, Globe2, Mountain, Server, Network, MapPin, Waypoints, ScanLine, RadioTower, Landmark } from "lucide-react";
 import type { Command } from "../../lib/commands";
 import type { ThemeMode } from "../../hooks/useThemeMode";
 
@@ -47,14 +48,14 @@ const LEGACY_ACTIONS: Record<Task, {label:string; ids:string[]}[]> = {
 const TASKS: [Task,string][] = GEOMOZ_ROLLOUT.fullMenus ? LEGACY_TASKS : [["map","Digitalizar"],["data","Dados"],["analysis","Análise"],["output","Resultados"]];
 const CORE_ACTIONS: Partial<typeof LEGACY_ACTIONS> = {
   map:[{label:"Preparação cartográfica",ids:["proc.georeferencer"]}],
-  data:[{label:"Adicionar dados",ids:["add.vector","add.raster","add.delimited-text"]},{label:"Serviços de mapas",ids:["add.wms","add.wfs","add.xyz","add.wmts"]},{label:"Ferramentas raster",ids:["proc.raster.reproject","proc.raster.clip-mask","proc.raster.slope","proc.raster.hillshade","proc.raster.contour"]}],
+  data:[{label:"Adicionar dados",ids:["add.vector","add.raster","add.delimited-text"]}],
   analysis:[{label:"Análise vectorial",ids:["proc.vector.buffer","proc.vector.clip","proc.vector.intersection","proc.vector.dissolve","proc.vector.reproject"]},{label:"Análise do terreno",ids:["proc.raster.slope","proc.raster.hillshade","proc.raster.contour","proc.raster.clip-mask"]}],
   output:[{label:"Mapa e projecto",ids:["project.print-layout","project.save-as"]},{label:"Elementos do mapa",ids:["control.legend","control.colorbar"]}],
 };
 const ACTIONS = GEOMOZ_ROLLOUT.fullMenus ? LEGACY_ACTIONS : {...LEGACY_ACTIONS,...CORE_ACTIONS};
 const GUIDANCE:Partial<Record<Task,string>> = {
   map:"1 · Prepare a carta base e crie uma camada vectorial. 2 · Seleccione-a no catálogo e active a edição. 3 · Configure a aderência e desenhe, preenchendo os atributos. 4 · Guarde as edições da camada e, separadamente, o projecto.",
-  data:"Adicione dados vectoriais e raster. Expanda «Ferramentas raster» apenas quando precisar de processar DEM, recortar, reprojectar ou gerar produtos derivados.",
+  data:"Escolha uma categoria para abrir o cartão das suas ferramentas. Configure os parâmetros da ferramenta seleccionada na etapa seguinte.",
   analysis:"Escolha uma ferramenta, confirme os dados e execute a análise.",
   output:"Consulte as execuções no catálogo e exporte as camadas ou a composição do mapa.",
 };
@@ -93,6 +94,8 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   const [more,setMore]=useState(false);
   const [aboutOpen,setAboutOpen]=useState(false);
   const [seismicOpen,setSeismicOpen]=useState(false);
+  const [openCatalog,setOpenCatalog]=useState<"services"|"raster"|"seismic"|null>(null);
+  const [seismicInitial,setSeismicInitial]=useState<{provider:"usgs"|"isc";view:"catalog"|"stations"}>({provider:"usgs",view:"catalog"});
   const [layerWizardOpen,setLayerWizardOpen]=useState(false);
   const activeTask:Task=viewer?"map":task;
   useEffect(()=>{
@@ -102,6 +105,49 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   const curated=curateGeoMozCommands(commands);
   const visibleCommands=viewer?curated.filter(command=>command.id.startsWith("view.")):curated;
   const registry=new Map(visibleCommands.map(command=>[command.id,command]));
+  const catalogs:Record<"services"|"raster"|"seismic",GeoMozCatalogDefinition>={
+    services:{
+      id:"services",title:"Serviços de mapas",icon:Globe2,
+      description:"Ligue serviços externos ao mapa. Escolha o protocolo e configure o endereço no formulário de ligação.",
+      items:([
+        ["add.wms","WMS","Mapas renderizados disponibilizados por um serviço Web.",Layers3],
+        ["add.wfs","WFS","Feições vectoriais disponibilizadas por um servidor OGC.",Network],
+        ["add.xyz","XYZ","Camadas base por mosaicos de imagens.",MapPin],
+        ["add.wmts","WMTS","Mosaicos cartográficos do padrão OGC WMTS.",Server],
+      ] as const).flatMap(([id,title,description,icon])=>{
+        const command=registry.get(id);
+        return command?[{id,title,description,icon,disabledReason:command.disabledReason,
+          onSelect:()=>{if(!command.disabledReason)command.run();}}]:[];
+      }),
+    },
+    raster:{
+      id:"raster",title:"Ferramentas raster",icon:Mountain,
+      description:"Seleccione uma operação. O motor GIS abrirá os parâmetros necessários à camada e ao resultado.",
+      items:([
+        ["proc.raster.reproject","Reprojectar","Converter um raster para outro sistema de coordenadas.",Globe2],
+        ["proc.raster.clip-mask","Recortar DEM","Recortar um raster com a máscara de uma camada.",ScanLine],
+        ["proc.raster.slope","Declive","Calcular o declive do terreno a partir do DEM.",Mountain],
+        ["proc.raster.hillshade","Relevo sombreado","Gerar sombreamento do relevo.",Image],
+        ["proc.raster.contour","Curvas de nível","Produzir isolinhas altimétricas a partir do DEM.",Waypoints],
+      ] as const).flatMap(([id,title,description,icon])=>{
+        const command=registry.get(id);
+        return command?[{id,title,description,icon,disabledReason:command.disabledReason,
+          onSelect:()=>{if(!command.disabledReason)command.run();}}]:[];
+      }),
+    },
+    seismic:{
+      id:"seismic",title:"Catálogos sísmicos",icon:Activity,
+      description:"Consulte eventos sísmicos e estações reais. Configure os filtros no passo seguinte.",
+      items:[
+        {id:"seismic.usgs",title:"USGS / NEIC",description:"Eventos sísmicos e importação de resultados.",icon:Activity,
+          onSelect:()=>{setSeismicInitial({provider:"usgs",view:"catalog"});setSeismicOpen(true);}},
+        {id:"seismic.isc",title:"ISC",description:"Catálogo internacional de eventos sísmicos (FDSN).",icon:Landmark,
+          onSelect:()=>{setSeismicInitial({provider:"isc",view:"catalog"});setSeismicOpen(true);}},
+        {id:"seismic.stations",title:"Estações EarthScope",description:"Redes e estações sísmicas.",icon:RadioTower,
+          onSelect:()=>{setSeismicInitial({provider:"usgs",view:"stations"});setSeismicOpen(true);}},
+      ],
+    },
+  };
   const groups=ACTIONS[activeTask].map(group=>({...group,items:group.ids.flatMap(id=>{
     const command=registry.get(id);
     return command ? [command] : [];
@@ -126,25 +172,37 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
         </div>
       </div>
       <div className="gm-taskbar"><nav aria-label="Tarefas GIS" className="gm-task-tabs">{TASKS.filter(([id])=>!viewer||id==="map").map(([id,label])=>
-        <button key={id} type="button" aria-current={activeTask===id?"page":undefined} onClick={()=>{setTask(id);setMore(false);setSeismicOpen(id==="seismic");window.dispatchEvent(new CustomEvent("geomoz:task",{detail:id}));}} data-task={id}>{label}</button>)}</nav>
+        <button key={id} type="button" aria-current={activeTask===id?"page":undefined} onClick={()=>{setTask(id);setMore(false);setOpenCatalog(null);setSeismicOpen(id==="seismic");window.dispatchEvent(new CustomEvent("geomoz:task",{detail:id}));}} data-task={id}>{label}</button>)}</nav>
         <span className="gm-session-badge"><i/>{viewer?"Vista de leitura":"Projecto aberto"}<span className="gm-session-detail"> · {layers.length} camada{layers.length===1?"":"s"}</span></span>
       </div>
       <div className="gm-command-ribbon" aria-label={"Comandos de "+TASKS.find(([id])=>id===activeTask)?.[1]}>
-        <div className="gm-ribbon-groups">{groups.map(group=><section className={"gm-ribbon-group"+(activeTask==="data"&&group.label!=="Adicionar dados"?" gm-ribbon-optional":"")} key={group.label}>
-          {activeTask==="data"&&group.label!=="Adicionar dados"?<details className="gm-ribbon-accordion"><summary>{group.label==="Ferramentas raster"?<Image size={16}/>:<Database size={16}/>} {group.label}<ChevronDown size={13}/></summary><div>{group.items.map(command=>{const Icon=command.icon??CommandIcon;return <button key={command.id} type="button" data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={17}/><span>{LABELS[command.id]??command.title}</span></button>;})}</div></details>:<><div>{group.items.map(command=>{
+        <div className="gm-ribbon-groups">{groups.map(group=><section className="gm-ribbon-group" key={group.label}><div>{group.items.map(command=>{
           const Icon=command.icon??CommandIcon;
-          return <button key={command.id} type="button" data-command={command.id} aria-pressed={command.id==="plugin.maplibre-gl-geo-editor"?command.keywords?.includes("deactivate"):undefined} disabled={!!command.disabledReason}
-            title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={19}/><span>{command.id==="plugin.maplibre-gl-geo-editor"&&command.keywords?.includes("deactivate")?"Terminar desenho":LABELS[command.id]??command.title}</span></button>;
-        })}</div><small>{group.label}</small></>}</section>)}
+          return <button key={command.id} type="button" data-command={command.id} disabled={!!command.disabledReason}
+            title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}>
+            <Icon size={19}/><span>{LABELS[command.id]??command.title}</span></button>;
+        })}</div><small>{group.label}</small></section>)}
         {!viewer&&activeTask==="map"&&<section className="gm-ribbon-group"><div><button type="button" data-testid="geomoz-create-layer" onClick={()=>setLayerWizardOpen(true)}><Layers3 size={19}/><span>Nova camada</span></button></div><small>Cartografia geológica / temática</small></section>}
-        {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-seismic" aria-expanded={seismicOpen} onClick={()=>setSeismicOpen(!seismicOpen)}><Activity size={19}/><span>Catálogos sísmicos</span></button></div><small>Dados GeoMoz · USGS / ISC</small></section>}
+        {!viewer&&activeTask==="data"&&(["services","raster","seismic"] as const).map(id=>{
+          const catalog=catalogs[id];const Icon=catalog.icon;
+          return <section className="gm-ribbon-group gm-tool-category-group" key={id}>
+            <div><button type="button" className="gm-tool-category-trigger"
+              data-testid="geomoz-catalog-trigger" data-catalog={id}
+              data-action={id==="seismic"?"geomoz-seismic":undefined}
+              aria-haspopup="dialog" aria-expanded={openCatalog===id}
+              onClick={()=>setOpenCatalog(id)}>
+              <Icon size={21}/><span>{catalog.title}</span><ChevronDown size={12}/></button></div>
+            <small>{id==="services"?"WMS · WFS · XYZ · WMTS":id==="raster"?"Processamento de terreno":"USGS · ISC · EarthScope"}</small>
+          </section>;
+        })}
         {!groups.length&&<p className="gm-ribbon-empty"><Compass size={22}/> As opções disponíveis estão nos menus desta tarefa.</p>}
         {activeTask==="map"&&<span className="gm-digitizing-ribbon-tip"><Info size={15}/> As ferramentas de desenho aparecem após seleccionar uma camada e activar a edição.</span>}</div>
         {GEOMOZ_ROLLOUT.fullMenus&&<button type="button" className="gm-more-tools" aria-expanded={more} onClick={()=>setMore(!more)}>Mais opções <ChevronDown size={14}/></button>}
       </div>
       <p className="gm-task-guidance" role="status" hidden={more}>{viewer?"Explore as camadas e navegue no mapa. Esta sessão está em modo de leitura.":GUIDANCE[activeTask]}</p>
+      {openCatalog&&!viewer&&activeTask==="data"&&<GeoMozToolCatalog catalog={catalogs[openCatalog]} onClose={()=>setOpenCatalog(null)}/>}
       {layerWizardOpen&&!viewer&&<GeoMozLayerCreation onClose={()=>setLayerWizardOpen(false)}/>}
-      {seismicOpen&&!viewer&&<GeoMozSeismicPanel mapControllerRef={mapControllerRef} onClose={()=>{setSeismicOpen(false);if(task==="seismic")setTask("data");}}/>}
+      {seismicOpen&&!viewer&&<GeoMozSeismicPanel key={seismicInitial.view+"-"+seismicInitial.provider} initialProvider={seismicInitial.provider} initialView={seismicInitial.view} mapControllerRef={mapControllerRef} onClose={()=>{setSeismicOpen(false);if(task==="seismic")setTask("data");}}/>}
     </header>
     <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} renderTrigger={false}/>
   </TaskContext.Provider>;
