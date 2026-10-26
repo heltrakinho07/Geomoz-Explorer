@@ -15,6 +15,9 @@ test("native layer editor accepts real drawing, snapping and user-provided featu
  assert.match(patched,/options\.settings\.snapDistance = distance/);
  assert.match(patched,/enableMode\("helper", "snapping"\)/);
  assert.match(patched,/geomoz:digitizing-feature-created/);
+ assert.match(patched, /\.on\("gm:create", geomozOnNativeFeatureCreated\)/);
+ assert.match(patched, /\.off\("gm:create", geomozOnNativeFeatureCreated\)/);
+ assert.match(patched, /nativeFeature\.updateProperties\(value\.attributes\)/);
  assert.match(patched,/geomozDigitizedAttributes\.get/);
  assert.match(patched,/geojson: withAttributes/);
  assert.match(patched,/writeBackToVectorSource\(layer, withAttributes\)/);
