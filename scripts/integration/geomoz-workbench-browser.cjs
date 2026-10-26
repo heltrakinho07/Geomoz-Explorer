@@ -316,14 +316,14 @@ async function settleRecovery(page){
   const canvas=await page.locator("main canvas").first().boundingBox();
   const at=(x,y)=>({x:canvas.x+canvas.width*x,y:canvas.y+canvas.height*y});
   const a=at(.53,.32),b=at(.66,.39),c=at(.78,.51);
-  // Geoman's final-vertex marker requires pointer movement and a render frame
-  // between vertices; instantaneous Playwright clicks can miss it in Chromium.
+  // Geoman 0.10.1 DrawLine uses LineDrawer({snappingMarkers:"first"}).
+  // Clicking the FIRST vertex completes the LineString (not the last).
   await page.evaluate(()=>{window.__geomozDrawEvents=[];window.addEventListener("geomoz:digitizing-feature-created",e=>window.__geomozDrawEvents.push(e.detail));});
-  for(const p of [a,b,c,c]){
+  for(const p of [a,b,c,a]){
     await page.mouse.move(p.x,p.y);
-    await page.waitForTimeout(90);
+    await page.waitForTimeout(140);
     await page.mouse.click(p.x,p.y);
-    await page.waitForTimeout(280);
+    await page.waitForTimeout(400);
   }
   console.log("GeoMoz native draw events",JSON.stringify(await page.evaluate(()=>window.__geomozDrawEvents)));
   const featureForm=page.getByRole("dialog",{name:"Atributos da nova feição"});
