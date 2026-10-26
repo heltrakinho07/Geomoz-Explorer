@@ -10,7 +10,7 @@ import {
   querySeismicCatalog, validateSeismicQuery, type SeismicProvider, type SeismicQuery, type SeismicEvent
 } from "./seismic-data";
 
-interface Props { onClose:()=>void; mapControllerRef:RefObject<MapEngine | null>; }
+interface Props { onClose:()=>void; mapControllerRef:RefObject<MapEngine | null>; initialProvider?:"usgs"|"isc"; initialView?:"catalog"|"stations"; }
 function today():string { return new Date().toISOString().slice(0,10); }
 function monthAgo():string { return new Date(Date.now()-30*864e5).toISOString().slice(0,10); }
 function download(name:string,mime:string,content:string):void {
@@ -25,13 +25,13 @@ function magnitudeColor(depth:number|null):string {
 }
 
 /** GeoMoz-owned seismic interface. Only renders actual USGS/ISC events. */
-export function GeoMozSeismicPanel({onClose,mapControllerRef}:Props) {
+export function GeoMozSeismicPanel({onClose,mapControllerRef,initialProvider="usgs",initialView="catalog"}:Props) {
   const addLayer=useAppStore(s=>s.addGeoJsonLayer);
   const selectLayer=useAppStore(s=>s.selectLayer);
   const setLayerStyle=useAppStore(s=>s.setLayerStyle);
-  const [activeView,setActiveView]=useState<"catalog"|"analysis"|"stations">("catalog");
+  const [activeView,setActiveView]=useState<"catalog"|"analysis"|"stations">(initialView);
   const allowed=useAppStore(s=>s.deploymentCapabilities.has("data:add"));
-  const [provider,setProvider]=useState<SeismicProvider>("usgs");
+  const [provider,setProvider]=useState<SeismicProvider>(initialProvider);
   const [region,setRegion]=useState<keyof typeof SEISMIC_AREAS|"custom">("mozambique");
   const [bbox,setBbox]=useState("29, -27, 42, -10");
   const [start,setStart]=useState(monthAgo);
