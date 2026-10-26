@@ -172,21 +172,33 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
         <span className="gm-session-badge"><i/>{viewer?"Vista de leitura":"Projecto aberto"}<span className="gm-session-detail"> · {layers.length} camada{layers.length===1?"":"s"}</span></span>
       </div>
       <div className="gm-command-ribbon" aria-label={"Comandos de "+TASKS.find(([id])=>id===activeTask)?.[1]}>
-        <div className="gm-ribbon-groups">{groups.map(group=><section className={"gm-ribbon-group"+(activeTask==="data"&&group.label!=="Adicionar dados"?" gm-ribbon-optional":"")} key={group.label}>
-          {activeTask==="data"&&group.label!=="Adicionar dados"?<details className="gm-ribbon-accordion"><summary>{group.label==="Ferramentas raster"?<Image size={16}/>:<Database size={16}/>} {group.label}<ChevronDown size={13}/></summary><div>{group.items.map(command=>{const Icon=command.icon??CommandIcon;return <button key={command.id} type="button" data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={17}/><span>{LABELS[command.id]??command.title}</span></button>;})}</div></details>:<><div>{group.items.map(command=>{
+        <div className="gm-ribbon-groups">{groups.map(group=><section className="gm-ribbon-group" key={group.label}><div>{group.items.map(command=>{
           const Icon=command.icon??CommandIcon;
-          return <button key={command.id} type="button" data-command={command.id} aria-pressed={command.id==="plugin.maplibre-gl-geo-editor"?command.keywords?.includes("deactivate"):undefined} disabled={!!command.disabledReason}
-            title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={19}/><span>{command.id==="plugin.maplibre-gl-geo-editor"&&command.keywords?.includes("deactivate")?"Terminar desenho":LABELS[command.id]??command.title}</span></button>;
-        })}</div><small>{group.label}</small></>}</section>)}
+          return <button key={command.id} type="button" data-command={command.id} disabled={!!command.disabledReason}
+            title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}>
+            <Icon size={19}/><span>{LABELS[command.id]??command.title}</span></button>;
+        })}</div><small>{group.label}</small></section>)}
         {!viewer&&activeTask==="map"&&<section className="gm-ribbon-group"><div><button type="button" data-testid="geomoz-create-layer" onClick={()=>setLayerWizardOpen(true)}><Layers3 size={19}/><span>Nova camada</span></button></div><small>Cartografia geológica / temática</small></section>}
-        {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-seismic" aria-expanded={seismicOpen} onClick={()=>setSeismicOpen(!seismicOpen)}><Activity size={19}/><span>Catálogos sísmicos</span></button></div><small>Dados GeoMoz · USGS / ISC</small></section>}
+        {!viewer&&activeTask==="data"&&(["services","raster","seismic"] as const).map(id=>{
+          const catalog=catalogs[id];const Icon=catalog.icon;
+          return <section className="gm-ribbon-group gm-tool-category-group" key={id}>
+            <div><button type="button" className="gm-tool-category-trigger"
+              data-testid="geomoz-catalog-trigger" data-catalog={id}
+              data-action={id==="seismic"?"geomoz-seismic":undefined}
+              aria-haspopup="dialog" aria-expanded={openCatalog===id}
+              onClick={()=>setOpenCatalog(id)}>
+              <Icon size={21}/><span>{catalog.title}</span><ChevronDown size={12}/></button></div>
+            <small>{id==="services"?"WMS · WFS · XYZ · WMTS":id==="raster"?"Processamento de terreno":"USGS · ISC · EarthScope"}</small>
+          </section>;
+        })}
         {!groups.length&&<p className="gm-ribbon-empty"><Compass size={22}/> As opções disponíveis estão nos menus desta tarefa.</p>}
         {activeTask==="map"&&<span className="gm-digitizing-ribbon-tip"><Info size={15}/> As ferramentas de desenho aparecem após seleccionar uma camada e activar a edição.</span>}</div>
         {GEOMOZ_ROLLOUT.fullMenus&&<button type="button" className="gm-more-tools" aria-expanded={more} onClick={()=>setMore(!more)}>Mais opções <ChevronDown size={14}/></button>}
       </div>
       <p className="gm-task-guidance" role="status" hidden={more}>{viewer?"Explore as camadas e navegue no mapa. Esta sessão está em modo de leitura.":GUIDANCE[activeTask]}</p>
+      {openCatalog&&!viewer&&activeTask==="data"&&<GeoMozToolCatalog catalog={catalogs[openCatalog]} onClose={()=>setOpenCatalog(null)}/>}
       {layerWizardOpen&&!viewer&&<GeoMozLayerCreation onClose={()=>setLayerWizardOpen(false)}/>}
-      {seismicOpen&&!viewer&&<GeoMozSeismicPanel mapControllerRef={mapControllerRef} onClose={()=>{setSeismicOpen(false);if(task==="seismic")setTask("data");}}/>}
+      {seismicOpen&&!viewer&&<GeoMozSeismicPanel key={seismicInitial.view+"-"+seismicInitial.provider} initialProvider={seismicInitial.provider} initialView={seismicInitial.view} mapControllerRef={mapControllerRef} onClose={()=>{setSeismicOpen(false);if(task==="seismic")setTask("data");}}/>}
     </header>
     <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} renderTrigger={false}/>
   </TaskContext.Provider>;
