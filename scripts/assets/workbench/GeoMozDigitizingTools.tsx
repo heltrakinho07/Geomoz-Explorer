@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from "react";
 import {createPortal} from "react-dom";
 import {useAppStore,type GeoLibreLayer} from "@geolibre/core";
-import {Pencil,Save,Trash2,Magnet,MapPin,Waypoints,Pentagon,Info,X,Check,Table2} from "lucide-react";
+import {Pencil,Save,Trash2,Magnet,MapPin,Waypoints,Pentagon,Info,X,Check,Table2,CheckCircle2} from "lucide-react";
 
 type Shape="Point"|"LineString"|"Polygon";
 type Field={name:string;type:"text"|"number";description:string};
@@ -45,12 +45,22 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
  const [snapping,setSnapping]=useState(true);
  const [tolerance,setTolerance]=useState(10);
  const [pending,setPending]=useState<NewFeature|null>(null);
+ const [savingAttributes,setSavingAttributes]=useState(false);
  const [values,setValues]=useState<Record<string,string>>({});
  const [notice,setNotice]=useState("");
+ useEffect(()=>{
+   const status=(event:Event)=>{
+     const detail=(event as CustomEvent<{layerId:string;message:string}>).detail;
+     if(detail?.layerId===layer.id)setNotice(detail.message);
+   };
+   window.addEventListener("geomoz:digitizing-action-status",status);
+   return()=>window.removeEventListener("geomoz:digitizing-action-status",status);
+ },[layer.id]);
  const active=editLayerId===layer.id;
  const shape=layerShape(layer);
  const fields=layerFields(layer);
  const canEdit=useAppStore(s=>s.deploymentCapabilities.has("project:edit"));
+ const selectedLayerId=useAppStore(s=>s.selectedLayerId);
  const activeShape=SHAPES.find(s=>s.key===shape)!;
  useEffect(()=>{
    const listener=(event:Event)=>{
@@ -70,7 +80,7 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
  const draw=()=>{
    if(!active||pending)return;
    window.dispatchEvent(new CustomEvent("geomoz:digitizing-start-draw",{detail:{layerId:layer.id,mode:activeShape.mode}}));
-   setNotice("Clique no mapa para definir os vértices. Conclua a linha com duplo clique ou feche o polígono no primeiro vértice. Depois preencha os atributos da feição.");
+   setNotice("Clique no mapa para marcar os vértices. Para concluir uma linha ou um polígono, utilize «Concluir feição» ou clique sobre um vértice da geometria. Também pode continuar a desenhar outras feições sem sair do modo de edição. Depois preencha os atributos da feição.");
  };
  const saveAttributes=()=>{
    if(!pending)return;
@@ -82,12 +92,20 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
      }
      attributes[field.name]=raw===""?null:field.type==="number"?Number(raw):raw;
    }
+   setSavingAttributes(true);
    window.dispatchEvent(new CustomEvent("geomoz:digitizing-attributes-save",{
-     detail:{layerId:pending.layerId,featureKey:pending.featureKey,attributes},
+     detail:{layerId:pending.layerId,featureKey:pending.featureKey,attributes,
+       onApplied:(error?:string)=>{
+         setSavingAttributes(false);
+         if(error){setNotice("Erro ao guardar atributos: "+error);return;}
+         setPending(null);setNotice("Atributos atribuídos à feição. Guarde as edições da camada para os conservar.");
+       },
+     },
    }));
-   setPending(null);setNotice("Atributos atribuídos à feição. Guarde as edições da camada para os conservar.");
  };
  const showForm=pending&&pending.layerId===layer.id;
+ // Discard stale editor panels when the user selects a different layer.
+ if (selectedLayerId!==layer.id) return null;
  return <section ref={rootRef} className="gm-digitizing-tools" data-testid="geomoz-digitizing-tools" data-layer-id={layer.id} aria-label="Fluxo de digitalização">
   <h4><Pencil size={15}/> {active?"Edição activa":"Preparação"} <span className="gm-digitizing-mode">{shape==="Point"?"Ponto":shape==="LineString"?"Linha":"Polígono"}</span></h4>
   <small className="gm-digitizing-layer-name" title={layer.name}>{layer.name}</small>
@@ -108,15 +126,21 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
    <button type="button" data-testid="geomoz-add-digitized-feature" disabled={!active} onClick={draw}>
      <activeShape.icon size={16}/>{activeShape.name}
    </button>
+   {shape!=="Point"&&<button type="button" data-testid="geomoz-finish-digitized-feature"
+    disabled={!active||!!pending}
+    onClick={()=>window.dispatchEvent(new CustomEvent("geomoz:digitizing-finish-feature",{detail:{layerId:layer.id}}))}>
+    <CheckCircle2 size={16}/> Concluir feição
+   </button>}
    <button type="button" disabled={!layer.geojson?.features?.length||active}
     onClick={()=>useAppStore.getState().setAttributeTableOpen(true)}>
     <Table2 size={15}/> Tabela de atributos
    </button>
   </div>}
   <details className="gm-digitizing-help"><summary><Info size={14}/> Como digitalizar esta camada</summary>
-   <ol><li>Carregue a carta georreferenciada ou um mapa base em «Dados».</li>
-   <li>Seleccione a camada e active a edição.</li><li>Configure a aderência e desenhe no mapa.</li>
-   <li>Preencha os atributos quando concluir a feição.</li><li>Guarde as edições da camada e depois guarde ou exporte o projecto.</li></ol>
+   <ol><li><strong>Preparação:</strong> carregue a carta em «Dados», crie uma camada com geometria, SRC de referência e campos, e seleccione-a.</li>
+   <li><strong>Configuração:</strong> active a edição e configure a aderência e a tolerância.</li>
+   <li><strong>Desenho:</strong> active o ponto, a linha ou o polígono, conclua a geometria e preencha os atributos da nova feição.</li>
+   <li><strong>Finalização:</strong> grave as edições da camada, saia do modo de edição e guarde o projecto ou exporte a camada.</li></ol>
   </details>
   {notice&&<p role="status" className="gm-digitizing-notice">{notice}</p>}
   {showForm&&createPortal(<div className="gm-digitizing-overlay">
@@ -129,8 +153,8 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
     {fields.map(field=><label key={field.name}>{field.description||field.name} <small>({field.name})</small>
       <input autoComplete="off" aria-label={"Atributo "+field.name} type={field.type==="number"?"number":"text"} step={field.type==="number"?"any":undefined}
        value={values[field.name]??""} onChange={e=>setValues(old=>({...old,[field.name]:e.target.value}))}/></label>)}
-    <footer><button type="button" onClick={()=>{setPending(null);setNotice("Feição criada sem atributos. Utilize a tabela depois.");}}>Sem atributos</button>
-      <button type="submit"><Check size={15}/> Guardar atributos</button></footer>
+    <footer><button type="button" onClick={()=>{setPending(null);setNotice("Feição criada sem atributos. Utilize a tabela depois.");}} disabled={savingAttributes}>Sem atributos</button>
+      <button type="submit" disabled={savingAttributes}><Check size={15}/> Guardar atributos</button></footer>
    </form>
   </div>,document.body)}
  </section>;
