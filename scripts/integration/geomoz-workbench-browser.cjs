@@ -32,11 +32,11 @@ async function settleRecovery(page){
  await mkdir("workbench-browser-artifacts",{recursive:true});
  await new Promise(resolve=>server.listen(4182,"127.0.0.1",resolve));
  const browser=await chromium.launch({headless:true,args:["--use-angle=swiftshader","--enable-webgl","--ignore-gpu-blocklist"]});
- const context=await browser.newContext({viewport:{width:1440,height:960},colorScheme:"light"});
+ let context=await browser.newContext({viewport:{width:1440,height:960},colorScheme:"light"});
  // Exercise the actual download fallback used in browsers without File System Access.
  // Keep the application's picker implementation intact.
  await context.addInitScript(()=>Object.defineProperty(window,"showSaveFilePicker",{configurable:true,value:undefined}));
- const page=await context.newPage(),errors=[];
+ let page=await context.newPage();const errors=[];
  page.on("console",message=>{if(["error","warning","warn"].includes(message.type())&&/Geo.?Editor|Geoman|deactivat|plugin.*error|removeControl/i.test(message.text()))console.log("Editor diagnostic:",message.text());});
  page.on("pageerror",error=>{errors.push(error.message);console.error("Runtime error:",error.message);});
  page.setDefaultTimeout(90000);
@@ -387,6 +387,24 @@ async function settleRecovery(page){
   await page.locator('.gm-menu-slot:not([hidden]) button').first().click();
   await page.getByRole("menu").first().waitFor();
   await page.keyboard.press("Escape");
+  // MapLibre + Geoman and the raster processing suite may hold several WebGL
+  // contexts. Validate theme persistence, independent mobile layout and a
+  // second tab in a fresh browser context so memory pressure from intensive
+  // map editing cannot make the unrelated theme test flaky.
+  await context.close();
+  context=await browser.newContext({viewport:{width:1440,height:960},colorScheme:"light"});
+  await context.addInitScript(()=>Object.defineProperty(window,"showSaveFilePicker",{configurable:true,value:undefined}));
+  page=await context.newPage();
+  page.setDefaultTimeout(90000);
+  page.on("pageerror",error=>{errors.push(error.message);console.error("Runtime error:",error.message);});
+  await page.goto("http://127.0.0.1:4182/gis-workspace/");
+  await page.getByTestId("geomoz-workbench-chrome").waitFor();
+  await settleRecovery(page);
+  if(await page.evaluate(()=>window.GeoMozTheme.getTheme())!=="dark"){
+    await page.getByTestId("geomoz-theme-toggle").click();
+    await page.waitForFunction(()=>window.GeoMozTheme.getTheme()==="dark");
+  }
+  console.log("Fresh browser context for independent theme, mobile and viewer verification.");
   await page.reload();
   await page.getByTestId("geomoz-workbench-chrome").waitFor();
   await settleRecovery(page);
