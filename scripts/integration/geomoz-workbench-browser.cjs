@@ -144,6 +144,13 @@ async function settleRecovery(page){
   assert.equal(await printDialog.getByLabel("Resolução de saída").inputValue(),"300");
   const [mapWidth,mapHeight]=(await printDialog.getByText(/Mapa: \d+ × \d+ píxeis/).innerText()).match(/Mapa: (\d+) × (\d+)/).slice(1).map(Number);
   assert.ok(mapWidth>2000 || mapHeight>2000,"Print map is redrawn above screen resolution");
+  await printDialog.getByRole("button",{name:"Adicionar texto",exact:true}).click();
+  await printDialog.getByLabel("Texto do item").fill("Carta geológica de Manica");
+  await printDialog.getByLabel("x do item",{exact:true}).fill("25");
+  await printDialog.getByLabel("Bloquear posição").check();
+  assert.equal(await printDialog.getByLabel("x do item",{exact:true}).isDisabled(),true);
+  await printDialog.getByLabel("Bloquear posição").uncheck();
+  console.log("GeoMoz editable layout text and position lock verified.");
   await page.screenshot({path:"workbench-browser-artifacts/print-quality.png"});
   await page.keyboard.press("Escape");
   await printDialog.waitFor({state:"hidden"});
@@ -158,6 +165,7 @@ async function settleRecovery(page){
   assert.equal(projectDownload.suggestedFilename(),"Untitled_Projecto.geomoz");
   await projectDownload.saveAs("workbench-browser-artifacts/Untitled_Projecto.geomoz");
   const savedProject=JSON.parse(await readFile("workbench-browser-artifacts/Untitled_Projecto.geomoz","utf8"));
+  assert.equal(savedProject.printLayout.geomozItems[0].text,"Carta geológica de Manica");
   await saveDialog.waitFor({state:"hidden"});
   for(const extension of ["geomoz","geolibre","geolibre.json"]){
     const name="Compatibilidade "+extension;

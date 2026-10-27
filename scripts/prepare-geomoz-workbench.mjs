@@ -6,6 +6,7 @@
 import { readFileSync,writeFileSync,mkdirSync,existsSync } from "node:fs";
 import { resolve,dirname } from "node:path";
 import { brandUpstreamLocales } from "./geomoz-brand-locales.mjs";
+import { prepareGeoMozLayoutEditor } from "./geomoz-layout-editor.mjs";
 import { prepareGeoMozPrintQuality } from "./geomoz-print-quality.mjs";
 import { prepareGeoMozProjectFormat } from "./geomoz-project-format.mjs";
 import { patchGeoMozDigitizingEngine } from "./geomoz-digitizing-engine.mjs";
@@ -28,6 +29,7 @@ const end=toolbar.indexOf("    </header>",tail);
 if(start<0||logoEnd<start||tail<logoEnd||end<tail)throw Error("GeoMoz toolbar source anchors changed");
 prepareGeoMozProjectFormat(root);
 prepareGeoMozPrintQuality(root);
+prepareGeoMozLayoutEditor(root);
 let children=toolbar.slice(logoEnd,tail);
 const menuAreas={ProjectMenu:"project",EditMenu:"map",ViewMenu:"map",AddDataMenu:"data",ProcessingMenu:"analysis",ControlsMenu:"map",PluginsMenu:"settings",PluginToolbarMenus:"settings",SettingsDialog:"settings",HelpMenu:"settings"};
 for(const [tag,area] of Object.entries(menuAreas)){
