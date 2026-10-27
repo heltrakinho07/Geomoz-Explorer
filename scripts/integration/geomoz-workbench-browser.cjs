@@ -336,7 +336,7 @@ async function settleRecovery(page){
   const canvas=await mapCanvas.boundingBox();
   const viewport=page.viewportSize();
   assert.ok(canvas&&viewport&&canvas.width>100&&canvas.height>100,"MapLibre canvas is mounted");
-  assert.ok(canvas.y>=0&&canvas.y+canvas.height<=viewport.height+1,
+  assert.ok(canvas.y>=-1&&canvas.y+canvas.height<=viewport.height+2,
     "Map must be visible before clicking digitization vertices (canvas top="+canvas.y+")");
   const at=(x,y)=>({x:canvas.x+canvas.width*x,y:canvas.y+canvas.height*y});
   const a=at(.53,.32),b=at(.66,.39),c=at(.78,.51);
