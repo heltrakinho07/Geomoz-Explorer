@@ -327,7 +327,17 @@ async function settleRecovery(page){
   console.log("GeoMoz native drawing mode active:",JSON.stringify(await page.evaluate(()=>window.__geomozDrawingReady)));
   const digitizingLayerId=await digitizing.getAttribute("data-layer-id");
   assert.ok(digitizingLayerId,"Native digitizing is bound to the selected layer");
-  const canvas=await page.locator("main canvas").first().boundingBox();
+  // Earlier toolbox/wizard interactions can scroll the outer document, making
+  // the map canvas top negative. Playwright mouse clicks would then hit HTML,
+  // not MapLibre, and Geoman would legitimately receive no vertices.
+  const mapCanvas=page.locator("main canvas.maplibregl-canvas").first();
+  await mapCanvas.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(180);
+  const canvas=await mapCanvas.boundingBox();
+  const viewport=page.viewportSize();
+  assert.ok(canvas&&viewport&&canvas.width>100&&canvas.height>100,"MapLibre canvas is mounted");
+  assert.ok(canvas.y>=0&&canvas.y+canvas.height<=viewport.height+1,
+    "Map must be visible before clicking digitization vertices (canvas top="+canvas.y+")");
   const at=(x,y)=>({x:canvas.x+canvas.width*x,y:canvas.y+canvas.height*y});
   const a=at(.53,.32),b=at(.66,.39),c=at(.78,.51);
   // Use the pinned Geoman DrawLine.lineFinished handler via the explicit
