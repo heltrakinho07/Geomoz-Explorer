@@ -150,6 +150,16 @@ async function settleRecovery(page){
   await printDialog.getByLabel("Bloquear posição").check();
   assert.equal(await printDialog.getByLabel("x do item",{exact:true}).isDisabled(),true);
   await printDialog.getByLabel("Bloquear posição").uncheck();
+  const logoPng=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=40;c.height=40;const ctx=c.getContext('2d');ctx.fillStyle='#0284c7';ctx.fillRect(0,0,40,40);return c.toDataURL('image/png').split(',')[1];});
+  await printDialog.getByLabel("Carregar logótipo").setInputFiles({name:'logo.png',mimeType:'image/png',buffer:Buffer.from(logoPng,'base64')});
+  await page.waitForFunction(()=>document.querySelector('select[aria-label="Item seleccionado"]')?.options.length===3);
+  const svgDownload=page.waitForEvent('download');
+  await printDialog.getByRole('button',{name:/SVG/}).click();
+  const svgFile=await svgDownload;
+  await svgFile.saveAs('workbench-browser-artifacts/layout-items.svg');
+  const svgContent=await readFile('workbench-browser-artifacts/layout-items.svg','utf8');
+  assert.match(svgContent,/Carta geológica de Manica/);
+  assert.ok((svgContent.match(/<image/g)||[]).length>=2,'SVG embeds map and uploaded logo');
   console.log("GeoMoz editable layout text and position lock verified.");
   await page.screenshot({path:"workbench-browser-artifacts/print-quality.png"});
   await page.keyboard.press("Escape");
