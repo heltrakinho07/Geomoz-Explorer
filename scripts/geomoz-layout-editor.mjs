@@ -15,6 +15,10 @@ export function prepareGeoMozLayoutEditor(root){
  copy('geomoz-layout-draw.ts',resolve(app,'lib/geomoz-layout-draw.ts'));
  copy('GeoMozLayoutItems.tsx',resolve(app,'components/geomoz/GeoMozLayoutItems.tsx'));
  const draw=resolve(app,'lib/print-layout.ts');
+ patch(draw,'opts.attributionText ?? "Created with GeoLibre"','opts.attributionText ?? "Created with GeoMoz Explorer"');
+ patch(draw,'if (attributionText) {\n      ctx.textAlign = "left";\n      ctx.fillText(attributionText, margin, baselineY, slotMax);','if (dateText) {\n      ctx.textAlign = "left";\n      ctx.fillText(dateText, margin, baselineY, slotMax);');
+ patch(draw,'if (dateText) {\n      ctx.textAlign = "right";\n      ctx.fillText(dateText, W - margin, baselineY, slotMax);','if (attributionText) {\n      ctx.textAlign = "right";\n      ctx.fillText(attributionText, W - margin, baselineY, slotMax);');
+
  patch(draw,'export interface LayoutOptions {','export interface LayoutOptions {\n  geomozItems?: import("@geolibre/core").GeoMozLayoutItem[];');
  patch(draw,'export function drawLayoutContext(','import {drawGeoMozItems} from "./geomoz-layout-draw";\n\nexport function drawLayoutContext(');
  patch(draw,'/** Draw a north-pointing arrow rotated to account for map bearing. */','/** Draw a north-pointing arrow rotated to account for map bearing. */');
