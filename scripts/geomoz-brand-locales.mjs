@@ -33,6 +33,7 @@ export function brandLocaleCatalog(catalog,lang){
     return rename(value,lang);
   }
   const result=visit(catalog);
+  if(result.printLayout?.element?.attribution) result.printLayout.element.attribution=lang==="pt"?"Incluir assinatura GeoMoz Explorer":"Include GeoMoz Explorer attribution";
   if(result.toolbar?.item) {
     result.toolbar.item.saveProjectFileNamePlaceholder="Untitled_Projecto.geomoz";
     if(typeof result.toolbar.item.openProjectFromUrlDesc==="string")
