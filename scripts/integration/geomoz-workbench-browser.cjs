@@ -387,13 +387,10 @@ async function settleRecovery(page){
   await page.locator('.gm-menu-slot:not([hidden]) button').first().click();
   await page.getByRole("menu").first().waitFor();
   await page.keyboard.press("Escape");
-  // MapLibre + Geoman and the raster processing suite may hold several WebGL
-  // contexts. Validate theme persistence, independent mobile layout and a
-  // second tab in a fresh browser context so memory pressure from intensive
-  // map editing cannot make the unrelated theme test flaky.
-  await context.close();
-  context=await browser.newContext({viewport:{width:1440,height:960},colorScheme:"light"});
-  await context.addInitScript(()=>Object.defineProperty(window,"showSaveFilePicker",{configurable:true,value:undefined}));
+  // Release intensive MapLibre/Geoman WebGL resources while retaining the
+  // SAME authenticated browser context and its session/IndexedDB/cookies.
+  // A brand-new context would correctly be rejected by Workspace login.
+  await page.close();
   page=await context.newPage();
   page.setDefaultTimeout(90000);
   page.on("pageerror",error=>{errors.push(error.message);console.error("Runtime error:",error.message);});
