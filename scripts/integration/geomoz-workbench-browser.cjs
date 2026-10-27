@@ -144,6 +144,23 @@ async function settleRecovery(page){
   assert.equal(await printDialog.getByLabel("Resolução de saída").inputValue(),"300");
   const [mapWidth,mapHeight]=(await printDialog.getByText(/Mapa: \d+ × \d+ píxeis/).innerText()).match(/Mapa: (\d+) × (\d+)/).slice(1).map(Number);
   assert.ok(mapWidth>2000 || mapHeight>2000,"Print map is redrawn above screen resolution");
+  await printDialog.getByRole("button",{name:"Adicionar texto",exact:true}).click();
+  await printDialog.getByLabel("Texto do item").fill("Carta geológica de Manica");
+  await printDialog.getByLabel("x do item",{exact:true}).fill("25");
+  await printDialog.getByLabel("Bloquear posição").check();
+  assert.equal(await printDialog.getByLabel("x do item",{exact:true}).isDisabled(),true);
+  await printDialog.getByLabel("Bloquear posição").uncheck();
+  const logoPng=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=40;c.height=40;const ctx=c.getContext('2d');ctx.fillStyle='#0284c7';ctx.fillRect(0,0,40,40);return c.toDataURL('image/png').split(',')[1];});
+  await printDialog.getByLabel("Carregar logótipo").setInputFiles({name:'logo.png',mimeType:'image/png',buffer:Buffer.from(logoPng,'base64')});
+  await page.waitForFunction(()=>document.querySelector('select[aria-label="Item seleccionado"]')?.options.length===3);
+  const svgDownload=page.waitForEvent('download');
+  await printDialog.getByRole('button',{name:/SVG/}).click();
+  const svgFile=await svgDownload;
+  await svgFile.saveAs('workbench-browser-artifacts/layout-items.svg');
+  const svgContent=await readFile('workbench-browser-artifacts/layout-items.svg','utf8');
+  assert.match(svgContent,/Carta geológica de Manica/);
+  assert.ok((svgContent.match(/<image/g)||[]).length>=2,'SVG embeds map and uploaded logo');
+  console.log("GeoMoz editable layout text and position lock verified.");
   await page.screenshot({path:"workbench-browser-artifacts/print-quality.png"});
   await page.keyboard.press("Escape");
   await printDialog.waitFor({state:"hidden"});
@@ -158,6 +175,7 @@ async function settleRecovery(page){
   assert.equal(projectDownload.suggestedFilename(),"Untitled_Projecto.geomoz");
   await projectDownload.saveAs("workbench-browser-artifacts/Untitled_Projecto.geomoz");
   const savedProject=JSON.parse(await readFile("workbench-browser-artifacts/Untitled_Projecto.geomoz","utf8"));
+  assert.equal(savedProject.printLayout.geomozItems[0].text,"Carta geológica de Manica");
   await saveDialog.waitFor({state:"hidden"});
   for(const extension of ["geomoz","geolibre","geolibre.json"]){
     const name="Compatibilidade "+extension;
