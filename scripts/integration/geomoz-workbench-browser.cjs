@@ -310,7 +310,21 @@ async function settleRecovery(page){
   await digitizing.waitFor();
   assert.ok(await digitizing.getByRole("group",{name:"Configuração de aderência"}).count()>0);
   await digitizing.getByLabel("Tolerância (pixels)").fill("14");
+  await page.evaluate(()=>{
+    window.__geomozDrawingReady=null;
+    window.__geomozClicks=[];
+    window.addEventListener("geomoz:digitizing-draw-ready",event=>{window.__geomozDrawingReady=event.detail;},{once:true});
+    document.addEventListener("click",event=>{
+      if(window.__geomozClicks.length<10)window.__geomozClicks.push({
+        target:event.target?.tagName,
+        className:typeof event.target?.className==="string"?event.target.className:"",
+        x:event.clientX,y:event.clientY,
+      });
+    },true);
+  });
   await digitizing.getByTestId("geomoz-add-digitized-feature").click();
+  await page.waitForFunction(()=>window.__geomozDrawingReady?.mode==="line",{timeout:15000});
+  console.log("GeoMoz native drawing mode active:",JSON.stringify(await page.evaluate(()=>window.__geomozDrawingReady)));
   const digitizingLayerId=await digitizing.getAttribute("data-layer-id");
   assert.ok(digitizingLayerId,"Native digitizing is bound to the selected layer");
   const canvas=await page.locator("main canvas").first().boundingBox();
@@ -327,7 +341,12 @@ async function settleRecovery(page){
     await page.waitForTimeout(240);
   }
   await digitizing.getByTestId("geomoz-finish-digitized-feature").click();
-  console.log("GeoMoz native draw events",JSON.stringify(await page.evaluate(()=>window.__geomozDrawEvents)));
+  console.log("GeoMoz native draw events",JSON.stringify(await page.evaluate(()=>({
+    created:window.__geomozDrawEvents,clicks:window.__geomozClicks,
+    canvases:[...document.querySelectorAll("main canvas")].map(x=>({
+      className:x.className,rect:JSON.stringify(x.getBoundingClientRect().toJSON()),
+    })),
+  }))));
   const featureForm=page.getByRole("dialog",{name:"Atributos da nova feição"});
   await featureForm.waitFor();
   await featureForm.getByLabel("Atributo nome").fill("Falha de controlo");
