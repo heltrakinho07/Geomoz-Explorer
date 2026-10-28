@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { auth } from "@/lib/firebase";
 import {
   Globe,
   Mail,
@@ -43,6 +44,7 @@ export default function AuthModal({
   const [, setLocation] = useLocation();
   const {
     user,
+    isGuest,
     continueAsGuest,
     signInWithGoogle,
     signInWithEmail,
@@ -74,11 +76,11 @@ export default function AuthModal({
 
   // If user becomes logged in while modal is open, trigger success
   useEffect(() => {
-    if (user && isOpen) {
+    if (user && !isGuest && !user.isAnonymous && auth.currentUser && isOpen) {
       onSuccess?.();
       onClose();
     }
-  }, [user, isOpen, onSuccess, onClose]);
+  }, [user, isGuest, isOpen, onSuccess, onClose]);
 
   const handleGoogleSignIn = async () => {
     setSubmitting(true);
@@ -152,7 +154,8 @@ export default function AuthModal({
 
   const handleGuestEntry = () => {
     continueAsGuest();
-    onSuccess?.();
+    // Guest/demo mode is not a successful Firebase sign-in. In particular,
+    // never invoke the return-to-GIS callback reserved for real accounts.
     onClose();
     setLocation("/app");
   };

@@ -41,6 +41,27 @@ async function settleRecovery(page){
  page.on("pageerror",error=>{errors.push(error.message);console.error("Runtime error:",error.message);});
  page.setDefaultTimeout(90000);
  try{
+  const portalMessage = authenticated =>
+    '<!doctype html><html><body><script>window.parent.postMessage(' +
+    JSON.stringify({type:"geomoz:workspace-auth-state",authenticated}) +
+    ',window.location.origin);</script></body></html>';
+
+  // Test an unauthenticated deep link: the real engine must never start.
+  const visitor = await context.newPage();
+  await visitor.route("**/auth/workspace-check", route =>
+    route.fulfill({status:200,contentType:"text/html",body:portalMessage(false)}));
+  await visitor.goto("http://127.0.0.1:4182/gis-workspace/");
+  await visitor.waitForURL(url => url.pathname === "/login" &&
+    url.searchParams.get("next") === "/gis-workspace/", {timeout:10000});
+  assert.equal(await visitor.getByTestId("geomoz-workbench-chrome").count(),0,
+    "Unauthenticated visitors must not run the GIS engine");
+  await visitor.close();
+
+  // Only the CI browser harness simulates a real Firebase session; this route
+  // never exists in the deployed application. The actual portal bridge checks
+  // Firebase Auth, rejects guests, and communicates with the same message type.
+  await context.route("**/auth/workspace-check", route =>
+    route.fulfill({status:200,contentType:"text/html",body:portalMessage(true)}));
   await page.goto("http://127.0.0.1:4182/gis-workspace/");
   await page.getByTestId("geomoz-workbench-chrome").waitFor();
   const workspaceBrand=page.locator(".gm-workbench-chrome .gm-brand img");
@@ -114,6 +135,67 @@ async function settleRecovery(page){
   await page.mouse.move(expanded.x+expanded.width/2-100,expanded.y+100,{steps:10});
   await page.mouse.up();
   assert.ok(Math.abs((await catalog.boundingBox()).width-beforeResize.width)<5,"Catalog can shrink again");
+
+  // Save the actual project, then reopen its unchanged schema under the new and legacy extensions.
+  await page.getByRole("button",{name:"Resultados",exact:true}).first().click();
+  await page.locator('[data-command="project.print-layout"]').click();
+  const printDialog=page.getByRole("dialog");
+  await printDialog.getByText(/Mapa: \d+ × \d+ píxeis/).waitFor({timeout:30000});
+  assert.equal(await printDialog.getByLabel("Resolução de saída").inputValue(),"300");
+  const [mapWidth,mapHeight]=(await printDialog.getByText(/Mapa: \d+ × \d+ píxeis/).innerText()).match(/Mapa: (\d+) × (\d+)/).slice(1).map(Number);
+  assert.ok(mapWidth>2000 || mapHeight>2000,"Print map is redrawn above screen resolution");
+  await printDialog.getByRole("button",{name:"Adicionar texto",exact:true}).click();
+  await printDialog.getByLabel("Texto do item").fill("Carta geológica de Manica");
+  await printDialog.getByLabel("x do item",{exact:true}).fill("25");
+  await printDialog.getByLabel("Bloquear posição").check();
+  assert.equal(await printDialog.getByLabel("x do item",{exact:true}).isDisabled(),true);
+  await printDialog.getByLabel("Bloquear posição").uncheck();
+  const logoPng=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=40;c.height=40;const ctx=c.getContext('2d');ctx.fillStyle='#0284c7';ctx.fillRect(0,0,40,40);return c.toDataURL('image/png').split(',')[1];});
+  await printDialog.getByLabel("Carregar logótipo").setInputFiles({name:'logo.png',mimeType:'image/png',buffer:Buffer.from(logoPng,'base64')});
+  await page.waitForFunction(()=>document.querySelector('select[aria-label="Item seleccionado"]')?.options.length===3);
+  const svgDownload=page.waitForEvent('download');
+  await printDialog.getByRole('button',{name:/SVG/}).click();
+  const svgFile=await svgDownload;
+  await svgFile.saveAs('workbench-browser-artifacts/layout-items.svg');
+  const svgContent=await readFile('workbench-browser-artifacts/layout-items.svg','utf8');
+  assert.match(svgContent,/Carta geológica de Manica/);
+  assert.ok((svgContent.match(/<image/g)||[]).length>=2,'SVG embeds map and uploaded logo');
+  console.log("GeoMoz editable layout text and position lock verified.");
+  await page.screenshot({path:"workbench-browser-artifacts/print-quality.png"});
+  await page.keyboard.press("Escape");
+  await printDialog.waitFor({state:"hidden"});
+  console.log("GeoMoz high-resolution print capture and DPI control verified.");
+  await page.locator('[data-command="project.save-as"]').click();
+  const saveDialog=page.getByRole("dialog").filter({has:page.locator("#save-project-name")});
+  await saveDialog.waitFor();
+  assert.equal(await page.locator("#save-project-name").inputValue(),"Untitled_Projecto.geomoz");
+  const projectDownloadPromise=page.waitForEvent("download");
+  await saveDialog.locator('button[type="submit"]').click();
+  const projectDownload=await projectDownloadPromise;
+  assert.equal(projectDownload.suggestedFilename(),"Untitled_Projecto.geomoz");
+  await projectDownload.saveAs("workbench-browser-artifacts/Untitled_Projecto.geomoz");
+  const savedProject=JSON.parse(await readFile("workbench-browser-artifacts/Untitled_Projecto.geomoz","utf8"));
+  assert.equal(savedProject.printLayout.geomozItems[0].text,"Carta geológica de Manica");
+  await saveDialog.waitFor({state:"hidden"});
+  for(const extension of ["geomoz","geolibre","geolibre.json"]){
+    const name="Compatibilidade "+extension;
+    const text=JSON.stringify({...savedProject,name});
+    await page.evaluate(({text,extension})=>{
+      const transfer=new DataTransfer();
+      transfer.items.add(new File([text],"project."+extension,{type:"application/json"}));
+      const shell=document.querySelector('[data-testid="desktop-shell"]');
+      for(const type of ["dragenter","dragover","drop"])shell.dispatchEvent(new DragEvent(type,{bubbles:true,cancelable:true,dataTransfer:transfer}));
+    },{text,extension});
+    await page.waitForFunction(name=>document.querySelector('input[aria-label="Nome do projecto"]')?.value===name,name);
+  }
+  console.log("GeoMoz project download and new/legacy project reopening passed.");
+  // Start the independent digitizing regression with freshly mounted map controls.
+  await page.reload();
+  await page.getByTestId("geomoz-workbench-chrome").waitFor();
+  await settleRecovery(page);
+  await page.getByTestId("geomoz-layer-catalog").waitFor();
+  await page.getByRole("button",{name:"Digitalizar",exact:true}).click();
+  await page.locator(".gm-catalog-nav").getByRole("button",{name:/^Camadas/}).click();
 
   await page.getByRole("textbox",{name:"Nome do projecto"}).fill("Estudo do território");
   await page.getByRole("textbox",{name:"Nome do projecto"}).press("Enter");
@@ -382,13 +464,40 @@ async function settleRecovery(page){
   assert.ok(created.features.some(f=>f.geometry?.type==="LineString"&&f.properties?.nome==="Falha de controlo"&&f.properties?.densidade===2.7),
     "Real native map drawing must persist geometry and typed attributes in selected layer");
   console.log("Native geological line digitized, attributed, committed and exported.");
+  // Save and reopen the actual edited project, then compare its exported data.
+  await page.locator('[data-command="project.save-as"]').click();
+  await saveDialog.waitFor();
+  await page.locator("#save-project-name").fill("Edicao_validada.geomoz");
+  const editedDownloadPromise=page.waitForEvent("download");
+  await saveDialog.locator('button[type="submit"]').click();
+  await (await editedDownloadPromise).saveAs("workbench-browser-artifacts/Edicao_validada.geomoz");
+  await saveDialog.waitFor({state:"hidden"});
+  const editedProject=await readFile("workbench-browser-artifacts/Edicao_validada.geomoz","utf8");
+  await page.evaluate(text=>{
+    const transfer=new DataTransfer();
+    transfer.items.add(new File([text],"Edicao_validada.geomoz",{type:"application/json"}));
+    const shell=document.querySelector('[data-testid="desktop-shell"]');
+    for(const type of ["dragenter","dragover","drop"])shell.dispatchEvent(new DragEvent(type,{bubbles:true,cancelable:true,dataTransfer:transfer}));
+  },editedProject);
+  await page.waitForFunction(()=>document.querySelector('input[aria-label="Nome do projecto"]')?.value==="Edicao_validada");
+  await page.locator('.gm-layer-row[data-layer-name="Falhas e lineamentos"] .gm-layer-select').click();
+  const reopenedInspector=page.locator('.gm-layer-inspector[data-selected-layer-name="Falhas e lineamentos"]:visible').last();
+  const properties=reopenedInspector.locator(".gm-layer-properties");
+  if(!await properties.evaluate(node=>node.open))await properties.locator("summary").click();
+  const reopenedDownload=page.waitForEvent("download");
+  await reopenedInspector.getByRole("button",{name:"Exportar GeoJSON",exact:true}).click();
+  await (await reopenedDownload).saveAs("workbench-browser-artifacts/reopened-fault.geojson");
+  const reopened=JSON.parse(await readFile("workbench-browser-artifacts/reopened-fault.geojson","utf8"));
+  assert.deepEqual(reopened.features,created.features,"Project reopen must preserve digitized coordinates and typed attributes");
+  console.log("Digitized project saved, reopened and exported without data loss.");
+
 
 
   await page.locator('.gm-menu-slot:not([hidden]) button').first().click();
   await page.getByRole("menu").first().waitFor();
   await page.keyboard.press("Escape");
   // Release intensive MapLibre/Geoman WebGL resources while retaining the
-  // SAME authenticated browser context and its session/IndexedDB/cookies.
+  // SAME browser context, including the CI authentication bridge route.
   // A brand-new context would correctly be rejected by Workspace login.
   await page.close();
   page=await context.newPage();
@@ -401,7 +510,7 @@ async function settleRecovery(page){
     await page.getByTestId("geomoz-theme-toggle").click();
     await page.waitForFunction(()=>window.GeoMozTheme.getTheme()==="dark");
   }
-  console.log("Fresh browser context for independent theme, mobile and viewer verification.");
+  console.log("Fresh page for independent theme, mobile and viewer verification.");
   await page.reload();
   await page.getByTestId("geomoz-workbench-chrome").waitFor();
   await settleRecovery(page);

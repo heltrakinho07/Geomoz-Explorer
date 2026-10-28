@@ -33,6 +33,12 @@ export function brandLocaleCatalog(catalog,lang){
     return rename(value,lang);
   }
   const result=visit(catalog);
+  if(result.printLayout?.element?.attribution) result.printLayout.element.attribution=lang==="pt"?"Incluir assinatura GeoMoz Explorer":"Include GeoMoz Explorer attribution";
+  if(result.toolbar?.item) {
+    result.toolbar.item.saveProjectFileNamePlaceholder="Untitled_Projecto.geomoz";
+    if(typeof result.toolbar.item.openProjectFromUrlDesc==="string")
+      result.toolbar.item.openProjectFromUrlDesc=result.toolbar.item.openProjectFromUrlDesc.replaceAll(".geolibre.json",".geomoz");
+  }
   if(result.about){
     const translations={
       pt:["Sobre o GeoMoz GIS Workspace","Sistema de informação geográfica integrado no GeoMoz."],

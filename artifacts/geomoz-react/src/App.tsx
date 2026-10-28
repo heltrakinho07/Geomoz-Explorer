@@ -11,6 +11,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { GeeAuthProvider } from "@/hooks/useGeeAuth";
 import { ProjectProvider } from "@/context/ProjectContext";
 import PwaInstallPrompt from "@/components/PwaInstallPrompt";
+import WorkspaceAuthBridge from "@/components/WorkspaceAuthBridge";
 
 
 interface ErrorBoundaryProps {
@@ -135,6 +136,7 @@ export default function App() {
                 <Route path="/privacy">{() => <PrivacyPolicy />}</Route>
                 <Route path="/terms">{() => <TermsOfService />}</Route>
                 <Route path="/login">{() => <LandingPage initialAuthMode="login" />}</Route>
+                <Route path="/auth/workspace-check">{() => <WorkspaceAuthBridge />}</Route>
                 <Route path="/register">{() => <LandingPage initialAuthMode="register" />}</Route>
                 <Route path="/view/hidro">{() => <HidroWebGisViewer />}</Route>
                 <Route path="/share/hidro/:id">{(params) => <HidroWebGisViewer id={params.id} />}</Route>

@@ -123,11 +123,13 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
     onClick={()=>window.dispatchEvent(new CustomEvent("geomoz:digitizing-finish-feature",{detail:{layerId:layer.id}}))}>
     <CheckCircle2 size={16}/> Concluir feição
    </button>}
+  </div>}
+  <div className="gm-digitizing-controls">
    <button type="button" disabled={!layer.geojson?.features?.length||active}
     onClick={()=>useAppStore.getState().setAttributeTableOpen(true)}>
     <Table2 size={15}/> Tabela de atributos
    </button>
-  </div>}
+  </div>
   <details className="gm-digitizing-help"><summary><Info size={14}/> Como digitalizar esta camada</summary>
    <ol><li><strong>Preparação:</strong> carregue a carta em «Dados», crie uma camada com geometria, SRC de referência e campos, e seleccione-a.</li>
    <li><strong>Configuração:</strong> active a edição e configure a aderência e a tolerância.</li>
