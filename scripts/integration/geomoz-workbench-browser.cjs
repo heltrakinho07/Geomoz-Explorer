@@ -465,6 +465,8 @@ async function settleRecovery(page){
     "Real native map drawing must persist geometry and typed attributes in selected layer");
   console.log("Native geological line digitized, attributed, committed and exported.");
   // Save and reopen the actual edited project, then compare its exported data.
+  await page.getByRole("textbox",{name:"Nome do projecto"}).fill("Edicao_validada");
+  await page.getByRole("textbox",{name:"Nome do projecto"}).press("Enter");
   await page.locator('[data-command="project.save-as"]').click();
   await saveDialog.waitFor();
   await page.locator("#save-project-name").fill("Edicao_validada.geomoz");
@@ -473,6 +475,8 @@ async function settleRecovery(page){
   await (await editedDownloadPromise).saveAs("workbench-browser-artifacts/Edicao_validada.geomoz");
   await saveDialog.waitFor({state:"hidden"});
   const editedProject=await readFile("workbench-browser-artifacts/Edicao_validada.geomoz","utf8");
+  await page.getByRole("textbox",{name:"Nome do projecto"}).fill("Antes de reabrir");
+  await page.getByRole("textbox",{name:"Nome do projecto"}).press("Enter");
   await page.evaluate(text=>{
     const transfer=new DataTransfer();
     transfer.items.add(new File([text],"Edicao_validada.geomoz",{type:"application/json"}));
