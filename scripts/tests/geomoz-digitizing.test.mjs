@@ -15,6 +15,9 @@ test("native layer editor accepts real drawing, snapping and user-provided featu
  assert.match(patched,/options\.settings\.snapDistance = distance/);
  assert.match(patched,/enableMode\("helper", "snapping"\)/);
  assert.match(patched,/geomoz:digitizing-feature-created/);
+ assert.match(patched, /\.on\("gm:create", geomozOnNativeFeatureCreated\)/);
+ assert.match(patched, /\.off\("gm:create", geomozOnNativeFeatureCreated\)/);
+ assert.match(patched, /nativeFeature\.updateProperties\(value\.attributes\)/);
  assert.match(patched,/geomozDigitizedAttributes\.get/);
  assert.match(patched,/geojson: withAttributes/);
  assert.match(patched,/writeBackToVectorSource\(layer, withAttributes\)/);
@@ -43,4 +46,30 @@ test("layer schema creation and geometry editing retain a single native workflow
  assert.match(prepare,/patchGeoMozDigitizingEngine/);
  assert.match(prepare,/GeoMozDigitizingTools\.tsx/);
  assert.doesNotMatch(wizard+tools,/\p{Extended_Pictographic}/u,"Only Lucide icons, no emoji decoration");
+});
+
+test("QGIS-like four-stage workflow gates creation, editing, drawing and raster tools by task",()=>{
+  const chrome=readFileSync("scripts/assets/workbench/GeoMozWorkbenchChrome.tsx","utf8");
+  const layers=readFileSync("scripts/assets/workbench/GeoMozLayerPanel.tsx","utf8");
+  const tools=readFileSync("scripts/assets/workbench/GeoMozDigitizingTools.tsx","utf8");
+  const wizard=readFileSync("scripts/assets/workbench/GeoMozLayerCreation.tsx","utf8");
+  const engine=readFileSync("scripts/geomoz-digitizing-engine.mjs","utf8");
+  assert.match(chrome,/activeTask==="map"&&<section className="gm-ribbon-group"/);
+  assert.match(chrome,/label:"Preparação cartográfica",ids:\["proc.georeferencer"\]/);
+  assert.doesNotMatch(chrome,/map:\[\{label:"Preparação cartográfica",ids:\[[^\]]*plugin\.maplibre-gl-geo-editor/);
+  assert.match(chrome,/gm-ribbon-accordion/);
+  assert.match(chrome,/document\.documentElement\.dataset\.geomozTask=activeTask/);
+  const theme=readFileSync("scripts/assets/geolibre-geomoz-theme.css","utf8");
+  assert.match(theme,/html \.geo-editor-toolbar\{display:none!important\}/);
+  assert.match(chrome,/Ferramentas raster/);
+  assert.match(layers,/activeTask==="map"&&<GeoMozDigitizingTools/);
+  assert.match(layers,/setActiveTask\(task\)/);
+  assert.match(tools,/\{active&&<div className="gm-digitizing-controls" aria-label="Ferramentas de desenho">/);
+  assert.match(tools,/\{active&&<div className="gm-digitizing-snap"/);
+  assert.match(tools,/Concluir e guardar edição/);
+  assert.match(tools,/onCancelEdit/);
+  assert.match(wizard,/Criar camada vazia/);
+  assert.doesNotMatch(wizard,/enableDraw\(/);
+  assert.match(engine,/geomozLeaveDigitizingTask/);
+  assert.match(engine,/disableDraw\(\)/);
 });

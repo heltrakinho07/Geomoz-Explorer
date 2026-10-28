@@ -32,11 +32,11 @@ async function settleRecovery(page){
  await mkdir("workbench-browser-artifacts",{recursive:true});
  await new Promise(resolve=>server.listen(4182,"127.0.0.1",resolve));
  const browser=await chromium.launch({headless:true,args:["--use-angle=swiftshader","--enable-webgl","--ignore-gpu-blocklist"]});
- const context=await browser.newContext({viewport:{width:1440,height:960},colorScheme:"light"});
+ let context=await browser.newContext({viewport:{width:1440,height:960},colorScheme:"light"});
  // Exercise the actual download fallback used in browsers without File System Access.
  // Keep the application's picker implementation intact.
  await context.addInitScript(()=>Object.defineProperty(window,"showSaveFilePicker",{configurable:true,value:undefined}));
- const page=await context.newPage(),errors=[];
+ let page=await context.newPage();const errors=[];
  page.on("console",message=>{if(["error","warning","warn"].includes(message.type())&&/Geo.?Editor|Geoman|deactivat|plugin.*error|removeControl/i.test(message.text()))console.log("Editor diagnostic:",message.text());});
  page.on("pageerror",error=>{errors.push(error.message);console.error("Runtime error:",error.message);});
  page.setDefaultTimeout(90000);
@@ -60,7 +60,7 @@ async function settleRecovery(page){
   // Only the CI browser harness simulates a real Firebase session; this route
   // never exists in the deployed application. The actual portal bridge checks
   // Firebase Auth, rejects guests, and communicates with the same message type.
-  await page.route("**/auth/workspace-check", route =>
+  await context.route("**/auth/workspace-check", route =>
     route.fulfill({status:200,contentType:"text/html",body:portalMessage(true)}));
   await page.goto("http://127.0.0.1:4182/gis-workspace/");
   await page.getByTestId("geomoz-workbench-chrome").waitFor();
@@ -367,22 +367,78 @@ async function settleRecovery(page){
   // rather than silently accumulating all sketches in a generic layer.
   const activeInspector=page.locator('.gm-layer-inspector[data-selected-layer-name="Falhas e lineamentos"]:visible').first();
   assert.equal(await activeInspector.locator('[data-testid="geomoz-add-digitized-feature"]:visible').count(),0,"Draw toolbar must be hidden until edit mode");
-  const editButton=activeInspector.locator('[data-testid="geomoz-edit-layer"]').first();
+  const selectedLayerId=await activeInspector.getAttribute("data-selected-layer-id");
+  assert.ok(selectedLayerId,"The named layer inspector must resolve an actual layer ID");
+  const digitizingSelector='[data-testid="geomoz-digitizing-tools"][data-layer-id="'+selectedLayerId+'"]';
+  const editButton=page.locator(digitizingSelector+ ' [data-testid="geomoz-edit-layer"]:visible').last();
   await editButton.click();
-  await activeInspector.locator('[data-testid="geomoz-edit-layer"][aria-pressed="true"]').first().waitFor({timeout:15000});
-  await page.locator(".geo-editor-toolbar").waitFor();
-  const digitizing=activeInspector.locator(".gm-digitizing-tools").first();
+  await page.waitForTimeout(3500);
+  console.log("GeoMoz edit-start diagnostics:", JSON.stringify(await page.evaluate(()=>{
+    return {
+      pressed: [...document.querySelectorAll('[data-testid="geomoz-edit-layer"]')].map(el=>({
+        attr: el.getAttribute("aria-pressed"), disabled:el.hasAttribute("disabled"),
+        layer:el.closest(".gm-layer-inspector")?.getAttribute("data-selected-layer-name"),
+      })),
+      errors:[...document.querySelectorAll('[role="alert"],.drop-error,.gm-catalog-notice')].map(el=>(el.textContent||"").trim()).filter(Boolean).slice(0,12),
+      nativeToolbar:document.querySelectorAll(".geo-editor-toolbar").length,
+    };
+  })));
+  await page.locator(digitizingSelector+' [data-testid="geomoz-edit-layer"][aria-pressed="true"]:visible').last().waitFor({timeout:60000});
+  // The native Geoman toolbar is loaded but intentionally visually hidden:
+  // the user's only draw tools are contextual to the active vector layer.
+  await page.locator(".geo-editor-toolbar").waitFor({state:"attached"});
+  assert.equal(await page.locator(".geo-editor-toolbar:visible").count(),0);
+  const digitizing=page.locator(digitizingSelector+':visible').last();
   await digitizing.waitFor();
   assert.ok(await digitizing.getByRole("group",{name:"Configuração de aderência"}).count()>0);
   await digitizing.getByLabel("Tolerância (pixels)").fill("14");
+  await page.evaluate(()=>{
+    window.__geomozDrawingReady=null;
+    window.__geomozClicks=[];
+    window.addEventListener("geomoz:digitizing-draw-ready",event=>{window.__geomozDrawingReady=event.detail;},{once:true});
+    document.addEventListener("click",event=>{
+      if(window.__geomozClicks.length<10)window.__geomozClicks.push({
+        target:event.target?.tagName,
+        className:typeof event.target?.className==="string"?event.target.className:"",
+        x:event.clientX,y:event.clientY,
+      });
+    },true);
+  });
   await digitizing.getByTestId("geomoz-add-digitized-feature").click();
+  await page.waitForFunction(()=>window.__geomozDrawingReady?.mode==="line",{timeout:15000});
+  console.log("GeoMoz native drawing mode active:",JSON.stringify(await page.evaluate(()=>window.__geomozDrawingReady)));
   const digitizingLayerId=await digitizing.getAttribute("data-layer-id");
   assert.ok(digitizingLayerId,"Native digitizing is bound to the selected layer");
-  const canvas=await page.locator("main canvas").first().boundingBox();
+  // Earlier toolbox/wizard interactions can scroll the outer document, making
+  // the map canvas top negative. Playwright mouse clicks would then hit HTML,
+  // not MapLibre, and Geoman would legitimately receive no vertices.
+  const mapCanvas=page.locator("main canvas.maplibregl-canvas").first();
+  await mapCanvas.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(180);
+  const canvas=await mapCanvas.boundingBox();
+  const viewport=page.viewportSize();
+  assert.ok(canvas&&viewport&&canvas.width>100&&canvas.height>100,"MapLibre canvas is mounted");
+  assert.ok(canvas.y>=-1&&canvas.y+canvas.height<=viewport.height+2,
+    "Map must be visible before clicking digitization vertices (canvas top="+canvas.y+")");
   const at=(x,y)=>({x:canvas.x+canvas.width*x,y:canvas.y+canvas.height*y});
-  const a=at(.53,.32),b=at(.7,.42),c=at(.83,.57);
-  await page.mouse.click(a.x,a.y);await page.mouse.click(b.x,b.y);
-  await page.mouse.dblclick(c.x,c.y);
+  const a=at(.53,.32),b=at(.66,.39),c=at(.78,.51);
+  // Use the pinned Geoman DrawLine.lineFinished handler via the explicit
+  // "Concluir feição" action so that map-marker hit areas and double clicks
+  // cannot make the browser E2E nondeterministic.
+  await page.evaluate(()=>{window.__geomozDrawEvents=[];window.addEventListener("geomoz:digitizing-feature-created",e=>window.__geomozDrawEvents.push(e.detail));});
+  for(const p of [a,b,c]){
+    await page.mouse.move(p.x,p.y);
+    await page.waitForTimeout(120);
+    await page.mouse.click(p.x,p.y);
+    await page.waitForTimeout(240);
+  }
+  await digitizing.getByTestId("geomoz-finish-digitized-feature").click();
+  console.log("GeoMoz native draw events",JSON.stringify(await page.evaluate(()=>({
+    created:window.__geomozDrawEvents,clicks:window.__geomozClicks,
+    canvases:[...document.querySelectorAll("main canvas")].map(x=>({
+      className:x.className,rect:JSON.stringify(x.getBoundingClientRect().toJSON()),
+    })),
+  }))));
   const featureForm=page.getByRole("dialog",{name:"Atributos da nova feição"});
   await featureForm.waitFor();
   await featureForm.getByLabel("Atributo nome").fill("Falha de controlo");
@@ -392,7 +448,7 @@ async function settleRecovery(page){
   console.log("Layer schema, native snapping, draw tool and per-feature attribute UI verified.");
 
   await editButton.click();
-  await activeInspector.locator('[data-testid="geomoz-edit-layer"][aria-pressed="false"]').first().waitFor({timeout:15000});
+  await page.locator(digitizingSelector+' [data-testid="geomoz-edit-layer"][aria-pressed="false"]:visible').last().waitFor({timeout:15000});
   // Assert that coordinates and typed attributes persisted in the target GeoJSON
   // and no transient Sketches layer received the user's geological line.
   await page.evaluate((layerId)=>{
@@ -408,11 +464,57 @@ async function settleRecovery(page){
   assert.ok(created.features.some(f=>f.geometry?.type==="LineString"&&f.properties?.nome==="Falha de controlo"&&f.properties?.densidade===2.7),
     "Real native map drawing must persist geometry and typed attributes in selected layer");
   console.log("Native geological line digitized, attributed, committed and exported.");
+  // Save and reopen the actual edited project, then compare its exported data.
+  await page.getByRole("textbox",{name:"Nome do projecto"}).fill("Edicao_validada");
+  await page.getByRole("textbox",{name:"Nome do projecto"}).press("Enter");
+  await page.locator('[data-command="project.save-as"]').click();
+  await saveDialog.waitFor();
+  await page.locator("#save-project-name").fill("Edicao_validada.geomoz");
+  const editedDownloadPromise=page.waitForEvent("download");
+  await saveDialog.locator('button[type="submit"]').click();
+  await (await editedDownloadPromise).saveAs("workbench-browser-artifacts/Edicao_validada.geomoz");
+  await saveDialog.waitFor({state:"hidden"});
+  const editedProject=await readFile("workbench-browser-artifacts/Edicao_validada.geomoz","utf8");
+  await page.getByRole("textbox",{name:"Nome do projecto"}).fill("Antes de reabrir");
+  await page.getByRole("textbox",{name:"Nome do projecto"}).press("Enter");
+  await page.evaluate(text=>{
+    const transfer=new DataTransfer();
+    transfer.items.add(new File([text],"Edicao_validada.geomoz",{type:"application/json"}));
+    const shell=document.querySelector('[data-testid="desktop-shell"]');
+    for(const type of ["dragenter","dragover","drop"])shell.dispatchEvent(new DragEvent(type,{bubbles:true,cancelable:true,dataTransfer:transfer}));
+  },editedProject);
+  await page.waitForFunction(()=>document.querySelector('input[aria-label="Nome do projecto"]')?.value==="Edicao_validada");
+  await page.locator('.gm-layer-row[data-layer-name="Falhas e lineamentos"] .gm-layer-select').click();
+  const reopenedInspector=page.locator('.gm-layer-inspector[data-selected-layer-name="Falhas e lineamentos"]:visible').last();
+  const properties=reopenedInspector.locator(".gm-layer-properties");
+  if(!await properties.evaluate(node=>node.open))await properties.locator("summary").click();
+  const reopenedDownload=page.waitForEvent("download");
+  await reopenedInspector.getByRole("button",{name:"Exportar GeoJSON",exact:true}).click();
+  await (await reopenedDownload).saveAs("workbench-browser-artifacts/reopened-fault.geojson");
+  const reopened=JSON.parse(await readFile("workbench-browser-artifacts/reopened-fault.geojson","utf8"));
+  assert.deepEqual(reopened.features,created.features,"Project reopen must preserve digitized coordinates and typed attributes");
+  console.log("Digitized project saved, reopened and exported without data loss.");
+
 
 
   await page.locator('.gm-menu-slot:not([hidden]) button').first().click();
   await page.getByRole("menu").first().waitFor();
   await page.keyboard.press("Escape");
+  // Release intensive MapLibre/Geoman WebGL resources while retaining the
+  // SAME browser context, including the CI authentication bridge route.
+  // A brand-new context would correctly be rejected by Workspace login.
+  await page.close();
+  page=await context.newPage();
+  page.setDefaultTimeout(90000);
+  page.on("pageerror",error=>{errors.push(error.message);console.error("Runtime error:",error.message);});
+  await page.goto("http://127.0.0.1:4182/gis-workspace/");
+  await page.getByTestId("geomoz-workbench-chrome").waitFor();
+  await settleRecovery(page);
+  if(await page.evaluate(()=>window.GeoMozTheme.getTheme())!=="dark"){
+    await page.getByTestId("geomoz-theme-toggle").click();
+    await page.waitForFunction(()=>window.GeoMozTheme.getTheme()==="dark");
+  }
+  console.log("Fresh page for independent theme, mobile and viewer verification.");
   await page.reload();
   await page.getByTestId("geomoz-workbench-chrome").waitFor();
   await settleRecovery(page);
