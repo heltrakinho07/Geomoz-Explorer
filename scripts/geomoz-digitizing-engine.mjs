@@ -52,5 +52,11 @@ export function patchGeoMozDigitizingEngine(input) {
     "    lastGeometryEditEnd = { layerId: targetId, saved };\n    editTargetLayerId = null;",
     "    lastGeometryEditEnd = { layerId: targetId, saved };\n    geomozClearDigitizingAttributes(targetId);\n    editTargetLayerId = null;",
     "clear saved/discarded drafts");
+  source=source.replace('  if (!pluginActive || !geoEditorControl) return false;\n  // A session', '  console.warn("Geo Editor start", {pluginActive, control: !!geoEditorControl, layerId});\n  if (!pluginActive || !geoEditorControl) return false;\n  // A session');
+  source=source.replace('  await ensureGeomanReady();\n  if (!pluginActive', '  console.warn("Geo Editor waiting readiness");\n  await ensureGeomanReady();\n  console.warn("Geo Editor ready");\n  if (!pluginActive');
+  source=source.replace('  savedSketchesCollection = cloneFeatureCollection', '  console.warn("Geo Editor stashing sketches");\n  savedSketchesCollection = cloneFeatureCollection');
+  source=source.replace('  editTargetLayerId = layerId;', '  console.warn("Geo Editor set target",layerId);\n  editTargetLayerId = layerId;');
+  source=source.replace('    await geoEditorControl.loadGeoJson(tagged, SKETCHES_SOURCE_PATH);', '    console.warn("Geo Editor importing",tagged.features.length);\n    await geoEditorControl.loadGeoJson(tagged, SKETCHES_SOURCE_PATH);\n    console.warn("Geo Editor imported");');
+  source=source.replace('  notifyGeometryEdit();\n  return true;', '  console.warn("Geo Editor notifying", editTargetLayerId);\n  notifyGeometryEdit();\n  return true;');
   return source;
 }
