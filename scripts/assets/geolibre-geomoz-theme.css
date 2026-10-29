@@ -424,3 +424,29 @@ html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0
 .gm-digitizing-ribbon-tip{display:flex;align-items:center;gap:7px;max-width:300px;margin:auto 6px;padding:5px 6px;font-size:10px;line-height:1.35;color:var(--gm-subtle)}
 .gm-digitizing-ribbon-tip svg{flex:none;color:var(--gm-accent)}
 @media(max-width:767px){.gm-ribbon-accordion{min-width:95px}.gm-ribbon-accordion>summary{font-size:10px;padding:5px 7px}.gm-ribbon-accordion>div{min-width:min(240px,90vw);grid-template-columns:1fr}.gm-digitizing-ribbon-tip{max-width:155px;font-size:9px}}
+
+
+/* GeoMoz GIS Workbench — NextGIS QMS (native GIS raster-layer catalogue) */
+.gm-qms-panel{position:absolute;z-index:64;top:100%;right:16px;width:min(450px,calc(100vw - 32px));max-height:min(68vh,640px);overflow:auto;border:1px solid var(--gm-line);border-radius:0 0 14px 14px;background:var(--gm-surface);color:var(--gm-text);box-shadow:0 18px 40px #02061744;padding:15px;display:flex;flex-direction:column;gap:11px}
+.gm-qms-panel>header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.gm-qms-panel>header strong{display:flex;align-items:center;gap:7px;font-size:14px}
+.gm-qms-panel>header small{display:block;color:var(--gm-subtle);font-size:10px;margin-top:4px}
+.gm-qms-panel>header button{padding:5px;border-radius:7px;border:1px solid var(--gm-line);flex:none}
+.gm-qms-panel .gm-qms-search{display:flex;align-items:center;gap:7px;padding:9px;border:1px solid var(--gm-line);border-radius:8px;background:var(--gm-muted)}
+.gm-qms-panel .gm-qms-search input{flex:1;min-width:0;border:0;background:transparent;color:var(--gm-text);outline:none;font-size:12px}
+.gm-qms-panel>p{font-size:11px;color:var(--gm-subtle);display:flex;align-items:center;gap:6px}
+.gm-qms-panel>p.gm-qms-error{color:#b91c1c}
+.gm-qms-panel>p.gm-qms-success{color:#15803d}
+.gm-qms-results{display:flex;flex-direction:column;gap:6px;overflow:auto;min-height:0}
+.gm-qms-results>button{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;text-align:left;border:1px solid var(--gm-line);border-radius:9px;background:var(--gm-surface);color:var(--gm-text)}
+.gm-qms-results>button:hover:enabled{border-color:var(--gm-accent);background:var(--gm-muted)}
+.gm-qms-results>button:disabled{opacity:.55;cursor:not-allowed}
+.gm-qms-results>button>span:first-child{display:block;min-width:0;flex:1}
+.gm-qms-results strong{display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gm-qms-results small{display:block;font-size:10px;color:var(--gm-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+.gm-qms-add{font-size:10px;color:var(--gm-accent);font-weight:700}
+.gm-qms-panel>footer{font-size:10px;line-height:1.6;color:var(--gm-subtle)}
+.gm-qms-panel>footer a{color:var(--gm-accent);text-decoration:underline}
+.gm-qms-spinner{animation:gm-qms-spin .8s linear infinite}
+@keyframes gm-qms-spin{to{transform:rotate(360deg)}}
+@media(max-width:640px){.gm-qms-panel{right:8px;width:calc(100vw - 16px);max-height:55vh;padding:11px}}

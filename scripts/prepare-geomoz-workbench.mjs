@@ -171,9 +171,11 @@ write("components/layout/DesktopShell.tsx",shell);
 let rail=read("components/panels/SharedSidebar.tsx");
 rail=once(rail,'"flex w-full shrink-0 items-center gap-1 border-t bg-card','"gm-shared-rail flex w-full shrink-0 items-center gap-1 border-t bg-card',"GeoMoz activity rail");
 write("components/panels/SharedSidebar.tsx",rail);
-for(const name of ["GeoMozWorkbenchChrome.tsx","GeoMozLayerPanel.tsx","GeoMozLayerProperties.tsx","GeoMozSeismicPanel.tsx","GeoMozSeismicAnalysis.tsx","GeoMozEarthscopeStations.tsx","seismic-data.ts","seismic-analytics.ts","earthscope-stations.ts","GeoMozLayerCreation.tsx","GeoMozDigitizingTools.tsx","geomoz-cartography.ts"]){
+for(const name of ["GeoMozWorkbenchChrome.tsx","GeoMozQmsCatalog.tsx","GeoMozLayerPanel.tsx","GeoMozLayerProperties.tsx","GeoMozSeismicPanel.tsx","GeoMozSeismicAnalysis.tsx","GeoMozEarthscopeStations.tsx","seismic-data.ts","seismic-analytics.ts","earthscope-stations.ts","GeoMozLayerCreation.tsx","GeoMozDigitizingTools.tsx","geomoz-cartography.ts"]){
   write("components/geomoz/"+name,readFileSync(new URL("./assets/workbench/"+name,import.meta.url),"utf8"));
 }
+// Reuse the same GeoMoz-owned NextGIS public API adapter in the pinned GeoLibre build.
+write("lib/geomoz-qms-catalog.ts",readFileSync(new URL("../artifacts/geomoz-react/src/lib/qms-catalog.ts",import.meta.url),"utf8"));
 write("hooks/useThemeMode.ts",readFileSync(new URL("./assets/workbench/useThemeMode.ts",import.meta.url),"utf8"));
 // Portuguese is the GeoMoz default; explicit saved engine-language settings still win.
 let i18n=read("i18n/index.ts");
