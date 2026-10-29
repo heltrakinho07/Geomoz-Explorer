@@ -1,0 +1,31 @@
+name: GeoMoz QGIS vector printing CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/geomoz-qgis-print/**"
+      - ".github/workflows/geomoz-qgis-print-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/geomoz-qgis-print/**"
+      - ".github/workflows/geomoz-qgis-print-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Validate QGIS print job and Docker isolation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Python validation and service safety tests
+        run: python3 -m unittest discover -s services/geomoz-qgis-print/tests -p 'test_*.py' -v
+      - name: Validate isolated Docker Compose
+        env:
+          GEOMOZ_PRINT_WORKER_TOKEN: CI_VALIDATION_TOKEN_1234567890_abcdef
+        run: |
+          cd services/geomoz-qgis-print
+          docker compose config --quiet
+          docker compose config | grep -q '127.0.0.1'
+          docker compose config | grep -q 'read_only: true'
