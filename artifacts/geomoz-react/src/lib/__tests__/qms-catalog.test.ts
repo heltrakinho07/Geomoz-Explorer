@@ -69,7 +69,7 @@ describe("NextGIS QMS basemap catalogue", () => {
     expect(url.searchParams.get("cumulative_status")).toBe("works");
     expect(await searchQmsBasemaps(" ")).toEqual([]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(() => getQmsTileSource(-1)).rejects.toThrow(/inválido/);
+    await expect(getQmsTileSource(-1)).rejects.toThrow(/inválido/);
   });
 
   it("checks the detail ID before using third-party tile URLs", async () => {
