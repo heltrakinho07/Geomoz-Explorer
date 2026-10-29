@@ -48,11 +48,14 @@ export async function warpRaster<D extends Dataset>(
       if(text.length>8*1024*1024)throw Error("A máscara excede 8 MB.");
       const cutline=await gdal.open(new File([text],"mask.geojson",{type:"application/geo+json"}));
       opened.push(...cutline.datasets);
-      maskPath=cutline.datasets[0]?.path;
+      const path=cutline.datasets[0]?.path;
+      maskPath=path ? (path.startsWith("/") ? path : "/input/"+path) : undefined;
     }
     const output=await gdal.gdalwarp(input,rasterWarpArgs(id,params,maskPath),"geomoz-result.tif");
     // Copy out of WASM memory before closing input datasets.
     return Uint8Array.from(await gdal.getFileBytes(output)).buffer;
+  }catch(error){
+    throw error instanceof Error ? error : new Error(typeof error==="string" ? error : JSON.stringify(error));
   }finally{
     for(const dataset of opened.reverse())await gdal.close(dataset).catch(()=>undefined);
   }

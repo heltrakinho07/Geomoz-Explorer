@@ -6,7 +6,7 @@ const mask={type:"FeatureCollection",features:[{type:"Feature",properties:{},geo
 function fixture(fail=false){
  const closed=[],calls=[];
  const gdal={
-  async open(file){const d={path:"/input/"+file.name};calls.push(["open",file.name]);return {datasets:[d]};},
+  async open(file){const d={path:file.name};calls.push(["open",file.name]);return {datasets:[d]};},
   async close(d){closed.push(d.path);},
   async gdalwarp(d,args){calls.push(["warp",...args]);if(fail)throw Error("warp failed");return "result";},
   async getFileBytes(){return new Uint8Array([1,2,3]);},
@@ -19,14 +19,14 @@ test("reprojection enforces explicit CRS and categorical-safe nearest resampling
  assert.deepEqual([...new Uint8Array(output)],[1,2,3]);
  assert.ok(calls[1].includes("EPSG:32736"));
  assert.ok(calls[1].includes("near"));
- assert.deepEqual(closed,["/input/input.tif"]);
+ assert.deepEqual(closed,["input.tif"]);
  assert.throws(()=>rasterWarpArgs("reproject",{dst_crs:"-overwrite"}),/SRC válido/);
 });
 test("mask runs a real cutline with cropping and transparency; closes both inputs",async()=>{
  const {gdal,closed,calls}=fixture();
  await warpRaster(gdal,"clip-mask",new ArrayBuffer(4),{crop:true,all_touched:true},mask);
  assert.deepEqual(calls[2],["warp","-of","COG","-co","COMPRESS=DEFLATE","-cutline","/input/mask.geojson","-dstalpha","-crop_to_cutline","-wo","CUTLINE_ALL_TOUCHED=TRUE"]);
- assert.deepEqual(closed,["/input/mask.geojson","/input/input.tif"]);
+ assert.deepEqual(closed,["mask.geojson","input.tif"]);
 });
 test("failed warp releases datasets without returning a success",async()=>{
  const {gdal,closed}=fixture(true);
