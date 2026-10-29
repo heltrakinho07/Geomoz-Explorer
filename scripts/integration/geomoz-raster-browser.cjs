@@ -11,6 +11,7 @@ module.exports=async function validateRasterProcessing(page){
   GTModelTypeGeoKey:1,GTRasterTypeGeoKey:1,ProjectedCSTypeGeoKey:32736,
  }));
  async function run(id,params,maskId){
+  console.log("Raster control operation:",id);
   await page.locator('[data-task="data"]').click();
   const card=page.locator(".gm-ribbon-accordion").filter({has:page.locator("summary").filter({hasText:/^\s*Raster\s*$/})});
   if(await card.getAttribute("open")===null)await card.locator("summary").click();
@@ -22,7 +23,7 @@ module.exports=async function validateRasterProcessing(page){
   await (await chooser).setFiles({name:"dem-controlo.tif",mimeType:"image/tiff",buffer:input});
   for(const [key,value] of Object.entries(params))await dialog.locator("#"+key).fill(String(value));
   if(maskId)await dialog.locator("#mask_path").selectOption({label:maskId});
-  await dialog.getByRole("button",{name:"Executar",exact:true}).click();
+  await dialog.getByRole("button",{name:/^(Run|Executar)$/}).click();
   const name={slope:"slope",hillshade:"hillshade",reproject:"reprojected","clip-mask":"masked"}[id];
   await page.locator('.gm-layer-row[data-layer-name="'+name+'"]').waitFor({timeout:180000});
   const download=page.waitForEvent("download");
