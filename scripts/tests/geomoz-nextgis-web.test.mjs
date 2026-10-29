@@ -24,7 +24,8 @@ test("NextGIS Web styles are inserted through the native engine and user permiss
   assert.match(component, /geomozNgwResourceId/);
   assert.match(component, /addGeoJsonLayer\(resource\.name, geojson\)/);
   assert.match(component, /importNgwVector\(origin, resource/);
-  assert.match(component, /useEffect\(\(\) => \(\) => activeRequest\.current\?\.abort\(\), \[\]\)/);
+  assert.match(component, /activeRequest\.current\?\.abort\(\)/);
+  assert.match(component, /importRequest\.current\?\.abort\(\)/);
 });
 
 test("Public catalogue never forwards credentials and validates HTTPS server URLs", () => {
