@@ -50,14 +50,14 @@ const LEGACY_ACTIONS: Record<Task, {label:string; ids:string[]}[]> = {
 const TASKS: [Task,string][] = GEOMOZ_ROLLOUT.fullMenus ? LEGACY_TASKS : [["map","Digitalizar"],["data","Dados"],["analysis","Análise"],["output","Resultados"]];
 const CORE_ACTIONS: Partial<typeof LEGACY_ACTIONS> = {
   map:[{label:"Preparação cartográfica",ids:["proc.georeferencer"]}],
-  data:[{label:"Adicionar dados",ids:["add.vector","add.raster","add.delimited-text"]},{label:"Serviços de mapas",ids:["add.wms","add.wfs","add.xyz","add.wmts"]},{label:"Ferramentas raster",ids:["proc.raster.reproject","proc.raster.clip-mask","proc.raster.slope","proc.raster.hillshade","proc.raster.contour"]}],
+  data:[{label:"Serviços de mapas",ids:["add.wms","add.wfs","add.xyz","add.wmts"]},{label:"Raster",ids:["add.raster","proc.georeferencer","proc.raster.reproject","proc.raster.clip-extent","proc.raster.clip-mask","proc.raster.slope","proc.raster.hillshade","proc.raster.contour"]},{label:"Vector",ids:["add.vector","add.delimited-text","proc.vector.buffer","proc.vector.clip","proc.vector.intersection","proc.vector.dissolve","proc.vector.reproject"]},{label:"Cartografia",ids:["project.print-layout","control.legend","control.colorbar","control.measure"]}],
   analysis:[{label:"Análise vectorial",ids:["proc.vector.buffer","proc.vector.clip","proc.vector.intersection","proc.vector.dissolve","proc.vector.reproject"]},{label:"Análise do terreno",ids:["proc.raster.slope","proc.raster.hillshade","proc.raster.contour","proc.raster.clip-mask"]}],
   output:[{label:"Mapa e projecto",ids:["project.print-layout","project.save-as"]},{label:"Elementos do mapa",ids:["control.legend","control.colorbar"]}],
 };
 const ACTIONS = GEOMOZ_ROLLOUT.fullMenus ? LEGACY_ACTIONS : {...LEGACY_ACTIONS,...CORE_ACTIONS};
 const GUIDANCE:Partial<Record<Task,string>> = {
   map:"1 · Prepare a carta base e crie uma camada vectorial. 2 · Seleccione-a no catálogo e active a edição. 3 · Configure a aderência e desenhe, preenchendo os atributos. 4 · Guarde as edições da camada e, separadamente, o projecto.",
-  data:"Adicione dados vectoriais e raster. Expanda «Ferramentas raster» apenas quando precisar de processar DEM, recortar, reprojectar ou gerar produtos derivados.",
+  data:"Expanda Raster, Vector, Serviços de mapas, Hidrologia ou Cartografia para escolher uma ferramenta. As operações usam as camadas do projecto; os módulos de hidrologia abrem numa nova janela.",
   analysis:"Escolha uma ferramenta, confirme os dados e execute a análise.",
   output:"Consulte as execuções no catálogo e exporte as camadas ou a composição do mapa.",
 };
@@ -66,7 +66,7 @@ const LABELS: Record<string,string> = {
   "project.save":"Guardar","project.save-as":"Guardar como","project.share":"Partilhar","project.collaborate":"Colaborar",
   "project.print-layout":"Layout de impressão",
   "proc.georeferencer":"Georreferenciar imagem",
-  "plugin.maplibre-gl-geo-editor":"Digitalizar / editar","add.delimited-text":"Tabela / CSV","add.wms":"WMS","add.wfs":"WFS","add.xyz":"XYZ","add.wmts":"WMTS","proc.vector.intersection":"Intersecção","proc.vector.reproject":"Reprojectar","proc.raster.contour":"Curvas de nível","proc.raster.clip-mask":"Recortar DEM",
+  "plugin.maplibre-gl-geo-editor":"Digitalizar / editar","add.delimited-text":"Tabela / CSV","add.wms":"WMS","add.wfs":"WFS","add.xyz":"XYZ","add.wmts":"WMTS","proc.vector.intersection":"Intersecção","proc.vector.reproject":"Reprojectar","proc.raster.reproject":"Reprojectar raster","proc.raster.clip-extent":"Recortar por extensão","proc.raster.contour":"Curvas de nível","proc.raster.clip-mask":"Recortar DEM",
   "add.vector":"Vector / GeoPackage","add.raster":"Raster / DEM","add.geoparquet":"GeoParquet","add.flatgeobuf":"FlatGeobuf",
   "add.stac":"Catálogo STAC","add.duckdb":"SQL / DuckDB","add.pmtiles":"PMTiles","add.zarr":"Zarr",
   "proc.planetary-computer":"Dados globais","proc.earth-engine":"Earth Engine",
@@ -133,14 +133,22 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
       </div>
       <div className="gm-command-ribbon" aria-label={"Comandos de "+TASKS.find(([id])=>id===activeTask)?.[1]}>
         <div className="gm-ribbon-groups">{groups.map(group=><section className={"gm-ribbon-group"+(activeTask==="data"&&group.label!=="Adicionar dados"?" gm-ribbon-optional":"")} key={group.label}>
-          {activeTask==="data"&&group.label!=="Adicionar dados"?<details className="gm-ribbon-accordion"><summary>{group.label==="Ferramentas raster"?<Image size={16}/>:<Database size={16}/>} {group.label}<ChevronDown size={13}/></summary><div>{group.items.map(command=>{const Icon=command.icon??CommandIcon;return <button key={command.id} type="button" data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={17}/><span>{LABELS[command.id]??command.title}</span></button>;})}</div></details>:<><div>{group.items.map(command=>{
+          {activeTask==="data"&&group.label!=="Adicionar dados"?<details className="gm-ribbon-accordion"><summary>{group.label==="Raster"?<Image size={16}/>:<Database size={16}/>} {group.label}<ChevronDown size={13}/></summary><div>{group.items.map(command=>{const Icon=command.icon??CommandIcon;return <button key={command.id} type="button" data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={17}/><span>{LABELS[command.id]??command.title}</span></button>;})}{group.label==="Serviços de mapas"&&!viewer&&<>
+            <button type="button" data-action="geomoz-qms" aria-expanded={qmsOpen} onClick={()=>{setQmsOpen(!qmsOpen);setNgwOpen(false);}}><Database size={17}/><span>NextGIS QMS</span></button>
+            <button type="button" data-action="geomoz-nextgis-web" aria-expanded={ngwOpen} onClick={()=>{setNgwOpen(!ngwOpen);setQmsOpen(false);}}><Database size={17}/><span>NextGIS Web</span></button>
+          </>}</div></details>:<><div>{group.items.map(command=>{
           const Icon=command.icon??CommandIcon;
           return <button key={command.id} type="button" data-command={command.id} aria-pressed={command.id==="plugin.maplibre-gl-geo-editor"?command.keywords?.includes("deactivate"):undefined} disabled={!!command.disabledReason}
             title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={19}/><span>{command.id==="plugin.maplibre-gl-geo-editor"&&command.keywords?.includes("deactivate")?"Terminar desenho":LABELS[command.id]??command.title}</span></button>;
         })}</div><small>{group.label}</small></>}</section>)}
+        {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group gm-ribbon-optional">
+          <details className="gm-ribbon-accordion" data-testid="geomoz-hydrology-card"><summary><Activity size={16}/> Hidrologia<ChevronDown size={13}/></summary><div>
+            <a href="/hidrografia" target="_blank" rel="noopener noreferrer">Bacias hidrográficas <ArrowUpRight size={13}/></a>
+            <a href="/agua-subterranea" target="_blank" rel="noopener noreferrer">Água subterrânea <ArrowUpRight size={13}/></a>
+            <a href="/geoprocessamento" target="_blank" rel="noopener noreferrer">Terreno e Hidrologia <ArrowUpRight size={13}/></a>
+          </div></details>
+        </section>}
         {!viewer&&activeTask==="map"&&<section className="gm-ribbon-group"><div><button type="button" data-testid="geomoz-create-layer" onClick={()=>setLayerWizardOpen(true)}><Layers3 size={19}/><span>Nova camada</span></button></div><small>Cartografia geológica / temática</small></section>}
-        {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-qms" aria-expanded={qmsOpen} onClick={()=>setQmsOpen(!qmsOpen)}><Database size={19}/><span>NextGIS QMS</span></button></div><small>Catálogo de mapas-base</small></section>}
-        {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-nextgis-web" aria-expanded={ngwOpen} onClick={()=>{setNgwOpen(!ngwOpen);setQmsOpen(false);}}><Database size={19}/><span>NextGIS Web</span></button></div><small>Recursos e estilos remotos</small></section>}
         {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-seismic" aria-expanded={seismicOpen} onClick={()=>setSeismicOpen(!seismicOpen)}><Activity size={19}/><span>Catálogos sísmicos</span></button></div><small>Dados GeoMoz · USGS / ISC</small></section>}
         {!viewer&&activeTask==="output"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-qgis-print" aria-expanded={qgisPrintOpen} onClick={()=>setQgisPrintOpen(!qgisPrintOpen)}><FileText size={19}/><span>Pacote PDF QGIS</span></button></div><small>Cartografia vectorial A4/A3</small></section>}
         {!groups.length&&<p className="gm-ribbon-empty"><Compass size={22}/> As opções disponíveis estão nos menus desta tarefa.</p>}

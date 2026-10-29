@@ -508,3 +508,7 @@ html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0
 .gm-qgis-print-submit{border-radius:8px;background:var(--gm-accent);color:white;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px;font-weight:700;font-size:12px}
 .gm-qgis-print-submit:disabled{opacity:.45}
 @media(max-width:640px){.gm-qgis-print-panel{right:8px;width:calc(100vw - 16px);padding:12px;max-height:57vh}.gm-qgis-print-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Module links preserve the current GIS project in its original window. */
+.gm-ribbon-accordion>div>a{display:flex;align-items:center;gap:8px;min-height:40px;padding:7px 9px;border-radius:6px;color:var(--gm-text);font-size:11px;text-decoration:none}
+.gm-ribbon-accordion>div>a:hover,.gm-ribbon-accordion>div>a:focus-visible{background:var(--gm-muted);outline:2px solid var(--gm-line)}
