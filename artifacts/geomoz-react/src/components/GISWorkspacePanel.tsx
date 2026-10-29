@@ -9,6 +9,8 @@ import {
 import { runWorkspaceOperationAsync } from "@/lib/gis-workspace-runner";
 import { parseWorkspaceFile, workspaceColumns, type WorkspaceLayer } from "@/lib/gis-workspace";
 import GeoReferencer from "@/components/GeoReferencer";
+import QmsBasemapPicker from "@/components/QmsBasemapPicker";
+import type { QmsTileSource } from "@/lib/qms-catalog";
 
 interface Props {
   layers: WorkspaceLayer[];
@@ -34,6 +36,7 @@ function FitSelectedLayer({ layer }: { layer: WorkspaceLayer | null }) {
 export default function GISWorkspacePanel({ layers, setLayers }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [workspaceMode, setWorkspaceMode] = useState<"layers" | "georeference">("layers");
+  const [qmsBasemap, setQmsBasemap] = useState<QmsTileSource | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -189,6 +192,7 @@ export default function GISWorkspacePanel({ layers, setLayers }: Props) {
             <p className="mt-2 text-[10px] text-slate-500">GeoJSON/CSV · WGS84 · Até 8 MB e 5 000 feições por ficheiro. Dados permanecem ao navegar entre módulos; não são enviados ao servidor.</p>
             {error && <p role="alert" className="mt-2 rounded-lg bg-rose-50 dark:bg-rose-950/30 p-2 text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
           </div>
+          <QmsBasemapPicker selected={qmsBasemap} onChange={setQmsBasemap} />
           <div className="p-3 border-b border-slate-200 dark:border-slate-800 space-y-2.5" aria-label="Ferramentas GIS">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-extrabold">Ferramentas GIS</h3>
@@ -316,8 +320,17 @@ export default function GISWorkspacePanel({ layers, setLayers }: Props) {
           <div className="h-[290px] md:h-[44%] min-h-[260px] relative">
             <MapContainer center={[-18.6, 35.5]} zoom={5} scrollWheelZoom zoomControl
               className="h-full w-full z-0" style={{ height: "100%", width: "100%" }}>
-              <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              <TileLayer key={qmsBasemap ? "qms-" + qmsBasemap.id : "osm"}
+                attribution={qmsBasemap?.attribution ?? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}
+                url={qmsBasemap?.url ?? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"}
+                tms={qmsBasemap?.tms ?? false}
+                maxZoom={qmsBasemap?.maxZoom ?? 19}
+                eventHandlers={{ tileerror: () => {
+                  if (qmsBasemap) {
+                    setQmsBasemap(null);
+                    setError("O serviço QMS falhou ao carregar mosaicos. Foi restaurado o OpenStreetMap.");
+                  }
+                } }} />
               {visibleLayers.map((layer) => (
                 <VectorLayer key={`${layer.id}-${layer.opacity}`} data={layer.geojson}
                   style={{ color: "#0284c7", opacity: layer.opacity, fillOpacity: layer.opacity * 0.27, weight: 2 }}
