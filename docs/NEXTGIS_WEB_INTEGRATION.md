@@ -19,12 +19,15 @@ que utiliza o motor GeoLibre/MapLibre.
 Usa os endpoints NextGIS Web documentados:
 
 - \`GET /api/resource/?parent=<id>\` — lista de recursos de um grupo.
+- \`GET /api/resource/<id>/export?format=GeoJSON&srs=4326&zipped=False\` — exportação vectorial.
 - \`GET /api/component/render/tile?z={z}&x={x}&y={y}&resource=<style-id>\`
   — mosaicos da camada/mapa publicados.
 
 Os recursos importáveis incluem \`mapserver_style\`, \`qgis_vector_style\`,
-\`raster_style\`, \`wmsclient_layer\` e \`webmap\`. As camadas de dados sem
-estilo próprio não são anunciadas como renderizáveis.
+\`raster_style\`, \`wmsclient_layer\` e \`webmap\`. Os recursos \`vector_layer\` e \`postgis_layer\` também podem ser exportados em GeoJSON e importados localmente. Camadas de dados sem
+estilo próprio não são anunciadas como mosaicos renderizáveis; aparecem como vectores importáveis.
+
+A importação vectorial força EPSG:4326, valida coordenadas e feições e rejeita respostas com mais de **8 MB ou 5 000 feições**, para evitar bloquear o navegador. A camada importada é editável e processável no motor nativo GeoMoz, sem sincronização automática com o servidor de origem.
 
 ## Segurança e dados
 
