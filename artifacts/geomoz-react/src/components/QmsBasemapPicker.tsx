@@ -29,6 +29,7 @@ export default function QmsBasemapPicker({ selected, onChange }: Props) {
     }
     const controller = new AbortController();
     setSearching(true);
+    setResults([]);
     setError("");
     const timer = window.setTimeout(() => {
       void searchQmsBasemaps(term, controller.signal)
@@ -76,7 +77,7 @@ export default function QmsBasemapPicker({ selected, onChange }: Props) {
           {selected?.name ?? "OpenStreetMap · padrão"}
         </span>
         {selected ? (
-          <button type="button" onClick={() => { ++requestId.current; onChange(null); }}
+          <button type="button" onClick={() => { ++requestId.current; setActivatingId(null); onChange(null); }}
             aria-label="Voltar ao mapa-base OpenStreetMap" title="Voltar ao OpenStreetMap"
             className="shrink-0 rounded p-1 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700">
             <X size={14} />
