@@ -18,7 +18,7 @@ def render(job: dict, output: str) -> None:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from qgis.core import (
         QgsApplication, QgsFillSymbol, QgsLineSymbol, QgsMarkerSymbol,
-        QgsLayout, QgsLayoutExporter, QgsLayoutItemLabel, QgsLayoutItemMap,
+        QgsPrintLayout, QgsLayoutExporter, QgsLayoutItemLabel, QgsLayoutItemMap,
         QgsLayoutItemScaleBar, QgsLayoutPoint, QgsLayoutSize, QgsProject,
         QgsRectangle, QgsVectorLayer, QgsCoordinateReferenceSystem,
     )
@@ -54,7 +54,7 @@ def render(job: dict, output: str) -> None:
                     }))
                 project.addMapLayer(layer)
 
-            layout = QgsLayout(project)
+            layout = QgsPrintLayout(project)
             layout.initializeDefaults()
             layout.setName("GeoMoz — Layout vectorial")
             page = layout.pageCollection().pages()[0]
