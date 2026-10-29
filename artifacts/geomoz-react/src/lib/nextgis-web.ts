@@ -178,14 +178,15 @@ function validateNgwCoordinates(coords: unknown, depth = 0): void {
   for (const part of coords) validateNgwCoordinates(part, depth + 1);
 }
 
-function validateNgwGeometry(value: unknown): Geometry {
+function validateNgwGeometry(value: unknown, depth = 0): Geometry {
+  if (depth > 12) throw new Error("Geometria demasiado aninhada para importação.");
   const g = record(value);
   if (!g || typeof g.type !== "string") throw new Error("Geometria vectorial inválida.");
   if (g.type === "GeometryCollection") {
     if (!Array.isArray(g.geometries) || g.geometries.length > MAX_NGW_VECTOR_FEATURES) {
       throw new Error("Colecção de geometrias inválida.");
     }
-    for (const item of g.geometries) validateNgwGeometry(item);
+    for (const item of g.geometries) validateNgwGeometry(item, depth + 1);
   } else if (["Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon"].includes(g.type)) {
     validateNgwCoordinates(g.coordinates);
   } else {
@@ -243,6 +244,9 @@ async function limitedNgwText(response: Response): Promise<string> {
       output += decoder.decode(part.value, { stream: true });
     }
     return output + decoder.decode();
+  } catch (cause) {
+    await reader.cancel().catch(() => {});
+    throw cause;
   } finally {
     reader.releaseLock();
   }
