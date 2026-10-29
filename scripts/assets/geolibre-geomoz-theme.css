@@ -484,3 +484,27 @@ html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0
 .gm-ngw-spinner{animation:gm-ngw-spin 0.85s linear infinite}
 @keyframes gm-ngw-spin{to{transform:rotate(360deg)}}
 @media(max-width:640px){.gm-ngw-panel{right:8px;width:calc(100vw - 16px);max-height:56vh;padding:11px}}
+
+
+/* GeoMoz QGIS vector-print package — matches the native Workspace identity. */
+.gm-qgis-print-panel{position:absolute;top:100%;right:16px;z-index:66;width:min(505px,calc(100vw - 32px));max-height:min(72vh,750px);overflow:auto;display:flex;flex-direction:column;gap:13px;padding:17px;background:var(--gm-surface);color:var(--gm-text);border:1px solid var(--gm-line);border-radius:0 0 14px 14px;box-shadow:0 20px 42px #02061750}
+.gm-qgis-print-panel>header{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.gm-qgis-print-panel>header strong{display:flex;gap:8px;align-items:center;font-size:14px}
+.gm-qgis-print-panel>header small{display:block;font-size:10px;color:var(--gm-subtle);margin-top:4px}
+.gm-qgis-print-panel>header button{border:1px solid var(--gm-line);padding:6px;border-radius:8px}
+.gm-qgis-print-panel label{display:flex;flex-direction:column;gap:5px;font-size:11px;color:var(--gm-subtle)}
+.gm-qgis-print-panel input:not([type="checkbox"]),.gm-qgis-print-panel select{width:100%;border:1px solid var(--gm-line);border-radius:8px;color:var(--gm-text);background:var(--gm-surface);padding:8px;font-size:12px}
+.gm-qgis-print-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.gm-qgis-print-panel fieldset{border:1px solid var(--gm-line);border-radius:9px;padding:9px;max-height:220px;overflow:auto}
+.gm-qgis-print-panel legend{font-size:11px;font-weight:700;padding:0 5px}
+.gm-qgis-print-panel fieldset>.gm-qgis-print-check{display:flex;align-items:center;flex-direction:row;gap:8px;padding:8px 3px;color:var(--gm-text)}
+.gm-qgis-print-check input{flex:none}
+.gm-qgis-print-check span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gm-qgis-print-check small{color:var(--gm-subtle)}
+.gm-qgis-print-panel .gm-qgis-print-tip{display:flex;gap:7px;line-height:1.55;font-size:11px;color:var(--gm-subtle)}
+.gm-qgis-print-tip svg{flex:none}
+.gm-qgis-print-error{font-size:11px;color:#b91c1c}
+.gm-qgis-print-done{font-size:11px;color:#15803d}
+.gm-qgis-print-submit{border-radius:8px;background:var(--gm-accent);color:white;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px;font-weight:700;font-size:12px}
+.gm-qgis-print-submit:disabled{opacity:.45}
+@media(max-width:640px){.gm-qgis-print-panel{right:8px;width:calc(100vw - 16px);padding:12px;max-height:57vh}.gm-qgis-print-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
