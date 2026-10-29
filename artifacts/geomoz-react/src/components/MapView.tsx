@@ -16,6 +16,8 @@ import { useGeologyGeoJSON, useProvincesGeoJSON, useDistrictsGeoJSON } from "@/h
 import type { LayerState } from "./Sidebar";
 import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
 import BasemapSwitcher from "./BasemapSwitcher";
+import QmsBasemapPicker from "./QmsBasemapPicker";
+import type { QmsTileSource } from "@/lib/qms-catalog";
 import MapTools from "./MapTools";
 import MapDraw from "./MapDraw";
 import MapLibre3DView from "./MapLibre3DView";
@@ -296,6 +298,14 @@ export default function MapView({
   const { data: geologyGeoJSON, isFetching: loadingGeology } = useGeologyGeoJSON(province, district, colorBy, layers.geology);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [basemap, setBasemap] = useState<BasemapType>("hybrid");
+  const [qmsBasemap, setQmsBasemap] = useState<QmsTileSource | null>(null);
+  const [qmsPickerOpen, setQmsPickerOpen] = useState(false);
+  const [qmsWarning, setQmsWarning] = useState<string | null>(null);
+  const selectStandardBasemap = (type: BasemapType) => {
+    setBasemap(type);
+    setQmsBasemap(null);
+    setQmsWarning(null);
+  };
 
   const isWebGL = typeof window !== "undefined" && Boolean(
     window.WebGLRenderingContext &&
@@ -522,13 +532,35 @@ export default function MapView({
           {/* Google Maps Bottom-Left Layer Controller */}
           <BasemapSwitcher
             current={basemap}
-            onChange={setBasemap}
+            onChange={selectStandardBasemap}
             viewMode={activeViewMode}
             onViewModeChange={handleViewModeChange}
             show3dToggle={enable3d}
             className="absolute bottom-6 left-4 z-[600]"
             position="bottom-left"
           />
+          {/* Search public NextGIS QMS basemaps without changing the 3D renderer. */}
+          <div className="pointer-events-auto absolute bottom-6 right-3 z-[650] flex max-w-[calc(100vw-24px)] flex-col items-end gap-2">
+            {qmsWarning && (
+              <div role="alert" className="max-w-xs rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 shadow-lg">
+                {qmsWarning}
+              </div>
+            )}
+            {qmsPickerOpen && (
+              <div className="max-h-[55vh] w-[min(90vw,320px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95">
+                <QmsBasemapPicker selected={qmsBasemap} onChange={(source) => {
+                  setQmsBasemap(source);
+                  setQmsWarning(null);
+                }} />
+              </div>
+            )}
+            <button type="button" aria-expanded={qmsPickerOpen}
+              aria-label="Abrir catálogo de mapas-base NextGIS QMS"
+              onClick={() => setQmsPickerOpen((open) => !open)}
+              className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-bold text-slate-700 shadow-lg hover:border-sky-400 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-100">
+              {qmsPickerOpen ? "Fechar catálogo" : "Mapas-base QMS"}
+            </button>
+          </div>
           <NorthArrow />
 
           {workspaceLayers.length > 0 && (
@@ -615,12 +647,19 @@ export default function MapView({
               </>
             ) : (
               <TileLayer
-                key={basemap}
-                crossOrigin="anonymous"
-                url={GOOGLE_BASEMAPS[basemap].url}
-                subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
-                attribution={GOOGLE_BASEMAPS[basemap].attribution}
-                maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
+                key={qmsBasemap ? "qms-" + qmsBasemap.id : basemap}
+                crossOrigin={qmsBasemap ? false : "anonymous"}
+                url={qmsBasemap?.url ?? GOOGLE_BASEMAPS[basemap].url}
+                subdomains={qmsBasemap ? "abc" : GOOGLE_BASEMAPS[basemap].subdomains}
+                tms={qmsBasemap?.tms ?? false}
+                attribution={qmsBasemap?.attribution ?? GOOGLE_BASEMAPS[basemap].attribution}
+                maxZoom={qmsBasemap?.maxZoom ?? GOOGLE_BASEMAPS[basemap].maxZoom}
+                eventHandlers={{ tileerror: () => {
+                  if (qmsBasemap) {
+                    setQmsBasemap(null);
+                    setQmsWarning("O serviço QMS não respondeu. Foi restaurado o mapa-base anterior.");
+                  }
+                } }}
               />
             )}
 
