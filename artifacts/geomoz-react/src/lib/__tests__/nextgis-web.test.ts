@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   normalizeNgwOrigin, parseNgwResources, buildNgwTileDefinition, listNgwResources,
+  importNgwVector, parseNgwVectorGeoJson, MAX_NGW_VECTOR_BYTES, MAX_NGW_VECTOR_FEATURES,
   type NgwResource,
 } from "../nextgis-web";
 
@@ -40,7 +41,8 @@ describe("NextGIS Web public catalogue adapter", () => {
       wrap(-1, "webmap", "Inválido"),
       wrap(66, "unknown", "Desconhecido"),
     ], 0);
-    expect(found).toHaveLength(6);
+    expect(found).toHaveLength(7);
+    expect(found.filter(f => f.kind === "vector")).toHaveLength(1);
     expect(found[0]).toMatchObject({ id: 10, kind: "group", hasChildren: true });
     expect(found.filter(f => f.kind === "tile")).toHaveLength(5);
     expect(() => parseNgwResources({ resources: [] }, 0)).toThrow(/inválido/);
@@ -78,5 +80,64 @@ describe("NextGIS Web public catalogue adapter", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403 }));
     await expect(listNgwResources("https://maps.example.org", 0))
       .rejects.toThrow(/Sem permissão/);
+  });
+});
+
+
+describe("NextGIS Web vector import for local GeoMoz editing", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const vector: NgwResource = {
+    id: 74, parentId: 0, name: "Geologia de Manica",
+    kind: "vector", className: "vector_layer", hasChildren: false,
+  };
+  const valid = { type: "FeatureCollection", features: [
+    { type: "Feature", id: 1, geometry: { type: "Point", coordinates: [32.58, -25.97] },
+      properties: { litologia: "Granito" } },
+  ] };
+
+  it("accepts genuine WGS84 FeatureCollections and rejects projected or invalid coordinates", () => {
+    expect(parseNgwVectorGeoJson(valid).features).toHaveLength(1);
+    expect(() => parseNgwVectorGeoJson({
+      ...valid, features: [{ ...valid.features[0],
+        geometry: { type: "Point", coordinates: [580000, 7432000] } }],
+    })).toThrow(/EPSG:4326/);
+    expect(() => parseNgwVectorGeoJson({ type: "Feature", features: [] })).toThrow(/GeoJSON/);
+    expect(() => parseNgwVectorGeoJson({ ...valid,
+      features: Array(MAX_NGW_VECTOR_FEATURES + 1).fill(valid.features[0]),
+    })).toThrow(/limite/);
+  });
+
+  it("imports vectors with output CRS forced to 4326 and without credentials", async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true, headers: new Headers(), body: null, text: async () => JSON.stringify(valid),
+    });
+    vi.stubGlobal("fetch", mock);
+    const result = await importNgwVector("https://maps.example.org", vector);
+    expect(result.features).toHaveLength(1);
+    expect(mock).toHaveBeenCalledWith(
+      "https://maps.example.org/api/resource/74/export?format=GeoJSON&srs=4326&zipped=False",
+      expect.objectContaining({ credentials: "omit", redirect: "error", mode: "cors" }),
+    );
+  });
+
+  it("rejects oversized responses before parsing and unsupported resources", async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true, headers: new Headers({ "content-length": String(MAX_NGW_VECTOR_BYTES + 1) }),
+      body: null, text: async () => JSON.stringify(valid),
+    });
+    vi.stubGlobal("fetch", mock);
+    await expect(importNgwVector("https://maps.example.org", vector)).rejects.toThrow(/8 MB/);
+    await expect(importNgwVector("https://maps.example.org", {
+      ...vector, kind: "tile",
+    })).rejects.toThrow(/vectorial/);
+    expect(mock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects denied vector access and limits the downloaded stream", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false, status: 403, headers: new Headers(),
+    }));
+    await expect(importNgwVector("https://maps.example.org", vector)).rejects.toThrow(/autorização/);
   });
 });
