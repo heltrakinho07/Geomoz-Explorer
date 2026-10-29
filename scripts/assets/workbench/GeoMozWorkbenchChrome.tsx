@@ -3,12 +3,13 @@ import type {MapEngine} from "@geolibre/map";
 import {GeoMozSeismicPanel} from "./GeoMozSeismicPanel";
 import {GeoMozQmsCatalog} from "./GeoMozQmsCatalog";
 import {GeoMozNextgisWebCatalog} from "./GeoMozNextgisWebCatalog";
+import {GeoMozQgisPrintPanel} from "./GeoMozQgisPrintPanel";
 import {GeoMozLayerCreation} from "./GeoMozLayerCreation";
 import {AboutDialog} from "../layout/AboutDialog";
 import { GEOMOZ_ROLLOUT, curateGeoMozCommands } from "../../lib/geomoz-workbench-profile";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useAppStore, DEFAULT_PROJECT_NAME } from "@geolibre/core";
-import { ArrowUpRight, Search, Moon, Sun, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass, Activity, Image, Database, Info } from "lucide-react";
+import { ArrowUpRight, Search, Moon, Sun, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass, Activity, Image, Database, Info, FileText } from "lucide-react";
 import type { Command } from "../../lib/commands";
 import type { ThemeMode } from "../../hooks/useThemeMode";
 
@@ -97,6 +98,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   const [seismicOpen,setSeismicOpen]=useState(false);
   const [qmsOpen,setQmsOpen]=useState(false);
   const [ngwOpen,setNgwOpen]=useState(false);
+  const [qgisPrintOpen,setQgisPrintOpen]=useState(false);
   const [layerWizardOpen,setLayerWizardOpen]=useState(false);
   const activeTask:Task=viewer?"map":task;
   const curated=curateGeoMozCommands(commands);
@@ -140,12 +142,14 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
         {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-qms" aria-expanded={qmsOpen} onClick={()=>setQmsOpen(!qmsOpen)}><Database size={19}/><span>NextGIS QMS</span></button></div><small>Catálogo de mapas-base</small></section>}
         {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-nextgis-web" aria-expanded={ngwOpen} onClick={()=>{setNgwOpen(!ngwOpen);setQmsOpen(false);}}><Database size={19}/><span>NextGIS Web</span></button></div><small>Recursos e estilos remotos</small></section>}
         {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-seismic" aria-expanded={seismicOpen} onClick={()=>setSeismicOpen(!seismicOpen)}><Activity size={19}/><span>Catálogos sísmicos</span></button></div><small>Dados GeoMoz · USGS / ISC</small></section>}
+        {!viewer&&activeTask==="output"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-qgis-print" aria-expanded={qgisPrintOpen} onClick={()=>setQgisPrintOpen(!qgisPrintOpen)}><FileText size={19}/><span>Pacote PDF QGIS</span></button></div><small>Cartografia vectorial A4/A3</small></section>}
         {!groups.length&&<p className="gm-ribbon-empty"><Compass size={22}/> As opções disponíveis estão nos menus desta tarefa.</p>}
         {activeTask==="map"&&<span className="gm-digitizing-ribbon-tip"><Info size={15}/> As ferramentas de desenho aparecem após seleccionar uma camada e activar a edição.</span>}</div>
         {GEOMOZ_ROLLOUT.fullMenus&&<button type="button" className="gm-more-tools" aria-expanded={more} onClick={()=>setMore(!more)}>Mais opções <ChevronDown size={14}/></button>}
       </div>
       <p className="gm-task-guidance" role="status" hidden={more}>{viewer?"Explore as camadas e navegue no mapa. Esta sessão está em modo de leitura.":GUIDANCE[activeTask]}</p>
       {layerWizardOpen&&!viewer&&<GeoMozLayerCreation onClose={()=>setLayerWizardOpen(false)}/>}
+      {qgisPrintOpen&&!viewer&&<GeoMozQgisPrintPanel onClose={()=>setQgisPrintOpen(false)}/>}
       {ngwOpen&&!viewer&&<GeoMozNextgisWebCatalog onClose={()=>setNgwOpen(false)}/>}
       {qmsOpen&&!viewer&&<GeoMozQmsCatalog onClose={()=>setQmsOpen(false)}/>}
       {seismicOpen&&!viewer&&<GeoMozSeismicPanel mapControllerRef={mapControllerRef} onClose={()=>{setSeismicOpen(false);if(task==="seismic")setTask("data");}}/>}
