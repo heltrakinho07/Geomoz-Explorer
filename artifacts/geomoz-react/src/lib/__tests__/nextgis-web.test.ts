@@ -1,0 +1,82 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  normalizeNgwOrigin, parseNgwResources, buildNgwTileDefinition, listNgwResources,
+  type NgwResource,
+} from "../nextgis-web";
+
+const wrap = (id: number, cls: string, name: string, parent = 0, children = false) => ({
+  resource: { id, cls, display_name: name, parent: { id: parent }, children },
+});
+const style: NgwResource = {
+  id: 47, parentId: 0, name: "Mapa topográfico <privado>",
+  className: "mapserver_style", kind: "tile", hasChildren: false,
+};
+
+describe("NextGIS Web public catalogue adapter", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("normalizes only public HTTPS server origins", () => {
+    expect(normalizeNgwOrigin(" https://maps.example.org/ ")).toBe("https://maps.example.org");
+    expect(() => normalizeNgwOrigin("http://maps.example.org")).toThrow(/HTTPS/);
+    expect(() => normalizeNgwOrigin("https://user:pass@maps.example.org")).toThrow(/HTTPS/);
+    expect(() => normalizeNgwOrigin("https://maps.example.org/?token=abc")).toThrow(/HTTPS/);
+    expect(() => normalizeNgwOrigin("https://maps.example.org/api/")).toThrow(/HTTPS/);
+    expect(() => normalizeNgwOrigin("https://localhost")).toThrow(/pública/);
+    expect(() => normalizeNgwOrigin("https://127.0.0.1")).toThrow(/pública/);
+    expect(() => normalizeNgwOrigin("https://192.168.1.10")).toThrow(/pública/);
+  });
+
+  it("filters unsupported and mismatched resources and deduplicates IDs", () => {
+    const found = parseNgwResources([
+      wrap(10, "resource_group", "Cartografia", 0, true),
+      wrap(47, "mapserver_style", style.name),
+      wrap(47, "mapserver_style", "Duplicado"),
+      wrap(51, "qgis_vector_style", "Geologia"),
+      wrap(59, "raster_style", "DEM"),
+      wrap(62, "wmsclient_layer", "OGC"),
+      wrap(63, "webmap", "Atlas"),
+      wrap(64, "vector_layer", "Dados brutos"),
+      wrap(65, "resource_group", "Outro nível", 22, true),
+      wrap(-1, "webmap", "Inválido"),
+      wrap(66, "unknown", "Desconhecido"),
+    ], 0);
+    expect(found).toHaveLength(6);
+    expect(found[0]).toMatchObject({ id: 10, kind: "group", hasChildren: true });
+    expect(found.filter(f => f.kind === "tile")).toHaveLength(5);
+    expect(() => parseNgwResources({ resources: [] }, 0)).toThrow(/inválido/);
+  });
+
+  it("builds an original NextGIS Web tile resource request safely", () => {
+    const layer = buildNgwTileDefinition("https://maps.example.org/", style);
+    expect(layer.tiles).toEqual([
+      "https://maps.example.org/api/component/render/tile?z={z}&x={x}&y={y}&resource=47",
+    ]);
+    expect(layer.sourceUrl).toBe("https://maps.example.org/resource/47");
+    expect(layer.attribution).toContain("&lt;privado&gt;");
+    expect(layer.attribution).not.toContain("<privado>");
+    expect(() => buildNgwTileDefinition("https://maps.example.org", { ...style, kind: "group" }))
+      .toThrow(/estilo/);
+  });
+
+  it("fetches public resource groups with omitted credentials and explicit CORS", async () => {
+    const spy = vi.fn().mockResolvedValue({
+      ok: true, json: async () => [wrap(47, "mapserver_style", "Carta")],
+    });
+    vi.stubGlobal("fetch", spy);
+    const result = await listNgwResources("https://maps.example.org", 0);
+    expect(result).toHaveLength(1);
+    expect(spy).toHaveBeenCalledWith(
+      "https://maps.example.org/api/resource/?parent=0",
+      expect.objectContaining({
+        credentials: "omit", mode: "cors", redirect: "error", method: "GET",
+      }),
+    );
+    await expect(listNgwResources("https://maps.example.org", -2)).rejects.toThrow(/inválido/);
+  });
+
+  it("reports access denial without exposing private API resources", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403 }));
+    await expect(listNgwResources("https://maps.example.org", 0))
+      .rejects.toThrow(/Sem permissão/);
+  });
+});
