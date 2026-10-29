@@ -9,7 +9,9 @@
  * https://docs.nextgis.com/docs_ngweb_dev/doc/developer/resource.html
  * https://docs.nextgis.com/docs_ngweb/source/services.html
  */
-export type NgwResourceKind = "group" | "tile";
+import type { Feature, FeatureCollection, Geometry } from "geojson";
+
+export type NgwResourceKind = "group" | "tile" | "vector";
 
 export interface NgwResource {
   id: number;
@@ -30,6 +32,11 @@ export interface NgwTileDefinition {
 }
 
 type Dict = Record<string, unknown>;
+
+export const MAX_NGW_VECTOR_BYTES = 8 * 1024 * 1024;
+export const MAX_NGW_VECTOR_FEATURES = 5000;
+
+const VECTOR_CLASSES = new Set(["vector_layer", "postgis_layer"]);
 
 const RENDERABLE = new Set([
   "mapserver_style",
@@ -89,7 +96,7 @@ export function parseNgwResources(payload: unknown, parentId: number): NgwResour
         resource.id < 1 || used.has(resource.id)) continue;
     const cls = safeText(resource.cls, 80);
     const kind: NgwResourceKind | null = cls === "resource_group" ? "group" :
-      RENDERABLE.has(cls) ? "tile" : null;
+      RENDERABLE.has(cls) ? "tile" : VECTOR_CLASSES.has(cls) ? "vector" : null;
     if (!kind) continue;
     const name = safeText(resource.display_name);
     if (!name) continue;
@@ -153,4 +160,128 @@ export async function listNgwResources(
   }
   const data: unknown = await response.json();
   return parseNgwResources(data, parentId);
+}
+
+
+function validateNgwCoordinates(coords: unknown, depth = 0): void {
+  if (!Array.isArray(coords) || coords.length === 0 || depth > 12) {
+    throw new Error("A camada contém coordenadas inválidas ou demasiado complexas.");
+  }
+  if (typeof coords[0] === "number") {
+    const x = coords[0], y = coords[1];
+    if (coords.length < 2 || !Number.isFinite(x) || !Number.isFinite(y) ||
+        Math.abs(x) > 180 || Math.abs(y) > 90) {
+      throw new Error("A camada vectorial deve estar em EPSG:4326 (longitude/latitude).");
+    }
+    return;
+  }
+  for (const part of coords) validateNgwCoordinates(part, depth + 1);
+}
+
+function validateNgwGeometry(value: unknown, depth = 0): Geometry {
+  if (depth > 12) throw new Error("Geometria demasiado aninhada para importação.");
+  const g = record(value);
+  if (!g || typeof g.type !== "string") throw new Error("Geometria vectorial inválida.");
+  if (g.type === "GeometryCollection") {
+    if (!Array.isArray(g.geometries) || g.geometries.length > MAX_NGW_VECTOR_FEATURES) {
+      throw new Error("Colecção de geometrias inválida.");
+    }
+    for (const item of g.geometries) validateNgwGeometry(item, depth + 1);
+  } else if (["Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon"].includes(g.type)) {
+    validateNgwCoordinates(g.coordinates);
+  } else {
+    throw new Error("Tipo de geometria não suportado pelo GeoMoz.");
+  }
+  return value as Geometry;
+}
+
+export function parseNgwVectorGeoJson(value: unknown): FeatureCollection {
+  const obj = record(value);
+  if (!obj || obj.type !== "FeatureCollection" || !Array.isArray(obj.features)) {
+    throw new Error("O servidor não devolveu uma colecção GeoJSON válida.");
+  }
+  if (obj.features.length > MAX_NGW_VECTOR_FEATURES) {
+    throw new Error("A camada excede o limite de " + MAX_NGW_VECTOR_FEATURES + " feições nesta importação.");
+  }
+  const features: Feature[] = obj.features.map((entry: unknown): Feature => {
+    const f = record(entry);
+    if (!f || f.type !== "Feature") throw new Error("Feição GeoJSON inválida.");
+    const properties = record(f.properties) ?? {};
+    return {
+      type: "Feature",
+      ...(typeof f.id === "string" || typeof f.id === "number" ? { id: f.id } : {}),
+      geometry: validateNgwGeometry(f.geometry),
+      properties,
+    } as Feature;
+  });
+  return { type: "FeatureCollection", features };
+}
+
+async function limitedNgwText(response: Response): Promise<string> {
+  const declared = Number(response.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declared) && declared > MAX_NGW_VECTOR_BYTES) {
+    throw new Error("O ficheiro vectorial excede o limite de 8 MB.");
+  }
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const text = await response.text();
+    if (new TextEncoder().encode(text).byteLength > MAX_NGW_VECTOR_BYTES) {
+      throw new Error("O ficheiro vectorial excede o limite de 8 MB.");
+    }
+    return text;
+  }
+  const decoder = new TextDecoder();
+  let output = "";
+  let consumed = 0;
+  try {
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      consumed += part.value.byteLength;
+      if (consumed > MAX_NGW_VECTOR_BYTES) {
+        throw new Error("O ficheiro vectorial excede o limite de 8 MB.");
+      }
+      output += decoder.decode(part.value, { stream: true });
+    }
+    return output + decoder.decode();
+  } catch (cause) {
+    await reader.cancel().catch(() => {});
+    throw cause;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+/**
+ * Export a public NGW vector or PostGIS layer as WGS84 GeoJSON for local
+ * analyses and editing. Never uploads GeoMoz data or forwards credentials.
+ */
+export async function importNgwVector(
+  origin: string, resource: NgwResource, signal?: AbortSignal,
+): Promise<FeatureCollection> {
+  const server = normalizeNgwOrigin(origin);
+  if (resource.kind !== "vector" || !VECTOR_CLASSES.has(resource.className) ||
+      !Number.isSafeInteger(resource.id) || resource.id < 1) {
+    throw new Error("Seleccione uma camada vectorial NextGIS Web válida.");
+  }
+  const url = server + "/api/resource/" + resource.id +
+    "/export?format=GeoJSON&srs=4326&zipped=False";
+  const response = await fetch(url, {
+    method: "GET",
+    mode: "cors",
+    credentials: "omit",
+    redirect: "error",
+    headers: { Accept: "application/geo+json, application/json" },
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(response.status === 403 || response.status === 401
+      ? "Não há autorização para exportar esta camada vectorial."
+      : "Falha ao exportar camada vectorial (HTTP " + response.status + ").");
+  }
+  const raw = await limitedNgwText(response);
+  let data: unknown;
+  try { data = JSON.parse(raw); }
+  catch { throw new Error("A exportação do servidor não contém JSON válido."); }
+  return parseNgwVectorGeoJson(data);
 }
