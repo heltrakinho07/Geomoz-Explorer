@@ -1,0 +1,85 @@
+name: GeoMoz QGIS vector printing CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/geomoz-qgis-print/**"
+      - ".github/workflows/geomoz-qgis-print-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/geomoz-qgis-print/**"
+      - ".github/workflows/geomoz-qgis-print-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Validate QGIS print job and Docker isolation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Python validation and service safety tests
+        run: python3 -m unittest discover -s services/geomoz-qgis-print/tests -p 'test_*.py' -v
+      - name: Validate isolated Docker Compose
+        env:
+          GEOMOZ_PRINT_WORKER_TOKEN: CI_VALIDATION_TOKEN_1234567890_abcdef
+        run: |
+          cd services/geomoz-qgis-print
+          docker compose config --quiet
+          docker compose config | grep -q '127.0.0.1'
+          docker compose config | grep -q 'read_only: true'
+
+  qgis-render-smoke:
+    name: Generate a real vector PDF using system PyQGIS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install QGIS Python and PDF inspection tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            python3-qgis qgis-providers fonts-dejavu-core poppler-utils
+      - name: Generate actual A3 map using GeoMoz layout renderer
+        run: |
+          cd services/geomoz-qgis-print
+          /usr/bin/python3 - <<'PY'
+          import json
+          from job import validate_job
+          source = {
+            "title": "Mapa geológico de Manica",
+            "paper": "A3",
+            "orientation": "landscape",
+            "dpi": 300,
+            "layers": [{
+              "name": "Litologias",
+              "color": "#0284c7",
+              "geojson": {
+                "type": "FeatureCollection",
+                "features": [{
+                  "type": "Feature",
+                  "geometry": {"type": "Polygon", "coordinates": [[
+                    [32.8, -19.7], [33.2, -19.7],
+                    [33.2, -19.3], [32.8, -19.7]
+                  ]]},
+                  "properties": {"litologia": "Gnaisse"}
+                }]
+              }
+            }]
+          }
+          with open("test-map.json", "w") as f:
+            json.dump(validate_job(source), f)
+          PY
+          QT_QPA_PLATFORM=offscreen /usr/bin/python3 render.py test-map.json test-map.pdf
+          test "$(stat -c%s test-map.pdf)" -gt 1000
+          pdfinfo test-map.pdf | grep -q 'Page size:'
+          pdftotext test-map.pdf - | grep -q 'Manica'
+      - name: Retain PDF rendering evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: geomoz-pyqgis-a3-vector-evidence
+          path: services/geomoz-qgis-print/test-map.pdf
+          retention-days: 7
+          if-no-files-found: ignore
