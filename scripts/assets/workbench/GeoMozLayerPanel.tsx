@@ -76,9 +76,9 @@ export function GeoMozLayerPanel(props:Props) {
           <label>Tamanho dos pontos<input aria-label="Tamanho dos pontos" type="range" min="2" max="24" step="1" value={selected.style.circleRadius} onChange={e=>setLayerStyle(selected.id,{circleRadius:Number(e.target.value),proportionalSizeEnabled:false})}/></label>
           <p>Alterações aplicadas ao renderer original. Para classes, regras ou tamanho proporcional, use os estilos avançados.</p>
         </div>}
-        {!viewer&&selected.type==="geojson"&&activeTask==="map"&&<GeoMozDigitizingTools key={selected.id} layer={selected} editLayerId={props.geometryEditLayerId} onToggleEdit={props.onToggleGeometryEdit} onCancelEdit={props.onCancelGeometryEdit}/>}
+        {!viewer&&selected.type==="geojson"&&activeTask==="map"&&<GeoMozDigitizingTools key={"digitizing:"+selected.id} layer={selected} editLayerId={props.geometryEditLayerId} onToggleEdit={props.onToggleGeometryEdit} onCancelEdit={props.onCancelGeometryEdit}/>}
         {!viewer&&activeTask!=="map"&&selected.id===props.geometryEditLayerId&&<p className="gm-digitizing-notice" role="status">A edição da camada continua activa. Regresse a «Digitalizar» para guardar ou descartar as alterações.</p>}
-        <GeoMozLayerProperties key={selected.id} layer={selected} props={props}/>
+        <GeoMozLayerProperties key={"properties:"+selected.id} layer={selected} props={props}/>
       </section>}
       <div className="gm-catalog-footer"><span><i/>{layers.filter(rendered).length} visíveis de {layers.length}</span><span title="Altere a ordem e os grupos nas propriedades da camada">SIG LOCAL</span></div>
     </>}

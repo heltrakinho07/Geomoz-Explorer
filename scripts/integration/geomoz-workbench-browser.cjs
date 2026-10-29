@@ -60,7 +60,7 @@ async function settleRecovery(page){
   // Only the CI browser harness simulates a real Firebase session; this route
   // never exists in the deployed application. The actual portal bridge checks
   // Firebase Auth, rejects guests, and communicates with the same message type.
-  await page.route("**/auth/workspace-check", route =>
+  await context.route("**/auth/workspace-check", route =>
     route.fulfill({status:200,contentType:"text/html",body:portalMessage(true)}));
   await page.goto("http://127.0.0.1:4182/gis-workspace/");
   await page.getByTestId("geomoz-workbench-chrome").waitFor();
@@ -144,6 +144,10 @@ async function settleRecovery(page){
   assert.equal(await printDialog.getByLabel("Resolução de saída").inputValue(),"300");
   const [mapWidth,mapHeight]=(await printDialog.getByText(/Mapa: \d+ × \d+ píxeis/).innerText()).match(/Mapa: (\d+) × (\d+)/).slice(1).map(Number);
   assert.ok(mapWidth>2000 || mapHeight>2000,"Print map is redrawn above screen resolution");
+  await printDialog.getByLabel("Posição personalizada do mapa",{exact:true}).check();
+  await printDialog.getByLabel("mapa width",{exact:true}).fill("65");
+  await printDialog.getByLabel("Posição personalizada da legenda",{exact:true}).check();
+  await printDialog.getByLabel("legenda x",{exact:true}).fill("75");
   await printDialog.getByRole("button",{name:"Adicionar texto",exact:true}).click();
   await printDialog.getByLabel("Texto do item").fill("Carta geológica de Manica");
   await printDialog.getByLabel("x do item",{exact:true}).fill("25");
@@ -175,6 +179,8 @@ async function settleRecovery(page){
   assert.equal(projectDownload.suggestedFilename(),"Untitled_Projecto.geomoz");
   await projectDownload.saveAs("workbench-browser-artifacts/Untitled_Projecto.geomoz");
   const savedProject=JSON.parse(await readFile("workbench-browser-artifacts/Untitled_Projecto.geomoz","utf8"));
+  assert.equal(savedProject.printLayout.geomozMapFrame.width,65);
+  assert.equal(savedProject.printLayout.geomozLegendPlacement.x,75);
   assert.equal(savedProject.printLayout.geomozItems[0].text,"Carta geológica de Manica");
   await saveDialog.waitFor({state:"hidden"});
   for(const extension of ["geomoz","geolibre","geolibre.json"]){
@@ -367,6 +373,8 @@ async function settleRecovery(page){
   // rather than silently accumulating all sketches in a generic layer.
   const activeInspector=page.locator('.gm-layer-inspector[data-selected-layer-name="Falhas e lineamentos"]:visible').first();
   assert.equal(await activeInspector.locator('[data-testid="geomoz-add-digitized-feature"]:visible').count(),0,"Draw toolbar must be hidden until edit mode");
+  assert.equal(await activeInspector.getByTestId("geomoz-digitizing-tools").count(),1,"Layer changes must leave exactly one digitizing control, without stale siblings");
+  assert.equal(await activeInspector.getByTestId("geomoz-digitizing-tools").getAttribute("data-layer-id"),await activeInspector.getAttribute("data-selected-layer-id"),"Digitizing targets the selected layer");
   const editButton=activeInspector.locator('[data-testid="geomoz-edit-layer"]').first();
   await editButton.click();
   await activeInspector.locator('[data-testid="geomoz-edit-layer"][aria-pressed="true"]').first().waitFor({timeout:15000});
