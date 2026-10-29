@@ -60,7 +60,7 @@ async function settleRecovery(page){
   // Only the CI browser harness simulates a real Firebase session; this route
   // never exists in the deployed application. The actual portal bridge checks
   // Firebase Auth, rejects guests, and communicates with the same message type.
-  await page.route("**/auth/workspace-check", route =>
+  await context.route("**/auth/workspace-check", route =>
     route.fulfill({status:200,contentType:"text/html",body:portalMessage(true)}));
   await page.goto("http://127.0.0.1:4182/gis-workspace/");
   await page.getByTestId("geomoz-workbench-chrome").waitFor();
