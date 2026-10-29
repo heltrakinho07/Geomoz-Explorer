@@ -103,6 +103,11 @@ describe("NextGIS Web vector import for local GeoMoz editing", () => {
         geometry: { type: "Point", coordinates: [580000, 7432000] } }],
     })).toThrow(/EPSG:4326/);
     expect(() => parseNgwVectorGeoJson({ type: "Feature", features: [] })).toThrow(/GeoJSON/);
+    let nested: unknown = { type: "Point", coordinates: [32.58, -25.97] };
+    for (let i = 0; i < 16; i++) nested = { type: "GeometryCollection", geometries: [nested] };
+    expect(() => parseNgwVectorGeoJson({ type: "FeatureCollection", features: [
+      { type: "Feature", geometry: nested, properties: {} },
+    ] })).toThrow(/aninhada/);
     expect(() => parseNgwVectorGeoJson({ ...valid,
       features: Array(MAX_NGW_VECTOR_FEATURES + 1).fill(valid.features[0]),
     })).toThrow(/limite/);
