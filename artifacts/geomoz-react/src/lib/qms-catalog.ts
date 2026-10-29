@@ -64,7 +64,7 @@ export function parseQmsSearchResponse(value: unknown): QmsServiceSummary[] {
   if (!Array.isArray(items)) throw new Error("Resposta inválida do catálogo NextGIS QMS.");
   return items.flatMap((candidate): QmsServiceSummary[] => {
     const item = asRecord(candidate);
-    if (!item || !Number.isSafeInteger(item.id) || Number(item.id) < 1 ||
+    if (!item || (typeof item.id !== "number" || !Number.isSafeInteger(item.id) || item.id < 1) ||
         item.type !== "tms" || Number(item.epsg) !== 3857 ||
         item.cumulative_status !== "works") return [];
     const name = cleanText(item.name, 120);
@@ -75,7 +75,7 @@ export function parseQmsSearchResponse(value: unknown): QmsServiceSummary[] {
 
 export function parseQmsTileSource(value: unknown): QmsTileSource {
   const item = asRecord(value);
-  if (!item || !Number.isSafeInteger(item.id) || Number(item.id) < 1 ||
+  if (!item || (typeof item.id !== "number" || !Number.isSafeInteger(item.id) || item.id < 1) ||
       item.type !== "tms" || Number(item.epsg) !== 3857 ||
       item.cumulative_status !== "works") {
     throw new Error("Este serviço não é um mapa TMS/XYZ Web Mercator funcional.");
