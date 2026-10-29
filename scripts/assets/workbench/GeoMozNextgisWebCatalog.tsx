@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "@geolibre/core";
 import { ArrowLeft, Database, ExternalLink, Folder, Layers3, Loader2, X } from "lucide-react";
 import {
-  normalizeNgwOrigin, listNgwResources, buildNgwTileDefinition,
+  normalizeNgwOrigin, listNgwResources, buildNgwTileDefinition, importNgwVector,
   type NgwResource,
 } from "../../lib/geomoz-nextgis-web";
 
@@ -22,9 +22,12 @@ export function GeoMozNextgisWebCatalog({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState("");
   const activeRequest = useRef<AbortController | null>(null);
   const addTileLayer = useAppStore(s => s.addTileLayer);
+  const addGeoJsonLayer = useAppStore(s => s.addGeoJsonLayer);
+  const updateLayer = useAppStore(s => s.updateLayer);
+  const importRequest = useRef<AbortController | null>(null);
   const canAdd = useAppStore(s => s.deploymentCapabilities.has("data:add"));
 
-  useEffect(() => () => activeRequest.current?.abort(), []);
+  useEffect(() => () => { activeRequest.current?.abort(); importRequest.current?.abort(); }, []);
 
   const open = async (server: string, nextPath: FolderPath[]) => {
     activeRequest.current?.abort();
@@ -56,12 +59,34 @@ export function GeoMozNextgisWebCatalog({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const add = (resource: NgwResource) => {
+  const add = async (resource: NgwResource) => {
     if (!canAdd || addingId !== null) return;
     setAddingId(resource.id);
     setError("");
     setStatus("");
     try {
+      if (resource.kind === "vector") {
+        importRequest.current?.abort();
+        const controller = new AbortController();
+        importRequest.current = controller;
+        const geojson = await importNgwVector(origin, resource, controller.signal);
+        if (controller.signal.aborted) return;
+        const id = addGeoJsonLayer(resource.name, geojson);
+        if (!id) throw new Error("O motor SIG não confirmou a importação vectorial.");
+        const state = useAppStore.getState();
+        const existing = state.layers.find(item => item.id === id);
+        updateLayer(id, { metadata: {
+          ...existing?.metadata,
+          geomozProvider: "NextGIS Web",
+          geomozNgwOrigin: origin,
+          geomozNgwResourceId: resource.id,
+          geomozNgwResourceClass: resource.className,
+          geomozImportedAt: new Date().toISOString(),
+        } });
+        setStatus("«" + resource.name + "» importada: " + geojson.features.length + " feições vectoriais.");
+        window.dispatchEvent(new CustomEvent("geomoz:task", { detail: "data" }));
+        return;
+      }
       const layer = buildNgwTileDefinition(origin, resource);
       const id = addTileLayer(layer.name, {
         type: "xyz",
@@ -142,16 +167,16 @@ export function GeoMozNextgisWebCatalog({ onClose }: { onClose: () => void }) {
 
       <div className="gm-ngw-results">
         {shown.map(resource => (
-          <button type="button" key={resource.id} disabled={busy || (resource.kind === "tile" && (!canAdd || addingId !== null))}
+          <button type="button" key={resource.id} disabled={busy || (resource.kind !== "group" && (!canAdd || addingId !== null))}
             onClick={() => {
               if (resource.kind === "group") void open(origin, [...path, { id: resource.id, label: resource.name }]);
-              else add(resource);
+              else void add(resource);
             }}>
             {resource.kind === "group" ? <Folder size={16}/> : <Layers3 size={16}/>}
             <span><strong>{resource.name}</strong>
-              <small>{resource.kind === "group" ? "Grupo de recursos" : resource.className.replace(/_/g, " ")}</small>
+              <small>{resource.kind === "group" ? "Grupo de recursos" : resource.kind === "vector" ? "Camada vectorial · importação local" : resource.className.replace(/_/g, " ")}</small>
             </span>
-            <span className="gm-ngw-action">{resource.kind === "group" ? "Abrir" : addingId === resource.id ? "A adicionar…" : "Adicionar"}</span>
+            <span className="gm-ngw-action">{resource.kind === "group" ? "Abrir" : addingId === resource.id ? "A importar…" : resource.kind === "vector" ? "Importar" : "Adicionar"}</span>
           </button>
         ))}
       </div>
@@ -159,7 +184,7 @@ export function GeoMozNextgisWebCatalog({ onClose }: { onClose: () => void }) {
         Abrir servidor de origem <ExternalLink size={12}/>
       </a>}
       <footer>
-        A ligação utiliza apenas a API pública e não envia credenciais. Recursos
+        As camadas vectoriais são exportadas em EPSG:4326 (máximo 8 MB / 5 000 feições) e ficam disponíveis para análise local. A ligação utiliza apenas a API pública e não envia credenciais. Recursos
         privados precisam de autorização no próprio NextGIS Web. A disponibilidade,
         CORS e os direitos de reutilização dependem do servidor de origem.
       </footer>
