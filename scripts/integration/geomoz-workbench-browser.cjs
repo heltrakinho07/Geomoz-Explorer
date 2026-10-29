@@ -438,6 +438,7 @@ async function settleRecovery(page){
   assert.ok(created.features.some(f=>f.geometry?.type==="LineString"&&f.properties?.nome==="Falha de controlo"&&f.properties?.densidade===2.7),
     "Real native map drawing must persist geometry and typed attributes in selected layer");
   console.log("Native geological line digitized, attributed, committed and exported.");
+  await require("./geomoz-raster-browser.cjs")(page);
 
 
   await page.locator('.gm-menu-slot:not([hidden]) button').first().click();
@@ -479,7 +480,7 @@ async function settleRecovery(page){
   await viewer.close();
   console.log("Read-only viewer keeps camera and theme controls while withholding authoring commands.");
   assert.deepEqual(errors,[],"No uncaught React/runtime errors");
-  await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,resultNavigator:true,seismicUsgs:true,seismicAnalytics:true,earthscopeStation:true,layerStyleEditor:true,curatedMenus:true,searchCurated:true,studyAreaDrawing:true,layerProperties:true,geojsonExport:true,themePersistence:true,crossTabTheme:true,geomozOwnedAbout:true,mobile:true,viewerReadOnly:true,duplicateNamesGuarded:true,errors},null,2));
+  await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,rasterProcessing:true,resultNavigator:true,seismicUsgs:true,seismicAnalytics:true,earthscopeStation:true,layerStyleEditor:true,curatedMenus:true,searchCurated:true,studyAreaDrawing:true,layerProperties:true,geojsonExport:true,themePersistence:true,crossTabTheme:true,geomozOwnedAbout:true,mobile:true,viewerReadOnly:true,duplicateNamesGuarded:true,errors},null,2));
   console.log("GeoMoz Workbench: owned UI, real import, layer controls, analysis dialog, menus, dark/light persistence and mobile layout passed.");
  }catch(error){
   try{await page.locator(".gm-help-menu summary").click({timeout:2000});await page.getByRole("button",{name:"Diagnóstico",exact:true}).click({timeout:2000});await page.getByRole("dialog").waitFor({timeout:2000});console.error("Application diagnostics:",(await page.getByRole("dialog").innerText()).slice(-14000));}catch{}

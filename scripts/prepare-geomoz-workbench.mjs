@@ -10,6 +10,7 @@ import { prepareGeoMozMapPlacement } from "./geomoz-map-placement.mjs";
 import { prepareGeoMozLayoutEditor } from "./geomoz-layout-editor.mjs";
 import { prepareGeoMozPrintQuality } from "./geomoz-print-quality.mjs";
 import { prepareGeoMozProjectFormat } from "./geomoz-project-format.mjs";
+import {prepareGeoMozRasterProcessing} from "./geomoz-raster-processing.mjs";
 import { patchGeoMozDigitizingEngine } from "./geomoz-digitizing-engine.mjs";
 const root=resolve(process.argv[2]??".geolibre-upstream");
 const app=resolve(root,"apps/geolibre-desktop/src");
@@ -220,6 +221,7 @@ for(const [file,family,registry] of [["VectorToolsDialog","vector","VECTOR_TOOLS
   dialog=once(dialog,"for (const tool of "+registry+") {","for (const tool of "+registry+") {\n    if (!isGeoMozToolVisible(\""+family+"\", tool.id)) continue;","curated "+family+" tool list");
   write(path,dialog);
 }
+prepareGeoMozRasterProcessing(root);
 let context=read("components/layout/MapContextMenu.tsx");
 context='import { GEOMOZ_ROLLOUT } from "../../lib/geomoz-workbench-profile";\n'+context;
 context=context.replaceAll("{lineOfSightAvailable ? (","{GEOMOZ_ROLLOUT.immersive && lineOfSightAvailable ? (").replace("{onExplorePlace ? (","{GEOMOZ_ROLLOUT.immersive && onExplorePlace ? (");
