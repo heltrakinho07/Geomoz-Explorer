@@ -20,7 +20,7 @@ def render(job: dict, output: str) -> None:
         QgsApplication, QgsFillSymbol, QgsLineSymbol, QgsMarkerSymbol,
         QgsPrintLayout, QgsLayoutExporter, QgsLayoutItemLabel, QgsLayoutItemMap,
         QgsLayoutItemScaleBar, QgsLayoutPoint, QgsLayoutSize, QgsProject,
-        QgsRectangle, QgsVectorLayer, QgsCoordinateReferenceSystem,
+        QgsRectangle, QgsVectorLayer, QgsCoordinateReferenceSystem, Qgis,
     )
     from qgis.PyQt.QtCore import Qt
     from qgis.PyQt.QtGui import QFont, QColor
@@ -133,6 +133,9 @@ def render(job: dict, output: str) -> None:
             settings = QgsLayoutExporter.PdfExportSettings()
             settings.dpi = job["dpi"]
             settings.forceVectorOutput = True
+            # QGIS defaults to text outlines; keep labels/searchable text as
+            # actual font objects while preserving vector geometries.
+            settings.textRenderFormat = Qgis.TextRenderFormat.AlwaysText
             result = exporter.exportToPdf(str(output), settings)
             if result != QgsLayoutExporter.Success:
                 raise RuntimeError(f"Erro QGIS ao exportar PDF (código {result}).")
