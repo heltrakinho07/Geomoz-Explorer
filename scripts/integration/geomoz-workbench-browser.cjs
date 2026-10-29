@@ -82,6 +82,28 @@ async function settleRecovery(page){
   assert.deepEqual(await page.locator(".gm-task-tabs button").allTextContents(),["Digitalizar","Dados","Análise","Resultados"]);
   assert.equal(await page.getByRole("button",{name:"Mais opções",exact:true}).count(),0);
   assert.equal(await page.getByRole("button",{name:"Gestão",exact:true}).count(),0);
+  // Level one: keyboard-operable cards retain native command gates.
+  for(const label of ["Raster","Vector","Serviços de mapas","Hidrologia","Cartografia"]){
+    const card=page.locator(".gm-ribbon-accordion").filter({has:page.locator("summary").filter({hasText:new RegExp("^\\s*"+label+"\\s*$")})});
+    assert.equal(await card.count(),1,label);
+    assert.equal(await card.getAttribute("open"),null);
+    await card.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    assert.notEqual(await card.getAttribute("open"),null);
+    if(label==="Raster")await card.locator('[data-command="proc.raster.slope"]').waitFor({state:"visible"});
+    if(label==="Serviços de mapas"){
+      await card.locator('[data-action="geomoz-qms"]').click();
+      await page.locator(".gm-qms-panel").waitFor({state:"visible"});
+      await card.locator('[data-action="geomoz-qms"]').click();
+    }
+    if(label==="Hidrologia"){
+      assert.equal(await card.locator('a[target="_blank"]').count(),3);
+      assert.equal(await card.locator('a[href="/hidrografia"]').count(),1);
+    }
+    await card.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    assert.equal(await card.getAttribute("open"),null);
+  }
   await page.keyboard.press("Control+k");
   const search=page.getByRole("combobox");
   await search.waitFor();
