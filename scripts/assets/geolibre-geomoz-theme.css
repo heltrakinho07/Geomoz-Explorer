@@ -450,3 +450,37 @@ html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0
 .gm-qms-spinner{animation:gm-qms-spin .8s linear infinite}
 @keyframes gm-qms-spin{to{transform:rotate(360deg)}}
 @media(max-width:640px){.gm-qms-panel{right:8px;width:calc(100vw - 16px);max-height:55vh;padding:11px}}
+
+
+/* GeoMoz GIS Workspace — NextGIS Web public resource browser */
+.gm-ngw-panel{position:absolute;z-index:65;top:100%;right:16px;width:min(520px,calc(100vw - 32px));max-height:min(72vh,740px);overflow:auto;border:1px solid var(--gm-line);border-radius:0 0 14px 14px;background:var(--gm-surface);color:var(--gm-text);box-shadow:0 18px 40px #02061744;padding:15px;display:flex;flex-direction:column;gap:12px}
+.gm-ngw-panel>header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.gm-ngw-panel>header strong{display:flex;align-items:center;gap:8px;font-size:14px}
+.gm-ngw-panel>header small{display:block;color:var(--gm-subtle);font-size:10px;margin-top:4px}
+.gm-ngw-panel>header button{border:1px solid var(--gm-line);border-radius:8px;padding:5px;flex:none}
+.gm-ngw-panel input{min-width:0;background:var(--gm-surface);color:var(--gm-text);border:1px solid var(--gm-line);border-radius:8px;padding:9px;font-size:12px;width:100%}
+.gm-ngw-connect{display:flex;flex-direction:column;gap:6px}
+.gm-ngw-connect>label,.gm-ngw-filter>span{color:var(--gm-subtle);font-size:11px}
+.gm-ngw-connect>div{display:flex;gap:8px;align-items:stretch}
+.gm-ngw-connect>div>button{background:var(--gm-accent);color:white;padding:0 13px;border-radius:8px;font-size:12px;font-weight:700}
+.gm-ngw-connect button:disabled{opacity:.5}
+.gm-ngw-path{display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--gm-line);padding:6px 0;color:var(--gm-subtle);font-size:11px}
+.gm-ngw-path span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gm-ngw-path button{border:1px solid var(--gm-line);border-radius:8px;padding:5px;flex:none}
+.gm-ngw-filter{display:flex;flex-direction:column;gap:5px}
+.gm-ngw-panel>p{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gm-subtle)}
+.gm-ngw-panel>p.gm-ngw-error{color:#b91c1c}
+.gm-ngw-panel>p.gm-ngw-success{color:#15803d}
+.gm-ngw-results{display:flex;flex-direction:column;gap:6px;min-height:0;overflow-y:auto}
+.gm-ngw-results>button{display:flex;align-items:center;gap:10px;border:1px solid var(--gm-line);border-radius:9px;padding:10px;background:var(--gm-surface);color:var(--gm-text);text-align:left}
+.gm-ngw-results>button:enabled:hover{border-color:var(--gm-accent);background:var(--gm-muted)}
+.gm-ngw-results>button:disabled{opacity:.55}
+.gm-ngw-results>button>span:nth-child(2){flex:1;min-width:0}
+.gm-ngw-results strong{display:block;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gm-ngw-results small{display:block;font-size:10px;color:var(--gm-subtle);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gm-ngw-action{font-size:10px;font-weight:700;color:var(--gm-accent)}
+.gm-ngw-source{display:inline-flex;align-items:center;gap:4px;color:var(--gm-accent);font-size:11px;text-decoration:underline}
+.gm-ngw-panel>footer{font-size:10px;line-height:1.6;color:var(--gm-subtle)}
+.gm-ngw-spinner{animation:gm-ngw-spin 0.85s linear infinite}
+@keyframes gm-ngw-spin{to{transform:rotate(360deg)}}
+@media(max-width:640px){.gm-ngw-panel{right:8px;width:calc(100vw - 16px);max-height:56vh;padding:11px}}
