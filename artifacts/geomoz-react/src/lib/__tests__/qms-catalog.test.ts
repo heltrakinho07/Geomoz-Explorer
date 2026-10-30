@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  boundsToQmsWkt, getQmsTileSource, parseQmsSearchResponse, parseQmsTileSource, searchQmsBasemaps,
+  boundsToQmsWkt, createQmsPreviewTile, getQmsTileSource, parseQmsExtent, parseQmsSearchResponse, parseQmsTileSource, searchQmsBasemaps,
 } from "../qms-catalog";
 
 const valid = {
@@ -92,6 +92,33 @@ describe("NextGIS QMS basemap catalogue", () => {
     expect(boundsToQmsWkt([30, -27, 42, -10])).toContain("POLYGON");
     expect(() => boundsToQmsWkt([42, -27, 30, -10])).toThrow(/inválida/);
     expect(() => boundsToQmsWkt([30, -95, 42, -10])).toThrow(/inválida/);
+  });
+
+  it("extracts provider bounds and respects sample zoom limits", () => {
+    const extent = "SRID=4326;POLYGON ((30 -27,42 -27,42 -10,30 -10,30 -27))";
+    expect(parseQmsExtent(extent)).toEqual([30, -27, 42, -10]);
+    expect(parseQmsExtent("MULTIPOLYGON ((x))")).toBeUndefined();
+    expect(parseQmsExtent("POLYGON ((30 -95,42 -27,42 -10,30 -95))")).toBeUndefined();
+    const source = parseQmsTileSource({ ...valid, z_min: 14, z_max: 16, extent });
+    expect(source.minZoom).toBe(14);
+    expect(source.extent).toEqual([30, -27, 42, -10]);
+    const preview = createQmsPreviewTile(source, [30, -27, 42, -10]);
+    expect(preview?.zoom).toBe(14);
+    expect(preview?.url).toMatch(/\/14\/\d+\/\d+\.png$/);
+    expect(createQmsPreviewTile(source, [120, -40, 150, -15])).toBeNull();
+  });
+
+  it("inverts the Y mosaic index for TMS without altering XYZ X/Z", () => {
+    const xyz = parseQmsTileSource({ ...valid, z_max: 12, y_origin_top: true });
+    const tms = parseQmsTileSource({ ...valid, z_max: 12, y_origin_top: false });
+    const a = createQmsPreviewTile(xyz);
+    const b = createQmsPreviewTile(tms);
+    expect(a).toBeTruthy();
+    expect(b).toBeTruthy();
+    expect(a?.x).toBe(b?.x);
+    expect(a?.zoom).toBe(b?.zoom);
+    expect((a?.y ?? 0) + (b?.y ?? 0)).toBe(2 ** 12 - 1);
+    expect(a?.url).not.toBe(b?.url);
   });
 
 });

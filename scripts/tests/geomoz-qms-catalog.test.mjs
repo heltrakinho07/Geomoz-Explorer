@@ -11,6 +11,10 @@ test("GeoMoz QMS catalogue uses the existing pinned GIS layer store", () => {
   assert.match(panel, /scheme: source\.tms \? "tms" : "xyz"/);
   assert.match(panel, /data:add/);
   assert.match(panel, /geomozQmsId/);
+  assert.match(panel, /createQmsPreviewTile\(source, regionBounds\)/);
+  assert.match(panel, /Verificar mosaico de /);
+  assert.match(panel, /onError=\{\(\) => setPreviewStatus\("failed"\)\}/);
+  assert.match(panel, /A cobertura declarada do fornecedor não inclui Moçambique/);
   assert.match(panel, /searchQmsBasemaps\(term, controller\.signal, regionBounds\)/);
   assert.match(panel, /opacity: 0\.72/);
   assert.match(panel, /Catálogo GeoMoz de mapas-base/);

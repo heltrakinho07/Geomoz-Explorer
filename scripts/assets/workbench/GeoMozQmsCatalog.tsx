@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "@geolibre/core";
 import { Check, Database, Loader2, Search, X } from "lucide-react";
 import {
-  searchQmsBasemaps, getQmsTileSource,
-  type QmsServiceSummary, type QmsTileSource, type QmsSearchBounds,
+  searchQmsBasemaps, getQmsTileSource, createQmsPreviewTile,
+  type QmsServiceSummary, type QmsTileSource, type QmsSearchBounds, type QmsPreviewTile,
 } from "../../lib/geomoz-qms-catalog";
 
 /** GeoMoz-owned bridge from the public NextGIS QMS catalogue into GeoLibre's
@@ -19,10 +19,18 @@ export function GeoMozQmsCatalog({ onClose }: { onClose: () => void }) {
   const [addingId, setAddingId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [added, setAdded] = useState("");
+  const [preview, setPreview] = useState<{ name: string; tile: QmsPreviewTile | null; outsideMozambique: boolean } | null>(null);
+  const [previewStatus, setPreviewStatus] = useState<"loading" | "loaded" | "failed">("loading");
+  const [previewError, setPreviewError] = useState("");
+  const previewRequest = useRef(0);
   const addTileLayer = useAppStore((s) => s.addTileLayer);
   const canAdd = useAppStore((s) => s.deploymentCapabilities.has("data:add"));
 
   useEffect(() => {
+    // Do not retain a preview for a different area or search query.
+    ++previewRequest.current;
+    setPreview(null);
+    setPreviewError("");
     const term = query.trim();
     if (term.length < 2) {
       setLoading(false);
@@ -48,6 +56,26 @@ export function GeoMozQmsCatalog({ onClose }: { onClose: () => void }) {
       controller.abort();
     };
   }, [query, region]);
+
+  const inspect = async (service: QmsServiceSummary) => {
+    const request = ++previewRequest.current;
+    setPreview(null);
+    setPreviewError("");
+    setPreviewStatus("loading");
+    try {
+      const source = await getQmsTileSource(service.id);
+      if (request !== previewRequest.current) return;
+      const tile = createQmsPreviewTile(source, regionBounds);
+      const mozambique: QmsSearchBounds = [30, -27, 42, -10];
+      const outsideMozambique = Boolean(source.extent &&
+        !createQmsPreviewTile(source, mozambique));
+      setPreview({ name: source.name, tile, outsideMozambique });
+    } catch (cause) {
+      if (request === previewRequest.current) {
+        setPreviewError(cause instanceof Error ? cause.message : "Não foi possível inspeccionar o serviço.");
+      }
+    }
+  };
 
   const add = async (service: QmsServiceSummary) => {
     if (!canAdd || addingId !== null) return;
@@ -126,14 +154,38 @@ export function GeoMozQmsCatalog({ onClose }: { onClose: () => void }) {
         <p>Nenhum serviço XYZ/TMS compatível encontrado.</p>}
       <div className="gm-qms-results">
         {results.map((item) => (
-          <button type="button" key={item.id} disabled={!canAdd || addingId !== null}
-            title={item.description || item.name} onClick={() => void add(item)}>
+          <div className="gm-qms-service-row" key={item.id} title={item.description || item.name}>
             <span><strong>{item.name}</strong><small>{item.description || "Serviço cartográfico remoto"}</small></span>
-            {addingId === item.id ? <Loader2 size={16} className="gm-qms-spinner" /> :
-              <span className="gm-qms-add">Adicionar</span>}
-          </button>
+            <div className="gm-qms-service-actions">
+              <button type="button" disabled={addingId !== null}
+                aria-label={"Verificar mosaico de " + item.name} onClick={() => void inspect(item)}>Verificar</button>
+              <button type="button" disabled={!canAdd || addingId !== null}
+                aria-label={"Adicionar " + item.name} onClick={() => void add(item)}>
+                {addingId === item.id ? <Loader2 size={16} className="gm-qms-spinner" /> : "Adicionar"}
+              </button>
+            </div>
+          </div>
         ))}
       </div>
+      {previewError && <p role="alert" className="gm-qms-error">{previewError}</p>}
+      {preview && <section className="gm-qms-preview" aria-label="Diagnóstico visual do serviço">
+        <strong>Pré-visualização · {preview.name}</strong>
+        {preview.outsideMozambique && <p role="alert">A cobertura declarada do fornecedor não inclui Moçambique.
+          Navegue até à região do serviço antes de o utilizar no mapa.</p>}
+        {!preview.tile ? <p role="alert">A cobertura declarada não intersecta a região seleccionada.
+          Escolha outra região no filtro ou seleccione outro serviço.</p> : <>
+          <img key={preview.tile.url} src={preview.tile.url} alt={"Mosaico de verificação: " + preview.name}
+            width={256} height={256} onLoad={() => setPreviewStatus("loaded")}
+            onError={() => setPreviewStatus("failed")} />
+          {previewStatus === "loading" && <p role="status">A carregar um mosaico de amostra…</p>}
+          {previewStatus === "loaded" && <p role="status">Mosaico recebido. Confirme visualmente se contém dados válidos;
+            uma imagem preta pode indicar ausência de cobertura, mesmo sem erro de rede.</p>}
+          {previewStatus === "failed" && <p role="alert">O mosaico de amostra falhou.
+            Verifique a disponibilidade, cobertura, zoom e acesso à rede antes de adicionar a camada.</p>}
+          <small>Nível {preview.tile.zoom} · localização de teste {preview.tile.latitude.toFixed(3)}°, {preview.tile.longitude.toFixed(3)}°.
+            Este teste não garante que o serviço permita WebGL/CORS em todos os mosaicos.</small>
+        </>}
+      </section>}
       <footer>
         As fontes são externas e conservam os termos de utilização dos fornecedores.
         Antes de exportar mapas ou dados, confirme as respectivas licenças.

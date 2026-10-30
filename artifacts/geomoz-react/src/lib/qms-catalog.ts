@@ -20,6 +20,9 @@ export interface QmsTileSource {
   url: string;
   tms: boolean;
   maxZoom: number;
+  minZoom: number;
+  /** Optional geographic coverage supplied by the provider, EPSG:4326. */
+  extent?: QmsSearchBounds;
   attribution: string;
   termsUrl?: string;
 }
@@ -102,12 +105,17 @@ export function parseQmsTileSource(value: unknown): QmsTileSource {
   const termsUrl = safeHttpsUrl(item.terms_of_use_url) || safeHttpsUrl(item.license_url);
   const max = typeof item.z_max === "number" && Number.isFinite(item.z_max)
     ? Math.max(0, Math.min(22, Math.floor(item.z_max))) : 18;
+  const min = typeof item.z_min === "number" && Number.isFinite(item.z_min)
+    ? Math.max(0, Math.min(max, Math.floor(item.z_min))) : 0;
+  const extent = parseQmsExtent(item.extent);
   return {
     id: Number(item.id),
     name,
     url: rawUrl,
     tms: item.y_origin_top === false,
     maxZoom: max,
+    minZoom: min,
+    ...(extent ? { extent } : {}),
     attribution: "&copy; " + escapeHtml(author) +
       ' · <a href="https://qms.nextgis.com/" target="_blank" rel="noopener noreferrer">NextGIS QMS</a>',
     termsUrl,
@@ -122,6 +130,61 @@ async function readJson(url: string, signal?: AbortSignal): Promise<unknown> {
 
 /** Geographic WGS84 bbox in west, south, east, north order. */
 export type QmsSearchBounds = readonly [number, number, number, number];
+
+/** Parse EPSG:4326 rectangular extent or polygon envelope without executing WKT. */
+export function parseQmsExtent(value: unknown): QmsSearchBounds | undefined {
+  if (typeof value !== "string" || value.length > 8192) return undefined;
+  const normalized = value.trim().replace(/^SRID=4326;/i, "");
+  if (!/^POLYGON\s*\(\(/i.test(normalized)) return undefined;
+  const match = normalized.match(/^POLYGON\s*\(\(([^()]+)\)\)\s*$/i);
+  if (!match) return undefined;
+  const points = match[1].split(",").map((point) => point.trim().split(/\s+/).map(Number));
+  if (points.length < 4 || points.some((point) =>
+    point.length < 2 || !Number.isFinite(point[0]) || !Number.isFinite(point[1]) ||
+    point[0] < -180 || point[0] > 180 || point[1] < -90 || point[1] > 90)) {
+    return undefined;
+  }
+  const xs = points.map((p) => p[0]);
+  const ys = points.map((p) => p[1]);
+  const result: QmsSearchBounds = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  return result[0] < result[2] && result[1] < result[3] ? result : undefined;
+}
+
+export interface QmsPreviewTile {
+  url: string;
+  zoom: number;
+  x: number;
+  y: number;
+  longitude: number;
+  latitude: number;
+}
+
+/**
+ * Pick one representative mosaic for a visible browser preview.
+ * This is a visual probe, not proof that every tile or the licence is valid.
+ * Bottom-origin TMS services invert Y; XYZ does not.
+ */
+export function createQmsPreviewTile(source: QmsTileSource, region?: QmsSearchBounds): QmsPreviewTile | null {
+  const coverage = source.extent;
+  if (coverage && region && (coverage[2] < region[0] || coverage[0] > region[2] ||
+    coverage[3] < region[1] || coverage[1] > region[3])) return null;
+  const box = coverage && region
+    ? [Math.max(coverage[0], region[0]), Math.max(coverage[1], region[1]),
+       Math.min(coverage[2], region[2]), Math.min(coverage[3], region[3])]
+    : coverage ?? region ?? [30, -27, 42, -10];
+  const longitude = Math.max(-180, Math.min(180, (box[0] + box[2]) / 2));
+  const latitude = Math.max(-85.05112878, Math.min(85.05112878, (box[1] + box[3]) / 2));
+  const zoom = Math.min(source.maxZoom, Math.max(source.minZoom, 12));
+  const n = 2 ** zoom;
+  const latRadians = latitude * Math.PI / 180;
+  const x = Math.max(0, Math.min(n - 1, Math.floor((longitude + 180) / 360 * n)));
+  const xyzY = Math.max(0, Math.min(n - 1,
+    Math.floor((1 - Math.log(Math.tan(latRadians) + 1 / Math.cos(latRadians)) / Math.PI) / 2 * n)));
+  const y = source.tms ? n - xyzY - 1 : xyzY;
+  const url = source.url.replace(/\{z\}/g, String(zoom)).replace(/\{x\}/g, String(x))
+    .replace(/\{y\}/g, String(y)).replace(/\{s\}/g, "a");
+  return { url, zoom, x, y, longitude, latitude };
+}
 
 export function boundsToQmsWkt(bounds: QmsSearchBounds): string {
   const [west, south, east, north] = bounds;
