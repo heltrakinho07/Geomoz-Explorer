@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  getQmsTileSource, parseQmsSearchResponse, parseQmsTileSource, searchQmsBasemaps,
+  boundsToQmsWkt, getQmsTileSource, parseQmsSearchResponse, parseQmsTileSource, searchQmsBasemaps,
 } from "../qms-catalog";
 
 const valid = {
@@ -79,4 +79,19 @@ describe("NextGIS QMS basemap catalogue", () => {
     await expect(getQmsTileSource(448)).resolves.toMatchObject({ id: 448 });
     await expect(getQmsTileSource(449)).rejects.toThrow(/outro serviço/);
   });
+
+  it("uses documented geographic extent filter only when a bbox is supplied", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ results: [valid] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await searchQmsBasemaps("satélite", undefined, [30, -27, 42, -10]);
+    const url = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(url.searchParams.get("intersects_extent"))
+      .toBe("POLYGON((30 -27,42 -27,42 -10,30 -10,30 -27))");
+    expect(boundsToQmsWkt([30, -27, 42, -10])).toContain("POLYGON");
+    expect(() => boundsToQmsWkt([42, -27, 30, -10])).toThrow(/inválida/);
+    expect(() => boundsToQmsWkt([30, -95, 42, -10])).toThrow(/inválida/);
+  });
+
 });
