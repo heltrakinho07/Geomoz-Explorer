@@ -10,7 +10,7 @@ import {
  * native persisted XYZ/TMS raster layers. No QGIS plugin code is copied. */
 export function GeoMozQmsCatalog({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
-  const [region, setRegion] = useState<"mozambique" | "africa" | "all">("mozambique");
+  const [region, setRegion] = useState<"mozambique" | "africa" | "all">("all");
   const regionBounds: QmsSearchBounds | undefined = region === "mozambique"
     ? [30.0, -27, 42, -10] : region === "africa"
       ? [-19, -35.5, 52, 38] : undefined;
@@ -104,18 +104,18 @@ export function GeoMozQmsCatalog({ onClose }: { onClose: () => void }) {
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Pesquisar OpenStreetMap, relevo, satélite…" />
       </label>
-      <label className="gm-qms-search">
+      <label className="gm-qms-search gm-qms-region">
         <span className="text-xs">Cobertura geográfica</span>
         <select aria-label="Filtrar serviços por região" value={region}
           onChange={(event) => setRegion(event.target.value as typeof region)}
           className="w-full rounded border bg-background px-2 py-1 text-xs">
           <option value="mozambique">Moçambique (recomendado)</option>
           <option value="africa">África</option>
-          <option value="all">Todas as regiões</option>
+          <option value="all">Todas as regiões (inclui serviços globais)</option>
         </select>
       </label>
       <p className="text-xs text-muted-foreground">
-        O filtro regional evita sugerir ortofotos e mapas sem cobertura na área escolhida.
+        Escolha uma região para evitar ortofotos sem cobertura; a opção global mantém o catálogo completo.
         Serviços externos podem apresentar imagens vazias; ajuste a opacidade no catálogo de camadas.
       </p>
       {!canAdd && <p role="status">A sua sessão não permite adicionar camadas ao projecto.</p>}
