@@ -120,13 +120,29 @@ async function readJson(url: string, signal?: AbortSignal): Promise<unknown> {
   return response.json();
 }
 
-/** Search is always restricted to reported-working EPSG:3857 tile services. */
-export async function searchQmsBasemaps(query: string, signal?: AbortSignal): Promise<QmsServiceSummary[]> {
+/** Geographic WGS84 bbox in west, south, east, north order. */
+export type QmsSearchBounds = readonly [number, number, number, number];
+
+export function boundsToQmsWkt(bounds: QmsSearchBounds): string {
+  const [west, south, east, north] = bounds;
+  if (bounds.length !== 4 || !bounds.every(Number.isFinite) ||
+      west < -180 || east > 180 || south < -90 || north > 90 ||
+      west >= east || south >= north) {
+    throw new Error("Área geográfica inválida para pesquisa de mapas-base.");
+  }
+  return `POLYGON((${west} ${south},${east} ${south},${east} ${north},${west} ${north},${west} ${south}))`;
+}
+
+/** Search working EPSG:3857 services, optionally intersecting a target region. */
+export async function searchQmsBasemaps(
+  query: string, signal?: AbortSignal, bounds?: QmsSearchBounds,
+): Promise<QmsServiceSummary[]> {
   const term = query.trim().slice(0, 100);
   if (term.length < 2) return [];
   const params = new URLSearchParams({
     type: "tms", epsg: "3857", cumulative_status: "works", search: term, limit: "12",
   });
+  if (bounds) params.set("intersects_extent", boundsToQmsWkt(bounds));
   const json = await readJson(QMS_API + "?" + params.toString(), signal);
   return parseQmsSearchResponse(json);
 }

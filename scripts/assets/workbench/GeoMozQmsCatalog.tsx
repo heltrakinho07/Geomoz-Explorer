@@ -3,13 +3,17 @@ import { useAppStore } from "@geolibre/core";
 import { Check, Database, Loader2, Search, X } from "lucide-react";
 import {
   searchQmsBasemaps, getQmsTileSource,
-  type QmsServiceSummary, type QmsTileSource,
+  type QmsServiceSummary, type QmsTileSource, type QmsSearchBounds,
 } from "../../lib/geomoz-qms-catalog";
 
 /** GeoMoz-owned bridge from the public NextGIS QMS catalogue into GeoLibre's
  * native persisted XYZ/TMS raster layers. No QGIS plugin code is copied. */
 export function GeoMozQmsCatalog({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
+  const [region, setRegion] = useState<"mozambique" | "africa" | "all">("all");
+  const regionBounds: QmsSearchBounds | undefined = region === "mozambique"
+    ? [30.0, -27, 42, -10] : region === "africa"
+      ? [-19, -35.5, 52, 38] : undefined;
   const [results, setResults] = useState<QmsServiceSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [addingId, setAddingId] = useState<number | null>(null);
@@ -30,7 +34,7 @@ export function GeoMozQmsCatalog({ onClose }: { onClose: () => void }) {
     setResults([]);
     setError("");
     const timeout = window.setTimeout(() => {
-      void searchQmsBasemaps(term, controller.signal)
+      void searchQmsBasemaps(term, controller.signal, regionBounds)
         .then((services) => { if (!controller.signal.aborted) setResults(services); })
         .catch((cause: unknown) => {
           if (!controller.signal.aborted) {
@@ -43,7 +47,7 @@ export function GeoMozQmsCatalog({ onClose }: { onClose: () => void }) {
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [query]);
+  }, [query, region]);
 
   const add = async (service: QmsServiceSummary) => {
     if (!canAdd || addingId !== null) return;
@@ -66,7 +70,8 @@ export function GeoMozQmsCatalog({ onClose }: { onClose: () => void }) {
         scheme: source.tms ? "tms" : "xyz",
         attribution: source.attribution,
         visible: true,
-        opacity: 1,
+        // Keep the underlying map legible even when a remote tile is opaque/black.
+        opacity: 0.72,
         metadata: {
           geomozProvider: "NextGIS QMS",
           geomozQmsId: source.id,
@@ -85,24 +90,38 @@ export function GeoMozQmsCatalog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <section className="gm-qms-panel" aria-label="Catálogo NextGIS QuickMapServices" role="dialog">
+    <section className="gm-qms-panel" aria-label="Catálogo GeoMoz de mapas-base" role="dialog">
       <header>
         <div>
           <strong><Database size={16} /> Catálogo de mapas-base</strong>
-          <small>NextGIS QMS · serviços XYZ/TMS em EPSG:3857</small>
+          <small>GeoMoz · serviços XYZ/TMS em EPSG:3857</small>
         </div>
-        <button type="button" aria-label="Fechar catálogo QMS" onClick={onClose}><X size={17} /></button>
+        <button type="button" aria-label="Fechar catálogo de mapas-base" onClick={onClose}><X size={17} /></button>
       </header>
       <label className="gm-qms-search">
         <Search size={15} aria-hidden="true" />
-        <input aria-label="Pesquisar mapas NextGIS QMS" type="search" value={query}
+        <input aria-label="Pesquisar mapas-base GeoMoz" type="search" value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Pesquisar OpenStreetMap, relevo, satélite…" />
       </label>
+      <label className="gm-qms-search gm-qms-region">
+        <span className="text-xs">Cobertura geográfica</span>
+        <select aria-label="Filtrar serviços por região" value={region}
+          onChange={(event) => setRegion(event.target.value as typeof region)}
+          className="w-full rounded border bg-background px-2 py-1 text-xs">
+          <option value="mozambique">Moçambique (recomendado)</option>
+          <option value="africa">África</option>
+          <option value="all">Todas as regiões (inclui serviços globais)</option>
+        </select>
+      </label>
+      <p className="text-xs text-muted-foreground">
+        Escolha uma região para evitar ortofotos sem cobertura; a opção global mantém o catálogo completo.
+        Serviços externos podem apresentar imagens vazias; ajuste a opacidade no catálogo de camadas.
+      </p>
       {!canAdd && <p role="status">A sua sessão não permite adicionar camadas ao projecto.</p>}
       {loading && <p role="status"><Loader2 size={14} className="gm-qms-spinner" /> A pesquisar…</p>}
       {error && <p role="alert" className="gm-qms-error">{error}</p>}
-      {added && <p role="status" className="gm-qms-success"><Check size={14}/> Camada «{added}» adicionada ao projecto.</p>}
+      {added && <p role="status" className="gm-qms-success"><Check size={14}/> Camada «{added}» adicionada ao projecto com 72% de opacidade. Pode ajustá-la no catálogo.</p>}
       {!loading && query.trim().length >= 2 && !results.length && !error &&
         <p>Nenhum serviço XYZ/TMS compatível encontrado.</p>}
       <div className="gm-qms-results">
