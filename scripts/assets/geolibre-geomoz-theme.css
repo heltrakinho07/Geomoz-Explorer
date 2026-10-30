@@ -434,6 +434,8 @@ html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0
 .gm-qms-panel>header button{padding:5px;border-radius:7px;border:1px solid var(--gm-line);flex:none}
 .gm-qms-panel .gm-qms-search{display:flex;align-items:center;gap:7px;padding:9px;border:1px solid var(--gm-line);border-radius:8px;background:var(--gm-muted)}
 .gm-qms-panel .gm-qms-search input{flex:1;min-width:0;border:0;background:transparent;color:var(--gm-text);outline:none;font-size:12px}
+.gm-qms-panel .gm-qms-region{flex-direction:column;align-items:stretch}
+.gm-qms-panel .gm-qms-region select{min-width:0;max-width:100%;background:var(--gm-surface);color:var(--gm-text);border:1px solid var(--gm-line);border-radius:6px;padding:7px;font-size:12px}
 .gm-qms-panel>p{font-size:11px;color:var(--gm-subtle);display:flex;align-items:center;gap:6px}
 .gm-qms-panel>p.gm-qms-error{color:#b91c1c}
 .gm-qms-panel>p.gm-qms-success{color:#15803d}
