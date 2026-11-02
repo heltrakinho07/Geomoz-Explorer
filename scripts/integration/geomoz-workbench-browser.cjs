@@ -91,6 +91,12 @@ async function settleRecovery(page){
     try{return document.documentElement.lang==="en" &&
       JSON.parse(localStorage.getItem("geolibre.desktopSettings")||"{}").language==="en";}catch{return false;}
   });
+  assert.equal((await page.locator(".gm-project-field span").textContent())?.trim(),"CURRENT PROJECT",
+    "The entire GeoMoz project heading must follow the selected language");
+  assert.ok((await page.locator(".gm-command-search").textContent())?.includes("Search tools"),
+    "The GeoMoz-owned command bar must not stay in Portuguese");
+  assert.ok((await page.locator(".gm-session-badge").textContent())?.includes("Project open"),
+    "The project status must follow the language too");
   await page.reload();
   await page.getByTestId("geomoz-workbench-chrome").waitFor();
   await page.getByTestId("geomoz-settings-trigger").click();
