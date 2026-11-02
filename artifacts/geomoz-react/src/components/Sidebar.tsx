@@ -1,4 +1,5 @@
 import { SidebarResize, useSidebarWidth } from "./SidebarResize";
+import "./sidebar-footer-actions.css";
 import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
 import {useGeoMozTheme} from "@/hooks/useGeoMozTheme";
 import React, { useState, useEffect } from "react";
@@ -119,7 +120,7 @@ export default function Sidebar({
   };
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 select-none border-r border-slate-200/90 dark:border-slate-850 transition-colors duration-200">
+    <div className="gm-sidebar flex h-full min-w-0 flex-col select-none border-r border-slate-200/90 bg-white text-slate-800 transition-colors duration-200 dark:border-slate-850 dark:bg-slate-950 dark:text-slate-100">
       {/* 1. Header: Brand Logo & Collapse Toggle */}
       <div className="h-16 px-4 flex items-center justify-between border-b border-slate-200/80 dark:border-slate-850 shrink-0">
         <Link
@@ -218,7 +219,7 @@ export default function Sidebar({
       </div>
 
       {/* 3. Main Navigation Links */}
-      <nav className="flex-1 px-2.5 py-3.5 space-y-1.5 overflow-y-auto">
+      <nav className="min-h-0 min-w-0 flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden px-2.5 py-3.5">
         {NAV_ITEMS.map((item) => {
           const isActive = activeTab === item.id;
           return (
@@ -281,55 +282,61 @@ export default function Sidebar({
           )}
         </button>
 
-        {/* Theme (Day / Night) & Settings Row */}
-        <div className="flex items-center gap-1.5">
-          {/* Day / Night Mode Toggle Button */}
+        {/* Compact footer dock. Every action fits inside the resizable sidebar. */}
+        <div
+          className={`gm-sidebar-action-dock${collapsed ? " gm-sidebar-action-dock--collapsed" : ""}${!isStandalone && canInstall ? " gm-sidebar-action-dock--install" : ""}`}
+          role="group"
+          aria-label="Aparência, instalação e definições"
+          data-testid="sidebar-action-dock"
+        >
           <button
             type="button"
             onClick={toggleTheme}
-            className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold border transition-all cursor-pointer ${
-              collapsed ? "w-full justify-center px-0" : "flex-1"
-            } ${
-              isDark
-                ? "bg-slate-900 border-slate-800 text-amber-400 hover:text-amber-300 hover:border-slate-700"
-                : "bg-white border-slate-200 text-slate-700 hover:text-slate-900 hover:border-slate-300 shadow-xs"
-            }`}
+            data-mode={isDark ? "dark" : "light"}
+            className="gm-sidebar-action gm-sidebar-action--theme"
+            aria-label={isDark ? "Ativar modo claro" : "Ativar modo noturno"}
+            aria-pressed={isDark}
             title={isDark ? "Mudar para Modo Claro" : "Mudar para Modo Noturno"}
+            data-testid="sidebar-theme-action"
           >
-            {isDark ? <Sun size={17} className="shrink-0" /> : <Moon size={17} className="shrink-0 text-slate-600" />}
+            <span className="gm-sidebar-action__icon" aria-hidden="true">
+              {isDark ? <Sun size={17} /> : <Moon size={17} />}
+            </span>
             {!collapsed && (
-              <span className="truncate text-xs font-bold">
+              <span className="gm-sidebar-action__label">
                 {isDark ? "Modo Claro" : "Modo Noturno"}
               </span>
             )}
           </button>
 
-          {/* PWA Install button */}
           {!isStandalone && canInstall && (
             <button
               type="button"
               onClick={promptInstall}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border border-sky-300 dark:border-sky-800 text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 dark:hover:bg-sky-900/60 transition-all cursor-pointer shadow-xs ${
-                collapsed ? "w-full justify-center px-0 mt-1" : ""
-              }`}
+              className="gm-sidebar-action gm-sidebar-action--install"
+              aria-label="Instalar GeoMoz Explorer como aplicação"
               title="Instalar GeoMoz Explorer como Aplicação"
+              data-testid="sidebar-install-action"
             >
-              <Download size={15} className="shrink-0 text-sky-500" />
-              {!collapsed && <span>Instalar App</span>}
+              <span className="gm-sidebar-action__icon" aria-hidden="true">
+                <Download size={17} />
+              </span>
+              {!collapsed && <span className="gm-sidebar-action__label">Instalar App</span>}
             </button>
           )}
 
-          {/* Settings button */}
           <button
             type="button"
             onClick={onOpenSettings}
-            className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shadow-xs ${
-              collapsed ? "w-full justify-center px-0 mt-1" : ""
-            }`}
+            className="gm-sidebar-action gm-sidebar-action--settings"
+            aria-label="Abrir definições do sistema"
             title="Definições do Sistema"
+            data-testid="sidebar-settings-action"
           >
-            <Settings size={17} className="shrink-0" />
-            {!collapsed && <span className="text-xs font-bold">Definições</span>}
+            <span className="gm-sidebar-action__icon" aria-hidden="true">
+              <Settings size={17} />
+            </span>
+            {!collapsed && <span className="gm-sidebar-action__label">Definições</span>}
           </button>
         </div>
 
