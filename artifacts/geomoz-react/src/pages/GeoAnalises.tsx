@@ -1,6 +1,7 @@
 import { SidebarResize, useSidebarWidth } from "@/components/SidebarResize";
 import { validateFirePeriods, precedingFirePeriod } from "@/lib/fire-periods";
 import "./geoanalises-sidebar.css";
+import "./geoanalises-catalog.css";
 import scienceCatalog from "@/lib/index-science.json";
 type ScienceEntry = { status: string; kind: string; source: string; note: string; name?: string; formula?: string; bands?: string };
 const SCIENCE: Record<string, ScienceEntry> = scienceCatalog;
@@ -2782,7 +2783,7 @@ export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
     badgeColor: "bg-emerald-100 text-emerald-800 border-emerald-200",
     icon: Sprout,
     gradient: "from-emerald-500 to-green-600",
-    description: "Monitorização contínuo de vigor vegetal, densidade foliar, estimativa de biomassa e clorofila com índices multiespectrais calibrados.",
+    description: "Monitorização contínua do vigor vegetal, densidade foliar, estimativa de biomassa e clorofila com índices multiespectrais calibrados.",
     highlights: ["NDVI (Vigor 10m)", "EVI (Alta Biomassa)", "SAVI (Ajuste Solo)", "GCI (Clorofila)", "Saúde Culturas"],
     defaultTab: "ndvi",
     tabIds: ["ndvi", "evi", "savi", "msavi", "gci", "crop_health", "ndvi_l8"],
@@ -3732,10 +3733,10 @@ export default function GeoAnalises({
         /* ════════════════════════════════════════════════════════════════════
            CATALOG VIEW (Cards Persuasivos e Modernos)
            ════════════════════════════════════════════════════════════════════ */
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-slate-50 dark:bg-slate-950">
+        <div className="geo-catalog-shell flex min-h-0 flex-1 flex-col overflow-y-auto bg-slate-50 dark:bg-slate-950">
 
           {/* Catalog Content */}
-          <div className="mx-auto w-full max-w-7xl flex-1 space-y-4 p-3 sm:space-y-6 sm:p-6 md:p-8">
+          <div className="geo-catalog-content mx-auto w-full max-w-7xl flex-1 space-y-4 p-3 sm:space-y-6 sm:p-6 md:p-8">
             <header className="space-y-4">
               <div>
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white">O que pretende analisar?</h2>
@@ -3746,24 +3747,26 @@ export default function GeoAnalises({
                   <Search size={18} className="absolute left-3 top-3 text-slate-500" />
                   <input type="search" aria-label="Pesquisar análises" value={categoryFilter}
                     onChange={e => setCategoryFilter(e.target.value)} placeholder="Pesquisar tema ou índice: NDVI, água, relevo…"
-                    className="min-h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-900 focus:ring-2 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                    className="geo-catalog-search min-h-11 w-full rounded-xl border border-slate-300 pl-10 pr-3 text-sm text-slate-900 focus:ring-2 focus:ring-sky-500 dark:border-slate-700 dark:text-white" />
                 </div>
                 <button type="button" onClick={() => { setSelectedCategory("satellite"); setActiveTab("s2"); setShowS2(true); setCompareActive(false); }}
-                  className="min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-medium dark:border-slate-700">Mosaicos EOX · 2016–2024</button>
+                  className="geo-catalog-quick-action min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-medium dark:border-slate-700">Mosaicos EOX · 2016–2024</button>
                 <button type="button" onClick={() => { setSelectedCategory("satellite"); setActiveTab("s2"); setShowS2(true); setCompareActive(true); }}
-                  className="min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-medium dark:border-slate-700">Comparar períodos</button>
+                  className="geo-catalog-quick-action min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-medium dark:border-slate-700">Comparar períodos</button>
               </div>
               <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{filteredCategories.length} áreas temáticas · Os cálculos requerem ligação ao Google Earth Engine; os mosaicos EOX podem ser explorados directamente.</p>
             </header>
             {filteredCategories.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center"><p>Nenhuma análise encontrada.</p><button type="button" onClick={() => setCategoryFilter("")} className="mt-2 text-sky-700 underline">Limpar pesquisa</button></div>}
 
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-4">
+            <div className="geo-catalog-grid grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-4 sm:gap-5">
               {filteredCategories.map(cat => {
                 const IconComponent = cat.icon;
                 return (
                   <button
                     type="button"
                     key={cat.id}
+                    data-category={cat.id}
+                    aria-label={`${cat.status === "development" ? "Ver estado do módulo" : "Abrir análise especializada"}: ${cat.title}`}
                     onClick={() => {
                       setCompareActive(false);
                       setStoryMapOpen(false);
@@ -3774,14 +3777,14 @@ export default function GeoAnalises({
                         setShowS2(true);
                       }
                     }}
-                    className="group text-left focus-visible:outline-2 focus-visible:outline-sky-500 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-sky-400 dark:hover:border-sky-500 hover:shadow-xl transition-all duration-200 p-5 flex flex-col justify-between cursor-pointer hover:-translate-y-0.5"
+                    className="geo-catalog-card group flex cursor-pointer flex-col justify-between p-5 text-left sm:p-6"
                   >
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-3.5">
-                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${cat.gradient} flex items-center justify-center text-white shadow-xs group-hover:scale-105 transition-transform`}>
+                        <div className={`geo-catalog-card__icon w-11 h-11 rounded-2xl bg-gradient-to-br ${cat.gradient} flex items-center justify-center text-white transition-transform duration-200 group-hover:scale-105`}>
                           <IconComponent size={20} />
                         </div>
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${cat.badgeColor}`}>
+                        <span className="geo-catalog-card__badge">
                           {cat.status === "development" ? "Em desenvolvimento" : cat.badge}
                         </span>
                       </div>
@@ -3789,27 +3792,27 @@ export default function GeoAnalises({
                       <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
                         {cat.title}
                       </h3>
-                      <p className="text-xs text-slate-600 dark:text-slate-400 font-medium mb-2.5">
+                      <p className="geo-catalog-card__subtitle mb-3 mt-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
                         {cat.subtitle}
-                        {cat.tabIds.some(id => SCIENCE[id]?.status === "experimental") && <span className="mt-1 block text-amber-700 dark:text-amber-300">Inclui ferramentas em revisão</span>}
+                        {cat.tabIds.some(id => SCIENCE[id]?.status === "experimental") && <span className="geo-catalog-card__review">Inclui ferramentas em revisão</span>}
                       </p>
 
                       <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-3">
                         {cat.description}
                       </p>
 
-                      <div className="flex flex-wrap gap-1.5 mb-4">
+                      <div className="geo-catalog-card__chips mb-5">
                         {cat.highlights.slice(0, 3).map((h, i) => (
-                          <span key={i} className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-md font-medium">
+                          <span key={i} className="geo-catalog-card__chip">
                             {h}
                           </span>
                         ))}
                       </div>
                     </div>
 
-                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold text-sky-600 dark:text-sky-400 group-hover:text-sky-700 dark:group-hover:text-sky-300">
+                    <div className="geo-catalog-card__footer flex items-center justify-between gap-2 border-t pt-3 text-xs font-bold">
                       <span>{cat.status === "development" ? "Ver estado do módulo" : "Abrir Análise Especializada"}</span>
-                      <span className="group-hover:translate-x-1 transition-transform">→</span>
+                      <span className="geo-catalog-card__arrow" aria-hidden="true">→</span>
                     </div>
                   </button>
                 );
