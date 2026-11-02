@@ -4,30 +4,35 @@ import type { MapEngine } from "@geolibre/map";
 import { readRasterPixel } from "@geolibre/plugins";
 import type { FeatureCollection } from "geojson";
 import type { GeoJSONSource, MapMouseEvent } from "maplibre-gl";
-import { Download, Loader2, MapPinned, Mountain, RotateCcw, X } from "lucide-react";
-import { distanceMeters, profileLocations, profileStatistics, profileToCSV,
+import { Download, Loader2, MapPinned, Mountain, Pause, Play, RotateCcw, X } from "lucide-react";
+import { distanceMeters, nearestProfileSampleIndex, profileLocations, profileStatistics, profileToCSV,
   type LonLat, type ProfileSample } from "./geomoz-topographic-profile";
 
 const SOURCE = "geomoz-topo-trace";
 const LINE = "geomoz-topo-line";
 const DOTS = "geomoz-topo-dots";
+const CURSOR_HALO = "geomoz-topo-cursor-halo";
+const CURSOR_DOT = "geomoz-topo-cursor-dot";
 type Props = { mapControllerRef: RefObject<MapEngine | null>; onClose: () => void };
 
-function features(vertices: LonLat[]): FeatureCollection {
+function features(vertices: LonLat[], cursor: ProfileSample | null): FeatureCollection {
   return { type: "FeatureCollection", features: [
     ...(vertices.length > 1 ? [{ type: "Feature" as const, properties: { kind: "line" },
       geometry: { type: "LineString" as const, coordinates: vertices.map(p => [...p]) } }] : []),
     ...vertices.map((p, index) => ({ type: "Feature" as const,
       properties: { kind: "point", number: index + 1 },
       geometry: { type: "Point" as const, coordinates: [...p] } })),
+    ...(cursor ? [{ type: "Feature" as const,
+      properties: { kind: "cursor", distanceM: cursor.distanceM, elevationM: cursor.elevationM },
+      geometry: { type: "Point" as const, coordinates: [cursor.longitude, cursor.latitude] } }] : []),
   ] };
 }
 type NativeMap = NonNullable<ReturnType<MapEngine["getMap"]>>;
-function paint(map: NativeMap, vertices: LonLat[]) {
+function paint(map: NativeMap, vertices: LonLat[], cursor: ProfileSample | null) {
   if (!map.isStyleLoaded()) return;
   try {
-    if (!map.getSource(SOURCE)) map.addSource(SOURCE, { type: "geojson", data: features(vertices) });
-    else (map.getSource(SOURCE) as GeoJSONSource).setData(features(vertices));
+    if (!map.getSource(SOURCE)) map.addSource(SOURCE, { type: "geojson", data: features(vertices, cursor) });
+    else (map.getSource(SOURCE) as GeoJSONSource).setData(features(vertices, cursor));
     if (!map.getLayer(LINE)) map.addLayer({ id: LINE, type: "line", source: SOURCE,
       filter: ["==", ["get", "kind"], "line"],
       paint: { "line-color": "#0284c7", "line-width": 3, "line-dasharray": [2, 1] } });
@@ -35,17 +40,30 @@ function paint(map: NativeMap, vertices: LonLat[]) {
       filter: ["==", ["get", "kind"], "point"],
       paint: { "circle-radius": 6, "circle-color": "#0284c7",
         "circle-stroke-width": 2, "circle-stroke-color": "#fff" } });
+    if (!map.getLayer(CURSOR_HALO)) map.addLayer({ id: CURSOR_HALO, type: "circle", source: SOURCE,
+      filter: ["==", ["get", "kind"], "cursor"],
+      paint: { "circle-radius": 14, "circle-color": "#f59e0b", "circle-opacity": 0.24 } });
+    if (!map.getLayer(CURSOR_DOT)) map.addLayer({ id: CURSOR_DOT, type: "circle", source: SOURCE,
+      filter: ["==", ["get", "kind"], "cursor"],
+      paint: { "circle-radius": 6, "circle-color": "#f59e0b",
+        "circle-stroke-width": 2.5, "circle-stroke-color": "#ffffff" } });
   } catch { /* The next styledata event restores the overlay after a basemap swap. */ }
 }
 function clear(map: NativeMap) {
   try {
+    if (map.getLayer(CURSOR_DOT)) map.removeLayer(CURSOR_DOT);
+    if (map.getLayer(CURSOR_HALO)) map.removeLayer(CURSOR_HALO);
     if (map.getLayer(DOTS)) map.removeLayer(DOTS);
     if (map.getLayer(LINE)) map.removeLayer(LINE);
     if (map.getSource(SOURCE)) map.removeSource(SOURCE);
   } catch { /* The map or style may have been destroyed. */ }
 }
 const fmt = (v: number) => new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 1 }).format(v);
-function Graph({ samples }: { samples: ProfileSample[] }) {
+function Graph({ samples, activeIndex, onCursorChange }: {
+  samples: ProfileSample[];
+  activeIndex: number | null;
+  onCursorChange: (index: number | null) => void;
+}) {
   const stats = profileStatistics(samples);
   const maxDist = samples.at(-1)?.distanceM ?? 1;
   const min = stats?.minElevM ?? 0;
@@ -63,16 +81,30 @@ function Graph({ samples }: { samples: ProfileSample[] }) {
     } else current.push(p);
   }
   if (current.length) chunks.push(current);
-  const [hover, setHover] = useState<number | null>(null);
-  const selected = hover === null ? null : samples[hover];
+  const selected = activeIndex === null ? null : samples[activeIndex] ?? null;
+
+  const pointFromClientX = (clientX: number, rect: DOMRect) => {
+    const position = (clientX - rect.left) * 600 / Math.max(1, rect.width);
+    if (position < 45 || position > 575) return null;
+    return nearestProfileSampleIndex(samples, (position - 45) * maxDist / 530);
+  };
   return <div className="gm-topo-graph">
-    <svg viewBox="0 0 600 213" role="img" aria-label="Gráfico de elevação em metros por distância em quilómetros"
-      onMouseMove={e => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const px = (e.clientX - rect.left) * 600 / Math.max(1, rect.width);
-        setHover(Math.max(0, Math.min(samples.length - 1,
-          Math.round((px - 45) / 530 * (samples.length - 1)))));
-      }} onMouseLeave={() => setHover(null)}>
+    <svg viewBox="0 0 600 213" role="group" tabIndex={0}
+      aria-label="Perfil de elevação. Mova o cursor ou use as setas esquerda e direita para localizar cada amostra no mapa."
+      onPointerMove={e => onCursorChange(pointFromClientX(
+        e.clientX, e.currentTarget.getBoundingClientRect()))}
+      onPointerLeave={() => onCursorChange(null)}
+      onPointerCancel={() => onCursorChange(null)}
+      onKeyDown={e => {
+        const last = samples.length - 1;
+        if (e.key === "Escape") { onCursorChange(null); return; }
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+        e.preventDefault();
+        if (e.key === "Home") onCursorChange(0);
+        else if (e.key === "End") onCursorChange(last);
+        else if (e.key === "ArrowRight") onCursorChange(Math.min(last, (activeIndex ?? -1) + 1));
+        else onCursorChange(Math.max(0, (activeIndex ?? last + 1) - 1));
+      }}>
       {[0, 1, 2, 3, 4].map(i => {
         const elev = low + (high - low) * i / 4;
         return <g key={i}>
@@ -89,13 +121,14 @@ function Graph({ samples }: { samples: ProfileSample[] }) {
       <text x="305" y="209" textAnchor="middle" fontSize="11" fill="currentColor">Distância (km)</text>
       {selected && <>
         <line x1={x(selected.distanceM)} x2={x(selected.distanceM)} y1="24" y2="171"
-          stroke="#0284c7" strokeDasharray="4 3"/>
+          stroke="#f59e0b" strokeDasharray="4 3"/>
         {selected.elevationM !== null && <circle cx={x(selected.distanceM)}
-          cy={y(selected.elevationM)} r="4" fill="#0284c7" stroke="#fff" strokeWidth="1.5"/>}
+          cy={y(selected.elevationM)} r="5" fill="#f59e0b" stroke="#fff" strokeWidth="1.5"/>}
       </>}
     </svg>
     {selected && <p className="gm-topo-tooltip" role="status">
       {(selected.distanceM / 1000).toFixed(2)} km · {selected.elevationM === null ? "NoData" : fmt(selected.elevationM) + " m"}
+      <span> · {selected.latitude.toFixed(5)}°, {selected.longitude.toFixed(5)}°</span>
     </p>}
   </div>;
 }
