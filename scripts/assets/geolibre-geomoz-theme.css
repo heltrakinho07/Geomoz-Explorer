@@ -89,6 +89,28 @@ body { margin:0;background:hsl(var(--background));color:hsl(var(--foreground));f
 .gm-module-nav>a { display:flex;align-items:center;gap:4px;color:#b9cfdf;text-decoration:none;font-size:10px;white-space:nowrap; }
 .gm-module-nav>a:hover { color:#7dd3fc; }
 .gm-icon-button { display:grid;place-items:center;flex:none;width:29px;height:29px;border:0;border-radius:5px;color:inherit;background:transparent; }
+
+/* Restore the existing engine/i18next language switcher in the GeoMoz topbar.
+   It is a compact native select; changing languages never adds a second ribbon. */
+.gm-title-actions .gm-language-picker {
+  display:flex;align-items:center;gap:6px;flex:none;min-width:0;
+  height:33px;padding:0 8px;border:1px solid #c6e8ff23;border-radius:6px;
+  background:#ffffff08;color:#d7ebfa;
+}
+.gm-title-actions .gm-language-picker svg{flex:none;color:#7dd3fc}
+.gm-title-actions .gm-language-picker select{
+  width:102px;max-width:19vw;min-width:0;height:100%;border:0;
+  padding:0 16px 0 0;background:transparent;color:inherit;
+  font:600 11px/1.4 Inter,system-ui,sans-serif;
+  text-overflow:ellipsis;cursor:pointer;outline-offset:2px;
+}
+.gm-title-actions .gm-language-picker option{color:#0f172a;background:#fff}
+.gm-title-actions .gm-language-picker:focus-within{outline:2px solid #7dd3fc;outline-offset:2px}
+@media(max-width:880px){
+  .gm-title-actions .gm-language-picker{padding:0 5px;gap:3px}
+  .gm-title-actions .gm-language-picker select{width:64px;max-width:14vw;font-size:10px}
+}
+
 .gm-icon-button:hover { background:color-mix(in srgb,currentColor 10%,transparent); }
 .gm-taskbar { display:flex;align-items:center;justify-content:space-between;min-width:0;padding:0 18px;border-bottom:1px solid var(--gm-line);gap:12px;background:var(--gm-surface); }
 .gm-task-tabs { display:flex;align-items:stretch;overflow:auto;scrollbar-width:none;gap:5px; }
