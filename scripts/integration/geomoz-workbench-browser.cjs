@@ -98,12 +98,31 @@ async function settleRecovery(page){
       const r=node.getBoundingClientRect();
       const button=document.querySelector('.gm-ribbon-trigger[aria-expanded="true"]');
       const anchor=button?.getBoundingClientRect();
+      const style=getComputedStyle(node);
+      const grid=node.querySelector(".gm-tool-flyout-grid");
+      const gridStyle=grid?getComputedStyle(grid):null;
+      const tool=grid?.querySelector("button, a");
+      const toolStyle=tool?getComputedStyle(tool):null;
+      const heading=node.querySelector("h2");
+      const headingStyle=heading?getComputedStyle(heading):null;
+      const chrome=node.closest(".gm-workbench-chrome");
       return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,anchorTop:anchor?.top,
-        portal:!node.closest(".gm-ribbon-groups"),position:getComputedStyle(node).position,
-        zIndex:parseInt(getComputedStyle(node).zIndex,10)};
+        portal:!node.closest(".gm-ribbon-groups"),insideChrome:!!chrome,
+        chromeBottom:chrome?.getBoundingClientRect().bottom,
+        position:style.position,background:style.backgroundColor,
+        headingFont:parseFloat(headingStyle?.fontSize??"0"),
+        toolFont:parseFloat(toolStyle?.fontSize??"0"),gridDisplay:gridStyle?.display,
+        toolDisplay:toolStyle?.display,zIndex:parseInt(style.zIndex,10)};
     });
-    assert.ok(geometry.portal,"Tool panel must escape the clipped ribbon: "+label);
-    assert.equal(geometry.position,"fixed");
+    assert.ok(geometry.portal&&geometry.insideChrome,"Tool panel must escape the scrollable ribbon and inherit workspace theme: "+label);
+    assert.equal(geometry.position,"absolute");
+    assert.ok(geometry.background!=="rgba(0, 0, 0, 0)"&&geometry.background!=="transparent",
+      "Floating card must have an opaque background: "+label+" "+JSON.stringify(geometry));
+    assert.ok(geometry.headingFont>=14&&geometry.headingFont<=20,"Heading typography must be controlled: "+label);
+    assert.ok(geometry.toolFont>=10&&geometry.toolFont<=13,"Tool typography must be controlled: "+label);
+    assert.equal(geometry.gridDisplay,"grid");
+    assert.equal(geometry.toolDisplay,"flex");
+    assert.ok(geometry.top>=(geometry.chromeBottom??0)-3,"Tool card must start below the full ribbon");
     assert.ok(geometry.zIndex>1000,"Tool panel must appear above the map");
     assert.ok(geometry.left>=0&&geometry.right<=1441&&geometry.top>=0&&geometry.bottom<=961,
       "Tool panel must fit the viewport: "+label+" "+JSON.stringify(geometry));
