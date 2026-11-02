@@ -413,17 +413,31 @@ html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0
 /* QGIS-inspired, map-first task contextual ribbon. Raster tools and external
    services are disclosed only on demand rather than occupying toolbar space. */
 .gm-ribbon-optional{justify-content:center;padding-right:8px;margin-right:8px}
-.gm-ribbon-accordion{position:relative;min-width:118px;align-self:center}
-.gm-ribbon-accordion>summary{display:flex;align-items:center;gap:7px;min-height:42px;cursor:pointer;white-space:nowrap;list-style:none;padding:6px 9px;border:1px solid var(--gm-line);background:var(--gm-muted);border-radius:7px;color:var(--gm-text);font-size:11px;font-weight:650}
-.gm-ribbon-accordion>summary::-webkit-details-marker{display:none}
-.gm-ribbon-accordion>summary svg:last-child{margin-left:auto;transition:transform .18s}
-.gm-ribbon-accordion[open]>summary svg:last-child{transform:rotate(180deg)}
-.gm-ribbon-accordion[open]{z-index:120}
-.gm-ribbon-accordion>div{position:absolute;z-index:120;top:calc(100% + 6px);left:0;display:grid;grid-template-columns:repeat(2,minmax(108px,1fr));gap:5px;max-height:min(65vh,420px);min-width:min(260px,85vw);overflow:auto;padding:8px;border:1px solid var(--gm-line);border-radius:9px;background:var(--gm-surface);box-shadow:0 14px 36px #0206173b}
-.gm-ribbon-accordion>div>button{flex-direction:row;max-width:none;min-height:40px;padding:7px 9px;justify-content:flex-start;gap:8px;text-align:left;white-space:normal}
+.gm-ribbon-accordion{min-width:118px;align-self:center}
+.gm-ribbon-group .gm-ribbon-trigger{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:7px;min-width:118px;max-width:none;min-height:42px;cursor:pointer;white-space:nowrap;padding:6px 9px;border:1px solid var(--gm-line);background:var(--gm-muted);border-radius:7px;color:var(--gm-text);font-size:11px;font-weight:650}
+.gm-ribbon-group .gm-ribbon-trigger svg:last-child{margin-left:auto;transition:transform .18s}
+.gm-ribbon-group .gm-ribbon-trigger[aria-expanded="true"]{border-color:var(--gm-accent);background:color-mix(in srgb,var(--gm-accent) 9%,var(--gm-muted))}
+.gm-ribbon-group .gm-ribbon-trigger[aria-expanded="true"] svg:last-child{transform:rotate(180deg)}
+/* The flyout is portaled into body. Horizontal ribbon overflow can never clip it. */
+.gm-tool-flyout{box-sizing:border-box;z-index:10050;display:flex;flex-direction:column;gap:12px;overflow-y:auto;overscroll-behavior:contain;padding:15px 17px;border:1px solid var(--gm-line);border-radius:12px;background:var(--gm-surface);color:var(--gm-text);box-shadow:0 18px 48px #02061760}
+.gm-tool-flyout-header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:10px;border-bottom:1px solid var(--gm-line)}
+.gm-tool-flyout-header>div{min-width:0}
+.gm-tool-flyout-header small{display:block;color:var(--gm-subtle);font-size:9px;letter-spacing:1.1px;font-weight:750}
+.gm-tool-flyout-header h2{display:flex;align-items:center;gap:8px;margin-top:5px;font-size:17px;line-height:1.3;font-weight:760}
+.gm-tool-flyout-header h2 svg{color:var(--gm-accent)}
+.gm-tool-flyout-header p{margin-top:5px;font-size:11px;line-height:1.5;color:var(--gm-subtle)}
+.gm-tool-flyout-header>button{display:grid;place-items:center;flex:none;width:30px;height:30px;border-radius:7px;border:1px solid var(--gm-line);background:var(--gm-muted);color:var(--gm-text)}
+.gm-tool-flyout-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.gm-tool-flyout-grid>button,.gm-tool-flyout-grid>a{display:flex;align-items:center;justify-content:flex-start;gap:9px;min-width:0;min-height:48px;padding:10px;border:1px solid var(--gm-line);border-radius:8px;background:var(--gm-muted);color:var(--gm-text);text-align:left;font-size:11px;font-weight:600;line-height:1.35;text-decoration:none;cursor:pointer}
+.gm-tool-flyout-grid>button:hover:not(:disabled),.gm-tool-flyout-grid>a:hover{border-color:var(--gm-accent);background:color-mix(in srgb,var(--gm-accent) 9%,var(--gm-muted))}
+.gm-tool-flyout-grid>button:disabled{opacity:.45;cursor:not-allowed}
+.gm-tool-flyout-grid :is(button,a)>svg{flex:none;color:var(--gm-accent)}
+.gm-tool-flyout-grid :is(button,a)>span{overflow-wrap:anywhere}
+.gm-tool-flyout :is(button,a):focus-visible{outline:2px solid var(--gm-accent);outline-offset:2px}
+@media(max-width:767px){.gm-ribbon-accordion{min-width:95px}.gm-ribbon-group .gm-ribbon-trigger{min-width:95px;font-size:10px;padding:5px 7px}.gm-tool-flyout-grid{grid-template-columns:1fr}.gm-tool-flyout{padding:12px}}
 .gm-digitizing-ribbon-tip{display:flex;align-items:center;gap:7px;max-width:300px;margin:auto 6px;padding:5px 6px;font-size:10px;line-height:1.35;color:var(--gm-subtle)}
 .gm-digitizing-ribbon-tip svg{flex:none;color:var(--gm-accent)}
-@media(max-width:767px){.gm-ribbon-accordion{min-width:95px}.gm-ribbon-accordion>summary{font-size:10px;padding:5px 7px}.gm-ribbon-accordion>div{min-width:min(240px,90vw);grid-template-columns:1fr}.gm-digitizing-ribbon-tip{max-width:155px;font-size:9px}}
+@media(max-width:767px){.gm-digitizing-ribbon-tip{max-width:155px;font-size:9px}}
 
 
 /* GeoMoz GIS Workbench — NextGIS QMS (native GIS raster-layer catalogue) */
