@@ -58,7 +58,7 @@ def copernicus_to_preview(region_geojson: dict) -> dict:
                     raise TerrainInputError("Recorte GEE demasiado grande. Reduza a área de estudo.")
                 chunks.append(chunk)
     raw = b"".join(chunks)
-    if raw.startswith(b"PK\\x03\\x04"):
+    if raw.startswith(bytes((0x50, 0x4B, 0x03, 0x04))):
         try:
             with ZipFile(BytesIO(raw)) as archive:
                 candidates = [entry for entry in archive.infolist()
