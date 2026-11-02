@@ -135,7 +135,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
             key={group.label} title={group.label}
             icon={group.label==="Raster"?Image:group.label==="Cartografia"?FileText:group.label==="Vector"?Layers3:Database}
             open={openToolCard===group.label}
-            onToggle={()=>{setOpenToolCard(openToolCard===group.label?null:group.label);setSeismicOpen(false);}}
+            onToggle={()=>{setOpenToolCard(openToolCard===group.label?null:group.label);setSeismicOpen(false);window.dispatchEvent(new CustomEvent("geomoz:task",{detail:group.label==="Vector"?"vector":"data"}));}}
             onClose={()=>setOpenToolCard(null)}>
             {group.label==="Vector"&&<button type="button" data-testid="geomoz-create-layer" onClick={()=>{setOpenToolCard(null);setLayerWizardOpen(true);}}>
               <Layers3 size={17}/><span>Nova camada / Digitalizar</span>
@@ -166,7 +166,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
             <a href="/geoprocessamento" target="_blank" rel="noopener noreferrer" onClick={()=>setOpenToolCard(null)}>Terreno e Hidrologia <ArrowUpRight size={13}/></a>
           </GeoMozFloatingToolCard>}
           {!viewer&&<button type="button" className="gm-compact-seismic" data-action="geomoz-seismic"
-            aria-expanded={seismicOpen} onClick={()=>{setOpenToolCard(null);setSeismicOpen(!seismicOpen);}}>
+            aria-expanded={seismicOpen} onClick={()=>{setOpenToolCard(null);setSeismicOpen(!seismicOpen);window.dispatchEvent(new CustomEvent("geomoz:task",{detail:"data"}));}}>
             <Activity size={16}/><span>Catálogos sísmicos</span>
           </button>}
         </nav>
