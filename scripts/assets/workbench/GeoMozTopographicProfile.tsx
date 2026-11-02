@@ -111,7 +111,8 @@ function exportCSV(samples: ProfileSample[], name: string) {
 
 /** Browser-only tool: samples real pixels of a loaded single-band elevation COG. */
 export function GeoMozTopographicProfile({ mapControllerRef, onClose }: Props) {
-  const demLayers = useAppStore(s => s.layers.filter(layer => layer.type === "cog"));
+  const layers = useAppStore(s => s.layers);
+  const demLayers = useMemo(() => layers.filter(layer => layer.type === "cog"), [layers]);
   const [layerId, setLayerId] = useState("");
   const [vertices, setVertices] = useState<LonLat[]>([]);
   const [drawing, setDrawing] = useState(false);
