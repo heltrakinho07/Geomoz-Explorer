@@ -7,7 +7,7 @@ const source=readFileSync("artifacts/geomoz-react/public/geomoz-preferences.js",
 function boot(initial={}) {
   const storage=new Map(Object.entries(initial));
   const events=new Map();
-  const doc={documentElement:{lang:"pt",dataset:{}}};
+  const doc={documentElement:{lang:"pt",dataset:{}},body:{dataset:{geomozApp:"workbench"}}};
   const win={
     addEventListener:(type,callback)=>events.set(type,[...(events.get(type)||[]),callback]),
     dispatchEvent:event=>{for(const callback of events.get(event.type)||[])callback(event);},
@@ -63,4 +63,12 @@ test("build source uses a single owner of language and a unified settings menu",
   assert.match(menu,/geomoz-language-selector/);
   assert.match(menu,/geomoz-theme-toggle/);
   assert.match(packager,/geomoz-preferences\.js/);
+});
+
+test("Portuguese portal does not mislabel untranslated text as another language",()=>{
+  const b=boot();
+  b.document.body.dataset.geomozApp="portal";
+  b.api.setLanguage("en");
+  assert.equal(b.api.getLanguage(),"en");
+  assert.equal(b.document.documentElement.lang,"pt");
 });
