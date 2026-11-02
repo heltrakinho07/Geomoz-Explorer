@@ -1,0 +1,279 @@
+/*
+ * GeoMoz Dashboard — glassmorphism design system
+ * Scoped to /dashboard. Light, dark, keyboard, reduced-motion and blur fallbacks.
+ */
+.gm-dashboard {
+  position: relative;
+  isolation: isolate;
+  color: #0f172a;
+  background:
+    radial-gradient(ellipse 760px 520px at 0% 0%, rgba(14, 165, 233, .15), transparent 68%),
+    radial-gradient(ellipse 650px 480px at 100% 36%, rgba(45, 212, 191, .105), transparent 68%),
+    radial-gradient(ellipse 660px 440px at 30% 100%, rgba(99, 102, 241, .065), transparent 70%),
+    linear-gradient(140deg, #f8fbff 0%, #eef4fa 56%, #f9fbfd 100%);
+}
+.dark .gm-dashboard {
+  color: #f1f5f9;
+  background:
+    radial-gradient(ellipse 790px 520px at 0% 0%, rgba(14, 165, 233, .125), transparent 69%),
+    radial-gradient(ellipse 650px 480px at 100% 36%, rgba(20, 184, 166, .085), transparent 68%),
+    linear-gradient(145deg, #07111f 0%, #0b1729 54%, #070f1e 100%);
+}
+.gm-dashboard-content { position: relative; z-index: 1; }
+
+/* Deep-glass hero: a dark surface on either theme protects white text contrast. */
+.gm-dashboard-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid rgba(125, 211, 252, .19);
+  border-radius: 24px;
+  background:
+    radial-gradient(ellipse at 96% 4%, rgba(56, 189, 248, .26), transparent 48%),
+    linear-gradient(125deg, rgba(8, 22, 46, .96), rgba(21, 41, 76, .94) 57%, rgba(11, 36, 64, .97));
+  box-shadow: 0 24px 52px -30px rgba(15, 23, 42, .53), inset 0 1px rgba(255, 255, 255, .13);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  backdrop-filter: blur(18px) saturate(145%);
+}
+.gm-dashboard-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 92% 80%, rgba(34, 211, 238, .095), transparent 32%),
+    linear-gradient(120deg, rgba(255, 255, 255, .065), transparent 43%);
+}
+.gm-dashboard-hero::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(186, 230, 253, .66), transparent);
+}
+.gm-dashboard-hero__divider { border-color: rgba(186, 230, 253, .16); }
+.gm-dashboard-hero__action {
+  background: rgba(255, 255, 255, .085);
+  border-color: rgba(186, 230, 253, .31);
+  color: #f0f9ff;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.gm-dashboard-hero__action:hover {
+  background: rgba(255, 255, 255, .16);
+  border-color: rgba(186, 230, 253, .6);
+  color: #fff;
+}
+
+/* Shared translucent panels: readable fallback colours are specified separately. */
+.gm-dashboard-panel,
+.gm-dashboard-switcher,
+.gm-dashboard-project-switch,
+.gm-dashboard-module,
+.gm-dashboard-run {
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, .84);
+  background: rgba(255, 255, 255, .79);
+  box-shadow: 0 14px 36px -28px rgba(15, 23, 42, .46), 0 2px 8px rgba(15, 23, 42, .035), inset 0 1px rgba(255, 255, 255, .94);
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  backdrop-filter: blur(16px) saturate(135%);
+}
+.dark .gm-dashboard-panel,
+.dark .gm-dashboard-switcher,
+.dark .gm-dashboard-project-switch,
+.dark .gm-dashboard-module,
+.dark .gm-dashboard-run {
+  border-color: rgba(148, 163, 184, .23);
+  background: rgba(18, 32, 51, .83);
+  box-shadow: 0 18px 36px -26px rgba(0, 0, 0, .82), inset 0 1px rgba(255, 255, 255, .07);
+}
+.gm-dashboard-panel { border-radius: 20px; }
+.gm-dashboard-switcher { border-radius: 18px; }
+.gm-dashboard-project-switch { border-radius: 13px; }
+.gm-dashboard-panel--empty { border-style: dashed; border-color: rgba(100, 116, 139, .46); }
+.dark .gm-dashboard-panel--empty { border-color: rgba(148, 163, 184, .42); }
+.gm-dashboard-panel--active::before {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(14, 165, 233, .75), rgba(45, 212, 191, .67), transparent);
+}
+.gm-dashboard-panel--active { overflow: hidden; }
+
+/* Semantic button surfaces for launcher modules and project switching. */
+.gm-dashboard-module {
+  --gm-module-rgb: 2 132 199;
+  overflow: hidden;
+  border-radius: 20px;
+  text-align: left;
+  min-height: 208px;
+  cursor: pointer;
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease, background-color .2s ease;
+}
+.gm-dashboard-module::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 94% 0%, rgb(var(--gm-module-rgb) / .12), transparent 61%),
+    linear-gradient(145deg, rgba(255, 255, 255, .15), transparent 43%);
+}
+.gm-dashboard-module::after {
+  content: "";
+  position: absolute;
+  inset: 0 15% auto;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgb(var(--gm-module-rgb) / .38), transparent);
+}
+.gm-dashboard-module > * { position: relative; z-index: 1; }
+.gm-dashboard-module:hover {
+  transform: translateY(-4px);
+  border-color: rgb(var(--gm-module-rgb) / .43);
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 24px 48px -29px rgb(var(--gm-module-rgb) / .34), 0 16px 30px -26px rgba(15, 23, 42, .43), inset 0 1px rgba(255, 255, 255, .95);
+}
+.dark .gm-dashboard-module::before {
+  background: radial-gradient(ellipse at 94% 0%, rgb(var(--gm-module-rgb) / .19), transparent 59%);
+}
+.dark .gm-dashboard-module:hover {
+  border-color: rgb(var(--gm-module-rgb) / .59);
+  background: rgba(25, 43, 65, .96);
+  box-shadow: 0 24px 40px -25px rgba(0, 0, 0, .85), 0 8px 35px -25px rgb(var(--gm-module-rgb) / .43);
+}
+.gm-dashboard-module:focus-visible,
+.gm-dashboard-project-switch:focus-visible {
+  outline: 3px solid #0284c7;
+  outline-offset: 3px;
+  border-color: #0284c7;
+}
+.dark .gm-dashboard-module:focus-visible,
+.dark .gm-dashboard-project-switch:focus-visible { outline-color: #7dd3fc; }
+.gm-dashboard-module:active { transform: translateY(-1px); }
+.gm-dashboard-module[data-module="mapa"] { --gm-module-rgb: 14 165 233; }
+.gm-dashboard-module[data-module="geoanalises"] { --gm-module-rgb: 99 102 241; }
+.gm-dashboard-module[data-module="bacias"] { --gm-module-rgb: 6 182 212; }
+.gm-dashboard-module[data-module="agua_subterranea"] { --gm-module-rgb: 20 184 166; }
+.gm-dashboard-module[data-module="geoperigos"] { --gm-module-rgb: 217 119 6; }
+.gm-dashboard-module[data-module="geomoz_ai"] { --gm-module-rgb: 147 51 234; }
+.gm-dashboard-module[data-module="exportar"] { --gm-module-rgb: 16 185 129; }
+.gm-dashboard-module__icon {
+  flex: none;
+  border: 1px solid rgb(var(--gm-module-rgb) / .18);
+  background: rgb(var(--gm-module-rgb) / .095);
+  box-shadow: 0 8px 20px -15px rgb(var(--gm-module-rgb) / .63);
+}
+.dark .gm-dashboard-module__icon {
+  border-color: rgb(var(--gm-module-rgb) / .35);
+  background: rgb(var(--gm-module-rgb) / .18);
+}
+.gm-dashboard-module__tag {
+  display: inline-flex;
+  max-width: calc(100% - 54px);
+  border: 1px solid rgb(var(--gm-module-rgb) / .21);
+  border-radius: 99px;
+  background: rgb(var(--gm-module-rgb) / .085);
+  color: #1e293b;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+.dark .gm-dashboard-module__tag {
+  border-color: rgb(var(--gm-module-rgb) / .38);
+  background: rgb(var(--gm-module-rgb) / .22);
+  color: #f1f5f9;
+}
+.gm-dashboard-module__footer {
+  color: #075985;
+  border-top: 1px solid rgba(148, 163, 184, .22);
+}
+.dark .gm-dashboard-module__footer {
+  color: #7dd3fc;
+  border-color: rgba(148, 163, 184, .22);
+}
+.gm-dashboard-module__arrow {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: rgb(var(--gm-module-rgb) / .11);
+  transition: transform .2s ease, background-color .2s ease;
+}
+.gm-dashboard-module:is(:hover,:focus-visible) .gm-dashboard-module__arrow {
+  transform: translateX(3px);
+  background: rgb(var(--gm-module-rgb) / .2);
+}
+.gm-dashboard-project-switch {
+  transition: border-color .2s ease, background-color .2s ease, transform .2s ease;
+}
+.gm-dashboard-project-switch:hover {
+  border-color: rgba(2, 132, 199, .54);
+  background: rgba(240, 249, 255, .92);
+  transform: translateY(-1px);
+}
+.dark .gm-dashboard-project-switch:hover {
+  border-color: rgba(125, 211, 252, .55);
+  background: rgba(37, 60, 84, .92);
+}
+
+/* Analysis metrics, info strips and neutral action buttons. */
+.gm-dashboard-run { border-radius: 16px; transition: border-color .2s ease, box-shadow .2s ease; }
+.gm-dashboard-run:hover { border-color: rgba(14, 165, 233, .42); box-shadow: 0 16px 30px -22px rgba(14, 165, 233, .2); }
+.dark .gm-dashboard-run:hover { border-color: rgba(125, 211, 252, .43); }
+.gm-dashboard-metrics {
+  border: 1px solid rgba(148, 163, 184, .2);
+  background: rgba(241, 245, 249, .63);
+}
+.dark .gm-dashboard-metrics {
+  border-color: rgba(148, 163, 184, .2);
+  background: rgba(51, 65, 85, .49);
+}
+.gm-dashboard-infra-note {
+  border: 1px solid rgba(148, 163, 184, .28);
+  background: rgba(241, 245, 249, .56);
+}
+.dark .gm-dashboard-infra-note {
+  border-color: rgba(148, 163, 184, .3);
+  background: rgba(30, 41, 59, .61);
+}
+
+/* Browsers and accessibility settings that disable transparency or motion. */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .gm-dashboard-hero { background: #122642; }
+  .gm-dashboard-panel, .gm-dashboard-switcher, .gm-dashboard-project-switch, .gm-dashboard-module, .gm-dashboard-run { background: #fff; }
+  .dark .gm-dashboard-panel, .dark .gm-dashboard-switcher, .dark .gm-dashboard-project-switch, .dark .gm-dashboard-module, .dark .gm-dashboard-run { background: #17263b; }
+}
+@media (max-width: 640px) {
+  .gm-dashboard-hero { border-radius: 20px; }
+  .gm-dashboard-module { min-height: 0; }
+  .gm-dashboard-module:hover, .gm-dashboard-module:active { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gm-dashboard-module, .gm-dashboard-module__arrow, .gm-dashboard-project-switch, .gm-dashboard-run { transition: none !important; }
+  .gm-dashboard-module:is(:hover,:active), .gm-dashboard-project-switch:hover { transform: none; }
+  .gm-dashboard-module:is(:hover,:focus-visible) .gm-dashboard-module__arrow { transform: none; }
+}
+html[data-geomoz-reduced-motion="true"] .gm-dashboard-module,
+html[data-geomoz-reduced-motion="true"] .gm-dashboard-module__arrow,
+html[data-geomoz-reduced-motion="true"] .gm-dashboard-project-switch,
+html[data-geomoz-reduced-motion="true"] .gm-dashboard-run { transition: none !important; transform: none !important; }
+@media (forced-colors: active) {
+  .gm-dashboard-hero, .gm-dashboard-panel, .gm-dashboard-switcher, .gm-dashboard-project-switch, .gm-dashboard-module, .gm-dashboard-run {
+    background: Canvas;
+    border-color: CanvasText;
+    box-shadow: none;
+  }
+  .gm-dashboard-hero, .gm-dashboard-module__tag, .gm-dashboard-module__footer { color: CanvasText; }
+  .gm-dashboard-module:focus-visible, .gm-dashboard-project-switch:focus-visible { outline-color: Highlight; }
+}
