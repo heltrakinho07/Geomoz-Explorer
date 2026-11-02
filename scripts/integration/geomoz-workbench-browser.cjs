@@ -76,8 +76,12 @@ async function settleRecovery(page){
   assert.ok(iconMatches,"Canonical GeoMoz icon must match across main portal and GIS Workspace");
 
   // Reuse the real engine locale catalogs and persisted i18next preference.
+  const settingsTrigger=page.getByTestId("geomoz-settings-trigger");
+  assert.equal(await settingsTrigger.count(),1,"One shared settings entry belongs in the compact toolbar");
+  assert.equal(await page.locator(".gm-title-actions .gm-language-picker").count(),0,"No duplicate language control in the toolbar");
+  await settingsTrigger.click();
   const languageSelect=page.getByTestId("geomoz-language-selector");
-  assert.equal(await languageSelect.count(),1,"The compact header must expose a language selector");
+  assert.equal(await languageSelect.count(),1,"Language belongs to Settings, not the main toolbar");
   assert.ok(await languageSelect.locator("option").count()>=15,
     "Preserve the multilingual engine catalog, not a hardcoded two-language list");
   assert.equal(await languageSelect.inputValue(),"pt","GeoMoz defaults to Portuguese");
@@ -89,6 +93,7 @@ async function settleRecovery(page){
   });
   await page.reload();
   await page.getByTestId("geomoz-workbench-chrome").waitFor();
+  await page.getByTestId("geomoz-settings-trigger").click();
   assert.equal(await page.getByTestId("geomoz-language-selector").inputValue(),"en",
     "Language preference must survive a reload");
   await page.getByTestId("geomoz-language-selector").selectOption("pt");
@@ -96,6 +101,15 @@ async function settleRecovery(page){
     try{return document.documentElement.lang==="pt" &&
       JSON.parse(localStorage.getItem("geolibre.desktopSettings")||"{}").language==="pt";}catch{return false;}
   });
+  assert.equal(await page.evaluate(()=>window.GeoMozPreferences?.getLanguage()),"pt",
+    "Portal and GIS should see the same language preference");
+  const motion=page.getByTestId("geomoz-reduced-motion");
+  await motion.check();
+  assert.equal(await page.evaluate(()=>localStorage.getItem("geomoz_reduce_motion")),"true");
+  await page.reload();
+  await page.getByTestId("geomoz-settings-trigger").click();
+  assert.equal(await page.getByTestId("geomoz-reduced-motion").isChecked(),true);
+  await page.getByTestId("geomoz-reduced-motion").uncheck();
   const heightAfter=await page.locator(".gm-titlebar").evaluate(node=>node.getBoundingClientRect().height);
   assert.ok(Math.abs(heightAfter-heightBefore)<2,"Language picker must not increase header height");
 
@@ -201,7 +215,7 @@ async function settleRecovery(page){
 
   // GeoMoz product identity is shown within the real React UI. Legacy engine
   // branding appears only in the explicit third-party attribution document.
-  await page.locator(".gm-help-menu summary").click();
+  await page.getByTestId("geomoz-settings-trigger").click();
   await page.getByTestId("geomoz-about-trigger").click();
   const about=page.getByTestId("geomoz-about-dialog");
   await about.waitFor();
@@ -210,7 +224,6 @@ async function settleRecovery(page){
   assert.doesNotMatch(await about.innerText(),/GeoLibre/);
   await page.keyboard.press("Escape");
   await about.waitFor({state:"hidden"});
-  await page.locator(".gm-help-menu summary").click();
   console.log("GeoMoz About modal and preserved third-party notice navigation verified.");
 
 
@@ -314,6 +327,7 @@ async function settleRecovery(page){
   await page.getByRole("textbox",{name:"Nome do projecto"}).press("Enter");
   const light=await page.getByTestId("geomoz-layer-catalog").evaluate(node=>getComputedStyle(node).backgroundColor);
   await page.screenshot({path:"workbench-browser-artifacts/01-geomoz-light.png",fullPage:true});
+  await page.getByTestId("geomoz-settings-trigger").click();
   await page.getByTestId("geomoz-theme-toggle").click();
   await page.waitForFunction(()=>document.documentElement.dataset.geomozTheme==="dark");
   assert.equal(await page.evaluate(()=>localStorage.getItem("geomoz_theme")),"dark");
@@ -537,6 +551,7 @@ async function settleRecovery(page){
   await other.goto("http://127.0.0.1:4182/gis-workspace/");
   await other.getByTestId("geomoz-workbench-chrome").waitFor();
   await settleRecovery(other);
+  await other.getByTestId("geomoz-settings-trigger").click();
   await other.getByTestId("geomoz-theme-toggle").click();
   await page.waitForFunction(()=>document.documentElement.dataset.geomozTheme==="light");
   await other.close();
@@ -561,6 +576,7 @@ async function settleRecovery(page){
   assert.equal(await viewer.getByRole("textbox",{name:"Nome do projecto"}).isEditable(),false);
   assert.equal(await viewer.locator(".gm-compact-tool-list button").count(),0);
   assert.equal(await viewer.locator('[data-action="geomoz-seismic"]').count(),0,"Viewer must not expose catalog import");
+  await viewer.getByTestId("geomoz-settings-trigger").click();
   await viewer.getByTestId("geomoz-theme-toggle").click();
   await viewer.close();
   console.log("Read-only viewer keeps camera and theme controls while withholding authoring commands.");
@@ -568,7 +584,7 @@ async function settleRecovery(page){
   await writeFile("workbench-browser-artifacts/report.json",JSON.stringify({interface:"geomoz-workbench",import:true,layerVisibility:true,opacity:true,bufferProcessing:true,rasterProcessing:true,resultNavigator:true,seismicUsgs:true,seismicAnalytics:true,earthscopeStation:true,layerStyleEditor:true,curatedMenus:true,searchCurated:true,studyAreaDrawing:true,layerProperties:true,geojsonExport:true,themePersistence:true,crossTabTheme:true,geomozOwnedAbout:true,mobile:true,viewerReadOnly:true,duplicateNamesGuarded:true,errors},null,2));
   console.log("GeoMoz Workbench: owned UI, real import, layer controls, analysis dialog, menus, dark/light persistence and mobile layout passed.");
  }catch(error){
-  try{await page.locator(".gm-help-menu summary").click({timeout:2000});await page.getByRole("button",{name:"Diagnóstico",exact:true}).click({timeout:2000});await page.getByRole("dialog").waitFor({timeout:2000});console.error("Application diagnostics:",(await page.getByRole("dialog").innerText()).slice(-14000));}catch{}
+  try{await page.getByTestId("geomoz-settings-trigger").click({timeout:2000});await page.getByRole("button",{name:"Diagnóstico",exact:true}).click({timeout:2000});await page.getByRole("dialog").waitFor({timeout:2000});console.error("Application diagnostics:",(await page.getByRole("dialog").innerText()).slice(-14000));}catch{}
   console.error("Visible interface:",(await page.locator("body").innerText()).slice(-12000));await page.screenshot({path:"workbench-browser-artifacts/failure.png",fullPage:true}).catch(()=>{});throw error;}
  finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error(error);process.exitCode=1;});
