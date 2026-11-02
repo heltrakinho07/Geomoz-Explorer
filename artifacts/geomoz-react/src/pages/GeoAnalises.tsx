@@ -3542,7 +3542,8 @@ export default function GeoAnalises({
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
       <GeeCredentialsDialog open={geeCredsOpen} onOpenChange={setGeeCredsOpen} />
-      <TerrainStudio open={terrainStudioOpen} onClose={() => setTerrainStudioOpen(false)} />
+      <TerrainStudio open={terrainStudioOpen} onClose={() => setTerrainStudioOpen(false)}
+        geeEnabled={geeReady} geeRegion={{ province, district, geometry: apiParams.geometry }} />
       <StoryMapModal
         open={storyMapOpen && !categoryInDevelopment}
         onOpenChange={setStoryMapOpen}
