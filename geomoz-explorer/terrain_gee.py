@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import math
+from io import BytesIO
 from urllib.parse import urlsplit
+from zipfile import BadZipFile, ZipFile
 
 import httpx
 from shapely.geometry import shape
@@ -55,7 +57,19 @@ def copernicus_to_preview(region_geojson: dict) -> dict:
                 if total > MAX_UPLOAD_BYTES:
                     raise TerrainInputError("Recorte GEE demasiado grande. Reduza a área de estudo.")
                 chunks.append(chunk)
-    preview = dem_to_preview(b"".join(chunks), "Copernicus_GLO30_GEE.tif")
+    raw = b"".join(chunks)
+    if raw.startswith(b"PK\\x03\\x04"):
+        try:
+            with ZipFile(BytesIO(raw)) as archive:
+                candidates = [entry for entry in archive.infolist()
+                              if entry.filename.lower().endswith((".tif", ".tiff"))
+                              and not entry.is_dir()]
+                if len(candidates) != 1 or candidates[0].file_size > MAX_UPLOAD_BYTES:
+                    raise TerrainInputError("A exportação GEE não contém um único GeoTIFF válido.")
+                raw = archive.read(candidates[0])
+        except BadZipFile as exc:
+            raise TerrainInputError("A exportação ZIP do GEE está corrompida.") from exc
+    preview = dem_to_preview(raw, "Copernicus_GLO30_GEE.tif")
     preview["geeExportScaleMeters"] = scale
     preview["sourceName"] = "Copernicus GLO-30 · Google Earth Engine"
     return preview
