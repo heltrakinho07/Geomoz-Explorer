@@ -52,8 +52,32 @@ const server = createServer(async (req, res) => {
     await page.waitForFunction(()=>document.documentElement.dataset.geomozTheme==="dark");
     await page.getByRole("button",{name:"Explorar",exact:true}).click();
     await page.getByRole("button",{name:"Continuar como Convidado (Explorar sem conta)",exact:true}).click();
-    await page.getByRole("button",{name:"Modo Claro",exact:true}).waitFor();
+    // Theme action now has a descriptive accessible name and compact icon/label layout.
+    const themeAction=page.getByTestId("sidebar-theme-action");
+    await themeAction.waitFor();
+    if(await themeAction.getAttribute("aria-label")!=="Ativar modo claro") throw Error("Theme toggle did not retain dark-mode state.");
     await page.waitForFunction(()=>document.documentElement.classList.contains("dark"));
+    const settingsAction=page.getByTestId("sidebar-settings-action");
+    await settingsAction.waitFor();
+    // The resizable left rail must contain all available actions even at its 260px minimum.
+    const sidebar=page.locator("aside").first();
+    await sidebar.evaluate(element=>element.style.setProperty("--gm-sidebar-width","260px"));
+    const withinSidebar=await page.getByTestId("sidebar-action-dock").evaluate(dock=>{
+      const container=dock.closest(".gm-sidebar")?.getBoundingClientRect();
+      const area=dock.getBoundingClientRect();
+      return Boolean(container) && [...dock.querySelectorAll("button")].every(button=>{
+        const box=button.getBoundingClientRect();
+        return box.left>=container.left-1 && box.right<=container.right+1 &&
+          box.left>=area.left-1 && box.right<=area.right+1;
+      });
+    });
+    if(!withinSidebar) throw Error("Sidebar actions overflow at the 260px minimum width.");
+    await page.screenshot({path:"workspace-browser-artifacts/sidebar-action-dock.png"});
+    await sidebar.evaluate(element=>element.style.removeProperty("--gm-sidebar-width"));
+    await settingsAction.click();
+    await page.getByRole("dialog").waitFor({state:"visible"});
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog").waitFor({state:"hidden"});
     await page.getByRole("button",{name:"GIS Workspace",exact:true}).click();
     await page.getByRole("heading",{name:"Da área de estudo ao resultado.",exact:true}).waitFor();
     await page.locator('[data-testid="cesium-workspace"] .cesium-widget canvas').waitFor();
