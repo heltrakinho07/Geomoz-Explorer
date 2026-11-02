@@ -61,12 +61,6 @@ const CORE_ACTIONS: Partial<typeof LEGACY_ACTIONS> = {
   output:[{label:"Mapa e projecto",ids:["project.print-layout","project.save-as"]},{label:"Elementos do mapa",ids:["control.legend","control.colorbar"]}],
 };
 const ACTIONS = GEOMOZ_ROLLOUT.fullMenus ? LEGACY_ACTIONS : {...LEGACY_ACTIONS,...CORE_ACTIONS};
-const GUIDANCE:Partial<Record<Task,string>> = {
-  map:"1 · Prepare a carta base e crie uma camada vectorial. 2 · Seleccione-a no catálogo e active a edição. 3 · Configure a aderência e desenhe, preenchendo os atributos. 4 · Guarde as edições da camada e, separadamente, o projecto.",
-  data:"Expanda Raster, Vector, Serviços de mapas, Hidrologia ou Cartografia para escolher uma ferramenta. As operações usam as camadas do projecto; os módulos de hidrologia abrem numa nova janela.",
-  analysis:"Escolha uma ferramenta, confirme os dados e execute a análise.",
-  output:"Consulte as execuções no catálogo e exporte as camadas ou a composição do mapa.",
-};
 const LABELS: Record<string,string> = {
   "project.new":"Novo projecto","project.examples":"Exemplos","project.open-file":"Abrir ficheiro","project.open-url":"Abrir URL",
   "project.save":"Guardar","project.save-as":"Guardar como","project.share":"Partilhar","project.collaborate":"Colaborar",
@@ -219,7 +213,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
           const Icon=command.icon??CommandIcon;
           return <button key={command.id} type="button" data-command={command.id} aria-pressed={command.id==="plugin.maplibre-gl-geo-editor"?command.keywords?.includes("deactivate"):undefined} disabled={!!command.disabledReason}
             title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={19}/><span>{command.id==="plugin.maplibre-gl-geo-editor"&&command.keywords?.includes("deactivate")?txt("finishDrawing"):commandLabel(command)}</span></button>;
-        })}</div><small>{group.label}</small></>}</section>)}
+        })}</div><small>{categoryLabel(group.label)}</small></>}</section>)}
         {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group gm-ribbon-optional">
           <GeoMozFloatingToolCard title={categoryLabel("Hidrologia")} icon={Activity}
             open={openToolCard==="Hidrologia"}
