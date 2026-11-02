@@ -1,0 +1,171 @@
+/*
+ * Sidebar footer controls. A fluid three-button dock avoids horizontal overflow
+ * in the resizable 260px sidebar, mobile drawer and 72px collapsed navigation.
+ */
+.gm-sidebar {
+  min-width: 0;
+  overflow-x: clip;
+}
+.gm-sidebar-action-dock {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid rgba(148, 163, 184, .25);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, .6);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .8);
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
+  backdrop-filter: blur(12px) saturate(130%);
+}
+.gm-sidebar-action-dock:not(.gm-sidebar-action-dock--install) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.dark .gm-sidebar-action-dock {
+  border-color: rgba(148, 163, 184, .24);
+  background: rgba(15, 23, 42, .64);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .065);
+}
+
+.gm-sidebar-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  width: 100%;
+  min-height: 60px;
+  padding: 9px 3px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: #475569;
+  background: transparent;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color .18s ease, border-color .18s ease, color .18s ease, transform .18s ease;
+}
+.gm-sidebar-action:hover {
+  background: rgba(241, 245, 249, .95);
+  border-color: rgba(148, 163, 184, .35);
+  color: #075985;
+}
+.gm-sidebar-action:active {
+  transform: scale(.97);
+}
+.gm-sidebar-action:focus-visible {
+  outline: 2px solid #0284c7;
+  outline-offset: 2px;
+  background: rgba(224, 242, 254, .85);
+}
+.gm-sidebar-action__label {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.gm-sidebar-action__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  background: rgba(148, 163, 184, .12);
+}
+
+.gm-sidebar-action--install {
+  color: #0369a1;
+}
+.gm-sidebar-action--install .gm-sidebar-action__icon {
+  color: #0284c7;
+  background: rgba(14, 165, 233, .13);
+}
+.gm-sidebar-action--install:hover {
+  color: #075985;
+  background: rgba(224, 242, 254, .9);
+  border-color: rgba(14, 165, 233, .34);
+}
+.gm-sidebar-action--settings .gm-sidebar-action__icon {
+  color: #475569;
+}
+.gm-sidebar-action--theme[data-mode="dark"] .gm-sidebar-action__icon {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, .14);
+}
+.gm-sidebar-action--theme[data-mode="light"] .gm-sidebar-action__icon {
+  color: #475569;
+}
+
+.dark .gm-sidebar-action {
+  color: #cbd5e1;
+}
+.dark .gm-sidebar-action__icon {
+  background: rgba(148, 163, 184, .13);
+}
+.dark .gm-sidebar-action:hover {
+  background: rgba(51, 65, 85, .8);
+  border-color: rgba(148, 163, 184, .31);
+  color: #f0f9ff;
+}
+.dark .gm-sidebar-action:focus-visible {
+  outline-color: #7dd3fc;
+  background: rgba(14, 116, 144, .29);
+}
+.dark .gm-sidebar-action--install,
+.dark .gm-sidebar-action--install .gm-sidebar-action__icon {
+  color: #7dd3fc;
+}
+.dark .gm-sidebar-action--install .gm-sidebar-action__icon {
+  background: rgba(14, 165, 233, .16);
+}
+.dark .gm-sidebar-action--settings .gm-sidebar-action__icon {
+  color: #cbd5e1;
+}
+
+/* Collapsed sidebar is 72px wide: controls become accessible icon buttons. */
+.gm-sidebar-action-dock--collapsed,
+.gm-sidebar-action-dock--collapsed:not(.gm-sidebar-action-dock--install) {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.gm-sidebar-action-dock--collapsed .gm-sidebar-action {
+  min-height: 38px;
+  padding: 5px 0;
+  gap: 0;
+}
+.gm-sidebar-action-dock--collapsed .gm-sidebar-action__icon {
+  width: 30px;
+  height: 30px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gm-sidebar-action { transition: none; }
+  .gm-sidebar-action:active { transform: none; }
+}
+html[data-geomoz-reduced-motion="true"] .gm-sidebar-action {
+  transition: none;
+}
+html[data-geomoz-reduced-motion="true"] .gm-sidebar-action:active {
+  transform: none;
+}
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .gm-sidebar-action-dock { background: #f8fafc; }
+  .dark .gm-sidebar-action-dock { background: #1e293b; }
+}
+@media (forced-colors: active) {
+  .gm-sidebar-action-dock,
+  .gm-sidebar-action { border-color: CanvasText; background: Canvas; color: CanvasText; }
+  .gm-sidebar-action:focus-visible { outline-color: Highlight; }
+}
