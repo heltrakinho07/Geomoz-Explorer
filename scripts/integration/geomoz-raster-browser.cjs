@@ -13,9 +13,10 @@ module.exports=async function validateRasterProcessing(page){
  async function run(id,params,maskId){
   console.log("Raster control operation:",id);
   await page.locator('[data-task="data"]').click();
-  const card=page.locator(".gm-ribbon-accordion").filter({has:page.locator("summary").filter({hasText:/^\s*Raster\s*$/})});
-  if(await card.getAttribute("open")===null)await card.locator("summary").click();
-  await card.locator('[data-command="proc.raster.'+id+'"]').click();
+  const card=page.locator(".gm-ribbon-accordion").filter({has:page.locator(".gm-ribbon-trigger").filter({hasText:/^\s*Raster\s*$/})});
+  const trigger=card.locator(".gm-ribbon-trigger");
+  if(await trigger.getAttribute("aria-expanded")==="false")await trigger.click();
+  await page.getByTestId("geomoz-tools-flyout").locator('[data-command="proc.raster.'+id+'"]').click();
   const dialog=page.getByRole("dialog").filter({has:page.locator("#raster-input")});
   await dialog.waitFor();
   const chooser=page.waitForEvent("filechooser");
