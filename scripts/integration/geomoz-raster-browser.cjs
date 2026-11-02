@@ -63,5 +63,42 @@ module.exports=async function validateRasterProcessing(page){
  assert.equal(clipped.getGeoKeys().ProjectedCSTypeGeoKey,32736);
  assert.ok(clipped.getWidth()<16&&clipped.getHeight()<16,"Cutline must crop the DEM");
  assert.ok(clipped.getSamplesPerPixel()>=2,"Cutline output must include transparency");
+
+ // Exercise the topographic profile against a real GDAL-reprojected DEM output.
+ // This must read actual COG pixel values, not a synthetic elevation function.
+ const realDem=page.locator('.gm-layer-row[data-layer-name="reprojected"]');
+ await realDem.getByRole("button",{name:"Enquadrar reprojected"}).click();
+ await page.waitForTimeout(650);
+ const rasterCategory=page.locator(".gm-compact-tool-list .gm-ribbon-trigger").filter({hasText:/^Raster$/});
+ await rasterCategory.click();
+ await page.getByTestId("geomoz-tools-flyout").locator('[data-action="geomoz-topographic-profile"]').click();
+ const topo=page.getByTestId("geomoz-topographic-profile");
+ await topo.waitFor({state:"visible"});
+ await topo.getByLabel("DEM de entrada").selectOption({label:"reprojected"});
+ await topo.getByLabel("Número de amostras do perfil").fill("20");
+ await topo.getByRole("button",{name:"Traçar linha no mapa"}).click();
+ const mapCanvas=await page.locator("main canvas").first().boundingBox();
+ assert.ok(mapCanvas?.width>200 && mapCanvas.height>200);
+ await page.mouse.click(mapCanvas.x+mapCanvas.width*.45,mapCanvas.y+mapCanvas.height*.48);
+ await page.mouse.click(mapCanvas.x+mapCanvas.width*.53,mapCanvas.y+mapCanvas.height*.52);
+ await topo.getByRole("button",{name:"Terminar traçado"}).click();
+ await topo.getByRole("button",{name:"Calcular perfil"}).click();
+ await topo.getByRole("img",{name:/Gráfico de elevação/}).waitFor({timeout:90000});
+ assert.match(await topo.innerText(),/amostras válidas/);
+ const csvPromise=page.waitForEvent("download");
+ await topo.getByRole("button",{name:"Exportar CSV"}).click();
+ const csv=await csvPromise;
+ assert.equal(csv.suggestedFilename(),"geomoz_perfil_topografico.csv");
+ await csv.saveAs("workbench-browser-artifacts/geomoz_perfil_topografico.csv");
+ const csvText=await readFile("workbench-browser-artifacts/geomoz_perfil_topografico.csv","utf8");
+ assert.ok(csvText.includes("Distancia_km,Elevacao_m"));
+ const validRows=csvText.trim().split(/\r?\n/).slice(2).filter(row=>{
+  const fields=row.split(",");
+  return fields.length===5 && Number.isFinite(Number(fields[2])) && fields[2].length>0;
+ });
+ assert.ok(validRows.length>0,"The profile must read genuine numeric elevation pixels from reprojected DEM");
+ await topo.getByRole("button",{name:"Fechar perfil topográfico"}).click();
+ console.log("Real raster profile sampled, plotted and exported from DEM COG.");
+
  console.log("Real browser DEM slope, hillshade, reprojection and polygon cutline outputs validated.");
 };
