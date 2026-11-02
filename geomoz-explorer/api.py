@@ -2718,6 +2718,8 @@ async def terrain_gee_mesh_preview(
     import httpx
 
     region = _region_geojson(req.province, req.district, req.geometry)
+    if region is None:
+        raise HTTPException(status_code=422, detail="Seleccione uma província, distrito ou desenhe uma área de estudo para o terreno 3D.")
     try:
         return await run_in_threadpool(copernicus_to_preview, region)
     except TerrainInputError as exc:
