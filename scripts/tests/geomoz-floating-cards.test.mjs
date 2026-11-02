@@ -4,12 +4,12 @@ import assert from "node:assert/strict";
 
 const read = (relative) => readFileSync(new URL(relative, import.meta.url), "utf8");
 
-test("GeoMoz tool cards render outside the scrollable ribbon using a body portal", () => {
+test("GeoMoz tool cards render outside the scrollable ribbon using a workspace-chrome portal", () => {
   const component = read("../assets/workbench/GeoMozFloatingToolCard.tsx");
   assert.match(component, /createPortal\(/);
   assert.match(component, /document\.body/);
   assert.match(component, /getBoundingClientRect\(\)/);
-  assert.match(component, /position: "fixed"/);
+  assert.match(component, /position: "absolute"/);
   assert.match(component, /Escape/);
   assert.match(component, /pointerdown/);
   assert.match(component, /aria-expanded=\{open\}/);
