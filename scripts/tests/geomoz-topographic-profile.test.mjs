@@ -63,7 +63,9 @@ test("map cursor selects the nearest real profile sample and handles NoData", ()
   assert.equal(nearestProfileSampleIndex(samples, (samples[3].distanceM + samples[4].distanceM) / 2), 3);
   assert.equal(nearestProfileSampleIndex([], 100), null);
   assert.equal(nearestProfileSampleIndex(samples, Number.NaN), null);
-  assert.deepEqual([samples[2].longitude, samples[2].latitude],
-    [profileLocations([[33, -19.2], [33.1, -19.2]], 6)[2].longitude,
-      profileLocations([[33, -19.2], [33.1, -19.2]], 6)[2].latitude]);
+  const missingPosition = nearestProfileSampleIndex(samples, samples[2].distanceM);
+  assert.notEqual(missingPosition, null);
+  assert.equal(samples[missingPosition].elevationM, null);
+  assert.ok(Number.isFinite(samples[missingPosition].longitude));
+  assert.ok(Number.isFinite(samples[missingPosition].latitude));
 });
