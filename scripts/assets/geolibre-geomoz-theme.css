@@ -626,7 +626,13 @@ html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0
 .gm-workbench-chrome .gm-topo-stats b{font-size:14px;font-variant-numeric:tabular-nums}
 .gm-workbench-chrome .gm-topo-graph{position:relative;padding:7px 8px 22px;border:1px solid var(--gm-line);border-radius:9px;color:var(--gm-text)}
 .gm-workbench-chrome .gm-topo-graph svg{display:block;width:100%;height:auto}
-.gm-workbench-chrome .gm-topo-tooltip{position:absolute;bottom:3px;left:10px;color:var(--gm-accent);font-size:10px}
+.gm-workbench-chrome .gm-topo-tooltip{position:absolute;bottom:2px;left:10px;right:8px;color:#b45309;font-size:10px;line-height:1.4;font-variant-numeric:tabular-nums}
+.gm-workbench-chrome .gm-topo-graph svg{touch-action:pan-y;cursor:crosshair}
+.gm-workbench-chrome .gm-topo-graph svg:focus-visible{outline:2px solid var(--gm-accent);outline-offset:2px;border-radius:5px}
+.gm-workbench-chrome .gm-topo-navigation{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.gm-workbench-chrome .gm-topo-navigation p{flex:1 1 210px}
+.gm-workbench-chrome .gm-topo-navigation>button{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 10px;border:1px solid var(--gm-accent);border-radius:7px;background:var(--gm-muted);color:var(--gm-accent);font-size:11px;font-weight:700}
+.gm-workbench-chrome .gm-topo-navigation>button[aria-pressed="true"]{background:var(--gm-accent);color:#fff}
 .gm-workbench-chrome .gm-topo-body>footer{font-size:10px;color:var(--gm-subtle);line-height:1.6;border-top:1px solid var(--gm-line);padding-top:9px}
 .gm-workbench-chrome .gm-topo-body button:focus-visible,.gm-workbench-chrome .gm-topo-body select:focus-visible{outline:2px solid var(--gm-accent);outline-offset:2px}
 @media(max-width:680px){

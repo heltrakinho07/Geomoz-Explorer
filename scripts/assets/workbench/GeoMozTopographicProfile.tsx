@@ -4,30 +4,35 @@ import type { MapEngine } from "@geolibre/map";
 import { readRasterPixel } from "@geolibre/plugins";
 import type { FeatureCollection } from "geojson";
 import type { GeoJSONSource, MapMouseEvent } from "maplibre-gl";
-import { Download, Loader2, MapPinned, Mountain, RotateCcw, X } from "lucide-react";
-import { distanceMeters, profileLocations, profileStatistics, profileToCSV,
+import { Download, Loader2, MapPinned, Mountain, Pause, Play, RotateCcw, X } from "lucide-react";
+import { distanceMeters, nearestProfileSampleIndex, profileLocations, profileStatistics, profileToCSV,
   type LonLat, type ProfileSample } from "./geomoz-topographic-profile";
 
 const SOURCE = "geomoz-topo-trace";
 const LINE = "geomoz-topo-line";
 const DOTS = "geomoz-topo-dots";
+const CURSOR_HALO = "geomoz-topo-cursor-halo";
+const CURSOR_DOT = "geomoz-topo-cursor-dot";
 type Props = { mapControllerRef: RefObject<MapEngine | null>; onClose: () => void };
 
-function features(vertices: LonLat[]): FeatureCollection {
+function features(vertices: LonLat[], cursor: ProfileSample | null): FeatureCollection {
   return { type: "FeatureCollection", features: [
     ...(vertices.length > 1 ? [{ type: "Feature" as const, properties: { kind: "line" },
       geometry: { type: "LineString" as const, coordinates: vertices.map(p => [...p]) } }] : []),
     ...vertices.map((p, index) => ({ type: "Feature" as const,
       properties: { kind: "point", number: index + 1 },
       geometry: { type: "Point" as const, coordinates: [...p] } })),
+    ...(cursor ? [{ type: "Feature" as const,
+      properties: { kind: "cursor", distanceM: cursor.distanceM, elevationM: cursor.elevationM },
+      geometry: { type: "Point" as const, coordinates: [cursor.longitude, cursor.latitude] } }] : []),
   ] };
 }
 type NativeMap = NonNullable<ReturnType<MapEngine["getMap"]>>;
-function paint(map: NativeMap, vertices: LonLat[]) {
+function paint(map: NativeMap, vertices: LonLat[], cursor: ProfileSample | null) {
   if (!map.isStyleLoaded()) return;
   try {
-    if (!map.getSource(SOURCE)) map.addSource(SOURCE, { type: "geojson", data: features(vertices) });
-    else (map.getSource(SOURCE) as GeoJSONSource).setData(features(vertices));
+    if (!map.getSource(SOURCE)) map.addSource(SOURCE, { type: "geojson", data: features(vertices, cursor) });
+    else (map.getSource(SOURCE) as GeoJSONSource).setData(features(vertices, cursor));
     if (!map.getLayer(LINE)) map.addLayer({ id: LINE, type: "line", source: SOURCE,
       filter: ["==", ["get", "kind"], "line"],
       paint: { "line-color": "#0284c7", "line-width": 3, "line-dasharray": [2, 1] } });
@@ -35,17 +40,30 @@ function paint(map: NativeMap, vertices: LonLat[]) {
       filter: ["==", ["get", "kind"], "point"],
       paint: { "circle-radius": 6, "circle-color": "#0284c7",
         "circle-stroke-width": 2, "circle-stroke-color": "#fff" } });
+    if (!map.getLayer(CURSOR_HALO)) map.addLayer({ id: CURSOR_HALO, type: "circle", source: SOURCE,
+      filter: ["==", ["get", "kind"], "cursor"],
+      paint: { "circle-radius": 14, "circle-color": "#f59e0b", "circle-opacity": 0.24 } });
+    if (!map.getLayer(CURSOR_DOT)) map.addLayer({ id: CURSOR_DOT, type: "circle", source: SOURCE,
+      filter: ["==", ["get", "kind"], "cursor"],
+      paint: { "circle-radius": 6, "circle-color": "#f59e0b",
+        "circle-stroke-width": 2.5, "circle-stroke-color": "#ffffff" } });
   } catch { /* The next styledata event restores the overlay after a basemap swap. */ }
 }
 function clear(map: NativeMap) {
   try {
+    if (map.getLayer(CURSOR_DOT)) map.removeLayer(CURSOR_DOT);
+    if (map.getLayer(CURSOR_HALO)) map.removeLayer(CURSOR_HALO);
     if (map.getLayer(DOTS)) map.removeLayer(DOTS);
     if (map.getLayer(LINE)) map.removeLayer(LINE);
     if (map.getSource(SOURCE)) map.removeSource(SOURCE);
   } catch { /* The map or style may have been destroyed. */ }
 }
 const fmt = (v: number) => new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 1 }).format(v);
-function Graph({ samples }: { samples: ProfileSample[] }) {
+function Graph({ samples, activeIndex, onCursorChange }: {
+  samples: ProfileSample[];
+  activeIndex: number | null;
+  onCursorChange: (index: number | null) => void;
+}) {
   const stats = profileStatistics(samples);
   const maxDist = samples.at(-1)?.distanceM ?? 1;
   const min = stats?.minElevM ?? 0;
@@ -63,16 +81,30 @@ function Graph({ samples }: { samples: ProfileSample[] }) {
     } else current.push(p);
   }
   if (current.length) chunks.push(current);
-  const [hover, setHover] = useState<number | null>(null);
-  const selected = hover === null ? null : samples[hover];
+  const selected = activeIndex === null ? null : samples[activeIndex] ?? null;
+
+  const pointFromClientX = (clientX: number, rect: DOMRect) => {
+    const position = (clientX - rect.left) * 600 / Math.max(1, rect.width);
+    if (position < 45 || position > 575) return null;
+    return nearestProfileSampleIndex(samples, (position - 45) * maxDist / 530);
+  };
   return <div className="gm-topo-graph">
-    <svg viewBox="0 0 600 213" role="img" aria-label="Gráfico de elevação em metros por distância em quilómetros"
-      onMouseMove={e => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const px = (e.clientX - rect.left) * 600 / Math.max(1, rect.width);
-        setHover(Math.max(0, Math.min(samples.length - 1,
-          Math.round((px - 45) / 530 * (samples.length - 1)))));
-      }} onMouseLeave={() => setHover(null)}>
+    <svg viewBox="0 0 600 213" role="group" tabIndex={0}
+      aria-label="Perfil de elevação. Mova o cursor ou use as setas esquerda e direita para localizar cada amostra no mapa."
+      onPointerMove={e => onCursorChange(pointFromClientX(
+        e.clientX, e.currentTarget.getBoundingClientRect()))}
+      onPointerLeave={() => onCursorChange(null)}
+      onPointerCancel={() => onCursorChange(null)}
+      onKeyDown={e => {
+        const last = samples.length - 1;
+        if (e.key === "Escape") { onCursorChange(null); return; }
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+        e.preventDefault();
+        if (e.key === "Home") onCursorChange(0);
+        else if (e.key === "End") onCursorChange(last);
+        else if (e.key === "ArrowRight") onCursorChange(Math.min(last, (activeIndex ?? -1) + 1));
+        else onCursorChange(Math.max(0, (activeIndex ?? last + 1) - 1));
+      }}>
       {[0, 1, 2, 3, 4].map(i => {
         const elev = low + (high - low) * i / 4;
         return <g key={i}>
@@ -89,13 +121,14 @@ function Graph({ samples }: { samples: ProfileSample[] }) {
       <text x="305" y="209" textAnchor="middle" fontSize="11" fill="currentColor">Distância (km)</text>
       {selected && <>
         <line x1={x(selected.distanceM)} x2={x(selected.distanceM)} y1="24" y2="171"
-          stroke="#0284c7" strokeDasharray="4 3"/>
+          stroke="#f59e0b" strokeDasharray="4 3"/>
         {selected.elevationM !== null && <circle cx={x(selected.distanceM)}
-          cy={y(selected.elevationM)} r="4" fill="#0284c7" stroke="#fff" strokeWidth="1.5"/>}
+          cy={y(selected.elevationM)} r="5" fill="#f59e0b" stroke="#fff" strokeWidth="1.5"/>}
       </>}
     </svg>
     {selected && <p className="gm-topo-tooltip" role="status">
       {(selected.distanceM / 1000).toFixed(2)} km · {selected.elevationM === null ? "NoData" : fmt(selected.elevationM) + " m"}
+      <span> · {selected.latitude.toFixed(5)}°, {selected.longitude.toFixed(5)}°</span>
     </p>}
   </div>;
 }
@@ -118,11 +151,16 @@ export function GeoMozTopographicProfile({ mapControllerRef, onClose }: Props) {
   const [drawing, setDrawing] = useState(false);
   const [count, setCount] = useState(100);
   const [samples, setSamples] = useState<ProfileSample[] | null>(null);
+  const [cursorIndex, setCursorIndex] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const verticesRef = useRef(vertices);
   verticesRef.current = vertices;
+  const cursorSample = samples && cursorIndex !== null ? samples[cursorIndex] ?? null : null;
+  const cursorSampleRef = useRef<ProfileSample | null>(cursorSample);
+  cursorSampleRef.current = cursorSample;
   const chosen = demLayers.find(l => l.id === layerId) ?? demLayers[0];
   const map = mapControllerRef.current?.getMap() ?? null;
   const stats = useMemo(() => samples ? profileStatistics(samples) : null, [samples]);
@@ -131,15 +169,15 @@ export function GeoMozTopographicProfile({ mapControllerRef, onClose }: Props) {
   useEffect(() => {
     const current = mapControllerRef.current?.getMap();
     if (!current) return;
-    const redraw = () => paint(current, verticesRef.current);
+    const redraw = () => paint(current, verticesRef.current, cursorSampleRef.current);
     redraw();
     current.on("styledata", redraw);
     return () => { current.off("styledata", redraw); clear(current); };
   }, [mapControllerRef]);
   useEffect(() => {
     const current = mapControllerRef.current?.getMap();
-    if (current) paint(current, vertices);
-  }, [vertices, mapControllerRef]);
+    if (current) paint(current, vertices, cursorSample);
+  }, [vertices, cursorSample, mapControllerRef]);
   useEffect(() => {
     const current = mapControllerRef.current?.getMap();
     if (!current || !drawing) return;
@@ -149,20 +187,32 @@ export function GeoMozTopographicProfile({ mapControllerRef, onClose }: Props) {
     const handler = (event: MapMouseEvent) => {
       setVertices(previous => previous.length < 30
         ? [...previous, [event.lngLat.lng, event.lngLat.lat] as LonLat] : previous);
-      setSamples(null); setError("");
+      setSamples(null); setCursorIndex(null); setPlaying(false); setError("");
     };
     current.on("click", handler);
     return () => { current.off("click", handler); canvas.style.cursor = before; };
   }, [drawing, mapControllerRef]);
   useEffect(() => () => abortRef.current?.abort(), []);
+  // Animate the same real sampled positions used by the chart and MapLibre overlay.
+  useEffect(() => {
+    if (!playing || !samples?.length) return;
+    const timer = window.setInterval(() => {
+      setCursorIndex(index => Math.min(samples.length - 1, (index ?? -1) + 1));
+    }, Math.max(60, 12000 / samples.length));
+    return () => window.clearInterval(timer);
+  }, [playing, samples]);
+  useEffect(() => {
+    if (playing && samples && cursorIndex === samples.length - 1) setPlaying(false);
+  }, [playing, samples, cursorIndex]);
 
   const reset = () => {
     abortRef.current?.abort(); setVertices([]); setSamples(null);
+    setCursorIndex(null); setPlaying(false);
     setError(""); setDrawing(false); setBusy(false);
   };
   const compute = async () => {
     if (!chosen || vertices.length < 2 || busy || drawing) return;
-    setBusy(true); setError(""); setSamples(null);
+    setBusy(true); setError(""); setSamples(null); setCursorIndex(null); setPlaying(false);
     const controller = new AbortController();
     abortRef.current?.abort();
     abortRef.current = controller;
@@ -209,7 +259,7 @@ export function GeoMozTopographicProfile({ mapControllerRef, onClose }: Props) {
       <label>DEM de entrada (GeoTIFF / COG)
         <select aria-label="DEM de entrada" value={chosen?.id ?? ""}
           onChange={e => { abortRef.current?.abort(); setLayerId(e.target.value);
-            setSamples(null); setError(""); setBusy(false); }}>
+            setSamples(null); setCursorIndex(null); setPlaying(false); setError(""); setBusy(false); }}>
           {!chosen && <option value="">Nenhum DEM carregado</option>}
           {demLayers.map(layer => <option key={layer.id} value={layer.id}>{layer.name}</option>)}
         </select>
@@ -231,7 +281,8 @@ export function GeoMozTopographicProfile({ mapControllerRef, onClose }: Props) {
       <label>Número de amostras
         <input aria-label="Número de amostras do perfil" type="number" min="20" max="300"
           step="10" value={count} onChange={e => {
-            setCount(Math.min(300, Math.max(20, Number(e.target.value) || 20))); setSamples(null);
+            setCount(Math.min(300, Math.max(20, Number(e.target.value) || 20)));
+            setSamples(null); setCursorIndex(null); setPlaying(false);
           }}/>
       </label>
       <button type="button" className="gm-topo-run" onClick={() => void compute()}
@@ -248,7 +299,24 @@ export function GeoMozTopographicProfile({ mapControllerRef, onClose }: Props) {
           <span><small>Subida</small><b>+{fmt(stats.gainM)} m</b></span>
           <span><small>Descida</small><b>−{fmt(stats.lossM)} m</b></span>
         </div>
-        <Graph samples={samples}/>
+        <Graph samples={samples} activeIndex={cursorIndex}
+          onCursorChange={index => { setPlaying(false); setCursorIndex(index); }}/>
+        <div className="gm-topo-navigation">
+          <p className="gm-topo-note">
+            Desloque o cursor pelo gráfico para ver o ponto correspondente no mapa.
+            Pode também usar as setas ← → no gráfico.
+          </p>
+          <button type="button" data-testid="geomoz-topo-play" aria-pressed={playing}
+            onClick={() => {
+              if (playing) { setPlaying(false); return; }
+              setCursorIndex(previous => previous === null || previous >= samples.length - 1
+                ? 0 : previous);
+              setPlaying(true);
+            }}>
+            {playing ? <Pause size={14}/> : <Play size={14}/>}
+            {playing ? "Pausar percurso" : "Animar percurso A → B"}
+          </button>
+        </div>
         <p className="gm-topo-note">Fonte: {chosen?.name}. {stats.validCount}/{stats.sampleCount} amostras válidas.
           Valores originais da banda 1 (pressupõem-se altitudes em metros).</p>
         <button type="button" className="gm-topo-export"
