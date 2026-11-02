@@ -47,6 +47,15 @@ function paint(map: NativeMap, vertices: LonLat[], cursor: ProfileSample | null)
       filter: ["==", ["get", "kind"], "cursor"],
       paint: { "circle-radius": 6, "circle-color": "#f59e0b",
         "circle-stroke-width": 2.5, "circle-stroke-color": "#ffffff" } });
+    // MapLibre appends new raster/COG layers after our source when datasets load.
+    // Preserve drawing order LINE → vertices → cursor halo → cursor marker at the top.
+    // Avoid unconditional moveLayer(): it emits styledata and can loop forever.
+    const order = [LINE, DOTS, CURSOR_HALO, CURSOR_DOT];
+    const layers = map.getStyle()?.layers ?? [];
+    const tail = layers.slice(-order.length).map(layer => layer.id);
+    if (order.some((id, i) => tail[i] !== id)) {
+      for (const id of order) if (map.getLayer(id)) map.moveLayer(id);
+    }
   } catch { /* The next styledata event restores the overlay after a basemap swap. */ }
 }
 function clear(map: NativeMap) {
