@@ -12,13 +12,19 @@ import {
 interface TerrainStudioProps {
   open: boolean;
   onClose: () => void;
+  geeEnabled?: boolean;
+  geeRegion?: {
+    province: string | null;
+    district: string | null;
+    geometry?: unknown;
+  };
 }
 
 /**
  * An isolated modal, not a second map canvas over the GeoMoz workspace.
  * All DEM bytes stay in memory and are discarded when leaving the Studio.
  */
-export default function TerrainStudio({ open, onClose }: TerrainStudioProps) {
+export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRegion }: TerrainStudioProps) {
   const [terrain, setTerrain] = useState<TerrainMeshData | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +97,38 @@ export default function TerrainStudio({ open, onClose }: TerrainStudioProps) {
     } finally {
       setBusy(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function loadFromGEE() {
+    if (!geeEnabled) {
+      setError("Ligue a sua conta Google Earth Engine para obter o DEM Copernicus.");
+      return;
+    }
+    setError(null);
+    setTerrain(null);
+    setBusy(true);
+    try {
+      const response = await apiFetch("/geomoz-api/terrain/gee-mesh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(geeRegion ?? {}),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(typeof result?.detail === "string" ? result.detail
+          : "Não foi possível obter o DEM Copernicus do Earth Engine.");
+      }
+      if (!result || !Array.isArray(result.heights) ||
+          result.heights.length !== result.width * result.height ||
+          !Array.isArray(result.boundsMeters)) {
+        throw new Error("O Earth Engine devolveu uma grelha de elevação inválida.");
+      }
+      setTerrain(result as TerrainMeshData);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Erro no processamento GEE.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -178,6 +216,14 @@ export default function TerrainStudio({ open, onClose }: TerrainStudioProps) {
             <label className="mb-2 block text-xs font-semibold text-slate-300" htmlFor="terrain-studio-dem">
               1. Modelo digital de elevação
             </label>
+            {geeRegion && (
+              <button type="button" disabled={busy || !geeEnabled}
+                onClick={() => void loadFromGEE()}
+                className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/50 bg-emerald-600 px-3 py-2.5 text-xs font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40">
+                {busy ? <Loader2 size={15} className="animate-spin"/> : <Mountain size={15}/>}
+                Gerar do DEM Copernicus (GEE)
+              </button>
+            )}
             <input ref={fileInputRef} id="terrain-studio-dem" type="file"
               accept=".tif,.tiff,image/tiff" className="sr-only"
               onChange={event => void loadGeoTiff(event.target.files?.[0])}/>
@@ -189,7 +235,8 @@ export default function TerrainStudio({ open, onClose }: TerrainStudioProps) {
             </button>
             <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
               Até 32 MB. A malha é calculada na API GeoMoz e não fica guardada.
-              Para o Copernicus GLO-30, exporte primeiro o recorte GeoTIFF do GEE.
+              Com o GEE conectado, é possível gerar directamente a pré-visualização
+              da área seleccionada. A opção local aceita GeoTIFF do projecto.
             </p>
           </div>
           <div className="space-y-2">
