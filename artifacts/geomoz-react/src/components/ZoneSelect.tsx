@@ -23,7 +23,7 @@ type ActiveTab = "upload" | "draw" | null;
  * ZoneSelect — Enterprise-grade Area of Interest (AOI) Selector.
  *
  * Professional GIS workflow:
- *   1. Globo 3D (Mundo) — Initial planetary globe view
+ *   1. Vista global — Initial planetary globe view
  *   2. Upload de Geometria — GeoJSON, KML, GPX with instant auto-centering
  *   3. Desenhar Poligono — Interactive polygon drawing directly on the globe/map
  */
@@ -73,7 +73,7 @@ export default function ZoneSelect({
               ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"
               : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
           }`}
-          title={isCustom ? "Recentralizar na Área de Estudo" : "Globo 3D (Visão Global)"}
+          title={isCustom ? "Recentralizar na Área de Estudo" : "Vista global"}
         >
           {isCustom ? <Crosshair size={13} className="text-emerald-500" /> : <Globe size={13} className="text-sky-500" />}
           <span className="min-w-0 whitespace-normal break-words text-left">{aoi.label}</span>
@@ -112,7 +112,7 @@ export default function ZoneSelect({
                 ? "Vetor Carregado"
                 : aoi.source === "draw"
                 ? "Área Desenhada"
-                : "Globo 3D (Mundo)"}
+                : "Vista global"}
             </span>
           </div>
 
@@ -156,12 +156,12 @@ export default function ZoneSelect({
           </div>
           <div className="min-w-0 flex-1">
             <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 whitespace-normal break-words leading-tight">
-              {isCustom ? aoi.label : "Cobertura Planetária (Globo 3D)"}
+              {isCustom ? aoi.label : "Definir área de estudo"}
             </h3>
             <p className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-normal break-words mt-0.5">
               {isCustom
                 ? "Recorte Zonal Ativo · Google Earth Engine"
-                : "Navegue pelo globo, faça o traçado ou carregue um arquivo vetorial."}
+                : "Desenhe um polígono no mapa ou carregue um ficheiro vectorial."}
             </p>
           </div>
         </div>
@@ -250,7 +250,7 @@ export default function ZoneSelect({
           </div>
 
           <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-            Arraste ou selecione o arquivo com os limites da sua área de interesse. O sistema centralizará a câmera 3D automaticamente sobre ela.
+            Seleccione o ficheiro com os limites da área de estudo. O mapa será centrado nessa área.
           </p>
 
           <AreaUpload onGeometryLoaded={handleGeometryLoaded} />
