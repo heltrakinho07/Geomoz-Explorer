@@ -45,8 +45,8 @@ describe("GeoAnálises: scroll and responsive inspector", () => {
     expect(analytics).toContain('savi: "Índice de Vegetação Ajustado ao Solo"');
     expect(analytics).toContain('evi: "Índice de Vegetação Melhorado"');
     expect(analytics).toContain('ndvi: "Índice de Vegetação por Diferença Normalizada"');
-    expect(analytics).toContain("const label = descriptiveIndexName(tabId)");
-    expect(analytics).toContain("className=\"order-3 w-full min-w-0 sm:hidden\"");
+    expect(analytics).toContain("descriptiveIndexName(tabId)");
+    expect(analytics).toContain("className=\"order-3 w-full min-w-0 sm:order-none sm:flex-1\"");
     expect(analytics).toContain("value={activeTab}");
   });
 

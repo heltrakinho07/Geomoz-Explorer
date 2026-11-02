@@ -421,7 +421,7 @@ export default function Explorer() {
         return {
           icon: <Satellite size={18} className="text-indigo-500 shrink-0" />,
           title: "Catálogo de GeoAnálises",
-          subtitle: "Sensoriamento Remoto Sentinel-2, Landsat & DEM 30m",
+          subtitle: "Detecção remota · Sentinel-2, Landsat e modelos de elevação",
         };
       case "Bacias Hidrográficas":
         return {

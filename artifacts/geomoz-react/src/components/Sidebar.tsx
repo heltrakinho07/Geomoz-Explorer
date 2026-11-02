@@ -82,7 +82,8 @@ export default function Sidebar({
   onMobileClose,
 }: SidebarProps) {
   const sidebarSize = useSidebarWidth("geomoz-navigation-sidebar", 288);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(activeTab === "GeoAnálises");
+  useEffect(() => { setCollapsed(activeTab === "GeoAnálises"); }, [activeTab]);
   const { user, signOut } = useAuth();
   const { geeConnected, geeProject } = useGeeAuth();
   const { activeProject, activeRuns } = useProject();
