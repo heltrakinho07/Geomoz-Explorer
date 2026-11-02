@@ -15,9 +15,12 @@ interface GeoMozFloatingToolCardProps {
 type FlyoutPosition = CSSProperties & { maxHeight: number; width: number };
 
 /**
- * Renders tools in a body-level portal, not inside the horizontally scrollable
- * ribbon. An absolute child of an overflow-x:auto ribbon is clipped regardless
- * of z-index. A viewport-positioned portal preserves the actual tool callbacks.
+ * Mount tool cards alongside the FDSN seismic panel, directly under the owned
+ * workspace chrome. Never mount inside the horizontally scrolling ribbon:
+ * its overflow clips absolute descendants regardless of their z-index.
+ *
+ * This also preserves the workspace theme and typography inherited by its
+ * descendants (which are lost when a card is portaled straight into body).
  */
 export function GeoMozFloatingToolCard({
   title, icon: Icon, open, onToggle, onClose, children, testId,
@@ -26,26 +29,36 @@ export function GeoMozFloatingToolCard({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const [position, setPosition] = useState<FlyoutPosition | null>(null);
+  // The trigger is always mounted. A portal outside the ribbon but inside the
+  // same React tree keeps command state, permission checks and event handlers.
+  const chrome = triggerRef.current?.closest<HTMLElement>(".gm-workbench-chrome") ?? null;
 
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setPosition(null);
+      return;
+    }
     const update = () => {
       const anchor = triggerRef.current;
-      if (!anchor) return;
+      const host = anchor?.closest<HTMLElement>(".gm-workbench-chrome");
+      if (!anchor || !host) return;
       const rect = anchor.getBoundingClientRect();
-      const width = Math.min(440, Math.max(0, window.innerWidth - 24));
-      const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
-      const spaceBelow = window.innerHeight - rect.bottom - 16;
-      const spaceAbove = rect.top - 16;
-      const above = spaceBelow < 240 && spaceAbove > spaceBelow;
-      const maxHeight = Math.max(80, Math.min(540, (above ? spaceAbove : spaceBelow) - 8));
-      setPosition(above
-        ? { position: "fixed", left, bottom: window.innerHeight - rect.top + 8, maxHeight, width }
-        : { position: "fixed", left, top: rect.bottom + 8, maxHeight, width });
+      const bounds = host.getBoundingClientRect();
+      const width = Math.min(440, Math.max(180, window.innerWidth - 24));
+      const left = Math.max(12 - bounds.left, Math.min(
+        rect.left - bounds.left, window.innerWidth - bounds.left - width - 12,
+      ));
+      const available = Math.max(120, window.innerHeight - bounds.bottom - 14);
+      setPosition({
+        position: "absolute",
+        top: "calc(100% + 4px)",
+        left,
+        width,
+        maxHeight: Math.min(540, available),
+      });
     };
     update();
     window.addEventListener("resize", update);
-    // Capture scrolls from the horizontal ribbon as well as the page.
     window.addEventListener("scroll", update, true);
     return () => {
       window.removeEventListener("resize", update);
@@ -56,7 +69,8 @@ export function GeoMozFloatingToolCard({
   useEffect(() => {
     if (!open) return;
     const outside = (event: PointerEvent) => {
-      const target = event.target as Node;
+      const target = event.target;
+      if (!(target instanceof Node)) return;
       if (!panelRef.current?.contains(target) && !triggerRef.current?.contains(target)) onClose();
     };
     const escape = (event: KeyboardEvent) => {
@@ -83,7 +97,7 @@ export function GeoMozFloatingToolCard({
         <span>{title}</span>
         <ChevronDown size={13} aria-hidden="true" />
       </button>
-      {open && position && typeof document !== "undefined" && createPortal(
+      {open && position && chrome && createPortal(
         <section ref={panelRef} id={id} role="dialog" aria-modal="false"
           aria-label={"Ferramentas: " + title} data-testid="geomoz-tools-flyout"
           className="gm-tool-flyout" style={position}>
@@ -98,7 +112,7 @@ export function GeoMozFloatingToolCard({
             </button>
           </header>
           <div className="gm-tool-flyout-grid">{children}</div>
-        </section>, document.body
+        </section>, chrome
       )}
     </div>
   );
