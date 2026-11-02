@@ -16,12 +16,19 @@ export function pdfFromJpeg(jpeg: Uint8Array, pixelWidth: number, pixelHeight: n
   const width = pixelWidth * ratio, height = pixelHeight * ratio;
   const left = (pageWidth - width) / 2, bottom = (pageHeight - height) / 2;
   const stream = `q\n${width.toFixed(3)} 0 0 ${height.toFixed(3)} ${left.toFixed(3)} ${bottom.toFixed(3)} cm\n/Im0 Do\nQ\n`;
-  const entries: (string | Uint8Array)[] = [];
+  const entries: BlobPart[] = [];
   const offsets: number[] = [0];
   let length = 0;
   const append = (data: string | Uint8Array) => {
-    entries.push(data);
-    length += typeof data === "string" ? encode(data).length : data.length;
+    if (typeof data === "string") {
+      entries.push(data);
+      length += encode(data).length;
+    } else {
+      const bytes = new Uint8Array(data.length);
+      bytes.set(data);
+      entries.push(bytes.buffer);
+      length += bytes.byteLength;
+    }
   };
   append("%PDF-1.4\n");
   // All lengths and xref offsets are byte offsets, including the binary JPEG data.
