@@ -1,6 +1,7 @@
 import type {RefObject} from "react";
 import type {MapEngine} from "@geolibre/map";
 import {GeoMozSeismicPanel} from "./GeoMozSeismicPanel";
+import {GeoMozFloatingToolCard} from "./GeoMozFloatingToolCard";
 import {GeoMozQmsCatalog} from "./GeoMozQmsCatalog";
 import {GeoMozNextgisWebCatalog} from "./GeoMozNextgisWebCatalog";
 import {GeoMozQgisPrintPanel} from "./GeoMozQgisPrintPanel";
@@ -97,6 +98,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   const [aboutOpen,setAboutOpen]=useState(false);
   const [seismicOpen,setSeismicOpen]=useState(false);
   const [qmsOpen,setQmsOpen]=useState(false);
+  const [openToolCard,setOpenToolCard]=useState<string|null>(null);
   const [ngwOpen,setNgwOpen]=useState(false);
   const [qgisPrintOpen,setQgisPrintOpen]=useState(false);
   const [layerWizardOpen,setLayerWizardOpen]=useState(false);
@@ -128,25 +130,34 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
         </div>
       </div>
       <div className="gm-taskbar"><nav aria-label="Tarefas GIS" className="gm-task-tabs">{TASKS.filter(([id])=>!viewer||id==="map").map(([id,label])=>
-        <button key={id} type="button" aria-current={activeTask===id?"page":undefined} onClick={()=>{setTask(id);setMore(false);setSeismicOpen(id==="seismic");window.dispatchEvent(new CustomEvent("geomoz:task",{detail:id}));}} data-task={id}>{label}</button>)}</nav>
+        <button key={id} type="button" aria-current={activeTask===id?"page":undefined} onClick={()=>{setTask(id);setOpenToolCard(null);setMore(false);setSeismicOpen(id==="seismic");window.dispatchEvent(new CustomEvent("geomoz:task",{detail:id}));}} data-task={id}>{label}</button>)}</nav>
         <span className="gm-session-badge"><i/>{viewer?"Vista de leitura":"Projecto aberto"}<span className="gm-session-detail"> · {layers.length} camada{layers.length===1?"":"s"}</span></span>
       </div>
       <div className="gm-command-ribbon" aria-label={"Comandos de "+TASKS.find(([id])=>id===activeTask)?.[1]}>
         <div className="gm-ribbon-groups">{groups.map(group=><section className={"gm-ribbon-group"+(activeTask==="data"&&group.label!=="Adicionar dados"?" gm-ribbon-optional":"")} key={group.label}>
-          {activeTask==="data"&&group.label!=="Adicionar dados"?<details className="gm-ribbon-accordion"><summary>{group.label==="Raster"?<Image size={16}/>:<Database size={16}/>} {group.label}<ChevronDown size={13}/></summary><div>{group.items.map(command=>{const Icon=command.icon??CommandIcon;return <button key={command.id} type="button" data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={17}/><span>{LABELS[command.id]??command.title}</span></button>;})}{group.label==="Serviços de mapas"&&!viewer&&<>
-            <button type="button" data-action="geomoz-qms" aria-expanded={qmsOpen} onClick={()=>{setQmsOpen(!qmsOpen);setNgwOpen(false);}}><Database size={17}/><span>NextGIS QMS</span></button>
-            <button type="button" data-action="geomoz-nextgis-web" aria-expanded={ngwOpen} onClick={()=>{setNgwOpen(!ngwOpen);setQmsOpen(false);}}><Database size={17}/><span>NextGIS Web</span></button>
-          </>}</div></details>:<><div>{group.items.map(command=>{
+          {activeTask==="data"&&group.label!=="Adicionar dados"?<GeoMozFloatingToolCard
+            title={group.label} icon={group.label==="Raster"?Image:group.label==="Cartografia"?FileText:group.label==="Vector"?Layers3:Database}
+            open={openToolCard===group.label}
+            onToggle={()=>setOpenToolCard(openToolCard===group.label?null:group.label)}
+            onClose={()=>setOpenToolCard(null)}>
+            {group.items.map(command=>{const Icon=command.icon??CommandIcon;return <button key={command.id} type="button" data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason){setOpenToolCard(null);command.run();}}}><Icon size={17}/><span>{LABELS[command.id]??command.title}</span></button>;})}{group.label==="Serviços de mapas"&&!viewer&&<>
+            <button type="button" data-action="geomoz-qms" aria-expanded={qmsOpen} onClick={()=>{setOpenToolCard(null);setQmsOpen(!qmsOpen);setNgwOpen(false);}}><Database size={17}/><span>NextGIS QMS</span></button>
+            <button type="button" data-action="geomoz-nextgis-web" aria-expanded={ngwOpen} onClick={()=>{setOpenToolCard(null);setNgwOpen(!ngwOpen);setQmsOpen(false);}}><Database size={17}/><span>NextGIS Web</span></button>
+          </>}
+          </GeoMozFloatingToolCard>:<><div>{group.items.map(command=>{
           const Icon=command.icon??CommandIcon;
           return <button key={command.id} type="button" data-command={command.id} aria-pressed={command.id==="plugin.maplibre-gl-geo-editor"?command.keywords?.includes("deactivate"):undefined} disabled={!!command.disabledReason}
             title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={19}/><span>{command.id==="plugin.maplibre-gl-geo-editor"&&command.keywords?.includes("deactivate")?"Terminar desenho":LABELS[command.id]??command.title}</span></button>;
         })}</div><small>{group.label}</small></>}</section>)}
         {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group gm-ribbon-optional">
-          <details className="gm-ribbon-accordion" data-testid="geomoz-hydrology-card"><summary><Activity size={16}/> Hidrologia<ChevronDown size={13}/></summary><div>
-            <a href="/hidrografia" target="_blank" rel="noopener noreferrer">Bacias hidrográficas <ArrowUpRight size={13}/></a>
-            <a href="/agua-subterranea" target="_blank" rel="noopener noreferrer">Água subterrânea <ArrowUpRight size={13}/></a>
-            <a href="/geoprocessamento" target="_blank" rel="noopener noreferrer">Terreno e Hidrologia <ArrowUpRight size={13}/></a>
-          </div></details>
+          <GeoMozFloatingToolCard title="Hidrologia" icon={Activity}
+            open={openToolCard==="Hidrologia"}
+            onToggle={()=>setOpenToolCard(openToolCard==="Hidrologia"?null:"Hidrologia")}
+            onClose={()=>setOpenToolCard(null)} testId="geomoz-hydrology-card">
+            <a href="/hidrografia" target="_blank" rel="noopener noreferrer" onClick={()=>setOpenToolCard(null)}>Bacias hidrográficas <ArrowUpRight size={13}/></a>
+            <a href="/agua-subterranea" target="_blank" rel="noopener noreferrer" onClick={()=>setOpenToolCard(null)}>Água subterrânea <ArrowUpRight size={13}/></a>
+            <a href="/geoprocessamento" target="_blank" rel="noopener noreferrer" onClick={()=>setOpenToolCard(null)}>Terreno e Hidrologia <ArrowUpRight size={13}/></a>
+          </GeoMozFloatingToolCard>
         </section>}
         {!viewer&&activeTask==="map"&&<section className="gm-ribbon-group"><div><button type="button" data-testid="geomoz-create-layer" onClick={()=>setLayerWizardOpen(true)}><Layers3 size={19}/><span>Nova camada</span></button></div><small>Cartografia geológica / temática</small></section>}
         {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-seismic" aria-expanded={seismicOpen} onClick={()=>setSeismicOpen(!seismicOpen)}><Activity size={19}/><span>Catálogos sísmicos</span></button></div><small>Dados GeoMoz · USGS / ISC</small></section>}
