@@ -151,11 +151,16 @@ export function GeoMozTopographicProfile({ mapControllerRef, onClose }: Props) {
   const [drawing, setDrawing] = useState(false);
   const [count, setCount] = useState(100);
   const [samples, setSamples] = useState<ProfileSample[] | null>(null);
+  const [cursorIndex, setCursorIndex] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const verticesRef = useRef(vertices);
   verticesRef.current = vertices;
+  const cursorSample = samples && cursorIndex !== null ? samples[cursorIndex] ?? null : null;
+  const cursorSampleRef = useRef<ProfileSample | null>(cursorSample);
+  cursorSampleRef.current = cursorSample;
   const chosen = demLayers.find(l => l.id === layerId) ?? demLayers[0];
   const map = mapControllerRef.current?.getMap() ?? null;
   const stats = useMemo(() => samples ? profileStatistics(samples) : null, [samples]);
@@ -164,15 +169,15 @@ export function GeoMozTopographicProfile({ mapControllerRef, onClose }: Props) {
   useEffect(() => {
     const current = mapControllerRef.current?.getMap();
     if (!current) return;
-    const redraw = () => paint(current, verticesRef.current);
+    const redraw = () => paint(current, verticesRef.current, cursorSampleRef.current);
     redraw();
     current.on("styledata", redraw);
     return () => { current.off("styledata", redraw); clear(current); };
   }, [mapControllerRef]);
   useEffect(() => {
     const current = mapControllerRef.current?.getMap();
-    if (current) paint(current, vertices);
-  }, [vertices, mapControllerRef]);
+    if (current) paint(current, vertices, cursorSample);
+  }, [vertices, cursorSample, mapControllerRef]);
   useEffect(() => {
     const current = mapControllerRef.current?.getMap();
     if (!current || !drawing) return;
@@ -182,20 +187,32 @@ export function GeoMozTopographicProfile({ mapControllerRef, onClose }: Props) {
     const handler = (event: MapMouseEvent) => {
       setVertices(previous => previous.length < 30
         ? [...previous, [event.lngLat.lng, event.lngLat.lat] as LonLat] : previous);
-      setSamples(null); setError("");
+      setSamples(null); setCursorIndex(null); setPlaying(false); setError("");
     };
     current.on("click", handler);
     return () => { current.off("click", handler); canvas.style.cursor = before; };
   }, [drawing, mapControllerRef]);
   useEffect(() => () => abortRef.current?.abort(), []);
+  // Animate the same real sampled positions used by the chart and MapLibre overlay.
+  useEffect(() => {
+    if (!playing || !samples?.length) return;
+    const timer = window.setInterval(() => {
+      setCursorIndex(index => Math.min(samples.length - 1, (index ?? -1) + 1));
+    }, Math.max(60, 12000 / samples.length));
+    return () => window.clearInterval(timer);
+  }, [playing, samples]);
+  useEffect(() => {
+    if (playing && samples && cursorIndex === samples.length - 1) setPlaying(false);
+  }, [playing, samples, cursorIndex]);
 
   const reset = () => {
     abortRef.current?.abort(); setVertices([]); setSamples(null);
+    setCursorIndex(null); setPlaying(false);
     setError(""); setDrawing(false); setBusy(false);
   };
   const compute = async () => {
     if (!chosen || vertices.length < 2 || busy || drawing) return;
-    setBusy(true); setError(""); setSamples(null);
+    setBusy(true); setError(""); setSamples(null); setCursorIndex(null); setPlaying(false);
     const controller = new AbortController();
     abortRef.current?.abort();
     abortRef.current = controller;
@@ -242,7 +259,7 @@ export function GeoMozTopographicProfile({ mapControllerRef, onClose }: Props) {
       <label>DEM de entrada (GeoTIFF / COG)
         <select aria-label="DEM de entrada" value={chosen?.id ?? ""}
           onChange={e => { abortRef.current?.abort(); setLayerId(e.target.value);
-            setSamples(null); setError(""); setBusy(false); }}>
+            setSamples(null); setCursorIndex(null); setPlaying(false); setError(""); setBusy(false); }}>
           {!chosen && <option value="">Nenhum DEM carregado</option>}
           {demLayers.map(layer => <option key={layer.id} value={layer.id}>{layer.name}</option>)}
         </select>
@@ -264,7 +281,8 @@ export function GeoMozTopographicProfile({ mapControllerRef, onClose }: Props) {
       <label>Número de amostras
         <input aria-label="Número de amostras do perfil" type="number" min="20" max="300"
           step="10" value={count} onChange={e => {
-            setCount(Math.min(300, Math.max(20, Number(e.target.value) || 20))); setSamples(null);
+            setCount(Math.min(300, Math.max(20, Number(e.target.value) || 20)));
+            setSamples(null); setCursorIndex(null); setPlaying(false);
           }}/>
       </label>
       <button type="button" className="gm-topo-run" onClick={() => void compute()}
@@ -281,7 +299,24 @@ export function GeoMozTopographicProfile({ mapControllerRef, onClose }: Props) {
           <span><small>Subida</small><b>+{fmt(stats.gainM)} m</b></span>
           <span><small>Descida</small><b>−{fmt(stats.lossM)} m</b></span>
         </div>
-        <Graph samples={samples}/>
+        <Graph samples={samples} activeIndex={cursorIndex}
+          onCursorChange={index => { setPlaying(false); setCursorIndex(index); }}/>
+        <div className="gm-topo-navigation">
+          <p className="gm-topo-note">
+            Desloque o cursor pelo gráfico para ver o ponto correspondente no mapa.
+            Pode também usar as setas ← → no gráfico.
+          </p>
+          <button type="button" data-testid="geomoz-topo-play" aria-pressed={playing}
+            onClick={() => {
+              if (playing) { setPlaying(false); return; }
+              setCursorIndex(previous => previous === null || previous >= samples.length - 1
+                ? 0 : previous);
+              setPlaying(true);
+            }}>
+            {playing ? <Pause size={14}/> : <Play size={14}/>}
+            {playing ? "Pausar percurso" : "Animar percurso A → B"}
+          </button>
+        </div>
         <p className="gm-topo-note">Fonte: {chosen?.name}. {stats.validCount}/{stats.sampleCount} amostras válidas.
           Valores originais da banda 1 (pressupõem-se altitudes em metros).</p>
         <button type="button" className="gm-topo-export"
