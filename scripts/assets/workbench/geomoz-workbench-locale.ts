@@ -114,7 +114,7 @@ export function workbenchText(language:string,key:WorkbenchCopyKey):string{
   return dict[key];
 }
 export function workbenchCoreLabel(
-  text:string, language:string,
+  text:string, _language:string,
   translate:(key:string,options?:{defaultValue:string})=>string
 ):string{
   const key=UPSTREAM_LABEL_KEYS[text];
