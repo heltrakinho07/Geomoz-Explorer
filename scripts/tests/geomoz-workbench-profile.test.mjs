@@ -1,4 +1,6 @@
 import test from "node:test";
+// The Workbench CI runs this suite; include profile cursor geometry regressions.
+import "./geomoz-topographic-profile.test.mjs";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {GEOMOZ_ROLLOUT,curateGeoMozCommands,isGeoMozCommandVisible,isGeoMozDataSourceVisible,isGeoMozToolVisible,isGeoMozMenuItemVisible} from "../assets/workbench/geomoz-workbench-profile.ts";
