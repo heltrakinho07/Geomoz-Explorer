@@ -1,0 +1,309 @@
+/*
+ * Catálogo GeoAnálises — glassmorfismo funcional.
+ *
+ * Superfícies translúcidas com contraste forte e fallback opaco.
+ * Isolado à vista do catálogo: não afecta painéis de processamento ou mapas.
+ */
+.geo-catalog-shell {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(ellipse at 9% 4%, rgba(14, 165, 233, 0.12), transparent 38%),
+    radial-gradient(ellipse at 100% 55%, rgba(45, 212, 191, 0.1), transparent 40%),
+    linear-gradient(135deg, #f7fbff 0%, #edf4f9 53%, #f7fafc 100%);
+}
+
+.dark .geo-catalog-shell {
+  background:
+    radial-gradient(ellipse at 7% 3%, rgba(14, 165, 233, 0.12), transparent 39%),
+    radial-gradient(ellipse at 100% 65%, rgba(45, 212, 191, 0.085), transparent 40%),
+    linear-gradient(135deg, #07111f 0%, #0b192a 53%, #060d1b 100%);
+}
+
+.geo-catalog-content {
+  position: relative;
+  z-index: 1;
+}
+
+.geo-catalog-search {
+  background: rgba(255, 255, 255, 0.76);
+  border-color: rgba(148, 163, 184, 0.42);
+  box-shadow: 0 1px 8px rgba(15, 23, 42, 0.035);
+}
+
+.dark .geo-catalog-search {
+  background: rgba(15, 23, 42, 0.78);
+  border-color: rgba(148, 163, 184, 0.34);
+}
+
+.geo-catalog-quick-action {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(148, 163, 184, 0.38);
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+.geo-catalog-quick-action:hover {
+  background: rgba(255, 255, 255, 0.91);
+  border-color: rgba(14, 165, 233, 0.64);
+}
+
+.dark .geo-catalog-quick-action {
+  background: rgba(30, 41, 59, 0.76);
+  border-color: rgba(148, 163, 184, 0.32);
+}
+
+.dark .geo-catalog-quick-action:hover {
+  background: rgba(51, 65, 85, 0.9);
+  border-color: rgba(125, 211, 252, 0.65);
+}
+
+.geo-catalog-grid {
+  align-items: stretch;
+}
+
+.geo-catalog-card {
+  --geo-card-rgb: 2 132 199;
+  --geo-card-ink: #0f172a;
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  min-height: 294px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow:
+    0 14px 35px -27px rgba(15, 23, 42, 0.48),
+    0 2px 8px rgba(15, 23, 42, 0.04),
+    inset 0 1px rgba(255, 255, 255, 0.96);
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  backdrop-filter: blur(16px) saturate(135%);
+  transition:
+    transform 220ms ease,
+    border-color 220ms ease,
+    box-shadow 220ms ease,
+    background-color 220ms ease;
+}
+
+.geo-catalog-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 96% 0%, rgb(var(--geo-card-rgb) / 0.125), transparent 53%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.22), transparent 42%);
+}
+
+.geo-catalog-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 16%;
+  left: 16%;
+  height: 1px;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgb(var(--geo-card-rgb) / 0.45), transparent);
+}
+
+.geo-catalog-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.geo-catalog-card:hover {
+  transform: translateY(-4px);
+  border-color: rgb(var(--geo-card-rgb) / 0.38);
+  background: rgba(255, 255, 255, 0.91);
+  box-shadow:
+    0 22px 46px -26px rgb(var(--geo-card-rgb) / 0.26),
+    0 14px 28px -22px rgba(15, 23, 42, 0.32),
+    inset 0 1px rgba(255, 255, 255, 0.95);
+}
+
+.geo-catalog-card:focus-visible {
+  outline: 3px solid #0284c7;
+  outline-offset: 3px;
+  border-color: #0284c7;
+}
+
+.geo-catalog-card:active {
+  transform: translateY(-1px);
+}
+
+.dark .geo-catalog-card {
+  --geo-card-ink: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(18, 32, 51, 0.81);
+  box-shadow:
+    0 18px 36px -24px rgba(0, 0, 0, 0.82),
+    inset 0 1px rgba(255, 255, 255, 0.07);
+}
+
+.dark .geo-catalog-card::before {
+  background:
+    radial-gradient(ellipse at 96% 0%, rgb(var(--geo-card-rgb) / 0.21), transparent 54%),
+    linear-gradient(148deg, rgba(255, 255, 255, 0.055), transparent 52%);
+}
+
+.dark .geo-catalog-card:hover {
+  border-color: rgb(var(--geo-card-rgb) / 0.58);
+  background: rgba(25, 42, 64, 0.96);
+  box-shadow: 0 22px 42px -22px rgba(0, 0, 0, 0.82), 0 10px 34px -26px rgb(var(--geo-card-rgb) / 0.48);
+}
+
+.geo-catalog-card[data-category="terrain"] { --geo-card-rgb: 217 119 6; }
+.geo-catalog-card[data-category="geology"] { --geo-card-rgb: 180 83 9; }
+.geo-catalog-card[data-category="vegetation"] { --geo-card-rgb: 5 150 105; }
+.geo-catalog-card[data-category="water"] { --geo-card-rgb: 8 145 178; }
+.geo-catalog-card[data-category="fire"] { --geo-card-rgb: 225 29 72; }
+.geo-catalog-card[data-category="climate"] { --geo-card-rgb: 161 98 7; }
+.geo-catalog-card[data-category="satellite"] { --geo-card-rgb: 79 70 229; }
+.geo-catalog-card[data-category="urban"] { --geo-card-rgb: 71 85 105; }
+
+.geo-catalog-card__icon {
+  flex: none;
+  box-shadow: 0 8px 18px -9px rgb(var(--geo-card-rgb) / 0.68);
+  outline: 1px solid rgba(255, 255, 255, 0.22);
+  outline-offset: -1px;
+}
+
+.geo-catalog-card__badge {
+  max-width: calc(100% - 55px);
+  display: inline-flex;
+  align-items: center;
+  text-align: right;
+  justify-content: flex-end;
+  padding: 5px 9px;
+  border: 1px solid rgb(var(--geo-card-rgb) / 0.25);
+  border-radius: 999px;
+  background: rgb(var(--geo-card-rgb) / 0.095);
+  color: #1e293b;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.dark .geo-catalog-card__badge {
+  background: rgb(var(--geo-card-rgb) / 0.24);
+  border-color: rgb(var(--geo-card-rgb) / 0.4);
+  color: #f1f5f9;
+}
+
+.geo-catalog-card__subtitle {
+  line-height: 1.6;
+}
+
+.geo-catalog-card__review {
+  display: block;
+  margin-top: 5px;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.dark .geo-catalog-card__review {
+  color: #fcd34d;
+}
+
+.geo-catalog-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.geo-catalog-card__chip {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  padding: 5px 9px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 9px;
+  background: rgba(248, 250, 252, 0.72);
+  color: #334155;
+  font-size: 11px;
+  font-weight: 560;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.dark .geo-catalog-card__chip {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.23);
+  color: #e2e8f0;
+}
+
+.geo-catalog-card__footer {
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  color: #075985;
+}
+
+.geo-catalog-card__arrow {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  flex: none;
+  border: 1px solid rgb(var(--geo-card-rgb) / 0.21);
+  border-radius: 50%;
+  background: rgb(var(--geo-card-rgb) / 0.095);
+  color: #075985;
+  font-size: 16px;
+  transition: transform 180ms ease, background-color 180ms ease;
+}
+
+.geo-catalog-card:hover .geo-catalog-card__arrow,
+.geo-catalog-card:focus-visible .geo-catalog-card__arrow {
+  transform: translateX(3px);
+  background: rgb(var(--geo-card-rgb) / 0.19);
+}
+
+.dark .geo-catalog-card__footer {
+  border-color: rgba(148, 163, 184, 0.24);
+  color: #7dd3fc;
+}
+
+.dark .geo-catalog-card__arrow {
+  background: rgb(var(--geo-card-rgb) / 0.22);
+  border-color: rgb(var(--geo-card-rgb) / 0.32);
+  color: #e0f2fe;
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .geo-catalog-card { background: #ffffff; }
+  .dark .geo-catalog-card { background: #17263b; }
+}
+
+@media (max-width: 640px) {
+  .geo-catalog-card { min-height: 0; border-radius: 18px; }
+  .geo-catalog-card:hover { transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .geo-catalog-card,
+  .geo-catalog-card__icon,
+  .geo-catalog-card__arrow,
+  .geo-catalog-quick-action { transition: none !important; }
+  .geo-catalog-card:hover,
+  .geo-catalog-card:active { transform: none; }
+  .geo-catalog-card:hover .geo-catalog-card__arrow,
+  .geo-catalog-card:focus-visible .geo-catalog-card__arrow { transform: none; }
+}
+
+html[data-geomoz-reduced-motion="true"] .geo-catalog-card,
+html[data-geomoz-reduced-motion="true"] .geo-catalog-card__icon,
+html[data-geomoz-reduced-motion="true"] .geo-catalog-card__arrow {
+  transition: none !important;
+  transform: none !important;
+}
+
+@media (forced-colors: active) {
+  .geo-catalog-card { border-color: CanvasText; background: Canvas; forced-color-adjust: auto; }
+  .geo-catalog-card:focus-visible { outline-color: Highlight; }
+  .geo-catalog-card__badge,
+  .geo-catalog-card__chip,
+  .geo-catalog-card__arrow { border-color: CanvasText; color: CanvasText; background: Canvas; }
+}
