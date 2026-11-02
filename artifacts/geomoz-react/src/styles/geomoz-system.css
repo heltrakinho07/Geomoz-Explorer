@@ -83,3 +83,12 @@
   transition:none;
  }
 }
+
+/* Shared GeoMoz accessibility preference (portal and GIS Workspace). */
+html[data-geomoz-reduced-motion="true"] [data-geomoz-system] *,
+html[data-geomoz-reduced-motion="true"] [data-geomoz-system] *::before,
+html[data-geomoz-reduced-motion="true"] [data-geomoz-system] *::after {
+  animation-duration: .01ms !important;
+  transition-duration: .01ms !important;
+  scroll-behavior: auto !important;
+}
