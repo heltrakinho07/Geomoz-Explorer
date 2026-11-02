@@ -123,3 +123,57 @@ export function workbenchCoreLabel(
   // Keep localized catalog label only when the key actually exists.
   return translated && translated!==key ? translated : text;
 }
+
+/** GeoMoz labels not found in the upstream engine's command catalogs. */
+const commandCopy:Record<string,Record<string,string>>={
+ en:{
+ "project.new":"New project","project.open-file":"Open file","project.open-url":"Open URL","project.save":"Save",
+ "project.save-as":"Save as","project.print-layout":"Print layout","proc.georeferencer":"Georeference image",
+ "add.raster":"Raster / DEM","add.vector":"Vector / GeoPackage","add.delimited-text":"Table / CSV",
+ "plugin.maplibre-gl-geo-editor":"Digitize / edit","proc.vector.buffer":"Buffer","proc.vector.clip":"Clip",
+ "proc.vector.intersection":"Intersect","proc.vector.dissolve":"Dissolve","proc.vector.reproject":"Reproject",
+ "proc.raster.reproject":"Reproject raster","proc.raster.clip-extent":"Clip by extent",
+ "proc.raster.clip-mask":"Clip DEM","proc.raster.slope":"Slope","proc.raster.hillshade":"Hillshade",
+ "proc.raster.contour":"Contours","control.measure":"Measure","control.legend":"Legend",
+ "control.colorbar":"Color bar","project.share":"Share","project.collaborate":"Collaborate",
+ "view.zoom-in":"Zoom in","view.zoom-out":"Zoom out","view.previous":"Previous view",
+ "view.next":"Next view","view.reset-north":"North","control.search":"Search",
+ },
+ es:{
+ "project.new":"Nuevo proyecto","project.open-file":"Abrir archivo","project.open-url":"Abrir URL","project.save":"Guardar",
+ "project.save-as":"Guardar como","project.print-layout":"Diseño de impresión","proc.georeferencer":"Georreferenciar imagen",
+ "add.raster":"Ráster / MDE","add.vector":"Vector / GeoPackage","add.delimited-text":"Tabla / CSV",
+ "plugin.maplibre-gl-geo-editor":"Digitalizar / editar","proc.vector.buffer":"Búfer","proc.vector.clip":"Recortar",
+ "proc.vector.intersection":"Intersección","proc.vector.dissolve":"Disolver","proc.vector.reproject":"Reproyectar",
+ "proc.raster.reproject":"Reproyectar ráster","proc.raster.clip-extent":"Recortar por extensión",
+ "proc.raster.clip-mask":"Recortar MDE","proc.raster.slope":"Pendiente","proc.raster.hillshade":"Sombreado de relieve",
+ "proc.raster.contour":"Curvas de nivel","control.measure":"Medir","control.legend":"Leyenda",
+ "control.colorbar":"Barra de colores","project.share":"Compartir","project.collaborate":"Colaborar",
+ "view.zoom-in":"Acercar","view.zoom-out":"Alejar","view.previous":"Vista anterior",
+ "view.next":"Vista siguiente","view.reset-north":"Norte","control.search":"Buscar",
+ },
+ fr:{
+ "project.new":"Nouveau projet","project.open-file":"Ouvrir un fichier","project.open-url":"Ouvrir une URL","project.save":"Enregistrer",
+ "project.save-as":"Enregistrer sous","project.print-layout":"Mise en page","proc.georeferencer":"Géoréférencer une image",
+ "add.raster":"Raster / MNT","add.vector":"Vecteur / GeoPackage","add.delimited-text":"Table / CSV",
+ "plugin.maplibre-gl-geo-editor":"Numériser / modifier","proc.vector.buffer":"Zone tampon","proc.vector.clip":"Découper",
+ "proc.vector.intersection":"Intersection","proc.vector.dissolve":"Fusionner","proc.vector.reproject":"Reprojeter",
+ "proc.raster.reproject":"Reprojeter le raster","proc.raster.clip-extent":"Découper par emprise",
+ "proc.raster.clip-mask":"Découper le MNT","proc.raster.slope":"Pente","proc.raster.hillshade":"Ombrage du relief",
+ "proc.raster.contour":"Courbes de niveau","control.measure":"Mesurer","control.legend":"Légende",
+ "control.colorbar":"Échelle de couleurs","project.share":"Partager","project.collaborate":"Collaborer",
+ "view.zoom-in":"Zoom avant","view.zoom-out":"Zoom arrière","view.previous":"Vue précédente",
+ "view.next":"Vue suivante","view.reset-north":"Nord","control.search":"Rechercher",
+ },
+};
+export function translatedCommand(
+ language:string,id:string,original:string,
+ translate:(key:string,options?:{defaultValue:string})=>string,
+):string {
+ if(language==="pt")return original;
+ const custom=commandCopy[language]?.[id];
+ if(custom)return custom;
+ const translated=workbenchCoreLabel(original,language,translate);
+ if(translated!==original)return translated;
+ return (commandCopy.en[id] ?? original);
+}
