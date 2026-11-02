@@ -47,6 +47,7 @@ export function GeoMozSettingsMenu({themeMode,onToggleThemeMode,onAbout,helpComm
     () => window.GeoMozPreferences?.getReducedMotion() ?? false
   );
   const rootRef = useRef<HTMLDetailsElement>(null);
+  const pendingLanguage = useRef<string|null>(null);
   const copy = translations[language] ?? translations.en;
   const label = (key: string) => copy[key] ?? translations.pt[key] ?? key;
 
@@ -54,6 +55,15 @@ export function GeoMozSettingsMenu({themeMode,onToggleThemeMode,onAbout,helpComm
     const api = window.GeoMozPreferences;
     return api?.subscribe(() => setReducedMotion(api.getReducedMotion()));
   }, []);
+
+  // Only persist to the shared preference after i18next has loaded and applied
+  // the selected locale. The engine may reject a failed locale chunk request.
+  useEffect(() => {
+    if(pendingLanguage.current === language) {
+      pendingLanguage.current = null;
+      window.GeoMozPreferences?.setLanguage(language);
+    }
+  }, [language]);
 
   useEffect(() => {
     const syncLanguage = () => {
@@ -91,8 +101,8 @@ export function GeoMozSettingsMenu({themeMode,onToggleThemeMode,onAbout,helpComm
 
   const chooseLanguage = (next: string) => {
     if (!options.some(option=>option.code===next)) return;
+    pendingLanguage.current = next;
     setLanguage(next);
-    window.GeoMozPreferences?.setLanguage(next);
   };
   const chooseReducedMotion = (enabled: boolean) => {
     setReducedMotion(enabled);
