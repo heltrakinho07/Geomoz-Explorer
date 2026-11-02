@@ -78,7 +78,7 @@ async function settleRecovery(page){
   await page.getByTestId("geomoz-layer-catalog").waitFor();
   await page.locator("main canvas").first().waitFor();
   assert.equal(await page.locator(".geomoz-portal-shell").count(),0,"Old shell must not coexist with the new UI");
-  assert.equal(await page.locator("[data-command='add.vector']").count(),1);
+  assert.equal(await page.locator("[data-command='add.vector']").count(),0,"Closed tool cards must not render hidden commands");
   assert.deepEqual(await page.locator(".gm-task-tabs button").allTextContents(),["Digitalizar","Dados","Análise","Resultados"]);
   assert.equal(await page.getByRole("button",{name:"Mais opções",exact:true}).count(),0);
   assert.equal(await page.getByRole("button",{name:"Gestão",exact:true}).count(),0);
@@ -110,6 +110,7 @@ async function settleRecovery(page){
     assert.ok(Math.abs((await page.locator(".gm-command-ribbon").evaluate(node=>node.getBoundingClientRect().height))-ribbonHeight)<2,
       "Opening tool cards must not grow or scroll the ribbon vertically");
     if(label==="Raster")await flyout.locator('[data-command="proc.raster.slope"]').waitFor({state:"visible"});
+    if(label==="Vector")assert.equal(await flyout.locator('[data-command="add.vector"]').count(),1,"Vector import must remain available when opened");
     if(label==="Serviços de mapas"){
       await flyout.locator('[data-action="geomoz-qms"]').click();
       await page.locator(".gm-qms-panel").waitFor({state:"visible"});
