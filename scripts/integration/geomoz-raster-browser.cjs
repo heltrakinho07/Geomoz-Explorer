@@ -12,7 +12,7 @@ module.exports=async function validateRasterProcessing(page){
  }));
  async function run(id,params,maskId){
   console.log("Raster control operation:",id);
-  await page.locator('[data-task="data"]').click();
+  // Raster is a top-level category in the compact, single-row GIS header.
   const card=page.locator(".gm-ribbon-accordion").filter({has:page.locator(".gm-ribbon-trigger").filter({hasText:/^\s*Raster\s*$/})});
   const trigger=card.locator(".gm-ribbon-trigger");
   if(await trigger.getAttribute("aria-expanded")==="false")await trigger.click();
