@@ -73,3 +73,45 @@ test("GeoMoz GIS Workspace enables native attribute digitizing and the geologica
  assert.match(prepare,/GEOMOZ_ROLLOUT.advancedDrawing/);
  assert.equal(GEOMOZ_ROLLOUT.advancedDrawing,true);
 });
+
+test("GeoMoz profile and shell copy follows selected language, not a fixed Portuguese UI",async()=>{
+  const {profileText,PROFILE_COPY}=await import("../assets/workbench/geomoz-profile-locales.ts");
+  const {workbenchText,translatedCommand}=await import("../assets/workbench/geomoz-workbench-locale.ts");
+  for(const lang of ["pt","en","es","fr"]){
+    assert.ok(profileText(lang,"profile"));
+    assert.ok(profileText(lang,"png").includes("PNG"));
+    assert.ok(profileText(lang,"pdf").includes("PDF"));
+    assert.ok(workbenchText(lang,"topography"));
+    assert.ok(workbenchText(lang,"search"));
+    assert.ok(workbenchText(lang,"projectOpen"));
+    assert.deepEqual(Object.keys(PROFILE_COPY[lang]).sort(),Object.keys(PROFILE_COPY.pt).sort(),
+      "Missing translated profile label in "+lang);
+  }
+  assert.equal(profileText("en","compute"),"Calculate profile");
+  assert.equal(profileText("es","compute"),"Calcular perfil");
+  assert.equal(profileText("fr","compute"),"Calculer le profil");
+  assert.equal(profileText("de","compute"),"Calculate profile","Unsupported GeoMoz-specific copy must fall back to English");
+  assert.equal(translatedCommand("en","proc.raster.slope","Declive",()=>""),"Slope");
+});
+test("topographic route is kept above raster layers after map style changes",()=>{
+  const src=readFileSync(new URL("../assets/workbench/GeoMozTopographicProfile.tsx",import.meta.url),"utf8");
+  assert.match(src,/map\.moveLayer\(id\)/);
+  assert.match(src,/const order = \[LINE, DOTS, CURSOR_HALO, CURSOR_DOT\]/);
+  assert.match(src,/current\.on\("styledata", redraw\)/);
+  assert.match(src,/current\.off\("styledata", redraw\)/);
+  assert.match(src,/geomoz-topo-export-png/);
+  assert.match(src,/geomoz-topo-export-pdf/);
+});
+test("profile PDF export embeds an image in a valid single-page PDF container",async()=>{
+  const {pdfFromJpeg}=await import("../assets/workbench/geomoz-profile-export.ts");
+  const jpeg=Uint8Array.from([255,216,255,224,0,16,74,70,73,70,0,255,217]);
+  const pdf=pdfFromJpeg(jpeg,1800,1000);
+  assert.equal(pdf.type,"application/pdf");
+  const raw=Buffer.from(await pdf.arrayBuffer()).toString("latin1");
+  assert.ok(raw.startsWith("%PDF-1.4"));
+  assert.match(raw,/\/Subtype \/Image/);
+  assert.match(raw,/\/DCTDecode/);
+  assert.match(raw,/xref\n0 6/);
+  assert.match(raw,/startxref\n\d+\n%%EOF/);
+  assert.throws(()=>pdfFromJpeg(Uint8Array.from([1,2,3,4]),1800,1000));
+});
