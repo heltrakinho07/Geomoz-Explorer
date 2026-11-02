@@ -131,7 +131,18 @@ async function settleRecovery(page){
       "Tool panel must fit the viewport: "+label+" "+JSON.stringify(geometry));
     assert.ok(Math.abs((await page.locator(".gm-compact-taskbar").evaluate(node=>node.getBoundingClientRect().height))-toolbarHeight)<2,
       "Opening tool cards must not grow or scroll the ribbon vertically");
-    if(label==="Raster")await flyout.locator('[data-command="proc.raster.slope"]').waitFor({state:"visible"});
+    if(label==="Raster"){
+      await flyout.locator('[data-command="proc.raster.slope"]').waitFor({state:"visible"});
+      await flyout.locator('[data-action="geomoz-topographic-profile"]').click();
+      const topo=page.getByTestId("geomoz-topographic-profile");
+      await topo.waitFor({state:"visible"});
+      assert.equal(await topo.getByRole("heading",{name:"Perfil topográfico"}).count(),1);
+      assert.equal(await topo.getByLabel("DEM de entrada").count(),1);
+      assert.equal(await topo.getByRole("button",{name:"Calcular perfil"}).isDisabled(),true,
+        "Profile requires a real DEM and two map points");
+      await topo.getByRole("button",{name:"Fechar perfil topográfico"}).click();
+      await topo.waitFor({state:"hidden"});
+    }
     if(label==="Vector")assert.equal(await flyout.locator('[data-command="add.vector"]').count(),1,"Vector import must remain available when opened");
     if(label==="Serviços de mapas"){
       await flyout.locator('[data-action="geomoz-qms"]').click();
