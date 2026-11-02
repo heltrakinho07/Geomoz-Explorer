@@ -31,7 +31,9 @@
     if (!supportedCode(next)) return false;
     const changed = next !== language;
     language = next;
-    document.documentElement.lang = next;
+    // The portal remains Portuguese until its own strings are translated.
+    // Do not falsely label Portuguese content as another language for assistive technologies.
+    if (document.body?.dataset.geomozApp === "workbench") document.documentElement.lang = next;
     if (persist) {
       try {
         localStorage.setItem(languageKey, next);
