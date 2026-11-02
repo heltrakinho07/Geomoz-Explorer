@@ -75,6 +75,31 @@ async function settleRecovery(page){
   });
   assert.ok(iconMatches,"Canonical GeoMoz icon must match across main portal and GIS Workspace");
 
+  // Reuse the real engine locale catalogs and persisted i18next preference.
+  const languageSelect=page.getByTestId("geomoz-language-selector");
+  assert.equal(await languageSelect.count(),1,"The compact header must expose a language selector");
+  assert.ok(await languageSelect.locator("option").count()>=15,
+    "Preserve the multilingual engine catalog, not a hardcoded two-language list");
+  assert.equal(await languageSelect.inputValue(),"pt","GeoMoz defaults to Portuguese");
+  const heightBefore=await page.locator(".gm-titlebar").evaluate(node=>node.getBoundingClientRect().height);
+  await languageSelect.selectOption("en");
+  await page.waitForFunction(()=>{
+    try{return document.documentElement.lang==="en" &&
+      JSON.parse(localStorage.getItem("geolibre.desktopSettings")||"{}").language==="en";}catch{return false;}
+  });
+  await page.reload();
+  await page.getByTestId("geomoz-workbench-chrome").waitFor();
+  assert.equal(await page.getByTestId("geomoz-language-selector").inputValue(),"en",
+    "Language preference must survive a reload");
+  await page.getByTestId("geomoz-language-selector").selectOption("pt");
+  await page.waitForFunction(()=>{
+    try{return document.documentElement.lang==="pt" &&
+      JSON.parse(localStorage.getItem("geolibre.desktopSettings")||"{}").language==="pt";}catch{return false;}
+  });
+  const heightAfter=await page.locator(".gm-titlebar").evaluate(node=>node.getBoundingClientRect().height);
+  assert.ok(Math.abs(heightAfter-heightBefore)<2,"Language picker must not increase header height");
+
+
   await page.getByTestId("geomoz-layer-catalog").waitFor();
   await page.locator("main canvas").first().waitFor();
   assert.equal(await page.locator(".geomoz-portal-shell").count(),0,"Old shell must not coexist with the new UI");
@@ -161,15 +186,16 @@ async function settleRecovery(page){
     }
   }
   await page.keyboard.press("Control+k");
-  const search=page.getByRole("combobox");
+  const palette=page.getByRole("dialog").filter({has:page.locator('input[role="combobox"]')});
+  const search=palette.getByRole("combobox");
   await search.waitFor();
   for(const term of ["Python","SQL","Voronoi","STAC","directions"]){
     await search.fill(term);
     await page.waitForTimeout(500);
-    assert.equal(await page.getByRole("option").count(),0,"Specialist feature must be hidden from search: "+term);
+    assert.equal(await palette.getByRole("option").count(),0,"Specialist feature must be hidden from search: "+term);
   }
   await search.fill("buffer");
-  await page.getByRole("option").first().waitFor();
+  await palette.getByRole("option").first().waitFor();
   await page.keyboard.press("Escape");
   console.log("Curated workflow and searchable catalog verified.");
 
