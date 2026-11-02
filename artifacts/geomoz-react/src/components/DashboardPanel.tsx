@@ -10,6 +10,7 @@
  */
 
 import React from "react";
+import "./dashboard-glass.css";
 import {
   Globe,
   Satellite,
@@ -187,11 +188,11 @@ export default function DashboardPanel({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 sm:p-6 md:p-8">
-      <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8">
+    <div className="gm-dashboard flex-1 overflow-y-auto p-4 text-slate-900 dark:text-slate-100 sm:p-6 md:p-8">
+      <div className="gm-dashboard-content mx-auto max-w-6xl space-y-6 sm:space-y-8">
         {/* 1. Header Banner & Quick Actions */}
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden border border-slate-800">
-          <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-radial from-sky-500/10 to-transparent pointer-events-none" />
+        <div className="gm-dashboard-hero relative overflow-hidden p-6 text-white sm:p-8">
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-1/3 bg-radial from-sky-500/10 to-transparent" />
           
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="space-y-2 max-w-2xl">
@@ -219,7 +220,7 @@ export default function DashboardPanel({
               <Button
                 onClick={onOpenSettings}
                 variant="outline"
-                className="bg-slate-800/80 hover:bg-slate-750 text-slate-200 border-slate-700 font-semibold text-xs sm:text-sm px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all cursor-pointer"
+                className="gm-dashboard-hero__action flex cursor-pointer items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all sm:text-sm"
               >
                 <Settings size={15} />
                 <span>Definições</span>
@@ -228,7 +229,7 @@ export default function DashboardPanel({
           </div>
 
           {/* Quick Info Strip */}
-          <div className="mt-6 pt-5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-4 text-xs">
+          <div className="gm-dashboard-hero__divider mt-6 flex flex-wrap items-center justify-between gap-4 border-t pt-5 text-xs">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1.5 text-slate-300">
                 <FolderKanban size={14} className="text-sky-400" />
@@ -283,7 +284,7 @@ export default function DashboardPanel({
           </div>
 
           {activeProject ? (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xs hover:border-sky-500/40 transition-all">
+            <div className="gm-dashboard-panel gm-dashboard-panel--active p-5 transition-all sm:p-6">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
@@ -348,7 +349,7 @@ export default function DashboardPanel({
               </div>
             </div>
           ) : (
-            <div className="bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-6 sm:p-8 text-center space-y-4">
+            <div className="gm-dashboard-panel gm-dashboard-panel--empty space-y-4 p-6 text-center sm:p-8">
               <div className="w-12 h-12 rounded-2xl bg-sky-50 dark:bg-sky-950/60 text-sky-500 flex items-center justify-center mx-auto">
                 <FolderKanban size={24} />
               </div>
@@ -372,7 +373,7 @@ export default function DashboardPanel({
 
           {/* Quick Project Switcher (if user has multiple projects) */}
           {projects.length > 1 && (
-            <div className="bg-slate-100/70 dark:bg-slate-900/50 rounded-xl p-3 border border-slate-200/80 dark:border-slate-800">
+            <div className="gm-dashboard-switcher p-3">
               <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                 <FolderKanban size={12} />
                 <span>Outros Estudos Disponíveis</span>
@@ -385,7 +386,7 @@ export default function DashboardPanel({
                     <button
                       key={p.id}
                       onClick={() => setActiveProject(p)}
-                      className="flex items-center justify-between p-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-sky-400 transition-all text-left cursor-pointer group"
+                      className="gm-dashboard-project-switch group flex cursor-pointer items-center justify-between p-2.5 text-left"
                     >
                       <div className="min-w-0 pr-2">
                         <div className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate group-hover:text-sky-500">
@@ -417,19 +418,22 @@ export default function DashboardPanel({
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 sm:gap-5">
             {MODULE_LAUNCHERS.map((mod) => (
-              <div
+              <button
+                type="button"
                 key={mod.id}
+                data-module={mod.id}
+                aria-label={`Abrir módulo: ${mod.title}`}
                 onClick={() => onTabChange?.(mod.tab)}
-                className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col justify-between hover:shadow-md transition-all cursor-pointer group ${mod.accentBorder}`}
+                className="gm-dashboard-module group flex flex-col justify-between gap-4 p-4 sm:p-5"
               >
                 <div>
                   <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className={`w-10 h-10 rounded-xl ${mod.badgeBgClass} flex items-center justify-center shrink-0 transition-transform group-hover:scale-105`}>
+                    <div className={`gm-dashboard-module__icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition-transform group-hover:scale-105 ${mod.badgeBgClass}`}>
                       <span className={mod.colorClass}>{mod.icon}</span>
                     </div>
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                    <span className="gm-dashboard-module__tag px-2.5 py-1 text-[10px] font-semibold">
                       {mod.tag}
                     </span>
                   </div>
@@ -437,16 +441,16 @@ export default function DashboardPanel({
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-sky-500 transition-colors">
                     {mod.title}
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                  <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
                     {mod.description}
                   </p>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs font-semibold text-slate-500 group-hover:text-sky-500">
+                <div className="gm-dashboard-module__footer flex items-center justify-between gap-3 border-t pt-3 text-xs font-bold">
                   <span>Abrir Módulo</span>
-                  <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
+                  <span className="gm-dashboard-module__arrow" aria-hidden="true"><ArrowRight size={14} /></span>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -470,7 +474,7 @@ export default function DashboardPanel({
           </div>
 
           {runsLoading ? (
-            <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <div className="gm-dashboard-panel p-8 text-center">
               <Loader2 size={24} className="animate-spin text-sky-500 mx-auto mb-2" />
               <p className="text-xs text-slate-400">A carregar registos de análise…</p>
             </div>
@@ -479,7 +483,7 @@ export default function DashboardPanel({
               {activeRuns.slice(0, 4).map((run) => (
                 <div
                   key={run.id}
-                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 hover:border-slate-300 dark:hover:border-slate-700 transition-all space-y-2.5"
+                  className="gm-dashboard-run space-y-2.5 p-4"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -496,7 +500,7 @@ export default function DashboardPanel({
                   </div>
 
                   {run.metrics && (
-                    <div className="grid grid-cols-4 gap-1.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 text-center">
+                    <div className="gm-dashboard-metrics grid grid-cols-4 gap-1.5 rounded-lg p-2 text-center">
                       <div>
                         <div className="text-[9px] text-slate-400 uppercase font-medium">Média</div>
                         <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
@@ -539,7 +543,7 @@ export default function DashboardPanel({
               ))}
             </div>
           ) : (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center text-slate-500 space-y-2">
+            <div className="gm-dashboard-panel space-y-2 p-6 text-center text-slate-500">
               <BarChart3 size={28} className="mx-auto text-slate-400" />
               <p className="text-xs font-medium">
                 Ainda não foram guardadas análises para este projeto de estudo.
@@ -552,7 +556,7 @@ export default function DashboardPanel({
         </div>
 
         {/* 5. Cloud Infrastructure & BYO-GEE Quota Card */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 space-y-4">
+        <div className="gm-dashboard-panel space-y-4 p-5 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-500 flex items-center justify-center shrink-0">
@@ -578,7 +582,7 @@ export default function DashboardPanel({
             </Button>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 text-xs text-slate-600 dark:text-slate-300 space-y-1 leading-relaxed">
+          <div className="gm-dashboard-infra-note space-y-1 rounded-xl p-3.5 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
             <p>
               <strong>Isolamento Total de Quota:</strong> Cada utilizador autentica-se com a sua conta Google e define o seu próprio <em>Google Cloud Earth Engine Project ID</em>. O processamento de imagens de satélite e computação em nuvem é faturado diretamente à quota do seu projeto GCP, garantindo total privacidade e independência.
             </p>
