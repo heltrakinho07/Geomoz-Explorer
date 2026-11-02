@@ -2698,3 +2698,31 @@ async def terrain_mesh_preview(
         return await run_in_threadpool(dem_to_preview, data, file.filename)
     except TerrainInputError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class GEETerrainPreviewRequest(BaseModel):
+    province: Optional[str] = None
+    district: Optional[str] = None
+    geometry: Optional[dict] = None
+
+
+@app.post("/geomoz-api/terrain/gee-mesh")
+async def terrain_gee_mesh_preview(
+    req: GEETerrainPreviewRequest,
+    uid: str = Depends(require_gee_auth),
+):
+    """Load Copernicus GLO-30 from the current authenticated user's GEE project."""
+    from starlette.concurrency import run_in_threadpool
+    from terrain_dem import TerrainInputError
+    from terrain_gee import copernicus_to_preview
+    import httpx
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    try:
+        return await run_in_threadpool(copernicus_to_preview, region)
+    except TerrainInputError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Não foi possível descarregar o DEM do GEE.") from exc
+    except Exception as exc:
+        handle_gee_api_error(exc, prefix="Pré-visualização DEM 3D", uid=uid)
