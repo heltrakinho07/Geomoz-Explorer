@@ -205,7 +205,8 @@ async function settleRecovery(page){
 
   // Save the actual project, then reopen its unchanged schema under the new and legacy extensions.
   await page.getByRole("button",{name:"Resultados",exact:true}).first().click();
-  await page.locator('[data-command="project.print-layout"]').click();
+  await page.getByRole("navigation",{name:"Categorias de ferramentas GIS"}).getByRole("button",{name:"Cartografia",exact:true}).click();
+  await page.getByTestId("geomoz-tools-flyout").locator('[data-command="project.print-layout"]').click();
   const printDialog=page.getByRole("dialog");
   await printDialog.getByText(/Mapa: \d+ × \d+ píxeis/).waitFor({timeout:30000});
   assert.equal(await printDialog.getByLabel("Resolução de saída").inputValue(),"300");
@@ -236,7 +237,8 @@ async function settleRecovery(page){
   await page.keyboard.press("Escape");
   await printDialog.waitFor({state:"hidden"});
   console.log("GeoMoz high-resolution print capture and DPI control verified.");
-  await page.locator('[data-command="project.save-as"]').click();
+  await page.getByRole("navigation",{name:"Categorias de ferramentas GIS"}).getByRole("button",{name:"Cartografia",exact:true}).click();
+  await page.getByTestId("geomoz-tools-flyout").locator('[data-command="project.save-as"]').click();
   const saveDialog=page.getByRole("dialog").filter({has:page.locator("#save-project-name")});
   await saveDialog.waitFor();
   assert.equal(await page.locator("#save-project-name").inputValue(),"Untitled_Projecto.geomoz");
