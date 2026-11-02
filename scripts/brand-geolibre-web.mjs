@@ -77,6 +77,9 @@ const themeHref = `<link rel="stylesheet" href="/gis-workspace/geomoz-brand.css?
 const themeJs = readFileSync(new URL("../artifacts/geomoz-react/public/geomoz-theme.js", import.meta.url), "utf8");
 const themeVersion = createHash("sha256").update(themeJs).digest("hex").slice(0, 12);
 const themeScript = `<script src="/gis-workspace/geomoz-theme.js?v=${themeVersion}"></script>`;
+const preferencesJs = readFileSync(new URL("../artifacts/geomoz-react/public/geomoz-preferences.js", import.meta.url), "utf8");
+const preferencesVersion = createHash("sha256").update(preferencesJs).digest("hex").slice(0, 12);
+const preferencesScript = `<script src="/gis-workspace/geomoz-preferences.js?v=${preferencesVersion}"></script>`;
 const gateTemplate = readFileSync(new URL("./assets/geomoz-workspace-auth-gate.js", import.meta.url), "utf8");
 if (gateTemplate.split("__GEOMOZ_ENTRYPOINTS__").length !== 2) {
   throw new Error("GeoMoz Workspace authentication gate source changed");
@@ -107,6 +110,7 @@ const identityHead = [
   authStyles,
   gateScript,
   themeScript,
+  preferencesScript,
 ].join("\n  ");
 let branded = guardedHtml
   // Replace GeoLibre favicons; the GIS scripts are auth-gated separately.
@@ -126,6 +130,7 @@ if (
   !branded.includes('data-geomoz-app="workbench"') ||
   !branded.includes(themeHref) ||
   !branded.includes(themeScript) ||
+  !branded.includes(preferencesScript) ||
   !branded.includes(gateScript) ||
   !branded.includes('data-geomoz-auth="pending"')
 ) {
@@ -173,6 +178,7 @@ writeFileSync(
 );
 writeFileSync(resolve(destination, "geomoz-brand.css"), brandingCss);
 writeFileSync(resolve(destination, "geomoz-theme.js"), themeJs);
+writeFileSync(resolve(destination, "geomoz-preferences.js"), preferencesJs);
 
 const iconMappings = [
   ["favicon.svg", "favicon.svg"],
