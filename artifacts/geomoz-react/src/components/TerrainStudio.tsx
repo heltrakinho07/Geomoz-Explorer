@@ -57,6 +57,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
       });
     } catch (cause) {
       setRendererError(cause instanceof Error ? cause.message : String(cause));
+      return undefined;
     }
   }, [open, terrain, exaggeration, style, textureUrl]);
 
