@@ -1,4 +1,5 @@
 import type { ProfileSample, ProfileStatistics } from "./geomoz-topographic-profile";
+import type { ProfileCopyKey } from "./geomoz-profile-locales";
 
 /** Rasterize the actual profile SVG (not the map tiles) with a report header.
  * The PDF embeds the exported high-resolution JPEG; no remote conversion API.
@@ -56,8 +57,8 @@ function safeSource(value: string) {
 }
 
 async function renderProfileReport(
-  element: SVGSVGElement, samples: ProfileSample[], stats: ProfileStatistics,
-  dem: string, locale: string, t: (key: string) => string,
+  element: SVGSVGElement, stats: ProfileStatistics,
+  dem: string, locale: string, t: (key: ProfileCopyKey) => string,
 ): Promise<HTMLCanvasElement> {
   const canvas = document.createElement("canvas");
   canvas.width = 1800; canvas.height = 1000;
@@ -117,7 +118,7 @@ export async function exportProfileFigure(
 ): Promise<void> {
   if (!svg || !samples.length || !stats.validCount) throw Error("Não existe um gráfico válido para exportar.");
   const locale = ["pt", "en", "fr", "es"].includes(language) ? language : "en";
-  const canvas = await renderProfileReport(svg, samples, stats, dem, locale, t);
+  const canvas = await renderProfileReport(svg, stats, dem, locale, t);
   if (format === "png") {
     const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/png"));
     if (!blob) throw Error("Não foi possível gerar o PNG.");
