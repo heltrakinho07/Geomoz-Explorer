@@ -52,7 +52,7 @@ export function GeoMozLayerCreation({onClose}:{onClose:()=>void}){
      });
      setStyle(id,{fillColor:template.color,strokeColor:template.id==="faults"?"#991b1b":"#334155",strokeWidth:1.7,circleRadius:6});
      select(id);setCreated(name);setError("");
-     window.dispatchEvent(new CustomEvent("geomoz:task",{detail:"map"}));
+     window.dispatchEvent(new CustomEvent("geomoz:task",{detail:"vector"}));
    }catch(e){setError(e instanceof Error?e.message:"Não foi possível criar a camada.");}
  };
  return <section className="gm-cartography-wizard" role="dialog" aria-label="Criar camada cartográfica" data-testid="geomoz-cartography-wizard">
@@ -77,7 +77,7 @@ export function GeoMozLayerCreation({onClose}:{onClose:()=>void}){
   </div>
   <p className="gm-cartography-note"><Info size={14}/> Após criar, seleccione a camada no catálogo, active «Edição» e use «Adicionar ponto», «Adicionar linha» ou «Adicionar polígono» conforme a geometria. Cada feição abre um formulário de atributos. Termine guardando as edições e o projecto.</p>
   {error&&<p role="alert" className="gm-cartography-error">{error}</p>}
-  {created&&<p role="status" className="gm-cartography-created">Camada «{created}» criada e seleccionada. Abra «Digitalizar» no catálogo para iniciar a edição.</p>}
+  {created&&<p role="status" className="gm-cartography-created">Camada «{created}» criada e seleccionada. Abra «Vector» no cabeçalho para iniciar a digitalização.</p>}
   <button type="button" onClick={create} disabled={!canAdd} className="gm-cartography-create"><Plus size={16}/> Criar camada vazia</button>
  </section>;
 }

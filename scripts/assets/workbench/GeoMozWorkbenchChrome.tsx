@@ -51,7 +51,7 @@ const LEGACY_ACTIONS: Record<Task, {label:string; ids:string[]}[]> = {
 const TASKS: [Task,string][] = GEOMOZ_ROLLOUT.fullMenus ? LEGACY_TASKS : [["map","Digitalizar"],["data","Dados"],["analysis","Análise"],["output","Resultados"]];
 const CORE_ACTIONS: Partial<typeof LEGACY_ACTIONS> = {
   map:[{label:"Preparação cartográfica",ids:["proc.georeferencer"]}],
-  data:[{label:"Serviços de mapas",ids:["add.wms","add.wfs","add.xyz","add.wmts"]},{label:"Raster",ids:["add.raster","proc.georeferencer","proc.raster.reproject","proc.raster.clip-extent","proc.raster.clip-mask","proc.raster.slope","proc.raster.hillshade","proc.raster.contour"]},{label:"Vector",ids:["add.vector","add.delimited-text","proc.vector.buffer","proc.vector.clip","proc.vector.intersection","proc.vector.dissolve","proc.vector.reproject"]},{label:"Cartografia",ids:["project.print-layout","control.legend","control.colorbar","control.measure"]}],
+  data:[{label:"Serviços de mapas",ids:["add.wms","add.wfs","add.xyz","add.wmts"]},{label:"Raster",ids:["add.raster","proc.georeferencer","proc.raster.reproject","proc.raster.clip-extent","proc.raster.clip-mask","proc.raster.slope","proc.raster.hillshade","proc.raster.contour"]},{label:"Vector",ids:["add.vector","add.delimited-text","plugin.maplibre-gl-geo-editor","proc.vector.buffer","proc.vector.clip","proc.vector.intersection","proc.vector.dissolve","proc.vector.reproject"]},{label:"Cartografia",ids:["project.print-layout","project.save-as","control.legend","control.colorbar","control.measure"]}],
   analysis:[{label:"Análise vectorial",ids:["proc.vector.buffer","proc.vector.clip","proc.vector.intersection","proc.vector.dissolve","proc.vector.reproject"]},{label:"Análise do terreno",ids:["proc.raster.slope","proc.raster.hillshade","proc.raster.contour","proc.raster.clip-mask"]}],
   output:[{label:"Mapa e projecto",ids:["project.print-layout","project.save-as"]},{label:"Elementos do mapa",ids:["control.legend","control.colorbar"]}],
 };
@@ -102,7 +102,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   const [ngwOpen,setNgwOpen]=useState(false);
   const [qgisPrintOpen,setQgisPrintOpen]=useState(false);
   const [layerWizardOpen,setLayerWizardOpen]=useState(false);
-  const activeTask:Task=viewer?"map":task;
+  const activeTask:Task=viewer?"map":GEOMOZ_ROLLOUT.fullMenus?task:"data";
   const curated=curateGeoMozCommands(commands);
   const visibleCommands=viewer?curated.filter(command=>command.id.startsWith("view.")):curated;
   const registry=new Map(visibleCommands.map(command=>[command.id,command]));
@@ -129,6 +129,50 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
             aria-label={themeMode==="dark"?"Activar modo claro":"Activar modo nocturno"} title={themeMode==="dark"?"Activar modo claro":"Activar modo nocturno"}>{themeMode==="dark"?<Sun size={18}/>:<Moon size={18}/>}</button>
         </div>
       </div>
+      {!GEOMOZ_ROLLOUT.fullMenus&&<div className="gm-taskbar gm-compact-taskbar" data-testid="geomoz-compact-taskbar">
+        <nav aria-label="Categorias de ferramentas GIS" className="gm-compact-tool-list">
+          {!viewer&&groups.map(group=><GeoMozFloatingToolCard
+            key={group.label} title={group.label}
+            icon={group.label==="Raster"?Image:group.label==="Cartografia"?FileText:group.label==="Vector"?Layers3:Database}
+            open={openToolCard===group.label}
+            onToggle={()=>{setOpenToolCard(openToolCard===group.label?null:group.label);setSeismicOpen(false);window.dispatchEvent(new CustomEvent("geomoz:task",{detail:group.label==="Vector"?"vector":"data"}));}}
+            onClose={()=>setOpenToolCard(null)}>
+            {group.label==="Vector"&&<button type="button" data-testid="geomoz-create-layer" onClick={()=>{setOpenToolCard(null);setLayerWizardOpen(true);}}>
+              <Layers3 size={17}/><span>Nova camada / Digitalizar</span>
+            </button>}
+            {group.items.map(command=>{const Icon=command.icon??CommandIcon;return <button key={command.id} type="button"
+              data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??command.title}
+              onClick={()=>{if(!command.disabledReason){setOpenToolCard(null);command.run();}}}>
+              <Icon size={17}/><span>{LABELS[command.id]??command.title}</span>
+            </button>;})}
+            {group.label==="Serviços de mapas"&&<>
+              <button type="button" data-action="geomoz-qms" onClick={()=>{setOpenToolCard(null);setQmsOpen(true);setNgwOpen(false);}}>
+                <Database size={17}/><span>Catálogo de mapas-base</span>
+              </button>
+              <button type="button" data-action="geomoz-nextgis-web" onClick={()=>{setOpenToolCard(null);setNgwOpen(true);setQmsOpen(false);}}>
+                <Database size={17}/><span>Serviços NextGIS Web</span>
+              </button>
+            </>}
+            {group.label==="Cartografia"&&<button type="button" data-action="geomoz-qgis-print" onClick={()=>{setOpenToolCard(null);setQgisPrintOpen(true);}}>
+              <FileText size={17}/><span>Pacote PDF QGIS</span>
+            </button>}
+          </GeoMozFloatingToolCard>)}
+          {!viewer&&<GeoMozFloatingToolCard title="Hidrologia" icon={Activity}
+            open={openToolCard==="Hidrologia"}
+            onToggle={()=>{setOpenToolCard(openToolCard==="Hidrologia"?null:"Hidrologia");setSeismicOpen(false);}}
+            onClose={()=>setOpenToolCard(null)} testId="geomoz-hydrology-card">
+            <a href="/hidrografia" target="_blank" rel="noopener noreferrer" onClick={()=>setOpenToolCard(null)}>Bacias hidrográficas <ArrowUpRight size={13}/></a>
+            <a href="/agua-subterranea" target="_blank" rel="noopener noreferrer" onClick={()=>setOpenToolCard(null)}>Água subterrânea <ArrowUpRight size={13}/></a>
+            <a href="/geoprocessamento" target="_blank" rel="noopener noreferrer" onClick={()=>setOpenToolCard(null)}>Terreno e Hidrologia <ArrowUpRight size={13}/></a>
+          </GeoMozFloatingToolCard>}
+          {!viewer&&<button type="button" className="gm-compact-seismic" data-action="geomoz-seismic"
+            aria-expanded={seismicOpen} onClick={()=>{setOpenToolCard(null);setSeismicOpen(!seismicOpen);window.dispatchEvent(new CustomEvent("geomoz:task",{detail:"data"}));}}>
+            <Activity size={16}/><span>Catálogos sísmicos</span>
+          </button>}
+        </nav>
+        <span className="gm-session-badge"><i/>{viewer?"Vista de leitura":"Projecto aberto"}<span className="gm-session-detail"> · {layers.length} camada{layers.length===1?"":"s"}</span></span>
+      </div>}
+      {GEOMOZ_ROLLOUT.fullMenus&&<>
       <div className="gm-taskbar"><nav aria-label="Tarefas GIS" className="gm-task-tabs">{TASKS.filter(([id])=>!viewer||id==="map").map(([id,label])=>
         <button key={id} type="button" aria-current={activeTask===id?"page":undefined} onClick={()=>{setTask(id);setOpenToolCard(null);setMore(false);setSeismicOpen(id==="seismic");window.dispatchEvent(new CustomEvent("geomoz:task",{detail:id}));}} data-task={id}>{label}</button>)}</nav>
         <span className="gm-session-badge"><i/>{viewer?"Vista de leitura":"Projecto aberto"}<span className="gm-session-detail"> · {layers.length} camada{layers.length===1?"":"s"}</span></span>
@@ -167,6 +211,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
         {GEOMOZ_ROLLOUT.fullMenus&&<button type="button" className="gm-more-tools" aria-expanded={more} onClick={()=>setMore(!more)}>Mais opções <ChevronDown size={14}/></button>}
       </div>
       <p className="gm-task-guidance" role="status" hidden={more}>{viewer?"Explore as camadas e navegue no mapa. Esta sessão está em modo de leitura.":GUIDANCE[activeTask]}</p>
+      </>}
       {layerWizardOpen&&!viewer&&<GeoMozLayerCreation onClose={()=>setLayerWizardOpen(false)}/>}
       {qgisPrintOpen&&!viewer&&<GeoMozQgisPrintPanel onClose={()=>setQgisPrintOpen(false)}/>}
       {ngwOpen&&!viewer&&<GeoMozNextgisWebCatalog onClose={()=>setNgwOpen(false)}/>}
