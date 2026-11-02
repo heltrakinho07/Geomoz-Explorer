@@ -186,15 +186,16 @@ async function settleRecovery(page){
     }
   }
   await page.keyboard.press("Control+k");
-  const search=page.locator('input[role="combobox"]');
+  const palette=page.getByRole("dialog").filter({has:page.locator('input[role="combobox"]')});
+  const search=palette.getByRole("combobox");
   await search.waitFor();
   for(const term of ["Python","SQL","Voronoi","STAC","directions"]){
     await search.fill(term);
     await page.waitForTimeout(500);
-    assert.equal(await page.getByRole("option").count(),0,"Specialist feature must be hidden from search: "+term);
+    assert.equal(await palette.getByRole("option").count(),0,"Specialist feature must be hidden from search: "+term);
   }
   await search.fill("buffer");
-  await page.getByRole("option").first().waitFor();
+  await palette.getByRole("option").first().waitFor();
   await page.keyboard.press("Escape");
   console.log("Curated workflow and searchable catalog verified.");
 
