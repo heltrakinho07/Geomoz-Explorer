@@ -86,7 +86,7 @@ export function GeoMozFloatingToolCard({
       {open && position && typeof document !== "undefined" && createPortal(
         <section ref={panelRef} id={id} role="dialog" aria-modal="false"
           aria-label={"Ferramentas: " + title} data-testid="geomoz-tools-flyout"
-          className="gm-workbench gm-tool-flyout" style={position}>
+          className="gm-tool-flyout" style={position}>
           <header className="gm-tool-flyout-header">
             <div>
               <small>GEOMOZ GIS WORKSPACE / FERRAMENTAS</small>
