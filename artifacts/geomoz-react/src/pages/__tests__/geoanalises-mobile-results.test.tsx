@@ -6,6 +6,7 @@ import DraggablePanel from "@/components/DraggablePanel";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 const analytics = read("src/pages/GeoAnalises.tsx");
+const catalogStyles = read("src/pages/geoanalises-catalog.css");
 const panel = read("src/components/DraggablePanel.tsx");
 const shell = read("src/pages/Explorer.tsx");
 
@@ -56,5 +57,42 @@ describe("GeoAnálises: scroll and responsive inspector", () => {
     expect(analytics).toContain('aria-label="Abrir filtros e parâmetros"');
     expect(shell).toContain("h-[100dvh]");
     expect(shell).toContain('aria-label="Abrir menu de navegação"');
+  });
+});
+
+
+describe("GeoAnálises: translucent category cards", () => {
+  it("applies glassmorphism to all eight categories without replacing their actions", () => {
+    expect(analytics).toContain('import "./geoanalises-catalog.css"');
+    expect(analytics).toContain("data-category={cat.id}");
+    expect(analytics).toContain('className="geo-catalog-card group');
+    expect(analytics).toContain("setSelectedCategory(cat.id)");
+    expect(analytics).toContain("setActiveTab(cat.defaultTab)");
+    for (const category of [
+      "terrain", "geology", "vegetation", "water",
+      "fire", "climate", "satellite", "urban",
+    ]) {
+      expect(catalogStyles).toContain(`data-category="${category}"`);
+    }
+  });
+
+  it("provides accessible contrast, keyboard focus, graceful blur fallback and reduced motion", () => {
+    expect(analytics).toContain('aria-label={`${cat.status === "development"');
+    expect(catalogStyles).toContain("backdrop-filter: blur(16px)");
+    expect(catalogStyles).toContain(".geo-catalog-card:focus-visible");
+    expect(catalogStyles).toContain("@supports not");
+    expect(catalogStyles).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(catalogStyles).toContain("data-geomoz-reduced-motion");
+    expect(catalogStyles).toContain("@media (forced-colors: active)");
+    expect(catalogStyles).toContain(".dark .geo-catalog-card");
+    expect(catalogStyles).toContain("@media (max-width: 640px)");
+  });
+
+  it("retains scientific caveats and responsive highlighting without fake activation", () => {
+    expect(analytics).toContain('className="geo-catalog-card__review"');
+    expect(analytics).toContain("Inclui ferramentas em revisão");
+    expect(analytics).toContain('cat.highlights.slice(0, 3)');
+    expect(analytics).toContain('cat.status === "development" ? "Ver estado do módulo"');
+    expect(analytics).toContain("geo-catalog-grid grid");
   });
 });
