@@ -2675,3 +2675,26 @@ async def delete_saved_analysis(analysis_id: str, uid: str = Depends(require_fir
             raise HTTPException(500, f"Falha ao eliminar análise: {exc}")
     raise HTTPException(404, "Análise não encontrada.")
 
+
+
+# GeoMoz 3D Terrain Studio — authenticated DEM preview, no server-side storage.
+@app.post("/geomoz-api/terrain/mesh")
+async def terrain_mesh_preview(
+    file: UploadFile = File(...),
+    _uid: str = Depends(require_firebase_auth),
+):
+    from starlette.concurrency import run_in_threadpool
+    from terrain_dem import MAX_UPLOAD_BYTES, TerrainInputError, dem_to_preview
+
+    if not file.filename or not file.filename.lower().endswith((".tif", ".tiff")):
+        raise HTTPException(status_code=415, detail="Envie um GeoTIFF (.tif ou .tiff).")
+    try:
+        data = await file.read(MAX_UPLOAD_BYTES + 1)
+    finally:
+        await file.close()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="O GeoTIFF ultrapassa o limite de 32 MB.")
+    try:
+        return await run_in_threadpool(dem_to_preview, data, file.filename)
+    except TerrainInputError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
