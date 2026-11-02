@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { distanceMeters, profileLocations, profileStatistics, profileToCSV } from
+import { distanceMeters, nearestProfileSampleIndex, profileLocations, profileStatistics, profileToCSV } from
   "../assets/workbench/geomoz-topographic-profile.ts";
 
 test("real WGS84 metric positions are monotonic and preserve endpoints", () => {
@@ -50,4 +50,20 @@ test("reject invalid or degenerate profiles and never produce invented DEM eleva
   const noData = profileLocations([[33, -19], [33.01, -19]], 50);
   assert.ok(noData.every(p => p.elevationM === null));
   assert.equal(profileStatistics(noData), null);
+});
+
+test("map cursor selects the nearest real profile sample and handles NoData", () => {
+  const samples = profileLocations([[33, -19.2], [33.1, -19.2]], 6);
+  samples[2].elevationM = null;
+  samples[1].elevationM = 155;
+  assert.equal(nearestProfileSampleIndex(samples, -100), 0);
+  assert.equal(nearestProfileSampleIndex(samples, 1e10), 5);
+  assert.equal(nearestProfileSampleIndex(samples, samples[2].distanceM), 2);
+  assert.equal(nearestProfileSampleIndex(samples, samples[1].distanceM), 1);
+  assert.equal(nearestProfileSampleIndex(samples, (samples[3].distanceM + samples[4].distanceM) / 2), 3);
+  assert.equal(nearestProfileSampleIndex([], 100), null);
+  assert.equal(nearestProfileSampleIndex(samples, Number.NaN), null);
+  assert.deepEqual([samples[2].longitude, samples[2].latitude],
+    [profileLocations([[33, -19.2], [33.1, -19.2]], 6)[2].longitude,
+      profileLocations([[33, -19.2], [33.1, -19.2]], 6)[2].latitude]);
 });
