@@ -79,11 +79,14 @@ async function settleRecovery(page){
   await page.locator("main canvas").first().waitFor();
   assert.equal(await page.locator(".geomoz-portal-shell").count(),0,"Old shell must not coexist with the new UI");
   assert.equal(await page.locator("[data-command='add.vector']").count(),0,"Closed tool cards must not render hidden commands");
-  assert.deepEqual(await page.locator(".gm-task-tabs button").allTextContents(),["Digitalizar","Dados","Análise","Resultados"]);
+  assert.deepEqual((await page.locator(".gm-compact-tool-list .gm-ribbon-trigger,.gm-compact-seismic").allTextContents()).map(x=>x.trim()),
+     ["Serviços de mapas","Raster","Vector","Cartografia","Hidrologia","Catálogos sísmicos"]);
+   assert.equal(await page.locator(".gm-command-ribbon").count(),0,"Redundant ribbon must not consume map height");
+   assert.equal(await page.locator(".gm-task-guidance").count(),0,"Redundant task guidance must not consume map height");
   assert.equal(await page.getByRole("button",{name:"Mais opções",exact:true}).count(),0);
   assert.equal(await page.getByRole("button",{name:"Gestão",exact:true}).count(),0);
   // Tool cards must float over the workspace, not inside the ribbon's scroll box.
-  const ribbonHeight = await page.locator(".gm-command-ribbon").evaluate(node => node.getBoundingClientRect().height);
+  const toolbarHeight = await page.locator(".gm-compact-taskbar").evaluate(node => node.getBoundingClientRect().height);
   for(const label of ["Raster","Vector","Serviços de mapas","Hidrologia","Cartografia"]){
     const card=page.locator(".gm-ribbon-accordion").filter({has:page.locator(".gm-ribbon-trigger").filter({hasText:new RegExp("^\\s*"+label+"\\s*$")})});
     assert.equal(await card.count(),1,label);
@@ -126,7 +129,7 @@ async function settleRecovery(page){
     assert.ok(geometry.zIndex>1000,"Tool panel must appear above the map");
     assert.ok(geometry.left>=0&&geometry.right<=1441&&geometry.top>=0&&geometry.bottom<=961,
       "Tool panel must fit the viewport: "+label+" "+JSON.stringify(geometry));
-    assert.ok(Math.abs((await page.locator(".gm-command-ribbon").evaluate(node=>node.getBoundingClientRect().height))-ribbonHeight)<2,
+    assert.ok(Math.abs((await page.locator(".gm-compact-taskbar").evaluate(node=>node.getBoundingClientRect().height))-toolbarHeight)<2,
       "Opening tool cards must not grow or scroll the ribbon vertically");
     if(label==="Raster")await flyout.locator('[data-command="proc.raster.slope"]').waitFor({state:"visible"});
     if(label==="Vector")assert.equal(await flyout.locator('[data-command="add.vector"]').count(),1,"Vector import must remain available when opened");
@@ -174,8 +177,8 @@ async function settleRecovery(page){
   console.log("GeoMoz About modal and preserved third-party notice navigation verified.");
 
 
-  await page.getByRole("button",{name:"Digitalizar",exact:true}).click();
-  await page.locator("[data-command='proc.georeferencer']").click();
+  await page.getByRole("navigation",{name:"Categorias de ferramentas GIS"}).getByRole("button",{name:"Raster",exact:true}).click();
+  await page.getByTestId("geomoz-tools-flyout").locator("[data-command='proc.georeferencer']").click();
   const georeferencer=page.getByRole("dialog");
   await georeferencer.waitFor();
   assert.ok(await georeferencer.locator("input[type=file]").count()>0,"Real georeferencer accepts a source image");
@@ -264,7 +267,8 @@ async function settleRecovery(page){
   await page.getByTestId("geomoz-workbench-chrome").waitFor();
   await settleRecovery(page);
   await page.getByTestId("geomoz-layer-catalog").waitFor();
-  await page.getByRole("button",{name:"Digitalizar",exact:true}).click();
+  await page.getByRole("navigation",{name:"Categorias de ferramentas GIS"}).getByRole("button",{name:"Vector",exact:true}).click();
+  await page.keyboard.press("Escape");
   await page.locator(".gm-catalog-nav").getByRole("button",{name:/^Camadas/}).click();
 
   await page.getByRole("textbox",{name:"Nome do projecto"}).fill("Estudo do território");
@@ -335,8 +339,7 @@ async function settleRecovery(page){
       place:"Centro de Moçambique",net:"us",url:"https://earthquake.usgs.gov/earthquakes/eventpage/mz-test-001"}}
     ]})
   }));
-  await page.locator('[data-task="data"]').click();
-  await page.locator('[data-action="geomoz-seismic"]').click();
+  await page.locator('.gm-compact-tool-list [data-action="geomoz-seismic"]').click();
   await page.getByTestId("geomoz-seismic-panel").waitFor();
   await page.getByRole("button",{name:"Consultar eventos"}).click();
   await page.getByTestId("geomoz-seismic-panel").getByText("1", {exact:true}).first().waitFor();
@@ -363,8 +366,8 @@ async function settleRecovery(page){
   await page.getByRole("button",{name:"Fechar consulta sísmica"}).click();
   console.log("USGS catalog normalised and imported through the real GIS layer store.");
 
-  await page.locator('[data-task="analysis"]').click();
-  await page.locator('[data-command="proc.vector.buffer"]').click();
+  await page.getByRole("navigation",{name:"Categorias de ferramentas GIS"}).getByRole("button",{name:"Vector",exact:true}).click();
+  await page.getByTestId("geomoz-tools-flyout").locator('[data-command="proc.vector.buffer"]').click();
   const toolDialog=page.getByRole("dialog").filter({hasText:/Buffer|Zona tampão/i}).first();
   await toolDialog.waitFor();
   assert.equal(await toolDialog.getByRole("button",{name:/Voronoi|DGGS|Polyline/i}).count(),0,"Internal dialog lists must also be curated");
@@ -385,8 +388,8 @@ async function settleRecovery(page){
   await page.locator(".gm-layer-row[data-selected=true]").waitFor();
   // Repeated analyses can return identical output labels. Never open an
   // arbitrary first match when the history only identifies outputs by name.
-  await page.locator('[data-task="analysis"]').click();
-  await page.locator('[data-command="proc.vector.buffer"]').click();
+  await page.getByRole("navigation",{name:"Categorias de ferramentas GIS"}).getByRole("button",{name:"Vector",exact:true}).click();
+  await page.getByTestId("geomoz-tools-flyout").locator('[data-command="proc.vector.buffer"]').click();
   await toolDialog.waitFor();
   await toolDialog.locator("select#layer").selectOption(inputValue);
   await toolDialog.locator("input#distance").fill("2");
@@ -400,10 +403,11 @@ async function settleRecovery(page){
   for(const link of await outputLinks.all())assert.equal(await link.isDisabled(),true,"Duplicate names must never open the wrong layer");
   await page.locator(".gm-catalog-nav button").first().click();
   console.log("Duplicate output names are reported without selecting an arbitrary layer.");
-  await page.locator('[data-task="output"]').click();
+  await page.getByTestId("geomoz-layer-catalog").getByRole("button",{name:"Resultados",exact:true}).click();
   await page.locator(".gm-results").waitFor();
   await page.locator(".gm-catalog-nav button").first().click();
-  await page.locator('[data-task="map"]').click();
+  await page.getByRole("navigation",{name:"Categorias de ferramentas GIS"}).getByRole("button",{name:"Vector",exact:true}).click();
+  await page.keyboard.press("Escape");
   const baseCanvas=await page.locator("main canvas").first().boundingBox();
   await page.mouse.click(baseCanvas.x+baseCanvas.width*.55,baseCanvas.y+baseCanvas.height*.35,{button:"right"});
   await page.getByRole("menu").first().waitFor({timeout:10000});
@@ -414,8 +418,8 @@ async function settleRecovery(page){
   console.log("Starting selected-layer digitization without opening temporary Sketches.");
   // QGIS: outside the Digitalizar task there are no drawing controls.
   assert.equal(await page.locator('[data-testid="geomoz-add-digitized-feature"]:visible').count(),0);
-  await page.getByRole("navigation",{name:"Tarefas GIS"}).getByRole("button",{name:"Digitalizar"}).click();
-  await page.getByTestId("geomoz-create-layer").click();
+  await page.getByRole("navigation",{name:"Categorias de ferramentas GIS"}).getByRole("button",{name:"Vector",exact:true}).click();
+  await page.getByTestId("geomoz-tools-flyout").getByTestId("geomoz-create-layer").click();
   const wizard=page.getByTestId("geomoz-cartography-wizard");
   await wizard.waitFor();
   await wizard.getByLabel("Modelo cartográfico").selectOption("faults");
@@ -516,7 +520,7 @@ async function settleRecovery(page){
   await viewer.locator("main canvas").first().waitFor();
   assert.equal(await viewer.locator("[data-command^='project.'],[data-command^='add.'],[data-command^='proc.'],[data-command^='settings.']").count(),0,"Viewer ribbon must never expose authoring actions");
   assert.equal(await viewer.getByRole("textbox",{name:"Nome do projecto"}).isEditable(),false);
-  assert.equal(await viewer.locator(".gm-task-tabs button").count(),1);
+  assert.equal(await viewer.locator(".gm-compact-tool-list button").count(),0);
   assert.equal(await viewer.locator('[data-action="geomoz-seismic"]').count(),0,"Viewer must not expose catalog import");
   await viewer.getByTestId("geomoz-theme-toggle").click();
   await viewer.close();
