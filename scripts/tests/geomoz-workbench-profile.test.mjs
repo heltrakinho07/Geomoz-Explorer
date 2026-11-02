@@ -115,3 +115,10 @@ test("profile PDF export embeds an image in a valid single-page PDF container",a
   assert.match(raw,/startxref\n\d+\n%%EOF/);
   assert.throws(()=>pdfFromJpeg(Uint8Array.from([1,2,3,4]),1800,1000));
 });
+
+test("pinned GeoMoz GIS build copies every new profile export and i18n module",()=>{
+  const prep=readFileSync(new URL("../prepare-geomoz-workbench.mjs",import.meta.url),"utf8");
+  for(const required of ["geomoz-profile-export.ts","geomoz-profile-locales.ts","geomoz-workbench-locale.ts"]){
+    assert.ok(prep.includes('"' + required + '"'),required+" must be copied to the engine build");
+  }
+});
