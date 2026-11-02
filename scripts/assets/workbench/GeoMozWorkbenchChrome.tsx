@@ -3,6 +3,7 @@ import type {MapEngine} from "@geolibre/map";
 import {GeoMozSeismicPanel} from "./GeoMozSeismicPanel";
 import {GeoMozTopographicProfile} from "./GeoMozTopographicProfile";
 import {GeoMozFloatingToolCard} from "./GeoMozFloatingToolCard";
+import {GeoMozSettingsMenu} from "./GeoMozSettingsMenu";
 import {GeoMozQmsCatalog} from "./GeoMozQmsCatalog";
 import {GeoMozNextgisWebCatalog} from "./GeoMozNextgisWebCatalog";
 import {GeoMozQgisPrintPanel} from "./GeoMozQgisPrintPanel";
@@ -12,7 +13,7 @@ import { GEOMOZ_ROLLOUT, curateGeoMozCommands } from "../../lib/geomoz-workbench
 import {useLanguage} from "../../hooks/useLanguage";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useAppStore, DEFAULT_PROJECT_NAME } from "@geolibre/core";
-import { ArrowUpRight, Search, Moon, Sun, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass, Activity, Image, Database, Info, FileText, Route, Languages } from "lucide-react";
+import { ArrowUpRight, Search, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass, Activity, Image, Database, Info, FileText, Route } from "lucide-react";
 import type { Command } from "../../lib/commands";
 import type { ThemeMode } from "../../hooks/useThemeMode";
 
@@ -82,6 +83,11 @@ const LABELS: Record<string,string> = {
   "help.shortcuts":"Atalhos","help.diagnostics":"Diagnóstico","help.about":"Sobre",
 };
 
+const CATEGORY_TRANSLATIONS: Record<string,Record<string,string>> = {
+  en: {"Serviços de mapas":"Map services","Raster":"Raster","Vector":"Vector","Cartografia":"Cartography","Hidrologia":"Hydrology","Catálogos sísmicos":"Seismic catalogues"},
+  es: {"Serviços de mapas":"Servicios de mapas","Raster":"Ráster","Vector":"Vector","Cartografia":"Cartografía","Hidrologia":"Hidrología","Catálogos sísmicos":"Catálogos sísmicos"},
+  fr: {"Serviços de mapas":"Services cartographiques","Raster":"Raster","Vector":"Vecteur","Cartografia":"Cartographie","Hidrologia":"Hydrologie","Catálogos sísmicos":"Catalogues sismiques"},
+};
 /** Secondary engine menus remain mounted, with their original permission gates and dialogs. */
 export function GeoMozMenuSlot({area,children}:{area:Task;children:ReactNode}) {
   const active = useContext(TaskContext);
@@ -94,7 +100,8 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
 }) {
   const [task,setTask]=useState<Task>("data");
   // Use the engine's existing persisted i18next preference and lazy-loaded locales.
-  const {language,options:languageOptions,setLanguage}=useLanguage();
+  const {language}=useLanguage();
+  const categoryLabel=(name:string)=>(CATEGORY_TRANSLATIONS[language]??(language==="pt"?{}:CATEGORY_TRANSLATIONS.en))[name]??name;
   const name=useAppStore(s=>s.projectName);
   const setName=useAppStore(s=>s.setProjectName);
   const layers=useAppStore(s=>s.layers);
@@ -118,7 +125,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   return <TaskContext.Provider value={activeTask}>
     <header className="gm-workbench-chrome" data-testid="geomoz-workbench-chrome">
       <div className="gm-titlebar">
-        <a className="gm-brand" href="/" aria-label="GeoMoz — página inicial"><img src="/favicon.svg" alt="" /><span>Geo<span>Moz</span><small>GIS WORKSPACE</small></span></a>
+        <a className="gm-brand" href="/dashboard" aria-label="GeoMoz Explorer — visão geral"><img src="/favicon.svg" alt="" /><span>Geo<span>Moz</span><small>GIS WORKSPACE</small></span></a>
         <div className="gm-project-title"><span className="gm-project-symbol"><Layers3 size={17}/></span>
           <label className="gm-project-field"><span>PROJECTO ACTUAL</span><input aria-label="Nome do projecto" value={name} readOnly={viewer}
             onChange={event=>{if(!viewer)setName(event.target.value);}}
@@ -128,24 +135,15 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
         <div className="gm-project-menu">{children}</div>
         <div className="gm-title-actions">
           {!viewer&&<button type="button" className="gm-command-search" onClick={onSearch}><Search size={15}/><span>Procurar ferramentas…</span><kbd>⌘ / Ctrl K</kbd></button>}
-          <details className="gm-module-switch gm-help-menu"><summary aria-label="Ajuda GeoMoz">?</summary><nav aria-label="Ajuda GeoMoz"><small>APOIO AO ESTUDO</small>{["help.shortcuts","help.diagnostics"].map(id=>{const command=registry.get(id);return command?<button key={id} type="button" disabled={!!command.disabledReason} title={command.disabledReason} onClick={()=>{if(!command.disabledReason)command.run();}}>{LABELS[id]}</button>:null;})}<a href="/documentacao">Documentação <ArrowUpRight size={12}/></a><button type="button" data-testid="geomoz-about-trigger" onClick={()=>setAboutOpen(true)}>Sobre o GeoMoz GIS Workspace</button></nav></details>
           <details className="gm-module-switch"><summary aria-label="Abrir módulos GeoMoz"><Grid2X2 size={16}/><span>Módulos</span></summary><nav aria-label="Módulos GeoMoz"><small>PLATAFORMA GEOMOZ</small>{[["/dashboard","Visão geral"],["/mapa","Explorador de mapas"],["/analises","GeoAnálises"],["/hidrografia","Bacias hidrográficas"],["/agua-subterranea","Água subterrânea"],["/geoperigos","Geoperigos"],["/geomoz-ai","GeoMoz AI"],["/documentacao","Documentação"]].map(([href,label])=><a key={href} href={href}>{label}<ArrowUpRight size={12}/></a>)}</nav></details>
-          <label className="gm-language-picker" title="Escolher idioma">
-            <Languages size={16} aria-hidden="true"/>
-            <select data-testid="geomoz-language-selector" aria-label="Idioma da interface"
-              value={language} onChange={event=>setLanguage(event.target.value)}>
-              {languageOptions.map(option=><option key={option.code} value={option.code}
-                lang={option.code} dir="auto">{option.nativeName}</option>)}
-            </select>
-          </label>
-          <button type="button" className="gm-icon-button" data-testid="geomoz-theme-toggle" onClick={onToggleThemeMode}
-            aria-label={themeMode==="dark"?"Activar modo claro":"Activar modo nocturno"} title={themeMode==="dark"?"Activar modo claro":"Activar modo nocturno"}>{themeMode==="dark"?<Sun size={18}/>:<Moon size={18}/>}</button>
+          <GeoMozSettingsMenu themeMode={themeMode} onToggleThemeMode={onToggleThemeMode}
+            onAbout={()=>setAboutOpen(true)} helpCommands={["help.shortcuts","help.diagnostics"].flatMap(id=>{const command=registry.get(id);return command?[command]:[];})}/>
         </div>
       </div>
       {!GEOMOZ_ROLLOUT.fullMenus&&<div className="gm-taskbar gm-compact-taskbar" data-testid="geomoz-compact-taskbar">
         <nav aria-label="Categorias de ferramentas GIS" className="gm-compact-tool-list">
           {!viewer&&groups.map(group=><GeoMozFloatingToolCard
-            key={group.label} title={group.label}
+            key={group.label} title={categoryLabel(group.label)}
             icon={group.label==="Raster"?Image:group.label==="Cartografia"?FileText:group.label==="Vector"?Layers3:Database}
             open={openToolCard===group.label}
             onToggle={()=>{setOpenToolCard(openToolCard===group.label?null:group.label);setSeismicOpen(false);window.dispatchEvent(new CustomEvent("geomoz:task",{detail:group.label==="Vector"?"vector":"data"}));}}
@@ -174,7 +172,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
               <FileText size={17}/><span>Pacote PDF QGIS</span>
             </button>}
           </GeoMozFloatingToolCard>)}
-          {!viewer&&<GeoMozFloatingToolCard title="Hidrologia" icon={Activity}
+          {!viewer&&<GeoMozFloatingToolCard title={categoryLabel("Hidrologia")} icon={Activity}
             open={openToolCard==="Hidrologia"}
             onToggle={()=>{setOpenToolCard(openToolCard==="Hidrologia"?null:"Hidrologia");setSeismicOpen(false);}}
             onClose={()=>setOpenToolCard(null)} testId="geomoz-hydrology-card">
@@ -184,7 +182,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
           </GeoMozFloatingToolCard>}
           {!viewer&&<button type="button" className="gm-compact-seismic" data-action="geomoz-seismic"
             aria-expanded={seismicOpen} onClick={()=>{setOpenToolCard(null);setSeismicOpen(!seismicOpen);window.dispatchEvent(new CustomEvent("geomoz:task",{detail:"data"}));}}>
-            <Activity size={16}/><span>Catálogos sísmicos</span>
+            <Activity size={16}/><span>{categoryLabel("Catálogos sísmicos")}</span>
           </button>}
         </nav>
         <span className="gm-session-badge"><i/>{viewer?"Vista de leitura":"Projecto aberto"}<span className="gm-session-detail"> · {layers.length} camada{layers.length===1?"":"s"}</span></span>
@@ -211,7 +209,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
             title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={19}/><span>{command.id==="plugin.maplibre-gl-geo-editor"&&command.keywords?.includes("deactivate")?"Terminar desenho":LABELS[command.id]??command.title}</span></button>;
         })}</div><small>{group.label}</small></>}</section>)}
         {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group gm-ribbon-optional">
-          <GeoMozFloatingToolCard title="Hidrologia" icon={Activity}
+          <GeoMozFloatingToolCard title={categoryLabel("Hidrologia")} icon={Activity}
             open={openToolCard==="Hidrologia"}
             onToggle={()=>setOpenToolCard(openToolCard==="Hidrologia"?null:"Hidrologia")}
             onClose={()=>setOpenToolCard(null)} testId="geomoz-hydrology-card">
