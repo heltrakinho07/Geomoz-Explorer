@@ -82,27 +82,49 @@ async function settleRecovery(page){
   assert.deepEqual(await page.locator(".gm-task-tabs button").allTextContents(),["Digitalizar","Dados","Análise","Resultados"]);
   assert.equal(await page.getByRole("button",{name:"Mais opções",exact:true}).count(),0);
   assert.equal(await page.getByRole("button",{name:"Gestão",exact:true}).count(),0);
-  // Level one: keyboard-operable cards retain native command gates.
+  // Tool cards must float over the workspace, not inside the ribbon's scroll box.
+  const ribbonHeight = await page.locator(".gm-command-ribbon").evaluate(node => node.getBoundingClientRect().height);
   for(const label of ["Raster","Vector","Serviços de mapas","Hidrologia","Cartografia"]){
-    const card=page.locator(".gm-ribbon-accordion").filter({has:page.locator("summary").filter({hasText:new RegExp("^\\s*"+label+"\\s*$")})});
+    const card=page.locator(".gm-ribbon-accordion").filter({has:page.locator(".gm-ribbon-trigger").filter({hasText:new RegExp("^\\s*"+label+"\\s*$")})});
     assert.equal(await card.count(),1,label);
-    assert.equal(await card.getAttribute("open"),null);
-    await card.locator("summary").focus();
+    const trigger=card.locator(".gm-ribbon-trigger");
+    assert.equal(await trigger.getAttribute("aria-expanded"),"false");
+    await trigger.focus();
     await page.keyboard.press("Enter");
-    assert.notEqual(await card.getAttribute("open"),null);
-    if(label==="Raster")await card.locator('[data-command="proc.raster.slope"]').waitFor({state:"visible"});
+    assert.equal(await trigger.getAttribute("aria-expanded"),"true");
+    const flyout=page.getByTestId("geomoz-tools-flyout");
+    await flyout.waitFor({state:"visible"});
+    const geometry=await flyout.evaluate(node=>{
+      const r=node.getBoundingClientRect();
+      const button=document.querySelector('.gm-ribbon-trigger[aria-expanded="true"]');
+      const anchor=button?.getBoundingClientRect();
+      return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,anchorTop:anchor?.top,
+        portal:!node.closest(".gm-ribbon-groups"),position:getComputedStyle(node).position,
+        zIndex:parseInt(getComputedStyle(node).zIndex,10)};
+    });
+    assert.ok(geometry.portal,"Tool panel must escape the clipped ribbon: "+label);
+    assert.equal(geometry.position,"fixed");
+    assert.ok(geometry.zIndex>1000,"Tool panel must appear above the map");
+    assert.ok(geometry.left>=0&&geometry.right<=1441&&geometry.top>=0&&geometry.bottom<=961,
+      "Tool panel must fit the viewport: "+label+" "+JSON.stringify(geometry));
+    assert.ok(Math.abs((await page.locator(".gm-command-ribbon").evaluate(node=>node.getBoundingClientRect().height))-ribbonHeight)<2,
+      "Opening tool cards must not grow or scroll the ribbon vertically");
+    if(label==="Raster")await flyout.locator('[data-command="proc.raster.slope"]').waitFor({state:"visible"});
     if(label==="Serviços de mapas"){
-      await card.locator('[data-action="geomoz-qms"]').click();
+      await flyout.locator('[data-action="geomoz-qms"]').click();
       await page.locator(".gm-qms-panel").waitFor({state:"visible"});
-      await card.locator('[data-action="geomoz-qms"]').click();
+      assert.equal(await flyout.count(),0);
+      await page.getByRole("button",{name:"Fechar catálogo de mapas-base"}).click();
     }
     if(label==="Hidrologia"){
-      assert.equal(await card.locator('a[target="_blank"]').count(),3);
-      assert.equal(await card.locator('a[href="/hidrografia"]').count(),1);
+      assert.equal(await flyout.locator('a[target="_blank"]').count(),3);
+      assert.equal(await flyout.locator('a[href="/hidrografia"]').count(),1);
     }
-    await card.locator("summary").focus();
-    await page.keyboard.press("Enter");
-    assert.equal(await card.getAttribute("open"),null);
+    if(await flyout.count()){
+      await page.keyboard.press("Escape");
+      assert.equal(await trigger.getAttribute("aria-expanded"),"false");
+      assert.equal(await flyout.count(),0);
+    }
   }
   await page.keyboard.press("Control+k");
   const search=page.getByRole("combobox");
