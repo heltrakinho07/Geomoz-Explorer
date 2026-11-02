@@ -186,7 +186,7 @@ async function settleRecovery(page){
     }
   }
   await page.keyboard.press("Control+k");
-  const search=page.getByRole("combobox");
+  const search=page.locator('input[role="combobox"]');
   await search.waitFor();
   for(const term of ["Python","SQL","Voronoi","STAC","directions"]){
     await search.fill(term);
