@@ -20,6 +20,12 @@ test("GeoMoz tool cards render outside the scrollable ribbon using a workspace-c
     assert.ok(chrome.includes(group), group);
   }
   assert.doesNotMatch(chrome, /<details className="gm-ribbon-accordion"/);
+  assert.match(chrome, /gm-compact-taskbar/);
+  assert.match(chrome, /gm-compact-tool-list/);
+  assert.match(chrome, /geomoz-create-layer/);
+  assert.match(chrome, /group.label==="Vector"/);
+  assert.match(chrome, /GEOMOZ_ROLLOUT.fullMenus&&<>/);
+
 });
 
 test("Floating tool cards have viewport z-index and are included in the pinned GIS build", () => {
@@ -27,6 +33,8 @@ test("Floating tool cards have viewport z-index and are included in the pinned G
   assert.match(css, /\.gm-workbench-chrome \.gm-tool-flyout\{/);
   assert.match(css, /z-index:10050/);
   assert.match(css, /\.gm-workbench-chrome \.gm-tool-flyout-grid/);
+  assert.match(css, /\.gm-compact-taskbar\{/);
+  assert.match(css, /\.gm-compact-tool-list\{/);
   assert.doesNotMatch(css, /\.gm-ribbon-accordion>div\{position:absolute/);
   const prepare = read("../prepare-geomoz-workbench.mjs");
   assert.match(prepare, /"GeoMozFloatingToolCard\.tsx"/);
