@@ -1,6 +1,7 @@
 import type {RefObject} from "react";
 import type {MapEngine} from "@geolibre/map";
 import {GeoMozSeismicPanel} from "./GeoMozSeismicPanel";
+import {GeoMozTopographicProfile} from "./GeoMozTopographicProfile";
 import {GeoMozFloatingToolCard} from "./GeoMozFloatingToolCard";
 import {GeoMozQmsCatalog} from "./GeoMozQmsCatalog";
 import {GeoMozNextgisWebCatalog} from "./GeoMozNextgisWebCatalog";
@@ -10,7 +11,7 @@ import {AboutDialog} from "../layout/AboutDialog";
 import { GEOMOZ_ROLLOUT, curateGeoMozCommands } from "../../lib/geomoz-workbench-profile";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useAppStore, DEFAULT_PROJECT_NAME } from "@geolibre/core";
-import { ArrowUpRight, Search, Moon, Sun, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass, Activity, Image, Database, Info, FileText } from "lucide-react";
+import { ArrowUpRight, Search, Moon, Sun, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass, Activity, Image, Database, Info, FileText, Route } from "lucide-react";
 import type { Command } from "../../lib/commands";
 import type { ThemeMode } from "../../hooks/useThemeMode";
 
@@ -97,6 +98,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   const [more,setMore]=useState(false);
   const [aboutOpen,setAboutOpen]=useState(false);
   const [seismicOpen,setSeismicOpen]=useState(false);
+  const [topoOpen,setTopoOpen]=useState(false);
   const [qmsOpen,setQmsOpen]=useState(false);
   const [openToolCard,setOpenToolCard]=useState<string|null>(null);
   const [ngwOpen,setNgwOpen]=useState(false);
@@ -137,6 +139,10 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
             open={openToolCard===group.label}
             onToggle={()=>{setOpenToolCard(openToolCard===group.label?null:group.label);setSeismicOpen(false);window.dispatchEvent(new CustomEvent("geomoz:task",{detail:group.label==="Vector"?"vector":"data"}));}}
             onClose={()=>setOpenToolCard(null)}>
+            {group.label==="Raster"&&<button type="button" data-action="geomoz-topographic-profile"
+              onClick={()=>{setOpenToolCard(null);setTopoOpen(true);setSeismicOpen(false);}}>
+              <Route size={17}/><span>Perfil topográfico</span>
+            </button>}
             {group.label==="Vector"&&<button type="button" data-testid="geomoz-create-layer" onClick={()=>{setOpenToolCard(null);setLayerWizardOpen(true);}}>
               <Layers3 size={17}/><span>Nova camada / Digitalizar</span>
             </button>}
@@ -216,6 +222,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
       {qgisPrintOpen&&!viewer&&<GeoMozQgisPrintPanel onClose={()=>setQgisPrintOpen(false)}/>}
       {ngwOpen&&!viewer&&<GeoMozNextgisWebCatalog onClose={()=>setNgwOpen(false)}/>}
       {qmsOpen&&!viewer&&<GeoMozQmsCatalog onClose={()=>setQmsOpen(false)}/>}
+      {topoOpen&&!viewer&&<GeoMozTopographicProfile mapControllerRef={mapControllerRef} onClose={()=>setTopoOpen(false)}/>}
       {seismicOpen&&!viewer&&<GeoMozSeismicPanel mapControllerRef={mapControllerRef} onClose={()=>{setSeismicOpen(false);if(task==="seismic")setTask("data");}}/>}
     </header>
     <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} renderTrigger={false}/>
