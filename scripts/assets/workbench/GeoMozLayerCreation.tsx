@@ -11,7 +11,7 @@ export function GeoMozLayerCreation({onClose}:{onClose:()=>void}){
  const {language}=useLanguage();
  const ui=(pt:string)=>geoMozSpecialistText(language,pt);
  const [kind,setKind]=useState<CartographicTemplate>("geology");
- const [title,setTitle]=useState("Unidades geológicas");
+ const [title,setTitle]=useState(()=>ui("Unidades geológicas"));
  const [geometry,setGeometry]=useState<CartographicGeometry>("Polygon");
  const [fields,setFields]=useState<Field[]>(()=>specById("geology").fields.map(f=>({...f})));
  const [preferredCrs,setPreferredCrs]=useState("EPSG:4326");
@@ -25,7 +25,7 @@ export function GeoMozLayerCreation({onClose}:{onClose:()=>void}){
  const select=useAppStore(s=>s.selectLayer);
  const canAdd=useAppStore(s=>s.deploymentCapabilities.has("data:add"));
  const selectKind=(id:CartographicTemplate)=>{
-   const template=specById(id);setKind(id);setTitle(template.name);setGeometry(template.geometry);
+   const template=specById(id);setKind(id);setTitle(ui(template.name));setGeometry(template.geometry);
    setFields(template.fields.map(f=>({...f})));setError("");setCreated("");
  };
  const addField=()=>{
@@ -68,15 +68,15 @@ export function GeoMozLayerCreation({onClose}:{onClose:()=>void}){
   <label>{ui("Tipo de geometria")}<select aria-label={ui("Geometria da camada")} value={geometry} onChange={e=>setGeometry(e.target.value as CartographicGeometry)}>
     <option value="Point">{ui("Ponto")}</option><option value="LineString">{ui("Linha")}</option><option value="Polygon">{ui("Polígono")}</option></select></label>
   <label>{ui("SRC de referência para resultados")}<select aria-label={ui("SRC pretendido da camada")} value={preferredCrs} onChange={e=>setPreferredCrs(e.target.value)}>
-    <option value="EPSG:4326">EPSG:4326 · WGS 84 (geográfico)</option>
-    <option value="EPSG:32735">EPSG:32735 · UTM zona 35S</option>
-    <option value="EPSG:32736">EPSG:32736 · UTM zona 36S</option>
-    <option value="EPSG:32737">EPSG:32737 · UTM zona 37S</option>
+    <option value="EPSG:4326">EPSG:4326 · {ui("WGS 84 (geográfico)")}</option>
+    <option value="EPSG:32735">EPSG:32735 · {ui("UTM zona ")}35S</option>
+    <option value="EPSG:32736">EPSG:32736 · {ui("UTM zona ")}36S</option>
+    <option value="EPSG:32737">EPSG:32737 · {ui("UTM zona ")}37S</option>
   </select></label>
   <p className="gm-cartography-note"><Info size={14}/> {ui("O motor WebGIS desenha e guarda GeoJSON em WGS 84 (longitude/latitude). Uma preferência UTM não reprojeta automaticamente o GeoJSON: utilize «Reprojectar» antes de exportar para um SRC métrico.")}</p>
   <div className="gm-cartography-fields">
    <strong>{ui("Campos da tabela de atributos")}</strong>
-   <div className="gm-cartography-field-list">{fields.map(f=><span key={f.name} title={f.description}><span>{f.name}<small>{f.type==="number"?ui("Número decimal"):ui("Texto")}</small></span><button aria-label={ui("Remover campo ")+f.name} type="button" onClick={()=>setFields(all=>all.filter(x=>x.name!==f.name))}><Trash2 size={13}/></button></span>)}</div>
+   <div className="gm-cartography-field-list">{fields.map(f=><span key={f.name} title={ui(f.description)}><span>{f.name}<small>{f.type==="number"?ui("Número decimal"):ui("Texto")}</small></span><button aria-label={ui("Remover campo ")+f.name} type="button" onClick={()=>setFields(all=>all.filter(x=>x.name!==f.name))}><Trash2 size={13}/></button></span>)}</div>
    <div className="gm-cartography-add-field"><input aria-label={ui("Novo campo")} placeholder="Nome_do_campo" value={newField} maxLength={64} onChange={e=>setNewField(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addField();}}}/><select aria-label={ui("Tipo do novo campo")} value={newType} onChange={e=>setNewType(e.target.value as "text"|"number")}><option value="text">{ui("Texto")}</option><option value="number">{ui("Decimal")}</option></select><button type="button" onClick={addField} aria-label={ui("Adicionar à lista de campos")}><ListPlus size={16}/> {ui("Adicionar")}</button></div>
   </div>
   <p className="gm-cartography-note"><Info size={14}/> {ui("Após criar, seleccione a camada no catálogo, active «Edição» e use «Adicionar ponto», «Adicionar linha» ou «Adicionar polígono» conforme a geometria. Cada feição abre um formulário de atributos. Termine guardando as edições e o projecto.")}</p>
