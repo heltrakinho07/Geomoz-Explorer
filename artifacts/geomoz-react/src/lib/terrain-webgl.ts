@@ -107,7 +107,8 @@ const FRAGMENT_SOURCE = [
   "}",
   "void main() {",
   " float illumination=max(dot(normalize(vNormal),normalize(vec3(0.4,0.88,0.52))),0.0);",
-  " vec3 base=uStyle==2 ? texture(uTexture,vUv).rgb :",
+  " vec4 imagery=texture(uTexture,vUv);",
+  " vec3 base=uStyle==2 ? mix(relief(vHeight),imagery.rgb,imagery.a) :",
   "   uStyle==1 ? vec3(0.29+0.63*vHeight) : relief(vHeight);",
   " fragColor=vec4(base*(0.45+0.55*illumination),1.0);",
   "}"
