@@ -307,6 +307,286 @@ const entries: Record<string, {en:string;es:string;fr:string}> = {
     "en": "Could not prepare the package.",
     "es": "No se pudo preparar el paquete.",
     "fr": "Impossible de préparer le paquet."
+  },
+  "Catálogo recolhido": {
+    "en": "Collapsed catalog",
+    "es": "Catálogo contraído",
+    "fr": "Catalogue réduit"
+  },
+  "Expandir catálogo": {
+    "en": "Expand catalog",
+    "es": "Expandir catálogo",
+    "fr": "Développer le catalogue"
+  },
+  "CATÁLOGO": {
+    "en": "CATALOG",
+    "es": "CATÁLOGO",
+    "fr": "CATALOGUE"
+  },
+  "Catálogo de camadas": {
+    "en": "Layer catalog",
+    "es": "Catálogo de capas",
+    "fr": "Catalogue des couches"
+  },
+  "ÁREA DE TRABALHO": {
+    "en": "WORKSPACE",
+    "es": "ÁREA DE TRABAJO",
+    "fr": "ESPACE DE TRAVAIL"
+  },
+  "Catálogo": {
+    "en": "Catalog",
+    "es": "Catálogo",
+    "fr": "Catalogue"
+  },
+  "Recolher catálogo": {
+    "en": "Collapse catalog",
+    "es": "Contraer catálogo",
+    "fr": "Réduire le catalogue"
+  },
+  "Camadas": {
+    "en": "Layers",
+    "es": "Capas",
+    "fr": "Couches"
+  },
+  "Resultados": {
+    "en": "Results",
+    "es": "Resultados",
+    "fr": "Résultats"
+  },
+  "Gestão": {
+    "en": "Management",
+    "es": "Gestión",
+    "fr": "Gestion"
+  },
+  "Pesquisar camadas": {
+    "en": "Search layers",
+    "es": "Buscar capas",
+    "fr": "Rechercher des couches"
+  },
+  "Pesquisar neste projecto…": {
+    "en": "Search in this project…",
+    "es": "Buscar en este proyecto…",
+    "fr": "Rechercher dans ce projet…"
+  },
+  "Todas": {
+    "en": "All",
+    "es": "Todas",
+    "fr": "Toutes"
+  },
+  "Visíveis": {
+    "en": "Visible",
+    "es": "Visibles",
+    "fr": "Visibles"
+  },
+  "ORDEM DO MAPA": {
+    "en": "MAP DRAW ORDER",
+    "es": "ORDEN DEL MAPA",
+    "fr": "ORDRE DES COUCHES"
+  },
+  "Ocultar ": {
+    "en": "Hide ",
+    "es": "Ocultar ",
+    "fr": "Masquer "
+  },
+  "Mostrar ": {
+    "en": "Show ",
+    "es": "Mostrar ",
+    "fr": "Afficher "
+  },
+  "Oculta pelo grupo": {
+    "en": "Hidden by group",
+    "es": "Oculta por el grupo",
+    "fr": "Masquée par le groupe"
+  },
+  " opacidade": {
+    "en": " opacity",
+    "es": " opacidad",
+    "fr": " opacité"
+  },
+  "Enquadrar ": {
+    "en": "Zoom to ",
+    "es": "Encuadrar ",
+    "fr": "Cadrer "
+  },
+  "Enquadrar camada": {
+    "en": "Zoom to layer",
+    "es": "Encuadrar capa",
+    "fr": "Cadrer la couche"
+  },
+  "A extensão desta camada ainda não está disponível.": {
+    "en": "This layer's extent is not available yet.",
+    "es": "La extensión de esta capa todavía no está disponible.",
+    "fr": "L'emprise de cette couche n'est pas encore disponible."
+  },
+  "Nenhuma correspondência": {
+    "en": "No matches",
+    "es": "Sin resultados",
+    "fr": "Aucune correspondance"
+  },
+  "O seu mapa começa aqui": {
+    "en": "Your map starts here",
+    "es": "Su mapa empieza aquí",
+    "fr": "Votre carte commence ici"
+  },
+  "Experimente outro nome ou mostre todas as camadas.": {
+    "en": "Try another name or show all layers.",
+    "es": "Pruebe otro nombre o muestre todas las capas.",
+    "fr": "Essayez un autre nom ou affichez toutes les couches."
+  },
+  "Adicione dados na faixa superior. As camadas e os resultados ficam organizados neste catálogo.": {
+    "en": "Add data from the top toolbar. Layers and outputs are organized in this catalog.",
+    "es": "Añada datos desde la barra superior. Las capas y los resultados se organizan en este catálogo.",
+    "fr": "Ajoutez des données depuis la barre supérieure. Les couches et les résultats sont organisés ici."
+  },
+  "CAMADA SELECCIONADA": {
+    "en": "SELECTED LAYER",
+    "es": "CAPA SELECCIONADA",
+    "fr": "COUCHE SÉLECTIONNÉE"
+  },
+  "Camada seleccionada": {
+    "en": "Selected layer",
+    "es": "Capa seleccionada",
+    "fr": "Couche sélectionnée"
+  },
+  "Opacidade": {
+    "en": "Opacity",
+    "es": "Opacidad",
+    "fr": "Opacité"
+  },
+  "Opacidade da camada": {
+    "en": "Layer opacity",
+    "es": "Opacidad de capa",
+    "fr": "Opacité de la couche"
+  },
+  "Tabela": {
+    "en": "Table",
+    "es": "Tabla",
+    "fr": "Table"
+  },
+  "Editar simbologia": {
+    "en": "Edit symbology",
+    "es": "Editar simbología",
+    "fr": "Modifier la symbologie"
+  },
+  "Simbologia": {
+    "en": "Symbology",
+    "es": "Simbología",
+    "fr": "Symbologie"
+  },
+  "Estilos avançados": {
+    "en": "Advanced styles",
+    "es": "Estilos avanzados",
+    "fr": "Styles avancés"
+  },
+  "Propriedades": {
+    "en": "Properties",
+    "es": "Propiedades",
+    "fr": "Propriétés"
+  },
+  "Estilo rápido da camada": {
+    "en": "Quick layer styling",
+    "es": "Estilo rápido de capa",
+    "fr": "Style rapide de la couche"
+  },
+  "Cor do símbolo": {
+    "en": "Symbol color",
+    "es": "Color del símbolo",
+    "fr": "Couleur du symbole"
+  },
+  "Cor do contorno": {
+    "en": "Outline color",
+    "es": "Color del contorno",
+    "fr": "Couleur du contour"
+  },
+  "Tamanho dos pontos": {
+    "en": "Point size",
+    "es": "Tamaño de los puntos",
+    "fr": "Taille des points"
+  },
+  "Alterações aplicadas ao renderer original. Para classes, regras ou tamanho proporcional, use os estilos avançados.": {
+    "en": "Changes apply to the original renderer. For classes, rules or proportional symbols, use advanced styles.",
+    "es": "Los cambios se aplican al renderizador original. Para clases, reglas o símbolos proporcionales, utilice los estilos avanzados.",
+    "fr": "Les modifications s'appliquent au moteur de rendu d'origine. Pour les classes, règles et symboles proportionnels, utilisez les styles avancés."
+  },
+  "A edição da camada continua activa. Abra «Vector» para guardar ou descartar as alterações.": {
+    "en": "Layer editing is still active. Open Vector to save or discard changes.",
+    "es": "La edición sigue activa. Abra Vector para guardar o descartar los cambios.",
+    "fr": "L'édition est toujours active. Ouvrez Vecteur pour enregistrer ou annuler les modifications."
+  },
+  " visíveis de ": {
+    "en": " visible out of ",
+    "es": " visibles de ",
+    "fr": " visibles sur "
+  },
+  "Altere a ordem e os grupos nas propriedades da camada": {
+    "en": "Change layer order and groups in layer properties",
+    "es": "Cambie el orden y los grupos en las propiedades de capa",
+    "fr": "Modifiez l'ordre et les groupes dans les propriétés de la couche"
+  },
+  "Resultados do processamento": {
+    "en": "Processing results",
+    "es": "Resultados del procesamiento",
+    "fr": "Résultats du traitement"
+  },
+  "execução": {
+    "en": "execution",
+    "es": "ejecución",
+    "fr": "exécution"
+  },
+  "execuções": {
+    "en": "executions",
+    "es": "ejecuciones",
+    "fr": "exécutions"
+  },
+  "Histórico completo": {
+    "en": "Full history",
+    "es": "Historial completo",
+    "fr": "Historique complet"
+  },
+  "Da análise à decisão": {
+    "en": "From analysis to decision",
+    "es": "Del análisis a la decisión",
+    "fr": "De l'analyse à la décision"
+  },
+  "Execute uma ferramenta na tarefa Análise. Aqui poderá acompanhar o estado e localizar as saídas produzidas.": {
+    "en": "Run a tool from Analysis. Monitor its status and find generated outputs here.",
+    "es": "Ejecute una herramienta de Análisis. Consulte su estado y los resultados aquí.",
+    "fr": "Exécutez un outil dans Analyse. Suivez son état et retrouvez ses résultats ici."
+  },
+  "Falhou": {
+    "en": "Failed",
+    "es": "Fallido",
+    "fr": "Échec"
+  },
+  "Concluído": {
+    "en": "Completed",
+    "es": "Completado",
+    "fr": "Terminé"
+  },
+  "Seleccionar e enquadrar saída": {
+    "en": "Select and zoom to output",
+    "es": "Seleccionar y encuadrar resultado",
+    "fr": "Sélectionner et cadrer le résultat"
+  },
+  "Existem várias camadas com este nome. Seleccione a saída no catálogo.": {
+    "en": "Several layers have this name. Choose the output in the catalog.",
+    "es": "Hay varias capas con este nombre. Seleccione el resultado en el catálogo.",
+    "fr": "Plusieurs couches portent ce nom. Sélectionnez le résultat dans le catalogue."
+  },
+  "Camada não encontrada com este nome no mapa.": {
+    "en": "No layer with this name was found on the map.",
+    "es": "No se encontró ninguna capa con este nombre en el mapa.",
+    "fr": "Aucune couche portant ce nom n'a été trouvée sur la carte."
+  },
+  "Redimensionar catálogo": {
+    "en": "Resize catalog",
+    "es": "Cambiar tamaño del catálogo",
+    "fr": "Redimensionner le catalogue"
+  },
+  "Arraste para alargar ou reduzir o catálogo": {
+    "en": "Drag to widen or narrow the catalog",
+    "es": "Arrastre para ampliar o reducir el catálogo",
+    "fr": "Faites glisser pour élargir ou rétrécir le catalogue"
   }
 };
 export function geoMozSpecialistText(language:string, portuguese:string):string {
