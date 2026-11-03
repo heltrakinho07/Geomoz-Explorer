@@ -4,6 +4,8 @@
  * original MIT license and attribution are retained in third-party notices.
  */
 import { useState } from "react";
+import {useLanguage} from "../../hooks/useLanguage";
+import {geoMozSpecialistText} from "./geomoz-specialist-locale";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, Button } from "@geolibre/ui";
 import { ExternalLink, Info, Layers3, ShieldCheck, FileText } from "lucide-react";
 
@@ -28,33 +30,35 @@ export function AboutDialog({
   open, onOpenChange, renderTrigger=true, buttonClassName, buttonSize="sm",
   iconClassName, showLabels=true
 }:AboutDialogProps){
+  const {language}=useLanguage();
+  const ui=(pt:string)=>geoMozSpecialistText(language,pt);
   const [internalOpen,setInternalOpen]=useState(false);
   const expanded=open??internalOpen;
   const change=(next:boolean)=>{setInternalOpen(next);onOpenChange?.(next);};
   return <Dialog open={expanded} onOpenChange={change}>
     {renderTrigger&&<DialogTrigger asChild><Button className={buttonClassName} size={buttonSize} variant="ghost"
-      aria-label="Sobre o GeoMoz GIS Workspace"><Info className={iconClassName??"h-4 w-4"}/>{showLabels&&<span>Sobre</span>}</Button></DialogTrigger>}
+      aria-label={ui("Sobre o GeoMoz GIS Workspace")}><Info className={iconClassName??"h-4 w-4"}/>{showLabels&&<span>{ui("Sobre")}</span>}</Button></DialogTrigger>}
     <DialogContent className="max-w-lg" data-testid="geomoz-about-dialog">
       <DialogHeader>
         <DialogTitle className="flex items-center gap-2"><Layers3 className="h-5 w-5 text-primary"/> GeoMoz GIS Workspace</DialogTitle>
-        <DialogDescription>Ambiente SIG profissional integrado no GeoMoz Explorer.</DialogDescription>
+        <DialogDescription>{ui("Ambiente SIG profissional integrado no GeoMoz Explorer.")}</DialogDescription>
       </DialogHeader>
       <div className="space-y-3 text-sm">
-        <p>Explore, visualize e analise informação geoespacial com ferramentas vectoriais, raster, DEM e serviços científicos, no navegador.</p>
+        <p>{ui("Explore, visualize e analise informação geoespacial com ferramentas vectoriais, raster, DEM e serviços científicos, no navegador.")}</p>
         <div className="rounded-lg border bg-muted/30 p-3 text-xs space-y-2">
-          <p className="flex gap-2 items-center"><ShieldCheck className="h-4 w-4 text-primary"/> Os seus ficheiros não são enviados automaticamente à nuvem GeoMoz.</p>
-          <p>Guarde ou exporte o projecto para conservar o trabalho. Os serviços de mapas e catálogos públicos podem efectuar pedidos a terceiros.</p>
+          <p className="flex gap-2 items-center"><ShieldCheck className="h-4 w-4 text-primary"/> {ui("Os seus ficheiros não são enviados automaticamente à nuvem GeoMoz.")}</p>
+          <p>{ui("Guarde ou exporte o projecto para conservar o trabalho. Os serviços de mapas e catálogos públicos podem efectuar pedidos a terceiros.")}</p>
         </div>
         <div className="grid gap-1.5">
           {links.map(link=><a key={link.href} href={link.href}
             target={link.href.includes("third-party")?"_blank":undefined}
             rel={link.href.includes("third-party")?"noopener noreferrer":undefined}
             className="flex justify-between items-center rounded-md border px-3 py-2 hover:bg-accent hover:text-accent-foreground">
-            <span className="inline-flex items-center gap-2"><FileText className="h-3.5 w-3.5"/>{link.label}</span>
+            <span className="inline-flex items-center gap-2"><FileText className="h-3.5 w-3.5"/>{ui(link.label)}</span>
             <ExternalLink className="h-3.5 w-3.5" aria-hidden="true"/>
           </a>)}
         </div>
-        <p className="text-xs text-muted-foreground">GeoMoz GIS Workspace · GEOLÍTHICA. Base tecnológica de código aberto sob as respectivas licenças, identificadas nos avisos de terceiros.</p>
+        <p className="text-xs text-muted-foreground">{ui("GeoMoz GIS Workspace · GEOLÍTHICA. Base tecnológica de código aberto sob as respectivas licenças, identificadas nos avisos de terceiros.")}</p>
       </div>
     </DialogContent>
   </Dialog>;
