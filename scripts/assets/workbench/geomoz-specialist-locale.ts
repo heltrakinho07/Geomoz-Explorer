@@ -1812,6 +1812,66 @@ const entries: Record<string, {en:string;es:string;fr:string}> = {
     "en": "UTM zone ",
     "es": "UTM zona ",
     "fr": "Zone UTM "
+  },
+  "Sobre o GeoMoz GIS Workspace": {
+    "en": "About GeoMoz GIS Workspace",
+    "es": "Acerca de GeoMoz GIS Workspace",
+    "fr": "À propos de GeoMoz GIS Workspace"
+  },
+  "Sobre": {
+    "en": "About",
+    "es": "Acerca de",
+    "fr": "À propos"
+  },
+  "Ambiente SIG profissional integrado no GeoMoz Explorer.": {
+    "en": "Professional GIS environment integrated into GeoMoz Explorer.",
+    "es": "Entorno SIG profesional integrado en GeoMoz Explorer.",
+    "fr": "Environnement SIG professionnel intégré à GeoMoz Explorer."
+  },
+  "Explore, visualize e analise informação geoespacial com ferramentas vectoriais, raster, DEM e serviços científicos, no navegador.": {
+    "en": "Explore, visualize and analyze geospatial information in your browser with vector, raster, DEM and scientific services.",
+    "es": "Explore, visualice y analice información geoespacial en el navegador con herramientas vectoriales, ráster, MDE y servicios científicos.",
+    "fr": "Explorez, visualisez et analysez des données géospatiales dans votre navigateur grâce aux outils vecteur, raster, MNT et services scientifiques."
+  },
+  "Os seus ficheiros não são enviados automaticamente à nuvem GeoMoz.": {
+    "en": "Your files are not automatically uploaded to GeoMoz cloud.",
+    "es": "Sus archivos no se cargan automáticamente en la nube de GeoMoz.",
+    "fr": "Vos fichiers ne sont pas automatiquement transférés vers le cloud GeoMoz."
+  },
+  "Guarde ou exporte o projecto para conservar o trabalho. Os serviços de mapas e catálogos públicos podem efectuar pedidos a terceiros.": {
+    "en": "Save or export your project to preserve your work. Map services and public catalogs may contact third parties.",
+    "es": "Guarde o exporte el proyecto para conservar su trabajo. Los servicios de mapas y catálogos públicos pueden contactar con terceros.",
+    "fr": "Enregistrez ou exportez votre projet pour conserver votre travail. Les services cartographiques et catalogues publics peuvent contacter des tiers."
+  },
+  "Explorador de mapas GeoMoz": {
+    "en": "GeoMoz map explorer",
+    "es": "Explorador de mapas GeoMoz",
+    "fr": "Explorateur cartographique GeoMoz"
+  },
+  "Documentação GeoMoz": {
+    "en": "GeoMoz documentation",
+    "es": "Documentación GeoMoz",
+    "fr": "Documentation GeoMoz"
+  },
+  "Política de privacidade": {
+    "en": "Privacy policy",
+    "es": "Política de privacidad",
+    "fr": "Politique de confidentialité"
+  },
+  "Termos de utilização": {
+    "en": "Terms of use",
+    "es": "Términos de uso",
+    "fr": "Conditions d'utilisation"
+  },
+  "Créditos e licenças de terceiros": {
+    "en": "Third-party credits and licences",
+    "es": "Créditos y licencias de terceros",
+    "fr": "Crédits et licences de tiers"
+  },
+  "GeoMoz GIS Workspace · GEOLÍTHICA. Base tecnológica de código aberto sob as respectivas licenças, identificadas nos avisos de terceiros.": {
+    "en": "GeoMoz GIS Workspace · GEOLÍTHICA. Built on open-source technology under the respective licences listed in third-party notices.",
+    "es": "GeoMoz GIS Workspace · GEOLÍTHICA. Basado en tecnología de código abierto bajo las licencias indicadas en los avisos de terceros.",
+    "fr": "GeoMoz GIS Workspace · GEOLÍTHICA. Basé sur des technologies open source sous les licences mentionnées dans les notices de tiers."
   }
 };
 export function geoMozSpecialistText(language:string, portuguese:string):string {
