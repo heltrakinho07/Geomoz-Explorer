@@ -206,14 +206,30 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
       pdf.setFont("helvetica", "bold"); pdf.setFontSize(17);
       pdf.text("GeoMoz | Terreno 3D", 12, 15);
       pdf.setFont("helvetica", "normal"); pdf.setFontSize(9);
-      pdf.text("Fonte: " + terrain.name + " | " + terrain.sourceCrs, 12, 22);
+      const projectName = (activeProject?.name ?? "Sessão local").slice(0, 65);
+      pdf.text("Projecto: " + projectName, 12, 21);
+      pdf.text("Fonte: " + terrain.name.slice(0, 70) + " | " + terrain.sourceCrs, 12, 26);
       pdf.text("Elevação: " + terrain.minElevation.toFixed(1) + " a " +
         terrain.maxElevation.toFixed(1) + " m | Exagero vertical: " +
-        exaggeration.toFixed(1) + "x", 12, 27);
-      pdf.addImage(canvas.toDataURL("image/png"), "PNG", 12, 32, 273, 157);
+        exaggeration.toFixed(1) + "x", 12, 31);
+
+      // Preserve the exported view's aspect ratio; never stretch the map.
+      const maxWidth = 273, maxHeight = 150;
+      const aspect = Math.max(0.01, canvas.width / Math.max(1, canvas.height));
+      const width = Math.min(maxWidth, maxHeight * aspect);
+      const height = width / aspect;
+      const x = 12 + (maxWidth - width) / 2;
+      const y = 35 + (maxHeight - height) / 2;
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, y, width, height);
+      pdf.setDrawColor(160, 170, 180);
+      pdf.rect(x, y, width, height);
       pdf.setFontSize(8);
-      pdf.text("Visualização em perspectiva; a escala gráfica não é constante. "
-        + "Created with GeoMoz Explorer", 12, 198);
+      pdf.text(
+        "Perspectiva tridimensional: a escala não é constante. " +
+        "A malha é uma pré-visualização do DEM, não um raster analítico.",
+        12, 192
+      );
+      pdf.text("Created with GeoMoz Explorer", 12, 199);
       pdf.save("geomoz_terreno_3d.pdf");
     } catch {
       setError("A exportação PDF falhou. Experimente exportar em PNG.");
