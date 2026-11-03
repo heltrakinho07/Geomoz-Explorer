@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 import geopandas as gpd
 from shapely.errors import TopologicalError, GEOSException
 
-from fastapi import FastAPI, Query, HTTPException, Request, File, UploadFile, Depends
+from fastapi import FastAPI, Query, HTTPException, Request, File, UploadFile, Depends, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import Response
@@ -2728,3 +2728,37 @@ async def terrain_gee_mesh_preview(
         raise HTTPException(status_code=502, detail="Não foi possível descarregar o DEM do GEE.") from exc
     except Exception as exc:
         handle_gee_api_error(exc, prefix="Pré-visualização DEM 3D", uid=uid)
+
+
+@app.post("/geomoz-api/terrain/rgb-texture")
+async def terrain_rgb_texture(
+    file: UploadFile = File(...),
+    crs: str = Form(...),
+    bounds_meters: str = Form(...),
+    width: int = Form(...),
+    height: int = Form(...),
+    _uid: str = Depends(require_firebase_auth),
+):
+    """Reproject local RGB GeoTIFF onto the active DEM preview's metric grid."""
+    from starlette.concurrency import run_in_threadpool
+    from terrain_dem import MAX_UPLOAD_BYTES, TerrainInputError
+    from terrain_texture import rgb_texture_to_preview
+
+    if not file.filename or not file.filename.lower().endswith((".tif", ".tiff")):
+        raise HTTPException(status_code=415, detail="Envie uma textura GeoTIFF RGB.")
+    try:
+        content = await file.read(MAX_UPLOAD_BYTES + 1)
+    finally:
+        await file.close()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Textura demasiado grande (máximo 32 MB).")
+    try:
+        bounds = json.loads(bounds_meters)
+        if not isinstance(bounds, list):
+            raise ValueError("bounds")
+        return await run_in_threadpool(
+            rgb_texture_to_preview, content, file.filename,
+            crs=crs, bounds_meters=bounds, width=width, height=height,
+        )
+    except (ValueError, TypeError, TerrainInputError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
