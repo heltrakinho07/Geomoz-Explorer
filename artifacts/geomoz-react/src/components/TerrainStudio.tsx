@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { jsPDF } from "jspdf";
 import { Download, FileUp, Image as ImageIcon, Loader2, Mountain, RotateCcw, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { useTerrainSession } from "@/context/TerrainSessionContext";
+import { useProject } from "@/context/ProjectContext";
 import {
   createTerrainRenderer,
   type TerrainMeshData,
@@ -25,7 +27,8 @@ interface TerrainStudioProps {
  * All DEM bytes stay in memory and are discarded when leaving the Studio.
  */
 export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRegion }: TerrainStudioProps) {
-  const [terrain, setTerrain] = useState<TerrainMeshData | null>(null);
+  const { terrain, setTerrain } = useTerrainSession();
+  const { activeProject } = useProject();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rendererError, setRendererError] = useState<string | null>(null);
@@ -234,6 +237,12 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               {busy ? <Loader2 size={15} className="animate-spin"/> : <FileUp size={15}/>}
               {busy ? "A processar DEM..." : "Importar GeoTIFF / COG"}
             </button>
+            {terrain && (
+              <div className="mb-2 rounded-lg border border-emerald-600/40 bg-emerald-950/25 px-3 py-2 text-[11px] text-emerald-300">
+                Modelo partilhado com o projecto{activeProject ? ": " + activeProject.name : ""}.
+                Pode alternar entre GeoAnálises e GIS Workspace sem voltar a processá-lo.
+              </div>
+            )}
             <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
               Até 32 MB. A malha é calculada na API GeoMoz e não fica guardada.
               Com o GEE conectado, é possível gerar directamente a pré-visualização
