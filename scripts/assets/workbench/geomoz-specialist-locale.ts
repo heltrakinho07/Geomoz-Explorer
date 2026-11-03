@@ -1007,6 +1007,196 @@ const entries: Record<string, {en:string;es:string;fr:string}> = {
     "en": "Data is retrieved directly without automatic Firebase storage. Agencies may revise event records.",
     "es": "Datos consultados directamente, sin almacenamiento automático en Firebase. Las agencias pueden revisar los eventos.",
     "fr": "Données consultées directement sans stockage automatique sur Firebase. Les agences peuvent réviser les événements."
+  },
+  "Coordenadas A/B inválidas. Use longitude, latitude.": {
+    "en": "Invalid A/B coordinates. Use longitude, latitude.",
+    "es": "Coordenadas A/B no válidas. Use longitud, latitud.",
+    "fr": "Coordonnées A/B invalides. Saisissez longitude, latitude."
+  },
+  "Perfil inválido.": {
+    "en": "Invalid profile.",
+    "es": "Perfil no válido.",
+    "fr": "Profil invalide."
+  },
+  "Análises sísmicas": {
+    "en": "Seismic analyses",
+    "es": "Análisis sísmicos",
+    "fr": "Analyses sismiques"
+  },
+  "Análise do catálogo": {
+    "en": "Catalog analysis",
+    "es": "Análisis del catálogo",
+    "fr": "Analyse du catalogue"
+  },
+  " eventos · WGS 84 · UTC": {
+    "en": " events · WGS 84 · UTC",
+    "es": " eventos · WGS 84 · UTC",
+    "fr": " événements · WGS 84 · UTC"
+  },
+  "Catálogo truncado: as estatísticas não são representativas.": {
+    "en": "Truncated catalog: statistics are not representative.",
+    "es": "Catálogo truncado: las estadísticas no son representativas.",
+    "fr": "Catalogue tronqué : les statistiques ne sont pas représentatives."
+  },
+  "Magnitude × tempo": {
+    "en": "Magnitude × time",
+    "es": "Magnitud × tiempo",
+    "fr": "Magnitude × temps"
+  },
+  "Magnitude por data UTC": {
+    "en": "Magnitude by UTC date",
+    "es": "Magnitud por fecha UTC",
+    "fr": "Magnitude selon la date UTC"
+  },
+  "Data/hora UTC (esquerda → direita)": {
+    "en": "UTC date/time (left → right)",
+    "es": "Fecha/hora UTC (izquierda → derecha)",
+    "fr": "Date/heure UTC (gauche → droite)"
+  },
+  "Eventos por dia": {
+    "en": "Events per day",
+    "es": "Eventos por día",
+    "fr": "Événements par jour"
+  },
+  "Número de eventos por dia UTC": {
+    "en": "Number of events per UTC day",
+    "es": "Número de eventos por día UTC",
+    "fr": "Nombre d'événements par jour UTC"
+  },
+  " eventos": {
+    "en": " events",
+    "es": " eventos",
+    "fr": " événements"
+  },
+  "Dias com registos (": {
+    "en": "Days with records (",
+    "es": "Días con registros (",
+    "fr": "Jours avec des enregistrements ("
+  },
+  "Perfil A (lon, lat)": {
+    "en": "Profile A (lon, lat)",
+    "es": "Perfil A (lon, lat)",
+    "fr": "Profil A (lon, lat)"
+  },
+  "Perfil B (lon, lat)": {
+    "en": "Profile B (lon, lat)",
+    "es": "Perfil B (lon, lat)",
+    "fr": "Profil B (lon, lat)"
+  },
+  "Semilargura (km)": {
+    "en": "Half-width (km)",
+    "es": "Semiancho (km)",
+    "fr": "Demi-largeur (km)"
+  },
+  "Semilargura do perfil": {
+    "en": "Profile half-width",
+    "es": "Semiancho del perfil",
+    "fr": "Demi-largeur du profil"
+  },
+  "Perfil hipocentral A–B": {
+    "en": "A–B hypocentral profile",
+    "es": "Perfil hipocentral A–B",
+    "fr": "Profil hypocentral A–B"
+  },
+  "Profundidade sísmica ao longo do perfil AB": {
+    "en": "Seismic depth along A–B profile",
+    "es": "Profundidad sísmica a lo largo del perfil AB",
+    "fr": "Profondeur sismique le long du profil AB"
+  },
+  "Distância de A (km) · profundidade aumenta para baixo": {
+    "en": "Distance from A (km) · depth increases downward",
+    "es": "Distancia desde A (km) · la profundidad aumenta hacia abajo",
+    "fr": "Distance depuis A (km) · profondeur croissante vers le bas"
+  },
+  "Projecção regional; apenas eventos dentro da largura escolhida. Sem correcção topográfica.": {
+    "en": "Regional projection; only events inside the selected corridor. No topographic correction.",
+    "es": "Proyección regional; solo eventos dentro de la franja seleccionada. Sin corrección topográfica.",
+    "fr": "Projection régionale ; seuls les événements dans le couloir sélectionné sont inclus. Sans correction topographique."
+  },
+  "Magnitude de completude assumida (Mc)": {
+    "en": "Assumed completeness magnitude (Mc)",
+    "es": "Magnitud de completitud asumida (Mc)",
+    "fr": "Magnitude de complétude supposée (Mc)"
+  },
+  "Magnitude de completude": {
+    "en": "Completeness magnitude",
+    "es": "Magnitud de completitud",
+    "fr": "Magnitude de complétude"
+  },
+  "Gutenberg–Richter · ajuste MLE": {
+    "en": "Gutenberg–Richter · MLE fit",
+    "es": "Gutenberg–Richter · ajuste MLE",
+    "fr": "Gutenberg–Richter · ajustement MLE"
+  },
+  "b não estimável": {
+    "en": "b not estimable",
+    "es": "b no estimable",
+    "fr": "b non estimable"
+  },
+  "Catálogo truncado; não interpretar. ": {
+    "en": "Truncated catalog; do not interpret. ",
+    "es": "Catálogo truncado; no interpretar. ",
+    "fr": "Catalogue tronqué ; ne pas interpréter. "
+  },
+  "Redes FDSN": {
+    "en": "FDSN networks",
+    "es": "Redes FDSN",
+    "fr": "Réseaux FDSN"
+  },
+  "Redes sísmicas EarthScope": {
+    "en": "EarthScope seismic networks",
+    "es": "Redes sísmicas EarthScope",
+    "fr": "Réseaux sismiques EarthScope"
+  },
+  "Metadados de redes, localização e elevação. Não são formas de onda miniSEED nem prova de disponibilidade de dados.": {
+    "en": "Network, location and elevation metadata. These are not miniSEED waveforms or evidence that waveform data are available.",
+    "es": "Metadatos de red, ubicación y elevación. No son formas de onda miniSEED ni prueba de disponibilidad de datos.",
+    "fr": "Métadonnées des réseaux, emplacements et altitudes. Il ne s'agit pas de formes d'onde miniSEED ni d'une preuve de disponibilité des données."
+  },
+  "Consultar estações": {
+    "en": "Query stations",
+    "es": "Consultar estaciones",
+    "fr": "Consulter les stations"
+  },
+  "Adicionar estações ao mapa": {
+    "en": "Add stations to map",
+    "es": "Añadir estaciones al mapa",
+    "fr": "Ajouter les stations à la carte"
+  },
+  " estações devolvidas pela EarthScope.": {
+    "en": " stations returned by EarthScope.",
+    "es": " estaciones devueltas por EarthScope.",
+    "fr": " stations renvoyées par EarthScope."
+  },
+  "Falha ao consultar estações.": {
+    "en": "Could not query stations.",
+    "es": "No se pudieron consultar las estaciones.",
+    "fr": "Impossible de consulter les stations."
+  },
+  "Estações EarthScope · ": {
+    "en": "EarthScope stations · ",
+    "es": "Estaciones EarthScope · ",
+    "fr": "Stations EarthScope · "
+  },
+  "Camada de estações adicionada. Guarde o projecto para persistir os dados.": {
+    "en": "Station layer added. Save your project to preserve the data.",
+    "es": "Capa de estaciones añadida. Guarde el proyecto para conservar los datos.",
+    "fr": "Couche de stations ajoutée. Enregistrez votre projet pour conserver les données."
+  },
+  "Resultado limitado: refine redes e extensão antes de utilizar em análises de cobertura instrumental.": {
+    "en": "Limited result: refine networks and extent before using for instrumental coverage analysis.",
+    "es": "Resultado limitado: refine redes y extensión antes de analizar la cobertura instrumental.",
+    "fr": "Résultat limité : affinez les réseaux et l'emprise avant une analyse de couverture instrumentale."
+  },
+  "Pré-visualização das estações": {
+    "en": "Station preview",
+    "es": "Vista previa de estaciones",
+    "fr": "Aperçu des stations"
+  },
+  "Mostram-se as primeiras 30 estações.": {
+    "en": "Only the first 30 stations are shown.",
+    "es": "Solo se muestran las primeras 30 estaciones.",
+    "fr": "Seules les 30 premières stations sont affichées."
   }
 };
 export function geoMozSpecialistText(language:string, portuguese:string):string {
