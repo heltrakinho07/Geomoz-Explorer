@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import SplitScreenCompare, { type CompareMode } from "@/components/SplitScreenCompare";
 import PixelInspectorHUD, { type AnalysisContext } from "@/components/PixelInspectorHUD";
+import TerrainStudio from "@/components/TerrainStudio";
 import { sampleTerrariumElevation } from "@/lib/dem-terrain";
 
 import {
@@ -2782,6 +2783,7 @@ export default function GeoAnalises({
 
   const [geeCredsOpen, setGeeCredsOpen] = useState(false);
   const [storyMapOpen, setStoryMapOpen] = useState(false);
+  const [terrainStudioOpen, setTerrainStudioOpen] = useState(false);
   const [basemap, setBasemap] = useState<BasemapType>("hybrid");
   const { geeConnected, geeProject } = useGeeAuth();
   const { toast } = useToast();
@@ -3540,6 +3542,8 @@ export default function GeoAnalises({
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
       <GeeCredentialsDialog open={geeCredsOpen} onOpenChange={setGeeCredsOpen} />
+      <TerrainStudio open={terrainStudioOpen} onClose={() => setTerrainStudioOpen(false)}
+        geeEnabled={geeReady} geeRegion={{ province, district, geometry: apiParams.geometry }} />
       <StoryMapModal
         open={storyMapOpen && !categoryInDevelopment}
         onOpenChange={setStoryMapOpen}
@@ -3751,6 +3755,14 @@ export default function GeoAnalises({
 
             {/* Right Header Actions */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              {selectedCategory === "terrain" && (
+                <button type="button"
+                  onClick={() => setTerrainStudioOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-3 py-1.5 text-xs font-bold text-slate-950 shadow-sm transition-colors hover:bg-amber-400"
+                  title="Abrir visualizador 3D de DEM GeoTIFF / COG">
+                  <Mountain size={14}/> <span>Gerar mapa 3D</span>
+                </button>
+              )}
               <button
                 disabled={isLineaments}
                 onClick={() => setStoryMapOpen(true)}

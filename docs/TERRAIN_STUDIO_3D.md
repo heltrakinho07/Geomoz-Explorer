@@ -1,0 +1,63 @@
+# GeoMoz 3D Terrain Studio — primeira implementação
+
+## Acesso
+- **Catálogo de GeoAnálises > Relevo, Topografia e Morfologia > Gerar mapa 3D**
+- **GIS Workspace > Raster · Gerar terreno 3D a partir de DEM**
+
+O visualizador abre um modal dedicado sem substituir o mapa existente.
+
+## Fontes e processamento
+1. **GeoTIFF/COG local:** o utilizador autenticado envia um ficheiro de até 32 MB para `POST /geomoz-api/terrain/mesh`. O servidor usa Rasterio numa execução isolada do ciclo assíncrono, lê a banda 1, reprojeta para UTM adequado (ou EPSG:3857 para latitudes extremas), reamostra para uma pré-visualização de 193 × 193 e devolve um JSON com CRS, extensão métrica, estatísticas e alturas. O ficheiro não é persistido.
+2. **Copernicus GLO-30 pelo GEE:** em GeoAnálises, uma AOI definida e uma sessão GEE válida permitem usar `POST /geomoz-api/terrain/gee-mesh`. O servidor usa o mecanismo já existente `get_index_download_url("elevation")`, adaptando a escala da pré-visualização à extensão da AOI. O URL de download é obtido e descarregado apenas pelo backend, com limites de tamanho e de origem.
+3. **Renderer:** WebGL2 (módulo `terrain-webgl.ts`) constrói uma grelha métrica, descarta triângulos com NoData, calcula normais e aplica iluminação direccional. Controlo orbital por rato, zoom e exagero vertical.
+4. **Texturas:** paletas hipsométricas ou cinzentos; uma imagem PNG/JPG/WebP opcional só deve ser aplicada se representar exactamente a mesma extensão e orientação do DEM. A aplicação não tenta registar automaticamente imagens não georreferenciadas.
+5. **Exportação:** PNG da vista actual e PDF paisagem com perspectiva, CRS, fonte e exagero vertical. O PDF não indica escala métrica invariável, pois uma vista em perspectiva não tem escala uniforme.
+
+## Segurança e limites
+- Ambos os endpoints exigem autenticação; a variante GEE também exige as credenciais do Earth Engine.
+- Uma região GEE explícita é obrigatória. Não é permitido descarregar um DEM global sem delimitação.
+- Limites: 32 MB por GeoTIFF, 100 milhões de células na fonte, grelha final de 193² e texturas até 16 MB.
+- O sistema preserva as células NoData: não substitui elevações desconhecidas por zero ou valores fictícios.
+- A resolução do raster de origem não deve ser confundida com a resolução da pré-visualização. Exportações PNG/PDF são visualizações, não produtos raster analíticos.
+- Recomenda-se impor limites adicionais na infraestrutura (proxy/Cloud Run) e executar testes de carga antes de expor o serviço a grandes volumes.
+
+## Testes
+```bash
+python -m pytest geomoz-explorer/tests/test_terrain_dem.py -v
+pnpm run typecheck
+pnpm --dir artifacts/geomoz-react test
+```
+
+## Referências para evolução
+- [milos-agathon/forge3d](https://github.com/milos-agathon/forge3d): motor nativo Rust/Python com renderização científica, potencial futuro serviço de exportação de alta qualidade.
+- [milos-agathon/forge3d-web](https://github.com/milos-agathon/forge3d-web): runtime WebGPU/WASM. A documentação upstream classifica a cobertura física dos navegadores como não comprovada; não está incluído no caminho crítico desta primeira versão.
+- [milos-agathon/3d-digital-elevation-maps](https://github.com/milos-agathon/3d-digital-elevation-maps): referência visual Rayshader/Rayvista. Sem licença explícita no tutorial; não se copiou código.
+- A malha WebGL2 desta fase é uma implementação original do GeoMoz. Não se copiou código dos repositórios Rayshader sem licença explícita.
+
+## Próxima fase
+- Integração com o gestor central de camadas e o projecto `.geomoz` para carregar automaticamente GeoTIFF já presentes no Workspace.
+- Texturas Sentinel-2 ou Landsat georreferenciadas automaticamente (reprojecção/alinhamento).
+- Terreno por tiles com vários níveis de detalhe para AOIs extensas.
+- Exportação GLB/glTF e renderizador Forge3D opcional em worker/GPU, apenas após testes de compatibilidade/licenciamento.
+- Internacionalização completa das strings do novo módulo.
+
+## Avanços de integração (11/2026)
+- **Sessão partilhada no Explorer:** as vistas de GeoAnálises e GIS Workspace reutilizam a mesma malha de pré-visualização, enquanto o utilizador e o projecto activo não mudarem. O estado é descartado na mudança de identidade/projecto; não existe gravação automática do raster em Firestore.
+- **AOI e GEE também no GIS Workspace:** a opção de gerar Copernicus GLO-30 usa a área de estudo seleccionada no projecto e as credenciais GEE já autenticadas.
+- **Cenas portáteis .geomoz:** o comando «Guardar .geomoz» cria um ficheiro local auto-suficiente com a grelha simplificada, CRS, limites métricos, estatísticas e visualização. «Reabrir cena 3D» valida o ficheiro antes de o desenhar. Esta extensão representa exclusivamente uma *cena de pré-visualização*, não um projecto GIS completo, nem o GeoTIFF original, nem uma textura externa.
+- **Textura raster georreferenciada:** `POST /geomoz-api/terrain/rgb-texture` recebe GeoTIFF RGB com CRS e as dimensões/extensão da malha, projecta as três bandas para a mesma grelha com Rasterio e devolve PNG RGBA para renderização. Pixels sem dados na textura revelam o relevo hipsométrico em vez de produzirem uma superfície preta.
+- **Maior segurança no download do GEE:** cada URL, incluindo redireccionamentos, é verificado contra destinos HTTPS Google permitidos. A descarga é limitada a 32 MB; arquivos ZIP exportados pelo GEE são descompactados de forma limitada e não são escritos no sistema de ficheiros.
+- **Exportação PDF:** mantém a proporção da vista, inclui nome do projecto e indica explicitamente a inexistência de escala constante em perspectiva.
+
+### Comandos de validação
+```bash
+python -m pytest geomoz-explorer/tests/test_terrain_dem.py geomoz-explorer/tests/test_terrain_texture.py -v
+pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/terrain-scene.test.ts
+pnpm run typecheck
+pnpm run build
+```
+
+### Restrições explícitas
+- Para importar uma ortofoto/Sentinel-2 como GeoTIFF RGB, as bandas 1/2/3 devem representar R/G/B. É necessária georreferenciação válida; PNG sem referência só pode ser aplicado com alinhamento manual prévio.
+- O modelo é reamostrado para visualização, não para medições científicas de detalhe.
+- Forge3D-Web permanece numa via experimental separada; ainda não é uma dependência de produção.

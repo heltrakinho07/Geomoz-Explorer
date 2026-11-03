@@ -9,12 +9,15 @@ import {
 import { runWorkspaceOperationAsync } from "@/lib/gis-workspace-runner";
 import { parseWorkspaceFile, workspaceColumns, type WorkspaceLayer } from "@/lib/gis-workspace";
 import GeoReferencer from "@/components/GeoReferencer";
+import TerrainStudio from "@/components/TerrainStudio";
 import QmsBasemapPicker from "@/components/QmsBasemapPicker";
 import type { QmsTileSource } from "@/lib/qms-catalog";
 
 interface Props {
   layers: WorkspaceLayer[];
   setLayers: React.Dispatch<React.SetStateAction<WorkspaceLayer[]>>;
+  geeEnabled?: boolean;
+  geeRegion?: { province: string | null; district: string | null; geometry?: unknown };
 }
 
 function FitSelectedLayer({ layer }: { layer: WorkspaceLayer | null }) {
@@ -33,9 +36,10 @@ function FitSelectedLayer({ layer }: { layer: WorkspaceLayer | null }) {
   return null;
 }
 
-export default function GISWorkspacePanel({ layers, setLayers }: Props) {
+export default function GISWorkspacePanel({ layers, setLayers, geeEnabled, geeRegion }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [workspaceMode, setWorkspaceMode] = useState<"layers" | "georeference">("layers");
+  const [terrainStudioOpen, setTerrainStudioOpen] = useState(false);
   const [qmsBasemap, setQmsBasemap] = useState<QmsTileSource | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -158,6 +162,8 @@ export default function GISWorkspacePanel({ layers, setLayers }: Props) {
 
   return (
     <div className="h-full min-h-0 w-full overflow-hidden flex flex-col bg-slate-50 dark:bg-slate-950">
+      <TerrainStudio open={terrainStudioOpen} onClose={() => setTerrainStudioOpen(false)}
+        geeEnabled={geeEnabled} geeRegion={geeRegion} />
       <div className="flex flex-wrap items-center gap-2 px-3 md:px-4 pt-3" role="tablist" aria-label="Ferramentas do GIS Workspace">
         <button type="button" role="tab" aria-selected={workspaceMode === "layers"} onClick={() => setWorkspaceMode("layers")}
           className={workspaceMode === "layers" ? "rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white" : "rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-xs font-bold"}>
@@ -166,6 +172,12 @@ export default function GISWorkspacePanel({ layers, setLayers }: Props) {
         <button type="button" role="tab" aria-selected={workspaceMode === "georeference"} onClick={() => setWorkspaceMode("georeference")}
           className={workspaceMode === "georeference" ? "rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white" : "rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-xs font-bold"}>
           Georreferenciar raster (GCPs)
+        </button>
+      </div>
+      <div className="px-3 md:px-4 pt-2 shrink-0">
+        <button type="button" onClick={() => setTerrainStudioOpen(true)}
+          className="inline-flex items-center gap-2 rounded-lg border border-amber-400/60 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100 dark:bg-amber-950/30 dark:text-amber-200">
+          <MapIcon size={14}/> Raster · Gerar terreno 3D a partir de DEM
         </button>
       </div>
       <div className={workspaceMode === "georeference" ? "flex-1 min-h-0" : "hidden"}>

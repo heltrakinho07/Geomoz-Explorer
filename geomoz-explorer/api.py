@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 import geopandas as gpd
 from shapely.errors import TopologicalError, GEOSException
 
-from fastapi import FastAPI, Query, HTTPException, Request, File, UploadFile, Depends
+from fastapi import FastAPI, Query, HTTPException, Request, File, UploadFile, Depends, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import Response
@@ -2675,3 +2675,90 @@ async def delete_saved_analysis(analysis_id: str, uid: str = Depends(require_fir
             raise HTTPException(500, f"Falha ao eliminar análise: {exc}")
     raise HTTPException(404, "Análise não encontrada.")
 
+
+
+# GeoMoz 3D Terrain Studio — authenticated DEM preview, no server-side storage.
+@app.post("/geomoz-api/terrain/mesh")
+async def terrain_mesh_preview(
+    file: UploadFile = File(...),
+    _uid: str = Depends(require_firebase_auth),
+):
+    from starlette.concurrency import run_in_threadpool
+    from terrain_dem import MAX_UPLOAD_BYTES, TerrainInputError, dem_to_preview
+
+    if not file.filename or not file.filename.lower().endswith((".tif", ".tiff")):
+        raise HTTPException(status_code=415, detail="Envie um GeoTIFF (.tif ou .tiff).")
+    try:
+        data = await file.read(MAX_UPLOAD_BYTES + 1)
+    finally:
+        await file.close()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="O GeoTIFF ultrapassa o limite de 32 MB.")
+    try:
+        return await run_in_threadpool(dem_to_preview, data, file.filename)
+    except TerrainInputError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class GEETerrainPreviewRequest(BaseModel):
+    province: Optional[str] = None
+    district: Optional[str] = None
+    geometry: Optional[dict] = None
+
+
+@app.post("/geomoz-api/terrain/gee-mesh")
+async def terrain_gee_mesh_preview(
+    req: GEETerrainPreviewRequest,
+    uid: str = Depends(require_gee_auth),
+):
+    """Load Copernicus GLO-30 from the current authenticated user's GEE project."""
+    from starlette.concurrency import run_in_threadpool
+    from terrain_dem import TerrainInputError
+    from terrain_gee import copernicus_to_preview
+    import httpx
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    if region is None:
+        raise HTTPException(status_code=422, detail="Seleccione uma província, distrito ou desenhe uma área de estudo para o terreno 3D.")
+    try:
+        return await run_in_threadpool(copernicus_to_preview, region)
+    except TerrainInputError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Não foi possível descarregar o DEM do GEE.") from exc
+    except Exception as exc:
+        handle_gee_api_error(exc, prefix="Pré-visualização DEM 3D", uid=uid)
+
+
+@app.post("/geomoz-api/terrain/rgb-texture")
+async def terrain_rgb_texture(
+    file: UploadFile = File(...),
+    crs: str = Form(...),
+    bounds_meters: str = Form(...),
+    width: int = Form(...),
+    height: int = Form(...),
+    _uid: str = Depends(require_firebase_auth),
+):
+    """Reproject local RGB GeoTIFF onto the active DEM preview's metric grid."""
+    from starlette.concurrency import run_in_threadpool
+    from terrain_dem import MAX_UPLOAD_BYTES, TerrainInputError
+    from terrain_texture import rgb_texture_to_preview
+
+    if not file.filename or not file.filename.lower().endswith((".tif", ".tiff")):
+        raise HTTPException(status_code=415, detail="Envie uma textura GeoTIFF RGB.")
+    try:
+        content = await file.read(MAX_UPLOAD_BYTES + 1)
+    finally:
+        await file.close()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Textura demasiado grande (máximo 32 MB).")
+    try:
+        bounds = json.loads(bounds_meters)
+        if not isinstance(bounds, list):
+            raise ValueError("bounds")
+        return await run_in_threadpool(
+            rgb_texture_to_preview, content, file.filename,
+            crs=crs, bounds_meters=bounds, width=width, height=height,
+        )
+    except (ValueError, TypeError, TerrainInputError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
