@@ -1612,6 +1612,206 @@ const entries: Record<string, {en:string;es:string;fr:string}> = {
     "en": "Attributes assigned to the feature. Save the layer edits to preserve them.",
     "es": "Atributos asignados a la entidad. Guarde las ediciones de la capa.",
     "fr": "Attributs attribués à l'entité. Enregistrez les modifications pour les conserver."
+  },
+  "Unidades geológicas": {
+    "en": "Geological units",
+    "es": "Unidades geológicas",
+    "fr": "Unités géologiques"
+  },
+  "Falhas e lineamentos": {
+    "en": "Faults and lineaments",
+    "es": "Fallas y lineamientos",
+    "fr": "Failles et linéaments"
+  },
+  "Medidas estruturais": {
+    "en": "Structural measurements",
+    "es": "Mediciones estructurales",
+    "fr": "Mesures structurales"
+  },
+  "Ocorrências minerais": {
+    "en": "Mineral occurrences",
+    "es": "Ocurrencias minerales",
+    "fr": "Indices minéraux"
+  },
+  "Afloramentos e amostras": {
+    "en": "Outcrops and samples",
+    "es": "Afloramientos y muestras",
+    "fr": "Affleurements et échantillons"
+  },
+  "Uso e cobertura do solo": {
+    "en": "Land use and land cover",
+    "es": "Uso y cobertura del suelo",
+    "fr": "Occupation et couverture du sol"
+  },
+  "Nova camada personalizada": {
+    "en": "New custom layer",
+    "es": "Nueva capa personalizada",
+    "fr": "Nouvelle couche personnalisée"
+  },
+  "Código da unidade geológica": {
+    "en": "Geological unit code",
+    "es": "Código de unidad geológica",
+    "fr": "Code de l'unité géologique"
+  },
+  "Litologia dominante": {
+    "en": "Dominant lithology",
+    "es": "Litología dominante",
+    "fr": "Lithologie dominante"
+  },
+  "Idade geológica": {
+    "en": "Geological age",
+    "es": "Edad geológica",
+    "fr": "Âge géologique"
+  },
+  "Formação geológica": {
+    "en": "Geological formation",
+    "es": "Formación geológica",
+    "fr": "Formation géologique"
+  },
+  "Observações de campo": {
+    "en": "Field observations",
+    "es": "Observaciones de campo",
+    "fr": "Observations de terrain"
+  },
+  "Referência/cartografia": {
+    "en": "Map reference/source",
+    "es": "Referencia cartográfica",
+    "fr": "Référence cartographique"
+  },
+  "Nome/identificador": {
+    "en": "Name/identifier",
+    "es": "Nombre/identificador",
+    "fr": "Nom/identifiant"
+  },
+  "Falha normal, inversa, desligamento, etc.": {
+    "en": "Normal, reverse or strike-slip fault, etc.",
+    "es": "Falla normal, inversa o de desgarre, etc.",
+    "fr": "Faille normale, inverse ou décrochante, etc."
+  },
+  "Direcção em graus (se medida)": {
+    "en": "Strike in degrees (if measured)",
+    "es": "Dirección en grados (si se midió)",
+    "fr": "Direction en degrés (si mesurée)"
+  },
+  "Mergulho em graus (se medido)": {
+    "en": "Dip in degrees (if measured)",
+    "es": "Buzamiento en grados (si se midió)",
+    "fr": "Pendage en degrés (si mesuré)"
+  },
+  "Interpretada, inferida ou observada": {
+    "en": "Interpreted, inferred or observed",
+    "es": "Interpretada, inferida u observada",
+    "fr": "Interprétée, inférée ou observée"
+  },
+  "Fonte": {
+    "en": "Source",
+    "es": "Fuente",
+    "fr": "Source"
+  },
+  "Identificador da medida": {
+    "en": "Measurement identifier",
+    "es": "Identificador de la medida",
+    "fr": "Identifiant de mesure"
+  },
+  "Acamamento, foliação, fractura": {
+    "en": "Bedding, foliation, fracture",
+    "es": "Estratificación, foliación, fractura",
+    "fr": "Stratification, foliation, fracture"
+  },
+  "Strike em graus": {
+    "en": "Strike in degrees",
+    "es": "Rumbo en grados",
+    "fr": "Direction en degrés"
+  },
+  "Dip em graus": {
+    "en": "Dip in degrees",
+    "es": "Buzamiento en grados",
+    "fr": "Pendage en degrés"
+  },
+  "Rake em graus": {
+    "en": "Rake in degrees",
+    "es": "Rake en grados",
+    "fr": "Pitch en degrés"
+  },
+  "Mineral ou elemento": {
+    "en": "Mineral or element",
+    "es": "Mineral o elemento",
+    "fr": "Minéral ou élément"
+  },
+  "Tipo de depósito": {
+    "en": "Deposit type",
+    "es": "Tipo de yacimiento",
+    "fr": "Type de gisement"
+  },
+  "Rocha hospedeira": {
+    "en": "Host rock",
+    "es": "Roca encajante",
+    "fr": "Roche encaissante"
+  },
+  "Estado da ocorrência": {
+    "en": "Occurrence status",
+    "es": "Estado de la ocurrencia",
+    "fr": "État de l'indice"
+  },
+  "Código do ponto": {
+    "en": "Point code",
+    "es": "Código del punto",
+    "fr": "Code du point"
+  },
+  "Litologia": {
+    "en": "Lithology",
+    "es": "Litología",
+    "fr": "Lithologie"
+  },
+  "Descrição de afloramento": {
+    "en": "Outcrop description",
+    "es": "Descripción del afloramiento",
+    "fr": "Description de l'affleurement"
+  },
+  "Código da amostra": {
+    "en": "Sample ID",
+    "es": "Código de la muestra",
+    "fr": "Code de l'échantillon"
+  },
+  "Classe temática": {
+    "en": "Thematic class",
+    "es": "Clase temática",
+    "fr": "Classe thématique"
+  },
+  "Subclasse": {
+    "en": "Subclass",
+    "es": "Subclase",
+    "fr": "Sous-classe"
+  },
+  "Ano de referência": {
+    "en": "Reference year",
+    "es": "Año de referencia",
+    "fr": "Année de référence"
+  },
+  "Origem dos dados": {
+    "en": "Data source",
+    "es": "Origen de los datos",
+    "fr": "Source des données"
+  },
+  "Identificador da feição": {
+    "en": "Feature identifier",
+    "es": "Identificador de la entidad",
+    "fr": "Identifiant de l'entité"
+  },
+  "Descrição": {
+    "en": "Description",
+    "es": "Descripción",
+    "fr": "Description"
+  },
+  "WGS 84 (geográfico)": {
+    "en": "WGS 84 (geographic)",
+    "es": "WGS 84 (geográfico)",
+    "fr": "WGS 84 (géographique)"
+  },
+  "UTM zona ": {
+    "en": "UTM zone ",
+    "es": "UTM zona ",
+    "fr": "Zone UTM "
   }
 };
 export function geoMozSpecialistText(language:string, portuguese:string):string {
