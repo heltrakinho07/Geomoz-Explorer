@@ -31,6 +31,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   const { terrain, setTerrain } = useTerrainSession();
   const { activeProject } = useProject();
   const [busy, setBusy] = useState(false);
+  const [textureBusy, setTextureBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rendererError, setRendererError] = useState<string | null>(null);
   const [exaggeration, setExaggeration] = useState(2);
@@ -171,6 +172,42 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível guardar a cena.");
+    }
+  }
+
+  async function loadAlignedTexture(file: File | undefined) {
+    if (!file || !terrain) return;
+    setError(null);
+    if (!/\\.tiff?$/i.test(file.name) || file.size > 32 * 1024 * 1024) {
+      setError("A textura precisa de ser um GeoTIFF RGB com até 32 MB.");
+      return;
+    }
+    setTextureBusy(true);
+    try {
+      const body = new FormData();
+      body.append("file", file, file.name);
+      body.append("crs", terrain.crs);
+      body.append("bounds_meters", JSON.stringify(terrain.boundsMeters));
+      body.append("width", String(terrain.width));
+      body.append("height", String(terrain.height));
+      const response = await apiFetch("/geomoz-api/terrain/rgb-texture", {
+        method: "POST", body,
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(typeof result?.detail === "string" ? result.detail
+          : "Não foi possível alinhar o raster RGB com o DEM.");
+      }
+      if (typeof result?.imageDataUrl !== "string" ||
+          !result.imageDataUrl.startsWith("data:image/png;base64,")) {
+        throw new Error("Resposta inválida ao processar a textura RGB.");
+      }
+      setTextureUrl(result.imageDataUrl);
+      setStyle("imagery");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Erro ao alinhar a textura.");
+    } finally {
+      setTextureBusy(false);
     }
   }
 
@@ -327,6 +364,16 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               <option value="grayscale">Relevo em escala de cinzentos</option>
               <option value="imagery" disabled={!textureUrl}>Imagem de satélite / ortofoto</option>
             </select>
+            <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-emerald-600/50 bg-emerald-950/20 p-2.5 text-xs text-emerald-200 hover:bg-emerald-900/30 ${!terrain || textureBusy ? "pointer-events-none opacity-50" : ""}`}>
+              {textureBusy ? <Loader2 size={14} className="animate-spin"/> : <ImageIcon size={14}/>}
+              {textureBusy ? "A alinhar textura RGB..." : "GeoTIFF RGB georreferenciado"}
+              <input type="file" accept=".tif,.tiff,image/tiff" disabled={!terrain || textureBusy}
+                className="sr-only" onChange={event => void loadAlignedTexture(event.target.files?.[0])}/>
+            </label>
+            <p className="text-[10px] leading-relaxed text-slate-400">
+              A imagem RGB (bandas 1, 2 e 3) é automaticamente reprojetada e alinhada
+              com a grelha métrica do DEM, preservando pixels sem dados.
+            </p>
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-600 p-2.5 text-xs text-slate-300 hover:bg-slate-800">
               <ImageIcon size={14}/> Carregar textura alinhada
               <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only"
