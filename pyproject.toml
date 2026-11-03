@@ -12,6 +12,7 @@ dependencies = [
     "matplotlib>=3.10.9",
     "numpy>=2.4.4",
     "rasterio>=1.3.0",
+    "Pillow>=10.0.0",
     "pandas>=3.0.3",
     "python-multipart>=0.0.28",
     "shapely>=2.1.2",
