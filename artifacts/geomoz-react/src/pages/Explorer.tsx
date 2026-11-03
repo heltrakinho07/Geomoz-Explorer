@@ -57,9 +57,11 @@ import AuthModal from "@/components/AuthModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useGeeAuth } from "@/hooks/useGeeAuth";
 import { useProject } from "@/context/ProjectContext";
+import { TerrainSessionProvider } from "@/context/TerrainSessionContext";
+import TerrainStudio from "@/components/TerrainStudio";
 import ProjectWorkspaceModal from "@/components/ProjectWorkspaceModal";
 import type { AreaOfInterest } from "@/lib/aoi";
-import { mozambiqueAOI, GLOBAL_AOI, customAOI } from "@/lib/aoi";
+import { mozambiqueAOI, GLOBAL_AOI, customAOI, aoiToAPI } from "@/lib/aoi";
 
 interface NominatimResult {
   place_id: number;
@@ -82,11 +84,17 @@ type Tab =
   | "Exportar"
   | "Documentação";
 
-export default function Explorer() {
+function ExplorerContent() {
   const { toast } = useToast();
   const { user } = useAuth();
   const { geeConnected, geeProject } = useGeeAuth();
   const { activeProject } = useProject();
+  const [terrainStudioOpen, setTerrainStudioOpen] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("terrain3d") === "1");
+  useEffect(() => {
+    const show = () => setTerrainStudioOpen(true);
+    window.addEventListener("geomoz:terrain-studio:open", show);
+    return () => window.removeEventListener("geomoz:terrain-studio:open", show);
+  }, []);
 
   const [province, setProvince] = useState<string | null>(null);
   const [district, setDistrict] = useState<string | null>(null);
@@ -480,6 +488,8 @@ export default function Explorer() {
         theme === "dark" ? "dark bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900"
       }`}
     >
+      <TerrainStudio open={terrainStudioOpen} onClose={() => setTerrainStudioOpen(false)}
+        geeEnabled={geeConnected} geeRegion={{ province, district, geometry: aoiToAPI(aoi).geometry }} />
       {/* A dedicated GIS application shell replaces generic navigation. */}
       {activeTab !== "GIS Workspace" && <Sidebar
         activeTab={activeTab}
@@ -583,7 +593,15 @@ export default function Explorer() {
             )}
           </div>
 
-          <button type="button" data-testid="geomoz-print-open" onClick={()=>setPrintOpen(true)} className="gm-system-print-button inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 shadow-sm hover:border-sky-400 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" aria-label="Abrir layout de impressão" title="Composição cartográfica / relatório A4 ou A3"><Printer size={16}/><span className="hidden xl:inline">Layout de impressão</span></button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setTerrainStudioOpen(true)}
+              data-testid="geomoz-terrain-studio-open"
+              className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg border border-amber-400/70 bg-amber-50 px-3 text-xs font-bold text-amber-900 hover:bg-amber-100 dark:bg-amber-950/30 dark:text-amber-200"
+              title="Terreno 3D com DEM GeoTIFF ou Copernicus GLO-30">
+              <Mountain size={16}/><span className="hidden sm:inline">Terreno 3D</span><span className="sm:hidden">3D</span>
+            </button>
+            <button type="button" data-testid="geomoz-print-open" onClick={()=>setPrintOpen(true)} className="gm-system-print-button inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 shadow-sm hover:border-sky-400 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" aria-label="Abrir layout de impressão" title="Composição cartográfica / relatório A4 ou A3"><Printer size={16}/><span className="hidden xl:inline">Layout de impressão</span></button>
+          </div>
           {/* Right: Geocoding Search Input (only on Mapa) */}
           {activeTab === "Mapa" && (
             <div className="flex items-center gap-2">
@@ -929,4 +947,9 @@ export default function Explorer() {
       />
     </div>
   );
+}
+
+/** Shares an in-memory model between the Mapa and GeoAnálises tabs. */
+export default function Explorer() {
+  return <TerrainSessionProvider><ExplorerContent /></TerrainSessionProvider>;
 }
