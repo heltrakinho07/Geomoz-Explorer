@@ -5,7 +5,7 @@
  */
 import { useState } from "react";
 import {useLanguage} from "../../hooks/useLanguage";
-import {geoMozSpecialistText} from "./geomoz-specialist-locale";
+import {geoMozSpecialistText} from "../geomoz/geomoz-specialist-locale";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, Button } from "@geolibre/ui";
 import { ExternalLink, Info, Layers3, ShieldCheck, FileText } from "lucide-react";
 
