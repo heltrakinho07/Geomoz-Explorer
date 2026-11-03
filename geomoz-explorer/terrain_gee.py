@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 from io import BytesIO
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 from zipfile import BadZipFile, ZipFile
 
 import httpx
@@ -38,25 +38,38 @@ def copernicus_to_preview(region_geojson: dict) -> dict:
     download_url = result.get("downloadUrl")
     if not isinstance(download_url, str):
         raise TerrainInputError("O Earth Engine não devolveu uma ligação GeoTIFF.")
-    parsed = urlsplit(download_url)
-    host = (parsed.hostname or "").lower()
-    if parsed.scheme != "https" or not (
-        host == "googleapis.com" or host.endswith(".googleapis.com")
-        or host == "google.com" or host.endswith(".google.com")
-        or host.endswith(".googleusercontent.com")
-    ):
-        raise TerrainInputError("Destino de exportação GEE não reconhecido.")
-
     chunks: list[bytes] = []
     total = 0
-    with httpx.Client(timeout=90.0, follow_redirects=True) as client:
-        with client.stream("GET", download_url) as response:
-            response.raise_for_status()
-            for chunk in response.iter_bytes(chunk_size=1024 * 1024):
-                total += len(chunk)
-                if total > MAX_UPLOAD_BYTES:
-                    raise TerrainInputError("Recorte GEE demasiado grande. Reduza a área de estudo.")
-                chunks.append(chunk)
+    current_url = download_url
+    # Do not automatically follow redirects: every destination is checked to
+    # prevent a signed Google URL from being used for arbitrary server requests.
+    with httpx.Client(timeout=90.0, follow_redirects=False, trust_env=False) as client:
+        for _redirect in range(5):
+            parsed = urlsplit(current_url)
+            host = (parsed.hostname or "").lower().rstrip(".")
+            allowed = (
+                host == "googleapis.com" or host.endswith(".googleapis.com")
+                or host == "google.com" or host.endswith(".google.com")
+                or host == "googleusercontent.com" or host.endswith(".googleusercontent.com")
+            )
+            if parsed.scheme != "https" or not allowed or parsed.username or parsed.password:
+                raise TerrainInputError("Destino de exportação GEE não reconhecido.")
+            with client.stream("GET", current_url) as response:
+                if response.status_code in (301, 302, 303, 307, 308):
+                    location = response.headers.get("location")
+                    if not location:
+                        raise TerrainInputError("Redireccionamento GEE sem destino.")
+                    current_url = urljoin(current_url, location)
+                    continue
+                response.raise_for_status()
+                for chunk in response.iter_bytes(chunk_size=1024 * 1024):
+                    total += len(chunk)
+                    if total > MAX_UPLOAD_BYTES:
+                        raise TerrainInputError("Recorte GEE demasiado grande. Reduza a área de estudo.")
+                    chunks.append(chunk)
+                break
+        else:
+            raise TerrainInputError("Demasiados redireccionamentos na exportação GEE.")
     raw = b"".join(chunks)
     if raw.startswith(bytes((0x50, 0x4B, 0x03, 0x04))):
         try:
@@ -66,7 +79,10 @@ def copernicus_to_preview(region_geojson: dict) -> dict:
                               and not entry.is_dir()]
                 if len(candidates) != 1 or candidates[0].file_size > MAX_UPLOAD_BYTES:
                     raise TerrainInputError("A exportação GEE não contém um único GeoTIFF válido.")
-                raw = archive.read(candidates[0])
+                with archive.open(candidates[0]) as entry:
+                    raw = entry.read(MAX_UPLOAD_BYTES + 1)
+                if len(raw) > MAX_UPLOAD_BYTES:
+                    raise TerrainInputError("O DEM descompactado excede 32 MB.")
         except BadZipFile as exc:
             raise TerrainInputError("A exportação ZIP do GEE está corrompida.") from exc
     preview = dem_to_preview(raw, "Copernicus_GLO30_GEE.tif")
