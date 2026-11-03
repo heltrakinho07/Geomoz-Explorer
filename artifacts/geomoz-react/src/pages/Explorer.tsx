@@ -49,7 +49,7 @@ import { useProject } from "@/context/ProjectContext";
 import { TerrainSessionProvider } from "@/context/TerrainSessionContext";
 import ProjectWorkspaceModal from "@/components/ProjectWorkspaceModal";
 import type { AreaOfInterest } from "@/lib/aoi";
-import { mozambiqueAOI, GLOBAL_AOI, customAOI } from "@/lib/aoi";
+import { mozambiqueAOI, GLOBAL_AOI, customAOI, aoiToAPI } from "@/lib/aoi";
 
 interface NominatimResult {
   place_id: number;
@@ -726,7 +726,11 @@ function ExplorerContent() {
             />
           )}
 
-          {activeTab === "GIS Workspace" && <GISWorkspacePanel layers={workspaceLayers} setLayers={setWorkspaceLayers} />}
+          {activeTab === "GIS Workspace" && <GISWorkspacePanel
+            layers={workspaceLayers} setLayers={setWorkspaceLayers}
+            geeEnabled={geeConnected}
+            geeRegion={{ province, district, geometry: aoiToAPI(aoi).geometry }}
+          />}
 
           {activeTab === "GeoAnálises" && (
             <Suspense fallback={<LoadingSkeleton label="GeoAnálises" />}>
