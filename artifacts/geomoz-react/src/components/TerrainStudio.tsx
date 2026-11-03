@@ -5,6 +5,7 @@ import { Download, FileUp, Image as ImageIcon, Loader2, Mountain, RotateCcw, X }
 import { apiFetch } from "@/lib/api";
 import { useTerrainSession } from "@/context/TerrainSessionContext";
 import { useProject } from "@/context/ProjectContext";
+import { decodeTerrainScene, encodeTerrainScene, MAX_TERRAIN_SCENE_BYTES } from "@/lib/terrain-scene";
 import {
   createTerrainRenderer,
   type TerrainMeshData,
@@ -37,6 +38,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   const [textureUrl, setTextureUrl] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sceneInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -136,6 +138,42 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
     }
   }
 
+  async function loadScene(file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    if (!file.name.toLowerCase().endsWith(".geomoz") ||
+        file.size < 1 || file.size > MAX_TERRAIN_SCENE_BYTES) {
+      setError("Seleccione uma cena .geomoz válida até 4 MB.");
+      return;
+    }
+    try {
+      const scene = decodeTerrainScene(await file.text());
+      setTerrain(scene.terrain);
+      setStyle(scene.style);
+      setExaggeration(scene.exaggeration);
+      setTextureUrl(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Cena .geomoz inválida.");
+    } finally {
+      if (sceneInputRef.current) sceneInputRef.current.value = "";
+    }
+  }
+
+  function saveScene() {
+    if (!terrain) return;
+    try {
+      const payload = encodeTerrainScene(terrain, style, exaggeration);
+      const url = URL.createObjectURL(new Blob([payload], {type: "application/json"}));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "geomoz_terreno_3d.geomoz";
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível guardar a cena.");
+    }
+  }
+
   function loadTexture(file: File | undefined) {
     if (!file) return;
     if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) ||
@@ -197,6 +235,11 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button type="button" disabled={!terrain}
+            onClick={saveScene}
+            className="rounded-lg border border-amber-500/60 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-slate-700 disabled:opacity-40">
+            <Download size={13} className="mr-1 inline"/> .geomoz
+          </button>
           <button type="button" disabled={!terrain || !!rendererError}
             onClick={downloadCanvas}
             className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-semibold hover:bg-slate-700 disabled:opacity-40">
@@ -228,6 +271,14 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
                 Gerar do DEM Copernicus (GEE)
               </button>
             )}
+            <input ref={sceneInputRef} type="file" accept=".geomoz"
+              className="sr-only" aria-label="Abrir cena 3D .geomoz"
+              onChange={event => void loadScene(event.target.files?.[0])} />
+            <button type="button" disabled={busy}
+              onClick={() => sceneInputRef.current?.click()}
+              className="mb-2 w-full rounded-lg border border-slate-600 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800 disabled:opacity-40">
+              Reabrir cena 3D (.geomoz)
+            </button>
             <input ref={fileInputRef} id="terrain-studio-dem" type="file"
               accept=".tif,.tiff,image/tiff" className="sr-only"
               onChange={event => void loadGeoTiff(event.target.files?.[0])}/>
