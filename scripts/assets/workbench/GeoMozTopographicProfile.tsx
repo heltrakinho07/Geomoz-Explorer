@@ -306,7 +306,7 @@ export function GeoMozTopographicProfile({ mapControllerRef, onClose }: Props) {
       {!map && <p role="alert">{t("requireMap")}</p>}
       <p className="gm-topo-note">{vertices.length} {t("vertices")} · {(distance / 1000).toFixed(2)} km</p>
       <label>{t("sampleCount")}
-        <input aria-label={t("sampleCount")} type="number" min="20" max="300"
+        <input aria-label={t("sampleCountAria")} type="number" min="20" max="300"
           step="10" value={count} onChange={e => {
             setCount(Math.min(300, Math.max(20, Number(e.target.value) || 20)));
             setSamples(null); setCursorIndex(null); setPlaying(false);

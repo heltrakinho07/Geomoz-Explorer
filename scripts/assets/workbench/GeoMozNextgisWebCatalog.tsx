@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "@geolibre/core";
+import { useLanguage } from "../../hooks/useLanguage";
+import { geoMozSpecialistText } from "./geomoz-specialist-locale";
 import { ArrowLeft, Database, ExternalLink, Folder, Layers3, Loader2, X } from "lucide-react";
 import {
   normalizeNgwOrigin, listNgwResources, buildNgwTileDefinition, importNgwVector,
@@ -11,9 +13,11 @@ type FolderPath = { id: number; label: string };
 /** Read-only public NextGIS Web resource browser. Selected styles are
  * imported as normal GeoLibre raster layers, stored with the project. */
 export function GeoMozNextgisWebCatalog({ onClose }: { onClose: () => void }) {
+  const {language}=useLanguage();
+  const ui=(pt:string)=>geoMozSpecialistText(language,pt);
   const [serverInput, setServerInput] = useState("");
   const [origin, setOrigin] = useState("");
-  const [path, setPath] = useState<FolderPath[]>([{ id: 0, label: "Recursos" }]);
+  const [path, setPath] = useState<FolderPath[]>([{ id: 0, label: ui("Recursos") }]);
   const [items, setItems] = useState<NgwResource[]>([]);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
@@ -46,13 +50,13 @@ export function GeoMozNextgisWebCatalog({ onClose }: { onClose: () => void }) {
       setServerInput(normalized);
       setPath(nextPath);
       setItems(resources);
-      if (!resources.length) setStatus("O grupo não contém estilos ou mapas públicos compatíveis.");
+      if (!resources.length) setStatus(ui("O grupo não contém estilos ou mapas públicos compatíveis."));
     } catch (cause) {
       if (controller.signal.aborted) return;
       setError(
         cause instanceof TypeError
-          ? "Não foi possível consultar o servidor. Verifique a rede e se a API permite CORS nesta origem."
-          : cause instanceof Error ? cause.message : "O servidor NextGIS Web não respondeu.",
+          ? ui("Não foi possível consultar o servidor. Verifique a rede e se a API permite CORS nesta origem.")
+          : cause instanceof Error ? cause.message : ui("O servidor NextGIS Web não respondeu."),
       );
     } finally {
       if (!controller.signal.aborted) setBusy(false);
@@ -72,7 +76,7 @@ export function GeoMozNextgisWebCatalog({ onClose }: { onClose: () => void }) {
         const geojson = await importNgwVector(origin, resource, controller.signal);
         if (controller.signal.aborted) return;
         const id = addGeoJsonLayer(resource.name, geojson);
-        if (!id) throw new Error("O motor SIG não confirmou a importação vectorial.");
+        if (!id) throw new Error(ui("O motor SIG não confirmou a importação vectorial."));
         const state = useAppStore.getState();
         const existing = state.layers.find(item => item.id === id);
         updateLayer(id, { metadata: {
@@ -83,7 +87,7 @@ export function GeoMozNextgisWebCatalog({ onClose }: { onClose: () => void }) {
           geomozNgwResourceClass: resource.className,
           geomozImportedAt: new Date().toISOString(),
         } });
-        setStatus("«" + resource.name + "» importada: " + geojson.features.length + " feições vectoriais.");
+        setStatus("«" + resource.name + "»"+ui(" importada: ") + geojson.features.length + ui(" feições vectoriais."));
         window.dispatchEvent(new CustomEvent("geomoz:task", { detail: "data" }));
         return;
       }
@@ -105,47 +109,47 @@ export function GeoMozNextgisWebCatalog({ onClose }: { onClose: () => void }) {
           geomozNgwResourceClass: resource.className,
         },
       });
-      if (!id) throw new Error("O motor SIG não confirmou a criação da camada.");
-      setStatus("«" + resource.name + "» adicionada ao catálogo do projecto.");
+      if (!id) throw new Error(ui("O motor SIG não confirmou a criação da camada."));
+      setStatus("«" + resource.name + "»" + ui(" adicionada ao catálogo do projecto."));
       window.dispatchEvent(new CustomEvent("geomoz:task", { detail: "data" }));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível adicionar a camada.");
+      setError(cause instanceof Error ? cause.message : ui("Não foi possível adicionar a camada."));
     } finally {
       setAddingId(null);
     }
   };
 
-  const needle = search.trim().toLocaleLowerCase("pt");
-  const shown = items.filter(item => !needle || item.name.toLocaleLowerCase("pt").includes(needle));
+  const needle = search.trim().toLocaleLowerCase(language==="pt"?"pt":language);
+  const shown = items.filter(item => !needle || item.name.toLocaleLowerCase(language==="pt"?"pt":language).includes(needle));
 
   return (
-    <section className="gm-ngw-panel" role="dialog" aria-label="NextGIS Web — recursos remotos">
+    <section className="gm-ngw-panel" role="dialog" aria-label={ui("NextGIS Web — recursos remotos")}>
       <header>
         <div>
-          <strong><Database size={16} /> Servidor NextGIS Web</strong>
-          <small>Recursos públicos · Importação como camadas SIG nativas</small>
+          <strong><Database size={16} /> {ui("Servidor NextGIS Web")}</strong>
+          <small>{ui("Recursos públicos · Importação como camadas SIG nativas")}</small>
         </div>
-        <button type="button" aria-label="Fechar NextGIS Web" onClick={onClose}><X size={17}/></button>
+        <button type="button" aria-label={ui("Fechar NextGIS Web")} onClick={onClose}><X size={17}/></button>
       </header>
 
       <form className="gm-ngw-connect" onSubmit={event => {
         event.preventDefault();
-        void open(serverInput, [{ id: 0, label: "Recursos" }]);
+        void open(serverInput, [{ id: 0, label: ui("Recursos") }]);
       }}>
-        <label htmlFor="gm-ngw-host">Endereço do servidor</label>
+        <label htmlFor="gm-ngw-host">{ui("Endereço do servidor")}</label>
         <div>
           <input id="gm-ngw-host" type="url" inputMode="url" autoComplete="url"
             value={serverInput} onChange={event => setServerInput(event.target.value)}
             placeholder="https://servidor.exemplo.org" required />
-          <button type="submit" disabled={busy}>Ligar</button>
+          <button type="submit" disabled={busy}>{ui("Ligar")}</button>
         </div>
       </form>
 
       {origin && (
         <>
-          <nav className="gm-ngw-path" aria-label="Navegação de recursos">
+          <nav className="gm-ngw-path" aria-label={ui("Navegação de recursos")}>
             {path.length > 1 && (
-              <button type="button" title="Voltar ao grupo anterior" aria-label="Voltar"
+              <button type="button" title={ui("Voltar ao grupo anterior")} aria-label={ui("Voltar")}
                 disabled={busy} onClick={() => void open(origin, path.slice(0, -1))}>
                 <ArrowLeft size={15} />
               </button>
@@ -153,17 +157,17 @@ export function GeoMozNextgisWebCatalog({ onClose }: { onClose: () => void }) {
             <span>{path.map(item => item.label).join(" / ")}</span>
           </nav>
           <label className="gm-ngw-filter">
-            <span>Filtrar recursos do grupo</span>
+            <span>{ui("Filtrar recursos do grupo")}</span>
             <input value={search} onChange={event => setSearch(event.target.value)}
-              placeholder="Nome do mapa, estilo ou pasta…" />
+              placeholder={ui("Nome do mapa, estilo ou pasta…")} />
           </label>
         </>
       )}
 
-      {busy && <p role="status"><Loader2 size={14} className="gm-ngw-spinner" /> A consultar catálogo…</p>}
+      {busy && <p role="status"><Loader2 size={14} className="gm-ngw-spinner" /> {ui("A consultar catálogo…")}</p>}
       {error && <p role="alert" className="gm-ngw-error">{error}</p>}
       {status && <p role="status" className="gm-ngw-success">{status}</p>}
-      {!canAdd && <p>Esta sessão não permite adicionar camadas; a consulta é de leitura.</p>}
+      {!canAdd && <p>{ui("Esta sessão não permite adicionar camadas; a consulta é de leitura.")}</p>}
 
       <div className="gm-ngw-results">
         {shown.map(resource => (
@@ -174,19 +178,18 @@ export function GeoMozNextgisWebCatalog({ onClose }: { onClose: () => void }) {
             }}>
             {resource.kind === "group" ? <Folder size={16}/> : <Layers3 size={16}/>}
             <span><strong>{resource.name}</strong>
-              <small>{resource.kind === "group" ? "Grupo de recursos" : resource.kind === "vector" ? "Camada vectorial · importação local" : resource.className.replace(/_/g, " ")}</small>
+              <small>{resource.kind === "group" ? ui("Grupo de recursos") : resource.kind === "vector" ? ui("Camada vectorial · importação local") : resource.className.replace(/_/g, " ")}</small>
             </span>
-            <span className="gm-ngw-action">{resource.kind === "group" ? "Abrir" : addingId === resource.id ? "A importar…" : resource.kind === "vector" ? "Importar" : "Adicionar"}</span>
+            <span className="gm-ngw-action">{resource.kind === "group" ? ui("Abrir") : addingId === resource.id ? ui("A importar…") : resource.kind === "vector" ? ui("Importar") : ui("Adicionar")}</span>
           </button>
         ))}
       </div>
       {origin && <a href={origin} target="_blank" rel="noopener noreferrer" className="gm-ngw-source">
-        Abrir servidor de origem <ExternalLink size={12}/>
+        {ui("Abrir servidor de origem")} <ExternalLink size={12}/>
       </a>}
       <footer>
-        As camadas vectoriais são exportadas em EPSG:4326 (máximo 8 MB / 5 000 feições) e ficam disponíveis para análise local. A ligação utiliza apenas a API pública e não envia credenciais. Recursos
-        privados precisam de autorização no próprio NextGIS Web. A disponibilidade,
-        CORS e os direitos de reutilização dependem do servidor de origem.
+        {ui("As camadas vectoriais são exportadas em EPSG:4326 (máximo 8 MB / 5 000 feições) e ficam disponíveis para análise local. A ligação utiliza apenas a API pública e não envia credenciais.")}
+        {" "}{ui("Recursos privados precisam de autorização no próprio NextGIS Web. A disponibilidade, CORS e os direitos de reutilização dependem do servidor de origem.")}
       </footer>
     </section>
   );
