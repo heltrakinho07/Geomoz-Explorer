@@ -178,7 +178,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   async function loadAlignedTexture(file: File | undefined) {
     if (!file || !terrain) return;
     setError(null);
-    if (!/\\.tiff?$/i.test(file.name) || file.size > 32 * 1024 * 1024) {
+    if (!/\.tiff?$/i.test(file.name) || file.size > 32 * 1024 * 1024) {
       setError("A textura precisa de ser um GeoTIFF RGB com até 32 MB.");
       return;
     }
