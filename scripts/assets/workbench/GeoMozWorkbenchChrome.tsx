@@ -154,6 +154,10 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
               onClick={()=>{setOpenToolCard(null);setTopoOpen(true);setSeismicOpen(false);}}>
               <Route size={17}/><span>Perfil topográfico</span>
             </button>}
+            {group.label==="Raster"&&<a href="/analises?terrain3d=1" data-action="geomoz-terrain-studio-3d"
+              target="_blank" rel="noopener noreferrer" onClick={()=>setOpenToolCard(null)}>
+              <Image size={17}/><span>Gerar mapa 3D do DEM</span><ArrowUpRight size={13}/>
+            </a>}
             {group.label==="Vector"&&<button type="button" data-testid="geomoz-create-layer" onClick={()=>{setOpenToolCard(null);setLayerWizardOpen(true);}}>
               <Layers3 size={17}/><span>Nova camada / Digitalizar</span>
             </button>}
