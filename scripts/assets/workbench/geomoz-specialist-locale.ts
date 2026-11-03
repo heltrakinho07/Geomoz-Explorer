@@ -1197,6 +1197,421 @@ const entries: Record<string, {en:string;es:string;fr:string}> = {
     "en": "Only the first 30 stations are shown.",
     "es": "Solo se muestran las primeras 30 estaciones.",
     "fr": "Seules les 30 premières stations sont affichées."
+  },
+  "Criar camada cartográfica": {
+    "en": "Create cartographic layer",
+    "es": "Crear capa cartográfica",
+    "fr": "Créer une couche cartographique"
+  },
+  "Nova camada vectorial": {
+    "en": "New vector layer",
+    "es": "Nueva capa vectorial",
+    "fr": "Nouvelle couche vectorielle"
+  },
+  "Fechar assistente": {
+    "en": "Close wizard",
+    "es": "Cerrar asistente",
+    "fr": "Fermer l'assistant"
+  },
+  "Etapa 2 · Camada e atributos.": {
+    "en": "Step 2 · Layer and attributes.",
+    "es": "Paso 2 · Capa y atributos.",
+    "fr": "Étape 2 · Couche et attributs."
+  },
+  "Crie uma camada vazia e configure os campos antes de desenhar. O ficheiro do projecto é guardado localmente quando utilizar «Guardar como».": {
+    "en": "Create an empty layer and configure fields before drawing. The project file is stored locally when you use Save as.",
+    "es": "Cree una capa vacía y configure los campos antes de dibujar. El archivo del proyecto se guarda localmente al usar Guardar como.",
+    "fr": "Créez une couche vide et configurez les champs avant de dessiner. Le fichier du projet est enregistré localement avec Enregistrer sous."
+  },
+  "Modelo cartográfico": {
+    "en": "Cartographic template",
+    "es": "Plantilla cartográfica",
+    "fr": "Modèle cartographique"
+  },
+  "Nome da camada": {
+    "en": "Layer name",
+    "es": "Nombre de la capa",
+    "fr": "Nom de la couche"
+  },
+  "Nome da nova camada": {
+    "en": "New layer name",
+    "es": "Nombre de la nueva capa",
+    "fr": "Nom de la nouvelle couche"
+  },
+  "Tipo de geometria": {
+    "en": "Geometry type",
+    "es": "Tipo de geometría",
+    "fr": "Type de géométrie"
+  },
+  "Geometria da camada": {
+    "en": "Layer geometry",
+    "es": "Geometría de la capa",
+    "fr": "Géométrie de la couche"
+  },
+  "Ponto": {
+    "en": "Point",
+    "es": "Punto",
+    "fr": "Point"
+  },
+  "Linha": {
+    "en": "Line",
+    "es": "Línea",
+    "fr": "Ligne"
+  },
+  "Polígono": {
+    "en": "Polygon",
+    "es": "Polígono",
+    "fr": "Polygone"
+  },
+  "SRC de referência para resultados": {
+    "en": "Target CRS for outputs",
+    "es": "SRC de referencia para resultados",
+    "fr": "SCR de référence pour les résultats"
+  },
+  "SRC pretendido da camada": {
+    "en": "Intended layer CRS",
+    "es": "SRC previsto de la capa",
+    "fr": "SCR prévu de la couche"
+  },
+  "(geográfico)": {
+    "en": "(geographic)",
+    "es": "(geográfico)",
+    "fr": "(géographique)"
+  },
+  "zona": {
+    "en": "zone",
+    "es": "zona",
+    "fr": "zone"
+  },
+  "O motor WebGIS desenha e guarda GeoJSON em WGS 84 (longitude/latitude). Uma preferência UTM não reprojeta automaticamente o GeoJSON: utilize «Reprojectar» antes de exportar para um SRC métrico.": {
+    "en": "WebGIS draws and stores GeoJSON in WGS 84 (longitude/latitude). Selecting a UTM preference does not reproject GeoJSON automatically: use Reproject before exporting to a metric CRS.",
+    "es": "WebGIS dibuja y guarda GeoJSON en WGS 84 (longitud/latitud). Elegir UTM no reproyecta automáticamente el GeoJSON: utilice Reproyectar antes de exportar a un SRC métrico.",
+    "fr": "WebGIS dessine et stocke le GeoJSON en WGS 84 (longitude/latitude). Choisir UTM ne reprojette pas automatiquement le GeoJSON : utilisez Reprojeter avant l'export dans un SCR métrique."
+  },
+  "Campos da tabela de atributos": {
+    "en": "Attribute table fields",
+    "es": "Campos de la tabla de atributos",
+    "fr": "Champs de la table attributaire"
+  },
+  "Número decimal": {
+    "en": "Decimal number",
+    "es": "Número decimal",
+    "fr": "Nombre décimal"
+  },
+  "Texto": {
+    "en": "Text",
+    "es": "Texto",
+    "fr": "Texte"
+  },
+  "Remover campo ": {
+    "en": "Remove field ",
+    "es": "Eliminar campo ",
+    "fr": "Supprimer le champ "
+  },
+  "Novo campo": {
+    "en": "New field",
+    "es": "Nuevo campo",
+    "fr": "Nouveau champ"
+  },
+  "Tipo do novo campo": {
+    "en": "New field type",
+    "es": "Tipo del nuevo campo",
+    "fr": "Type du nouveau champ"
+  },
+  "Decimal": {
+    "en": "Decimal",
+    "es": "Decimal",
+    "fr": "Décimal"
+  },
+  "Adicionar à lista de campos": {
+    "en": "Add to field list",
+    "es": "Añadir a la lista de campos",
+    "fr": "Ajouter à la liste des champs"
+  },
+  "Após criar, seleccione a camada no catálogo, active «Edição» e use «Adicionar ponto», «Adicionar linha» ou «Adicionar polígono» conforme a geometria. Cada feição abre um formulário de atributos. Termine guardando as edições e o projecto.": {
+    "en": "After creation, select the layer in the catalog, enable Editing and use Add point, Add line or Add polygon for its geometry. Each feature opens an attribute form. Finish by saving edits and the project.",
+    "es": "Tras crearla, seleccione la capa, active Edición y utilice Añadir punto, Añadir línea o Añadir polígono según la geometría. Cada entidad abre un formulario de atributos. Termine guardando las ediciones y el proyecto.",
+    "fr": "Après création, sélectionnez la couche, activez Édition et utilisez Ajouter un point, une ligne ou un polygone selon la géométrie. Chaque entité ouvre un formulaire attributaire. Enregistrez ensuite les modifications et le projet."
+  },
+  "» criada e seleccionada. Abra «Vector» no cabeçalho para iniciar a digitalização.": {
+    "en": "» created and selected. Open Vector in the toolbar to start digitizing.",
+    "es": "» creada y seleccionada. Abra Vector en la barra para empezar a digitalizar.",
+    "fr": "» créée et sélectionnée. Ouvrez Vecteur dans la barre pour commencer la numérisation."
+  },
+  "Criar camada vazia": {
+    "en": "Create empty layer",
+    "es": "Crear capa vacía",
+    "fr": "Créer une couche vide"
+  },
+  "O nome do campo deve começar por letra ou _ e conter apenas letras, números ou _.": {
+    "en": "Field names must start with a letter or _ and only contain letters, numbers or _.",
+    "es": "El nombre del campo debe empezar por una letra o _ y contener solo letras, números o _.",
+    "fr": "Le nom de champ doit commencer par une lettre ou _ et ne contenir que lettres, chiffres ou _."
+  },
+  "Já existe um campo com este nome.": {
+    "en": "A field with this name already exists.",
+    "es": "Ya existe un campo con este nombre.",
+    "fr": "Un champ portant ce nom existe déjà."
+  },
+  "O seu perfil não permite criar camadas.": {
+    "en": "Your account cannot create layers.",
+    "es": "Su cuenta no permite crear capas.",
+    "fr": "Votre compte ne permet pas de créer des couches."
+  },
+  "Adicione o campo pendente à lista antes de criar a camada.": {
+    "en": "Add the pending field to the list before creating the layer.",
+    "es": "Añada el campo pendiente antes de crear la capa.",
+    "fr": "Ajoutez le champ en attente avant de créer la couche."
+  },
+  "Corrija os nomes ou a duplicação de campos.": {
+    "en": "Fix invalid or duplicate field names.",
+    "es": "Corrija los nombres de campo no válidos o duplicados.",
+    "fr": "Corrigez les noms de champs invalides ou en double."
+  },
+  "Não foi possível criar a camada.": {
+    "en": "Unable to create layer.",
+    "es": "No se pudo crear la capa.",
+    "fr": "Impossible de créer la couche."
+  },
+  "Propriedades da camada": {
+    "en": "Layer properties",
+    "es": "Propiedades de la capa",
+    "fr": "Propriétés de la couche"
+  },
+  "Nome": {
+    "en": "Name",
+    "es": "Nombre",
+    "fr": "Nom"
+  },
+  "Renomear camada": {
+    "en": "Rename layer",
+    "es": "Renombrar capa",
+    "fr": "Renommer la couche"
+  },
+  "Grupo": {
+    "en": "Group",
+    "es": "Grupo",
+    "fr": "Groupe"
+  },
+  "Grupo da camada": {
+    "en": "Layer group",
+    "es": "Grupo de la capa",
+    "fr": "Groupe de la couche"
+  },
+  "Sem grupo": {
+    "en": "No group",
+    "es": "Sin grupo",
+    "fr": "Sans groupe"
+  },
+  "Mostrar grupo ": {
+    "en": "Show group ",
+    "es": "Mostrar grupo ",
+    "fr": "Afficher le groupe "
+  },
+  "Nome do novo grupo": {
+    "en": "New group name",
+    "es": "Nombre del nuevo grupo",
+    "fr": "Nom du nouveau groupe"
+  },
+  "Novo grupo": {
+    "en": "New group",
+    "es": "Nuevo grupo",
+    "fr": "Nouveau groupe"
+  },
+  "Criar": {
+    "en": "Create",
+    "es": "Crear",
+    "fr": "Créer"
+  },
+  "Subir": {
+    "en": "Move up",
+    "es": "Subir",
+    "fr": "Monter"
+  },
+  "Descer": {
+    "en": "Move down",
+    "es": "Bajar",
+    "fr": "Descendre"
+  },
+  "Exportar GeoJSON": {
+    "en": "Export GeoJSON",
+    "es": "Exportar GeoJSON",
+    "fr": "Exporter GeoJSON"
+  },
+  "As propriedades estão disponíveis para consulta nesta sessão.": {
+    "en": "Layer properties are read-only in this session.",
+    "es": "Las propiedades son de solo lectura en esta sesión.",
+    "fr": "Les propriétés sont consultables en lecture seule dans cette session."
+  },
+  "Fluxo de digitalização": {
+    "en": "Digitizing workflow",
+    "es": "Flujo de digitalización",
+    "fr": "Flux de numérisation"
+  },
+  "Edição activa": {
+    "en": "Editing active",
+    "es": "Edición activa",
+    "fr": "Édition active"
+  },
+  "Preparação": {
+    "en": "Preparation",
+    "es": "Preparación",
+    "fr": "Préparation"
+  },
+  "Concluir e guardar edição": {
+    "en": "Finish and save edits",
+    "es": "Terminar y guardar edición",
+    "fr": "Terminer et enregistrer les modifications"
+  },
+  "Digitalizar nesta camada": {
+    "en": "Digitize this layer",
+    "es": "Digitalizar esta capa",
+    "fr": "Numériser cette couche"
+  },
+  "Descartar": {
+    "en": "Discard",
+    "es": "Descartar",
+    "fr": "Annuler"
+  },
+  "Configuração de aderência": {
+    "en": "Snapping settings",
+    "es": "Configuración de ajuste",
+    "fr": "Paramètres d'accrochage"
+  },
+  "Aderência (snapping)": {
+    "en": "Snapping",
+    "es": "Ajuste (snapping)",
+    "fr": "Accrochage"
+  },
+  "Tolerância (pixels)": {
+    "en": "Tolerance (pixels)",
+    "es": "Tolerancia (píxeles)",
+    "fr": "Tolérance (pixels)"
+  },
+  "Ferramentas de desenho": {
+    "en": "Drawing tools",
+    "es": "Herramientas de dibujo",
+    "fr": "Outils de dessin"
+  },
+  "Adicionar ponto": {
+    "en": "Add point",
+    "es": "Añadir punto",
+    "fr": "Ajouter un point"
+  },
+  "Adicionar linha": {
+    "en": "Add line",
+    "es": "Añadir línea",
+    "fr": "Ajouter une ligne"
+  },
+  "Adicionar polígono": {
+    "en": "Add polygon",
+    "es": "Añadir polígono",
+    "fr": "Ajouter un polygone"
+  },
+  "Tabela de atributos": {
+    "en": "Attribute table",
+    "es": "Tabla de atributos",
+    "fr": "Table attributaire"
+  },
+  "Como digitalizar esta camada": {
+    "en": "How to digitize this layer",
+    "es": "Cómo digitalizar esta capa",
+    "fr": "Comment numériser cette couche"
+  },
+  "Carregue a carta georreferenciada ou um mapa base em «Dados».": {
+    "en": "Load a georeferenced image or basemap under Data.",
+    "es": "Cargue una imagen georreferenciada o un mapa base desde Datos.",
+    "fr": "Chargez une carte géoréférencée ou un fond de carte sous Données."
+  },
+  "Seleccione a camada e active a edição.": {
+    "en": "Select the layer and enable editing.",
+    "es": "Seleccione la capa y active la edición.",
+    "fr": "Sélectionnez la couche et activez l'édition."
+  },
+  "Configure a aderência e desenhe no mapa.": {
+    "en": "Configure snapping and draw on the map.",
+    "es": "Configure el ajuste y dibuje en el mapa.",
+    "fr": "Configurez l'accrochage et dessinez sur la carte."
+  },
+  "Preencha os atributos quando concluir a feição.": {
+    "en": "Fill the attributes after creating the feature.",
+    "es": "Rellene los atributos al terminar la entidad.",
+    "fr": "Renseignez les attributs après avoir créé l'entité."
+  },
+  "Guarde as edições da camada e depois guarde ou exporte o projecto.": {
+    "en": "Save layer edits, then save or export the project.",
+    "es": "Guarde las ediciones de la capa y luego guarde o exporte el proyecto.",
+    "fr": "Enregistrez les modifications de la couche, puis enregistrez ou exportez le projet."
+  },
+  "Atributos da nova feição": {
+    "en": "New feature attributes",
+    "es": "Atributos de la nueva entidad",
+    "fr": "Attributs de la nouvelle entité"
+  },
+  "Fechar formulário de atributos": {
+    "en": "Close attribute form",
+    "es": "Cerrar formulario de atributos",
+    "fr": "Fermer le formulaire d'attributs"
+  },
+  "Feição criada sem atributos. Pode preenchê-los após guardar a edição, na tabela.": {
+    "en": "Feature created without attributes. You can fill them in the table after saving edits.",
+    "es": "Entidad creada sin atributos. Puede rellenarlos en la tabla tras guardar.",
+    "fr": "Entité créée sans attributs. Vous pourrez les renseigner dans la table après enregistrement."
+  },
+  "Geometria criada na camada «": {
+    "en": "Geometry created in layer «",
+    "es": "Geometría creada en la capa «",
+    "fr": "Géométrie créée dans la couche «"
+  },
+  "». Preencha os campos antes de guardar as edições.": {
+    "en": "». Fill in the fields before saving edits.",
+    "es": "». Rellene los campos antes de guardar las ediciones.",
+    "fr": "». Renseignez les champs avant d'enregistrer les modifications."
+  },
+  "Esta camada não tem campos definidos. Pode guardá-la e configurar a tabela depois.": {
+    "en": "This layer has no defined fields. You can save it and configure its table later.",
+    "es": "Esta capa no tiene campos definidos. Puede guardarla y configurar la tabla después.",
+    "fr": "Cette couche ne contient pas de champs définis. Vous pourrez les configurer après l'avoir enregistrée."
+  },
+  "Atributo ": {
+    "en": "Attribute ",
+    "es": "Atributo ",
+    "fr": "Attribut "
+  },
+  "Feição criada sem atributos. Utilize a tabela depois.": {
+    "en": "Feature created without attributes. Use the table later.",
+    "es": "Entidad creada sin atributos. Utilice la tabla después.",
+    "fr": "Entité créée sans attributs. Utilisez la table ensuite."
+  },
+  "Sem atributos": {
+    "en": "Without attributes",
+    "es": "Sin atributos",
+    "fr": "Sans attributs"
+  },
+  "Guardar atributos": {
+    "en": "Save attributes",
+    "es": "Guardar atributos",
+    "fr": "Enregistrer les attributs"
+  },
+  "Clique no mapa para definir os vértices. Conclua a linha com duplo clique ou feche o polígono no primeiro vértice. Depois preencha os atributos da feição.": {
+    "en": "Click on the map to place vertices. Double-click to finish a line, or close a polygon at its first vertex. Then fill in the feature attributes.",
+    "es": "Haga clic en el mapa para definir vértices. Termine la línea con doble clic o cierre el polígono en el primer vértice. Después rellene los atributos.",
+    "fr": "Cliquez sur la carte pour placer les sommets. Double-cliquez pour terminer une ligne ou fermez le polygone sur son premier sommet. Renseignez ensuite les attributs."
+  },
+  "O campo ": {
+    "en": "Field ",
+    "es": "El campo ",
+    "fr": "Le champ "
+  },
+  " deve conter um número decimal válido.": {
+    "en": " must contain a valid decimal number.",
+    "es": " debe contener un número decimal válido.",
+    "fr": " doit contenir un nombre décimal valide."
+  },
+  "Atributos atribuídos à feição. Guarde as edições da camada para os conservar.": {
+    "en": "Attributes assigned to the feature. Save the layer edits to preserve them.",
+    "es": "Atributos asignados a la entidad. Guarde las ediciones de la capa.",
+    "fr": "Attributs attribués à l'entité. Enregistrez les modifications pour les conserver."
   }
 };
 export function geoMozSpecialistText(language:string, portuguese:string):string {
