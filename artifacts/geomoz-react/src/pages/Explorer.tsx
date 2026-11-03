@@ -46,6 +46,7 @@ import AuthModal from "@/components/AuthModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useGeeAuth } from "@/hooks/useGeeAuth";
 import { useProject } from "@/context/ProjectContext";
+import { TerrainSessionProvider } from "@/context/TerrainSessionContext";
 import ProjectWorkspaceModal from "@/components/ProjectWorkspaceModal";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { mozambiqueAOI, GLOBAL_AOI, customAOI } from "@/lib/aoi";
@@ -71,7 +72,7 @@ type Tab =
   | "GeoMoz AI"
   | "Exportar";
 
-export default function Explorer() {
+function ExplorerContent() {
   const { toast } = useToast();
   const { user } = useAuth();
   const { geeConnected, geeProject } = useGeeAuth();
@@ -871,5 +872,15 @@ export default function Explorer() {
         }}
       />
     </div>
+  );
+}
+
+
+/** Sessions are scoped to Explorer, never shared across sign-out/re-entry. */
+export default function Explorer() {
+  return (
+    <TerrainSessionProvider>
+      <ExplorerContent />
+    </TerrainSessionProvider>
   );
 }
