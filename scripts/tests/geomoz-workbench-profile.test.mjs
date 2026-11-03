@@ -1,4 +1,6 @@
 import test from "node:test";
+// The Workbench CI runs this suite; include profile cursor geometry regressions.
+import "./geomoz-topographic-profile.test.mjs";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {GEOMOZ_ROLLOUT,curateGeoMozCommands,isGeoMozCommandVisible,isGeoMozDataSourceVisible,isGeoMozToolVisible,isGeoMozMenuItemVisible} from "../assets/workbench/geomoz-workbench-profile.ts";
@@ -70,4 +72,84 @@ test("GeoMoz GIS Workspace enables native attribute digitizing and the geologica
  assert.match(chrome,/geomoz-create-layer/);
  assert.match(prepare,/GEOMOZ_ROLLOUT.advancedDrawing/);
  assert.equal(GEOMOZ_ROLLOUT.advancedDrawing,true);
+});
+
+test("GeoMoz profile and shell copy follows selected language, not a fixed Portuguese UI",async()=>{
+  const {profileText,PROFILE_COPY}=await import("../assets/workbench/geomoz-profile-locales.ts");
+  const {workbenchText,translatedCommand}=await import("../assets/workbench/geomoz-workbench-locale.ts");
+  for(const lang of ["pt","en","es","fr"]){
+    assert.ok(profileText(lang,"profile"));
+    assert.ok(profileText(lang,"png").includes("PNG"));
+    assert.ok(profileText(lang,"pdf").includes("PDF"));
+    assert.ok(workbenchText(lang,"topography"));
+    assert.ok(workbenchText(lang,"search"));
+    assert.ok(workbenchText(lang,"projectOpen"));
+    assert.deepEqual(Object.keys(PROFILE_COPY[lang]).sort(),Object.keys(PROFILE_COPY.pt).sort(),
+      "Missing translated profile label in "+lang);
+  }
+  assert.equal(profileText("en","compute"),"Calculate profile");
+  assert.equal(profileText("es","compute"),"Calcular perfil");
+  assert.equal(profileText("fr","compute"),"Calculer le profil");
+  assert.equal(profileText("de","compute"),"Calculate profile","Unsupported GeoMoz-specific copy must fall back to English");
+  assert.equal(translatedCommand("en","proc.raster.slope","Declive",()=>""),"Slope");
+});
+test("topographic route is kept above raster layers after map style changes",()=>{
+  const src=readFileSync(new URL("../assets/workbench/GeoMozTopographicProfile.tsx",import.meta.url),"utf8");
+  assert.match(src,/map\.moveLayer\(id\)/);
+  assert.match(src,/const order = \[LINE, DOTS, CURSOR_HALO, CURSOR_DOT\]/);
+  assert.match(src,/current\.on\("styledata", redraw\)/);
+  assert.match(src,/current\.off\("styledata", redraw\)/);
+  assert.match(src,/geomoz-topo-export-png/);
+  assert.match(src,/geomoz-topo-export-pdf/);
+});
+test("profile PDF export embeds an image in a valid single-page PDF container",async()=>{
+  const {pdfFromJpeg}=await import("../assets/workbench/geomoz-profile-export.ts");
+  const jpeg=Uint8Array.from([255,216,255,224,0,16,74,70,73,70,0,255,217]);
+  const pdf=pdfFromJpeg(jpeg,1800,1000);
+  assert.equal(pdf.type,"application/pdf");
+  const raw=Buffer.from(await pdf.arrayBuffer()).toString("latin1");
+  assert.ok(raw.startsWith("%PDF-1.4"));
+  assert.match(raw,/\/Subtype \/Image/);
+  assert.match(raw,/\/DCTDecode/);
+  assert.match(raw,/xref\n0 6/);
+  assert.match(raw,/startxref\n\d+\n%%EOF/);
+  assert.throws(()=>pdfFromJpeg(Uint8Array.from([1,2,3,4]),1800,1000));
+});
+
+test("pinned GeoMoz GIS build copies every new profile export and i18n module",()=>{
+  const prep=readFileSync(new URL("../prepare-geomoz-workbench.mjs",import.meta.url),"utf8");
+  for(const required of ["geomoz-profile-export.ts","geomoz-profile-locales.ts","geomoz-workbench-locale.ts"]){
+    assert.ok(prep.includes('"' + required + '"'),required+" must be copied to the engine build");
+  }
+});
+
+test("specialist panels translate catalogue, filtering and printing in selected locale",async()=>{
+  const {geoMozSpecialistText,specialistTranslationKeys}=await import("../assets/workbench/geomoz-specialist-locale.ts");
+  assert.ok(specialistTranslationKeys.length>=140,"Reviewed specialized labels must be centrally registered");
+  assert.equal(geoMozSpecialistText("en","Catálogo de camadas"),"Layer catalog");
+  assert.equal(geoMozSpecialistText("es","Resultados do processamento"),"Resultados del procesamiento");
+  assert.equal(geoMozSpecialistText("fr","Endereço do servidor"),"Adresse du serveur");
+  assert.equal(geoMozSpecialistText("pt","Camadas"),"Camadas");
+  assert.equal(geoMozSpecialistText("de","Camadas"),"Layers","Unsupported product-only translations fall back to English");
+  const prepare=readFileSync(new URL("../prepare-geomoz-workbench.mjs",import.meta.url),"utf8");
+  assert.match(prepare,/"geomoz-specialist-locale.ts"/,"Specialist translation source must be copied into pinned GIS engine");
+  for (const panel of ["GeoMozLayerPanel.tsx","GeoMozQmsCatalog.tsx","GeoMozNextgisWebCatalog.tsx","GeoMozQgisPrintPanel.tsx"]) {
+    const source=readFileSync(new URL("../assets/workbench/"+panel,import.meta.url),"utf8");
+    assert.match(source,/geoMozSpecialistText\(language,pt\)/,panel+" must update on language changes");
+  }
+});
+
+test("earthquake, seismic analytics and EarthScope panels honor all reviewed GeoMoz locales",async()=>{
+  const {geoMozSpecialistText}=await import("../assets/workbench/geomoz-specialist-locale.ts");
+  const keys=["Eventos sísmicos","Análises sísmicas","Gutenberg–Richter · ajuste MLE","Redes FDSN"];
+  for(const lang of ["pt","en","es","fr"]){
+    for(const key of keys)assert.ok(geoMozSpecialistText(lang,key),lang+":"+key);
+  }
+  assert.equal(geoMozSpecialistText("en","Eventos sísmicos"),"Earthquake events");
+  assert.equal(geoMozSpecialistText("fr","Análises sísmicas"),"Analyses sismiques");
+  assert.equal(geoMozSpecialistText("es","Redes FDSN"),"Redes FDSN");
+  for(const file of ["GeoMozSeismicPanel.tsx","GeoMozSeismicAnalysis.tsx","GeoMozEarthscopeStations.tsx"]){
+    const source=readFileSync(new URL("../assets/workbench/"+file,import.meta.url),"utf8");
+    assert.match(source,/geoMozSpecialistText\(language,pt\)/,"Missing live locale in "+file);
+  }
 });

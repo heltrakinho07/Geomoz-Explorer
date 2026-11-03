@@ -42,7 +42,9 @@ test("pinned upstream is adapted at source rather than through client-side DOM r
   assert.match(prepare,/geomoz\.geolithica\.com/);
   assert.match(about,/third-party-notices\.html/);
   assert.doesNotMatch(about,/fetchLatestRelease|GeoLibre/);
-  assert.match(chrome,/geomoz-about-trigger/);
+  const settings=readFileSync("scripts/assets/workbench/GeoMozSettingsMenu.tsx","utf8");
+  assert.match(settings,/geomoz-about-trigger/);
+  assert.match(chrome,/GeoMozSettingsMenu/);
   assert.match(chrome,/data-testid="geomoz-workbench-chrome"/);
 });
 

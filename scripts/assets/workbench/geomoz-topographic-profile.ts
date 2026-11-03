@@ -65,6 +65,27 @@ export function profileLocations(vertices: LonLat[], count: number): ProfileSamp
   });
 }
 
+/** Find the actual sampled coordinate nearest to a distance along the drawn route.
+ * Distances must be monotonically increasing, as returned by profileLocations.
+ * Never infer an altitude or interpolate across raster NoData.
+ */
+export function nearestProfileSampleIndex(
+  samples: readonly ProfileSample[], distanceM: number,
+): number | null {
+  if (!samples.length || !Number.isFinite(distanceM)) return null;
+  if (distanceM <= samples[0].distanceM) return 0;
+  const last = samples.length - 1;
+  if (distanceM >= samples[last].distanceM) return last;
+  let low = 0, high = last;
+  while (high - low > 1) {
+    const mid = Math.floor((high + low) / 2);
+    if (samples[mid].distanceM <= distanceM) low = mid;
+    else high = mid;
+  }
+  return distanceM - samples[low].distanceM <= samples[high].distanceM - distanceM
+    ? low : high;
+}
+
 export function profileStatistics(samples: ProfileSample[]): ProfileStatistics | null {
   const finite = samples.filter(s => s.elevationM !== null && Number.isFinite(s.elevationM));
   if (!finite.length) return null;
