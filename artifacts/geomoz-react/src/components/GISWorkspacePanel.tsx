@@ -16,6 +16,8 @@ import type { QmsTileSource } from "@/lib/qms-catalog";
 interface Props {
   layers: WorkspaceLayer[];
   setLayers: React.Dispatch<React.SetStateAction<WorkspaceLayer[]>>;
+  geeEnabled?: boolean;
+  geeRegion?: { province: string | null; district: string | null; geometry?: unknown };
 }
 
 function FitSelectedLayer({ layer }: { layer: WorkspaceLayer | null }) {
@@ -34,7 +36,7 @@ function FitSelectedLayer({ layer }: { layer: WorkspaceLayer | null }) {
   return null;
 }
 
-export default function GISWorkspacePanel({ layers, setLayers }: Props) {
+export default function GISWorkspacePanel({ layers, setLayers, geeEnabled, geeRegion }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [workspaceMode, setWorkspaceMode] = useState<"layers" | "georeference">("layers");
   const [terrainStudioOpen, setTerrainStudioOpen] = useState(false);
@@ -160,7 +162,8 @@ export default function GISWorkspacePanel({ layers, setLayers }: Props) {
 
   return (
     <div className="h-full min-h-0 w-full overflow-hidden flex flex-col bg-slate-50 dark:bg-slate-950">
-      <TerrainStudio open={terrainStudioOpen} onClose={() => setTerrainStudioOpen(false)} />
+      <TerrainStudio open={terrainStudioOpen} onClose={() => setTerrainStudioOpen(false)}
+        geeEnabled={geeEnabled} geeRegion={geeRegion} />
       <div className="flex flex-wrap items-center gap-2 px-3 md:px-4 pt-3" role="tablist" aria-label="Ferramentas do GIS Workspace">
         <button type="button" role="tab" aria-selected={workspaceMode === "layers"} onClick={() => setWorkspaceMode("layers")}
           className={workspaceMode === "layers" ? "rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white" : "rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-xs font-bold"}>
