@@ -40,3 +40,24 @@ pnpm --dir artifacts/geomoz-react test
 - Terreno por tiles com vários níveis de detalhe para AOIs extensas.
 - Exportação GLB/glTF e renderizador Forge3D opcional em worker/GPU, apenas após testes de compatibilidade/licenciamento.
 - Internacionalização completa das strings do novo módulo.
+
+## Avanços de integração (11/2026)
+- **Sessão partilhada no Explorer:** as vistas de GeoAnálises e GIS Workspace reutilizam a mesma malha de pré-visualização, enquanto o utilizador e o projecto activo não mudarem. O estado é descartado na mudança de identidade/projecto; não existe gravação automática do raster em Firestore.
+- **AOI e GEE também no GIS Workspace:** a opção de gerar Copernicus GLO-30 usa a área de estudo seleccionada no projecto e as credenciais GEE já autenticadas.
+- **Cenas portáteis .geomoz:** o comando «Guardar .geomoz» cria um ficheiro local auto-suficiente com a grelha simplificada, CRS, limites métricos, estatísticas e visualização. «Reabrir cena 3D» valida o ficheiro antes de o desenhar. Esta extensão representa exclusivamente uma *cena de pré-visualização*, não um projecto GIS completo, nem o GeoTIFF original, nem uma textura externa.
+- **Textura raster georreferenciada:** `POST /geomoz-api/terrain/rgb-texture` recebe GeoTIFF RGB com CRS e as dimensões/extensão da malha, projecta as três bandas para a mesma grelha com Rasterio e devolve PNG RGBA para renderização. Pixels sem dados na textura revelam o relevo hipsométrico em vez de produzirem uma superfície preta.
+- **Maior segurança no download do GEE:** cada URL, incluindo redireccionamentos, é verificado contra destinos HTTPS Google permitidos. A descarga é limitada a 32 MB; arquivos ZIP exportados pelo GEE são descompactados de forma limitada e não são escritos no sistema de ficheiros.
+- **Exportação PDF:** mantém a proporção da vista, inclui nome do projecto e indica explicitamente a inexistência de escala constante em perspectiva.
+
+### Comandos de validação
+```bash
+python -m pytest geomoz-explorer/tests/test_terrain_dem.py geomoz-explorer/tests/test_terrain_texture.py -v
+pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/terrain-scene.test.ts
+pnpm run typecheck
+pnpm run build
+```
+
+### Restrições explícitas
+- Para importar uma ortofoto/Sentinel-2 como GeoTIFF RGB, as bandas 1/2/3 devem representar R/G/B. É necessária georreferenciação válida; PNG sem referência só pode ser aplicado com alinhamento manual prévio.
+- O modelo é reamostrado para visualização, não para medições científicas de detalhe.
+- Forge3D-Web permanece numa via experimental separada; ainda não é uma dependência de produção.
