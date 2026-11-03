@@ -122,3 +122,19 @@ test("pinned GeoMoz GIS build copies every new profile export and i18n module",(
     assert.ok(prep.includes('"' + required + '"'),required+" must be copied to the engine build");
   }
 });
+
+test("specialist panels translate catalogue, filtering and printing in selected locale",async()=>{
+  const {geoMozSpecialistText,specialistTranslationKeys}=await import("../assets/workbench/geomoz-specialist-locale.ts");
+  assert.ok(specialistTranslationKeys.length>=140,"Reviewed specialized labels must be centrally registered");
+  assert.equal(geoMozSpecialistText("en","Catálogo de camadas"),"Layer catalog");
+  assert.equal(geoMozSpecialistText("es","Resultados do processamento"),"Resultados del procesamiento");
+  assert.equal(geoMozSpecialistText("fr","Endereço do servidor"),"Adresse du serveur");
+  assert.equal(geoMozSpecialistText("pt","Camadas"),"Camadas");
+  assert.equal(geoMozSpecialistText("de","Camadas"),"Layers","Unsupported product-only translations fall back to English");
+  const prepare=readFileSync(new URL("../prepare-geomoz-workbench.mjs",import.meta.url),"utf8");
+  assert.match(prepare,/"geomoz-specialist-locale.ts"/,"Specialist translation source must be copied into pinned GIS engine");
+  for (const panel of ["GeoMozLayerPanel.tsx","GeoMozQmsCatalog.tsx","GeoMozNextgisWebCatalog.tsx","GeoMozQgisPrintPanel.tsx"]) {
+    const source=readFileSync(new URL("../assets/workbench/"+panel,import.meta.url),"utf8");
+    assert.match(source,/geoMozSpecialistText\(language,pt\)/,panel+" must update on language changes");
+  }
+});
