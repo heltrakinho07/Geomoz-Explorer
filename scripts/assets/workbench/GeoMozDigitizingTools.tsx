@@ -130,7 +130,7 @@ export function GeoMozDigitizingTools({layer,editLayerId,onToggleEdit,onCancelEd
       <button type="button" aria-label={ui("Fechar formulário de atributos")} onClick={()=>{setPending(null);setNotice(ui("Feição criada sem atributos. Pode preenchê-los após guardar a edição, na tabela."));}}><X size={17}/></button></header>
     <p>{ui("Geometria criada na camada «")}{layer.name}{ui("». Preencha os campos antes de guardar as edições.")}</p>
     {!fields.length&&<p>{ui("Esta camada não tem campos definidos. Pode guardá-la e configurar a tabela depois.")}</p>}
-    {fields.map(field=><label key={field.name}>{field.description||field.name} <small>({field.name})</small>
+    {fields.map(field=><label key={field.name}>{ui(field.description)||field.name} <small>({field.name})</small>
       <input autoComplete="off" aria-label={ui("Atributo ")+field.name} type={field.type==="number"?"number":"text"} step={field.type==="number"?"any":undefined}
        value={values[field.name]??""} onChange={e=>setValues(old=>({...old,[field.name]:e.target.value}))}/></label>)}
     <footer><button type="button" onClick={()=>{setPending(null);setNotice(ui("Feição criada sem atributos. Utilize a tabela depois."));}}>{ui("Sem atributos")}</button>
