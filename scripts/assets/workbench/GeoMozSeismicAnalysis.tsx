@@ -22,7 +22,7 @@ export function GeoMozSeismicAnalysis({events,truncated}:{events:SeismicEvent[];
       };
       return {...seismicProfile(events,parse(a),parse(b),Number(halfWidth)),error:""};
     }catch(e){return{lengthKm:0,points:[],error:e instanceof Error?e.message:ui("Perfil inválido.")};}
-  },[events,a,b,halfWidth]);
+  },[events,a,b,halfWidth,language]);
   const dated=events.filter(e=>e.magnitude!==null&&Number.isFinite(Date.parse(e.time))).sort((x,y)=>Date.parse(x.time)-Date.parse(y.time));
   const first=dated.length?Date.parse(dated[0].time):0,last=dated.length?Date.parse(dated[dated.length-1].time):0;
   const span=Math.max(864e5,last-first),maxM=Math.max(6,...dated.map(e=>e.magnitude??0));
