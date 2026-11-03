@@ -600,7 +600,7 @@ function ExplorerContent() {
               title="Terreno 3D com DEM GeoTIFF ou Copernicus GLO-30">
               <Mountain size={16}/><span className="hidden sm:inline">Terreno 3D</span><span className="sm:hidden">3D</span>
             </button>
-            <button type="button" data-testid="geomoz-print-open" onClick={()=>setPrintOpen(true) className="gm-system-print-button inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 shadow-sm hover:border-sky-400 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" aria-label="Abrir layout de impressão" title="Composição cartográfica / relatório A4 ou A3"><Printer size={16}/><span className="hidden xl:inline">Layout de impressão</span></button>
+            <button type="button" data-testid="geomoz-print-open" onClick={()=>setPrintOpen(true)} className="gm-system-print-button inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 shadow-sm hover:border-sky-400 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" aria-label="Abrir layout de impressão" title="Composição cartográfica / relatório A4 ou A3"><Printer size={16}/><span className="hidden xl:inline">Layout de impressão</span></button>
           </div>
           {/* Right: Geocoding Search Input (only on Mapa) */}
           {activeTab === "Mapa" && (
