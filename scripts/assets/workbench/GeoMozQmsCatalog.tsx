@@ -134,7 +134,7 @@ export function GeoMozQmsCatalog({ onClose }: { onClose: () => void }) {
         <Search size={15} aria-hidden="true" />
         <input aria-label={ui("Pesquisar mapas-base GeoMoz")} type="search" value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Pesquisar OpenStreetMap, relevo, satélite…" />
+          placeholder={ui("Pesquisar OpenStreetMap, relevo, satélite…")} />
       </label>
       <label className="gm-qms-search gm-qms-region">
         <span className="text-xs">{ui("Cobertura geográfica")}</span>
@@ -159,7 +159,7 @@ export function GeoMozQmsCatalog({ onClose }: { onClose: () => void }) {
       <div className="gm-qms-results">
         {results.map((item) => (
           <div className="gm-qms-service-row" key={item.id} title={item.description || item.name}>
-            <span><strong>{item.name}</strong><small>{item.description || "{ui("Serviço cartográfico remoto")}"}</small></span>
+            <span><strong>{item.name}</strong><small>{item.description || ui("Serviço cartográfico remoto")}</small></span>
             <div className="gm-qms-service-actions">
               <button type="button" disabled={addingId !== null}
                 aria-label={ui("Verificar mosaico de ") + item.name} onClick={() => void inspect(item)}>{ui("Verificar")}</button>
