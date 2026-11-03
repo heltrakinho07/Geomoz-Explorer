@@ -310,8 +310,8 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
         </div>
       </header>
 
-      <main className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <aside className="order-2 w-full shrink-0 space-y-5 overflow-y-auto border-t border-slate-700 bg-slate-900 p-4 md:order-1 md:w-72 md:border-r md:border-t-0">
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+        <aside className="order-2 max-h-[42vh] w-full shrink-0 space-y-5 overflow-y-auto border-t border-slate-700 bg-slate-900 p-4 md:order-1 md:max-h-none md:w-72 md:border-r md:border-t-0">
           <div>
             <label className="mb-2 block text-xs font-semibold text-slate-300" htmlFor="terrain-studio-dem">
               1. Modelo digital de elevação
@@ -413,7 +413,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
           {error && <p role="alert" className="rounded-lg border border-rose-700 bg-rose-950/40 p-3 text-xs text-rose-200">{error}</p>}
           {rendererError && <p role="alert" className="rounded-lg border border-rose-700 bg-rose-950/40 p-3 text-xs text-rose-200">{rendererError}</p>}
         </aside>
-        <section className="relative order-1 min-h-[260px] flex-1 overflow-hidden md:order-2"
+        <section className="relative order-1 min-h-[220px] flex-1 overflow-hidden md:order-2"
           aria-label="Visualizador tridimensional do DEM">
           {terrain ? (
             <canvas ref={canvasRef} aria-label="Modelo tridimensional de elevação"
