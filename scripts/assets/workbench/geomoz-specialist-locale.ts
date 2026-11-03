@@ -587,6 +587,156 @@ const entries: Record<string, {en:string;es:string;fr:string}> = {
     "en": "Drag to widen or narrow the catalog",
     "es": "Arrastre para ampliar o reducir el catálogo",
     "fr": "Faites glisser pour élargir ou rétrécir le catalogue"
+  },
+  "Recursos": {
+    "en": "Resources",
+    "es": "Recursos",
+    "fr": "Ressources"
+  },
+  "O grupo não contém estilos ou mapas públicos compatíveis.": {
+    "en": "This group contains no compatible public styles or maps.",
+    "es": "Este grupo no contiene estilos ni mapas públicos compatibles.",
+    "fr": "Ce groupe ne contient pas de styles ou de cartes publiques compatibles."
+  },
+  "Não foi possível consultar o servidor. Verifique a rede e se a API permite CORS nesta origem.": {
+    "en": "Could not query the server. Check network access and whether its API permits CORS.",
+    "es": "No se pudo consultar el servidor. Compruebe la red y si la API permite CORS.",
+    "fr": "Impossible d'interroger le serveur. Vérifiez le réseau et les autorisations CORS de l'API."
+  },
+  "O servidor NextGIS Web não respondeu.": {
+    "en": "The NextGIS Web server did not respond.",
+    "es": "El servidor NextGIS Web no respondió.",
+    "fr": "Le serveur NextGIS Web n'a pas répondu."
+  },
+  "O motor SIG não confirmou a importação vectorial.": {
+    "en": "The GIS engine did not confirm vector import.",
+    "es": "El motor SIG no confirmó la importación vectorial.",
+    "fr": "Le moteur SIG n'a pas confirmé l'import vectoriel."
+  },
+  " feições vectoriais.": {
+    "en": " vector features.",
+    "es": " entidades vectoriales.",
+    "fr": " entités vectorielles."
+  },
+  " importada: ": {
+    "en": " imported: ",
+    "es": " importada: ",
+    "fr": " importée : "
+  },
+  " adicionada ao catálogo do projecto.": {
+    "en": " added to the project catalog.",
+    "es": " añadida al catálogo del proyecto.",
+    "fr": " ajoutée au catalogue du projet."
+  },
+  "Não foi possível adicionar a camada.": {
+    "en": "Could not add the layer.",
+    "es": "No se pudo añadir la capa.",
+    "fr": "Impossible d'ajouter la couche."
+  },
+  "NextGIS Web — recursos remotos": {
+    "en": "NextGIS Web — remote resources",
+    "es": "NextGIS Web — recursos remotos",
+    "fr": "NextGIS Web — ressources distantes"
+  },
+  "Servidor NextGIS Web": {
+    "en": "NextGIS Web server",
+    "es": "Servidor NextGIS Web",
+    "fr": "Serveur NextGIS Web"
+  },
+  "Recursos públicos · Importação como camadas SIG nativas": {
+    "en": "Public resources · import as native GIS layers",
+    "es": "Recursos públicos · importar como capas SIG nativas",
+    "fr": "Ressources publiques · import comme couches SIG natives"
+  },
+  "Fechar NextGIS Web": {
+    "en": "Close NextGIS Web",
+    "es": "Cerrar NextGIS Web",
+    "fr": "Fermer NextGIS Web"
+  },
+  "Endereço do servidor": {
+    "en": "Server address",
+    "es": "Dirección del servidor",
+    "fr": "Adresse du serveur"
+  },
+  "Ligar": {
+    "en": "Connect",
+    "es": "Conectar",
+    "fr": "Connexion"
+  },
+  "Navegação de recursos": {
+    "en": "Resource navigation",
+    "es": "Navegación de recursos",
+    "fr": "Navigation des ressources"
+  },
+  "Voltar ao grupo anterior": {
+    "en": "Return to previous group",
+    "es": "Volver al grupo anterior",
+    "fr": "Retour au groupe précédent"
+  },
+  "Voltar": {
+    "en": "Back",
+    "es": "Volver",
+    "fr": "Retour"
+  },
+  "Filtrar recursos do grupo": {
+    "en": "Filter group resources",
+    "es": "Filtrar recursos del grupo",
+    "fr": "Filtrer les ressources du groupe"
+  },
+  "Nome do mapa, estilo ou pasta…": {
+    "en": "Map, style or folder name…",
+    "es": "Nombre de mapa, estilo o carpeta…",
+    "fr": "Nom de carte, style ou dossier…"
+  },
+  "A consultar catálogo…": {
+    "en": "Loading catalog…",
+    "es": "Consultando catálogo…",
+    "fr": "Chargement du catalogue…"
+  },
+  "Esta sessão não permite adicionar camadas; a consulta é de leitura.": {
+    "en": "This session cannot add layers; browsing is read-only.",
+    "es": "Esta sesión no puede añadir capas; la consulta es de solo lectura.",
+    "fr": "Cette session ne permet pas d'ajouter des couches ; consultation en lecture seule."
+  },
+  "Grupo de recursos": {
+    "en": "Resource group",
+    "es": "Grupo de recursos",
+    "fr": "Groupe de ressources"
+  },
+  "Camada vectorial · importação local": {
+    "en": "Vector layer · local import",
+    "es": "Capa vectorial · importación local",
+    "fr": "Couche vectorielle · import local"
+  },
+  "Abrir": {
+    "en": "Open",
+    "es": "Abrir",
+    "fr": "Ouvrir"
+  },
+  "A importar…": {
+    "en": "Importing…",
+    "es": "Importando…",
+    "fr": "Importation…"
+  },
+  "Importar": {
+    "en": "Import",
+    "es": "Importar",
+    "fr": "Importer"
+  },
+  "Abrir servidor de origem": {
+    "en": "Open source server",
+    "es": "Abrir servidor de origen",
+    "fr": "Ouvrir le serveur source"
+  },
+  "As camadas vectoriais são exportadas em EPSG:4326 (máximo 8 MB / 5 000 feições) e ficam disponíveis para análise local. A ligação utiliza apenas a API pública e não envia credenciais.": {
+    "en": "Vector layers are exported in EPSG:4326 (up to 8 MB / 5,000 features) for local analysis. Only the public API is used, and no credentials are sent.",
+    "es": "Las capas vectoriales se exportan en EPSG:4326 (hasta 8 MB / 5.000 entidades) para análisis local. Solo se utiliza la API pública y no se envían credenciales.",
+    "fr": "Les couches vectorielles sont exportées en EPSG:4326 (8 Mo / 5 000 entités maximum) pour l'analyse locale. Seule l'API publique est utilisée, sans transmission d'identifiants."
+  },
+  "Recursos privados precisam de autorização no próprio NextGIS Web. A disponibilidade, CORS e os direitos de reutilização dependem do servidor de origem.": {
+    "en": "Private resources require authorization in NextGIS Web. Availability, CORS and reuse rights depend on the source server.",
+    "es": "Los recursos privados requieren autorización en NextGIS Web. La disponibilidad, CORS y los derechos de reutilización dependen del servidor de origen.",
+    "fr": "Les ressources privées nécessitent une autorisation dans NextGIS Web. La disponibilité, CORS et les droits de réutilisation dépendent du serveur source."
   }
 };
 export function geoMozSpecialistText(language:string, portuguese:string):string {
