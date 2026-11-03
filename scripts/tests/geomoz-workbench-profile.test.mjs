@@ -153,3 +153,27 @@ test("earthquake, seismic analytics and EarthScope panels honor all reviewed Geo
     assert.match(source,/geoMozSpecialistText\(language,pt\)/,"Missing live locale in "+file);
   }
 });
+
+test("cartographic wizard, layer properties, digitizing and about are translated without altering scientific schema fields",async()=>{
+  const {geoMozSpecialistText,specialistTranslationKeys}=await import("../assets/workbench/geomoz-specialist-locale.ts");
+  assert.ok(specialistTranslationKeys.length>=360,"GeoMoz-owned layer tools need a centralized translation catalog");
+  const sample={
+    en:["Nova camada vectorial","New vector layer"],
+    es:["Unidades geológicas","Unidades geológicas"],
+    fr:["Falhas e lineamentos","Failles et linéaments"],
+  };
+  for(const [lang,[key,value]] of Object.entries(sample)){
+    assert.equal(geoMozSpecialistText(lang,key),value);
+  }
+  assert.equal(geoMozSpecialistText("pt","Adicionar ponto"),"Adicionar ponto");
+  assert.equal(geoMozSpecialistText("de","Adicionar ponto"),"Add point","Unreviewed locales use English fallback");
+  for(const file of ["GeoMozLayerCreation.tsx","GeoMozLayerProperties.tsx","GeoMozDigitizingTools.tsx","GeoMozAboutDialog.tsx"]){
+    const source=readFileSync(new URL("../assets/workbench/"+file,import.meta.url),"utf8");
+    assert.match(source,/geoMozSpecialistText\(language,pt\)/,file+" must use selected language");
+  }
+  const cartography=readFileSync(new URL("../assets/workbench/GeoMozLayerCreation.tsx",import.meta.url),"utf8");
+  assert.match(cartography,/ui\(spec\.name\)/,"Template labels must change with selected language");
+  assert.match(cartography,/geomozFieldSchema:fields/,"Persist the original schema keys and fields, not translated metadata");
+  const about=readFileSync(new URL("../assets/workbench/GeoMozAboutDialog.tsx",import.meta.url),"utf8");
+  assert.match(about,/\.\.\/geomoz\/geomoz-specialist-locale/,"The About dialog is installed in the layout folder");
+});
