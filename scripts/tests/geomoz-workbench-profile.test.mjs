@@ -138,3 +138,18 @@ test("specialist panels translate catalogue, filtering and printing in selected 
     assert.match(source,/geoMozSpecialistText\(language,pt\)/,panel+" must update on language changes");
   }
 });
+
+test("earthquake, seismic analytics and EarthScope panels honor all reviewed GeoMoz locales",async()=>{
+  const {geoMozSpecialistText}=await import("../assets/workbench/geomoz-specialist-locale.ts");
+  const keys=["Eventos sísmicos","Análises sísmicas","Gutenberg–Richter · ajuste MLE","Redes FDSN"];
+  for(const lang of ["pt","en","es","fr"]){
+    for(const key of keys)assert.ok(geoMozSpecialistText(lang,key),lang+":"+key);
+  }
+  assert.equal(geoMozSpecialistText("en","Eventos sísmicos"),"Earthquake events");
+  assert.equal(geoMozSpecialistText("fr","Análises sísmicas"),"Analyses sismiques");
+  assert.equal(geoMozSpecialistText("es","Redes FDSN"),"Redes FDSN");
+  for(const file of ["GeoMozSeismicPanel.tsx","GeoMozSeismicAnalysis.tsx","GeoMozEarthscopeStations.tsx"]){
+    const source=readFileSync(new URL("../assets/workbench/"+file,import.meta.url),"utf8");
+    assert.match(source,/geoMozSpecialistText\(language,pt\)/,"Missing live locale in "+file);
+  }
+});
