@@ -98,11 +98,15 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   // Use the engine's existing persisted i18next preference and lazy-loaded locales.
   const {language}=useLanguage();
   const {t:engineT}=useTranslation();
+  // Normalize the strongly typed i18next overload to the dynamic engine-key contract.
+  // Supplying defaultValue is mandatory for arbitrary source catalog keys.
+  const translateEngine=(key:string,options?:{defaultValue:string}):string=>
+    String(engineT(key,{defaultValue:options?.defaultValue??""}));
   const txt=(key:WorkbenchCopyKey)=>workbenchText(language,key);
-  const coreLabel=(name:string)=>workbenchCoreLabel(name,language,engineT);
+  const coreLabel=(name:string)=>workbenchCoreLabel(name,language,translateEngine);
   const categoryLabel=(name:string)=>language==="pt"?name:
     CATEGORY_TRANSLATIONS[language]?.[name]??(coreLabel(name)!==name?coreLabel(name):CATEGORY_TRANSLATIONS.en[name]??name);
-  const commandLabel=(command:Command)=>translatedCommand(language,command.id,LABELS[command.id]??command.title,engineT);
+  const commandLabel=(command:Command)=>translatedCommand(language,command.id,LABELS[command.id]??command.title,translateEngine);
   const moduleLabel=(url:string,fallback:string)=>{
     const keys:Record<string,WorkbenchCopyKey>={"/dashboard":"overview","/mapa":"explorer","/analises":"analysis",
       "/hidrografia":"watersheds","/agua-subterranea":"groundwater","/geoperigos":"hazards","/documentacao":"docs"};

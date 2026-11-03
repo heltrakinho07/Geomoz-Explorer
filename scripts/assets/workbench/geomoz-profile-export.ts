@@ -121,7 +121,7 @@ async function renderProfileReport(
 export async function exportProfileFigure(
   format: "png" | "pdf", svg: SVGSVGElement | null,
   samples: ProfileSample[], stats: ProfileStatistics, dem: string,
-  language: string, t: (key: string) => string,
+  language: string, t: (key: ProfileCopyKey) => string,
 ): Promise<void> {
   if (!svg || !samples.length || !stats.validCount) throw Error("Não existe um gráfico válido para exportar.");
   const locale = ["pt", "en", "fr", "es"].includes(language) ? language : "en";
