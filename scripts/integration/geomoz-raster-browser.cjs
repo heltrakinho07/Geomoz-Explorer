@@ -83,13 +83,23 @@ module.exports=async function validateRasterProcessing(page){
  await page.mouse.click(mapCanvas.x+mapCanvas.width*.53,mapCanvas.y+mapCanvas.height*.52);
  await topo.getByRole("button",{name:"Terminar traçado"}).click();
  await topo.getByRole("button",{name:"Calcular perfil"}).click();
- await topo.getByRole("img",{name:/Gráfico de elevação/}).waitFor({timeout:90000});
+ await topo.getByRole("group",{name:/Gráfico de elevação/}).waitFor({timeout:90000});
  assert.match(await topo.innerText(),/amostras válidas/);
  const csvPromise=page.waitForEvent("download");
  await topo.getByRole("button",{name:"Exportar CSV"}).click();
  const csv=await csvPromise;
  assert.equal(csv.suggestedFilename(),"geomoz_perfil_topografico.csv");
  await csv.saveAs("workbench-browser-artifacts/geomoz_perfil_topografico.csv");
+ for (const [format,expectedMime] of [["png",[0x89,0x50,0x4e,0x47]],["pdf",[0x25,0x50,0x44,0x46]]]) {
+   const downloadPromise=page.waitForEvent("download");
+   await topo.getByTestId("geomoz-topo-export-"+format).click();
+   const file=await downloadPromise;
+   assert.equal(file.suggestedFilename(),"geomoz_perfil_topografico."+format);
+   const name="workbench-browser-artifacts/geomoz_perfil_topografico."+format;
+   await file.saveAs(name);
+   const bytes=await readFile(name);
+   assert.deepEqual([...bytes.subarray(0,4)],expectedMime,"Exported "+format+" must be a real image/document");
+ }
  const csvText=await readFile("workbench-browser-artifacts/geomoz_perfil_topografico.csv","utf8");
  assert.ok(csvText.includes("Distancia_km,Elevacao_m"));
  const validRows=csvText.trim().split(/\r?\n/).slice(2).filter(row=>{
