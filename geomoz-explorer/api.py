@@ -2766,3 +2766,6 @@ async def terrain_rgb_texture(
 # Billing endpoints are isolated from geospatial endpoints and always Firebase-authenticated.
 from billing_api import router as billing_router
 app.include_router(billing_router)
+
+from project_quota import router as project_quota_router
+app.include_router(project_quota_router)
