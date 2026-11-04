@@ -143,7 +143,14 @@ export const PORTAL_CATALOGS = {
     "settings.cloudQuotaNote": "Os créditos de processamento GeoMoz não substituem as quotas Google Earth Engine do utilizador.",
     "settings.storageSummary": "Resumo do armazenamento no Firestore",
     "settings.cloudStatus": "Estado da nuvem",
-    "settings.synced": "Sincronizado"
+    "settings.synced": "Sincronizado",
+    "dashboard.tag.copernicus": "Copernicus 30 m",
+    "dashboard.tag.sensors": "Sentinel-2 e Landsat",
+    "dashboard.tag.d8": "Modelação D8",
+    "dashboard.tag.aquifers": "AHP e aquíferos",
+    "dashboard.tag.sar": "Sentinel-1 SAR",
+    "dashboard.tag.ai": "Agente inteligente",
+    "dashboard.tag.formats": "PDF, HTML e TIFF"
   },
   "en": {
     "sidebar.brandSubtitle": "Geospatial studies",
@@ -285,7 +292,14 @@ export const PORTAL_CATALOGS = {
     "settings.cloudQuotaNote": "GeoMoz processing credits do not replace the user's Google Earth Engine quotas.",
     "settings.storageSummary": "Firestore storage summary",
     "settings.cloudStatus": "Cloud status",
-    "settings.synced": "Synced"
+    "settings.synced": "Synced",
+    "dashboard.tag.copernicus": "Copernicus 30 m",
+    "dashboard.tag.sensors": "Sentinel-2 and Landsat",
+    "dashboard.tag.d8": "D8 modelling",
+    "dashboard.tag.aquifers": "AHP and aquifers",
+    "dashboard.tag.sar": "Sentinel-1 SAR",
+    "dashboard.tag.ai": "Intelligent agent",
+    "dashboard.tag.formats": "PDF, HTML and TIFF"
   },
   "es": {
     "sidebar.brandSubtitle": "Estudios geoespaciales",
@@ -427,7 +441,14 @@ export const PORTAL_CATALOGS = {
     "settings.cloudQuotaNote": "Los créditos de procesamiento GeoMoz no sustituyen las cuotas Google Earth Engine del usuario.",
     "settings.storageSummary": "Resumen del almacenamiento en Firestore",
     "settings.cloudStatus": "Estado de la nube",
-    "settings.synced": "Sincronizado"
+    "settings.synced": "Sincronizado",
+    "dashboard.tag.copernicus": "Copernicus 30 m",
+    "dashboard.tag.sensors": "Sentinel-2 y Landsat",
+    "dashboard.tag.d8": "Modelado D8",
+    "dashboard.tag.aquifers": "AHP y acuíferos",
+    "dashboard.tag.sar": "Sentinel-1 SAR",
+    "dashboard.tag.ai": "Agente inteligente",
+    "dashboard.tag.formats": "PDF, HTML y TIFF"
   },
   "fr": {
     "sidebar.brandSubtitle": "Études géospatiales",
@@ -569,7 +590,14 @@ export const PORTAL_CATALOGS = {
     "settings.cloudQuotaNote": "Les crédits de traitement GeoMoz ne remplacent pas les quotas Google Earth Engine de l'utilisateur.",
     "settings.storageSummary": "Résumé du stockage Firestore",
     "settings.cloudStatus": "État du cloud",
-    "settings.synced": "Synchronisé"
+    "settings.synced": "Synchronisé",
+    "dashboard.tag.copernicus": "Copernicus 30 m",
+    "dashboard.tag.sensors": "Sentinel-2 et Landsat",
+    "dashboard.tag.d8": "Modélisation D8",
+    "dashboard.tag.aquifers": "AHP et aquifères",
+    "dashboard.tag.sar": "Sentinel-1 SAR",
+    "dashboard.tag.ai": "Agent intelligent",
+    "dashboard.tag.formats": "PDF, HTML et TIFF"
   }
 } as const;
 export type PortalCopyKey = keyof typeof PORTAL_CATALOGS.pt;
