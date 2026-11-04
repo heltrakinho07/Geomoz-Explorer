@@ -88,6 +88,7 @@ const server = createServer(async (req, res) => {
       {code:"es",actual:"es",navigation:"Cuencas hidrográficas",banner:"Centro de mando geoespacial",settings:"Idioma de la interfaz"},
       {code:"fr",actual:"fr",navigation:"Bassins versants",banner:"Centre de pilotage géospatial",settings:"Langue de l'interface"},
       {code:"de",actual:"en",navigation:"Watersheds",banner:"Geospatial command centre",settings:"Interface language"},
+      {code:"it",actual:"en",navigation:"Watersheds",banner:"Geospatial command centre",settings:"Interface language"},
       {code:"pt",actual:"pt",navigation:"Bacias hidrográficas",banner:"Centro de Comando Geoespacial",settings:"Idioma da interface"},
     ]){
       await portalLocale.selectOption(copy.code);
@@ -98,6 +99,14 @@ const server = createServer(async (req, res) => {
           document.documentElement.lang===copy.actual &&
           document.querySelector('[data-testid="geomoz-portal-language"]')?.getAttribute("aria-label")===copy.settings;
       },copy,{timeout:18000});
+      if (copy.code === "it" || copy.code === "de") {
+        const notice = page.getByTestId("geomoz-language-fallback");
+        await notice.waitFor({state:"visible"});
+        if (!(await notice.innerText()).includes(copy.code === "it" ? "Italiano" : "Deutsch"))
+          throw Error("GIS-only language fallback notice does not identify the selected language.");
+        if (!(await page.getByTestId("geomoz-settings-page").innerText()).includes("GeoMoz account preferences"))
+          throw Error("Settings chrome has not switched to English fallback.");
+      } else await page.getByTestId("geomoz-language-reviewed-info").waitFor({state:"visible"});
     }
     await page.getByRole("link",{name:"Voltar à plataforma",exact:true}).click();
     await page.getByTestId("geomoz-settings-page").waitFor({state:"hidden"});
