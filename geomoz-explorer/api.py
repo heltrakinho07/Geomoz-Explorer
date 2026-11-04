@@ -375,7 +375,11 @@ async def create_processing_job_endpoint(
             parameters=parsed_parameters,
             max_active_per_user=concurrent_limit,
             job_id=job_id,
-            on_complete=lambda succeeded: settle_cloud_job_credit(uid, job_id, success=succeeded),
+            # Failed/cancelled work releases the reservation. Successful jobs
+            # settle only when the user actually requests the output.
+            on_complete=lambda succeeded: (
+                None if succeeded else settle_cloud_job_credit(uid, job_id, success=False)
+            ),
         )
     except Exception as exc:
         if reserved:
@@ -430,6 +434,10 @@ async def processing_job_result(
     if not output:
         raise HTTPException(status_code=410, detail="Resultado já não está disponível.")
 
+    # Charge only after the requested output exists and belongs to the caller;
+    # repeated downloads are idempotent. Lost files are not charged.
+    from billing import settle_cloud_job_credit
+    settle_cloud_job_credit(uid, job.id, success=True)
     return FileResponse(
         path=str(output),
         media_type="image/tiff",
