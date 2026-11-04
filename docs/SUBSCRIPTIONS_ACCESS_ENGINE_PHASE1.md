@@ -42,11 +42,11 @@ plano, preços ou créditos fornecidos pelo navegador.
 | GIS local (sem execução no servidor) | Community e restantes planos |
 | Criar projecto cloud | Limites por plano, já transaccionais |
 | GEE: análises que exigem credenciais próprias | Academic/Pro/Teams/Enterprise; módulo remote_sensing activo; nenhuma dedução de créditos GeoMoz |
-| Processamento pesado GDAL/COG no servidor | Academic/Pro/Teams/Enterprise; módulo GIS activo; 1 crédito GeoMoz por job aceite e concluído |
+| Processamento pesado GDAL/COG no servidor | Academic/Pro/Teams/Enterprise; módulo GIS activo; 1 crédito GeoMoz reservado por job aceite, confirmado na descarga autenticada do resultado |
 | Concorrência GDAL | \`min(concurrent_jobs_do_plano, GEOMOZ_JOB_MAX_ACTIVE_PER_USER)\` **por instância** |
 | Sem créditos, plano vencido ou Community | Recusa de nova submissão do job (402) |
-| Falha/cancelamento do job gerido | Devolução transaccional, idempotente, do crédito |
-| Worker interrompido por deployment/crash | Reservas abandonadas reconciliadas após timeout (na próxima leitura do saldo) |
+| Falha/cancelamento do job gerido | Devolução transaccional, idempotente, da reserva |
+| Worker interrompido por deployment/crash | Reservas não resgatadas reconciliadas após timeout (na próxima leitura do saldo) |
 
 Os créditos contam por **mês civil UTC**, não por aniversário da subscrição.
 Uma nova sessão de compra não altera retroactivamente as reservas antigas.
@@ -75,7 +75,7 @@ Uma nova sessão de compra não altera retroactivamente as reservas antigas.
   mesmo chamando a API directamente.
 - Academic aprovado e com subscrição válida deve aceder a GEE próprio e 1 job
   por instância; Pro terá 2, sujeitos a limites físicos do worker.
-- Verificar consumo de 1 crédito por job raster concluído e reembolso se falhar,
+- Verificar reserva antes da execução, débito final após descarga do resultado, e reembolso se falhar,
   terminar por timeout ou for cancelado.
 - Testar expiração/refund de plano entre check de permissões e reserva: o backend
   tem de recusar a reserva dentro da transacção.
