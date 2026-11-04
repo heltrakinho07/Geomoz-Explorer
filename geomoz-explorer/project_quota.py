@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from firebase_admin import firestore
 
-from api import require_firebase_auth
+from billing_auth import require_billing_auth
 from billing_core import PLANS, current_plan, utcnow
 from billing_api import _db
 
@@ -26,7 +26,7 @@ class ProjectInput(BaseModel):
 
 
 @router.post("", status_code=201)
-def create_cloud_project(body: ProjectInput, uid: str = Depends(require_firebase_auth)):
+def create_cloud_project(body: ProjectInput, uid: str = Depends(require_billing_auth)):
     if len(json.dumps(body.aoi)) > 200_000:
         raise HTTPException(413, "A geometria da área de estudo excede 200 KB.")
     if len(json.dumps(body.period)) > 4_000:
@@ -64,7 +64,7 @@ def create_cloud_project(body: ProjectInput, uid: str = Depends(require_firebase
 
 
 @router.delete("/{project_id}")
-def delete_cloud_project(project_id: str, uid: str = Depends(require_firebase_auth)):
+def delete_cloud_project(project_id: str, uid: str = Depends(require_billing_auth)):
     if not project_id.startswith("proj_") or len(project_id) > 80 or "/" in project_id:
         raise HTTPException(400, "ID de projecto inválido.")
     db = _db()
