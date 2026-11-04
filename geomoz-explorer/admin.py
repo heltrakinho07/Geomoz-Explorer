@@ -238,6 +238,11 @@ def grant_plan(uid: str, payload: GrantPlan, operator=Depends(require_superadmin
             if payload.through else None
         ),
         "paymentProvider": "admin_grant",
+        # A refund of a previous PayZeno payment must not revoke an independent
+        # administrative concession merely because lastPaymentId stayed stale.
+        "lastPaymentId": None,
+        "billingCycle": None,
+        "cancelAtPeriodEnd": False,
         "grantedAt": _utcnow().isoformat(),
         "grantedBy": operator["uid"],
         "grantReason": payload.reason,
