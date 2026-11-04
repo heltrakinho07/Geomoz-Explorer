@@ -222,9 +222,12 @@ app = FastAPI(title="GeoMoz API", version="2.1.0")
 from billing import router as billing_router
 from project_quota import router as project_quota_router
 from admin import router as admin_router
+from billing_plan_requests import router as plan_requests_router, admin_router as admin_plan_requests_router
 app.include_router(billing_router)
 app.include_router(project_quota_router)
 app.include_router(admin_router)
+app.include_router(plan_requests_router)
+app.include_router(admin_plan_requests_router)
 
 # ee.Initialize mutates global Earth Engine SDK state. Serialize the complete
 # authentication + computation lifecycle of GEE requests in each Python worker.
