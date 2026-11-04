@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import math
 import os
 import shutil
@@ -20,7 +21,7 @@ import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, BinaryIO, Dict, Optional
+from typing import Any, BinaryIO, Callable, Dict, Optional
 
 JOB_ROOT = Path(os.getenv("GEOMOZ_JOB_ROOT", "/tmp/geomoz-processing-jobs"))
 JOB_TTL_SECONDS = max(60, int(os.getenv("GEOMOZ_JOB_TTL_SECONDS", "7200")))
@@ -39,6 +40,8 @@ _jobs: Dict[str, "ProcessingJob"] = {}
 _futures: Dict[str, Future] = {}
 _processes: Dict[str, subprocess.Popen] = {}
 _cancellations: Dict[str, threading.Event] = {}
+_callbacks: Dict[str, Callable[[bool], None]] = {}
+_logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -208,6 +211,17 @@ def _write_input(input_path: Path, source: BinaryIO) -> int:
     return size
 
 
+def _finish_job_callback(job_id: str, succeeded: bool) -> None:
+    with _lock:
+        callback = _callbacks.pop(job_id, None)
+    if callback is not None:
+        try:
+            callback(succeeded)
+        except Exception:
+            # Billing reservations are recovered by the expiry reconciler.
+            _logger.exception("Could not settle managed job credit %s", job_id)
+
+
 def _run_job(job_id: str, input_path: Path, output_path: Path) -> None:
     with _lock:
         job = _jobs.get(job_id)
@@ -218,6 +232,7 @@ def _run_job(job_id: str, input_path: Path, output_path: Path) -> None:
         return
 
     process: Optional[subprocess.Popen] = None
+    succeeded = False
     try:
         if cancelled.is_set():
             return
@@ -253,6 +268,7 @@ def _run_job(job_id: str, input_path: Path, output_path: Path) -> None:
             message="Processamento concluído.", output_name=output_path.name,
             error=None,
         )
+        succeeded = True
     except subprocess.TimeoutExpired:
         if process:
             process.kill()
@@ -276,6 +292,7 @@ def _run_job(job_id: str, input_path: Path, output_path: Path) -> None:
             _cancellations.pop(job_id, None)
         if removed:
             shutil.rmtree(_job_dir(job_id), ignore_errors=True)
+        _finish_job_callback(job_id, succeeded)
 
 
 def create_processing_job(
@@ -286,6 +303,9 @@ def create_processing_job(
     input_bytes: Optional[bytes] = None,
     input_stream: Optional[BinaryIO] = None,
     parameters: Optional[Dict[str, Any]] = None,
+    max_active_per_user: Optional[int] = None,
+    job_id: Optional[str] = None,
+    on_complete: Optional[Callable[[bool], None]] = None,
 ) -> ProcessingJob:
     if not uid:
         raise ValueError("Autenticação necessária.")
@@ -299,7 +319,9 @@ def create_processing_job(
     if not input_file.lower().endswith((".tif", ".tiff")):
         raise ValueError("Os jobs raster aceitam GeoTIFF/COG (.tif ou .tiff).")
 
-    job_id = uuid.uuid4().hex
+    job_id = job_id or uuid.uuid4().hex
+    if not isinstance(job_id, str) or len(job_id) != 32 or any(c not in "0123456789abcdef" for c in job_id):
+        raise ValueError("Identificador de job inválido.")
     job = ProcessingJob(
         id=job_id, uid=uid, tool=tool, status="uploading",
         created_at=_now(), updated_at=_now(),
@@ -311,10 +333,20 @@ def create_processing_job(
                   if candidate.status in _ACTIVE_STATES]
         if len(active) >= _MAX_ACTIVE_GLOBAL:
             raise ValueError("Capacidade de jobs ocupada. Repita mais tarde.")
-        if sum(candidate.uid == uid for candidate in active) >= _MAX_ACTIVE_PER_USER:
-            raise ValueError("Limite de jobs ativos por utilizador atingido.")
+        if max_active_per_user is not None and (
+            type(max_active_per_user) is not int or max_active_per_user < 1
+        ):
+            raise ValueError("O plano não permite novos jobs simultâneos.")
+        effective_limit = min(
+            _MAX_ACTIVE_PER_USER,
+            max_active_per_user if max_active_per_user is not None else _MAX_ACTIVE_PER_USER
+        )
+        if sum(candidate.uid == uid for candidate in active) >= effective_limit:
+            raise ValueError("Limite de jobs activos por utilizador atingido.")
         _jobs[job_id] = job
         _cancellations[job_id] = threading.Event()
+        if on_complete is not None:
+            _callbacks[job_id] = on_complete
 
     directory = _job_dir(job_id)
     try:
@@ -332,6 +364,7 @@ def create_processing_job(
             _jobs.pop(job_id, None)
             _cancellations.pop(job_id, None)
             _futures.pop(job_id, None)
+            _callbacks.pop(job_id, None)
         shutil.rmtree(directory, ignore_errors=True)
         raise
     return job
@@ -377,6 +410,9 @@ def delete_processing_job(job_id: str, uid: str) -> bool:
             _futures.pop(job_id, None)
             _cancellations.pop(job_id, None)
         shutil.rmtree(_job_dir(job_id), ignore_errors=True)
+    # Removing an output before the first download releases any pending
+    # credit reservation; completed credits remain idempotently settled.
+    _finish_job_callback(job_id, False)
     return True
 
 
