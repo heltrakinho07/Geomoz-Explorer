@@ -31,7 +31,6 @@ import {
   Download,
   Database,
   Mountain,
-  BookOpen,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
@@ -73,7 +72,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: "Geoperigos", label: "Geoperigos", icon: <AlertTriangle size={20} /> },
   { id: "GeoMoz AI", label: "GeoMoz AI Agent", icon: <BrainCircuit size={20} /> },
   { id: "Exportar", label: "Dossiê & Exportar", icon: <FileText size={20} /> },
-  { id: "Documentação", label: "Documentação", icon: <BookOpen size={20} /> },
 ];
 
 export default function Sidebar({
