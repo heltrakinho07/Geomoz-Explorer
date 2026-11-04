@@ -7,7 +7,6 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from firebase_admin import firestore
 
 from billing_auth import require_billing_auth
 from billing_core import PLANS, current_plan, utcnow
@@ -44,6 +43,7 @@ def create_cloud_project(body: ProjectInput, uid: str = Depends(require_billing_
         "category": body.category, "aoi": body.aoi, "period": body.period,
         "statsSummary": {"totalRuns": 0}, "createdAt": now, "updatedAt": now,
     }
+    from firebase_admin import firestore
     txn = db.transaction()
 
     @firestore.transactional
