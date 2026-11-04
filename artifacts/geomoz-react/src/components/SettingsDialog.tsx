@@ -41,6 +41,7 @@ import { useGeoMozPreferences } from "@/hooks/useGeoMozPreferences";
 import { usePortalTranslation } from "@/i18n/usePortalTranslation";
 import { GEOLIBRE_LANGUAGE_OPTIONS, PORTAL_TRANSLATED_LANGUAGES } from "@/i18n/portal";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useSubscriptionAccess } from "@/hooks/useSubscriptionAccess";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -82,6 +83,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   }, [open, user?.uid]);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("gee");
+  const { access: verifiedAccess, loading: accessLoading, error: accessError, refresh: refreshAccess } = useSubscriptionAccess(open && activeTab === "billing");
   const [projectIdInput, setProjectIdInput] = useState(
     geeProject && geeProject !== "eengine-project" ? geeProject : "geoprocessamento-426809"
   );
@@ -932,31 +934,88 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
           )}
 
           {activeTab === "billing" && (
-            <div className="space-y-4">
-              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-3">
-                <div>
-                  <h4 className="text-lg font-bold text-slate-900 dark:text-slate-50">{subscription.planData.name}</h4>
-                  <p className="text-xs text-slate-500">{t("settings.billingDescription")}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
-                    <div className="text-xs text-slate-500">{t("settings.projectQuota")}</div>
-                    <div className="font-bold mt-1">{projects.length} / {subscription.planData.projects ?? t("settings.unlimited")}</div>
+            <section className="space-y-4" aria-label="Plano e subscrição">
+              <div className="rounded-2xl border border-sky-200/70 dark:border-sky-900/60 bg-gradient-to-br from-sky-50 via-white to-indigo-50 dark:from-sky-950/40 dark:via-slate-900 dark:to-indigo-950/20 p-4 sm:p-5 space-y-4">
+                <div className="flex flex-wrap justify-between items-start gap-3">
+                  <div>
+                    <p className="text-[11px] font-extrabold uppercase tracking-wider text-sky-600 dark:text-sky-300">Subscrição GeoMoz</p>
+                    <h4 className="mt-1 text-xl font-extrabold text-slate-900 dark:text-white">
+                      {verifiedAccess ? verifiedAccess.plan.charAt(0).toUpperCase() + verifiedAccess.plan.slice(1) : subscription.planData.name}
+                    </h4>
+                    <p className="mt-1 text-xs text-slate-500">{t("settings.billingDescription")}</p>
                   </div>
-                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
-                    <div className="text-xs text-slate-500">{t("settings.remainingCredits")}</div>
-                    <div className="font-bold mt-1">{subscription.planData.credits === null ? t("settings.custom") : subscription.remainingCredits}</div>
-                  </div>
+                  <button type="button" disabled={accessLoading || !user || user.uid === "guest_user"}
+                    onClick={() => void refreshAccess()}
+                    className="inline-flex gap-2 items-center rounded-xl border border-sky-200 dark:border-sky-700 bg-white/70 dark:bg-slate-800/60 px-3 py-2 text-xs font-bold text-sky-700 dark:text-sky-300 disabled:opacity-40">
+                    <RefreshCw size={14} className={accessLoading ? "animate-spin" : ""}/> Actualizar
+                  </button>
                 </div>
-                {subscription.periodEnd && (
-                  <p className="text-xs text-slate-500">{t("settings.validUntil")} {new Date(subscription.periodEnd).toLocaleDateString(translatedLocale === "pt" ? "pt-MZ" : translatedLocale)}. {t("settings.renewalHint")}</p>
+                {!user || user.uid === "guest_user" ? (
+                  <p className="rounded-xl bg-white/65 dark:bg-slate-800/70 p-3 text-xs">Inicie sessão para consultar os consumos e as permissões da sua conta.</p>
+                ) : accessLoading && !verifiedAccess ? (
+                  <p role="status" className="text-sm text-slate-500">A confirmar os limites e os consumos no servidor...</p>
+                ) : accessError ? (
+                  <div role="alert" className="rounded-xl border border-amber-200 dark:border-amber-900/70 bg-amber-50 dark:bg-amber-950/25 p-3 text-sm text-amber-700 dark:text-amber-300">
+                    {accessError} Os consumos ainda não foram confirmados pelo backend.
+                  </div>
+                ) : verifiedAccess && (
+                  <>
+                    <div className="flex flex-wrap gap-2 items-center text-xs">
+                      <span className="rounded-full bg-emerald-100 dark:bg-emerald-900/40 px-2.5 py-1 font-bold text-emerald-700 dark:text-emerald-300">
+                        {verifiedAccess.status === "active" ? "Plano activo" : verifiedAccess.status}
+                      </span>
+                      {verifiedAccess.periodEnd && <span className="text-slate-500">{t("settings.validUntil")} {new Date(verifiedAccess.periodEnd).toLocaleDateString(translatedLocale === "pt" ? "pt-MZ" : translatedLocale)}</span>}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {[
+                        {key:"projects", label:t("settings.projectQuota"), used:verifiedAccess.usage.projectsUsed,
+                         cap:verifiedAccess.limits.projects, note:verifiedAccess.usage.projectCountVerified ? "Projectos cloud" : "Contagem cloud ainda indisponível"},
+                        {key:"credits", label:"Créditos GeoMoz / mês", used:verifiedAccess.usage.creditsUsed,
+                         cap:verifiedAccess.limits.credits, note:"Ciclo UTC: " + verifiedAccess.usage.creditCycle}
+                      ].map(item => (
+                        <div key={item.key} className="rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white/80 dark:bg-slate-900/60 p-4">
+                          <p className="text-xs text-slate-500 font-semibold">{item.label}</p>
+                          <p className="mt-2 text-xl font-black tabular-nums text-slate-900 dark:text-white">
+                            {item.used === null ? "—" : item.used.toLocaleString("pt-PT")}
+                            <span className="ml-1 text-sm font-semibold text-slate-500">/ {item.cap === null ? "À medida" : item.cap.toLocaleString("pt-PT")}</span>
+                          </p>
+                          {item.used !== null && item.cap !== null && item.cap > 0 &&
+                            <div role="progressbar" aria-label={item.label} aria-valuemin={0} aria-valuemax={item.cap}
+                              aria-valuenow={Math.min(item.used, item.cap)}
+                              className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
+                              <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-600"
+                                style={{width: String(Math.min(100, Math.max(0, item.used / item.cap * 100))) + "%"}} />
+                            </div>}
+                          <p className="mt-2 text-[11px] text-slate-500">{item.note}</p>
+                        </div>
+                      ))}
+                      <div className="rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white/80 dark:bg-slate-900/60 p-4">
+                        <p className="text-xs text-slate-500 font-semibold">Armazenamento reportado</p>
+                        <p className="mt-2 text-xl font-black text-slate-900 dark:text-white">
+                          {(verifiedAccess.usage.storageUsedBytes / (1024 ** 3)).toLocaleString("pt-PT", {maximumFractionDigits: 2})} GB
+                          <span className="ml-1 text-sm text-slate-500">/ {verifiedAccess.limits.storage_bytes === null ? "À medida" : (verifiedAccess.limits.storage_bytes / (1024 ** 3)).toLocaleString("pt-PT", {maximumFractionDigits:1}) + " GB"}</span>
+                        </p>
+                        <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">Quota de upload ainda não aplicada a todas as fontes.</p>
+                      </div>
+                      <div className="rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white/80 dark:bg-slate-900/60 p-4">
+                        <p className="text-xs text-slate-500 font-semibold">Processamento simultâneo</p>
+                        <p className="mt-2 text-xl font-black text-slate-900 dark:text-white">
+                          {verifiedAccess.limits.concurrent_jobs === null ? "À medida" : verifiedAccess.limits.concurrent_jobs}
+                          <span className="ml-1 text-sm text-slate-500">jobs / plano</span>
+                        </p>
+                        <p className="mt-2 text-[11px] text-slate-500">Limite actual por instância, condicionado à capacidade do serviço.</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Análises GEE com credenciais próprias não consomem créditos GeoMoz. Um processamento raster gerido reserva um crédito, devolvido em caso de falha ou cancelamento.
+                    </p>
+                  </>
                 )}
-                <a href="/planos" className="inline-flex items-center gap-2 rounded-lg bg-sky-600 text-white px-4 py-2 text-sm font-semibold hover:bg-sky-700">
-                  <CreditCard size={16} /> {t("settings.plansAndPayments")}
+                <a href="/planos" className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-sky-500/15">
+                  <CreditCard size={16}/>{t("settings.plansAndPayments")}
                 </a>
-                <p className="text-xs text-slate-500">{t("settings.cloudQuotaNote")}</p>
               </div>
-            </div>
+            </section>
           )}
 
           {activeTab === "storage" && (
