@@ -141,7 +141,7 @@ class PublicDataTests(unittest.TestCase):
 
     def test_dispatcher_replaces_country_bbox_with_actual_boundary(self):
         boundary = object()
-        state = {"aoi": {"source": "country", "countryCode": "PRT", "geometry": GEOMETRY}}
+        state = {"_gee_uid": "user-test", "aoi": {"source": "country", "countryCode": "PRT", "geometry": GEOMETRY}}
         with patch.dict("sys.modules", {"gee_module": MagicMock()}), \
              patch.object(engine, "country_geometry", return_value=boundary) as resolve, \
              patch.object(engine, "landcover", return_value={"status": "success", "warning": "2021", "year": 2021}) as calculate:

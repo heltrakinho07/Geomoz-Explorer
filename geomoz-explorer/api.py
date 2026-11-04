@@ -255,7 +255,8 @@ async def restrict_disabled_modules(request: Request, call_next):
 @app.middleware("http")
 async def isolate_gee_requests(request: Request, call_next):
     if (request.url.path.startswith("/geomoz-api/gee/") or
-            request.url.path.startswith("/geomoz-api/terrain/gee-")):
+            request.url.path.startswith("/geomoz-api/terrain/gee-") or
+            request.url.path == "/geomoz-api/ai/agent-chat"):
         async with _gee_request_lock:
             return await call_next(request)
     return await call_next(request)
@@ -1467,16 +1468,22 @@ async def agent_model_catalog(req: AgentModelCatalogRequest):
 
 
 @app.post("/geomoz-api/ai/agent-chat")
-async def agent_chat(req: AgentChatRequest):
+async def agent_chat(req: AgentChatRequest, request: Request):
     """
     GeoMoz AI Agent — Interprets spatial intent, executes deterministic GIS tools via ReAct,
     and returns map actions, step checklists, and technical diagnostic synthesis.
     """
     try:
         from agent.planner import GeoMozAgent
+        # Only verified Firebase identity selects the private GEE credential store.
+        # Ignore legacy browser tokens, project overrides and client-supplied UIDs.
+        context = dict(req.current_map_state or {})
+        for key in ("gee_token", "gee_project", "_gee_uid"):
+            context.pop(key, None)
+        context["_gee_uid"] = _extract_uid_from_header(request.headers.get("Authorization", ""))
         result = await GeoMozAgent.process_user_request(
             user_message=req.message,
-            current_map_state=req.current_map_state or {},
+            current_map_state=context,
             chat_history=req.chat_history or [],
             gemini_api_key=req.gemini_api_key,
             openai_api_key=req.openai_api_key,

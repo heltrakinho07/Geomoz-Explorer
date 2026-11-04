@@ -224,8 +224,6 @@ export default function GeoMozAIAgentTab() {
       method: "POST", signal, headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: `Listar unidades FAO GAUL ADM${level}`,
         current_map_state: {
-          gee_token: localStorage.getItem("geomoz_gee_token") || undefined,
-          gee_project: localStorage.getItem("geomoz_gee_project") || "geoprocessamento-426809",
           publicAnalysis: { tool: "list_administrative_units", args: {
             country_code: countryCode, level, ...(parentCode !== null ? { parent_code: parentCode } : {}),
           } },
@@ -528,8 +526,6 @@ export default function GeoMozAIAgentTab() {
           geometry: aoiPayload.geometry || null,
         },
         temporalWindow: analysisPeriod,
-        gee_token: (typeof window !== "undefined" ? localStorage.getItem("geomoz_gee_token") : null) || undefined,
-        gee_project: (typeof window !== "undefined" ? localStorage.getItem("geomoz_gee_project") : null) || "geoprocessamento-426809",
         agentContext,
         publicAnalysis: publicRequest ? {
           ...publicRequest,
