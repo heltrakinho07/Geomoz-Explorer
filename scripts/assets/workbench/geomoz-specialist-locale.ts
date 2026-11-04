@@ -2567,6 +2567,46 @@ const entries: Record<string, {en:string;es:string;fr:string}> = {
     "en": "LOD 4 · fast",
     "es": "LOD 4 · rápido",
     "fr": "LOD 4 · rapide"
+  },
+  "A rectificar o raster com GDAL e a adicionar o GeoTIFF ao mapa…": {
+    "en": "Rectifying raster with GDAL and adding GeoTIFF to the map…",
+    "es": "Rectificando el ráster con GDAL y añadiendo GeoTIFF al mapa…",
+    "fr": "Rectification du raster avec GDAL et ajout du GeoTIFF à la carte…"
+  },
+  "O GDAL gerou um raster vazio.": {
+    "en": "GDAL produced an empty raster.",
+    "es": "GDAL generó un ráster vacío.",
+    "fr": "GDAL a produit un raster vide."
+  },
+  "Não foi possível rectificar e adicionar o GeoTIFF. ": {
+    "en": "Could not rectify and add GeoTIFF. ",
+    "es": "No se pudo rectificar ni añadir el GeoTIFF. ",
+    "fr": "Impossible de rectifier et d’ajouter le GeoTIFF. "
+  },
+  "Verifique os GCPs e a ligação ao motor GDAL.": {
+    "en": "Check GCPs and the connection to the GDAL engine.",
+    "es": "Compruebe los GCP y la conexión al motor GDAL.",
+    "fr": "Vérifiez les points d’appui et la connexion au moteur GDAL."
+  },
+  "A processar raster…": {
+    "en": "Processing raster…",
+    "es": "Procesando ráster…",
+    "fr": "Traitement du raster…"
+  },
+  "Também pode clicar em «Associar no mapa». As coordenadas UTM são convertidas para WGS 84. Distribua pelo menos quatro GCPs, preferencialmente perto dos quatro cantos da carta, e confira o RMS.": {
+    "en": "You can also click “Link on map”. UTM coordinates are converted to WGS 84. Distribute at least four GCPs, preferably near the four map corners, and check the RMS.",
+    "es": "También puede pulsar «Vincular en el mapa». Las coordenadas UTM se convierten a WGS 84. Distribuya al menos cuatro GCP, preferiblemente cerca de las esquinas del mapa, y compruebe el RMS.",
+    "fr": "Vous pouvez également cliquer sur « Associer sur la carte ». Les coordonnées UTM sont converties en WGS 84. Répartissez au moins quatre points d’appui près des coins de la carte et vérifiez le RMS."
+  },
+  "RMSE afim (referência): ": {
+    "en": "Affine RMSE (reference): ",
+    "es": "RMSE afín (referencia): ",
+    "fr": "RMSE affine (référence) : "
+  },
+  "«Adicionar ao mapa» rectifica com o método escolhido e cria um GeoTIFF WGS 84. O SRC de saída acima é usado apenas no ficheiro descarregado. A precisão depende dos GCPs.": {
+    "en": "“Add to map” rectifies using the selected method and creates a WGS 84 GeoTIFF. The output CRS above only affects the downloaded file. Accuracy depends on the GCPs.",
+    "es": "«Añadir al mapa» rectifica mediante el método seleccionado y crea un GeoTIFF WGS 84. El SRC de salida anterior solo afecta al archivo descargado. La precisión depende de los GCP.",
+    "fr": "« Ajouter à la carte » effectue le redressement choisi et crée un GeoTIFF WGS 84. Le SCR de sortie ci-dessus s’applique uniquement au fichier téléchargé. La précision dépend des points d’appui."
   }
 };
 export function geoMozSpecialistText(language:string, portuguese:string):string {
