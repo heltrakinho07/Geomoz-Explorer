@@ -17,6 +17,7 @@ import {
   User,
   Sliders,
   Database,
+  CreditCard,
   CheckCircle2,
   AlertCircle,
   Loader2,
@@ -35,13 +36,14 @@ import { diagnoseGeeApi } from "@/lib/gee-connection-diagnostics";
 import { validateRealSentinel2Ndvi } from "@/lib/gee-ndvi-validation";
 import { useGeoMozTheme } from "@/hooks/useGeoMozTheme";
 import { useGeoMozPreferences } from "@/hooks/useGeoMozPreferences";
+import { useSubscription } from "@/hooks/useSubscription";
 
 interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-type SettingsTab = "gee" | "profile" | "preferences" | "storage";
+type SettingsTab = "gee" | "profile" | "preferences" | "storage" | "billing";
 
 export default function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { user, signOut } = useAuth();
@@ -63,6 +65,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     refreshStatus,
   } = useGeeAuth();
   const { projects } = useProject();
+  const subscription = useSubscription();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("gee");
   const [projectIdInput, setProjectIdInput] = useState(
@@ -312,6 +315,13 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
             >
               <Database size={14} />
               <span>Armazenamento</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("billing")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${activeTab === "billing" ? "bg-sky-500 text-white shadow-sm" : "text-slate-400 hover:text-white"}`}
+            >
+              <CreditCard size={14} />
+              <span>Plano e subscrição</span>
             </button>
           </div>
         </div>
@@ -845,6 +855,34 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                     Guardar Preferências
                   </Button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "billing" && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-3">
+                <div>
+                  <h4 className="text-lg font-bold text-slate-900 dark:text-slate-50">{subscription.planData.name}</h4>
+                  <p className="text-xs text-slate-500">Plano de acesso ao GeoMoz Explorer</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+                    <div className="text-xs text-slate-500">Projectos de estudo</div>
+                    <div className="font-bold mt-1">{projects.length} / {subscription.planData.projects ?? "Ilimitado"}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+                    <div className="text-xs text-slate-500">Créditos restantes</div>
+                    <div className="font-bold mt-1">{subscription.planData.credits === null ? "Personalizado" : subscription.remainingCredits}</div>
+                  </div>
+                </div>
+                {subscription.periodEnd && (
+                  <p className="text-xs text-slate-500">Válido até {new Date(subscription.periodEnd).toLocaleDateString("pt-PT")}. Renovação manual via PayZeno.</p>
+                )}
+                <a href="/planos" className="inline-flex items-center gap-2 rounded-lg bg-sky-600 text-white px-4 py-2 text-sm font-semibold hover:bg-sky-700">
+                  <CreditCard size={16} /> Consultar planos e pagamentos
+                </a>
+                <p className="text-xs text-slate-500">Créditos de processamento cloud GeoMoz não substituem as quotas do Google Earth Engine do utilizador.</p>
               </div>
             </div>
           )}
