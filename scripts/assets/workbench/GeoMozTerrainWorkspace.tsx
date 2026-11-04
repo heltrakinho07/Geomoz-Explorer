@@ -412,7 +412,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     <div className="gm-terrain-native" data-testid="geomoz-terrain-multipanel">
       <GeoMozTerrainLayerCatalogue layers={overlays} selectedId={selectedOverlay}
         projectVectors={projectVectors} busy={importBusy||busy}
-        loadingGEE={loadingLandcover}
+        loadingGEE={loadingLandcover} translate={ui}
         onSelect={chooseOverlay} onChange={setOverlays}
         onFromProject={addProjectVector}
         onImport={file=>void importOverlay(file)}
@@ -475,7 +475,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
         </nav>
         <div className="gm-terrain-inspector-body" role="tabpanel">
           {inspectorTab==="symbols"&&<GeoMozTerrainLayerSymbology
-            layer={currentOverlay} onChange={updateOverlay}/>}
+            layer={currentOverlay} onChange={updateOverlay} translate={ui}/>}
           {inspectorTab==="analysis"&&<div className="gm-terrain-inspector-section">
             <h3>{ui("Análise científica do DEM")}</h3>
             {terrain?<GeoMozTerrainSciencePanel terrain={terrain} translate={ui}
@@ -485,7 +485,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
               <p>Carregue um DEM para calcular perfis, declives e curvas de nível.</p>}
           </div>}
           {inspectorTab==="terrain"&&<div className="gm-terrain-inspector-section">
-            <h3>Visualização do relevo</h3>
+            <h3>{ui("Visualização do relevo")}</h3>
             <p className="gm-terrain-panel-intro">
               As opções deste painel afectam o modelo. Os controlos de cada camada
               estão no separador Simbologia.
@@ -526,7 +526,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
             </div>
           </div>}
           {inspectorTab==="export"&&<div className="gm-terrain-inspector-section">
-            <h3>Exportação cartográfica 3D</h3>
+            <h3>{ui("Exportação cartográfica 3D")}</h3>
             <p className="gm-terrain-panel-intro">
               PNG/PDF exportam a vista actual. GLB inclui a malha em metros
               e, quando existir, a composição de camadas como textura.
