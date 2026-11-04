@@ -126,7 +126,7 @@ describe("GIS workbench in-memory mode", () => {
     expect(explorer).toContain('activeTab !== "GIS Workspace" && <Sidebar');
     expect(explorer).toContain('data-testid="gis-workspace-app-toolbar"');
     expect(explorer).toContain('"geomoz:gis-workspace-action"');
-    expect(explorer).toContain('["DEM Global", "download-dem", Mountain]');
-    expect(explorer).toContain("Sair do GIS Workspace");
+    expect(explorer).toContain('["explorer.action.dem", "download-dem", Mountain]');
+    expect(explorer).toContain('copy("explorer.exitWorkspace")');
   });
 });

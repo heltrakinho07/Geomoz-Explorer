@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import BasemapSwitcher from "@/components/BasemapSwitcher";
+import { sharedMapText } from "@/i18n/sharedMap";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
@@ -13,12 +14,12 @@ beforeEach(() => {
 describe("3D is restricted to the main /mapa view", () => {
   it("hides globe controls, DEM 3D switch and Cesium on all other maps by default", () => {
     render(<BasemapSwitcher current="hybrid" onChange={vi.fn()} />);
-    expect(screen.queryByText("3D Ativo")).toBeNull();
-    expect(screen.queryByText("Globo 3D & Relevo")).toBeNull();
+    expect(screen.queryByText(sharedMapText("pt", "basemap.active3d"))).toBeNull();
+    expect(screen.queryByText(sharedMapText("pt", "basemap.globe3d"))).toBeNull();
     fireEvent.click(screen.getByText("Camadas"));
-    expect(screen.getByText("Tipo de Mapa")).toBeTruthy();
+    expect(screen.getByText(sharedMapText("pt", "basemap.mapType"))).toBeTruthy();
     expect(screen.queryByText("Cesium World")).toBeNull();
-    expect(screen.queryByText("Globo 3D & Relevo")).toBeNull();
+    expect(screen.queryByText(sharedMapText("pt", "basemap.globe3d"))).toBeNull();
     // 2D terrain remains available as a conventional flat basemap.
     expect(screen.getByText("Relevo")).toBeTruthy();
   });
@@ -26,7 +27,7 @@ describe("3D is restricted to the main /mapa view", () => {
   it("preserves the 3D controls and Cesium only with explicit permission", () => {
     render(<BasemapSwitcher current="hybrid" onChange={vi.fn()} show3dToggle />);
     fireEvent.click(screen.getByText("Camadas"));
-    expect(screen.getByText("Globo 3D & Relevo")).toBeTruthy();
+    expect(screen.getByText(sharedMapText("pt", "basemap.globe3d"))).toBeTruthy();
     expect(screen.getByText("Cesium World")).toBeTruthy();
   });
 

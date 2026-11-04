@@ -1,5 +1,7 @@
 import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
 import {useGeoMozTheme} from "@/hooks/useGeoMozTheme";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import { sharedMapText, type SharedMapKey } from "@/i18n/sharedMap";
 import React, { useRef, useState, useEffect, Suspense } from "react";
 import { Link } from "wouter";
 import {
@@ -87,6 +89,8 @@ type Tab =
 
 function ExplorerContent() {
   const { toast } = useToast();
+  const { translatedLocale } = usePortalTranslation();
+  const copy = (key: SharedMapKey) => sharedMapText(translatedLocale, key);
   const { user } = useAuth();
   const { geeConnected, geeProject } = useGeeAuth();
   const { activeProject } = useProject();
@@ -413,75 +417,75 @@ function ExplorerContent() {
       case "Dashboard":
         return {
           icon: <LayoutDashboard size={18} className="text-sky-500 shrink-0" />,
-          title: "Dashboard",
-          subtitle: "Centro de Comando & Gestão de Projetos",
+          title: copy("explorer.dashboard.title"),
+          subtitle: copy("explorer.dashboard.subtitle"),
         };
       case "Mapa":
         return {
           icon: <Globe size={18} className="text-sky-500 shrink-0" />,
-          title: "Mapa Geoespacial",
-          subtitle: "2D / 3D Hipsometria & Relevo",
+          title: copy("explorer.map.title"),
+          subtitle: copy("explorer.map.subtitle"),
         };
       case "Terreno 3D":
         return {
           icon: <Mountain size={18} className="text-sky-500 shrink-0" />,
-          title: "Terreno 3D",
-          subtitle: "DEM, modelação do relevo e visualização tridimensional",
+          title: copy("explorer.terrain.title"),
+          subtitle: copy("explorer.terrain.subtitle"),
         };
       case "GIS Workspace":
         return {
           icon: <Cpu size={18} className="text-indigo-500 shrink-0" />,
-          title: "GIS Workspace",
-          subtitle: "Mapa GIS · Toolbox · Model Builder · Spatial SQL · Histórico",
+          title: copy("explorer.workspace.title"),
+          subtitle: copy("explorer.workspace.subtitle"),
         };
       case "GeoAnálises":
         return {
           icon: <Satellite size={18} className="text-indigo-500 shrink-0" />,
-          title: "Catálogo de GeoAnálises",
-          subtitle: "Detecção remota · Sentinel-2, Landsat e modelos de elevação",
+          title: copy("explorer.analyses.title"),
+          subtitle: copy("explorer.analyses.subtitle"),
         };
       case "Bacias Hidrográficas":
         return {
           icon: <Droplets size={18} className="text-cyan-500 shrink-0" />,
-          title: "Bacias Hidrográficas",
-          subtitle: "Delineação D8 & Rede de Drenagem",
+          title: copy("explorer.hydro.title"),
+          subtitle: copy("explorer.hydro.subtitle"),
         };
       case "Água Subterrânea":
         return {
           icon: <Droplet size={18} className="text-teal-500 shrink-0" />,
-          title: "Água Subterrânea",
-          subtitle: "Potencial Hidrogeológico AHP",
+          title: copy("explorer.ground.title"),
+          subtitle: copy("explorer.ground.subtitle"),
         };
       case "Geoperigos":
         return {
           icon: <AlertTriangle size={18} className="text-amber-500 shrink-0" />,
-          title: "Geoperigos & Riscos",
-          subtitle: "Deteção SAR de Cheias & Erosão",
+          title: copy("explorer.hazards.title"),
+          subtitle: copy("explorer.hazards.subtitle"),
         };
       case "GeoMoz AI":
         return {
           icon: <BrainCircuit size={18} className="text-purple-500 shrink-0" />,
-          title: "GeoMoz AI Agent",
-          subtitle: "Planeamento Geoespacial Inteligente",
+          title: copy("explorer.ai.title"),
+          subtitle: copy("explorer.ai.subtitle"),
         };
       case "Exportar":
         return {
           icon: <FileText size={18} className="text-emerald-500 shrink-0" />,
-          title: "Dossiê do Estudo & Exportação",
-          subtitle: "Relatórios Técnicos PDF, HTML & GeoTIFF",
+          title: copy("explorer.export.title"),
+          subtitle: copy("explorer.export.subtitle"),
         };
       case "Documentação":
         return {
           icon: <BookOpen size={18} className="text-indigo-500 shrink-0" />,
-          title: "Documentação do GeoMoz",
-          subtitle: "Funcionalidades, formatos, motores, limitações e roadmap",
+          title: copy("explorer.docs.title"),
+          subtitle: copy("explorer.docs.subtitle"),
         };
       case "Análise":
       default:
         return {
           icon: <LayoutDashboard size={18} className="text-sky-500 shrink-0" />,
-          title: "GeoMoz Explorer",
-          subtitle: "Plataforma de Estudos Geoespaciais",
+          title: copy("explorer.default.title"),
+          subtitle: copy("explorer.default.subtitle"),
         };
     }
   };
@@ -522,8 +526,8 @@ function ExplorerContent() {
           <header data-testid="gis-workspace-app-toolbar"
             className="z-30 flex h-12 shrink-0 min-w-0 items-center gap-2 border-b border-sky-900 bg-slate-950 px-2 text-slate-100 shadow-md sm:px-3">
             <button type="button" onClick={() => setActiveTab("Mapa")}
-              title="Sair do GIS Workspace e regressar ao GeoMoz"
-              aria-label="Sair do GIS Workspace"
+              title={copy("explorer.exitWorkspaceTitle")}
+              aria-label={copy("explorer.exitWorkspace")}
               className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-bold hover:bg-slate-800">
               <ArrowLeft size={15} />
               <GeoMozBrandIcon className="h-6 w-6 rounded-md" width={24} height={24} />
@@ -531,29 +535,29 @@ function ExplorerContent() {
               <span className="text-white">GIS</span>
             </button>
             <div className="hidden h-6 w-px shrink-0 bg-slate-700 sm:block" />
-            <nav aria-label="Menus GIS Workspace" className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none]">
+            <nav aria-label={copy("explorer.workspaceNav")} className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none]">
               {([
-                ["Abrir projecto", "import-project", FolderOpen],
-                ["Exportar projecto", "export-project", Save],
-                ["Guardar no dispositivo", "save-device", Save],
-                ["Restaurar cópia", "restore-device", FolderOpen],
-                ["Adicionar dados", "add-file", Upload],
-                ["DEM Global", "download-dem", Mountain],
-                ["Processamento", "processing", Wrench],
-                ["Fontes OGC", "data", Globe],
-                ["Camadas", "layers", Layers],
-                ["Terreno", "terrain", DatabaseZap],
-              ] as const).map(([label, action, Icon]) => (
-                <button key={action} type="button" title={label}
+                ["explorer.action.openProject", "import-project", FolderOpen],
+                ["explorer.action.exportProject", "export-project", Save],
+                ["explorer.action.saveDevice", "save-device", Save],
+                ["explorer.action.restore", "restore-device", FolderOpen],
+                ["explorer.action.addData", "add-file", Upload],
+                ["explorer.action.dem", "download-dem", Mountain],
+                ["explorer.action.processing", "processing", Wrench],
+                ["explorer.action.ogc", "data", Globe],
+                ["explorer.action.layers", "layers", Layers],
+                ["explorer.action.terrain", "terrain", DatabaseZap],
+              ] as const).map(([labelKey, action, Icon]) => (
+                <button key={action} type="button" title={copy(labelKey)}
                   onClick={() => window.dispatchEvent(new CustomEvent("geomoz:gis-workspace-action", { detail: action }))}
                   className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold text-slate-200 hover:bg-slate-800 hover:text-sky-300 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-400">
                   <Icon size={13} />
-                  <span>{label}</span>
+                  <span>{copy(labelKey)}</span>
                 </button>
               ))}
             </nav>
-            <button type="button" data-testid="geomoz-gis-print-open" onClick={()=>setPrintOpen(true)} className="gm-system-print-button inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-sky-800 px-2.5 text-[11px] font-semibold text-sky-100 hover:bg-sky-900" title="Abrir layout de impressão do módulo GIS"><Printer size={15}/> <span className="hidden sm:inline">Imprimir</span></button>
-            <span className="hidden shrink-0 text-[10px] font-semibold text-emerald-400 lg:inline" title="Sem sincronização automática. Cópia opcional no dispositivo; nuvem PRO em preparação.">GIS local · nuvem PRO em preparação</span>
+            <button type="button" data-testid="geomoz-gis-print-open" onClick={()=>setPrintOpen(true)} className="gm-system-print-button inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-sky-800 px-2.5 text-[11px] font-semibold text-sky-100 hover:bg-sky-900" title={copy("explorer.printTitle")}><Printer size={15}/> <span className="hidden sm:inline">{copy("explorer.print")}</span></button>
+            <span className="hidden shrink-0 text-[10px] font-semibold text-emerald-400 lg:inline" title={copy("explorer.localCloudHint")}>{copy("explorer.localCloud")}</span>
           </header>
         )}
 
@@ -564,8 +568,8 @@ function ExplorerContent() {
             <button
               onClick={() => setMobileSidebarOpen(true)}
               className="md:hidden flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              title="Abrir Menu de Navegação"
-              aria-label="Abrir menu de navegação"
+              title={copy("explorer.openNav")}
+              aria-label={copy("explorer.openNav")}
             >
               <Menu size={18} />
             </button>
@@ -611,8 +615,8 @@ function ExplorerContent() {
 
           <button type="button" data-testid="geomoz-print-open" onClick={()=>setPrintOpen(true)}
             className="gm-system-print-button inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 shadow-sm hover:border-sky-400 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-            aria-label="Abrir layout de impressão" title="Composição cartográfica / relatório A4 ou A3">
-            <Printer size={16}/><span className="hidden xl:inline">Layout de impressão</span>
+            aria-label={copy("explorer.printAria")} title={copy("explorer.printDescription")}>
+            <Printer size={16}/><span className="hidden xl:inline">{copy("explorer.print")}</span>
           </button>
           {/* Right: Geocoding Search Input (only on Mapa) */}
           {activeTab === "Mapa" && (
@@ -630,8 +634,8 @@ function ExplorerContent() {
                     }}
                     placeholder={
                       searchWorldwide
-                        ? "Pesquisar localização (mundo)…"
-                        : "Pesquisar localização em MZ…"
+                        ? copy("explorer.searchWorld")
+                         : copy("explorer.searchMoz")
                     }
                     className="pl-8 pr-16 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 w-56 xl:w-64 transition-all"
                   />
@@ -639,8 +643,8 @@ function ExplorerContent() {
                     onClick={() => setSearchWorldwide((w) => !w)}
                     title={
                       searchWorldwide
-                        ? "Pesquisa global ativa — clique para filtrar por Moçambique"
-                        : "Pesquisa em Moçambique ativa — clique para global"
+                        ? copy("explorer.searchWorldTitle")
+                         : copy("explorer.searchMozTitle")
                     }
                     className={`absolute right-7 top-1/2 -translate-y-1/2 text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors ${
                       searchWorldwide
