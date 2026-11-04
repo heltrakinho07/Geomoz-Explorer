@@ -501,7 +501,7 @@ export default function PricingPage() {
                 <option value="mz">Moçambique — carteiras móveis e cartões</option>
                 <option value="international">Internacional — cartões quando disponíveis</option>
               </select>
-            </label>
+            </label>}
             {!requestOnly && (region === "mz" ? <label className="block text-sm font-semibold">Contacto moçambicano
               <input value={phone} onChange={e => setPhone(e.target.value)} type="tel" autoComplete="tel" className="gm-pricing-input mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-950/75 px-3.5 py-3 text-sm outline-none focus:border-sky-500" placeholder="+258 84 000 0000" required />
             </label> : <p className="text-xs text-slate-500 dark:text-slate-400">Cartões internacionais dependem da disponibilidade para a sua região. Os métodos activos serão apresentados no próximo passo.</p>)}
@@ -515,7 +515,7 @@ export default function PricingPage() {
                   value={requestMessage} onChange={event => setRequestMessage(event.target.value)} />
                 <p className="text-xs text-slate-500 dark:text-slate-400">Este pedido não cria uma subscrição paga nem gera qualquer débito. A Administração poderá analisá-lo.</p>
               </div>
-            )
+            )}
             <button type="button" disabled={working || (requestOnly ? (selected === "enterprise" && requestMessage.trim().length < 8) : (!checkoutEnabled || !customerName.trim() || (region === "mz" && !phone.trim())))} onClick={requestOnly ? submitPlanRequest : checkout}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-extrabold shadow-md shadow-sky-500/15 disabled:opacity-45 disabled:cursor-not-allowed">
               {working ? (requestOnly ? "A registar pedido..." : "A preparar pagamento...") : (requestOnly ? "Submeter pedido de adesão" : "Continuar para pagamento seguro")} <ArrowRight size={17}/>
