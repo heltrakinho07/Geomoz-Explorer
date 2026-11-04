@@ -58,3 +58,27 @@ def test_provider_confirmation_rejects_mismatch():
         _check_session_identity({"status": "paid", "amount": 2990}, payment)
     with pytest.raises(HTTPException):
         _check_session_identity({"status": "paid", "currency": "USD"}, payment)
+
+
+def test_project_quota_free_and_paid():
+    from project_quota import quota_check
+    quota_check(2, 3)
+    quota_check(99, None)
+    with pytest.raises(HTTPException) as exc:
+        quota_check(3, 3)
+    assert exc.value.status_code == 402
+
+
+def test_project_creation_input_validation():
+    from project_quota import CreateProjectRequest, validate_project
+    payload = {
+        "name": "Bacia do Búzi", "description": "Diagnóstico de drenagem",
+        "category": "recursos_hidricos", "aoi": {"type": "Polygon", "coordinates": []},
+        "period": {"startDate": "2026-01-01", "endDate": "2026-12-31"},
+    }
+    project = CreateProjectRequest.model_validate(payload)
+    validate_project(project)
+    project.period.startDate = "2027-01-01"
+    with pytest.raises(HTTPException) as exc:
+        validate_project(project)
+    assert exc.value.status_code == 422
