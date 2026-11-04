@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/api";
 import { useTerrainSession } from "@/context/TerrainSessionContext";
 import { useProject } from "@/context/ProjectContext";
 import TerrainSciencePanel, {type TerrainPickedPoint} from "@/components/TerrainSciencePanel";
+import { encodeTerrainGLB, imageToGLBTexture } from "@/lib/terrain-glb";
 import {terrainToGeographic} from "@/lib/terrain-analysis";
 import { decodeTerrainScene, encodeTerrainScene, MAX_TERRAIN_SCENE_BYTES } from "@/lib/terrain-scene";
 import {
@@ -32,10 +33,15 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   const { activeProject } = useProject();
   const [busy, setBusy] = useState(false);
   const [textureBusy, setTextureBusy] = useState(false);
+  const [glbBusy, setGlbBusy] = useState(false);
+  const [cloudLimit, setCloudLimit] = useState(35);
+  const [textureDescription, setTextureDescription] = useState<string | null>(null);
+  const textureRequestId = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [rendererError, setRendererError] = useState<string | null>(null);
   const [exaggeration, setExaggeration] = useState(2);
   const [style, setStyle] = useState<TerrainVisualStyle>("hypsometric");
+  const [detailLevel, setDetailLevel] = useState<"auto"|"full"|"medium"|"low">("auto");
   const [textureUrl, setTextureUrl] = useState<string | null>(null);
   const [pickTarget,setPickTarget]=useState<"A"|"B"|null>(null);
   const [picked,setPicked]=useState<Partial<Record<"A"|"B",TerrainPick>>>({});
@@ -61,6 +67,10 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   // There is no iframe handoff; a click resolves a genuine 3D triangle.
   useEffect(()=>{
     setPickTarget(null);setPicked({});setLastPick(null);
+    textureRequestId.current += 1;
+    setTextureBusy(false);
+    setTextureUrl(null);
+    setTextureDescription(null);
   },[terrain]);
 
   const selectTerrainPoint=(point:TerrainPick)=>{
@@ -82,7 +92,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
     setRendererError(null);
     try {
       return createTerrainRenderer(canvasRef.current, terrain, {
-        exaggeration, style, textureUrl,
+        exaggeration, style, textureUrl, detailLevel,
         pickEnabled:!!pickTarget,onPick:selectTerrainPoint,
         profileOverlay:picked.A&&picked.B?{
           start:[picked.A.xMeters,picked.A.yMeters],
@@ -93,7 +103,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
       setRendererError(cause instanceof Error ? cause.message : String(cause));
       return undefined;
     }
-  }, [open, terrain, exaggeration, style, textureUrl, pickTarget, picked]);
+  }, [open, terrain, exaggeration, style, textureUrl, pickTarget, picked, detailLevel]);
 
   async function loadGeoTiff(file: File | undefined) {
     if (!file) return;
@@ -231,11 +241,81 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
         throw new Error("Resposta inválida ao processar a textura RGB.");
       }
       setTextureUrl(result.imageDataUrl);
+      setTextureDescription("RGB GeoTIFF · " + file.name);
       setStyle("imagery");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Erro ao alinhar a textura.");
     } finally {
       setTextureBusy(false);
+    }
+  }
+
+  async function generateSentinelTexture() {
+    if (!terrain || !geeEnabled || textureBusy) {
+      setError("Conecte o Google Earth Engine e carregue um DEM para obter Sentinel-2.");
+      return;
+    }
+    const requestId = ++textureRequestId.current;
+    setTextureBusy(true);
+    setError(null);
+    try {
+      const response = await apiFetch("/geomoz-api/terrain/gee-rgb-texture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          crs: terrain.crs,
+          bounds_meters: terrain.boundsMeters,
+          width: terrain.width,
+          height: terrain.height,
+          cloud_pct: cloudLimit,
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(typeof result?.detail === "string" ? result.detail
+          : "Falha na composição Sentinel-2 (HTTP " + response.status + ").");
+      }
+      if (typeof result?.imageDataUrl !== "string" ||
+          !result.imageDataUrl.startsWith("data:image/png;base64,") ||
+          !Number.isInteger(result.sceneCount) || result.sceneCount < 1 ||
+          result.width !== terrain.width || result.height !== terrain.height ||
+          result.targetCrs !== terrain.crs) {
+        throw new Error("A textura Sentinel-2 não corresponde à grelha do DEM.");
+      }
+      // Do not apply late GEE results to a different DEM/project.
+      if (textureRequestId.current !== requestId) return;
+      setTextureUrl(result.imageDataUrl);
+      setStyle("imagery");
+      setTextureDescription(
+        "Sentinel-2 SR · " + result.sceneCount + " cenas · nuvens ≤ " +
+        result.cloudPercent + "% · " + result.startDate + " a " + result.endDate
+      );
+    } catch (cause) {
+      if (textureRequestId.current === requestId) {
+        setError(cause instanceof Error ? cause.message : "Erro na textura Sentinel-2.");
+      }
+    } finally {
+      if (textureRequestId.current === requestId) setTextureBusy(false);
+    }
+  }
+
+  async function exportGLB() {
+    if (!terrain || glbBusy) return;
+    setGlbBusy(true);
+    setError(null);
+    try {
+      const texture = textureUrl && style === "imagery"
+        ? await imageToGLBTexture(textureUrl) : undefined;
+      const bytes = encodeTerrainGLB(terrain, exaggeration, style, texture);
+      const blob = new Blob([new Uint8Array(bytes)], { type: "model/gltf-binary" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url; anchor.download = "geomoz_terreno_3d.glb"; anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Falha ao exportar modelo GLB.");
+    } finally {
+      setGlbBusy(false);
     }
   }
 
@@ -248,6 +328,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
     }
     setError(null);
     setTextureUrl(URL.createObjectURL(file));
+    setTextureDescription("Textura local · " + file.name);
     setStyle("imagery");
   }
 
@@ -321,6 +402,13 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
             className="rounded-lg border border-sky-300 dark:border-sky-600 px-3 py-2 text-xs font-semibold text-sky-700 dark:text-sky-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
             <Download size={13} className="mr-1 inline"/> .geomoz
           </button>
+          <button type="button" disabled={!terrain || glbBusy}
+            onClick={() => void exportGLB()}
+            title="Exportar modelo glTF 2.0 em metros, com a textura actual incorporada"
+            className="rounded-lg border border-sky-300 dark:border-sky-600 px-3 py-2 text-xs font-semibold text-sky-700 dark:text-sky-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
+            {glbBusy ? <Loader2 size={13} className="mr-1 inline animate-spin"/> : <Download size={13} className="mr-1 inline"/>}
+            GLB 3D
+          </button>
           <button type="button" disabled={!terrain || !!rendererError}
             onClick={downloadCanvas}
             className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
@@ -393,6 +481,50 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               <option value="grayscale">Relevo em escala de cinzentos</option>
               <option value="imagery" disabled={!textureUrl}>Imagem de satélite / ortofoto</option>
             </select>
+            <div className="space-y-2 rounded-xl border border-sky-200 bg-sky-50 p-2.5 dark:border-sky-800 dark:bg-slate-800/60">
+              <label className="block text-xs font-semibold text-sky-900 dark:text-sky-200">
+                Textura de satélite automática
+              </label>
+              <div className="flex items-center gap-2">
+                <label htmlFor="terrain-cloud-filter" className="text-[11px]">Nuvens (%)</label>
+                <select id="terrain-cloud-filter" value={cloudLimit}
+                  disabled={textureBusy}
+                  onChange={event => setCloudLimit(Number(event.target.value))}
+                  className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white p-1.5 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                  {[10, 20, 35, 50, 70, 100].map(p=><option value={p} key={p}>{p}%</option>)}
+                </select>
+              </div>
+              <button type="button" disabled={!terrain || !geeEnabled || textureBusy}
+                data-testid="geomoz-terrain-sentinel-rgb"
+                onClick={() => void generateSentinelTexture()}
+                title="Sentinel-2 SR Harmonized: composição RGB mediana dos últimos 12 meses"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50">
+                {textureBusy ? <Loader2 size={14} className="animate-spin"/> : <ImageIcon size={14}/>}
+                {textureBusy ? "A processar imagens Sentinel-2…" : "Aplicar Sentinel-2 RGB ao terreno"}
+              </button>
+              <p className="text-[10px] leading-relaxed text-slate-600 dark:text-slate-300">
+                Composição mediana dos últimos 12 meses, com máscara de nuvens e
+                reprojecção para o CRS do DEM. Requer GEE conectado; áreas até 300 km por lado.
+              </p>
+              {textureDescription && <p role="status" className="text-[10px] font-medium text-sky-800 dark:text-sky-300">
+                {textureDescription}
+              </p>}
+            </div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
+              Nível de detalhe (LOD)
+              <select value={detailLevel} aria-label="Nível de detalhe do terreno 3D"
+                onChange={event => setDetailLevel(event.target.value as typeof detailLevel)}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                <option value="auto">Automático com o zoom</option>
+                <option value="full">Detalhe máximo · grelha completa</option>
+                <option value="medium">Desempenho equilibrado · LOD 2</option>
+                <option value="low">Máximo desempenho · LOD 4</option>
+              </select>
+            </label>
+            <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-300">
+              O LOD ajusta os triângulos desenhados sem alterar o DEM original, os perfis
+              científicos ou os pixels sem dados. DEM extensos ainda requerem recorte.
+            </p>
             <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-600/50 dark:bg-emerald-950/20 p-2.5 text-xs text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 ${!terrain || textureBusy ? "pointer-events-none opacity-50" : ""}`}>
               {textureBusy ? <Loader2 size={14} className="animate-spin"/> : <ImageIcon size={14}/>}
               {textureBusy ? "A alinhar textura RGB..." : "GeoTIFF RGB georreferenciado"}
