@@ -8,6 +8,13 @@ import math
 import re
 from agent.public_datasets import source
 
+# EE's CRS registry rejects the EPSG:6933 alias on the live service.
+# Supply the equivalent NSIDC EASE-Grid 2.0 definition explicitly as WKT1.
+# https://developers.google.com/earth-engine/apidocs/ee-projection
+# https://nsidc.org/data/user-resources/help-center/guide-ease-grids
+ANALYSIS_CRS = "EPSG:6933"
+ANALYSIS_CRS_WKT = 'PROJCS["WGS 84 / NSIDC EASE-Grid 2.0 Global",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],PROJECTION["Cylindrical_Equal_Area"],PARAMETER["standard_parallel_1",30],PARAMETER["central_meridian",0],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1]]'
+
 S2 = "COPERNICUS/S2_SR_HARMONIZED"
 WORLDCOVER = "ESA/WorldCover/v200"
 ERA5 = "ECMWF/ERA5_LAND/DAILY_AGGR"
@@ -71,7 +78,7 @@ def _grid(geometry, requested=30, native=10):
               if isinstance(geometry, dict) else geometry)
     area = float(region.area(maxError=10).getInfo())
     scale = grid_scale(area, requested, native)
-    return region, {"geometry": region, "scale": scale, "crs": "EPSG:6933", "maxPixels": 20_000_000, "tileScale": 4}, area
+    return region, {"geometry": region, "scale": scale, "crs": ANALYSIS_CRS_WKT, "maxPixels": 20_000_000, "tileScale": 4}, area
 
 
 def country_geometry(iso3):
@@ -139,7 +146,7 @@ def _tile(image, minimum=-1, maximum=1, palette=None):
 
 def _base(asset, grid, aoi_area, warning):
     return {"status": "success", "source": source(asset), "analysisScaleM": grid["scale"],
-            "analysisCRS": grid["crs"], "aoiAreaKm2": aoi_area / 1e6,
+            "analysisCRS": ANALYSIS_CRS, "analysisCRSWKT": grid["crs"], "aoiAreaKm2": aoi_area / 1e6,
             "warning": warning + " Áreas calculadas na grelha de análise indicada, não são medições cadastrais."}
 
 
