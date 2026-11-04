@@ -392,7 +392,6 @@ def delete_processing_job(job_id: str, uid: str) -> bool:
         if not job or job.uid != uid:
             return False
         _jobs.pop(job_id)
-        was_completed = job.status == "completed"
         cancellation = _cancellations.get(job_id)
         if cancellation:
             cancellation.set()
@@ -411,7 +410,9 @@ def delete_processing_job(job_id: str, uid: str) -> bool:
             _futures.pop(job_id, None)
             _cancellations.pop(job_id, None)
         shutil.rmtree(_job_dir(job_id), ignore_errors=True)
-    _finish_job_callback(job_id, was_completed)
+    # Removing an output before the first download releases any pending
+    # credit reservation; completed credits remain idempotently settled.
+    _finish_job_callback(job_id, False)
     return True
 
 
