@@ -209,7 +209,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     setRendererError(null);
     try {
       return createTerrainRenderer(canvasRef.current,terrain,{
-        exaggeration,style: textureUrl?"imagery":style,detailLevel,textureUrl,
+        exaggeration,style: textureUrl?"imagery":style,terrainBaseStyle:style==="grayscale"?"grayscale":"hypsometric",detailLevel,textureUrl,
         pickEnabled:!!pickTarget,onPick:selectPoint,
         profileOverlay:picked.A&&picked.B?
           {start:[picked.A.xMeters,picked.A.yMeters],
