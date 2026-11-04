@@ -196,7 +196,7 @@ module.exports=async function validateRasterProcessing(page){
  const view=await canvas.boundingBox();
  assert.ok(view?.width>200&&view.height>180,"WebGL terrain has usable dimensions");
  const clickVisible=async (target,pts)=>{
-   await terrain.getByRole("button",{name:new RegExp("Escolher "+target+" no terreno")}).click();
+   await terrain.getByRole("button",{name:new RegExp("(Escolher "+target+" no terreno|Clique no terreno para "+target+")")}).click();
    for(const [x,y] of pts){
      await page.mouse.click(view.x+view.width*x,view.y+view.height*y);
      if(await terrain.getByText(new RegExp("Ponto "+target+":")).count())return;
