@@ -37,6 +37,16 @@ export default function PricingPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<PaymentRecord[]>([]);
   const [checking, setChecking] = useState(false);
+  const [checkoutEnabled, setCheckoutEnabled] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    apiFetch("/geomoz-api/billing/config")
+      .then(async res => res.ok ? res.json() : null)
+      .then(data => { if (mounted) setCheckoutEnabled(data?.checkoutEnabled === true); })
+      .catch(() => { if (mounted) setCheckoutEnabled(false); });
+    return () => { mounted = false; };
+  }, []);
 
   useEffect(() => {
     setCustomerName(user?.displayName || "");
@@ -97,6 +107,10 @@ export default function PricingPage() {
   function selectPlan(plan: PlanId) {
     setNotice("");
     if (plan === "community") { navigate(user ? "/dashboard" : "/"); return; }
+    if (plan !== "enterprise" && !checkoutEnabled) {
+      setNotice("O checkout PayZeno está em validação. O pagamento será disponibilizado após os testes de segurança.");
+      return;
+    }
     if (plan === "enterprise") {
       setNotice("Solicite uma proposta institucional à equipa GEOLÍTHICA.");
       return;
@@ -177,7 +191,8 @@ export default function PricingPage() {
           <p className="text-xs mt-4 text-slate-500">Os períodos não são renovados automaticamente. Pode efectuar uma nova compra antes do vencimento.</p>
         </div>}
         {billing.error && <p className="text-center text-amber-700 text-sm mb-4">Não foi possível consultar a subscrição. Acesso Community apresentado por segurança.</p>}
-        <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-4">
+        {!checkoutEnabled && <p className="text-center text-sm text-amber-700 dark:text-amber-300 mb-6">Pagamentos temporariamente em validação. Os planos podem ser consultados sem efectuar cobranças.</p>}
+      <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-4">
           {PLAN_ORDER.map(id => {
             const p = PLANS[id], current = billing.plan === id;
             return <section key={id} className={`rounded-2xl border flex flex-col p-5 shadow-sm ${id === "pro" ? "border-sky-500 ring-2 ring-sky-200 dark:ring-sky-800 bg-white dark:bg-slate-900" : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"}`}>
@@ -185,8 +200,8 @@ export default function PricingPage() {
               <p className="text-xs text-slate-500 dark:text-slate-400 min-h-10">{p.audience}</p>
               <div className="mt-4 min-h-16"><div className="text-2xl font-bold tracking-tight">{id === "enterprise" ? "Sob consulta" : formatMzn(annual ? (p.yearlyMzn ?? 0) : (p.monthlyMzn ?? 0))}</div><div className="text-xs text-slate-500">{id === "enterprise" ? "Contrato institucional" : annual ? "por ano" : "por mês"}</div></div>
               <ul className="space-y-3 mt-6 mb-8 flex-1">{features[id].map(feature => <li key={feature} className="flex gap-2 text-sm"><Check size={16} className="text-emerald-600 shrink-0 mt-0.5" />{feature}</li>)}</ul>
-              <button type="button" disabled={billing.loading} onClick={() => selectPlan(id)} className="w-full rounded-xl bg-sky-600 disabled:bg-slate-300 disabled:text-slate-500 text-white font-semibold py-3 text-sm hover:bg-sky-700 transition-colors">
-                {current && id !== "community" ? "Renovar / Gerir período" : id === "enterprise" ? "Solicitar proposta" : id === "community" ? "Começar gratuitamente" : "Escolher plano"}
+              <button type="button" disabled={billing.loading || (!checkoutEnabled && id !== "community" && id !== "enterprise")} onClick={() => selectPlan(id)} className="w-full rounded-xl bg-sky-600 disabled:bg-slate-300 disabled:text-slate-500 text-white font-semibold py-3 text-sm hover:bg-sky-700 transition-colors">
+                {current && id !== "community" ? "Renovar / Gerir período" : id === "enterprise" ? "Solicitar proposta" : id === "community" ? "Começar gratuitamente" : !checkoutEnabled ? "Em validação" : "Escolher plano"}
               </button>
             </section>;
           })}
