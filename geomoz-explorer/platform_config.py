@@ -49,7 +49,9 @@ def read_config(*, fresh=False):
     # The lightweight Python CI installs FastAPI without firebase-admin.
     # Use immutable defaults in this explicitly marked CI environment only.
     # Production retains fail-closed behaviour when Firestore cannot be read.
-    if firestore is None and os.environ.get("CI", "").lower() == "true":
+    if os.environ.get("CI", "").lower() == "true" and (
+        firestore is None or os.environ.get("GEOMOZ_FEATURE_FLAGS_TEST_MODE", "").lower() == "true"
+    ):
         return {"plans": deepcopy(DEFAULT_PLANS), "features": deepcopy(DEFAULT_FEATURES)}
     now = monotonic()
     with _cache_lock:
