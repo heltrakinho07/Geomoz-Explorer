@@ -150,6 +150,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
     pt: {
       nav: {
         recursos: "Recursos",
+        planos: "Planos e Preços",
         relevo3d: "Relevo 3D",
         detecaoRemota: "Deteção Remota",
         hidrogeologia: "Hidrogeologia",
@@ -342,6 +343,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
     en: {
       nav: {
         recursos: "Resources",
+        planos: "Plans & Pricing",
         relevo3d: "3D Relief",
         detecaoRemota: "Remote Sensing",
         hidrogeologia: "Hydrogeology",
@@ -776,6 +778,9 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
             >
               {t.nav.casosDeUso}
             </a>
+            <Link href="/planos" className="hover:text-sky-600 dark:hover:text-sky-400 transition-colors">
+              {t.nav.planos}
+            </Link>
           </nav>
 
           {/* Controls: Lang Toggle + Theme Toggle + Auth / Launch Buttons */}
@@ -946,6 +951,9 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
               >
                 {t.nav.hidrogeologia}
               </a>
+              <Link href="/planos" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg hover:bg-sky-500/10 hover:text-sky-600 transition-colors">
+                {t.nav.planos}
+              </Link>
               <a
                 href="#casos-de-uso"
                 onClick={() => setMobileMenuOpen(false)}
