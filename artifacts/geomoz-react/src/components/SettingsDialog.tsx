@@ -745,12 +745,12 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
                   </select>
                   <span className="text-[11px] text-slate-500 dark:text-slate-400">{t("settings.languageHint")}</span>
                   {isPortalReviewed ? (
-                    <p data-testid="geomoz-language-reviewed-info" className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">{t("settings.languageReviewedDescription")}</p>
+                    <span data-testid="geomoz-language-reviewed-info" className="block text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">{t("settings.languageReviewedDescription")}</span>
                   ) : (
-                    <div data-testid="geomoz-language-fallback" role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                    <span data-testid="geomoz-language-fallback" role="status" className="block rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
                       <strong className="mb-1 block">{t("settings.languagePartialTitle")}</strong>
                       <span>{t("settings.languagePartialDescription").replace("{name}", selectedLanguageName)}</span>
-                    </div>
+                    </span>
                   )}
                 </label>
                 <label className="flex items-center justify-between gap-3 text-xs text-slate-700 dark:text-slate-200">
