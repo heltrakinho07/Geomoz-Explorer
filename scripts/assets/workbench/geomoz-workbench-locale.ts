@@ -48,6 +48,7 @@ const workbenchCopy = {
   flyoutAria:"Ferramentas: ", flyoutClose:"Fechar ",
   hydrologyToolsHelp:"Aceda às análises de bacias hidrográficas, águas subterrâneas e terreno.",
   terrain3D:"Gerar mapa 3D do DEM",
+  catalog:"Catálogo", symbology:"Simbologia",
   },
  en: {
   current:"CURRENT PROJECT", projectName:"Project name", search:"Search tools…",
@@ -74,6 +75,7 @@ const workbenchCopy = {
   flyoutAria:"Tools: ", flyoutClose:"Close ",
   hydrologyToolsHelp:"Open watershed, groundwater and terrain analysis tools.",
   terrain3D:"Generate 3D map from DEM",
+  catalog:"Catalog", symbology:"Symbology",
   },
  es: {
   current:"PROYECTO ACTUAL", projectName:"Nombre del proyecto", search:"Buscar herramientas…",
@@ -100,6 +102,7 @@ const workbenchCopy = {
   flyoutAria:"Herramientas: ", flyoutClose:"Cerrar ",
   hydrologyToolsHelp:"Acceda a los análisis de cuencas, aguas subterráneas y terreno.",
   terrain3D:"Generar mapa 3D a partir del MDE",
+  catalog:"Catálogo", symbology:"Simbología",
   },
  fr: {
   current:"PROJET ACTUEL", projectName:"Nom du projet", search:"Rechercher des outils…",
@@ -126,6 +129,7 @@ const workbenchCopy = {
   flyoutAria:"Outils : ", flyoutClose:"Fermer ",
   hydrologyToolsHelp:"Accédez aux analyses des bassins versants, des eaux souterraines et du terrain.",
   terrain3D:"Générer une carte 3D à partir du MNT",
+  catalog:"Catalogue", symbology:"Symbologie",
   },
 } as const;
 export type WorkbenchCopyKey=keyof typeof workbenchCopy.pt;
