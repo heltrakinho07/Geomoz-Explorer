@@ -222,6 +222,10 @@ _thread_pool_executor = ThreadPoolExecutor(max_workers=4)
 
 app = FastAPI(title="GeoMoz API", version="2.1.0")
 
+# Subscription endpoints (server-verified identity, Stripe webhook signature and Firestore writes).
+from billing import router as billing_router
+app.include_router(billing_router)
+
 # CORS: accept only explicitly configured origins (production) or known local
 # development/Electron origins. Never combine wildcard origins with credentials.
 _default_cors_origins = [
