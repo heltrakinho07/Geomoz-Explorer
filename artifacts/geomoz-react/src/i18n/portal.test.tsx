@@ -124,7 +124,7 @@ describe("GeoMoz geohazards scientific module localization", () => {
 
   it("resolves every used key and preserves the six GEE algorithms and numeric controls", () => {
     const page = readFileSync(resolve(process.cwd(), "src/pages/Geoperigos.tsx"), "utf8");
-    const keys = [...page.matchAll(/\\bh\\("([^"]+)"\\)/g)].map((match) => match[1]);
+    const keys = [...page.matchAll(/\bh\("([^"]+)"\)/g)].map((match) => match[1]);
     expect(keys.length).toBeGreaterThan(130);
     for (const key of keys) {
       expect(Object.prototype.hasOwnProperty.call(HAZARDS_MESSAGES, key), key).toBe(true);
@@ -138,6 +138,22 @@ describe("GeoMoz geohazards scientific module localization", () => {
   });
 
   it("changes localized scientific controls reactively without reloading", () => {
+    let currentLanguage = "pt";
+    const subscribers = new Set<() => void>();
+    window.GeoMozPreferences = {
+      getLanguage: () => currentLanguage,
+      setLanguage: (value: string) => {
+        currentLanguage = value;
+        subscribers.forEach(callback => callback());
+        return true;
+      },
+      getReducedMotion: () => false,
+      setReducedMotion: () => {},
+      subscribe: (callback: () => void) => {
+        subscribers.add(callback);
+        return () => subscribers.delete(callback);
+      },
+    };
     const { result } = renderHook(() => usePortalTranslation());
     expect(hazardsText(result.current.translatedLocale, "tool.drought")).toBe("Seca");
     act(() => result.current.setLanguage("en"));
@@ -146,6 +162,8 @@ describe("GeoMoz geohazards scientific module localization", () => {
     expect(hazardsText(result.current.translatedLocale, "tool.drought")).toBe("Sécheresse");
     act(() => result.current.setLanguage("de"));
     expect(hazardsText(result.current.translatedLocale, "tool.drought")).toBe("Drought");
+    cleanup();
+    delete window.GeoMozPreferences;
   });
 });
 
