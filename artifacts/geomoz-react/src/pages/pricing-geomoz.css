@@ -1,0 +1,163 @@
+/*
+ * GeoMoz Explorer — plans and subscriptions.
+ * Reuses dashboard-glass.css for visual continuity with GIS Dashboard.
+ * Does not alter raster colour ramps, scientific charts or map canvases.
+ */
+.gm-pricing {
+  min-width: 0;
+  overflow-x: clip;
+  font-family: var(--app-font-sans, ui-sans-serif, system-ui, sans-serif);
+}
+.gm-pricing-topbar {
+  box-shadow: 0 10px 28px -24px rgba(15, 23, 42, .3);
+}
+.gm-pricing-hero {
+  border-radius: 24px;
+  box-shadow: 0 28px 52px -32px rgba(3, 39, 72, .6);
+}
+.gm-pricing-hero-status {
+  box-shadow: inset 0 1px rgba(255,255,255,.1);
+}
+.gm-pricing-grid {
+  align-items: stretch;
+}
+.gm-pricing-card {
+  overflow: hidden;
+  min-height: 520px;
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+.gm-pricing-card::before {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  inset: 0;
+  opacity: .72;
+  background:
+    radial-gradient(ellipse at 95% 0%, rgba(14,165,233,.11), transparent 62%),
+    linear-gradient(130deg, rgba(255,255,255,.14), transparent 54%);
+}
+.gm-pricing-card[data-plan="academic"]::before {
+  background: radial-gradient(ellipse at 95% 0%, rgba(45,212,191,.12), transparent 60%);
+}
+.gm-pricing-card[data-plan="teams"]::before {
+  background: radial-gradient(ellipse at 95% 0%, rgba(99,102,241,.14), transparent 60%);
+}
+.gm-pricing-card[data-plan="enterprise"]::before {
+  background: radial-gradient(ellipse at 95% 0%, rgba(14,165,233,.16), transparent 63%);
+}
+.gm-pricing-card > * {
+  position: relative;
+  z-index: 1;
+}
+.gm-pricing-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(2,132,199,.44);
+  box-shadow:
+    0 26px 50px -28px rgba(15,23,42,.35),
+    0 12px 28px -26px rgba(2,132,199,.38),
+    inset 0 1px rgba(255,255,255,.9);
+}
+.dark .gm-pricing-card:hover {
+  border-color: rgba(56,189,248,.4);
+  box-shadow: 0 22px 50px -28px rgba(0,0,0,.9);
+}
+.gm-pricing-card--featured {
+  border-color: rgba(14,165,233,.68) !important;
+  box-shadow: 0 20px 42px -30px rgba(2,132,199,.55), inset 0 1px rgba(255,255,255,.92);
+}
+.dark .gm-pricing-card--featured {
+  border-color: rgba(56,189,248,.55) !important;
+  box-shadow: 0 16px 43px -31px rgba(56,189,248,.4);
+}
+.gm-pricing-card .gm-pricing-featured-label {
+  z-index: 2;
+}
+.gm-pricing-plan-icon {
+  box-shadow: 0 9px 20px -17px rgba(2,132,199,.65);
+}
+.gm-pricing-metric {
+  min-width: 0;
+}
+.gm-pricing-metric > div:nth-child(2) {
+  overflow-wrap: anywhere;
+}
+.gm-pricing-card-button {
+  margin-top: auto;
+}
+.gm-pricing-card-button:disabled {
+  background: #e2e8f0 !important;
+  color: #64748b !important;
+  box-shadow: none !important;
+}
+.dark .gm-pricing-card-button:disabled {
+  background: #334155 !important;
+  color: #cbd5e1 !important;
+}
+.gm-pricing-payment-section {
+  overflow: hidden;
+}
+.gm-pricing-payment-method {
+  transition: background-color .18s, border-color .18s, transform .18s;
+}
+.gm-pricing-payment-method:hover {
+  border-color: rgba(14,165,233,.3);
+  background: rgba(240,249,255,.85);
+  transform: translateY(-2px);
+}
+.dark .gm-pricing-payment-method:hover {
+  background: rgba(14,165,233,.08);
+}
+.gm-pricing-payment-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  height: 41px;
+  width: 41px;
+  border-radius: 12px;
+  color: #0284c7;
+  background: rgba(14,165,233,.09);
+  border: 1px solid rgba(14,165,233,.2);
+}
+.dark .gm-pricing-payment-icon {
+  color: #7dd3fc;
+  background: rgba(14,165,233,.16);
+  border-color: rgba(125,211,252,.19);
+}
+.gm-pricing :is(button,a,input,select):focus-visible {
+  outline: 2px solid var(--geomoz-accent, #0284c7);
+  outline-offset: 3px;
+}
+.dark .gm-pricing :is(button,a,input,select):focus-visible {
+  outline-color: #7dd3fc;
+}
+.gm-pricing-checkout {
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  backdrop-filter: blur(24px) saturate(140%);
+}
+.gm-pricing-checkout .gm-pricing-input {
+  width: 100%;
+  color: #0f172a;
+}
+.dark .gm-pricing-checkout .gm-pricing-input {
+  color: #f8fafc;
+}
+@media(max-width: 640px) {
+  .gm-pricing-hero { border-radius: 18px; }
+  .gm-pricing-card { min-height: auto; }
+}
+@media(prefers-reduced-motion: reduce) {
+  .gm-pricing :is(.gm-pricing-card,.gm-pricing-payment-method,.gm-pricing-card-button) {
+    transition: none;
+    transform: none !important;
+  }
+}
+html[data-geomoz-reduced-motion="true"] .gm-pricing * {
+  animation-duration: .01ms !important;
+  transition-duration: .01ms !important;
+}
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .gm-pricing-checkout { background: white; }
+  .dark .gm-pricing-checkout { background: #0f172a; }
+  .gm-pricing-topbar { background: #fff; }
+  .dark .gm-pricing-topbar { background: #020617; }
+}
