@@ -1007,7 +1007,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       </div>
                     </div>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Análises GEE com credenciais próprias não consomem créditos GeoMoz. Um processamento raster gerido reserva um crédito, devolvido em caso de falha ou cancelamento.
+                      Análises GEE com credenciais próprias não consomem créditos GeoMoz. Um processamento raster gerido reserva um crédito, definitivamente consumido quando descarrega o resultado; erros ou cancelamentos libertam a reserva.
                     </p>
                   </>
                 )}
