@@ -2,11 +2,15 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Link as WLink } from "wouter";
 import {
   Activity, ArrowLeft, BarChart3, Check, ChevronLeft, ChevronRight,
-  CreditCard, Database, ExternalLink, Eye, Globe2, LockKeyhole, RefreshCw,
+  CreditCard, Database, ExternalLink, LockKeyhole, Moon, RefreshCw, Sun,
   Save, Search, Settings2, Shield, ShieldCheck, ShieldAlert, SlidersHorizontal,
   Users, X, Zap,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useGeoMozTheme } from "@/hooks/useGeoMozTheme";
+import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
+import "@/components/dashboard-glass.css";
+import "./admin-geomoz.css";
 import { apiFetch } from "@/lib/api";
 import { PLAN_ORDER, formatMzn, type PlanId } from "@/lib/plans";
 
@@ -62,11 +66,11 @@ const LIMIT_FIELDS: { key: keyof PlanConfig; label: string }[] = [
   { key: "seats", label: "Utilizadores" },
   { key: "concurrentJobs", label: "Processos simultâneos" },
 ];
-const card = "rounded-2xl border border-slate-200/70 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 shadow-sm backdrop-blur-xl";
-const input = "w-full min-w-0 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10";
+const card = "gm-dashboard-panel gm-admin-panel rounded-2xl";
+const input = "gm-admin-input w-full min-w-0 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/85 dark:bg-slate-950/75 px-3 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/15";
 const btn = "inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
-const primary = btn + " bg-sky-600 text-white hover:bg-sky-700";
-const subtle = btn + " border border-slate-200 dark:border-white/15 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800";
+const primary = btn + " gm-admin-button-primary bg-gradient-to-r from-sky-500 to-indigo-600 text-white hover:from-sky-600 hover:to-indigo-700 shadow-sm shadow-sky-500/15";
+const subtle = btn + " gm-admin-button-subtle border border-slate-200/90 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white/70 dark:bg-slate-800/60 hover:bg-sky-50 dark:hover:bg-slate-800";
 const fmtDate = (s?: string | null) => s ? new Date(s).toLocaleDateString("pt-PT") : "—";
 const fmtTime = (s?: string | null) => s ? new Date(s).toLocaleString("pt-PT") : "—";
 
@@ -93,6 +97,7 @@ function StatusTag({ children, tone = "neutral" }: { children: React.ReactNode; 
 
 export default function AdminConsole() {
   const { user, loading: authLoading } = useAuth();
+  const { theme, toggleTheme } = useGeoMozTheme();
   const [identity, setIdentity] = useState<Session | null>(null);
   const [authError, setAuthError] = useState("");
   const [section, setSection] = useState<Section>("overview");
@@ -176,67 +181,105 @@ export default function AdminConsole() {
   const canWrite = identity?.canEdit === true;
   const isRoot = identity?.isSuperadmin === true;
 
+
   if (authLoading || (!identity && !authError)) return (
-    <div className="min-h-screen grid place-items-center bg-slate-950 text-slate-100"><RefreshCw size={28} className="animate-spin text-sky-400" /> A verificar permissões...</div>
+    <div data-geomoz-system="admin" className="gm-dashboard gm-admin min-h-screen grid place-items-center">
+      <div className="gm-dashboard-panel flex items-center gap-3 rounded-2xl p-6 text-slate-700 dark:text-slate-200">
+        <RefreshCw size={22} className="animate-spin text-sky-500" />
+        A verificar permissões de administração...
+      </div>
+    </div>
   );
   if (!identity) return (
-    <div className="min-h-screen bg-slate-950 grid place-items-center p-6 text-slate-100">
-      <div className="max-w-md w-full rounded-3xl bg-slate-900 border border-slate-800 p-8 text-center shadow-2xl">
-        <LockKeyhole size={38} className="mx-auto mb-4 text-amber-400" />
-        <h1 className="text-xl font-bold mb-2">Acesso administrativo restrito</h1>
-        <p className="text-sm text-slate-400 mb-5">{authError}</p>
-        <WLink href="/dashboard" className={subtle}>Regressar ao GeoMoz</WLink>
+    <div data-geomoz-system="admin" className="gm-dashboard gm-admin min-h-screen grid place-items-center p-5">
+      <div className="gm-dashboard-panel max-w-md w-full rounded-3xl p-8 text-center">
+        <GeoMozBrandIcon className="mx-auto mb-5 h-14 w-14 rounded-2xl" width={56} height={56} />
+        <LockKeyhole size={28} className="mx-auto mb-3 text-amber-500" />
+        <h1 className="text-xl font-extrabold text-slate-900 dark:text-white mb-2">Acesso administrativo restrito</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">{authError}</p>
+        <WLink href="/dashboard" className={subtle}>Regressar ao GeoMoz Explorer</WLink>
       </div>
     </div>
   );
 
   const currentMenu = initialNavigation.find(item => item.id === section);
+  const MenuIcon = currentMenu?.icon ?? BarChart3;
   return (
-    <div className="min-h-screen bg-[#f3f7fb] text-slate-900 dark:bg-[#070e1c] dark:text-white">
-      <div className="pointer-events-none fixed inset-0 opacity-70" style={{ background: "radial-gradient(circle at 70% 0%, rgba(14,165,233,.12),transparent 40%)" }} />
-      <div className="relative lg:flex min-h-screen">
-        <aside className="lg:sticky lg:top-0 lg:h-screen lg:w-[264px] lg:flex-shrink-0 bg-[#0b1830] text-slate-100 px-4 py-5 lg:px-5 lg:py-7 border-b lg:border-r border-slate-800/80">
-          <div className="flex items-center justify-between lg:block">
-            <WLink href="/dashboard" className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-sky-500/15 border border-sky-400/30 grid place-items-center"><Globe2 size={24} className="text-sky-300" /></div>
-              <div><div className="font-extrabold tracking-tight text-xl leading-none">GeoMoz</div><div className="text-[10px] uppercase tracking-[0.22em] text-sky-300 mt-1.5">Administration</div></div>
+    <div data-geomoz-system="admin" className="gm-dashboard gm-admin min-h-screen">
+      <div className="gm-dashboard-content relative lg:flex min-h-screen">
+        <aside className="gm-admin-sidebar gm-sidebar lg:sticky lg:top-0 lg:h-screen lg:w-[276px] lg:flex-shrink-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200/90 dark:border-slate-800 bg-white/85 dark:bg-slate-950/95 text-slate-800 dark:text-slate-100">
+          <div className="gm-admin-sidebar__brand flex items-center justify-between gap-3 px-4 py-4 border-b border-slate-200/80 dark:border-slate-800">
+            <WLink href="/dashboard" className="flex items-center gap-3 min-w-0 hover:opacity-90 transition-opacity" title="Regressar ao GeoMoz Explorer">
+              <GeoMozBrandIcon className="h-10 w-10 rounded-xl shadow-md shadow-sky-500/20" width={40} height={40} alt="GeoMoz Explorer" />
+              <span className="min-w-0 flex flex-col">
+                <span className="font-black text-slate-900 dark:text-white tracking-tight text-base whitespace-nowrap">GeoMoz <span className="text-sky-600 dark:text-sky-400">Explorer</span></span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Centro de Administração</span>
+              </span>
             </WLink>
-            <WLink href="/dashboard" className="lg:hidden text-slate-400 hover:text-white" title="Voltar"><X size={20} /></WLink>
+            <button type="button" onClick={toggleTheme} aria-label={theme === "dark" ? "Activar modo claro" : "Activar modo escuro"}
+              title={theme === "dark" ? "Modo claro" : "Modo escuro"}
+              className="gm-admin-theme-toggle flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+              {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
+            </button>
           </div>
-          <div className="mt-7 hidden lg:block rounded-2xl p-3.5 bg-white/5 border border-white/10">
-            <div className="flex items-center gap-2"><ShieldCheck size={17} className="text-emerald-300" /><span className="font-bold text-xs">Acesso verificado</span></div>
-            <div className="mt-2 text-xs truncate text-slate-400" title={identity.email}>{identity.email}</div>
-            <div className="text-[11px] text-sky-300 font-bold uppercase mt-2">{identity.role}</div>
+          <div className="gm-admin-sidebar__identity mx-3 mt-4 rounded-2xl border border-sky-100 dark:border-sky-900/35 bg-sky-50/80 dark:bg-sky-950/30 p-3.5">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-600 dark:bg-sky-900/60 dark:text-sky-300"><ShieldCheck size={17}/></div>
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-slate-800 dark:text-slate-100">Sessão administrativa</div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate" title={identity.email}>{identity.email}</div>
+              </div>
+            </div>
+            <span className="mt-2.5 inline-flex rounded-full border border-sky-200 dark:border-sky-700 bg-white/85 dark:bg-slate-900/70 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300">{identity.role}</span>
           </div>
-          <nav aria-label="Secções administrativas" className="mt-5 lg:mt-8 flex lg:flex-col gap-1.5 overflow-x-auto pb-2 lg:pb-0">
+          <div className="px-5 mt-5 mb-2 hidden lg:block">
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400 dark:text-slate-500">Gestão da plataforma</p>
+          </div>
+          <nav aria-label="Secções administrativas" className="gm-admin-nav flex lg:flex-col lg:flex-1 min-w-0 gap-1.5 overflow-x-auto lg:overflow-x-hidden lg:overflow-y-auto px-3 py-3 lg:py-1.5">
             {initialNavigation.map(item => {
               const Icon = item.icon;
               return (
                 <button key={item.id} type="button" onClick={() => go(item.id)}
                   aria-current={section === item.id ? "page" : undefined}
-                  className={"min-w-max lg:min-w-0 w-auto lg:w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors " +
-                    (section === item.id ? "bg-sky-500/20 border border-sky-400/25 text-white" : "hover:bg-white/5 text-slate-400 border border-transparent")}>
-                  <Icon size={18} className={section === item.id ? "text-sky-300" : ""} />
-                  <div><div className="text-sm font-semibold">{item.label}</div><div className="hidden lg:block text-[11px] text-slate-500">{item.hint}</div></div>
+                  className={"gm-admin-nav__item min-w-max lg:min-w-0 w-auto lg:w-full flex items-center gap-3 rounded-xl px-3.5 py-3 text-left text-sm font-semibold transition-all " +
+                    (section === item.id
+                      ? "bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-md shadow-sky-500/20"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/90 dark:hover:bg-slate-900")}>
+                  <Icon size={18} className="shrink-0" />
+                  <div className="min-w-0">
+                    <div className="truncate">{item.label}</div>
+                    <div className={"hidden lg:block text-[11px] font-medium mt-0.5 " + (section === item.id ? "text-white/80" : "text-slate-400 dark:text-slate-500")}>{item.hint}</div>
+                  </div>
                 </button>
               );
             })}
           </nav>
-          <div className="hidden lg:block mt-8 border-t border-white/10 pt-5">
-            <WLink href="/dashboard" className="flex gap-2 items-center px-3 py-2 text-xs text-slate-400 hover:text-sky-300"><ArrowLeft size={15} /> Regresso ao GIS Workspace</WLink>
+          <div className="gm-admin-sidebar__footer hidden lg:block p-3 border-t border-slate-200/80 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-900/60">
+            <WLink href="/dashboard" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-300">
+              <ArrowLeft size={16}/> Voltar ao GeoMoz Explorer
+            </WLink>
           </div>
         </aside>
 
-        <main className="flex-1 min-w-0 max-w-[1600px] mx-auto px-4 sm:px-7 lg:px-10 py-7 lg:py-9">
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-            <div>
-              <p className="uppercase tracking-[0.23em] text-sky-600 dark:text-sky-400 text-[11px] font-bold">GEOLÍTHICA · Gestão da plataforma</p>
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mt-2">{currentMenu?.label}</h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{currentMenu?.hint}</p>
+        <main className="gm-admin-content flex-1 min-w-0 max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-7 lg:py-8">
+          <section className="gm-dashboard-hero gm-admin-hero p-5 sm:p-7 mb-6 text-white" aria-label="Centro de Administração GeoMoz">
+            <div className="relative z-10 flex flex-wrap items-center justify-between gap-5">
+              <div className="min-w-0 max-w-2xl">
+                <span className="inline-flex items-center gap-2 rounded-full border border-sky-400/30 bg-sky-500/20 px-3 py-1 text-xs font-bold text-sky-200"><ShieldCheck size={14}/> Gestão centralizada da plataforma</span>
+                <h1 className="mt-3 text-2xl sm:text-3xl font-extrabold tracking-tight text-white">Centro de <span className="text-sky-300">Administração</span></h1>
+                <p className="mt-2 text-sm leading-relaxed text-slate-300">Utilizadores, subscrições, módulos e operações do GeoMoz Explorer num único ambiente.</p>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <button type="button" className="gm-dashboard-hero__action inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-xs sm:text-sm font-semibold" onClick={() => void loadSection(section)} disabled={busy}><RefreshCw size={15} className={busy ? "animate-spin" : ""} /> Actualizar</button>
+                <WLink href="/dashboard" className="gm-dashboard-hero__action inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-xs sm:text-sm font-semibold"><ExternalLink size={15}/> Abrir Workspace</WLink>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <button className={subtle} onClick={() => void loadSection(section)} disabled={busy}><RefreshCw size={15} className={busy ? "animate-spin" : ""} /> Actualizar</button>
-              <WLink href="/dashboard" className={subtle}><ExternalLink size={15} /> Workspace</WLink>
+          </section>
+          <div className="gm-admin-section-heading mb-5 flex items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-sky-200/75 dark:border-sky-900/55 bg-sky-50/80 dark:bg-sky-950/35 text-sky-600 dark:text-sky-300"><MenuIcon size={20}/></span>
+            <div className="min-w-0">
+              <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">{currentMenu?.label}</h2>
+              <p className="text-xs sm:text-sm mt-0.5 text-slate-500 dark:text-slate-400">{currentMenu?.hint}</p>
             </div>
           </div>
           {notice && <div role="status" className="mb-6 p-4 rounded-xl border border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-900/60 dark:bg-sky-950/35 dark:text-sky-100 text-sm flex justify-between gap-3">
@@ -253,10 +296,10 @@ export default function AdminConsole() {
                   { icon: Zap, title: "Checkout PayZeno", value: overview?.billingCheckoutEnabled ? "Activo" : "Em validação", note: "Controlo seguro no Cloud Run" },
                 ].map((kpi, i) => {
                   const Icon = kpi.icon;
-                  return <div key={i} className={card + " p-5"}>
-                    <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-900/25 grid place-items-center mb-4"><Icon size={20} className="text-sky-600 dark:text-sky-300" /></div>
+                  return <div key={i} className={card + " gm-admin-kpi p-5"} data-kpi={i}>
+                    <div className="gm-admin-kpi__icon w-11 h-11 rounded-xl bg-sky-50 dark:bg-sky-900/25 grid place-items-center mb-4"><Icon size={20} className="text-sky-600 dark:text-sky-300" /></div>
                     <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">{kpi.title}</div>
-                    <div className="font-extrabold tracking-tight text-2xl mt-2">{kpi.value}</div>
+                    <div className="font-extrabold tracking-tight text-2xl mt-2 tabular-nums">{kpi.value}</div>
                     <p className="text-xs text-slate-500 mt-2">{kpi.note}</p>
                   </div>;
                 })}
@@ -292,7 +335,7 @@ export default function AdminConsole() {
               <button className={primary} disabled={busy} onClick={() => void loadSection("users", undefined, searchEmail.trim() || undefined)}>Pesquisar</button>
               <button className={subtle} onClick={() => {setSearchEmail(""); void loadSection("users");}}>Limpar</button>
             </div>
-            <section className={card + " overflow-hidden"}>
+            <section className={card + " gm-admin-table-wrap overflow-hidden"}>
               <div className="overflow-x-auto"><table className="w-full text-left text-sm">
                 <thead className="text-[11px] font-bold uppercase tracking-wider text-slate-500 bg-slate-50/90 dark:bg-slate-800/65">
                   <tr><th className="px-5 py-4">Conta</th><th className="px-4 py-4">Perfil</th><th className="px-4 py-4">Plano</th><th className="px-4 py-4">Estado</th><th className="px-4 py-4 text-right">Acções</th></tr>
@@ -403,8 +446,8 @@ export default function AdminConsole() {
         </main>
       </div>
 
-      {selectedUser && <div role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setSelectedUser(null); }} className="fixed inset-0 bg-[#040c18]/75 backdrop-blur-sm z-50 p-4 flex justify-center items-center">
-        <section role="dialog" aria-modal="true" aria-label="Gerir utilizador" className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-6 sm:p-8">
+      {selectedUser && <div role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setSelectedUser(null); }} className="fixed inset-0 bg-slate-950/65 backdrop-blur-sm z-50 p-4 flex justify-center items-center">
+        <section role="dialog" aria-modal="true" aria-label="Gerir utilizador" className="gm-admin-modal gm-dashboard-panel w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 sm:p-8">
           <div className="flex justify-between gap-2 mb-5">
             <div><div className="text-xs text-sky-600 dark:text-sky-300 font-extrabold uppercase tracking-widest">Gestão da conta</div><h2 className="text-xl font-bold mt-1">{selectedUser.displayName || selectedUser.email}</h2><p className="text-xs break-all text-slate-500 mt-1">{selectedUser.email} · {selectedUser.uid}</p></div>
             <button aria-label="Fechar" onClick={() => setSelectedUser(null)}><X size={20}/></button>
