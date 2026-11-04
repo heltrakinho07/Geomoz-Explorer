@@ -26,7 +26,7 @@ export function useSubscription() {
       const data=snap.data();
       const plan=isPlanId(data?.plan)?data.plan:"community";
       const status = data?.status;
-      const validStatus = ["active","trialing","past_due","cancelled","expired"].includes(status) ? status as BillingState["status"] : "active";
+      const validStatus = status === undefined ? "active" : (["active","trialing","past_due","cancelled","expired"].includes(status) ? status as BillingState["status"] : "expired");
       const usable = validStatus==="active" || validStatus==="trialing";
       setState({plan:usable?plan:"community",status:validStatus,periodEnd:typeof data?.periodEnd==="string"?data.periodEnd:null,cancelAtPeriodEnd:data?.cancelAtPeriodEnd===true,creditsUsed:typeof data?.creditsUsed==="number"?Math.max(0,data.creditsUsed):0,storageUsedBytes:typeof data?.storageUsedBytes==="number"?Math.max(0,data.storageUsedBytes):0});
       setLoading(false);
