@@ -30,7 +30,12 @@ describe("GeoMoz Explorer — unified plans experience", () => {
     expect(pricing).toContain('aria-pressed={!annual}');
     expect(pricing).toContain('aria-pressed={annual}');
     expect(pricing).toContain('checkoutEnabled');
-    expect(pricing).toContain('!checkoutEnabled && id !== "community" && id !== "enterprise"');
+    expect(pricing).toContain('disabled={billing.loading || disabled}');
+    expect(pricing).toContain("setSelected(plan)");
+    expect(pricing).toContain('"/geomoz-api/billing/requests"');
+    expect(pricing).toContain("submitPlanRequest");
+    expect(pricing).toContain("setRecentRequest");
+    expect(pricing).toContain('"/login?next=/planos"');
   });
 
   it("describes customer payment methods, not the gateway brand", () => {
@@ -40,6 +45,8 @@ describe("GeoMoz Explorer — unified plans experience", () => {
     expect(pricing).not.toMatch(/Checkout PayZeno|Histórico de pagamentos PayZeno|Prosseguir para PayZeno|confirmado pelo PayZeno/i);
     expect(pricing).toContain('result.url.startsWith("https://checkout.payzeno.io/")');
     expect(pricing).toContain("window.location.assign(result.url)");
+    expect(pricing).toContain("bg-gradient-to-r from-sky-500 to-indigo-600 text-white");
+    expect(pricing).not.toContain("bg-slate-900 dark:bg-sky-700 text-white");
   });
 
   it("keeps accessible responsive layouts, reduced motion and styles", () => {
@@ -59,6 +66,8 @@ describe("GeoMoz native administration and documentation", () => {
     expect(admin).toContain("<GeoMozBrandIcon");
     expect(admin).toContain('import "@/components/dashboard-glass.css"');
     expect(admin).toContain("gm-admin-sidebar");
+    expect(admin).toContain("Pedidos de adesão");
+    expect(admin).toContain('"/geomoz-api/admin/plan-requests?limit=80"');
   });
 
   it("moves docs from primary sidebar to settings, with real route", () => {
