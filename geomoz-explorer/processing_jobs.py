@@ -11,6 +11,8 @@ from __future__ import annotations
 import io
 import json
 import math
+import logging
+import re
 import os
 import shutil
 import subprocess
@@ -20,7 +22,7 @@ import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, BinaryIO, Dict, Optional
+from typing import Any, BinaryIO, Callable, Dict, Optional
 
 JOB_ROOT = Path(os.getenv("GEOMOZ_JOB_ROOT", "/tmp/geomoz-processing-jobs"))
 JOB_TTL_SECONDS = max(60, int(os.getenv("GEOMOZ_JOB_TTL_SECONDS", "7200")))
@@ -39,6 +41,8 @@ _jobs: Dict[str, "ProcessingJob"] = {}
 _futures: Dict[str, Future] = {}
 _processes: Dict[str, subprocess.Popen] = {}
 _cancellations: Dict[str, threading.Event] = {}
+_on_finish: Dict[str, Callable[[bool], None]] = {}
+_logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -273,7 +277,14 @@ def _run_job(job_id: str, input_path: Path, output_path: Path) -> None:
             _processes.pop(job_id, None)
             _futures.pop(job_id, None)
             removed = cancelled.is_set() or job_id not in _jobs
+            completed = (not removed and _jobs[job_id].status == "completed")
+            callback = _on_finish.pop(job_id, None)
             _cancellations.pop(job_id, None)
+        if callback:
+            try:
+                callback(completed)
+            except Exception:
+                _logger.exception("Falha ao finalizar a reserva de recursos do job %s", job_id)
         if removed:
             shutil.rmtree(_job_dir(job_id), ignore_errors=True)
 
@@ -286,6 +297,8 @@ def create_processing_job(
     input_bytes: Optional[bytes] = None,
     input_stream: Optional[BinaryIO] = None,
     parameters: Optional[Dict[str, Any]] = None,
+    operation_id: Optional[str] = None,
+    on_finished: Optional[Callable[[bool], None]] = None,
 ) -> ProcessingJob:
     if not uid:
         raise ValueError("Autenticação necessária.")
@@ -299,7 +312,9 @@ def create_processing_job(
     if not input_file.lower().endswith((".tif", ".tiff")):
         raise ValueError("Os jobs raster aceitam GeoTIFF/COG (.tif ou .tiff).")
 
-    job_id = uuid.uuid4().hex
+    if operation_id is not None and not re.fullmatch(r"[0-9a-f]{32}", operation_id):
+        raise ValueError("Identificador de processamento inválido.")
+    job_id = operation_id or uuid.uuid4().hex
     job = ProcessingJob(
         id=job_id, uid=uid, tool=tool, status="uploading",
         created_at=_now(), updated_at=_now(),
@@ -313,8 +328,12 @@ def create_processing_job(
             raise ValueError("Capacidade de jobs ocupada. Repita mais tarde.")
         if sum(candidate.uid == uid for candidate in active) >= _MAX_ACTIVE_PER_USER:
             raise ValueError("Limite de jobs ativos por utilizador atingido.")
+        if job_id in _jobs:
+            raise ValueError("Identificador de processamento já utilizado.")
         _jobs[job_id] = job
         _cancellations[job_id] = threading.Event()
+        if on_finished:
+            _on_finish[job_id] = on_finished
 
     directory = _job_dir(job_id)
     try:
@@ -332,6 +351,7 @@ def create_processing_job(
             _jobs.pop(job_id, None)
             _cancellations.pop(job_id, None)
             _futures.pop(job_id, None)
+            _on_finish.pop(job_id, None)
         shutil.rmtree(directory, ignore_errors=True)
         raise
     return job
@@ -376,6 +396,13 @@ def delete_processing_job(job_id: str, uid: str) -> bool:
         with _lock:
             _futures.pop(job_id, None)
             _cancellations.pop(job_id, None)
+            callback = _on_finish.pop(job_id, None)
+            completed = job.status == "completed"
+        if callback:
+            try:
+                callback(completed)
+            except Exception:
+                _logger.exception("Falha ao finalizar o job eliminado %s", job_id)
         shutil.rmtree(_job_dir(job_id), ignore_errors=True)
     return True
 
