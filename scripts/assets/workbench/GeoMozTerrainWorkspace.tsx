@@ -13,7 +13,7 @@ import type { FeatureCollection } from "geojson";
 import { terrainRasterLayerOptions } from "../../lib/terrain-raster-layer";
 import {
   ArrowLeft, Layers3, Loader2, Mountain, RotateCcw,
-  Download, Image as ImageIcon, X,
+  Download, Image as ImageIcon, X, Palette, BarChart3, Settings2, FileArchive, ZoomIn, Layers,
 } from "lucide-react";
 import {
   createTerrainRenderer, type TerrainMeshData, type TerrainVisualStyle, type TerrainPick,
@@ -25,7 +25,13 @@ import { decodeTerrainScene, encodeTerrainScene, MAX_TERRAIN_SCENE_BYTES }
 import GeoMozTerrainSciencePanel, {type TerrainPickedPoint}
   from "./GeoMozTerrainSciencePanel";
 import { geomozNativeTerrainPreview } from "./geomoz-native-terrain-dem";
-import { encodeTerrainGLB } from "../../lib/geomoz-terrain-glb";
+import { encodeTerrainGLB, imageToGLBTexture } from "../../lib/geomoz-terrain-glb";
+import {GeoMozTerrainLayerCatalogue,GeoMozTerrainLayerSymbology}
+  from "./GeoMozTerrainLayerPanels";
+import {composeTerrainTexture,createPolygonOverlay,generateOverlayId,
+  type TerrainOverlay} from "./geomoz-terrain-layers";
+import {importTerrainRasterOverlay} from "./geomoz-terrain-raster-overlay";
+import {loadWorldCoverFromAuthenticatedGeoMoz} from "./geomoz-terrain-gee-bridge";
 import "./geomoz-terrain-workspace.css";
 
 const LIMIT=32*1024*1024;
@@ -133,12 +139,46 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
   const [style,setStyle]=useState<TerrainVisualStyle>("hypsometric");
   const [detailLevel,setDetailLevel]=useState<"auto"|"full"|"medium"|"low">("auto");
   const [exaggeration,setExaggeration]=useState(2);
+  const [overlays,setOverlays]=useState<TerrainOverlay[]>([]);
+  const [selectedOverlay,setSelectedOverlay]=useState<string|null>(null);
+  const [inspectorTab,setInspectorTab]=useState<"symbols"|"analysis"|"terrain"|"export">("terrain");
+  const [textureUrl,setTextureUrl]=useState<string|null>(null);
+  const [importBusy,setImportBusy]=useState(false);
+  const [loadingLandcover,setLoadingLandcover]=useState(false);
+  const [exportBusy,setExportBusy]=useState(false);
+  const textureVersion=useRef(0);
   const [pickTarget,setPickTarget]=useState<Target|null>(null);
   const [lastPick,setLastPick]=useState<TerrainPickedPoint|null>(null);
   const [picked,setPicked]=useState<Partial<Record<Target,TerrainPick>>>({});
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const sceneInputRef=useRef<HTMLInputElement>(null);
   const abortRef=useRef<AbortController|null>(null);
+  const projectVectors=useMemo(()=>layers.filter(layer=>
+    layer.geojson?.features.some(feature=>
+      feature.geometry?.type==="Polygon"||feature.geometry?.type==="MultiPolygon"))
+    .map(layer=>({id:layer.id,name:layer.name,geojson:layer.geojson!})),[layers]);
+
+  useEffect(()=>{
+    setOverlays([]);setSelectedOverlay(null);setTextureUrl(null);
+    textureVersion.current++;
+  },[terrain]);
+  useEffect(()=>{
+    if(!open||!terrain)return;
+    const version=++textureVersion.current;
+    composeTerrainTexture(terrain,overlays).then(texture=>{
+      if(version===textureVersion.current)setTextureUrl(texture);
+    }).catch(cause=>{
+      if(version===textureVersion.current)setError(
+        cause instanceof Error?cause.message:"Falha na composição de camadas 3D.");
+    });
+    return ()=>{textureVersion.current++;};
+  },[open,terrain,overlays]);
+  const currentOverlay=overlays.find(o=>o.id===selectedOverlay)??null;
+  const updateOverlay=(layer:TerrainOverlay)=>
+    setOverlays(current=>current.map(item=>item.id===layer.id?layer:item));
+  const chooseOverlay=(id:string)=>{
+    setSelectedOverlay(id);setInspectorTab("symbols");
+  };
 
   useEffect(()=>{
     if(!open)return;
@@ -169,7 +209,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     setRendererError(null);
     try {
       return createTerrainRenderer(canvasRef.current,terrain,{
-        exaggeration,style,detailLevel,
+        exaggeration,style: textureUrl?"imagery":style,detailLevel,textureUrl,
         pickEnabled:!!pickTarget,onPick:selectPoint,
         profileOverlay:picked.A&&picked.B?
           {start:[picked.A.xMeters,picked.A.yMeters],
@@ -178,7 +218,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     }catch(cause){
       setRendererError(cause instanceof Error?cause.message:"O WebGL2 não pôde carregar o modelo.");
     }
-  },[open,terrain,exaggeration,style,detailLevel,pickTarget,picked]);
+  },[open,terrain,exaggeration,style,detailLevel,textureUrl,pickTarget,picked]);
 
   async function openSelectedDEM(){
     const layer=options.find(o=>o.id===selected);
@@ -202,15 +242,57 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
       if(abortRef.current===controller){abortRef.current=null;setBusy(false);}
     }
   }
-  function exportGLB(){
-    if(!terrain)return;
-    setError(null);
+  async function exportGLB(){
+    if(!terrain||exportBusy)return;
+    setError(null);setExportBusy(true);
     try {
-      const bytes=encodeTerrainGLB(terrain,exaggeration,style);
+      const texture=textureUrl?await imageToGLBTexture(textureUrl):undefined;
+      const bytes=encodeTerrainGLB(terrain,exaggeration,texture?"imagery":style,texture);
       saveBlob(new Blob([new Uint8Array(bytes)],{type:"model/gltf-binary"}),
         "geomoz_terreno_3d.glb");
       setNotice("Modelo GLB exportado em metros com metadados do CRS do projecto.");
     }catch(cause){setError(cause instanceof Error?cause.message:"Falha ao exportar GLB.");}
+    finally{setExportBusy(false);}
+  }
+  function addProjectVector(id:string){
+    if(!terrain)return;
+    const source=projectVectors.find(x=>x.id===id);
+    if(!source){setError("A camada não está disponível no projecto.");return;}
+    try{
+      const overlay=createPolygonOverlay(source.name,source.geojson,"project",generateOverlayId());
+      setOverlays(v=>[...v,overlay]);chooseOverlay(overlay.id);
+      setNotice("Camada vectorial sobreposta ao DEM e recortada à sua extensão.");
+      setError(null);
+    }catch(cause){setError(cause instanceof Error?cause.message:"GeoJSON inválido.");}
+  }
+  async function importOverlay(file:File){
+    if(!terrain||importBusy)return;
+    setError(null);setImportBusy(true);
+    try{
+      if(file.size===0||file.size>(/\.tiff?$/i.test(file.name)?32:8)*1024*1024)
+        throw Error("Limite: GeoJSON até 8 MB; GeoTIFF até 32 MB.");
+      let overlay:TerrainOverlay;
+      if(/\.(geojson|json)$/i.test(file.name)){
+        overlay=createPolygonOverlay(file.name,JSON.parse(await file.text()),
+          "file",generateOverlayId());
+      }else if(/\.tiff?$/i.test(file.name)){
+        overlay=await importTerrainRasterOverlay(await file.arrayBuffer(),file.name,terrain,
+          generateOverlayId());
+      }else throw Error("Formato não suportado. Utilize GeoJSON ou GeoTIFF.");
+      setOverlays(current=>[...current,overlay]);chooseOverlay(overlay.id);
+      setNotice("Camada carregada e alinhada com a extensão métrica do DEM.");
+    }catch(cause){setError(cause instanceof Error?cause.message:"Erro ao importar camada.");}
+    finally{setImportBusy(false);}
+  }
+  async function addGEEWorldCover(){
+    if(!terrain||loadingLandcover)return;
+    setError(null);setLoadingLandcover(true);
+    try{
+      const overlay=await loadWorldCoverFromAuthenticatedGeoMoz(terrain);
+      setOverlays(current=>[...current,overlay]);chooseOverlay(overlay.id);
+      setNotice("ESA WorldCover 2021 alinhado à grelha DEM, classes preservadas.");
+    }catch(cause){setError(cause instanceof Error?cause.message:"Falha no Earth Engine.");}
+    finally{setLoadingLandcover(false);}
   }
   function saveScene(){
     if(!terrain)return;
