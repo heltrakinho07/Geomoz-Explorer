@@ -2762,3 +2762,7 @@ async def terrain_rgb_texture(
         )
     except (ValueError, TypeError, TerrainInputError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+# Billing endpoints are isolated from geospatial endpoints and always Firebase-authenticated.
+from billing_api import router as billing_router
+app.include_router(billing_router)
