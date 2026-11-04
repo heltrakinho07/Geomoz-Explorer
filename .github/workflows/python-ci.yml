@@ -137,7 +137,7 @@ jobs:
         run: |
           set -euo pipefail
           docker run -d --name geomoz-api-smoke --memory=1g --memory-swap=1g -p 127.0.0.1:5003:5003 \
-            -e PORT=5003 -e DISABLE_RATE_LIMIT=true geomoz-api-smoke
+            -e PORT=5003 -e DISABLE_RATE_LIMIT=true -e CI=true -e GEOMOZ_FEATURE_FLAGS_TEST_MODE=true geomoz-api-smoke
           trap 'docker logs geomoz-api-smoke --tail 60 || true; docker rm -f geomoz-api-smoke >/dev/null 2>&1 || true' EXIT
           for attempt in $(seq 1 45); do
             if curl --max-time 3 --fail --silent http://127.0.0.1:5003/geomoz-api/health \
