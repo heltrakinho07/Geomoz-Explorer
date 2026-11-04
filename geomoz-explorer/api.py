@@ -453,6 +453,10 @@ async def processing_job_delete(
     """Delete a queued/completed job and its temporary files."""
     if not delete_processing_job(job_id, uid):
         raise HTTPException(status_code=404, detail="Job não encontrado.")
+    # A deleted job has no retrievable result. Return any credit reservation
+    # that was not already finalized by a successful download.
+    from billing import settle_cloud_job_credit
+    settle_cloud_job_credit(uid, job_id, success=False)
     return Response(status_code=204)
 
 
