@@ -36,6 +36,7 @@ import { diagnoseGeeApi } from "@/lib/gee-connection-diagnostics";
 import { validateRealSentinel2Ndvi } from "@/lib/gee-ndvi-validation";
 import { useGeoMozTheme } from "@/hooks/useGeoMozTheme";
 import { useGeoMozPreferences } from "@/hooks/useGeoMozPreferences";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
 import { useSubscription } from "@/hooks/useSubscription";
 
 interface SettingsDialogProps {
@@ -49,6 +50,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useGeoMozTheme();
   const { language: uiLanguage, setLanguage: setUiLanguage, reducedMotion, setReducedMotion } = useGeoMozPreferences();
+  const { t } = usePortalTranslation();
   const {
     geeConnected,
     oauthReady,
@@ -268,10 +270,10 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
             </div>
             <div>
               <DialogTitle className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                Definições do Sistema
+                {t("settings.title")}
               </DialogTitle>
               <DialogDescription className="text-xs text-slate-300 mt-0.5">
-                Configuração de credenciais Google Earth Engine, perfil de utilizador e preferências da plataforma.
+                {t("settings.subtitle")}
               </DialogDescription>
             </div>
           </div>
@@ -299,7 +301,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
               }`}
             >
               <User size={14} />
-              <span>Perfil & Conta</span>
+              <span>{t("settings.accountTab")}</span>
             </button>
 
             <button
@@ -311,7 +313,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
               }`}
             >
               <Sliders size={14} />
-              <span>Preferências</span>
+              <span>{t("settings.preferencesTab")}</span>
             </button>
 
             <button
@@ -323,14 +325,14 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
               }`}
             >
               <Database size={14} />
-              <span>Armazenamento</span>
+              <span>{t("settings.storageTab")}</span>
             </button>
             <button
               onClick={() => setActiveTab("billing")}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${activeTab === "billing" ? "bg-sky-500 text-white shadow-sm" : "text-slate-400 hover:text-white"}`}
             >
               <CreditCard size={14} />
-              <span>Plano e subscrição</span>
+              <span>{t("settings.billingTab")}</span>
             </button>
             {adminAccess && <a href="/administracao" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-sky-300 hover:bg-white/10 shrink-0">
               <ShieldCheck size={14} /> Administração GeoMoz
@@ -780,11 +782,11 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
 
           {activeTab === "preferences" && (
             <div className="space-y-4">
-              <section className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-4" aria-label="Configurações da interface">
-                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Interface e acessibilidade</h4>
+              <section className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-4" aria-label={t("settings.interfaceSection")}>
+                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t("settings.interfaceSection")}</h4>
                 <label className="flex flex-col gap-2 text-xs text-slate-700 dark:text-slate-200">
-                  <span className="font-semibold">Idioma das ferramentas GIS</span>
-                  <select data-testid="geomoz-portal-language" aria-label="Idioma das ferramentas GIS"
+                  <span className="font-semibold">{t("settings.languageLabel")}</span>
+                  <select data-testid="geomoz-portal-language" aria-label={t("settings.languageLabel")}
                     value={["pt","en","es","fr"].includes(uiLanguage)?uiLanguage:"en"}
                     onChange={event=>setUiLanguage(event.target.value)}
                     className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
@@ -793,27 +795,27 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                     <option value="es">Español</option>
                     <option value="fr">Français</option>
                   </select>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400">Esta opção é partilhada com o GIS Workspace. A tradução integral dos restantes módulos GeoMoz será feita progressivamente.</span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">{t("settings.languageHint")}</span>
                 </label>
                 <label className="flex items-center justify-between gap-3 text-xs text-slate-700 dark:text-slate-200">
-                  <span className="font-semibold">Aparência</span>
-                  <select aria-label="Aparência do GeoMoz" value={theme} onChange={event=>setTheme(event.target.value as "light"|"dark")}
+                  <span className="font-semibold">{t("settings.appearance")}</span>
+                  <select aria-label={t("settings.appearanceAria")} value={theme} onChange={event=>setTheme(event.target.value as "light"|"dark")}
                     className="rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
-                    <option value="light">Modo claro</option><option value="dark">Modo escuro</option>
+                    <option value="light">{t("settings.light")}</option><option value="dark">{t("settings.dark")}</option>
                   </select>
                 </label>
                 <label className="flex items-center justify-between gap-3 text-xs text-slate-700 dark:text-slate-200">
-                  <span className="font-semibold">Reduzir animações</span>
+                  <span className="font-semibold">{t("settings.reduceMotion")}</span>
                   <input type="checkbox" data-testid="geomoz-portal-reduced-motion" checked={reducedMotion}
                     onChange={event=>setReducedMotion(event.target.checked)} className="h-4 w-4 accent-sky-600"/>
                 </label>
                 <a href="/gis-workspace/" className="inline-flex text-xs font-semibold text-sky-600 hover:underline dark:text-sky-400">
-                  Abrir GIS Workspace com estas preferências
+                  {t("settings.openWorkspace")}
                 </a>
               </section>
               <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3">
                 <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-                  Mapa Base Predefinido
+                  {t("settings.basemap")}
                 </h4>
                 <div className="grid grid-cols-2 gap-2">
                   <button
