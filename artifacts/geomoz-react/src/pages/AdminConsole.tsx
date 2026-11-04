@@ -293,7 +293,7 @@ export default function AdminConsole() {
                   { icon: Users, title: "Contas Firebase", value: overview ? (overview.usersCountExact ? "" : "≥ ") + overview.users.toLocaleString("pt-PT") : "—", note: "Utilizadores registados" },
                   { icon: CreditCard, title: "Pagamentos recentes", value: overview?.recentPayments ?? "—", note: "Últimas 100 transacções" },
                   { icon: Activity, title: "Pagamentos liquidados", value: overview ? formatMzn(overview.recentSettledMzn) : "—", note: "Somente últimas 100 transacções" },
-                  { icon: Zap, title: "Checkout PayZeno", value: overview?.billingCheckoutEnabled ? "Activo" : "Em validação", note: "Controlo seguro no Cloud Run" },
+                  { icon: Zap, title: "Pagamentos GeoMoz", value: overview?.billingCheckoutEnabled ? "Activo" : "Em validação", note: "Controlo seguro no Cloud Run" },
                 ].map((kpi, i) => {
                   const Icon = kpi.icon;
                   return <div key={i} className={card + " gm-admin-kpi p-5"} data-kpi={i}>
@@ -310,7 +310,7 @@ export default function AdminConsole() {
                   {[
                     ["API e autenticação", "Firebase Admin"],
                     ["Cobrança", overview?.billingCheckoutEnabled ? "Disponível" : "Desactivada por segurança"],
-                    ["Gateway", "PayZeno · sem renovação automática"],
+                    ["Gateway", "Sem renovação automática"],
                     ["Controlo comercial", "Custom Claims + Firestore"],
                   ].map(([name, status]) => <div key={name} className="flex justify-between gap-3 border-b last:border-0 border-slate-100 dark:border-slate-800 py-3 text-sm"><span className="text-slate-500">{name}</span><span className="font-semibold text-right">{status}</span></div>)}
                 </section>
@@ -426,7 +426,7 @@ export default function AdminConsole() {
               </tr>)}</tbody>
             </table></div>
             {!payments.length && <p className="p-6 text-sm text-slate-500">Não existem transacções registadas.</p>}
-            <div className="p-4 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500">Últimas 80 transacções PayZeno. O painel não altera estados financeiros confirmados pelo gateway.</div>
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500">Últimas 80 transacções registadas. O painel não altera estados financeiros confirmados pelo gateway.</div>
           </section>}
 
           {section === "audit" && <section className={card + " overflow-hidden"}>
@@ -490,7 +490,7 @@ export default function AdminConsole() {
                 onClick={() => { if (guard("Atribuir manualmente o plano " + grantPlan + " à conta seleccionada? Esta acção fica auditada.")) void act(() => jsonApi("/geomoz-api/admin/users/" + encodeURIComponent(selectedUser.uid) + "/plan", "PATCH", { plan:grantPlan, through: grantPlan === "community" ? null : grantThrough, reason: grantReason.trim() }), "Plano atribuído.", "users").then(() => setSelectedUser(null)); }}>
                 <Save size={15}/> Atribuir plano
               </button>
-              <p className="text-[11px] text-slate-500">As concessões manuais não geram um pagamento PayZeno nem um recibo.</p>
+              <p className="text-[11px] text-slate-500">As concessões manuais não geram um pagamento externo nem um recibo.</p>
             </div>
           </div>
         </section>
