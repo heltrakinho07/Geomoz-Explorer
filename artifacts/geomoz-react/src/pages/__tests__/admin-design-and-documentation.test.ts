@@ -45,7 +45,7 @@ describe("GeoMoz unified administrative identity", () => {
 
 describe("GeoMoz documentation inside system settings", () => {
   it("removes the standalone sidebar link without deleting the documentation", () => {
-    expect(sidebar).not.toContain('id: "Documentação", label: "Documentação"');
+    expect(sidebar).not.toContain('id: "Documentação", labelKey: "sidebar.nav.docs"');
     expect(explorer).toContain('activeTab === "Documentação"');
     expect(explorer).toContain("LazyDocumentation");
   });
