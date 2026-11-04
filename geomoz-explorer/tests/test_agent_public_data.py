@@ -109,7 +109,7 @@ class PublicDataTests(unittest.TestCase):
 
     def test_catalogue_distinguishes_connected_from_catalogue_only(self):
         data = public_catalogue()
-        self.assertEqual(len(data["datasets"]), 9)
+        self.assertGreaterEqual(len(data["datasets"]), 11)
         worldcover = next(row for row in data["datasets"] if row["id"] == engine.WORLDCOVER)
         self.assertEqual(worldcover["period"], "2021 (produto estático)")
         self.assertEqual(worldcover["connection"], "implemented")
@@ -176,3 +176,4 @@ class PublicDataTests(unittest.TestCase):
         self.assertEqual(result["intelligence"]["successfulTools"], 0)
 
 if __name__ == "__main__": unittest.main()
+

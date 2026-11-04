@@ -7,6 +7,8 @@
 | Sentinel-2 SR Harmonized | `COPERNICUS/S2_SR_HARMONIZED` | 10/20/60 m por banda | Terra/costa, desde 2017; 2017–2018 incompletos | Estatísticas por AOI/limiar e diferença entre períodos |
 | WorldCover | `ESA/WorldCover/v200` | 10 m | Terra global, 2021 | Mapa e áreas por classe de 2021 |
 | ERA5-Land Daily | `ECMWF/ERA5_LAND/DAILY_AGGR` | ~11,1 km | Terra global, desde 1950; últimos dias sujeitos à disponibilidade | Precipitação acumulada e temperatura média |
+| FAO GAUL 2025 ADM1 | `FAO/GAUL/2025/level1` | Vectorial | Edição 2025 | Selecção ADM1 e união por ISO3 para país |
+| FAO GAUL 2025 ADM2 | `FAO/GAUL/2025/level2` | Vectorial | Edição 2025 | Selecção ADM2 com validação do pai ADM1 |
 | geoBoundaries ADM0 v6 | `WM/geoLab/geoBoundaries/600/ADM0` | Vectorial | 199 entidades; edição 2023 | Limites nacionais para os novos motores públicos |
 | CHIRPS v2 | `UCSB-CHG/CHIRPS/DAILY` | ~5,6 km | Terra entre 50°S e 50°N, desde 1981 | Motor anterior; não é cobertura mundial completa |
 | Landsat 8 C2 L2 | `LANDSAT/LC08/C02/T1_L2` | 30 m (óptico) | Cenas terrestres desde 2013 | Motor anterior de índices |
@@ -51,3 +53,21 @@ O catálogo público pode ser consultado sem login GEE. Cálculos exigem Earth E
 ## Validação desta entrega
 
 Testes offline verificam invariantes numéricos com rasters sintéticos: sentido B−A, intersecção de máscaras, denominador de área válida, conversão m→mm, falha com dados ausentes e selecção do limite nacional por ISO-3. Testes de interface verificam parâmetros escolhidos e bloqueio de submissões repetidas. Estes testes não certificam exactidão científica nem substituem execução remota autenticada em áreas de referência.
+
+
+## Limites FAO GAUL 2025
+
+O agente permite escolher explicitamente FAO GAUL 2025 ou geoBoundaries v6 na área mundial. Países seleccionados de novo no agente usam GAUL 2025 por omissão; projectos anteriores sem esta escolha mantêm a fonte anterior. Na opção FAO, a hierarquia país → ADM1 → ADM2 usa `ISO3_CODE`, `GAUL1_CODE` e `GAUL2_CODE`. Não se reutilizam campos `ADM1_CODE`/`ADM2_CODE` de 2015 nesta edição.
+
+A edição oficial no GEE contém ADM1 e ADM2. A AOI de país é derivada pela união das unidades ADM1 filtradas por ISO3, com erro máximo de fusão 100 m; o dossiê regista a derivação e a fonte de 2025. Não é apresentado um suposto asset oficial GAUL 2025 level0. Para ADM2, o código ADM1 é obrigatório e validado dentro do país. Alterar o pai limpa o filho no selector. Falhas de cobertura devolvem erro, sem fallback silencioso para outro país ou outra fonte.
+
+Listagens transferem apenas atributos, têm limite de 2.000 unidades e exigem ADM1 para carregar ADM2. Não são descarregadas todas as geometrias mundiais para o browser. Pedidos de listagem obsoletos são abortados/ignorados ao mudar de país ou pai.
+
+A nomenclatura ADM1/ADM2 varia: pode corresponder a províncias, estados, regiões, distritos, concelhos, municípios ou outros equivalentes. Não se deve presumir equivalência universal nem precisão cadastral. A selecção mantém os códigos GAUL e os nomes do produto. A vista inicial de navegação pode continuar a abranger o país; os cálculos usam a geometria exacta seleccionada da fonte.
+
+Os termos publicados no catálogo oficial para 2025 indicam CC BY 4.0. A atribuição FAO acompanha os resultados; o logótipo da FAO não é usado. A edição 2015 está assinalada como substituída e não é usada como fallback: os seus campos e termos de utilização são distintos.
+
+Fontes oficiais:
+- https://developers.google.com/earth-engine/datasets/catalog/FAO_GAUL_2025_level1
+- https://developers.google.com/earth-engine/datasets/catalog/FAO_GAUL_2025_level2
+- https://developers.google.com/earth-engine/datasets/catalog/FAO_GAUL_2015_level2

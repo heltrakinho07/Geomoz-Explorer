@@ -13,7 +13,7 @@ O GeoMoz AI Agent transforma pedidos em ferramentas espaciais e resultados no ma
 - Modelos OpenAI e Gemini usam o mesmo executor. Todas as chamadas de ferramentas numa resposta Gemini são processadas.
 - Remoção das áreas zonais e precipitação fixas. Estatísticas zonais e áreas por limiar calculam agora um índice Sentinel-2 real sobre a AOI, com área válida e escala explícitas.
 - Comparação temporal real B − A entre dois períodos explícitos, na intersecção de pixels válidos, com áreas de aumento/diminuição. Não confirma desflorestação ou área ardida.
-- Novos motores WorldCover 2021 (áreas por classe) e ERA5-Land (precipitação acumulada e temperatura média no período). Catálogo documenta nove fontes e distingue motores ligados de fontes apenas identificadas.
+- Novos motores WorldCover 2021 (áreas por classe) e ERA5-Land (precipitação acumulada e temperatura média no período). Catálogo documenta onze fontes e distingue motores ligados de fontes apenas identificadas.
 - Selecção mundial por país com limites geoBoundaries ADM0 v6 nos novos motores públicos; o rectângulo de visualização não é usado como fronteira de cálculo. Consulta geológica continua limitada à carta de Moçambique.
 - Painel de dados públicos executa análises sem depender de OpenAI/Gemini. O cálculo exige acesso GEE autorizado; consultar metadados não exige autenticação GEE.
 - Potencial hidrogeológico usa o motor existente de seis factores, devolvendo classes e pesos. É apresentado como sobreposição ponderada exploratória; não como AHP validado nem confirmação de água.
@@ -49,3 +49,8 @@ pnpm run typecheck
 ## Motores públicos mundiais
 
 A implementação e os limites das fontes estão em [GLOBAL_PUBLIC_DATA.md](GLOBAL_PUBLIC_DATA.md). Não há garantia de cobertura completa de todos os sensores em todos os locais/períodos, nem de ausência de custos GEE. A escala de análise é comunicada; para controlar o número de pixels, pode ser superior à resolução nativa. O produto WorldCover mantém a data 2021 independentemente do período do projecto. ERA5-Land recusa períodos com dias em falta. Não existe fallback silencioso para uma área em Moçambique nos novos motores.
+
+
+## FAO GAUL 2025
+
+A selecção mundial permite escolher FAO GAUL 2025 com país, ADM1 e ADM2, ou manter geoBoundaries v6 no nível nacional. As listas FAO são carregadas por ISO3 e código GAUL1; seleccionar outro pai limpa o filho. O dossiê regista fonte, versão e códigos. A AOI nacional FAO é uma união explícita das unidades ADM1, não um asset level0 inexistente nesta edição. Os motores anteriores também recebem a geometria FAO seleccionada, com cache isolada no pedido e limite de complexidade para transferências GeoJSON. A edição 2015 não é usada como fallback.
