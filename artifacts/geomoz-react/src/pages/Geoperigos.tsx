@@ -169,6 +169,10 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
   const { translatedLocale } = usePortalTranslation();
   const h = useCallback((key: HazardsCopyKey) => hazardsText(translatedLocale, key), [translatedLocale]);
   const numberLocale = translatedLocale === "pt" ? "pt-MZ" : translatedLocale;
+  const riskLabel = (value: string): string => {
+    const lookup: Record<string, HazardsCopyKey> = { "Favorável": "risk.favorable", "Moderado": "risk.moderate", "Crítico": "risk.critical", "Alerta": "risk.alert", "Severo": "risk.severe" };
+    return lookup[value] ? h(lookup[value]) : value;
+  };
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const { geeConnected: isGeeConnected, loading: geeAuthLoading } = useGeeAuth();
   const [geeDialogOpen, setGeeDialogOpen] = useState(false);
@@ -520,7 +524,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
     if (tool === "flood" && flood) {
       sectionTitle(ctx, "Extensão da Cheia");
       drawStatCards(ctx, [
-        { label: "Área Inundada", value: `${flood.areaKm2.toLocaleString("pt-PT")} km²`, color: [225, 29, 72] },
+        { label: "Área Inundada", value: `${flood.areaKm2.toLocaleString(numberLocale)} km²`, color: [225, 29, 72] },
         { label: "Cenas do Evento", value: `${flood.scenesEvent}`, color: [239, 68, 68] },
         { label: "Cenas da Base", value: `${flood.scenesBaseline}`, color: [100, 116, 139] },
         { label: "Período", value: `${flood.eventStart}→${flood.eventEnd}`, color: [14, 165, 233] },
@@ -565,7 +569,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
     if (tool === "wildfire" && wildfire) {
       sectionTitle(ctx, "Deteção de Focos de Calor e Incêndios (NASA FIRMS)");
       drawStatCards(ctx, [
-        { label: "Total de Focos", value: `${wildfire.hotspotCount.toLocaleString("pt-PT")}`, color: [225, 29, 72] },
+        { label: "Total de Focos", value: `${wildfire.hotspotCount.toLocaleString(numberLocale)}`, color: [225, 29, 72] },
         { label: "Temp. Média", value: wildfire.meanTempCelsius != null ? `${wildfire.meanTempCelsius} °C` : "—", color: [249, 115, 22] },
         { label: "Confiança", value: `≥ ${wildfire.minConfidence}%`, color: [245, 158, 11] },
         { label: "Período", value: `${wildfire.startDate}→${wildfire.endDate}`, color: [14, 165, 233] },
@@ -594,8 +598,8 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
     if (tool === "burned" && burned) {
       sectionTitle(ctx, "Área Queimada Observada");
       drawStatCards(ctx, [
-        { label: "Área Queimada", value: `${burned.areaKm2.toLocaleString("pt-PT")} km²`, color: [153, 27, 27] },
-        { label: "% da AOI", value: `${burned.areaPct.toLocaleString("pt-PT")}%`, color: [220, 38, 38] },
+        { label: "Área Queimada", value: `${burned.areaKm2.toLocaleString(numberLocale)} km²`, color: [153, 27, 27] },
+        { label: "% da AOI", value: `${burned.areaPct.toLocaleString(numberLocale)}%`, color: [220, 38, 38] },
         { label: "Resolução", value: "500 m", color: [234, 88, 12] },
         { label: "Fonte", value: "MODIS MCD64A1", color: [100, 116, 139] },
       ]);
@@ -1168,15 +1172,15 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
               <Popup>
                 <div className="p-1 text-xs space-y-1">
                   <div className="font-bold text-red-600 flex items-center gap-1">
-                    <Flame size={12} /> Foco de Calor (FIRMS)
+                    <Flame size={12} /> {h("popup.hotspot")}
                   </div>
-                  <div>Temperatura: <strong>{pt.tempCelsius != null ? `${pt.tempCelsius} °C` : "—"}</strong></div>
-                  <div>Confiança: <strong>{
+                  <div>{h("popup.temp")} <strong>{pt.tempCelsius != null ? `${pt.tempCelsius} °C` : "—"}</strong></div>
+                  <div>{h("popup.confidence")} <strong>{
                     wildfire.confidenceMode === "categorical"
-                      ? (["Baixa", "Nominal", "Alta"][pt.confidence] ?? pt.confidence)
+                      ? ([h("popup.low"), h("popup.nominal"), h("popup.high")][pt.confidence] ?? pt.confidence)
                       : `${pt.confidence}%`
                   }</strong></div>
-                  <div className="text-[10px] text-slate-400">Coords: {pt.lat.toFixed(4)}, {pt.lon.toFixed(4)}</div>
+                  <div className="text-[10px] text-slate-400">{h("popup.coords")} {pt.lat.toFixed(4)}, {pt.lon.toFixed(4)}</div>
                 </div>
               </Popup>
             </CircleMarker>
@@ -1205,16 +1209,16 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
               <Loader2 size={20} className="text-rose-500 animate-spin shrink-0" />
               <span className="text-sm text-slate-700 dark:text-slate-200 font-medium">
                 {tool === "flood"
-                  ? "A processar radar Sentinel-1… (pode levar ~1 min)"
+                  ? h("loading.flood")
                   : tool === "erosion"
-                  ? "A calcular RUSLE… (pode levar ~1–2 min)"
+                  ? h("loading.erosion")
                   : tool === "wildfire"
-                  ? "A consultar dados NASA FIRMS…"
+                  ? h("loading.wildfire")
                   : tool === "drought"
-                  ? "A calcular SPI × NDVI com CHIRPS e MODIS…"
+                  ? h("loading.drought")
                   : tool === "burned"
-                  ? "A mapear área queimada MODIS MCD64A1…"
-                  : "A consultar sensor NASA SMAP (10 km)…"}
+                  ? h("loading.burned")
+                  : h("loading.soil")}
               </span>
             </div>
           </div>
@@ -1223,7 +1227,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
         {/* Legend */}
         {tool === "erosion" && erosion && (
           <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-amber-100 dark:border-amber-900/40 p-3 text-[11px] min-w-[150px]">
-            <div className="font-semibold text-amber-800 dark:text-amber-300 mb-2 flex items-center gap-1"><Mountain size={11} /> Erosão (t/ha/ano)</div>
+            <div className="font-semibold text-amber-800 dark:text-amber-300 mb-2 flex items-center gap-1"><Mountain size={11} /> {h("result.erosionTitle")} (t/ha/ano)</div>
             {erosion.classes.map(c => (
               <div key={c.id} className="flex items-center gap-1.5 mb-1">
                 <span className="inline-block w-4 h-3 rounded" style={{ background: c.color }} />
@@ -1234,31 +1238,31 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
         )}
         {tool === "flood" && flood && (
           <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-rose-100 dark:border-rose-900/40 p-3 text-[11px] min-w-[140px]">
-            <div className="font-semibold text-rose-800 dark:text-rose-300 mb-2 flex items-center gap-1"><Waves size={11} /> Cheia</div>
-            <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-4 h-3 rounded bg-[#d50000]" /><span className="text-slate-600 dark:text-slate-300">Inundação</span></div>
-            {showPerm && <div className="flex items-center gap-1.5"><span className="inline-block w-4 h-3 rounded bg-[#1565c0]" /><span className="text-slate-600 dark:text-slate-300">Água permanente</span></div>}
+            <div className="font-semibold text-rose-800 dark:text-rose-300 mb-2 flex items-center gap-1"><Waves size={11} /> {h("legend.flood")}</div>
+            <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-4 h-3 rounded bg-[#d50000]" /><span className="text-slate-600 dark:text-slate-300">{h("legend.inundation")}</span></div>
+            {showPerm && <div className="flex items-center gap-1.5"><span className="inline-block w-4 h-3 rounded bg-[#1565c0]" /><span className="text-slate-600 dark:text-slate-300">{h("legend.permanent")}</span></div>}
           </div>
         )}
         {tool === "wildfire" && wildfire && (
           <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-amber-100 dark:border-amber-900/40 p-3 text-[11px] min-w-[170px]">
             <div className="font-semibold text-amber-800 dark:text-amber-300 mb-2 flex items-center gap-1">
-              <Flame size={12} className="text-red-500" /> Focos de Calor (FIRMS)
+              <Flame size={12} className="text-red-500" /> {h("legend.hotspots")}
             </div>
             <div className="flex items-center gap-1.5 mb-1">
               <span className="inline-block w-4 h-3 rounded bg-[#fff000]" />
-              <span className="text-slate-600 dark:text-slate-300">32°C – 52°C (Anomalia Baixa)</span>
+              <span className="text-slate-600 dark:text-slate-300">32°C – 52°C ({h("legend.low")})</span>
             </div>
             <div className="flex items-center gap-1.5 mb-1">
               <span className="inline-block w-4 h-3 rounded bg-[#ff8000]" />
-              <span className="text-slate-600 dark:text-slate-300">52°C – 77°C (Fogo Moderado)</span>
+              <span className="text-slate-600 dark:text-slate-300">52°C – 77°C ({h("legend.moderate")})</span>
             </div>
             <div className="flex items-center gap-1.5 mb-1">
               <span className="inline-block w-4 h-3 rounded bg-[#ff0000]" />
-              <span className="text-slate-600 dark:text-slate-300">77°C – 102°C (Incêndio Alto)</span>
+              <span className="text-slate-600 dark:text-slate-300">77°C – 102°C ({h("legend.high")})</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="inline-block w-4 h-3 rounded bg-[#7a0000]" />
-              <span className="text-slate-600 dark:text-slate-300">&gt; 102°C (Frente Extrema)</span>
+              <span className="text-slate-600 dark:text-slate-300">&gt; 102°C ({h("legend.extreme")})</span>
             </div>
           </div>
         )}
@@ -1267,22 +1271,22 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
 
         {tool === "drought" && drought && (
           <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-orange-100 dark:border-orange-900/40 p-3 text-[11px] min-w-[165px]">
-            <div className="font-semibold text-orange-800 dark:text-orange-300 mb-2 flex items-center gap-1"><Droplets size={11} /> SPI — Seca</div>
-            <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-4 h-3 rounded bg-[#7f0000]" /><span className="text-slate-600 dark:text-slate-300">Seca extrema</span></div>
-            <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-4 h-3 rounded bg-[#d73027]" /><span className="text-slate-600 dark:text-slate-300">Seca moderada</span></div>
-            <div className="flex items-center gap-1.5"><span className="inline-block w-4 h-3 rounded bg-[#2166ac]" /><span className="text-slate-600 dark:text-slate-300">Condição húmida</span></div>
+            <div className="font-semibold text-orange-800 dark:text-orange-300 mb-2 flex items-center gap-1"><Droplets size={11} /> SPI — {h("tool.drought")}</div>
+            <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-4 h-3 rounded bg-[#7f0000]" /><span className="text-slate-600 dark:text-slate-300">{h("legend.extremeDrought")}</span></div>
+            <div className="flex items-center gap-1.5 mb-1"><span className="inline-block w-4 h-3 rounded bg-[#d73027]" /><span className="text-slate-600 dark:text-slate-300">{h("legend.moderateDrought")}</span></div>
+            <div className="flex items-center gap-1.5"><span className="inline-block w-4 h-3 rounded bg-[#2166ac]" /><span className="text-slate-600 dark:text-slate-300">{h("legend.wet")}</span></div>
           </div>
         )}
         {tool === "burned" && burned && (
           <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-red-100 dark:border-red-900/40 p-3 text-[11px] min-w-[150px]">
-            <div className="font-semibold text-red-800 dark:text-red-300 mb-2 flex items-center gap-1"><Layers size={11} /> Área Queimada</div>
-            <div className="flex items-center gap-1.5"><span className="inline-block w-4 h-3 rounded bg-[#9d0208]" /><span className="text-slate-600 dark:text-slate-300">Cicatriz de fogo MODIS</span></div>
+            <div className="font-semibold text-red-800 dark:text-red-300 mb-2 flex items-center gap-1"><Layers size={11} /> {h("tool.burned")}</div>
+            <div className="flex items-center gap-1.5"><span className="inline-block w-4 h-3 rounded bg-[#9d0208]" /><span className="text-slate-600 dark:text-slate-300">{h("legend.fireScar")}</span></div>
           </div>
         )}
         {tool === "soil_moisture" && soilMoisture && (
           <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-emerald-100 dark:border-emerald-900/40 p-3 text-[11px] min-w-[175px]">
             <div className="font-semibold text-emerald-800 dark:text-emerald-300 mb-2 flex items-center gap-1">
-              <Sprout size={12} className="text-emerald-600 dark:text-emerald-400" /> Humidade Solo (SMAP)
+              <Sprout size={12} className="text-emerald-600 dark:text-emerald-400" /> {h("result.soilTitle")}
             </div>
             {soilMoisture.classes.map(c => (
               <div key={c.id} className="flex items-center gap-1.5 mb-1">
@@ -1297,33 +1301,33 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
         <div className="w-80 flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0">
           {tool === "flood" && flood && (
             <div className="p-4 space-y-4">
-              <div className="flex items-center gap-2"><Waves size={15} className="text-rose-600 dark:text-rose-400" /><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Extensão da Cheia</span></div>
+              <div className="flex items-center gap-2"><Waves size={15} className="text-rose-600 dark:text-rose-400" /><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{h("result.floodTitle")}</span></div>
               <div className="bg-gradient-to-r from-rose-600 to-orange-600 rounded-2xl p-4 text-white">
-                <div className="text-xs opacity-75 mb-1">Área inundada</div>
-                <div className="text-3xl font-bold">{flood.areaKm2.toLocaleString("pt-PT")}</div>
+                <div className="text-xs opacity-75 mb-1">{h("result.floodArea")}</div>
+                <div className="text-3xl font-bold">{flood.areaKm2.toLocaleString(numberLocale)}</div>
                 <div className="text-xs opacity-75">km²</div>
               </div>
               <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-1.5 text-[12px] text-slate-600 dark:text-slate-300">
-                <div className="flex justify-between"><span>Período</span><span className="font-medium text-slate-800 dark:text-slate-200">{flood.eventStart} → {flood.eventEnd}</span></div>
-                <div className="flex justify-between"><span>Cenas evento</span><span className="font-medium text-slate-800 dark:text-slate-200">{flood.scenesEvent}</span></div>
-                <div className="flex justify-between"><span>Cenas base</span><span className="font-medium text-slate-800 dark:text-slate-200">{flood.scenesBaseline}</span></div>
+                <div className="flex justify-between"><span>{h("result.floodPeriod")}</span><span className="font-medium text-slate-800 dark:text-slate-200">{flood.eventStart} → {flood.eventEnd}</span></div>
+                <div className="flex justify-between"><span>{h("result.eventScenes")}</span><span className="font-medium text-slate-800 dark:text-slate-200">{flood.scenesEvent}</span></div>
+                <div className="flex justify-between"><span>{h("result.baselineScenes")}</span><span className="font-medium text-slate-800 dark:text-slate-200">{flood.scenesBaseline}</span></div>
               </div>
               <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-xl p-3 text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
-                <CheckCircle2 size={12} className="mt-0.5 shrink-0 text-blue-500" /> Deteção por radar (UN-SPIDER). Validar com dados de campo / ótico quando disponível.
+                <CheckCircle2 size={12} className="mt-0.5 shrink-0 text-blue-500" /> {h("result.floodCaution")}
               </div>
               <button onClick={exportGeoperigosPdf}
                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-700 hover:to-orange-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm">
-                <FileDown size={13} /> Exportar Relatório PDF
+                <FileDown size={13} /> {h("result.exportPdf")}
               </button>
             </div>
           )}
           {tool === "erosion" && erosion && (
             <div className="p-4 space-y-4">
-              <div className="flex items-center gap-2"><Mountain size={15} className="text-amber-600 dark:text-amber-400" /><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Risco de Erosão (RUSLE)</span></div>
+              <div className="flex items-center gap-2"><Mountain size={15} className="text-amber-600 dark:text-amber-400" /><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{h("result.erosionTitle")}</span></div>
               {erosion.meanTPerHa != null && (
                 <div className="bg-gradient-to-r from-amber-600 to-orange-600 rounded-2xl p-4 text-white">
-                  <div className="text-xs opacity-75 mb-1">Perda de solo média · {erosion.year}</div>
-                  <div className="text-3xl font-bold">{erosion.meanTPerHa.toLocaleString("pt-PT")}</div>
+                  <div className="text-xs opacity-75 mb-1">{h("result.avgSoilLoss")} · {erosion.year}</div>
+                  <div className="text-3xl font-bold">{erosion.meanTPerHa.toLocaleString(numberLocale)}</div>
                   <div className="text-xs opacity-75">t/ha/ano</div>
                 </div>
               )}
@@ -1334,7 +1338,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
                     <div key={c.id}>
                       <div className="flex justify-between text-[11px] text-slate-600 dark:text-slate-300 mb-0.5">
                         <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded" style={{ background: c.color }} />{c.label}</span>
-                        <span className="font-medium text-slate-800 dark:text-slate-200">{c.areaKm2.toLocaleString("pt-PT")} km²</span>
+                        <span className="font-medium text-slate-800 dark:text-slate-200">{c.areaKm2.toLocaleString(numberLocale)} km²</span>
                       </div>
                       <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: c.color }} />
@@ -1344,11 +1348,11 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
                 })}
               </div>
               <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
-                <Info size={12} className="mt-0.5 shrink-0 text-amber-500" /> K (solo) usa constante moderada; refinável com SoilGrids. Modelo de suscetibilidade, não medição.
+                <Info size={12} className="mt-0.5 shrink-0 text-amber-500" /> {h("result.erosionCaution")}
               </div>
               <button onClick={exportGeoperigosPdf}
                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm">
-                <FileDown size={13} /> Exportar Relatório PDF
+                <FileDown size={13} /> {h("result.exportPdf")}
               </button>
             </div>
           )}
@@ -1356,102 +1360,102 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
             <div className="p-4 space-y-4">
               <div className="flex items-center gap-2">
                 <Flame size={15} className="text-red-600 dark:text-red-400" />
-                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Focos de Queimadas (FIRMS)</span>
+                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{h("result.wildfireTitle")}</span>
               </div>
               <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-red-600 rounded-2xl p-4 text-white">
-                <div className="text-xs opacity-75 mb-1">Focos de calor detetados</div>
-                <div className="text-3xl font-bold">{wildfire.hotspotCount.toLocaleString("pt-PT")}</div>
-                <div className="text-xs opacity-75">anomalias térmicas ativas</div>
+                <div className="text-xs opacity-75 mb-1">{h("result.hotspotsCount")}</div>
+                <div className="text-3xl font-bold">{wildfire.hotspotCount.toLocaleString(numberLocale)}</div>
+                <div className="text-xs opacity-75">{h("result.activeAnomalies")}</div>
               </div>
               <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-2 text-[12px] text-slate-600 dark:text-slate-300">
                 <div className="flex justify-between">
-                  <span>Período analisado</span>
+                  <span>{h("result.analysedPeriod")}</span>
                   <span className="font-medium text-slate-800 dark:text-slate-200">{wildfire.startDate} → {wildfire.endDate}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Temp. média estimada</span>
+                  <span>{h("result.avgTemp")}</span>
                   <span className="font-medium text-slate-800 dark:text-slate-200">
                     {wildfire.meanTempCelsius != null ? `${wildfire.meanTempCelsius} °C` : "—"}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Filtro de confiança</span>
+                  <span>{h("result.confidenceFilter")}</span>
                   <span className="font-medium text-slate-800 dark:text-slate-200">
                     {wildfire.confidenceMode === "categorical"
-                      ? (wildfire.minConfidence >= 80 ? "Alta" : wildfire.minConfidence >= 50 ? "Nominal" : "Baixa")
+                      ? (wildfire.minConfidence >= 80 ? h("popup.high") : wildfire.minConfidence >= 50 ? h("popup.nominal") : h("popup.low"))
                       : `≥ ${wildfire.minConfidence}%`}
                   </span>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <span>Sensor</span>
+                  <span>{h("result.sensor")}</span>
                   <span className="font-medium text-right text-slate-800 dark:text-slate-200">{wildfire.sensor}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Resolução</span>
+                  <span>{h("result.resolution")}</span>
                   <span className="font-medium text-slate-800 dark:text-slate-200">{wildfire.resolutionMeters} m</span>
                 </div>
               </div>
               <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
                 <Info size={12} className="mt-0.5 shrink-0 text-amber-500" />
                 {wildfire.confidenceMode === "categorical"
-                  ? "VIIRS usa o canal térmico I4 e confiança baixa/nominal/alta. É um produto quase em tempo real para deteção de fogo ativo."
-                  : "MODIS FIRMS usa T21 e confiança percentual. É a fonte histórica para períodos anteriores à disponibilidade VIIRS 375 m no GEE."}
+                  ? h("result.viirsCaution")
+                  : h("result.modisCaution")}
               </div>
               <button
                 onClick={exportGeoperigosPdf}
                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-amber-600 to-red-600 hover:from-amber-700 hover:to-red-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer"
               >
-                <FileDown size={13} /> Exportar Relatório PDF
+                <FileDown size={13} /> {h("result.exportPdf")}
               </button>
             </div>
           )}
           {tool === "drought" && drought && (
             <div className="p-4 space-y-4">
-              <div className="flex items-center gap-2"><Droplets size={15} className="text-orange-600 dark:text-orange-400" /><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Seca — SPI × NDVI</span></div>
+              <div className="flex items-center gap-2"><Droplets size={15} className="text-orange-600 dark:text-orange-400" /><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{h("result.droughtTitle")}</span></div>
               <div className="bg-gradient-to-r from-orange-700 to-amber-500 rounded-2xl p-4 text-white">
-                <div className="text-xs opacity-75 mb-1">Área com SPI &lt; -1</div>
-                <div className="text-3xl font-bold">{drought.stats.droughtPct != null ? drought.stats.droughtPct.toLocaleString("pt-PT") : "—"}%</div>
-                <div className="text-xs opacity-75">{drought.stats.droughtKm2 != null ? `${drought.stats.droughtKm2.toLocaleString("pt-PT")} km²` : "área de seca meteorológica"}</div>
+                <div className="text-xs opacity-75 mb-1">{h("result.spiArea")}</div>
+                <div className="text-3xl font-bold">{drought.stats.droughtPct != null ? drought.stats.droughtPct.toLocaleString(numberLocale) : "—"}%</div>
+                <div className="text-xs opacity-75">{drought.stats.droughtKm2 != null ? `${drought.stats.droughtKm2.toLocaleString(numberLocale)} km²`  : h("result.meteorologicalDrought")}</div>
               </div>
               <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-2 text-[12px] text-slate-600 dark:text-slate-300">
-                <div className="flex justify-between"><span>Ano</span><span className="font-medium">{drought.year}</span></div>
-                <div className="flex justify-between"><span>Climatologia</span><span className="font-medium">{drought.climStart}–{drought.year - 1}</span></div>
-                <div className="flex justify-between"><span>SPI médio</span><span className="font-medium">{drought.stats.meanSpi != null ? drought.stats.meanSpi.toFixed(2) : "—"}</span></div>
-                <div className="flex justify-between"><span>NDVI médio</span><span className="font-medium">{drought.stats.meanNdvi != null ? drought.stats.meanNdvi.toFixed(3) : "—"}</span></div>
-                <div className="flex justify-between"><span>Correlação SPI/NDVI</span><span className="font-medium">{drought.stats.pearsonR != null ? drought.stats.pearsonR.toFixed(2) : "—"}</span></div>
+                <div className="flex justify-between"><span>{h("year")}</span><span className="font-medium">{drought.year}</span></div>
+                <div className="flex justify-between"><span>{h("result.climatology")}</span><span className="font-medium">{drought.climStart}–{drought.year - 1}</span></div>
+                <div className="flex justify-between"><span>{h("result.meanSpi")}</span><span className="font-medium">{drought.stats.meanSpi != null ? drought.stats.meanSpi.toFixed(2) : "—"}</span></div>
+                <div className="flex justify-between"><span>{h("result.meanNdvi")}</span><span className="font-medium">{drought.stats.meanNdvi != null ? drought.stats.meanNdvi.toFixed(3) : "—"}</span></div>
+                <div className="flex justify-between"><span>{h("result.correlation")}</span><span className="font-medium">{drought.stats.pearsonR != null ? drought.stats.pearsonR.toFixed(2) : "—"}</span></div>
               </div>
               <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/50 rounded-xl p-3 text-[11px] text-orange-800 dark:text-orange-300 flex items-start gap-2">
-                <Info size={12} className="mt-0.5 shrink-0 text-orange-500" /> CHIRPS mede precipitação em grelha; MODIS NDVI indica resposta da vegetação. O produto é adequado para monitorização regional, não substitui observações agroclimáticas locais.
+                <Info size={12} className="mt-0.5 shrink-0 text-orange-500" /> {h("result.droughtCaution")}
               </div>
               <button
                 onClick={exportGeoperigosPdf}
                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer"
               >
-                <FileDown size={13} /> Exportar Relatório PDF
+                <FileDown size={13} /> {h("result.exportPdf")}
               </button>
             </div>
           )}
           {tool === "burned" && burned && (
             <div className="p-4 space-y-4">
-              <div className="flex items-center gap-2"><Layers size={15} className="text-red-700 dark:text-red-400" /><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Área Queimada — MODIS</span></div>
+              <div className="flex items-center gap-2"><Layers size={15} className="text-red-700 dark:text-red-400" /><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{h("result.burnedTitle")}</span></div>
               <div className="bg-gradient-to-r from-red-800 to-orange-600 rounded-2xl p-4 text-white">
-                <div className="text-xs opacity-75 mb-1">Área queimada no período</div>
-                <div className="text-3xl font-bold">{burned.areaKm2.toLocaleString("pt-PT")}</div>
-                <div className="text-xs opacity-75">km² · {burned.areaPct.toLocaleString("pt-PT")}% da AOI</div>
+                <div className="text-xs opacity-75 mb-1">{h("result.burnedPeriod")}</div>
+                <div className="text-3xl font-bold">{burned.areaKm2.toLocaleString(numberLocale)}</div>
+                <div className="text-xs opacity-75">km² · {burned.areaPct.toLocaleString(numberLocale)}% {h("result.aoiPct")}</div>
               </div>
               <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-2 text-[12px] text-slate-600 dark:text-slate-300">
-                <div className="flex justify-between"><span>Período</span><span className="font-medium">{burned.startDate} → {burned.endDate}</span></div>
-                <div className="flex justify-between"><span>Resolução</span><span className="font-medium">500 m</span></div>
-                <div className="flex justify-between"><span>Produto</span><span className="font-medium">MCD64A1 v6.1</span></div>
+                <div className="flex justify-between"><span>{h("result.floodPeriod")}</span><span className="font-medium">{burned.startDate} → {burned.endDate}</span></div>
+                <div className="flex justify-between"><span>{h("result.resolution")}</span><span className="font-medium">500 m</span></div>
+                <div className="flex justify-between"><span>{h("result.product")}</span><span className="font-medium">MCD64A1 v6.1</span></div>
               </div>
               <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-xl p-3 text-[11px] text-red-800 dark:text-red-300 flex items-start gap-2">
-                <Info size={12} className="mt-0.5 shrink-0 text-red-500" /> Este produto identifica cicatrizes de fogo observadas pelo MODIS e é complementar aos focos ativos FIRMS. Pequenas queimadas podem ficar abaixo da resolução de 500 m.
+                <Info size={12} className="mt-0.5 shrink-0 text-red-500" /> {h("result.burnedCaution")}
               </div>
               <button
                 onClick={exportGeoperigosPdf}
                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-red-700 to-orange-700 hover:from-red-800 hover:to-orange-800 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer"
               >
-                <FileDown size={13} /> Exportar Relatório PDF
+                <FileDown size={13} /> {h("result.exportPdf")}
               </button>
             </div>
           )}
@@ -1459,7 +1463,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
             <div className="p-4 space-y-4">
               <div className="flex items-center gap-2">
                 <Sprout size={15} className="text-emerald-600 dark:text-emerald-400" />
-                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Humidade do Solo (SMAP)</span>
+                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{h("result.soilTitle")}</span>
               </div>
 
               {/* Hero Banner */}
@@ -1469,7 +1473,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
                   {soilMoisture.meanValue != null ? `${soilMoisture.meanValue} ${soilMoisture.unit}` : "—"}
                 </div>
                 <div className="text-xs opacity-90 mt-1 flex items-center justify-between">
-                  <span>Défice Crítico: <strong>{soilMoisture.stressPct}% da AOI</strong></span>
+                  <span>{h("result.criticalDeficit")} <strong>{soilMoisture.stressPct}% da AOI</strong></span>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                     soilMoisture.riskLevel === "Favorável"
                       ? "bg-emerald-500/30 text-emerald-100"
@@ -1477,22 +1481,22 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
                       ? "bg-amber-500/30 text-amber-100"
                       : "bg-red-500/40 text-red-100"
                   }`}>
-                    {soilMoisture.riskLevel}
+                    {riskLabel(soilMoisture.riskLevel)}
                   </span>
                 </div>
               </div>
 
               {/* Diagnostics Summary */}
               <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-2 text-[12px] text-slate-600 dark:text-slate-300">
-                <div className="flex justify-between"><span>Período</span><span className="font-medium text-slate-800 dark:text-slate-200">{soilMoisture.startDate} → {soilMoisture.endDate}</span></div>
-                <div className="flex justify-between"><span>Área Analisada</span><span className="font-medium text-slate-800 dark:text-slate-200">{soilMoisture.totalAreaKm2.toLocaleString("pt-PT")} km²</span></div>
-                <div className="flex justify-between"><span>Área sob Stress</span><span className="font-medium text-red-600 dark:text-red-400 font-bold">{soilMoisture.stressAreaKm2.toLocaleString("pt-PT")} km² ({soilMoisture.stressPct}%)</span></div>
-                <div className="flex justify-between"><span>Observações SMAP</span><span className="font-medium text-slate-800 dark:text-slate-200">{soilMoisture.imageCount} passagens</span></div>
+                <div className="flex justify-between"><span>{h("result.floodPeriod")}</span><span className="font-medium text-slate-800 dark:text-slate-200">{soilMoisture.startDate} → {soilMoisture.endDate}</span></div>
+                <div className="flex justify-between"><span>{h("result.analysedArea")}</span><span className="font-medium text-slate-800 dark:text-slate-200">{soilMoisture.totalAreaKm2.toLocaleString(numberLocale)} km²</span></div>
+                <div className="flex justify-between"><span>{h("result.stressedArea")}</span><span className="font-medium text-red-600 dark:text-red-400 font-bold">{soilMoisture.stressAreaKm2.toLocaleString(numberLocale)} km² ({soilMoisture.stressPct}%)</span></div>
+                <div className="flex justify-between"><span>{h("result.observations")}</span><span className="font-medium text-slate-800 dark:text-slate-200">{soilMoisture.imageCount} {h("result.passes")}</span></div>
               </div>
 
               {/* Distribution by Classes */}
               <div className="space-y-1.5">
-                <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">Distribuição por Classes de Humidade</div>
+                <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">{h("result.moistureClasses")}</div>
                 {soilMoisture.classes.map(c => (
                   <div key={c.id}>
                     <div className="flex justify-between text-[11px] text-slate-600 dark:text-slate-300 mb-0.5">
@@ -1501,7 +1505,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
                         {c.label}
                       </span>
                       <span className="font-medium text-slate-800 dark:text-slate-200">
-                        {c.km2.toLocaleString("pt-PT")} km² ({c.pct}%)
+                        {c.km2.toLocaleString(numberLocale)} km² ({c.pct}%)
                       </span>
                     </div>
                     <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
@@ -1515,7 +1519,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
               <div className="bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-800/40 rounded-xl p-3 space-y-2 text-[11px]">
                 <div className="font-semibold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
                   <Sprout size={13} className="text-emerald-600" />
-                  Impacto Agrícola em Moçambique
+                  {h("result.agriImpact")}
                 </div>
                 <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-tight">
                   {soilMoisture.riskSummary}
@@ -1534,7 +1538,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
                           ? "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300"
                           : "bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-300"
                       }`}>
-                        {cr.status}
+                        {riskLabel(cr.status)}
                       </span>
                     </div>
                   ))}
@@ -1545,7 +1549,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
                 onClick={exportGeoperigosPdf}
                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm cursor-pointer"
               >
-                <FileDown size={13} /> Exportar Relatório PDF
+                <FileDown size={13} /> {h("result.exportPdf")}
               </button>
             </div>
           )}
