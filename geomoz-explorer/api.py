@@ -345,21 +345,27 @@ async def create_processing_job_endpoint(
     input_file: UploadFile = File(...),
     uid: str = Depends(require_firebase_auth),
 ):
-    """Queue a heavy raster job and return immediately with a job id."""
-    cleanup_expired_jobs()
-    access = require_subscription_feature(uid, "cloud_jobs")
-    concurrent_limit = access["limits"]["concurrent_jobs"]
-    tool_id = tool.strip().lower()
-    if tool_id not in SUPPORTED_HEAVY_GIS_TOOLS:
-        raise HTTPException(
-            status_code=400,
-            detail=f'Ferramenta "{tool_id}" não suportada. Use: {", ".join(SUPPORTED_HEAVY_GIS_TOOLS)}.',
-        )
+    """Queue a paid managed raster job; reserve a credit before admission."""
+    from uuid import uuid4
+    from billing import reserve_cloud_job_credit, settle_cloud_job_credit
 
+    job_id = uuid4().hex  # Server-issued, cannot be supplied or replayed by clients.
+    reserved = False
     try:
+        cleanup_expired_jobs()
+        access = require_subscription_feature(uid, "cloud_jobs")
+        concurrent_limit = access["limits"]["concurrent_jobs"]
+        tool_id = tool.strip().lower()
+        if tool_id not in SUPPORTED_HEAVY_GIS_TOOLS:
+            raise HTTPException(
+                status_code=400,
+                detail=f'Ferramenta "{tool_id}" não suportada. Use: {", ".join(SUPPORTED_HEAVY_GIS_TOOLS)}.',
+            )
         parsed_parameters = parse_job_parameters(parameters)
-        # The UploadFile spool is copied in bounded chunks on a worker thread:
-        # never materialize a large DEM as one Python bytes object.
+        # A credit is reserved atomically, including plan expiry and monthly cap.
+        # Failures/cancellation refund; successful processing settles the debit.
+        reserve_cloud_job_credit(uid, job_id)
+        reserved = True
         job = await run_in_threadpool(
             create_processing_job,
             uid=uid,
@@ -368,9 +374,18 @@ async def create_processing_job_endpoint(
             input_stream=input_file.file,
             parameters=parsed_parameters,
             max_active_per_user=concurrent_limit,
+            job_id=job_id,
+            on_complete=lambda succeeded: settle_cloud_job_credit(uid, job_id, success=succeeded),
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        if reserved:
+            try:
+                settle_cloud_job_credit(uid, job_id, success=False)
+            except Exception:
+                logger.exception("Managed raster credit refund pending reconciliation [%s]", job_id)
+        if isinstance(exc, ValueError):
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise
     finally:
         await input_file.close()
 
