@@ -120,7 +120,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
 
   const handleLaunchApp = () => {
     if (!user) {
-      openAuth("register");
+      openAuth("login");
       return;
     }
     setLocation("/app");
@@ -139,7 +139,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         casosDeUso: "Casos de Uso",
         login: "Iniciar Sessão",
         register: "Criar Conta",
-        launch: "Lançar Plataforma",
+        launch: "Explorar",
         logout: "Terminar Sessão",
         userBadge: "Conta Ativa",
       },
@@ -331,7 +331,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         casosDeUso: "Use Cases",
         login: "Sign In",
         register: "Sign Up",
-        launch: "Launch Platform",
+        launch: "Explore",
         logout: "Sign Out",
         userBadge: "Active Account",
       },
@@ -844,43 +844,15 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => openAuth("login")}
-                  className={`text-xs font-semibold h-9 px-2.5 sm:px-3 rounded-xl ${
-                    isDark
-                      ? "text-slate-300 hover:text-white hover:bg-slate-900"
-                      : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
-                  }`}
-                >
-                  <LogIn size={14} className="mr-1 sm:mr-1.5 text-sky-500" />
-                  <span className="hidden sm:inline">{t.nav.login}</span>
-                </Button>
-
-                <Button
-                  size="sm"
-                  onClick={() => openAuth("register")}
-                  className={`hidden md:inline-flex text-xs font-semibold px-3 h-9 rounded-xl border shadow-sm transition-all ${
-                    isDark
-                      ? "bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700"
-                      : "bg-white hover:bg-slate-50 text-slate-800 border-slate-200"
-                  }`}
-                >
-                  <UserPlus size={14} className="mr-1.5 text-sky-500" />
-                  <span>{t.nav.register}</span>
-                </Button>
-
-                <Button
-                  size="sm"
-                  onClick={handleLaunchApp}
-                  className="hidden md:inline-flex bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-bold px-3.5 h-9 rounded-xl shadow-md shadow-sky-600/25"
-                >
-                  <span>{lang === "pt" ? "Explorar" : "Explore"}</span>
-                  <ArrowRight size={14} className="ml-1" />
-                </Button>
-              </div>
+              <Button
+                size="sm"
+                onClick={handleLaunchApp}
+                aria-label={lang === "pt" ? "Explorar GeoMoz" : "Explore GeoMoz"}
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-3 text-xs font-bold text-white shadow-md shadow-sky-600/20 transition-all hover:from-sky-500 hover:to-indigo-500"
+              >
+                <span>{lang === "pt" ? "Explorar" : "Explore"}</span>
+                <ArrowRight size={14} aria-hidden="true" />
+              </Button>
             )}
           </div>
         </div>
@@ -930,27 +902,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
               </a>
             </nav>
 
-            {!user && (
-              <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openAuth("login")}
-                  className="flex-1 text-xs"
-                >
-                  <LogIn size={14} className="mr-1.5" />
-                  {t.nav.login}
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => openAuth("register")}
-                  className="flex-1 text-xs bg-sky-600 text-white"
-                >
-                  <UserPlus size={14} className="mr-1.5" />
-                  {t.nav.register}
-                </Button>
-              </div>
-            )}
+
           </div>
         )}
       </header>
@@ -1004,21 +956,6 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
               <ArrowRight size={17} />
             </Button>
 
-            {!user && (
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={() => openAuth("register")}
-                className={`w-full sm:w-auto px-6 py-3.5 h-auto text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 ${
-                  isDark
-                    ? "bg-slate-900/80 hover:bg-slate-800 text-slate-200 border-slate-700 hover:border-slate-500"
-                    : "bg-white hover:bg-slate-50 text-slate-800 border-slate-300 shadow-sm"
-                }`}
-              >
-                <UserPlus size={16} className="text-sky-500" />
-                <span>{t.hero.ctaSecondary}</span>
-              </Button>
-            )}
 
             <Button
               size="lg"
@@ -2273,17 +2210,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                 <ArrowRight size={16} />
               </Button>
 
-              {!user && (
-                <Button
-                  size="lg"
-                  variant="outline"
-                  onClick={() => openAuth("register")}
-                  className="w-full sm:w-auto px-6 py-3.5 h-auto text-sm font-semibold bg-white/10 hover:bg-white/20 text-white border-white/30 rounded-xl transition-all"
-                >
-                  <UserPlus size={16} className="mr-2" />
-                  <span>{t.ctaFinal.ctaRegister}</span>
-                </Button>
-              )}
+
             </div>
 
             <p className="text-[11px] text-sky-200/80 mt-5 flex items-center gap-1.5">
@@ -2388,26 +2315,9 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                     </li>
                   </>
                 ) : (
-                  <>
-                    <li>
-                      <button
-                        type="button"
-                        onClick={() => openAuth("login")}
-                        className="hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
-                      >
-                        {t.footer.login}
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        onClick={() => openAuth("register")}
-                        className="hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
-                      >
-                        {t.footer.register}
-                      </button>
-                    </li>
-                  </>
+                  <li className="text-slate-500 dark:text-slate-400">
+                    {lang === "pt" ? "Inicie sessão ou crie a sua conta para continuar." : "Sign in or create your account to continue."}
+                  </li>
                 )}
                 <li className="pt-2">
                   <button
