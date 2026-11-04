@@ -3,7 +3,7 @@ import {useGeoMozTheme} from "@/hooks/useGeoMozTheme";
 import { usePortalTranslation } from "@/i18n/usePortalTranslation";
 import { sharedMapText, type SharedMapKey } from "@/i18n/sharedMap";
 import React, { useRef, useState, useEffect, Suspense } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   Globe,
   Settings,
@@ -53,7 +53,6 @@ import {
   LazyDocumentation,
 } from "@/lib/lazy-pages";
 import { apiFetch } from "@/lib/api";
-import SettingsDialog from "@/components/SettingsDialog";
 import GeeCredentialsDialog from "@/components/GeeCredentialsDialog";
 import AuthModal from "@/components/AuthModal";
 import { useAuth } from "@/hooks/useAuth";
@@ -88,6 +87,7 @@ type Tab =
   | "Documentação";
 
 function ExplorerContent() {
+  const [, navigate] = useLocation();
   const { toast } = useToast();
   const { translatedLocale } = usePortalTranslation();
   const copy = (key: SharedMapKey) => sharedMapText(translatedLocale, key);
@@ -203,7 +203,6 @@ function ExplorerContent() {
 
   const [mapCenter, setMapCenter] = useState<[number, number]>([-18, 35]);
   const [mapZoom, setMapZoom] = useState(5);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [geeDialogOpen, setGeeDialogOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
@@ -515,7 +514,7 @@ function ExplorerContent() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onOpenProjectModal={() => setProjectModalOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => navigate("/definicoes")}
         mobileOpen={mobileSidebarOpen}
         onMobileClose={() => setMobileSidebarOpen(false)}
       />}
@@ -790,7 +789,7 @@ function ExplorerContent() {
               district={district}
               onTabChange={setActiveTab}
               onOpenProjectModal={() => setProjectModalOpen(true)}
-              onOpenSettings={() => setSettingsOpen(true)}
+              onOpenSettings={() => navigate("/definicoes")}
             />
           )}
 
@@ -943,7 +942,6 @@ function ExplorerContent() {
 
       <GeoMozPrintLayout open={printOpen} onClose={()=>setPrintOpen(false)} moduleName={activeTab} projectName={activeProject?.name} printSourceId="geomoz-active-module"/>
       {/* 4. Modals & Dialogs */}
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <GeeCredentialsDialog open={geeDialogOpen} onOpenChange={setGeeDialogOpen} />
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
 
