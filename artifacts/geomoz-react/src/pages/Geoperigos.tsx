@@ -133,27 +133,27 @@ interface SoilMoistureResult {
 
 // Known cyclone events (quick presets for flood mapping).
 const FLOOD_PRESETS = [
-  { label: "Idai (mar 2019)",     start: "2019-03-15", end: "2019-03-25", prov: "Sofala" },
-  { label: "Kenneth (abr 2019)",  start: "2019-04-25", end: "2019-05-03", prov: "Cabo Delgado" },
-  { label: "Eloise (jan 2021)",   start: "2021-01-22", end: "2021-01-30", prov: "Sofala" },
-  { label: "Freddy (mar 2023)",   start: "2023-03-11", end: "2023-03-20", prov: "Zambézia" },
-];
+  { labelKey: "preset.flood.idai",     start: "2019-03-15", end: "2019-03-25", prov: "Sofala" },
+  { labelKey: "preset.flood.kenneth",  start: "2019-04-25", end: "2019-05-03", prov: "Cabo Delgado" },
+  { labelKey: "preset.flood.eloise",   start: "2021-01-22", end: "2021-01-30", prov: "Sofala" },
+  { labelKey: "preset.flood.freddy",   start: "2023-03-11", end: "2023-03-20", prov: "Zambézia" },
+] as const;
 
 // Fire season presets for Mozambique
 const WILDFIRE_PRESETS = [
-  { label: "Niassa & Cabo Delgado (2024)", start: "2024-08-01", end: "2024-10-31", prov: "Niassa" },
-  { label: "Zambézia & Sofala (2024)",     start: "2024-07-01", end: "2024-11-15", prov: "Zambézia" },
-  { label: "Tete & Manica (2024)",         start: "2024-08-15", end: "2024-11-01", prov: "Tete" },
-  { label: "Temporada Seca 2023",          start: "2023-08-01", end: "2023-11-30", prov: null },
-];
+  { labelKey: "preset.fire.niassa", start: "2024-08-01", end: "2024-10-31", prov: "Niassa" },
+  { labelKey: "preset.fire.zambezia",     start: "2024-07-01", end: "2024-11-15", prov: "Zambézia" },
+  { labelKey: "preset.fire.tete",         start: "2024-08-15", end: "2024-11-01", prov: "Tete" },
+  { labelKey: "preset.fire.drySeason",          start: "2023-08-01", end: "2023-11-30", prov: null },
+] as const;
 
 // Soil moisture / agricultural presets for Mozambique
 const SOIL_MOISTURE_PRESETS = [
-  { label: "Campanha Principal 2023/24 (Floração)", start: "2024-01-15", end: "2024-03-31", layer: "susm" as const, prov: null },
-  { label: "Seca El Niño Sul 2024 (Jan–Abr)",       start: "2024-01-01", end: "2024-04-30", layer: "susma" as const, prov: "Gaza" },
-  { label: "Época Seca / Fresca 2024 (Jun–Ago)",    start: "2024-06-01", end: "2024-08-31", layer: "susm" as const, prov: null },
-  { label: "Sementeira 2024/25 (Nov–Dez)",          start: "2024-11-01", end: "2024-12-31", layer: "ssm" as const, prov: "Nampula" },
-];
+  { labelKey: "preset.soil.main", start: "2024-01-15", end: "2024-03-31", layer: "susm" as const, prov: null },
+  { labelKey: "preset.soil.elnino",       start: "2024-01-01", end: "2024-04-30", layer: "susma" as const, prov: "Gaza" },
+  { labelKey: "preset.soil.cool",    start: "2024-06-01", end: "2024-08-31", layer: "susm" as const, prov: null },
+  { labelKey: "preset.soil.sowing",          start: "2024-11-01", end: "2024-12-31", layer: "ssm" as const, prov: "Nampula" },
+] as const;
 
 interface Props {
   aoi: AreaOfInterest;
@@ -169,9 +169,13 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
   const { translatedLocale } = usePortalTranslation();
   const h = useCallback((key: HazardsCopyKey) => hazardsText(translatedLocale, key), [translatedLocale]);
   const numberLocale = translatedLocale === "pt" ? "pt-MZ" : translatedLocale;
-  const riskLabel = (value: string): string => {
+  const riskLabel = useCallback((value: string): string => {
     const lookup: Record<string, HazardsCopyKey> = { "Favorável": "risk.favorable", "Moderado": "risk.moderate", "Crítico": "risk.critical", "Alerta": "risk.alert", "Severo": "risk.severe" };
     return lookup[value] ? h(lookup[value]) : value;
+  }, [h]);
+  const smapLayerLabel = (code: SoilMoistureResult["layer"]) => {
+    const keys: Record<SoilMoistureResult["layer"], HazardsCopyKey> = { susm: "soil.layer.susm", susma: "soil.layer.susma", ssm: "soil.layer.ssm", smp: "soil.layer.smp" };
+    return h(keys[code]);
   };
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const { geeConnected: isGeeConnected, loading: geeAuthLoading } = useGeeAuth();
@@ -476,7 +480,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
       setSoilMoisture(data);
       toast({
         title: h("toast.soilSuccess"),
-        description: `NASA SMAP: ${data.stressPct}% ${h("toast.soilDeficit")} (${data.riskLevel}).`,
+        description: `NASA SMAP: ${data.stressPct}% ${h("toast.soilDeficit")} (${riskLabel(data.riskLevel)}).`,
       });
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === "AbortError";
@@ -484,7 +488,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
       setError(msg);
       toast({ variant: "destructive", title: h("toast.soilError"), description: msg });
     } finally { clearTimeout(timer); setLoading(false); }
-  }, [aoi, province, district, soilStart, soilEnd, soilLayer, isGeeConnected, h]);
+  }, [aoi, province, district, soilStart, soilEnd, soilLayer, isGeeConnected, h, riskLabel]);
 
   const erosionTotal = erosion ? erosion.classes.reduce((s, c) => s + c.areaKm2, 0) || 1 : 1;
 
@@ -759,7 +763,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
               <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">{h("presets")}</label>
               <div className="grid grid-cols-2 gap-1">
                 {FLOOD_PRESETS.map(p => (
-                  <button key={p.label} onClick={() => {
+                  <button key={p.labelKey} onClick={() => {
                     setEventStart(p.start);
                     setEventEnd(p.end);
                     onProvinceChange(p.prov);
@@ -767,7 +771,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
                     onAOIChange(mozambiqueAOI(p.prov, null));
                   }}
                     className="text-[10px] py-1 px-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:border-rose-200 dark:hover:border-rose-800 transition-colors cursor-pointer">
-                    {p.label}
+                    {h(p.labelKey)}
                   </button>
                 ))}
               </div>
@@ -856,7 +860,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
               <div className="grid grid-cols-2 gap-1">
                 {WILDFIRE_PRESETS.map(p => (
                   <button
-                    key={p.label}
+                    key={p.labelKey}
                     onClick={() => {
                       setWildfireStart(p.start);
                       setWildfireEnd(p.end);
@@ -868,7 +872,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
                     }}
                     className="text-[10px] py-1 px-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 hover:border-amber-200 dark:hover:border-amber-800 transition-colors cursor-pointer text-left truncate"
                   >
-                    {p.label}
+                    {h(p.labelKey)}
                   </button>
                 ))}
               </div>
@@ -1009,7 +1013,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
               <div className="grid grid-cols-2 gap-1">
                 {SOIL_MOISTURE_PRESETS.map(p => (
                   <button
-                    key={p.label}
+                    key={p.labelKey}
                     onClick={() => {
                       setSoilStart(p.start);
                       setSoilEnd(p.end);
@@ -1021,9 +1025,9 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
                       }
                     }}
                     className="text-[10px] py-1 px-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 dark:hover:border-emerald-800 transition-colors cursor-pointer text-left truncate"
-                    title={p.label}
+                    title={h(p.labelKey)}
                   >
-                    {p.label}
+                    {h(p.labelKey)}
                   </button>
                 ))}
               </div>
@@ -1468,7 +1472,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
 
               {/* Hero Banner */}
               <div className="bg-gradient-to-r from-emerald-700 via-teal-700 to-cyan-800 rounded-2xl p-4 text-white">
-                <div className="text-xs opacity-75 mb-1">{soilMoisture.layerLabel}</div>
+                <div className="text-xs opacity-75 mb-1">{smapLayerLabel(soilMoisture.layer)}</div>
                 <div className="text-3xl font-bold">
                   {soilMoisture.meanValue != null ? `${soilMoisture.meanValue} ${soilMoisture.unit}` : "—"}
                 </div>
