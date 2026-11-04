@@ -353,7 +353,7 @@ export default function PricingPage() {
                 .catch(() => setNotice("Não foi possível actualizar o pedido."));
             }}>Actualizar estado</button>
           </div>
-        )
+        )}
         {!checkoutEnabled && <div className="gm-pricing-readiness mb-6 rounded-xl border border-amber-200/85 dark:border-amber-800/60 bg-amber-50/90 dark:bg-amber-950/25 p-4 text-sm text-amber-900 dark:text-amber-200 flex items-start gap-3">
           <CalendarClock size={19} className="shrink-0 mt-0.5"/>
           <div><strong>Pedidos de adesão abertos.</strong> Pode escolher um plano e submeter o pedido à Administração GeoMoz. Os pagamentos online serão activados depois da validação de segurança, sem qualquer cobrança nesta fase.</div>
