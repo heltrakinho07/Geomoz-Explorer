@@ -9,11 +9,15 @@ service cloud.firestore {
 
       // Project Workspaces
       match /projects/{projectId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        // Only the authenticated backend may create/delete cloud projects;
+        // server transaction enforces plan quota across concurrent requests.
+        allow read, update: if request.auth != null && request.auth.uid == userId;
+        allow create, delete: if false;
 
         // Study Runs & Analyses within project
         match /runs/{runId} {
-          allow read, write: if request.auth != null && request.auth.uid == userId;
+          allow read, write: if request.auth != null && request.auth.uid == userId &&
+          exists(/databases/$(database)/documents/users/$(userId)/projects/$(projectId));
         }
       }
 
@@ -36,6 +40,9 @@ service cloud.firestore {
       match /{nested=**} { allow read, write: if false; }
     }
     match /billingEvents/{eventId} { allow read, write: if false; }
+    match /billingPayments/{paymentId} { allow read, write: if false; }
+    match /billingCheckoutState/{userId} { allow read, write: if false; }
+    match /billingProjectQuota/{userId} { allow read, write: if false; }
 
     // Default deny
     match /{document=**} {
