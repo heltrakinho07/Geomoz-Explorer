@@ -184,3 +184,42 @@ async def stripe_webhook(request: Request):
         return True
     apply(transaction)
     return {"received": True}
+
+
+def charge_managed_cloud_credits(uid: str, cost: int, operation_id: str) -> dict:
+    """Atomic, idempotent charge to call ONLY from trusted backend job workers.
+
+    Each monthly credit cycle is UTC; BYO Earth Engine requests must not call this.
+    This method is deliberately not exposed as a browser-callable endpoint.
+    """
+    if not isinstance(cost, int) or cost <= 0 or cost > 100000:
+        raise ValueError("O custo deve ser um inteiro positivo válido.")
+    if not operation_id or len(operation_id) > 160 or "/" in operation_id:
+        raise ValueError("Identificador de operação inválido.")
+    database = _db()
+    billing_ref = database.collection("billing").document(uid)
+    operation_ref = billing_ref.collection("usageEvents").document(operation_id)
+    transaction = database.transaction()
+    current_cycle = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    @firestore.transactional
+    def debit(tx):
+        if operation_ref.get(transaction=tx).exists:
+            return {"alreadyCharged": True}
+        snap = billing_ref.get(transaction=tx)
+        state = snap.to_dict() if snap.exists else dict(FREE)
+        plan = state.get("plan", "community")
+        if state.get("status", "active") not in ("active", "trialing"):
+            plan = "community"
+        if plan not in PLAN_LIMITS:
+            plan = "community"
+        limit = PLAN_LIMITS[plan]["credits"]
+        credits_used = int(state.get("creditsUsed", 0) or 0) if state.get("creditCycle") == current_cycle else 0
+        if limit is not None and credits_used + cost > limit:
+            raise HTTPException(402, "Créditos insuficientes para a operação cloud.")
+        tx.set(operation_ref, {"credits": cost, "cycle": current_cycle, "createdAt": firestore.SERVER_TIMESTAMP})
+        tx.set(billing_ref, {"creditsUsed": credits_used + cost, "creditCycle": current_cycle,
+                             "updatedAt": firestore.SERVER_TIMESTAMP}, merge=True)
+        return {"charged": cost, "remaining": None if limit is None else limit - credits_used - cost}
+
+    return debit(transaction)
