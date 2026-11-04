@@ -295,7 +295,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
       setErosion(data);
       toast({
         title: h("toast.erosionSuccess"),
-        description: `${h("toast.erosionLoss")} ${data.meanTPerHa ?? "—"} t/ha/year (${h("year").toLowerCase()} ${year}).`,
+        description: `${h("toast.erosionLoss")} ${data.meanTPerHa ?? "—"} ${h("units.soilLoss")} (${h("year").toLowerCase()} ${year}).`,
       });
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === "AbortError";
@@ -491,13 +491,13 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
   // ── PDF Export ──────────────────────────────────────────────────────────────
   async function exportGeoperigosPdf() {
     if (!mapContainerRef.current) return;
-    const toolTitle = tool === "flood" ? "Cheias SAR" : tool === "erosion" ? "Erosão RUSLE" : tool === "wildfire" ? "Queimadas FIRMS" : tool === "drought" ? "Seca SPI × NDVI" : tool === "burned" ? "Área Queimada MODIS" : "Humidade do Solo SMAP";
+    const toolTitle = tool === "flood" ? `${h("tool.flood")} SAR` : tool === "erosion" ? `${h("tool.erosion")} RUSLE` : tool === "wildfire" ? `${h("tool.wildfire")} FIRMS` : tool === "drought" ? h("result.droughtTitle") : tool === "burned" ? `${h("tool.burned")} MODIS` : h("result.soilTitle");
     const ctx = createPDFContext(
-      `${toolTitle} — ${province ?? "Moçambique"}`,
+      `${toolTitle} — ${province ?? h("pdf.country")}`,
     );
-    drawCover(ctx, `Relatório de Geoperigos — ${toolTitle}`, [
-      `Ferramenta: ${toolTitle}`,
-      `${province ? `Província: ${province}` : "Área: Moçambique"}`,
+    drawCover(ctx, `${h("pdf.title")} — ${toolTitle}`, [
+      `${h("pdf.tool")} ${toolTitle}`,
+      `${province ? `${h("pdf.province")} ${province}` : `${h("pdf.area")} ${h("pdf.country")}`}`,
       ctx.date,
     ]);
 
@@ -513,7 +513,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
         { south: -26.9, north: -10.4, west: 30.2, east: 41 },
         { tileUrl: analysisTile,
           legendItems,
-          title: `${toolTitle} — ${province ?? "Moçambique"}`,
+          title: `${toolTitle} — ${province ?? h("pdf.country")}`,
           dpi: 200 },
       );
       addMapImage(ctx, imgData, 100);
@@ -522,41 +522,41 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
     }
 
     if (tool === "flood" && flood) {
-      sectionTitle(ctx, "Extensão da Cheia");
+      sectionTitle(ctx, h("result.floodTitle"));
       drawStatCards(ctx, [
-        { label: "Área Inundada", value: `${flood.areaKm2.toLocaleString(numberLocale)} km²`, color: [225, 29, 72] },
-        { label: "Cenas do Evento", value: `${flood.scenesEvent}`, color: [239, 68, 68] },
-        { label: "Cenas da Base", value: `${flood.scenesBaseline}`, color: [100, 116, 139] },
-        { label: "Período", value: `${flood.eventStart}→${flood.eventEnd}`, color: [14, 165, 233] },
+        { label: h("result.floodArea"), value: `${flood.areaKm2.toLocaleString(numberLocale)} km²`, color: [225, 29, 72] },
+        { label: h("result.eventScenes"), value: `${flood.scenesEvent}`, color: [239, 68, 68] },
+        { label: h("result.baselineScenes"), value: `${flood.scenesBaseline}`, color: [100, 116, 139] },
+        { label: h("result.floodPeriod"), value: `${flood.eventStart}→${flood.eventEnd}`, color: [14, 165, 233] },
       ]);
-      sectionTitle(ctx, "Metodologia");
+      sectionTitle(ctx, h("pdf.methodology"));
       ctx.doc.setFontSize(7.5);
       ctx.doc.setTextColor(100, 116, 139);
-      ctx.doc.text("Deteção de cheias por radar Sentinel-1 (banda C, VV) usando o método UN-SPIDER de", MARGIN, ctx.y);
+      ctx.doc.text(h("pdf.floodMethod1"), MARGIN, ctx.y);
       ctx.y += 4;
-      ctx.doc.text("detecção de mudança: compara a mediana do período do evento com os 60 dias anteriores.", MARGIN, ctx.y);
+      ctx.doc.text(h("pdf.floodMethod2"), MARGIN, ctx.y);
       ctx.y += 4;
-      ctx.doc.text("Filtros: inclinação < 5° (exclui encostas), conectividade ≥ 8 pixels, água permanente JRC removida.", MARGIN, ctx.y);
+      ctx.doc.text(h("pdf.floodMethod3"), MARGIN, ctx.y);
       ctx.y += 8;
     }
 
     if (tool === "erosion" && erosion) {
-      sectionTitle(ctx, "Risco de Erosão (RUSLE)");
+      sectionTitle(ctx, h("result.erosionTitle"));
       drawStatCards(ctx, [
-        { label: "Perda Média", value: `${erosion.meanTPerHa?.toFixed(1) ?? "—"} t/ha/ano`, color: [245, 158, 11] },
-        { label: "Ano", value: `${erosion.year}`, color: [249, 115, 22] },
-        { label: "Classes", value: `${erosion.classes.length}`, color: [14, 165, 233] },
-        { label: "Fonte", value: "CHIRPS+DEM+MODIS", color: [100, 116, 139] },
+        { label: h("pdf.erosionMean"), value: `${erosion.meanTPerHa?.toFixed(1) ?? "—"} t/ha/ano`, color: [245, 158, 11] },
+        { label: h("year"), value: `${erosion.year}`, color: [249, 115, 22] },
+        { label: h("pdf.classes"), value: `${erosion.classes.length}`, color: [14, 165, 233] },
+        { label: h("pdf.source"), value: "CHIRPS+DEM+MODIS", color: [100, 116, 139] },
       ]);
 
-      sectionTitle(ctx, "Distribuição por Classe");
+      sectionTitle(ctx, h("pdf.classDistribution"));
       drawTable(
         ctx,
-        ["Classe", "Área (km²)", "%", "Perda"],
+        [h("pdf.class"), h("pdf.areaKm2"), "%", h("pdf.loss")],
         erosion.classes.map(c => ({
           cells: [
             c.label,
-            c.areaKm2.toLocaleString("pt-PT", { maximumFractionDigits: 1 }),
+            c.areaKm2.toLocaleString(numberLocale, { maximumFractionDigits: 1 }),
             ((c.areaKm2 / erosionTotal) * 100).toFixed(1),
             c.range,
           ],
@@ -567,61 +567,61 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
     }
 
     if (tool === "wildfire" && wildfire) {
-      sectionTitle(ctx, "Deteção de Focos de Calor e Incêndios (NASA FIRMS)");
+      sectionTitle(ctx, h("pdf.fireDetection"));
       drawStatCards(ctx, [
-        { label: "Total de Focos", value: `${wildfire.hotspotCount.toLocaleString(numberLocale)}`, color: [225, 29, 72] },
-        { label: "Temp. Média", value: wildfire.meanTempCelsius != null ? `${wildfire.meanTempCelsius} °C` : "—", color: [249, 115, 22] },
-        { label: "Confiança", value: `≥ ${wildfire.minConfidence}%`, color: [245, 158, 11] },
-        { label: "Período", value: `${wildfire.startDate}→${wildfire.endDate}`, color: [14, 165, 233] },
+        { label: h("pdf.totalHotspots"), value: `${wildfire.hotspotCount.toLocaleString(numberLocale)}`, color: [225, 29, 72] },
+        { label: h("pdf.avgTemp"), value: wildfire.meanTempCelsius != null ? `${wildfire.meanTempCelsius} °C` : "—", color: [249, 115, 22] },
+        { label: h("pdf.confidence"), value: `≥ ${wildfire.minConfidence}%`, color: [245, 158, 11] },
+        { label: h("result.floodPeriod"), value: `${wildfire.startDate}→${wildfire.endDate}`, color: [14, 165, 233] },
       ]);
-      sectionTitle(ctx, "Metodologia & Sensores");
+      sectionTitle(ctx, h("pdf.methodSensors"));
       ctx.doc.setFontSize(7.5);
       ctx.doc.setTextColor(100, 116, 139);
-      ctx.doc.text("Deteção de fogo ativo e anomalias térmicas de superfície baseada no sistema NASA FIRMS,", MARGIN, ctx.y);
+      ctx.doc.text(h("pdf.fireMethod1"), MARGIN, ctx.y);
       ctx.y += 4;
-      ctx.doc.text("utilizando o canal infravermelho médio (3.9–4.0 µm, canal T21) dos sensores VIIRS e MODIS.", MARGIN, ctx.y);
+      ctx.doc.text(h("pdf.fireMethod2"), MARGIN, ctx.y);
       ctx.y += 4;
-      ctx.doc.text("Os pontos representam frentes de queima ativa ou fontes pontuais com forte contraste radiativo.", MARGIN, ctx.y);
+      ctx.doc.text(h("pdf.fireMethod3"), MARGIN, ctx.y);
       ctx.y += 8;
     }
 
     if (tool === "drought" && drought) {
-      sectionTitle(ctx, "Seca Meteorológica e Vegetação");
+      sectionTitle(ctx, h("pdf.droughtSection"));
       drawStatCards(ctx, [
-        { label: "Área SPI < -1", value: drought.stats.droughtPct != null ? `${drought.stats.droughtPct}%` : "—", color: [194, 65, 12] },
-        { label: "SPI médio", value: drought.stats.meanSpi != null ? drought.stats.meanSpi.toFixed(2) : "—", color: [234, 88, 12] },
-        { label: "NDVI médio", value: drought.stats.meanNdvi != null ? drought.stats.meanNdvi.toFixed(3) : "—", color: [101, 163, 13] },
-        { label: "Fonte", value: "CHIRPS + MODIS", color: [100, 116, 139] },
+        { label: h("result.spiArea"), value: drought.stats.droughtPct != null ? `${drought.stats.droughtPct}%` : "—", color: [194, 65, 12] },
+        { label: h("result.meanSpi"), value: drought.stats.meanSpi != null ? drought.stats.meanSpi.toFixed(2) : "—", color: [234, 88, 12] },
+        { label: h("result.meanNdvi"), value: drought.stats.meanNdvi != null ? drought.stats.meanNdvi.toFixed(3) : "—", color: [101, 163, 13] },
+        { label: h("pdf.source"), value: "CHIRPS + MODIS", color: [100, 116, 139] },
       ]);
     }
 
     if (tool === "burned" && burned) {
-      sectionTitle(ctx, "Área Queimada Observada");
+      sectionTitle(ctx, h("pdf.burnedSection"));
       drawStatCards(ctx, [
-        { label: "Área Queimada", value: `${burned.areaKm2.toLocaleString(numberLocale)} km²`, color: [153, 27, 27] },
-        { label: "% da AOI", value: `${burned.areaPct.toLocaleString(numberLocale)}%`, color: [220, 38, 38] },
-        { label: "Resolução", value: "500 m", color: [234, 88, 12] },
-        { label: "Fonte", value: "MODIS MCD64A1", color: [100, 116, 139] },
+        { label: h("tool.burned"), value: `${burned.areaKm2.toLocaleString(numberLocale)} km²`, color: [153, 27, 27] },
+        { label: h("result.aoiPct"), value: `${burned.areaPct.toLocaleString(numberLocale)}%`, color: [220, 38, 38] },
+        { label: h("result.resolution"), value: "500 m", color: [234, 88, 12] },
+        { label: h("pdf.source"), value: "MODIS MCD64A1", color: [100, 116, 139] },
       ]);
     }
 
     if (tool === "soil_moisture" && soilMoisture) {
-      sectionTitle(ctx, "Diagnóstico de Humidade do Solo (NASA SMAP)");
+      sectionTitle(ctx, h("pdf.soilSection"));
       drawStatCards(ctx, [
-        { label: "Humidade Média", value: soilMoisture.meanValue != null ? `${soilMoisture.meanValue} ${soilMoisture.unit}` : "—", color: [16, 185, 129] },
-        { label: "Área sob Stress", value: `${soilMoisture.stressPct}%`, color: [225, 29, 72] },
-        { label: "Nível de Risco", value: soilMoisture.riskLevel, color: [245, 158, 11] },
-        { label: "Camada", value: soilMoisture.layer.toUpperCase(), color: [14, 165, 233] },
+        { label: h("pdf.meanMoisture"), value: soilMoisture.meanValue != null ? `${soilMoisture.meanValue} ${soilMoisture.unit}` : "—", color: [16, 185, 129] },
+        { label: h("result.stressedArea"), value: `${soilMoisture.stressPct}%`, color: [225, 29, 72] },
+        { label: h("pdf.riskLevel"), value: riskLabel(soilMoisture.riskLevel), color: [245, 158, 11] },
+        { label: h("pdf.layer"), value: soilMoisture.layer.toUpperCase(), color: [14, 165, 233] },
       ]);
 
-      sectionTitle(ctx, "Distribuição por Classe de Humidade");
+      sectionTitle(ctx, h("result.moistureClasses"));
       drawTable(
         ctx,
-        ["Classe", "Área (km²)", "%"],
+        [h("pdf.class"), h("pdf.areaKm2"), "%"],
         soilMoisture.classes.map(c => ({
           cells: [
             c.label,
-            c.km2.toLocaleString("pt-PT", { maximumFractionDigits: 1 }),
+            c.km2.toLocaleString(numberLocale, { maximumFractionDigits: 1 }),
             `${c.pct}%`,
           ],
           color: c.color,
@@ -629,15 +629,15 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
         [CONTENT_W * 0.5, CONTENT_W * 0.25, CONTENT_W * 0.25],
       );
 
-      sectionTitle(ctx, "Impacto nas Culturas Alimentares de Moçambique");
+      sectionTitle(ctx, h("pdf.cropImpact"));
       drawTable(
         ctx,
-        ["Cultura", "Sensibilidade", "Condição Atual"],
+        [h("pdf.crop"), h("pdf.sensitivity"), h("pdf.condition")],
         soilMoisture.crops.map(cr => ({
           cells: [
             cr.crop,
             cr.sensitivity,
-            cr.status,
+            riskLabel(cr.status),
           ],
           color: cr.status === "Favorável" ? "#16a34a" : cr.status === "Alerta" ? "#d97706" : "#dc2626",
         })),
@@ -901,16 +901,16 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
 
             <div>
               <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">
-                Filtro de Confiança — <strong className="text-slate-700 dark:text-slate-200">{minConfidence}%</strong>
+                {h("result.confidenceFilter")} — <strong className="text-slate-700 dark:text-slate-200">{minConfidence}%</strong>
               </label>
               <select
                 value={minConfidence}
                 onChange={e => setMinConfidence(+e.target.value)}
                 className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500"
               >
-                <option value={30}>Baixa (&gt; 30%) — Todos os focos</option>
-                <option value={50}>Nominal (&gt; 50%) — Recomendado</option>
-                <option value={80}>Alta (&gt; 80%) — Incêndios confirmados</option>
+                <option value={30}>{h("wildfire.confidenceLow")}</option>
+                <option value={50}>{h("wildfire.confidenceNominal")}</option>
+                <option value={80}>{h("wildfire.confidenceHigh")}</option>
               </select>
             </div>
 
@@ -1227,7 +1227,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
         {/* Legend */}
         {tool === "erosion" && erosion && (
           <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-amber-100 dark:border-amber-900/40 p-3 text-[11px] min-w-[150px]">
-            <div className="font-semibold text-amber-800 dark:text-amber-300 mb-2 flex items-center gap-1"><Mountain size={11} /> {h("result.erosionTitle")} (t/ha/ano)</div>
+            <div className="font-semibold text-amber-800 dark:text-amber-300 mb-2 flex items-center gap-1"><Mountain size={11} /> {h("result.erosionTitle")} ({h("units.soilLoss")})</div>
             {erosion.classes.map(c => (
               <div key={c.id} className="flex items-center gap-1.5 mb-1">
                 <span className="inline-block w-4 h-3 rounded" style={{ background: c.color }} />
@@ -1328,7 +1328,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
                 <div className="bg-gradient-to-r from-amber-600 to-orange-600 rounded-2xl p-4 text-white">
                   <div className="text-xs opacity-75 mb-1">{h("result.avgSoilLoss")} · {erosion.year}</div>
                   <div className="text-3xl font-bold">{erosion.meanTPerHa.toLocaleString(numberLocale)}</div>
-                  <div className="text-xs opacity-75">t/ha/ano</div>
+                  <div className="text-xs opacity-75">{h("units.soilLoss")}</div>
                 </div>
               )}
               <div className="space-y-1.5">
