@@ -93,6 +93,33 @@ test("GeoMoz profile and shell copy follows selected language, not a fixed Portu
   assert.equal(profileText("de","compute"),"Calculate profile","Unsupported GeoMoz-specific copy must fall back to English");
   assert.equal(translatedCommand("en","proc.raster.slope","Declive",()=>""),"Slope");
 });
+test("floating tool panels translate the complete help, heading and close controls",async()=>{
+  const {workbenchText}=await import("../assets/workbench/geomoz-workbench-locale.ts");
+  const labels={
+    pt:["GEOMOZ GIS WORKSPACE / FERRAMENTAS","Seleccione uma ferramenta para trabalhar com as camadas do projecto.","Aceda às análises de bacias hidrográficas, águas subterrâneas e terreno.","Gerar mapa 3D do DEM"],
+    en:["GEOMOZ GIS WORKSPACE / TOOLS","Select a tool to work with the layers in your project.","Open watershed, groundwater and terrain analysis tools.","Generate 3D map from DEM"],
+    es:["GEOMOZ GIS WORKSPACE / HERRAMIENTAS","Seleccione una herramienta para trabajar con las capas del proyecto.","Acceda a los análisis de cuencas, aguas subterráneas y terreno.","Generar mapa 3D a partir del MDE"],
+    fr:["GEOMOZ GIS WORKSPACE / OUTILS","Sélectionnez un outil pour travailler avec les couches de votre projet.","Accédez aux analyses des bassins versants, des eaux souterraines et du terrain.","Générer une carte 3D à partir du MNT"],
+  };
+  for(const [language,[section,help,hydrology,terrain]] of Object.entries(labels)){
+    assert.equal(workbenchText(language,"flyoutSection"),section);
+    assert.equal(workbenchText(language,"flyoutHelp"),help);
+    assert.equal(workbenchText(language,"hydrologyToolsHelp"),hydrology);
+    assert.equal(workbenchText(language,"terrain3D"),terrain);
+    for(const key of ["flyoutAria","flyoutClose"])assert.ok(workbenchText(language,key));
+  }
+  assert.equal(workbenchText("de","flyoutSection"),"GEOMOZ GIS WORKSPACE / TOOLS",
+    "GeoMoz-specific copy in unrevised engine locales falls back to English");
+  const card=readFileSync(new URL("../assets/workbench/GeoMozFloatingToolCard.tsx",import.meta.url),"utf8");
+  assert.match(card,/useLanguage\(\)/,"The flyout must respond immediately to an engine locale change");
+  assert.match(card,/txt\("flyoutSection"\)/);
+  assert.match(card,/txt\("flyoutHelp"\)/);
+  assert.match(card,/txt\("flyoutClose"\)/);
+  const chrome=readFileSync(new URL("../assets/workbench/GeoMozWorkbenchChrome.tsx",import.meta.url),"utf8");
+  assert.match(chrome,/description=\{txt\("hydrologyToolsHelp"\)\}/);
+  assert.match(chrome,/txt\("terrain3D"\)/);
+});
+
 test("topographic route is kept above raster layers after map style changes",()=>{
   const src=readFileSync(new URL("../assets/workbench/GeoMozTopographicProfile.tsx",import.meta.url),"utf8");
   assert.match(src,/map\.moveLayer\(id\)/);
