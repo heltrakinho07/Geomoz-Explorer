@@ -25,6 +25,7 @@ import { decodeTerrainScene, encodeTerrainScene, MAX_TERRAIN_SCENE_BYTES }
 import GeoMozTerrainSciencePanel, {type TerrainPickedPoint}
   from "./GeoMozTerrainSciencePanel";
 import { geomozNativeTerrainPreview } from "./geomoz-native-terrain-dem";
+import { encodeTerrainGLB } from "../../lib/geomoz-terrain-glb";
 import "./geomoz-terrain-workspace.css";
 
 const LIMIT=32*1024*1024;
@@ -130,6 +131,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
   const [rendererError,setRendererError]=useState<string|null>(null);
   const [notice,setNotice]=useState("");
   const [style,setStyle]=useState<TerrainVisualStyle>("hypsometric");
+  const [detailLevel,setDetailLevel]=useState<"auto"|"full"|"medium"|"low">("auto");
   const [exaggeration,setExaggeration]=useState(2);
   const [pickTarget,setPickTarget]=useState<Target|null>(null);
   const [lastPick,setLastPick]=useState<TerrainPickedPoint|null>(null);
@@ -167,7 +169,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     setRendererError(null);
     try {
       return createTerrainRenderer(canvasRef.current,terrain,{
-        exaggeration,style,
+        exaggeration,style,detailLevel,
         pickEnabled:!!pickTarget,onPick:selectPoint,
         profileOverlay:picked.A&&picked.B?
           {start:[picked.A.xMeters,picked.A.yMeters],
@@ -176,7 +178,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     }catch(cause){
       setRendererError(cause instanceof Error?cause.message:"O WebGL2 não pôde carregar o modelo.");
     }
-  },[open,terrain,exaggeration,style,pickTarget,picked]);
+  },[open,terrain,exaggeration,style,detailLevel,pickTarget,picked]);
 
   async function openSelectedDEM(){
     const layer=options.find(o=>o.id===selected);
@@ -199,6 +201,16 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     }finally {
       if(abortRef.current===controller){abortRef.current=null;setBusy(false);}
     }
+  }
+  function exportGLB(){
+    if(!terrain)return;
+    setError(null);
+    try {
+      const bytes=encodeTerrainGLB(terrain,exaggeration,style);
+      saveBlob(new Blob([new Uint8Array(bytes)],{type:"model/gltf-binary"}),
+        "geomoz_terreno_3d.glb");
+      setNotice("Modelo GLB exportado em metros com metadados do CRS do projecto.");
+    }catch(cause){setError(cause instanceof Error?cause.message:"Falha ao exportar GLB.");}
   }
   function saveScene(){
     if(!terrain)return;
@@ -297,6 +309,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
           <input className="sr-only" ref={sceneInputRef} type="file" accept=".geomoz"
             aria-label={ui("Reabrir cena do terreno")} onChange={event=>void loadScene(event.target.files?.[0])}/>
           <button type="button" onClick={()=>sceneInputRef.current?.click()}>{ui("Reabrir cena")}</button>
+          <button type="button" disabled={!terrain} onClick={exportGLB} data-testid="geomoz-terrain-export-glb">GLB 3D</button>
           <button type="button" disabled={!terrain||!!rendererError} onClick={downloadPNG}>PNG</button>
           <button type="button" disabled={!terrain||!!rendererError} onClick={()=>void downloadPDF()}>PDF</button>
         </div>
@@ -310,6 +323,15 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
           <select value={style} onChange={e=>setStyle(e.target.value as TerrainVisualStyle)}>
             <option value="hypsometric">{ui("Hipsometria · relevo sombreado")}</option>
             <option value="grayscale">{ui("Relevo em escala de cinzentos")}</option>
+          </select>
+        </label>
+        <label className="gm-terrain-native-label">{ui("Nível de detalhe do relevo")}
+          <select value={detailLevel} aria-label={ui("Detalhe do terreno 3D")}
+            onChange={event=>setDetailLevel(event.target.value as typeof detailLevel)}>
+            <option value="auto">{ui("Automático com o zoom")}</option>
+            <option value="full">{ui("Detalhe máximo")}</option>
+            <option value="medium">{ui("LOD 2 · equilibrado")}</option>
+            <option value="low">{ui("LOD 4 · rápido")}</option>
           </select>
         </label>
         <label className="gm-terrain-native-label">{ui("Exagero vertical")} · {exaggeration.toFixed(1)}×
