@@ -4,6 +4,8 @@ Uses Gemini 2.0 Flash Function Calling with fallback to deterministic spatial he
 """
 
 import os
+from copy import deepcopy
+from agent.intelligence import build_dossier
 import json
 import logging
 import unicodedata
@@ -50,7 +52,9 @@ NUNCA inventes dados imaginários. Usa as ferramentas fornecidas para calcular o
 Diretrizes:
 1. Respeita a Área de Estudo (AOI) e o contexto atual do mapa.
 2. Planeia a sequência de ferramentas lógicas (ex: Delimitação -> Satélite -> Terreno -> Multi-critério -> Estatísticas).
-3. Na conclusão técnica, apresenta o parecer científico fundamentado, citando valores calculados, litologias e recomendações.
+3. Na conclusão técnica, cita apenas valores devolvidos por ferramentas bem-sucedidas. Distingue observações, inferências e limitações. Uma imagem no mapa não prova uma hipótese.
+6. Não calcules uma percentagem de confiança sem validação. Não apresentes índices espectrais como reservas minerais, NDVI como biomassa medida ou suscetibilidade como previsão de cheia.
+7. Se faltarem área, período ou dados indispensáveis, solicita-os. Não substituas silenciosamente a área por Maputo. Não afirmes estatísticas zonais sem cálculo real.
 4. Consultas geológicas devem começar por get_geology_units; nunca afirmes a presença de uma litologia ou jazigo sem resultados dessa ferramenta. Se houver falha de leitura, informa-a sem fabricar números.
 5. Quando o utilizador pedir só unidades, litologias, formações ou geologia no mapa, não lances índices GEE ou targeting mineral desnecessários.
 """
@@ -60,7 +64,20 @@ class GeoMozAgent:
     """Autonomous Geospatial Agent with ReAct planning."""
 
     @classmethod
-    async def process_user_request(
+    async def process_user_request(cls, user_message, current_map_state,
+                                   chat_history=None, gemini_api_key=None,
+                                   openai_api_key=None, provider="auto", model=None):
+        # Each request owns its evidence and mutable scope. Never mutate caller state.
+        context = deepcopy(current_map_state) if isinstance(current_map_state, dict) else {}
+        context.pop("_execution_evidence", None)
+        context.pop("_aoi_error", None)
+        result = await cls._process_user_request(
+            user_message, context, chat_history, gemini_api_key,
+            openai_api_key, provider, model)
+        return build_dossier(result, context)
+
+    @classmethod
+    async def _process_user_request(
         cls,
         user_message: str,
         current_map_state: Dict[str, Any],
@@ -336,51 +353,31 @@ class GeoMozAgent:
             if not candidates:
                 break
 
-            part = candidates[0].get("content", {}).get("parts", [{}])[0]
-            func_call = part.get("functionCall")
-
-            if not func_call:
-                # Agent completed all tool calls and generated final textual synthesis
-                final_text = part.get("text", "Análise espacial concluída com sucesso.")
-                return {
-                    "status": "completed",
-                    "plan": [s["name"] for s in steps_log],
-                    "steps": steps_log,
-                    "map_actions": map_actions,
-                    "runs": executed_runs,
-                    "synthesis": final_text
-                }
-
-            # Handle Function Call
-            tool_name = func_call.get("name")
-            tool_args = func_call.get("args", {})
-
-            step_entry = {
-                "id": f"step_{turn+1}",
-                "name": f"Executar {tool_name.replace('_', ' ').title()}",
-                "status": "running"
-            }
-            steps_log.append(step_entry)
-
-            tool_output = await ToolDispatcher.execute(tool_name, tool_args, current_map_state)
-            step_entry["status"] = "error" if tool_output.get("status") in ("error", "warning") or tool_output.get("error") else "completed"
-            step_entry["resultSummary"] = str(tool_output.get("mean") or tool_output.get("areaKm2") or "Concluído")
-
-            if "map_action" in tool_output:
-                map_actions.append(tool_output["map_action"])
-            executed_runs.append({"tool": tool_name, "output": tool_output})
-
-            # Append model turn and function response
+            parts = candidates[0].get("content", {}).get("parts", [])
+            calls = [p["functionCall"] for p in parts if p.get("functionCall")]
+            if not calls:
+                final_text = "\n".join(p.get("text", "") for p in parts)
+                return {"status": "completed", "provider": "gemini", "model": working_model,
+                        "plan": [s["name"] for s in steps_log], "steps": steps_log,
+                        "map_actions": map_actions, "runs": executed_runs,
+                        "synthesis": final_text or "Sem síntese devolvida pelo modelo."}
             contents.append(candidates[0]["content"])
-            contents.append({
-                "role": "function",
-                "parts": [{
-                    "functionResponse": {
-                        "name": tool_name,
-                        "response": {"output": tool_output}
-                    }
-                }]
-            })
+            responses = []
+            for call in calls:
+                tool_name = call.get("name", "")
+                tool_args = call.get("args", {})
+                tool_output = await ToolDispatcher.execute(tool_name, tool_args, current_map_state)
+                success = tool_output.get("status") == "success"
+                steps_log.append({"id": f"step_{len(steps_log)+1}",
+                                  "name": f"Executar {tool_name.replace('_', ' ')}",
+                                  "status": "completed" if success else "error",
+                                  "resultSummary": str(tool_output.get("message") or tool_output.get("mean") or "Resultado registado")})
+                if success and tool_output.get("map_action"):
+                    map_actions.append(tool_output["map_action"])
+                executed_runs.append({"tool": tool_name, "output": tool_output})
+                responses.append({"functionResponse": {"name": tool_name,
+                                                       "response": {"output": tool_output}}})
+            contents.append({"role": "user", "parts": responses})
 
         # Fallback if loop finishes without text
         return {
@@ -405,13 +402,15 @@ class GeoMozAgent:
         aoi = current_map_state.get("aoi") or {}
         if not isinstance(aoi, dict):
             aoi = {}
-        province = aoi.get("province") or "Maputo"
+        province = aoi.get("province")
         district = aoi.get("district")
 
         # Detect geographical mentions in prompt
         provinces_mz = ["maputo", "gaza", "inhambane", "sofala", "manica", "tete", "zambezia", "nampula", "cabo delgado", "niassa"]
         for p in provinces_mz:
             if p in folded_message:
+                if _fold_text(str(aoi.get("province") or "")) != p:
+                    district = None
                 province = p.title()
                 break
 
@@ -425,10 +424,11 @@ class GeoMozAgent:
             user_message, current_map_state.get("agentContext")
         ):
             scope = resolve_geology_scope(user_message, current_map_state)
-            geo_context = dict(current_map_state)
+            geo_context = current_map_state
             geo_context["aoi"] = {
                 "province": scope["province"], "district": scope["district"],
                 "geometry": scope["geometry"],
+                "label": ", ".join(filter(None, [scope["district"], scope["province"]])) or "Moçambique",
             }
             result = await ToolDispatcher.execute(
                 "get_geology_units",
@@ -459,193 +459,77 @@ class GeoMozAgent:
                 "synthesis": result.get("summary", "Consulta geológica concluída."),
             }
 
-        async def execute_recorded(tool_name, args, context):
-            output = await ToolDispatcher.execute(tool_name, args, context)
-            executed_runs.append({"tool": tool_name, "output": output})
-            return output
-
-        # Step 1: AOI Validation
-        aoi_res = await execute_recorded("resolve_aoi", {"province": province, "district": district}, current_map_state)
-        steps_log.append({
-            "id": "step_1",
-            "name": f"Delimitação da AOI: {aoi_res.get('label')}",
-            "status": "completed",
-            "resultSummary": "AOI Validada"
-        })
-        if "map_action" in aoi_res:
-            map_actions.append(aoi_res["map_action"])
-
-        # Branching based on domain
-        if any(w in msg_lower for w in ["inunda", "cheia", "alagamento", "flood"]):
-            # Domain: Flood Exposure
-            s2_res = await execute_recorded("calculate_index", {"index": "mndwi"}, current_map_state)
-            steps_log.append({"id": "step_2", "name": "Cálculo MNDWI (Água Superficial Sentinel-2)", "status": "completed", "resultSummary": f"Média: {s2_res.get('mean')}"})
-            if "map_action" in s2_res: map_actions.append(s2_res["map_action"])
-
-            flood_res = await execute_recorded("get_flood_susceptibility", {"province": province, "district": district}, current_map_state)
-            steps_log.append({"id": "step_3", "name": "Mapeamento de Suscetibilidade a Cheias (HydroSHEDS + DEM)", "status": "completed", "resultSummary": flood_res.get("highRiskClass", "Planícies Inundáveis")})
-            if "map_action" in flood_res: map_actions.append(flood_res["map_action"])
-
-            rivers_res = await execute_recorded("get_river_network", {"min_order": 1}, current_map_state)
-            steps_log.append({"id": "step_4", "name": "Vetorização de Rios e Drenagem (FreeFlowingRivers)", "status": "completed", "resultSummary": "Rios Integrados"})
-            if "map_action" in rivers_res: map_actions.append(rivers_res["map_action"])
-
-            synthesis = f"""### Diagnóstico Técnico — Risco de Inundação ({province})
-
-**Área de Análise:** {aoi_res.get('label')}  
-**Metodologia:** Sobreposição de índice MNDWI (Sentinel-2), modelo de suscetibilidade topográfica de cheias e rede de drenagem HydroSHEDS FreeFlowingRivers.
-
-#### Evidências Detetadas:
-1. **Zonas Deprimidas:** O relevo identifica bacias de acumulação com cotas altimétricas baixas propensas a estagnação de águas pluviais.
-2. **Humidade e Drenagem:** O índice MNDWI evidencia solos saturados adjacentes aos canais fluviais principais.
-3. **Exposição Espacial:** Estimam-se setores vulneráveis em planícies aluvionares e leitos de cheia sazonais.
-
-#### Recomendações:
-- Implementar zonas tampão de proteção ripícola ao longo das linhas de água identificadas.
-- Priorizar a fiscalização territorial em setores de planície com cotas inferiores a 10 metros.
-"""
-
-        elif any(w in msg_lower for w in ["mineral", "ouro", "cobre", "ferro", "rocha", "geol", "gossan"]):
-            # Domain: Mineral Targeting & Geology
-            geo_res = await execute_recorded("get_geology_units", {"province": province, "district": district}, current_map_state)
-            steps_log.append({"id": "step_2", "name": "Carta Geológica Oficial 1:1M de Moçambique", "status": "completed", "resultSummary": f"{geo_res.get('unitsCount', 0)} Unidades"})
-            if "map_action" in geo_res: map_actions.append(geo_res["map_action"])
-
-            clay_res = await execute_recorded("calculate_index", {"index": "clay"}, current_map_state)
-            steps_log.append({"id": "step_3", "name": "Razão SWIR1/NIR (Sentinel-2)", "status": "completed", "resultSummary": f"Média: {clay_res.get('mean')}"})
-            if "map_action" in clay_res: map_actions.append(clay_res["map_action"])
-
-            lin_res = await execute_recorded("extract_lineaments", {"density_radius_m": 750}, current_map_state)
-            steps_log.append({"id": "step_4", "name": "Detecção de Lineamentos Estruturais (Sobel/Canny)", "status": "completed", "resultSummary": f"Orientação: {lin_res.get('dominantOrientation')}"})
-            if "map_action" in lin_res: map_actions.append(lin_res["map_action"])
-
-            mineral_type = "gold" if "ouro" in msg_lower else "copper" if "cobre" in msg_lower else "iron_oxide"
-            target_res = await execute_recorded("run_mineral_targeting", {"mineral": mineral_type}, current_map_state)
-            steps_log.append({"id": "step_5", "name": f"Modelo de Favorabilidade Mineral ({mineral_type.title()})", "status": "completed", "resultSummary": target_res.get("favorableAreaKm2")})
-            if "map_action" in target_res: map_actions.append(target_res["map_action"])
-
-            synthesis = f"""### Dossiê de Prospeção Mineral & Geológica ({province})
-
-**Área de Análise:** {aoi_res.get('label')}  
-**Alvo Geológico:** {mineral_type.replace('_', ' ').title()}  
-**Substrato Litológo:** {geo_res.get('summary')}
-
-#### Indicadores Analíticos:
-1. **Unidades Litológicas:** Foram cruzados os polígonos da carta geológica 1:1M, permitindo associar alvos às formações hospedeiras.
-2. **Alteração Hidrotermal:** O rácio SWIR1/SWIR2 (Argilas Al-OH) demarca anomalias com refletância compatível com sericite e caulinose.
-3. **Controlo Estrutural:** A densidade focal de lineamentos revela eixos de fraturação dominantes com orientação **{lin_res.get('dominantOrientation') or 'não determinada'}**, atuando como condutas de fluidos mineralizantes.
-4. **Área Favorável Identificada:** Foram delimitados **{target_res.get('favorableAreaKm2') if target_res.get('favorableAreaKm2') is not None else 'não calculada'}** em classe de alto potencial (P90+).
-
-#### Recomendações de Campo:
-- Executar malha de geoquímica de solos e sedimentos de corrente sobre os corredores de alta densidade de fraturas.
-- Confirmação de campo através de espectroscopia de refletância e cartografia de pormenor.
-"""
-
-        elif any(w in msg_lower for w in ["chuva", "precipita", "clima", "chirps", "pluvio"]):
-            # Domain: Rainfall & Climate
-            chirps_res = await execute_recorded("get_precipitation_chirps", {"year": 2023}, current_map_state)
-            precip_val = chirps_res.get("meanRainfallMm") or "850–1200 mm/ano"
-            steps_log.append({"id": "step_2", "name": "Precipitação Acumulada Anual (CHIRPS 5km)", "status": "completed", "resultSummary": precip_val})
-            if "map_action" in chirps_res: map_actions.append(chirps_res["map_action"])
-
-            synthesis = f"""### Caracterização Pluviométrica & Hídrica ({province})
-
-**Área de Análise:** {aoi_res.get('label')}  
-**Sensor:** CHIRPS Daily (Climate Hazards Group InfraRed Precipitation with Station Data, 5km).
-
-#### Diagnóstico Pluviométrico:
-- O regime pluviométrico anual demonstra valores médios em torno de **{precip_val}**, refletindo a sazonalidade característica de Moçambique com concentração hídrica no período novembro–março.
-- Os mapas de precipitação auxiliam no planeamento de sementeiras, dimensionamento de barragens e gestão de recursos hídricos.
-"""
-
-        elif any(w in msg_lower for w in ["furo", "subterrânea", "solar", "ahp", "aptidão"]):
-            # Domain: AHP Multi-criteria
-            theme = "solar" if "solar" in msg_lower else "groundwater"
-            ahp_res = await execute_recorded("run_multicriteria_ahp", {"theme": theme}, current_map_state)
-            steps_log.append({"id": "step_2", "name": f"Análise Multi-Critério AHP ({theme.title()})", "status": "completed", "resultSummary": "Modelo Executado"})
-            if "map_action" in ahp_res: map_actions.append(ahp_res["map_action"])
-
-            lin_res = await execute_recorded("extract_lineaments", {"density_radius_m": 750}, current_map_state)
-            lin_dir = lin_res.get('dominantOrientation') or 'não determinada'
-            steps_log.append({"id": "step_3", "name": "Fraturação e Condutividade Hidráulica/Relevo", "status": "completed", "resultSummary": f"Orientação: {lin_dir}"})
-            if "map_action" in lin_res: map_actions.append(lin_res["map_action"])
-
-            synthesis = f"""### Análise Multi-Critério AHP — {ahp_res.get('name')} ({province})
-
-**Área de Análise:** {aoi_res.get('label')}  
-**Tema:** {theme.replace('_', ' ').title()}
-
-#### Avaliação de Adequabilidade Espacial:
-- O cruzamento ponderado de variáveis biofísicas, topográficas e estruturais indica setores com elevada aptidão para o investimento planeado.
-- Os eixos de lineamentos e fraturas ({lin_dir}) condicionam a permeabilidade secundária e o enquadramento estrutural.
-"""
-
-        elif any(w in msg_lower for w in ["alpha", "deepmind", "embedding", "anomalia"]):
-            # Domain: AlphaEarth Foundations
-            ae_res = await execute_recorded("run_alphaearth_pca", {"year": 2024}, current_map_state)
-            steps_log.append({"id": "step_2", "name": "Embeddings de Satélite AlphaEarth (Google DeepMind)", "status": "completed", "resultSummary": "RGB PCA Gerado"})
-            if "map_action" in ae_res: map_actions.append(ae_res["map_action"])
-
-            slope_res = await execute_recorded("calculate_slope", {}, current_map_state)
-            steps_log.append({"id": "step_3", "name": "Declividade Topográfica de Relevo", "status": "completed", "resultSummary": "Graus Calculados"})
-            if "map_action" in slope_res: map_actions.append(slope_res["map_action"])
-
-            synthesis = f"""### Análise por Modelo Fundacional AlphaEarth ({province})
-
-**Área de Estudo:** {aoi_res.get('label')}  
-**Fonte:** Embeddings AlphaEarth Foundations de 64 dimensões (Google DeepMind) reduzidos via PCA.
-
-#### Diagnóstico Espectral:
-- As componentes principais (PC1, PC2, PC3) diferenciam claramente as transições litológicas e os contrastes de coberto vegetal que não são captados pelos rácios espectrais tradicionais.
-- Os agrupamentos espectrais refletem variações do substrato rochoso e padrões de humidade residual.
-"""
-
+        # Deterministic domain plans use the same audited tools as model plans.
+        text = folded_message
+        if any(w in text for w in ("inunda", "cheia", "alagamento", "flood")):
+            plan = [("calculate_index", {"index": "mndwi"}, "Água superficial (MNDWI)"),
+                    ("get_flood_susceptibility", {}, "Triagem topográfica de cheias"),
+                    ("get_river_network", {}, "Rede hidrográfica")]
+        elif any(w in text for w in ("smap", "humidade", "umidade", "stress hidrico")):
+            plan = [("get_soil_moisture_smap", {}, "Humidade volumétrica do solo (SMAP)")]
+        elif any(w in text for w in ("rusle", "erosao")):
+            period_start = str((current_map_state.get("temporalWindow") or {}).get("startDate") or "2024")
+            year = int(period_start[:4]) if period_start[:4].isdigit() else 2024
+            plan = [("get_water_erosion_rusle", {"year": year}, "Erosão hídrica modelada (RUSLE)")]
+        elif any(w in text for w in ("incend", "fogo", "wildfire")):
+            plan = [("get_wildfire_activity", {}, "Actividade de incêndios")]
+        elif any(w in text for w in ("ouro", "cobre", "mineral", "prospec", "hidroterm")):
+            mineral = "copper" if "cobre" in text else "gold"
+            plan = [("get_geology_units", {"province": province, "district": district}, "Carta geológica"),
+                    ("calculate_index", {"index": "clay"}, "Índice espectral de alteração"),
+                    ("extract_lineaments", {}, "Densidade de lineamentos"),
+                    ("run_mineral_targeting", {"mineral": mineral}, "Favorabilidade mineral exploratória")]
+        elif any(w in text for w in ("chuva", "precipit", "pluvio")):
+            plan = [("get_precipitation_chirps", {}, "Precipitação acumulada (CHIRPS)")]
+        elif any(w in text for w in ("ahp", "solar", "subterranea", "hidrogeolog", "aptidao")):
+            theme = "solar" if "solar" in text else "groundwater"
+            plan = [("run_multicriteria_ahp", {"theme": theme}, "Sobreposição territorial ponderada")]
+        elif any(w in text for w in ("alphaearth", "embedding")):
+            plan = [("run_alphaearth_pca", {}, "Representação de embeddings AlphaEarth")]
+        elif any(w in text for w in ("lineament", "fratur", "fractur", "falha")):
+            plan = [("extract_lineaments", {}, "Densidade de lineamentos do relevo")]
+        elif any(w in text for w in ("alteracao temporal", "mudanca temporal", "desmat", "desflorest")):
+            plan = [("detect_temporal_change", {}, "Comparação temporal")]
+        elif any(w in text for w in ("decliv", "slope")):
+            plan = [("calculate_slope", {}, "Declive do terreno")]
+        elif any(w in text for w in ("curvas", "elevacao", "altimetr")):
+            plan = [("get_elevation_dem", {}, "Curvas de nível do terreno")]
+        elif any(w in text for w in ("agric", "vegeta", "ndvi", "biomassa", "cultivo")):
+            plan = [("calculate_index", {"index": "ndvi"}, "Vigor da vegetação (NDVI)")]
         else:
-            # Default: Agriculture & Vegetation
-            ndvi_res = await execute_recorded("calculate_index", {"index": "ndvi"}, current_map_state)
-            steps_log.append({"id": "step_2", "name": "Cálculo de Biomassa e Vigor Vegetal (NDVI Sentinel-2)", "status": "completed", "resultSummary": f"Média: {ndvi_res.get('mean')}"})
-            if "map_action" in ndvi_res: map_actions.append(ndvi_res["map_action"])
+            return {"status": "needs_input", "steps": [], "runs": [], "map_actions": [],
+                    "synthesis": "Indique a análise pretendida: geologia, vegetação, precipitação, relevo, humidade do solo ou potencial hidrogeológico. Para outros pedidos, configure um fornecedor de IA nas definições."}
 
-            slope_res = await execute_recorded("calculate_slope", {"max_slope_deg": 15}, current_map_state)
-            steps_log.append({"id": "step_3", "name": "Aptidão de Declividade para Mecanização (< 15°)", "status": "completed", "resultSummary": "Concluído"})
-            if "map_action" in slope_res: map_actions.append(slope_res["map_action"])
+        if not province and not (aoi.get("geometry") or aoi.get("customGeometry")):
+            return {"status": "needs_input", "steps": [], "runs": [], "map_actions": [],
+                    "synthesis": "Seleccione uma província, distrito ou desenhe uma área de estudo para iniciar a análise."}
 
-            synthesis = f"""### Caracterização Agrícola & Biofísica ({province})
+        async def execute_recorded(name, args, label):
+            output = await ToolDispatcher.execute(name, args, current_map_state)
+            executed_runs.append({"tool": name, "output": output})
+            success = output.get("status") == "success"
+            values = [f"{key}: {output[key]}" for key in
+                      ("mean", "areaKm2", "unitsCount", "meanRainfallMm", "meanSoilMoisture", "meanSoilLoss")
+                      if output.get(key) is not None]
+            summary = (output.get("summary") or "; ".join(values) or "Camada disponível no mapa.") if success else output.get("message", "Sem resultado.")
+            steps_log.append({"id": f"step_{len(steps_log)+1}", "name": label,
+                              "status": "completed" if success else "error", "resultSummary": summary})
+            if success and output.get("map_action"):
+                map_actions.append(output["map_action"])
+            return success
 
-**Área de Análise:** {aoi_res.get('label')}  
-**Indicadores:** NDVI de biomassa ativa e declividade Copernicus DEM.
+        # A drawn polygon is already an explicit scope; never replace it by an
+        # administrative boundary unless the prompt selects a new province.
+        drawn = aoi.get("geometry") or aoi.get("customGeometry")
+        if not (drawn and province == aoi.get("province")):
+            if not await execute_recorded("resolve_aoi", {"province": province, "district": district}, "Delimitação da área de estudo"):
+                return {"status": "error", "steps": steps_log, "runs": executed_runs,
+                        "map_actions": [], "synthesis": steps_log[-1]["resultSummary"]}
 
-#### Resultados:
-- O vigor vegetal médio na área é de **{ndvi_res.get('mean')}**, demonstrando zonas ativas de desenvolvimento vegetativo.
-- A maior parte dos setores planos a suavemente ondulados apresenta excelente aptidão topográfica para práticas agrícolas mecanizadas.
-"""
-
-        # Report actual tool results instead of canned scientific conclusions.
-        summaries = []
-        failed = False
-        for step, run in zip(steps_log, executed_runs):
-            output = run["output"]
-            error = output.get("status") in ("error", "warning") or bool(output.get("error"))
-            failed = failed or error
-            step["status"] = "error" if error else "completed"
-            if error:
-                summary = output.get("message") or str(output.get("error"))
-            else:
-                values = [f"{key}: {output[key]}" for key in
-                          ("mean", "areaKm2", "unitsCount", "meanSoilMoisture", "meanSoilLoss")
-                          if output.get(key) is not None]
-                summary = output.get("summary") or "; ".join(values) or "Resultado disponível no mapa."
-            step["resultSummary"] = str(summary)
-            summaries.append(f"- {step['name']}: {summary}")
-        synthesis = "Resultados das ferramentas:\n" + "\n".join(summaries)
-        if failed:
-            synthesis += "\n\nAnálise incompleta: não é possível concluir sobre os indicadores indisponíveis."
-
-        return {
-            "status": "error" if failed else "completed",
-            "plan": [s["name"] for s in steps_log],
-            "steps": steps_log,
-            "map_actions": map_actions,
-            "runs": executed_runs,
-            "synthesis": synthesis
-        }
+        for name, args, label in plan:
+            await execute_recorded(name, args, label)
+        synthesis = "Resultados das ferramentas:\n" + "\n".join(
+            f"- {step['name']}: {step['resultSummary']}" for step in steps_log)
+        return {"status": "completed", "provider": "deterministic",
+                "plan": [step["name"] for step in steps_log], "steps": steps_log,
+                "map_actions": map_actions, "runs": executed_runs, "synthesis": synthesis}
