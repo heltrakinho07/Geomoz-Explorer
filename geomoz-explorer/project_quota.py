@@ -126,16 +126,23 @@ def delete_project(project_id: str, uid: str = Depends(_uid)):
     if not project_ref.get().exists:
         raise HTTPException(404, "Projecto não encontrado.")
 
-    # Delete runs first, as Firestore does not cascade nested collection deletes.
-    # Repeated deletion requests are safe to retry if a partial batch fails.
-    while True:
-        runs = list(project_ref.collection("runs").limit(400).stream())
-        if not runs:
-            break
-        batch = database.batch()
-        for doc in runs:
-            batch.delete(doc.reference)
-        batch.commit()
+    # Firestore does not cascade nested collections. Deleting just "runs"
+    # would leave GIS Workspace layers, models and processing history behind.
+    # Enumerate all existing subcollections so new modules are also covered.
+    # Retries remain safe if a prior batch succeeded before a timeout.
+    def delete_children(parent):
+        for subcollection in parent.collections():
+            while True:
+                children = list(subcollection.limit(200).stream())
+                if not children:
+                    break
+                batch = database.batch()
+                for child in children:
+                    delete_children(child.reference)
+                    batch.delete(child.reference)
+                batch.commit()
+
+    delete_children(project_ref)
 
     # Before the first quota write, bootstrap the count from current cloud data.
     existing_count = _existing_project_count(projects)
