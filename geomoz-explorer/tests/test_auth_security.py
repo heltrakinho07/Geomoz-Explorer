@@ -118,7 +118,12 @@ def test_valid_firebase_user_can_use_own_gee_credentials(monkeypatch):
     import api
     import gee_module
     import gee_session_store
+    import subscription_access
 
+    # Simulate a verified Academic/Pro entitlement alongside the user's own GEE
+    # credentials. Unpaid/expired plans are denied by subscription_access tests.
+    feature_guard = MagicMock(return_value={"features": {"scientific_analysis": True}})
+    monkeypatch.setattr(subscription_access, "require_subscription_feature", feature_guard)
     verify = MagicMock(return_value={"uid": "verified-user"})
     init = MagicMock()
     store = MagicMock(return_value={"project": "my-project", "access_token": "saved-token"})
@@ -130,6 +135,7 @@ def test_valid_firebase_user_can_use_own_gee_credentials(monkeypatch):
     assert asyncio.run(api.require_gee_auth(_request({"Authorization": "Bearer real-token"}))) == "verified-user"
     verify.assert_called_once_with("real-token")
     store.assert_called_once_with("verified-user")
+    feature_guard.assert_called_once_with("verified-user", "scientific_analysis")
     init.assert_called_once_with(uid="verified-user", project=None, token=None)
 
 
