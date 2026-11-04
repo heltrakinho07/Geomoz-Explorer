@@ -12,6 +12,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
+import { apiFetch } from "../lib/api";
 import type {
   GeoMozProject,
   CreateProjectInput,
@@ -165,60 +166,43 @@ export function subscribeUserProjects(
 }
 
 /**
- * Create a new GeoMoz project with guaranteed instant local save and background Firestore sync
+ * Create a project through the quota-enforced API. Authenticated projects are
+ * never presented as cloud-synced before the server confirms their creation.
+ * Guest/demo projects remain local only.
  */
 export async function createProject(
   uid: string,
   input: CreateProjectInput
 ): Promise<GeoMozProject> {
-  const now = new Date().toISOString();
-  const id = "proj_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
-
-  const cleanAOI = stripUndefined(input.aoi || {});
-
-  const newProject: GeoMozProject = {
-    id,
-    userId: uid,
-    name: input.name.trim(),
-    description: (input.description || "").trim(),
-    category: input.category,
-    aoi: cleanAOI,
-    period: input.period,
-    statsSummary: {
-      totalRuns: 0,
-    },
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  // 1. Save locally immediately (guaranteed instant resolution)
-  const currentList = getLocalProjects(uid);
-  const updatedList = [newProject, ...currentList.filter((p) => p.id !== id)];
-  saveLocalProjects(uid, updatedList);
-
-  // 2. Persist to Firestore in background without blocking return
-  if (uid && !uid.startsWith("guest_") && db) {
-    try {
-      const payload = stripUndefined({
-        userId: uid,
-        name: newProject.name,
-        description: newProject.description,
-        category: newProject.category,
-        aoi: newProject.aoi,
-        period: newProject.period,
-        statsSummary: newProject.statsSummary,
-        createdAt: now,
-        updatedAt: now,
-      });
-      setDoc(doc(db, "users", uid, "projects", id), payload).catch((fsErr) => {
-        console.warn("Firestore sync warning on createProject (saved locally):", fsErr);
-      });
-    } catch (fsErr) {
-      console.warn("Firestore payload preparation warning:", fsErr);
+  let project: GeoMozProject;
+  if (!uid || uid.startsWith("guest_")) {
+    const now = new Date().toISOString();
+    project = {
+      id: "proj_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+      userId: uid,
+      name: input.name.trim(),
+      description: (input.description || "").trim(),
+      category: input.category,
+      aoi: stripUndefined(input.aoi),
+      period: input.period,
+      statsSummary: { totalRuns: 0 },
+      createdAt: now, updatedAt: now,
+    };
+  } else {
+    const response = await apiFetch("/geomoz-api/billing/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(stripUndefined(input)),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.detail || "Não foi possível criar o projecto cloud.");
     }
+    project = data.project as GeoMozProject;
   }
-
-  return newProject;
+  const current = getLocalProjects(uid);
+  saveLocalProjects(uid, [project, ...current.filter(p => p.id !== project.id)]);
+  return project;
 }
 
 /**
@@ -270,28 +254,21 @@ export async function updateProject(
 }
 
 /**
- * Delete a project and its runs
+ * Remove a project only after the backend deletes its cloud document and runs.
+ * A failed network request cannot pretend that cloud data were deleted.
  */
 export async function deleteProject(uid: string, projectId: string): Promise<void> {
-  // 1. Delete locally
-  const currentList = getLocalProjects(uid);
-  saveLocalProjects(uid, currentList.filter((p) => p.id !== projectId));
-  try {
-    localStorage.removeItem(LOCAL_RUNS_KEY(uid, projectId));
-  } catch {}
-
-  // 2. Delete in Firestore in background
-  if (uid && !uid.startsWith("guest_") && db) {
-    getDocs(getRunsCol(uid, projectId))
-      .then((runsSnap) => {
-        const deletePromises = runsSnap.docs.map((d) => deleteDoc(d.ref));
-        return Promise.all(deletePromises);
-      })
-      .then(() => deleteDoc(getProjectDoc(uid, projectId)))
-      .catch((err) => {
-        console.warn("Firestore deleteProject warning:", err);
-      });
+  if (uid && !uid.startsWith("guest_")) {
+    const response = await apiFetch("/geomoz-api/billing/projects/" + encodeURIComponent(projectId), {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || "Não foi possível eliminar o projecto cloud.");
+    }
   }
+  saveLocalProjects(uid, getLocalProjects(uid).filter(p => p.id !== projectId));
+  try { localStorage.removeItem(LOCAL_RUNS_KEY(uid, projectId)); } catch {}
 }
 
 /**
