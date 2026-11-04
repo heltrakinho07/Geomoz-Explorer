@@ -159,6 +159,7 @@ const VERTEX_SOURCE = [
 const FRAGMENT_SOURCE = [
   "#version 300 es",
   "precision highp float;",
+  "precision highp int;",
   "in vec3 vNormal;",
   "in float vHeight;",
   "in vec2 vUv;",
