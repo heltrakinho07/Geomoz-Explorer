@@ -88,10 +88,18 @@ test("build source uses a single owner of language and a unified settings menu",
   assert.match(packager,/geomoz-preferences\.js/);
 });
 
-test("Portuguese portal does not mislabel untranslated text as another language",()=>{
+test("portal document language follows translated catalogs and English fallback",()=>{
   const b=boot();
   b.document.body.dataset.geomozApp="portal";
-  b.api.setLanguage("en");
-  assert.equal(b.api.getLanguage(),"en");
-  assert.equal(b.document.documentElement.lang,"pt");
+  for(const lang of ["en","es","fr","pt"]){
+    assert.equal(b.api.setLanguage(lang),true);
+    assert.equal(b.api.getLanguage(),lang);
+    assert.equal(b.document.documentElement.lang,lang);
+  }
+  b.api.setLanguage("de");
+  assert.equal(b.api.getLanguage(),"de","Keep the native GIS preference intact");
+  assert.equal(b.document.documentElement.lang,"en","Portal without German catalog renders English fallback");
+  b.document.body.dataset.geomozApp="workbench";
+  b.api.setLanguage("ar");
+  assert.equal(b.document.documentElement.lang,"ar","Native GIS owns RTL and full catalog");
 });
