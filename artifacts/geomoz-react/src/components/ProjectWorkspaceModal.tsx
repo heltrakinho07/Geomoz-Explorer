@@ -435,10 +435,12 @@ export default function ProjectWorkspaceModal({
 
               {/* Name */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                <label htmlFor="geomoz-project-name" className="text-xs font-bold text-slate-700 dark:text-slate-300">
                   Nome do Projeto de Estudo <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id="geomoz-project-name"
+                  autoComplete="off"
                   type="text"
                   required
                   placeholder="ex: Monitorização de Culturas no Regadio de Chókwè"
@@ -460,6 +462,7 @@ export default function ProjectWorkspaceModal({
                       <button
                         type="button"
                         key={cat.id}
+                        aria-pressed={isSelected}
                         onClick={() => setCategory(cat.id)}
                         className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
                           isSelected
@@ -491,6 +494,7 @@ export default function ProjectWorkspaceModal({
                   <button
                     type="button"
                     onClick={() => setAoiOption("current")}
+                    aria-pressed={aoiOption === "current"}
                     className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
                       aoiOption === "current"
                         ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40 font-semibold text-sky-800 dark:text-sky-300 ring-1 ring-sky-500"
@@ -509,6 +513,7 @@ export default function ProjectWorkspaceModal({
                   <button
                     type="button"
                     onClick={() => setAoiOption("mozambique")}
+                    aria-pressed={aoiOption === "mozambique"}
                     className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
                       aoiOption === "mozambique"
                         ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40 font-semibold text-sky-800 dark:text-sky-300 ring-1 ring-sky-500"
@@ -527,6 +532,7 @@ export default function ProjectWorkspaceModal({
                   <button
                     type="button"
                     onClick={() => setAoiOption("global")}
+                    aria-pressed={aoiOption === "global"}
                     className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
                       aoiOption === "global"
                         ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40 font-semibold text-sky-800 dark:text-sky-300 ring-1 ring-sky-500"
@@ -547,10 +553,11 @@ export default function ProjectWorkspaceModal({
               {/* Temporal Range */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="geomoz-project-date-start" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                     Data de Início do Estudo
                   </label>
                   <input
+                    id="geomoz-project-date-start"
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
@@ -558,10 +565,11 @@ export default function ProjectWorkspaceModal({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="geomoz-project-date-end" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                     Data de Término do Estudo
                   </label>
                   <input
+                    id="geomoz-project-date-end"
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
@@ -572,11 +580,12 @@ export default function ProjectWorkspaceModal({
 
               {/* Description / Notes */}
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="geomoz-project-description" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   Notas Metodológicas ou Objetivos (Opcional)
                 </label>
                 <textarea
-                  rows={2}
+                  id="geomoz-project-description"
+                  rows={3}
                   placeholder="Descreva o enquadramento, objetivos específicos ou metodologias aplicadas..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
