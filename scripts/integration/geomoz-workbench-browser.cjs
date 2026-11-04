@@ -109,6 +109,27 @@ async function settleRecovery(page){
   });
   assert.equal(await page.evaluate(()=>window.GeoMozPreferences?.getLanguage()),"pt",
     "Portal and GIS should see the same language preference");
+
+  // Exercise all four reviewed GeoMoz locales in the actual built GIS app.
+  // Check specialist panels as well as the shell; neither may keep stale text.
+  for (const {code, heading, placeholder} of [
+    {code:"en",heading:"Catalog",placeholder:"Search in this project…"},
+    {code:"es",heading:"Catálogo",placeholder:"Buscar en este proyecto…"},
+    {code:"fr",heading:"Catalogue",placeholder:"Rechercher dans ce projet…"},
+    {code:"pt",heading:"Catálogo",placeholder:"Pesquisar neste projecto…"},
+  ]) {
+    await page.getByTestId("geomoz-language-selector").selectOption(code);
+    await page.waitForFunction(({code,heading,placeholder})=>{
+      const catalog=document.querySelector('[data-testid="geomoz-layer-catalog"]');
+      const persisted=JSON.parse(localStorage.getItem("geolibre.desktopSettings")||"{}").language;
+      return document.documentElement.lang===code && persisted===code &&
+        catalog?.querySelector(".gm-catalog-heading h2")?.textContent?.includes(heading) &&
+        catalog?.querySelector(".gm-catalog-search input")?.getAttribute("placeholder")===placeholder;
+    },{code,heading,placeholder},{timeout:12000});
+    assert.equal(await page.getByTestId("geomoz-language-selector").inputValue(),code);
+  }
+  console.log("Portuguese, English, Spanish and French specialist catalog translations updated without reload.");
+
   const motion=page.getByTestId("geomoz-reduced-motion");
   await motion.check();
   assert.equal(await page.evaluate(()=>localStorage.getItem("geomoz_reduce_motion")),"true");

@@ -79,9 +79,42 @@ module.exports=async function validateRasterProcessing(page){
  await topo.getByRole("button",{name:"Traçar linha no mapa"}).click();
  const mapCanvas=await page.locator("main canvas").first().boundingBox();
  assert.ok(mapCanvas?.width>200 && mapCanvas.height>200);
+ const mapSurface=page.locator("main canvas").first();
+ // The trace must render ABOVE raster tiles, not simply exist in the layer tree.
+ // Compare the actual WebGL canvas before and after drawing A -> B.
+ await page.waitForTimeout(350);
+ const beforeTrace=await mapSurface.screenshot();
  await page.mouse.click(mapCanvas.x+mapCanvas.width*.45,mapCanvas.y+mapCanvas.height*.48);
  await page.mouse.click(mapCanvas.x+mapCanvas.width*.53,mapCanvas.y+mapCanvas.height*.52);
  await topo.getByRole("button",{name:"Terminar traçado"}).click();
+ await page.waitForTimeout(350);
+ const afterTrace=await mapSurface.screenshot();
+ async function cyanTracePixels(buffer) {
+   const base64=buffer.toString("base64");
+   return page.evaluate(async base64=>{
+     const bytes=Uint8Array.from(atob(base64),ch=>ch.charCodeAt(0));
+     const bitmap=await createImageBitmap(new Blob([bytes],{type:"image/png"}));
+     const canvas=document.createElement("canvas");
+     canvas.width=bitmap.width;canvas.height=bitmap.height;
+     const context=canvas.getContext("2d",{willReadFrequently:true});
+     context.drawImage(bitmap,0,0);
+     const px=context.getImageData(0,0,canvas.width,canvas.height).data;
+     let cyan=0;
+     for(let y=Math.floor(canvas.height*.45);y<canvas.height*.55;y++){
+       for(let x=Math.floor(canvas.width*.44);x<canvas.width*.54;x++){
+         const p=(y*canvas.width+x)*4;
+         if(px[p]<85 && px[p+1]>95 && px[p+1]<205 &&
+           px[p+2]>165 && px[p+2]>px[p+1]+30)cyan++;
+       }
+     }
+     bitmap.close();
+     return cyan;
+   },base64);
+ }
+ const cyanBefore=await cyanTracePixels(beforeTrace),cyanAfter=await cyanTracePixels(afterTrace);
+ assert.ok(cyanAfter>cyanBefore+20,
+   "Profile A–B must be visibly painted over the loaded DEM raster (cyan "+cyanBefore+" → "+cyanAfter+")");
+ console.log("MapLibre screenshot confirms the profile trace is visible ABOVE raster pixels.");
  await topo.getByRole("button",{name:"Calcular perfil"}).click();
  await topo.getByRole("group",{name:/Gráfico de elevação/}).waitFor({timeout:90000});
  assert.match(await topo.innerText(),/amostras válidas/);
@@ -99,6 +132,35 @@ module.exports=async function validateRasterProcessing(page){
    await file.saveAs(name);
    const bytes=await readFile(name);
    assert.deepEqual([...bytes.subarray(0,4)],expectedMime,"Exported "+format+" must be a real image/document");
+   if(format==="pdf"){
+     const pdf=bytes.toString("latin1");
+     assert.match(pdf,/\/Width 1800 \/Height 1000/,"PDF must embed the full-resolution 1800 × 1000 figure");
+     const start=/startxref\n(\d+)\n%%EOF/.exec(pdf);
+     assert.ok(start,"PDF must have a cross-reference pointer");
+     assert.equal(bytes.subarray(Number(start[1]),Number(start[1])+4).toString(),"xref",
+       "PDF cross-reference offset must point to the actual table");
+   }else{
+     const raster=await page.evaluate(async base64=>{
+       const bytes=Uint8Array.from(atob(base64),ch=>ch.charCodeAt(0));
+       const bitmap=await createImageBitmap(new Blob([bytes],{type:"image/png"}));
+       const canvas=document.createElement("canvas");
+       canvas.width=bitmap.width;canvas.height=bitmap.height;
+       const context=canvas.getContext("2d",{willReadFrequently:true});
+       context.drawImage(bitmap,0,0);
+       const data=context.getImageData(100,400,1600,510).data;
+       let blue=0;
+       for(let i=0;i<data.length;i+=4){
+         if(data[i]<85&&data[i+1]>95&&data[i+1]<205&&
+           data[i+2]>165&&data[i+2]>data[i+1]+30)blue++;
+       }
+       const result={width:bitmap.width,height:bitmap.height,blue};
+       bitmap.close();
+       return result;
+     },bytes.toString("base64"));
+     assert.equal(raster.width,1800,"PNG width must use the report's high-resolution canvas");
+     assert.equal(raster.height,1000,"PNG height must use the report's high-resolution canvas");
+     assert.ok(raster.blue>75,"Exported PNG must contain real blue profile curve pixels, not just a blank report: "+raster.blue);
+   }
  }
  const csvText=await readFile("workbench-browser-artifacts/geomoz_perfil_topografico.csv","utf8");
  assert.ok(csvText.includes("Distancia_km,Elevacao_m"));
