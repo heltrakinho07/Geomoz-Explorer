@@ -64,7 +64,11 @@ export default function GeoMozTerrainLayers({
     finally{if(upload.current)upload.current.value="";}
   }
   const fields=selected?overlayFields(selected.geojson):[];
-  const values=selected?.field?overlayCategoryValues(selected.geojson,selected.field):[];
+  const values=useMemo(()=>{
+    if(!selected?.field||selected.mode!=="categorized")return [];
+    try {return overlayCategoryValues(selected.geojson,selected.field);}
+    catch {return [];}
+  },[selected]);
   function setField(field:string){
     if(!selected)return;
     try {
