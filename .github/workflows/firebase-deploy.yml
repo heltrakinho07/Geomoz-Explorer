@@ -36,6 +36,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Verify GeoMoz portal internationalization
+        run: pnpm --dir artifacts/geomoz-react exec vitest run src/i18n/portal.test.tsx
+
       - name: Build frontend
         run: pnpm --filter @workspace/geomoz-react run build
         env:
