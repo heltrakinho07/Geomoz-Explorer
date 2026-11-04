@@ -42,6 +42,7 @@ COPY billing.py .
 COPY billing_plan_requests.py .
 COPY admin.py .
 COPY platform_config.py .
+COPY subscription_access.py .
 COPY project_quota.py .
 COPY processing_jobs.py .
 COPY gee_module.py .

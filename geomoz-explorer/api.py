@@ -109,6 +109,9 @@ async def require_gee_auth(request: Request) -> str:
         _init_gee(uid=uid, project=None, token=None)
     except RuntimeError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    # GEE processing uses the user's own account and does not consume GeoMoz credits.
+    from subscription_access import require_subscription_feature
+    require_subscription_feature(uid, "scientific_analysis")
     return uid
 
 
@@ -223,11 +226,13 @@ from billing import router as billing_router
 from project_quota import router as project_quota_router
 from admin import router as admin_router
 from billing_plan_requests import router as plan_requests_router, admin_router as admin_plan_requests_router
+from subscription_access import router as subscription_access_router, require_subscription_feature
 app.include_router(billing_router)
 app.include_router(project_quota_router)
 app.include_router(admin_router)
 app.include_router(plan_requests_router)
 app.include_router(admin_plan_requests_router)
+app.include_router(subscription_access_router)
 
 # ee.Initialize mutates global Earth Engine SDK state. Serialize the complete
 # authentication + computation lifecycle of GEE requests in each Python worker.
@@ -340,19 +345,27 @@ async def create_processing_job_endpoint(
     input_file: UploadFile = File(...),
     uid: str = Depends(require_firebase_auth),
 ):
-    """Queue a heavy raster job and return immediately with a job id."""
-    cleanup_expired_jobs()
-    tool_id = tool.strip().lower()
-    if tool_id not in SUPPORTED_HEAVY_GIS_TOOLS:
-        raise HTTPException(
-            status_code=400,
-            detail=f'Ferramenta "{tool_id}" não suportada. Use: {", ".join(SUPPORTED_HEAVY_GIS_TOOLS)}.',
-        )
+    """Queue a paid managed raster job; reserve a credit before admission."""
+    from uuid import uuid4
+    from billing import reserve_cloud_job_credit, settle_cloud_job_credit
 
+    job_id = uuid4().hex  # Server-issued, cannot be supplied or replayed by clients.
+    reserved = False
     try:
+        cleanup_expired_jobs()
+        access = require_subscription_feature(uid, "cloud_jobs")
+        concurrent_limit = access["limits"]["concurrent_jobs"]
+        tool_id = tool.strip().lower()
+        if tool_id not in SUPPORTED_HEAVY_GIS_TOOLS:
+            raise HTTPException(
+                status_code=400,
+                detail=f'Ferramenta "{tool_id}" não suportada. Use: {", ".join(SUPPORTED_HEAVY_GIS_TOOLS)}.',
+            )
         parsed_parameters = parse_job_parameters(parameters)
-        # The UploadFile spool is copied in bounded chunks on a worker thread:
-        # never materialize a large DEM as one Python bytes object.
+        # A credit is reserved atomically, including plan expiry and monthly cap.
+        # Failures/cancellation refund; successful processing settles the debit.
+        reserve_cloud_job_credit(uid, job_id)
+        reserved = True
         job = await run_in_threadpool(
             create_processing_job,
             uid=uid,
@@ -360,9 +373,23 @@ async def create_processing_job_endpoint(
             input_name=input_file.filename or "input.tif",
             input_stream=input_file.file,
             parameters=parsed_parameters,
+            max_active_per_user=concurrent_limit,
+            job_id=job_id,
+            # Failed/cancelled work releases the reservation. Successful jobs
+            # settle only when the user actually requests the output.
+            on_complete=lambda succeeded: (
+                None if succeeded else settle_cloud_job_credit(uid, job_id, success=False)
+            ),
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        if reserved:
+            try:
+                settle_cloud_job_credit(uid, job_id, success=False)
+            except Exception:
+                logger.exception("Managed raster credit refund pending reconciliation [%s]", job_id)
+        if isinstance(exc, ValueError):
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise
     finally:
         await input_file.close()
 
@@ -407,6 +434,10 @@ async def processing_job_result(
     if not output:
         raise HTTPException(status_code=410, detail="Resultado já não está disponível.")
 
+    # Charge only after the requested output exists and belongs to the caller;
+    # repeated downloads are idempotent. Lost files are not charged.
+    from billing import settle_cloud_job_credit
+    settle_cloud_job_credit(uid, job.id, success=True)
     return FileResponse(
         path=str(output),
         media_type="image/tiff",
@@ -422,6 +453,10 @@ async def processing_job_delete(
     """Delete a queued/completed job and its temporary files."""
     if not delete_processing_job(job_id, uid):
         raise HTTPException(status_code=404, detail="Job não encontrado.")
+    # A deleted job has no retrievable result. Return any credit reservation
+    # that was not already finalized by a successful download.
+    from billing import settle_cloud_job_credit
+    settle_cloud_job_credit(uid, job_id, success=False)
     return Response(status_code=204)
 
 
