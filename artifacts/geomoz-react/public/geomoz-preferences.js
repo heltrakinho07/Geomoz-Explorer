@@ -9,15 +9,28 @@
   const engineKey = "geolibre.desktopSettings";
   const motionKey = "geomoz_reduce_motion";
   const listeners = new Set();
-  const supportedCode = code => typeof code === "string" && /^[a-z]{2}(?:-[A-Z]{2})?$/.test(code);
+  // Match GeoLibre's resolveLanguage: full tags first, then their base language.
+  // Only shipped base catalog codes may be persisted; unsupported locales
+  // must not leave the portal and embedded GIS displaying different languages.
+  const shippedLanguages = new Set([
+    "en","az","he","zh","es","fa","fr","de","pt","ja","ko",
+    "ru","nl","it","id","tr","hi","ar","ka","th","vi"
+  ]);
+  const resolveLanguage = raw => {
+    if (typeof raw !== "string") return null;
+    const normalized = raw.trim().toLowerCase().replace(/_/g,"-");
+    if (!normalized || !/^[a-z]{2}(?:-[a-z]{2})?$/.test(normalized)) return null;
+    return shippedLanguages.has(normalized) ? normalized :
+      (shippedLanguages.has(normalized.split("-")[0]) ? normalized.split("-")[0] : null);
+  };
   const read = key => { try { return localStorage.getItem(key); } catch { return null; } };
   const parseEngineLanguage = () => {
     try {
       const language = JSON.parse(read(engineKey) || "{}").language;
-      return supportedCode(language) ? language : null;
+      return resolveLanguage(language);
     } catch { return null; }
   };
-  let language = (supportedCode(read(languageKey)) ? read(languageKey) : parseEngineLanguage()) || "pt";
+  let language = resolveLanguage(read(languageKey)) || parseEngineLanguage() || "pt";
   let reducedMotion = read(motionKey) === "true";
   const announce = () => {
     const next = { language, reducedMotion };
@@ -28,18 +41,19 @@
     document.documentElement.dataset.geomozReducedMotion = String(reducedMotion);
   };
   function commitLanguage(next, persist = true) {
-    if (!supportedCode(next)) return false;
-    const changed = next !== language;
-    language = next;
+    const code = resolveLanguage(next);
+    if (!code) return false;
+    const changed = code !== language;
+    language = code;
     // The portal remains Portuguese until its own strings are translated.
     // Do not falsely label Portuguese content as another language for assistive technologies.
     if (document.body?.dataset.geomozApp === "workbench") document.documentElement.lang = next;
     if (persist) {
       try {
-        localStorage.setItem(languageKey, next);
+        localStorage.setItem(languageKey, code);
         const previous = JSON.parse(read(engineKey) || "{}");
         const updated = previous && typeof previous === "object" && !Array.isArray(previous) ? previous : {};
-        if (updated.language !== next) localStorage.setItem(engineKey, JSON.stringify({ ...updated, language: next }));
+        if (updated.language !== code) localStorage.setItem(engineKey, JSON.stringify({ ...updated, language: code }));
       } catch { /* Private browsing / denied storage must not block the interface. */ }
     }
     if (changed) announce();
@@ -61,9 +75,15 @@
     subscribe(callback) { listeners.add(callback); return () => listeners.delete(callback); },
   });
   window.addEventListener("storage", event => {
-    if (event.key === languageKey || event.key === engineKey || event.key === null) {
-      const incoming = supportedCode(read(languageKey)) ? read(languageKey) : parseEngineLanguage();
-      commitLanguage(incoming || "pt", false);
+    if (event.key === engineKey) {
+      // GeoLibre's own Settings may write only geolibre.desktopSettings.
+      // That update wins over a stale geomoz_language and is mirrored so
+      // the next browser reload does not silently undo the native switch.
+      commitLanguage(parseEngineLanguage() || resolveLanguage(read(languageKey)) || "pt");
+    } else if (event.key === languageKey) {
+      commitLanguage(resolveLanguage(read(languageKey)) || parseEngineLanguage() || "pt");
+    } else if (event.key === null) {
+      commitLanguage(resolveLanguage(read(languageKey)) || parseEngineLanguage() || "pt",false);
     }
     if (event.key === motionKey || event.key === null) commitMotion(read(motionKey) === "true", false);
   });
