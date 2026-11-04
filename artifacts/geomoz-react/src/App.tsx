@@ -163,6 +163,7 @@ export default function App() {
                 <Route path="/auth/workspace-check">{() => <WorkspaceAuthBridge />}</Route>
                 <Route path="/register">{() => <LandingPage initialAuthMode="register" />}</Route>
                 <Route path="/planos">{() => <PricingPage />}</Route>
+                <Route path="/documentacao">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/administracao">{() => <ProtectedRoute><React.Suspense fallback={<div className="min-h-screen grid place-items-center">A abrir administração GeoMoz...</div>}><AdminConsole /></React.Suspense></ProtectedRoute>}</Route>
                 <Route path="/view/hidro">{() => <HidroWebGisViewer />}</Route>
                 <Route path="/share/hidro/:id">{(params) => <HidroWebGisViewer id={params.id} />}</Route>
