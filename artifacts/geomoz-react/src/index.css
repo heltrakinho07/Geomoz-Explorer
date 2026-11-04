@@ -327,3 +327,131 @@
   }
 }
 
+
+
+/* GeoMoz soft-enterprise visual system.
+   Scoped to public entry and dialogs; never overrides GIS map/tool controls. */
+@layer components {
+  .gm-soft-dialog {
+    background: linear-gradient(145deg, #fafdff 0%, #f1f6fc 100%);
+    border: 1px solid rgba(195, 210, 229, .9);
+    box-shadow: 0 28px 75px rgba(15, 36, 74, .21), 10px 12px 28px rgba(161, 180, 209, .19), -6px -6px 18px rgba(255, 255, 255, .85);
+  }
+  .gm-soft-header {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(125deg, #fafdff, #eff7ff 58%, #eef0ff);
+    border-bottom: 1px solid #dce6f3;
+    color: #0f172a;
+  }
+  .gm-soft-header::before {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    width: 200px;
+    height: 200px;
+    right: -95px;
+    top: -115px;
+    border-radius: 9999px;
+    background: radial-gradient(circle, rgba(66, 137, 255, .19), transparent 71%);
+  }
+  .gm-soft-body {
+    background: linear-gradient(165deg, rgba(249, 252, 255, .96), rgba(241, 247, 255, .92));
+  }
+  .gm-soft-tabs {
+    background: #e9f0f9;
+    border: 1px solid rgba(185, 204, 231, .68);
+    box-shadow: inset 3px 3px 7px rgba(148, 169, 201, .19), inset -3px -3px 7px rgba(255, 255, 255, .85);
+  }
+  .gm-soft-tab {
+    color: #455b78;
+    border-radius: .75rem;
+    min-height: 40px;
+    transition: background-color .18s ease, box-shadow .18s ease, color .18s ease;
+  }
+  .gm-soft-tab:hover { color: #075985; background: rgba(255, 255, 255, .5); }
+  .gm-soft-tab-active {
+    color: #075985;
+    background: #fff;
+    box-shadow: 3px 4px 11px rgba(120, 149, 184, .21), -3px -3px 9px rgba(255,255,255,.95);
+  }
+  .gm-soft-input {
+    width: 100%;
+    min-height: 44px;
+    background: #ecf3fb;
+    color: #13263f;
+    border: 1px solid #d3e0ef;
+    border-radius: .875rem;
+    box-shadow: inset 3px 3px 7px rgba(153, 176, 205, .14), inset -3px -3px 7px rgba(255,255,255,.79);
+    transition: border-color .18s ease, box-shadow .18s ease;
+  }
+  .gm-soft-input::placeholder { color: #798ba4; }
+  .gm-soft-input:focus-visible {
+    outline: 2px solid rgba(14, 165, 233, .64);
+    outline-offset: 1px;
+    border-color: #38bdf8;
+    box-shadow: inset 2px 2px 5px rgba(153,176,205,.1), 0 0 0 4px rgba(14,165,233,.11);
+  }
+  .gm-soft-surface {
+    background: rgba(255,255,255,.91);
+    border: 1px solid rgba(208, 220, 238, .88);
+    border-radius: 1rem;
+    box-shadow: 6px 9px 23px rgba(147, 170, 204, .14), -5px -5px 16px rgba(255,255,255,.68);
+  }
+  .gm-soft-tile {
+    background: rgba(255,255,255,.9);
+    border: 1px solid rgba(199, 213, 233, .9);
+    box-shadow: 5px 8px 18px rgba(118, 147, 185, .11), -4px -4px 12px rgba(255,255,255,.7);
+    transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease;
+  }
+  .gm-soft-tile:hover {
+    border-color: #7dd3fc;
+    transform: translateY(-2px);
+    box-shadow: 6px 11px 24px rgba(70, 130, 198, .16);
+  }
+  .gm-soft-tile:focus-visible {
+    outline: 2px solid #0284c7;
+    outline-offset: 3px;
+  }
+  .gm-soft-primary {
+    background: linear-gradient(112deg, #0284c7, #2563eb 55%, #4f46e5);
+    color: white;
+    box-shadow: 0 9px 21px rgba(37, 99, 235, .24);
+  }
+  .gm-soft-primary:hover:not(:disabled) {
+    filter: brightness(1.06);
+    box-shadow: 0 12px 27px rgba(37, 99, 235, .3);
+  }
+  .gm-soft-hero {
+    background-image:
+      radial-gradient(ellipse at 13% 15%, rgba(56,189,248,.11), transparent 46%),
+      radial-gradient(ellipse at 88% 12%, rgba(99,102,241,.10), transparent 41%),
+      linear-gradient(rgba(148,163,184,.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148,163,184,.055) 1px, transparent 1px);
+    background-size: auto, auto, 48px 48px, 48px 48px;
+  }
+  .dark .gm-soft-dialog {
+    background: linear-gradient(145deg, #121e34, #0c1425);
+    border-color: #334155;
+    box-shadow: 0 30px 70px rgba(0,0,0,.58);
+  }
+  .dark .gm-soft-header {
+    background: linear-gradient(135deg, #14223b, #17204a);
+    border-color: #334155;
+    color: #f8fafc;
+  }
+  .dark .gm-soft-body { background: linear-gradient(165deg, #101c30, #0f172a); }
+  .dark .gm-soft-tabs { background: #0d1729; border-color: #334155; box-shadow: inset 2px 3px 7px rgba(0,0,0,.42); }
+  .dark .gm-soft-tab { color: #b6c6da; }
+  .dark .gm-soft-tab:hover { color: #fff; background: rgba(56, 189, 248,.12); }
+  .dark .gm-soft-tab-active { color: #e0f2fe; background: #1d4268; box-shadow: 0 3px 11px rgba(0,0,0,.24); }
+  .dark .gm-soft-input { background: #18253b; border-color: #41516b; color: #f1f5f9; box-shadow: inset 3px 3px 7px rgba(0,0,0,.22); }
+  .dark .gm-soft-input::placeholder { color: #94a3b8; }
+  .dark .gm-soft-surface, .dark .gm-soft-tile { background: rgba(27,39,61,.91); border-color: #3c4b64; box-shadow: 7px 10px 22px rgba(0,0,0,.18); }
+  .dark .gm-soft-tile:hover { border-color: #38bdf8; }
+  .dark .gm-soft-hero { background-image: radial-gradient(ellipse at 80% 9%, rgba(59,130,246,.13), transparent 48%); }
+  @media (prefers-reduced-motion: reduce) {
+    .gm-soft-tab, .gm-soft-tile, .gm-soft-input { transition: none; }
+    .gm-soft-tile:hover { transform: none; }
+  }
+}
