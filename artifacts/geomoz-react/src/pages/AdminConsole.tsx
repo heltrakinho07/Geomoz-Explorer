@@ -15,7 +15,7 @@ import { apiFetch } from "@/lib/api";
 import { PLAN_ORDER, formatMzn, type PlanId } from "@/lib/plans";
 
 type AdminRole = "superadmin" | "admin" | "support";
-type Section = "overview" | "users" | "plans" | "features" | "payments" | "audit";
+type Section = "overview" | "users" | "plans" | "requests" | "features" | "payments" | "audit";
 
 interface Session {
   uid: string; email: string; role: AdminRole; canEdit: boolean; isSuperadmin: boolean;
@@ -30,6 +30,11 @@ interface PlanConfig {
   name: string; enabled: boolean; monthlyMzn: number | null; yearlyMzn: number | null;
   projects: number | null; storageBytes: number | null; credits: number | null;
   seats: number | null; concurrentJobs: number | null;
+}
+interface PlanApplication {
+  uid: string; email: string; name: string; plan: PlanId;
+  period: string; message: string; status: string;
+  submittedAt: string; reviewedAt?: string | null;
 }
 interface Payment {
   id: string; uid: string; plan: string; period: string; amountMzn: number;
@@ -50,6 +55,7 @@ const initialNavigation: { id: Section; label: string; icon: React.ElementType; 
   { id: "overview", label: "Visão geral", icon: BarChart3, hint: "Indicadores e operação" },
   { id: "users", label: "Utilizadores", icon: Users, hint: "Contas e permissões" },
   { id: "plans", label: "Planos", icon: CreditCard, hint: "Preços e quotas" },
+  { id: "requests", label: "Pedidos de adesão", icon: ShieldCheck, hint: "Análises e candidaturas" },
   { id: "features", label: "Funcionalidades", icon: SlidersHorizontal, hint: "Módulos do GeoMoz" },
   { id: "payments", label: "Pagamentos", icon: Database, hint: "Transacções e subscrições" },
   { id: "audit", label: "Auditoria", icon: ShieldCheck, hint: "Acções administrativas" },
@@ -108,6 +114,7 @@ export default function AdminConsole() {
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [searchEmail, setSearchEmail] = useState("");
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [applications, setApplications] = useState<PlanApplication[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [drafts, setDrafts] = useState<Catalog | null>(null);
@@ -138,6 +145,9 @@ export default function AdminConsole() {
       } else if (target === "payments") {
         const response = await jsonApi<{ payments: Payment[] }>("/geomoz-api/admin/payments?limit=80");
         setPayments(response.payments);
+      } else if (target === "requests") {
+        const response = await jsonApi<{ requests: PlanApplication[] }>("/geomoz-api/admin/plan-requests?limit=80");
+        setApplications(response.requests);
       } else if (target === "audit") {
         const response = await jsonApi<{ events: AuditEntry[] }>("/geomoz-api/admin/audit?limit=80");
         setAudit(response.events);
@@ -160,7 +170,7 @@ export default function AdminConsole() {
   }, [user?.uid, authLoading]);
 
   useEffect(() => {
-    if (identity) void loadSection(section);
+    if (identity) void loadSection(section, undefined, section === "users" ? searchEmail.trim() || undefined : undefined);
   }, [identity?.uid, section, loadSection]);
 
   const act = async (callback: () => Promise<unknown>, success: string, refresh: Section = section) => {
@@ -411,6 +421,52 @@ export default function AdminConsole() {
             </section>)}
             <p className="text-xs text-slate-500 md:col-span-2">Os bloqueios também são aplicados aos endpoints científicos mapeados no servidor. A protecção de motores externos e módulos independentes requer controlos específicos nos respectivos serviços.</p>
           </div>}
+
+          {section === "requests" && <section className={card + " gm-admin-table-wrap overflow-hidden"}>
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-5">
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">Pedidos de adesão</h3>
+                <p className="mt-1 text-xs text-slate-500">Pedidos de planos e validação Academic. A análise não activa pagamentos ou subscrições.</p>
+              </div>
+              <StatusTag tone="neutral">{applications.filter(item => item.status === "pending").length} pendentes</StatusTag>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[830px] text-left text-sm">
+                <thead className="bg-slate-50 dark:bg-slate-800/70 text-[11px] uppercase tracking-wider text-slate-500">
+                  <tr><th className="px-5 py-4">Utilizador</th><th className="px-4 py-4">Plano</th><th className="px-4 py-4">Pedido</th><th className="px-4 py-4">Estado</th><th className="px-4 py-4">Acção</th></tr>
+                </thead>
+                <tbody>{applications.map(request => (
+                  <tr key={request.uid} className="border-t border-slate-100 dark:border-slate-800 align-top">
+                    <td className="px-5 py-4">
+                      <div className="font-bold">{request.name || "Utilizador"}</div>
+                      <div className="text-xs text-slate-500 break-all">{request.email}</div>
+                      <div className="mt-1 text-[11px] text-slate-400">{fmtTime(request.submittedAt)}</div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="font-semibold capitalize">{request.plan}</div>
+                      <div className="text-xs text-slate-500">{request.period === "yearly" ? "Anual" : "Mensal"}</div>
+                    </td>
+                    <td className="px-4 py-4 max-w-[320px] whitespace-pre-wrap break-words text-xs text-slate-600 dark:text-slate-300">{request.message || "Sem observações"}</td>
+                    <td className="px-4 py-4"><StatusTag tone={request.status === "pending" ? "warn" : request.status === "completed" ? "good" : "neutral"}>{request.status === "pending" ? "Pendente" : request.status === "in_review" ? "Em análise" : request.status === "completed" ? "Concluído" : "Encerrado"}</StatusTag></td>
+                    <td className="px-4 py-4">
+                      <div className="flex flex-wrap gap-1.5">
+                        <button type="button" className={subtle + " !px-2.5 !py-1.5 !text-xs"} onClick={() => { setSearchEmail(request.email); go("users"); }}>Ver conta</button>
+                        {canWrite && request.status !== "in_review" && request.status === "pending" && <button type="button" className={primary + " !px-2.5 !py-1.5 !text-xs"} disabled={busy} onClick={() => void act(() => jsonApi("/geomoz-api/admin/plan-requests/" + encodeURIComponent(request.uid), "PATCH", { status: "in_review" }), "Pedido marcado para análise.", "requests")}>Analisar</button>}
+                        {canWrite && request.status === "in_review" && <button type="button" className={primary + " !px-2.5 !py-1.5 !text-xs"} disabled={busy} onClick={() => {
+                          if (guard("Concluir a análise? Esta acção não concede acesso ao plano.")) void act(() => jsonApi("/geomoz-api/admin/plan-requests/" + encodeURIComponent(request.uid), "PATCH", { status: "completed" }), "Pedido analisado. O acesso deverá ser atribuído separadamente, quando aplicável.", "requests");
+                        }}>Concluir</button>}
+                        {canWrite && (request.status === "pending" || request.status === "in_review") && <button type="button" className={subtle + " !px-2.5 !py-1.5 !text-xs"} disabled={busy} onClick={() => {
+                          if (guard("Encerrar este pedido sem atribuir subscrição?")) void act(() => jsonApi("/geomoz-api/admin/plan-requests/" + encodeURIComponent(request.uid), "PATCH", { status: "declined" }), "Pedido encerrado.", "requests");
+                        }}>Encerrar</button>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            {!applications.length && <p className="px-5 py-6 text-sm text-slate-500">Ainda não existem pedidos de adesão registados.</p>}
+            <p className="border-t border-slate-100 dark:border-slate-800 px-5 py-4 text-xs text-slate-500">A aprovação académica e a atribuição administrativa de planos são feitas em Utilizadores → Gerir. Nenhum pedido cria um pagamento automaticamente.</p>
+          </section>}
 
           {section === "payments" && <section className={card + " overflow-hidden"}>
             <div className="overflow-x-auto"><table className="min-w-[730px] w-full text-left text-sm">
