@@ -54,6 +54,7 @@ export default function BillingPanel({ publicView = false }: { publicView?: bool
   const { user, isGuest } = useAuth();
   const signedIn = Boolean(user && !isGuest);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [stripeReady, setStripeReady] = useState(false);
   const [account, setAccount] = useState<Account | null>(null);
   const [interval, setInterval] = useState<Interval>("month");
   const [provider, setProvider] = useState<Provider>("mpesa");
@@ -76,6 +77,7 @@ export default function BillingPanel({ publicView = false }: { publicView?: bool
       if (!p.ok) throw new Error("Não foi possível carregar o catálogo de planos.");
       const pjson = await p.json();
       setPlans(pjson.plans as Plan[]);
+      setStripeReady(Boolean(pjson.payment_methods?.stripe));
       if (signedIn) {
         const a = await apiFetch("/geomoz-api/billing/me");
         if (!a.ok) throw new Error("Não foi possível consultar a subscrição. Confirme a ligação ao servidor.");
@@ -240,7 +242,7 @@ export default function BillingPanel({ publicView = false }: { publicView?: bool
             <div className="space-y-3">
               <p className="text-xs text-slate-600 dark:text-slate-300">Pagamento antecipado para {interval === "month" ? "um mês" : "um ano"}. A subscrição só é activada após confirmação verificada pelo servidor.</p>
               <div className="flex flex-wrap gap-2" role="group" aria-label="Método de pagamento">
-                {(["mpesa", "emola", "stripe"] as Provider[]).map(p => <button type="button" aria-pressed={provider === p} key={p} onClick={() => setProvider(p)} className={`rounded-lg border px-3 py-2 text-xs ${provider === p ? "border-sky-500 bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200" : "border-slate-300 dark:border-slate-700"}`}>{p === "stripe" ? "Cartão / Stripe" : p === "mpesa" ? "M-Pesa" : "E-Mola"}</button>)}
+                {(["mpesa", "emola", "stripe"] as Provider[]).map(p => <button type="button" disabled={p === "stripe" && !stripeReady} aria-pressed={provider === p} key={p} onClick={() => setProvider(p)} className={`rounded-lg border px-3 py-2 text-xs ${provider === p ? "border-sky-500 bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200" : "border-slate-300 dark:border-slate-700"}`}>{p === "stripe" ? "Cartão / Stripe" + (!stripeReady ? " (indisponível)" : "") : p === "mpesa" ? "M-Pesa" : "E-Mola"}</button>)}
               </div>
               {provider !== "stripe" && <p className="text-xs text-amber-700 dark:text-amber-300">O gateway {provider === "mpesa" ? "M-Pesa" : "E-Mola"} está em preparação. O pedido ficará pendente; não efectue transferências sem referência de pagamento válida.</p>}
               <button type="button" onClick={() => void requestCheckout(selected)} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-sky-600 text-white px-4 py-2.5 text-xs font-bold hover:bg-sky-700 disabled:opacity-50"><CreditCard size={15} />{busy ? "A processar…" : provider === "stripe" ? "Continuar para pagamento seguro" : "Registar pedido pendente"}<ExternalLink size={13} /></button>
