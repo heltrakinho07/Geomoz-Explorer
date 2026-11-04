@@ -300,7 +300,10 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
       let overlay:TerrainOverlay;
       if(/\.(geojson|json)$/i.test(file.name)){
         overlay=createPolygonOverlay(file.name,JSON.parse(await file.text()),
-          "file",generateOverlayId());
+          "project",generateOverlayId());
+        // A local vector belongs to the SAME GIS project: it remains accessible
+        // in the map/attribute table after the Terrain Studio is closed.
+        addGeoJsonLayer(file.name,overlay.data!);
       }else if(/\.tiff?$/i.test(file.name)){
         overlay=await importTerrainRasterOverlay(await file.arrayBuffer(),file.name,terrain,
           generateOverlayId());
