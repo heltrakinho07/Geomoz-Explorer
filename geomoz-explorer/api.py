@@ -109,6 +109,9 @@ async def require_gee_auth(request: Request) -> str:
         _init_gee(uid=uid, project=None, token=None)
     except RuntimeError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    # GEE processing uses the user's own account and does not consume GeoMoz credits.
+    from subscription_access import require_subscription_feature
+    require_subscription_feature(uid, "scientific_analysis")
     return uid
 
 
@@ -223,11 +226,13 @@ from billing import router as billing_router
 from project_quota import router as project_quota_router
 from admin import router as admin_router
 from billing_plan_requests import router as plan_requests_router, admin_router as admin_plan_requests_router
+from subscription_access import router as subscription_access_router, require_subscription_feature
 app.include_router(billing_router)
 app.include_router(project_quota_router)
 app.include_router(admin_router)
 app.include_router(plan_requests_router)
 app.include_router(admin_plan_requests_router)
+app.include_router(subscription_access_router)
 
 # ee.Initialize mutates global Earth Engine SDK state. Serialize the complete
 # authentication + computation lifecycle of GEE requests in each Python worker.
@@ -342,6 +347,8 @@ async def create_processing_job_endpoint(
 ):
     """Queue a heavy raster job and return immediately with a job id."""
     cleanup_expired_jobs()
+    access = require_subscription_feature(uid, "cloud_jobs")
+    concurrent_limit = access["limits"]["concurrent_jobs"]
     tool_id = tool.strip().lower()
     if tool_id not in SUPPORTED_HEAVY_GIS_TOOLS:
         raise HTTPException(
@@ -360,6 +367,7 @@ async def create_processing_job_endpoint(
             input_name=input_file.filename or "input.tif",
             input_stream=input_file.file,
             parameters=parsed_parameters,
+            max_active_per_user=concurrent_limit,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
