@@ -221,6 +221,20 @@ module.exports=async function validateRasterProcessing(page){
    buffer:Buffer.from(JSON.stringify(overlayGeoJSON))
  });
  await terrain.getByText("geologia_controlo.geojson").waitFor();
+ // Classified thematic GeoTIFF: actual georeferencing, clipping and legend.
+ const thematicValues=Uint8Array.from({length:256},(_,i)=>i%2?1:2);
+ const thematic=Buffer.from(writeArrayBuffer(thematicValues,{
+   width:16,height:16,ModelPixelScale:[30,30,0],
+   ModelTiepoint:[0,0,0,500000,7200000,0],
+   GTModelTypeGeoKey:1,GTRasterTypeGeoKey:1,ProjectedCSTypeGeoKey:32736
+ }));
+ await terrain.getByLabel("Importar GeoTIFF temático").setInputFiles({
+   name:"solo_classes.tif",mimeType:"image/tiff",buffer:thematic
+ });
+ await terrain.getByText("solo_classes.tif").waitFor({timeout:25000});
+ assert.match(await terrain.innerText(),/Raster categorizado/);
+ await terrain.getByLabel("Transparência do raster").fill("35");
+ assert.equal(await terrain.getByLabel("Transparência do raster").inputValue(),"35");
  await terrain.getByTestId("terrain-tab-style").click();
  await terrain.getByLabel("Modo de simbologia").selectOption("categorized");
  await terrain.getByLabel("Campo para categorização").selectOption("lito");
