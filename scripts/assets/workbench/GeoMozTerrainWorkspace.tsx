@@ -251,7 +251,10 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     if(!terrain||exportBusy)return;
     setError(null);setExportBusy(true);
     try {
-      const texture=textureUrl?await imageToGLBTexture(textureUrl):undefined;
+      // Recompose with the most recent palette and opacity before exporting;
+      // do not race a pending WebGL texture update.
+      const latestTexture=await composeTerrainTexture(terrain,overlays);
+      const texture=latestTexture?await imageToGLBTexture(latestTexture):undefined;
       const bytes=encodeTerrainGLB(terrain,exaggeration,texture?"imagery":style,texture);
       saveBlob(new Blob([new Uint8Array(bytes)],{type:"model/gltf-binary"}),
         "geomoz_terreno_3d.glb");
