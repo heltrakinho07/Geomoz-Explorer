@@ -254,8 +254,20 @@ def me(uid: str = Depends(_uid)):
     }
 
 
+def _checkout_enabled():
+    return os.environ.get("GEOMOZ_BILLING_ENABLED", "false").strip().lower() == "true"
+
+
+@router.get("/config")
+def config():
+    """Public-safe commercial readiness. No secrets or merchant credentials."""
+    return {"provider": "payzeno", "checkoutEnabled": _checkout_enabled(), "automaticRenewal": False}
+
+
 @router.post("/checkout")
 async def checkout(payload: CheckoutRequest, uid: str = Depends(_uid)):
+    if not _checkout_enabled():
+        raise HTTPException(503, "Os pagamentos GeoMoz ainda estão em validação.")
     pair = (payload.plan, payload.period)
     if pair not in PRICES_MZN:
         raise HTTPException(400, "Plano ou período de pagamento inválido.")
