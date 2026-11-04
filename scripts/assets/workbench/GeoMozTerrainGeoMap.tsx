@@ -164,7 +164,7 @@ export default function GeoMozTerrainGeoMap({
         center: [(west + east) / 2, (south + north) / 2],
         zoom: 9, pitch: flat ? 0 : 55, bearing: flat ? 0 : -15,
         dragRotate: !flat, touchPitch: !flat,
-        maxPitch: 85, attributionControl: true,
+        maxPitch: 85,
       });
       const instance = map;
       mapRef.current = instance;
