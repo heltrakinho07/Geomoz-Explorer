@@ -152,9 +152,11 @@ def reserve_managed_job(uid, job_id, cost=JOB_CREDIT_COST):
             "creditCycle": cycle, "creditsUsed": used + cost,
             "updatedAt": firestore.SERVER_TIMESTAMP,
         }, merge=True)
+        # Replace the whole activeJobs map. Nested Firestore merge would
+        # resurrect completed IDs instead of removing them.
         transaction.set(quota_ref, {
             "activeJobs": active, "updatedAt": firestore.SERVER_TIMESTAMP,
-        }, merge=True)
+        })
         return {"plan": plan, "reserved": cost,
                 "remaining": None if cap is None else cap - used - cost}
 
@@ -184,9 +186,11 @@ def finish_managed_job(uid, job_id, *, success):
         current = quota_snap.to_dict() if quota_snap.exists else {}
         active = dict(current.get("activeJobs") or {})
         active.pop(job_id, None)
+        # Replace the whole activeJobs map. Nested Firestore merge would
+        # resurrect completed IDs instead of removing them.
         transaction.set(quota_ref, {
             "activeJobs": active, "updatedAt": firestore.SERVER_TIMESTAMP,
-        }, merge=True)
+        })
         update = {"status": "completed" if success else "refunded",
                   "completedAt": firestore.SERVER_TIMESTAMP}
         if not success:
