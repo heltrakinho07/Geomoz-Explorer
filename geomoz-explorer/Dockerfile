@@ -53,6 +53,7 @@ COPY terrain_dem.py .
 COPY terrain_gee.py .
 COPY terrain_texture.py .
 COPY terrain_satellite.py .
+COPY terrain_landcover.py .
 RUN python3 -c "import rasterio,PIL,terrain_dem,terrain_texture; print('3D terrain runtime imports OK')"
 # GeoMoz Agent is lazily imported by /geomoz-api/ai/agent-chat.
 # Omission passes the /health check but breaks every GEOAGENTE chat with HTTP 500.
