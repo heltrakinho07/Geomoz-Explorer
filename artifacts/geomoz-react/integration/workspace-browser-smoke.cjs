@@ -76,6 +76,31 @@ const server = createServer(async (req, res) => {
     await sidebar.evaluate(element=>element.style.removeProperty("--gm-sidebar-width"));
     await settingsAction.click();
     await page.getByRole("dialog").waitFor({state:"visible"});
+    // Native GeoLibre and portal share the saved locale, but the portal must
+    // actually translate its navigation, dashboard and settings without a reload.
+    await page.getByRole("button",{name:"Preferências",exact:true}).click();
+    const portalLocale=page.getByTestId("geomoz-portal-language");
+    await portalLocale.waitFor();
+    if(await portalLocale.locator("option").count()!==21) throw Error("Portal selector lost upstream GeoLibre locales.");
+    for(const copy of [
+      {code:"en",actual:"en",navigation:"Watersheds",banner:"Geospatial command centre",settings:"Interface language"},
+      {code:"es",actual:"es",navigation:"Cuencas hidrográficas",banner:"Centro de mando geoespacial",settings:"Idioma de la interfaz"},
+      {code:"fr",actual:"fr",navigation:"Bassins versants",banner:"Centre de pilotage géospatial",settings:"Langue de l'interface"},
+      {code:"de",actual:"en",navigation:"Watersheds",banner:"Geospatial command centre",settings:"Interface language"},
+      {code:"pt",actual:"pt",navigation:"Bacias hidrográficas",banner:"Centro de Comando Geoespacial",settings:"Idioma da interface"},
+    ]){
+      await portalLocale.selectOption(copy.code);
+      await page.waitForFunction(copy=>{
+        const api=window.GeoMozPreferences;
+        const persisted=JSON.parse(localStorage.getItem("geolibre.desktopSettings")||"{}").language;
+        return api?.getLanguage()===copy.code && persisted===copy.code &&
+          document.documentElement.lang===copy.actual &&
+          document.querySelector(".gm-sidebar")?.textContent?.includes(copy.navigation) &&
+          document.querySelector(".gm-dashboard-hero")?.textContent?.includes(copy.banner) &&
+          document.querySelector('[data-testid="geomoz-portal-language"]')?.getAttribute("aria-label")===copy.settings;
+      },copy,{timeout:18000});
+    }
+    console.log("Portal and GeoLibre preferences synchronize 21 locales; PT/EN/ES/FR content switches without reload.");
     await page.keyboard.press("Escape");
     await page.getByRole("dialog").waitFor({state:"hidden"});
     await page.getByRole("button",{name:"GIS Workspace",exact:true}).click();
