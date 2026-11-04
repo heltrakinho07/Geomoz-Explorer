@@ -37,6 +37,15 @@ describe("GeoMoz portal catalogs", () => {
     expect(portalText("en", "settings.renewalHint")).not.toContain("PayZeno");
   });
 
+  it("translates GEE account, NDVI test controls and asynchronous feedback", () => {
+    expect(portalText("en", "settings.gee.personalAccess")).toBe("Personal Google Earth Engine access");
+    expect(portalText("en", "settings.gee.connectGoogle")).toBe("Connect with Google account");
+    expect(portalText("es", "settings.gee.ndviDescription")).toContain("mayo");
+    expect(portalText("fr", "settings.gee.projectId")).toContain("projet Google Cloud");
+    expect(portalText("de", "settings.feedback.preferencesSaved")).toBe("Preferences saved.");
+    expect(portalText("en", "settings.account.authenticated")).toBe("Authenticated session");
+  });
+
   it("preserves all 21 GeoLibre locales without misrepresenting the selected one", () => {
     const languages = GEOLIBRE_LANGUAGE_OPTIONS.map(option => option.code);
     expect(languages.length).toBe(21);
