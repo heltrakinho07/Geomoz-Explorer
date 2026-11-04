@@ -28,6 +28,15 @@ service cloud.firestore {
       }
     }
 
+    // Billing entitlements, payment events and consumption are server-owned.
+    // A client cannot promote its own plan, mint credits or forge a payment.
+    match /billing/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+      match /{nested=**} { allow read, write: if false; }
+    }
+    match /billingEvents/{eventId} { allow read, write: if false; }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;
