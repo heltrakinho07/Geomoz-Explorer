@@ -53,6 +53,25 @@ interface SettingsDialogProps {
   embedded?: boolean;
 }
 
+interface EntitlementSummary {
+  plan: string;
+  features: string[];
+  creditsUsed: number;
+  creditsLimit: number | null;
+  creditsRemaining: number | null;
+  creditCycle: string;
+  concurrentJobsActive: number;
+  concurrentJobsLimit: number | null;
+  projectsLimit: number | null;
+  storageUsedBytes: number;
+  storageBytesLimit: number | null;
+  managedJobsEnforced: boolean;
+  scientificAccessEnforced: boolean;
+  storageEnforced: boolean;
+  teamSeatsEnforced: boolean;
+  geeCreditsCharged: boolean;
+}
+
 type SettingsTab = "gee" | "profile" | "preferences" | "storage" | "billing" | "documentation";
 
 export default function SettingsDialog({ open, onOpenChange, embedded = false }: SettingsDialogProps) {
@@ -88,6 +107,30 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
   }, [open, user?.uid]);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("gee");
+  const [liveEntitlements, setLiveEntitlements] = React.useState<EntitlementSummary | null>(null);
+  const [usageLoading, setUsageLoading] = React.useState(false);
+  const [usageError, setUsageError] = React.useState("");
+  React.useEffect(() => {
+    if (!open || activeTab !== "billing" || !user || user.uid === "guest_user") {
+      setLiveEntitlements(null);
+      setUsageLoading(false);
+      return;
+    }
+    let mounted = true;
+    setUsageLoading(true);
+    setUsageError("");
+    apiFetch("/geomoz-api/entitlements/me")
+      .then(async response => {
+        if (!response.ok) throw new Error("Não foi possível carregar a utilização do servidor.");
+        return response.json() as Promise<EntitlementSummary>;
+      })
+      .then(data => { if (mounted) setLiveEntitlements(data); })
+      .catch(error => { if (mounted) setUsageError(String(error?.message || "Utilização indisponível.")); })
+      .finally(() => { if (mounted) setUsageLoading(false); });
+    return () => { mounted = false; };
+  }, [open, activeTab, user?.uid]);
+
+
   const [projectIdInput, setProjectIdInput] = useState(
     geeProject && geeProject !== "eengine-project" ? geeProject : "geoprocessamento-426809"
   );
@@ -873,6 +916,43 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
                     <div className="font-bold mt-1">{subscription.planData.credits === null ? t("settings.custom") : subscription.remainingCredits}</div>
                   </div>
                 </div>
+                {usageLoading && <p className="text-xs text-sky-600 dark:text-sky-300">A actualizar quotas verificadas no servidor…</p>}
+                {usageError && <p role="status" className="text-xs text-amber-700 dark:text-amber-300">{usageError}</p>}
+                {liveEntitlements && (
+                  <section className="rounded-xl border border-sky-200/70 dark:border-sky-900/60 bg-white/80 dark:bg-slate-900/60 p-4 space-y-3" aria-label="Recursos e créditos do plano">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h5 className="text-sm font-bold text-slate-900 dark:text-slate-100">Utilização confirmada pelo servidor</h5>
+                      <span className="text-[11px] font-semibold text-slate-500">Ciclo {liveEntitlements.creditCycle}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="rounded-lg bg-slate-50 dark:bg-slate-800/70 p-3">
+                        <span className="text-slate-500">Créditos GeoMoz</span>
+                        <p className="mt-1 font-bold text-sm">{liveEntitlements.creditsUsed} / {liveEntitlements.creditsLimit ?? "À medida"}</p>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 dark:bg-slate-800/70 p-3">
+                        <span className="text-slate-500">Processos simultâneos</span>
+                        <p className="mt-1 font-bold text-sm">{liveEntitlements.concurrentJobsActive} / {liveEntitlements.concurrentJobsLimit ?? "À medida"}</p>
+                      </div>
+                    </div>
+                    {liveEntitlements.creditsLimit !== null && liveEntitlements.creditsLimit > 0 && (
+                      <div className="w-full h-2 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700" role="progressbar"
+                        aria-label="Créditos GeoMoz consumidos" aria-valuemin={0} aria-valuemax={liveEntitlements.creditsLimit}
+                        aria-valuenow={Math.min(liveEntitlements.creditsLimit, liveEntitlements.creditsUsed)}>
+                        <div className="h-full bg-sky-500 rounded-full transition-all"
+                          style={{ width: `${Math.min(100, 100 * liveEntitlements.creditsUsed / liveEntitlements.creditsLimit)}%` }} />
+                      </div>
+                    )}
+                    <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                      {liveEntitlements.managedJobsEnforced
+                        ? "Processos GDAL geridos pelo GeoMoz: quota e créditos controlados no servidor."
+                        : "Quotas de processos GDAL em preparação para activação operacional."}
+                      {" "}As operações Earth Engine com credenciais próprias não debitam créditos GeoMoz.
+                    </p>
+                    {!liveEntitlements.storageEnforced && <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                      Os limites de armazenamento partilhado continuam em implementação.
+                    </p>}
+                  </section>
+                )}
                 {subscription.periodEnd && (
                   <p className="text-xs text-slate-500">{t("settings.validUntil")} {new Date(subscription.periodEnd).toLocaleDateString(translatedLocale === "pt" ? "pt-MZ" : translatedLocale)}. {t("settings.renewalHint")}</p>
                 )}
