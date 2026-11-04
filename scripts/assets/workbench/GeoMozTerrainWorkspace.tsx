@@ -28,7 +28,7 @@ import { geomozNativeTerrainPreview } from "./geomoz-native-terrain-dem";
 import { encodeTerrainGLB, imageToGLBTexture } from "../../lib/geomoz-terrain-glb";
 import {GeoMozTerrainLayerCatalogue,GeoMozTerrainLayerSymbology}
   from "./GeoMozTerrainLayerPanels";
-import {composeTerrainTexture,createPolygonOverlay,generateOverlayId,
+import {composeTerrainTexture,createPolygonOverlay,terrainCategories,generateOverlayId,
   type TerrainOverlay} from "./geomoz-terrain-layers";
 import {importTerrainRasterOverlay} from "./geomoz-terrain-raster-overlay";
 import {loadWorldCoverFromAuthenticatedGeoMoz} from "./geomoz-terrain-gee-bridge";
@@ -156,7 +156,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
   const projectVectors=useMemo(()=>layers.filter(layer=>
     layer.geojson?.features.some(feature=>
       feature.geometry?.type==="Polygon"||feature.geometry?.type==="MultiPolygon"))
-    .map(layer=>({id:layer.id,name:layer.name,geojson:layer.geojson!})),[layers]);
+    .map(layer=>({id:layer.id,name:layer.name,geojson:layer.geojson!,style:layer.style})),[layers]);
 
   useEffect(()=>{
     setOverlays([]);setSelectedOverlay(null);setTextureUrl(null);
@@ -260,6 +260,27 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     if(!source){setError("A camada não está disponível no projecto.");return;}
     try{
       const overlay=createPolygonOverlay(source.name,source.geojson,"project",generateOverlayId());
+      const original=source.style;
+      if(original){
+        if(/^#[0-9a-f]{6}$/i.test(original.fillColor)){
+          overlay.singleColor=original.fillColor;
+        }
+        overlay.opacity=Math.max(0,Math.min(1,original.fillOpacity));
+        if(original.vectorStyleMode==="categorized" &&
+          original.vectorStyleProperty &&
+          overlay.data?.features.some(f=>original.vectorStyleProperty in (f.properties??{}))){
+          overlay.field=original.vectorStyleProperty;
+          const colours=new Map(original.vectorStyleStops.map(
+            item=>[String(item.value),item]));
+          overlay.categories=terrainCategories(overlay.data,overlay.field)
+            .map(cat=>{const saved=colours.get(cat.value);return saved&&
+              /^#[0-9a-f]{6}$/i.test(saved.color)?
+                {...cat,color:saved.color,label:saved.label??cat.label}:cat;});
+          overlay.renderStyle="categorized";
+        }else if(original.vectorStyleMode==="single"){
+          overlay.renderStyle="single";
+        }
+      }
       setOverlays(v=>[...v,overlay]);chooseOverlay(overlay.id);
       setNotice("Camada vectorial sobreposta ao DEM e recortada à sua extensão.");
       setError(null);
