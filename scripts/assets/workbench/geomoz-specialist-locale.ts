@@ -2527,6 +2527,46 @@ const entries: Record<string, {en:string;es:string;fr:string}> = {
     "en": "Simplified 3D mesh estimate. Not a substitute for original DEM analysis.",
     "es": "Estimación de la malla 3D simplificada. No sustituye al análisis del MDE original.",
     "fr": "Estimation du maillage 3D simplifié. Ne remplace pas l’analyse du MNT d’origine."
+  },
+  "Modelo GLB exportado em metros com metadados do CRS do projecto.": {
+    "en": "GLB model exported in metres with project CRS metadata.",
+    "es": "Modelo GLB exportado en metros con metadatos del SRC del proyecto.",
+    "fr": "Modèle GLB exporté en mètres avec les métadonnées du SCR du projet."
+  },
+  "Falha ao exportar GLB.": {
+    "en": "Could not export GLB.",
+    "es": "No se pudo exportar el GLB.",
+    "fr": "Impossible d’exporter le GLB."
+  },
+  "Nível de detalhe do relevo": {
+    "en": "Terrain level of detail",
+    "es": "Nivel de detalle del relieve",
+    "fr": "Niveau de détail du relief"
+  },
+  "Detalhe do terreno 3D": {
+    "en": "3D terrain detail",
+    "es": "Detalle del terreno 3D",
+    "fr": "Détail du terrain 3D"
+  },
+  "Automático com o zoom": {
+    "en": "Automatic with zoom",
+    "es": "Automático según el zoom",
+    "fr": "Automatique selon le zoom"
+  },
+  "Detalhe máximo": {
+    "en": "Maximum detail",
+    "es": "Detalle máximo",
+    "fr": "Détail maximal"
+  },
+  "LOD 2 · equilibrado": {
+    "en": "LOD 2 · balanced",
+    "es": "LOD 2 · equilibrado",
+    "fr": "LOD 2 · équilibré"
+  },
+  "LOD 4 · rápido": {
+    "en": "LOD 4 · fast",
+    "es": "LOD 4 · rápido",
+    "fr": "LOD 4 · rapide"
   }
 };
 export function geoMozSpecialistText(language:string, portuguese:string):string {
