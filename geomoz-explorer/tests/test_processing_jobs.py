@@ -11,6 +11,25 @@ import pytest
 from fastapi.testclient import TestClient
 
 
+@pytest.fixture(autouse=True)
+def server_managed_processing_entitlement(monkeypatch: pytest.MonkeyPatch) -> None:
+    """This module tests GDAL I/O, not the subscription policy.
+
+    Keep the policy server-side in production; isolated entitlement/credits
+    behaviour is verified by test_subscription_access.py.
+    """
+    import api
+    import billing
+
+    monkeypatch.setattr(api, "require_subscription_feature",
+                        lambda uid, feature: {"limits": {"concurrent_jobs": 2}})
+    monkeypatch.setattr(billing, "reserve_cloud_job_credit",
+                        lambda uid, job_id: {"reserved": 1})
+    monkeypatch.setattr(billing, "settle_cloud_job_credit",
+                        lambda uid, job_id, *, success: {"status": "completed" if success else "refunded"})
+
+
+
 def test_hillshade_command_is_allowlisted_and_shell_free(tmp_path: Path) -> None:
     from processing_jobs import _gdal_tool_command
 
@@ -103,6 +122,27 @@ def test_create_processing_job_endpoint_queues_upload(
     assert "input_bytes" not in kwargs
     assert "input_stream" in kwargs
     assert kwargs["parameters"] == {"azimuth": 300}
+
+
+def test_unentitled_user_cannot_queue_managed_raster_job(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import api
+    import billing
+    from fastapi import HTTPException
+
+    def deny(*args, **kwargs):
+        raise HTTPException(status_code=402, detail="Requer plano Academic ou Pro")
+
+    reservations = MagicMock()
+    monkeypatch.setattr(api, "require_subscription_feature", deny)
+    monkeypatch.setattr(billing, "reserve_cloud_job_credit", reservations)
+    response = client.post(
+        "/geomoz-api/processing/jobs", data={"tool": "slope", "parameters": "{}"},
+        files={"input_file": ("dem.tif", b"II*\x00", "image/tiff")},
+    )
+    assert response.status_code == 402
+    reservations.assert_not_called()
 
 
 def test_create_processing_job_rejects_unknown_tool(client: TestClient) -> None:
