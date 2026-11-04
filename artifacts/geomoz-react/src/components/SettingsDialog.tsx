@@ -30,6 +30,8 @@ import {
   Trash2,
   Globe,
   Layers,
+  BookOpen,
+  ArrowUpRight,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { diagnoseGeeApi } from "@/lib/gee-connection-diagnostics";
@@ -43,7 +45,7 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type SettingsTab = "gee" | "profile" | "preferences" | "storage" | "billing";
+type SettingsTab = "gee" | "profile" | "preferences" | "storage" | "billing" | "documentation";
 
 export default function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { user, signOut } = useAuth();
@@ -331,6 +333,17 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
             >
               <CreditCard size={14} />
               <span>Plano e subscrição</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("documentation")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                activeTab === "documentation" ? "bg-sky-500 text-white shadow-sm" : "text-slate-400 hover:text-white"
+              }`}
+              data-testid="settings-documentation-tab"
+            >
+              <BookOpen size={14} />
+              <span>Documentação</span>
             </button>
             {adminAccess && <a href="/administracao" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-sky-300 hover:bg-white/10 shrink-0">
               <ShieldCheck size={14} /> Administração GeoMoz
@@ -869,6 +882,45 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                 </div>
               </div>
             </div>
+          )}
+
+          {activeTab === "documentation" && (
+            <section className="space-y-4" aria-label="Documentação do GeoMoz">
+              <div className="relative overflow-hidden rounded-2xl border border-sky-200/80 dark:border-sky-800/50 bg-gradient-to-br from-sky-50 via-white to-indigo-50 dark:from-sky-950/40 dark:via-slate-900 dark:to-indigo-950/30 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300">
+                    <BookOpen size={22} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">Documentação do GeoMoz</h3>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                      Conheça as ferramentas, formatos de dados, fluxos de trabalho, motores científicos, limitações e funcionalidades em desenvolvimento.
+                    </p>
+                  </div>
+                </div>
+                <a
+                  href="/documentacao"
+                  onClick={() => onOpenChange(false)}
+                  data-testid="settings-open-documentation"
+                  className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-md shadow-sky-500/15 transition hover:brightness-110 sm:w-auto"
+                >
+                  Consultar documentação completa <ArrowUpRight size={16} />
+                </a>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  ["Guias de utilização", "Primeiros passos, projecto e navegação"],
+                  ["Ferramentas científicas", "GIS, raster, vector, hidrologia e IA"],
+                  ["Formatos e serviços", "Dados geoespaciais e integração de fontes"],
+                  ["Estado das funcionalidades", "Capacidades, condições e roadmap"],
+                ].map(([heading, description]) => (
+                  <div key={heading} className="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white/75 dark:bg-slate-800/50 p-3.5">
+                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{heading}</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{description}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
           )}
 
           {activeTab === "billing" && (
