@@ -369,9 +369,9 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                     >
                       {geeConnected
                         ? isPermanent
-                          ? "Google Earth Engine Conectado (Acesso Renovável)"
-                          : "Google Earth Engine Conectado (Acesso Temporário)"
-                        : "Credenciais GEE Pendentes / Não Ativas"}
+                          ? t("settings.gee.renewable")
+                          : t("settings.gee.temporary")
+                        : t("settings.gee.pending")}
                     </h4>
                     <p
                       className={`text-xs mt-0.5 ${
@@ -379,8 +379,8 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       }`}
                     >
                       {geeConnected
-                        ? `Projeto vinculado: ${geeProject || "geoprocessamento-426809"} | Conta Google: ${geeAccount || "autorizada"}`
-                        : `Projeto selecionado: ${geeProject || "geoprocessamento-426809"}. Conecte a sua conta Google com 1 clique abaixo para processar imagens.`}
+                        ? `${t("settings.gee.linkedProject")} ${geeProject || "geoprocessamento-426809"} | ${t("settings.gee.googleAccount")} ${geeAccount || t("settings.gee.authorized")}`
+                        : `${t("settings.gee.selectedProject")} ${geeProject || "geoprocessamento-426809"}. ${t("settings.gee.connectPrompt")}`}
                     </p>
                   </div>
                 </div>
@@ -393,7 +393,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                     className="border-red-200 text-red-600 hover:bg-red-50 text-xs shrink-0"
                   >
                     <Trash2 size={13} className="mr-1" />
-                    Desconectar
+                    {t("settings.gee.disconnect")}
                   </Button>
                 )}
               </div>
@@ -404,20 +404,20 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                     <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                       <ShieldCheck size={14} className="text-sky-500" />
-                      Acesso Pessoal ao Google Earth Engine
+                      {t("settings.gee.personalAccess")}
                     </h4>
                     {user ? (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300 font-medium self-start sm:self-auto">
-                        Perfil: {user.email || user.displayName || "Utilizador Registado"}
+                        {t("settings.gee.profile")} {user.email || user.displayName || t("settings.gee.registeredUser")}
                       </span>
                     ) : (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 font-medium self-start sm:self-auto">
-                        Modo Convidado (Local)
+                        {t("settings.gee.guestMode")}
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                    Cada utilizador liga a própria conta Google ao Earth Engine. As quotas e permissões também dependem do projeto Google Cloud escolhido; a credencial de cada utilizador fica associada apenas à sua conta GeoMoz.
+                    {t("settings.gee.personalAccessInfo")}
                   </p>
                 </div>
 
@@ -426,12 +426,12 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                   <div className="flex items-center justify-between">
                     <div>
                       <h5 className="text-xs font-semibold text-slate-900 dark:text-slate-100">
-                        {geeConnected ? "Conta Google Vinculada" : "Autenticação Google Earth Engine"}
+                        {geeConnected ? t("settings.gee.linkedAccount") : t("settings.gee.authorization")}
                       </h5>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400">
                         {geeConnected
-                          ? `Conta autorizada: ${geeAccount || "Google Earth Engine"}. ${isPermanent ? "Acesso renovável configurado." : "Autorização temporária; poderá precisar de reconectar."}`
-                          : "Inicie sessão diretamente com a sua conta Google registada no Earth Engine."}
+                          ? `${t("settings.gee.authorizedAccount")} ${geeAccount || "Google Earth Engine"}. ${isPermanent ? t("settings.gee.renewableConfigured") : t("settings.gee.temporaryInfo")}`
+                          : t("settings.gee.signInInfo")}
                       </p>
                     </div>
                     <a
@@ -440,7 +440,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       rel="noopener noreferrer"
                       className="relative z-10 inline-flex min-h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-sky-600 underline underline-offset-2 hover:bg-sky-50 hover:text-sky-800 dark:hover:bg-slate-800"
                     >
-                      Verificar GEE <ExternalLink size={10} />
+                      {t("settings.gee.verify")} <ExternalLink size={10} />
                     </a>
                   </div>
 
@@ -448,17 +448,17 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                     <div className="space-y-2.5 p-3 bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 rounded-xl">
                       <div className="flex items-center gap-2 text-xs font-semibold text-sky-800 dark:text-sky-200">
                         <Loader2 size={15} className="animate-spin" />
-                        A contactar o servidor e autenticar a Conta Google...
+                        {t("settings.gee.connecting")}
                       </div>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                        Autorize o acesso na janela Google. Se não abrir, permita pop-ups de geomoz.geolithica.com no navegador e tente novamente.
+                        {t("settings.gee.oauthPopupInfo")}
                       </p>
                     </div>
                   ) : geeConnected ? (
                     <div className="flex items-center justify-between p-2.5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-xl">
                       <div className="flex items-center gap-2 text-xs text-emerald-800 dark:text-emerald-300 font-medium">
                         <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
-                        <span>Conta Google ligada. Não precisa de reconectar a menos que queira trocar de conta.</span>
+                        <span>{t("settings.gee.connectedHint")}</span>
                       </div>
                       <Button
                         variant="ghost"
@@ -466,7 +466,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                         onClick={handleConnectGee}
                         className="text-xs text-slate-600 hover:text-sky-600 h-7 shrink-0 ml-2"
                       >
-                        Trocar Conta
+                        {t("settings.gee.switchAccount")}
                       </Button>
                     </div>
                   ) : (
@@ -494,11 +494,11 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                             d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                           />
                         </svg>
-                        <span>Ligar com a Conta Google</span>
+                        <span>{t("settings.gee.connectGoogle")}</span>
                       </Button>
                       {!oauthReady && (
                         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
-                          Não foi possível confirmar antecipadamente a disponibilidade do servidor. Pode tentar ligar a Conta Google; em caso de falha, será apresentado o erro.
+                          {t("settings.gee.serverUnconfirmed")}
                         </div>
                       )}
                       <Button
@@ -510,7 +510,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                             className="self-start min-h-9 border-sky-300 bg-white px-3 text-xs font-semibold text-sky-800 hover:bg-sky-50 dark:bg-slate-900 dark:text-sky-300"
                           >
                             {checkingApi ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : <RefreshCw size={14} className="mr-1.5" />}
-                            {checkingApi ? "A verificar a API..." : "Voltar a verificar a API"}
+                            {checkingApi ? t("settings.gee.checkingApi") : t("settings.gee.retryApi")}
                           </Button>
                       {apiCheckResult && (
                         <div
@@ -524,7 +524,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                         </div>
                       )}
                       <p className="text-center text-[11px] text-slate-500 dark:text-slate-400">
-                        A autorização abre uma janela Google. Se for bloqueada, permita pop-ups para este site nas definições do navegador.
+                        {t("settings.gee.popupInfo")}
                       </p>
                     </div>
                   )}
@@ -534,7 +534,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                 <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-3">
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
-                      ID do Projeto Google Cloud (GCP)
+                      {t("settings.gee.projectId")}
                     </label>
                     <div className="flex gap-2">
                       <Input
@@ -552,12 +552,12 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                         {savingProject ? (
                           <Loader2 size={13} className="animate-spin" />
                         ) : (
-                          "Guardar Projeto"
+                          t("settings.gee.saveProject")
                         )}
                       </Button>
                     </div>
                     <p className="text-[10px] text-slate-400">
-                      ID do projeto GCP onde a API do Earth Engine está ativada (ex: <code>geoprocessamento-426809</code> ou o projeto indicado no <a href="https://code.earthengine.google.com" target="_blank" rel="noreferrer" className="text-sky-600 underline">Code Editor</a>).
+                      {t("settings.gee.projectIdHelp")} <code>geoprocessamento-426809</code> {t("settings.gee.projectIdHelpEnd")} <a href="https://code.earthengine.google.com" target="_blank" rel="noreferrer" className="text-sky-600 underline">Code Editor</a>).
                     </p>
                     <a
                       href={`https://console.cloud.google.com/apis/library/earthengine.googleapis.com?project=${projectIdInput.trim() && projectIdInput.trim() !== "eengine-project" ? projectIdInput.trim() : "geoprocessamento-426809"}`}
@@ -565,7 +565,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       rel="noreferrer"
                       className="text-[10px] text-sky-600 hover:underline inline-flex items-center gap-1"
                     >
-                      Ativar Earth Engine API neste projeto na Consola GCP <ExternalLink size={9} />
+                      {t("settings.gee.enableApi")} <ExternalLink size={9} />
                     </a>
                   </div>
 
@@ -582,7 +582,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       ) : (
                         <RefreshCw size={13} className="mr-1.5" />
                       )}
-                      Testar Conexão em Tempo Real
+                      {t("settings.gee.testConnection")}
                     </Button>
                     <Button
                       type="button"
@@ -591,19 +591,19 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       onClick={handleValidateRealNdvi}
                       disabled={testingNdvi || !geeConnected}
                       className="text-xs rounded-xl border-emerald-300 text-emerald-800 dark:text-emerald-300"
-                      title={!geeConnected ? "Primeiro ligue e autorize a sua conta Google Earth Engine." : "Executa o endpoint real GEE, Sentinel-2 SR Harmonized e NDVI para uma área de Maputo."}
+                      title={!geeConnected ? t("settings.gee.ndviRequiresLogin") : t("settings.gee.ndviTooltip")}
                     >
                       {testingNdvi ? (
                         <Loader2 size={13} className="animate-spin mr-1.5" />
                       ) : (
                         <Layers size={13} className="mr-1.5" />
                       )}
-                      {testingNdvi ? "A processar Sentinel-2..." : "Testar NDVI Real — Maputo"}
+                      {testingNdvi ? t("settings.gee.processingS2") : t("settings.gee.testNdvi")}
                     </Button>
                   </div>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    O teste NDVI processa cenas Sentinel-2 reais numa pequena área de Maputo (Maio–Agosto de 2025), usando a sua autorização GEE. Não utiliza resultados simulados.
-                    {!geeConnected && " Primeiro ligue a sua conta Google."}
+                    {t("settings.gee.ndviDescription")}
+                    {!geeConnected && <> {t("settings.gee.connectFirst")}</>}
                   </p>
                   {ndviResult && (
                     <div
@@ -623,7 +623,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                   <summary className="text-xs font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 cursor-pointer flex items-center justify-between py-1 select-none">
                     <span className="flex items-center gap-1.5">
                       <KeyRound size={13} className="text-amber-500" />
-                      Opções Avançadas (Administradores / Chave de Serviço JSON)
+                      {t("settings.gee.advanced")}
                     </span>
                     <span className="text-[10px] text-slate-400 group-open:rotate-180 transition-transform">▼</span>
                   </summary>
@@ -631,7 +631,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                   <div className="pt-3 space-y-3">
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
-                        E-mail da Conta de Serviço (Opcional)
+                        {t("settings.gee.serviceEmail")}
                       </label>
                       <Input
                         type="text"
@@ -644,7 +644,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
 
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
-                        Conteúdo da Chave de Serviço (JSON)
+                        {t("settings.gee.serviceKey")}
                       </label>
                       <textarea
                         value={saKeyInput}
@@ -654,7 +654,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                         className="w-full text-[11px] font-mono p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                       />
                       <p className="text-[10px] text-slate-500">
-                        Esta opção é reservada para ambientes de servidor ou contas de serviço dedicadas. Utilizadores normais devem utilizar o botão "Ligar com a Conta Google" acima.
+                        {t("settings.gee.serviceKeyHelp")}
                       </p>
                     </div>
 
@@ -666,10 +666,10 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       {savingSa ? (
                         <>
                           <Loader2 size={13} className="animate-spin mr-1.5" />
-                          A guardar chave...
+                          {t("settings.gee.savingKey")}
                         </>
                       ) : (
-                        "Guardar Chave de Serviço"
+                        t("settings.gee.saveKey")
                       )}
                     </Button>
                   </div>
@@ -703,7 +703,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
               {/* Documentation links */}
               <div className="p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-xl space-y-2 text-xs">
                 <span className="font-bold text-slate-700 dark:text-slate-300 block">
-                  Recursos & Ativação de Quotas
+                  {t("settings.gee.quotaResources")}
                 </span>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <a
@@ -736,14 +736,14 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-full overflow-hidden bg-sky-500 text-white flex items-center justify-center font-bold text-base">
                       {user.photoURL ? (
-                        <img src={user.photoURL} alt={user.displayName || "Utilizador"} className="w-full h-full object-cover" />
+                        <img src={user.photoURL} alt={user.displayName || t("settings.account.user")} className="w-full h-full object-cover" />
                       ) : (
                         user.email?.slice(0, 2).toUpperCase()
                       )}
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                        {user.displayName || "Investigador GeoMoz"}
+                        {user.displayName || t("settings.account.researcher")}
                       </h4>
                       <p className="text-xs text-slate-500">{user.email}</p>
                     </div>
@@ -751,10 +751,10 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
 
                   <div className="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
                     <div>
-                      UID de Acesso: <span className="font-mono text-[11px] text-slate-800 dark:text-slate-200">{user.uid}</span>
+                      {t("settings.account.accessUid")} <span className="font-mono text-[11px] text-slate-800 dark:text-slate-200">{user.uid}</span>
                     </div>
                     <div>
-                      Estado: <span className="font-semibold text-emerald-600">Sessão Autenticada</span>
+                      {t("dashboard.status")} <span className="font-semibold text-emerald-600">{t("settings.account.authenticated")}</span>
                     </div>
                   </div>
 
@@ -766,7 +766,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                       className="text-xs"
                     >
                       <LogOut size={13} className="mr-1.5" />
-                      Terminar Sessão
+                      {t("settings.account.signOut")}
                     </Button>
                   </div>
                 </div>
@@ -774,7 +774,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                 <div className="p-6 text-center space-y-3 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                   <User size={32} className="mx-auto text-slate-400" />
                   <p className="text-xs text-slate-500">
-                    Inicie sessão na plataforma para ativar armazenamento multi-tenant e gerir projetos de estudo permanentes.
+                    {t("settings.account.signInHint")}
                   </p>
                 </div>
               )}
