@@ -1,7 +1,8 @@
+import { GAULAreaSelect, type LoadGAULUnits } from "./GAULAreaSelect";
 import { WORLD_COUNTRIES } from "@/lib/world-countries";
 import { PublicDataTools, type PublicAnalysisRequest } from "./PublicDataTools";
 import { GeoIntelligenceDossier, type IntelligenceDossier } from "./GeoIntelligenceDossier";
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useProject } from "../context/ProjectContext";
 import { apiFetch } from "@/lib/api";
 import { aoiToAPI, mozambiqueAOI, countryAOI, GLOBAL_AOI, type AreaOfInterest } from "@/lib/aoi";
@@ -217,6 +218,28 @@ const SUGGESTED_PROMPTS = [
 
 export default function GeoMozAIAgentTab() {
   const { activeProject, updateProject, saveRunToActiveProject } = useProject();
+
+  const loadGAULUnits = useCallback<LoadGAULUnits>(async (countryCode, level, parentCode, signal) => {
+    const response = await apiFetch("/geomoz-api/ai/agent-chat", {
+      method: "POST", signal, headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: `Listar unidades FAO GAUL ADM${level}`,
+        current_map_state: {
+          gee_token: localStorage.getItem("geomoz_gee_token") || undefined,
+          gee_project: localStorage.getItem("geomoz_gee_project") || "geoprocessamento-426809",
+          publicAnalysis: { tool: "list_administrative_units", args: {
+            country_code: countryCode, level, ...(parentCode !== null ? { parent_code: parentCode } : {}),
+          } },
+        },
+      }),
+    });
+    if (!response.ok) throw new Error(`Não foi possível consultar FAO GAUL (HTTP ${response.status}).`);
+    const data = await response.json();
+    const output = data.runs?.[0]?.output;
+    if (output?.status !== "success" || !Array.isArray(output.units)) {
+      throw new Error(output?.message || data.synthesis || "Sem unidades FAO GAUL disponíveis.");
+    }
+    return output.units;
+  }, []);
 
   // Area of Interest (AOI) state
   const [selectedProvince, setSelectedProvince] = useState<string | null>(() => {
@@ -495,6 +518,10 @@ export default function GeoMozAIAgentTab() {
           source: currentAoi.source,
           countryCode: currentAoi.countryCode,
           countryName: currentAoi.countryName,
+          boundarySource: currentAoi.boundarySource,
+          adminLevel: currentAoi.adminLevel,
+          admin1Code: currentAoi.admin1Code,
+          admin2Code: currentAoi.admin2Code,
           label: currentAoi.label || "Moçambique",
           province: aoiPayload.province || null,
           district: aoiPayload.district || null,
@@ -923,11 +950,11 @@ export default function GeoMozAIAgentTab() {
             {showAoiSelector && (
               <div className="p-2.5 bg-slate-900 border border-slate-700/80 rounded-xl space-y-2 mt-1 shadow-lg">
                 <label className="block text-[10px] font-semibold text-slate-400">País — análises públicas mundiais
-                  <select aria-label="País para análise mundial" value={currentAoi.source === "country" ? currentAoi.countryCode || "" : ""}
+                  <select aria-label="País para análise mundial" disabled={isRunning} value={currentAoi.source === "country" ? currentAoi.countryCode || "" : ""}
                     onChange={(event) => {
                       const country = WORLD_COUNTRIES.find((item) => item.code === event.target.value);
                       if (!country) return;
-                      const next = countryAOI(country);
+                      const next: AreaOfInterest = { ...countryAOI(country), boundarySource: "gaul2025", adminLevel: 0 };
                       setCurrentAoi(next); setSelectedProvince(null); setSelectedDistrict(null); setAgentContext(null);
                       if (activeProject) void updateProject(activeProject.id, { aoi: next });
                     }} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 p-1.5 text-xs text-slate-200">
@@ -935,7 +962,31 @@ export default function GeoMozAIAgentTab() {
                     {WORLD_COUNTRIES.map((country) => <option key={country.code} value={country.code}>{country.flag} {country.name}</option>)}
                   </select>
                 </label>
-                <p className="text-[10px] text-slate-400">Nos novos motores públicos, o cálculo usa limites geoBoundaries v6. Países grandes podem exigir uma AOI menor.</p>
+                {currentAoi.source === "country" && currentAoi.countryCode && <>
+                  <label className="block text-[10px] font-semibold text-slate-400">Fonte dos limites
+                    <select aria-label="Fonte dos limites administrativos" disabled={isRunning} value={currentAoi.boundarySource || "geoboundaries"}
+                      onChange={(event) => {
+                        const next: AreaOfInterest = { ...currentAoi, boundarySource: event.target.value as "gaul2025" | "geoboundaries",
+                          adminLevel: 0, admin1Code: null, admin1Name: null, admin2Code: null, admin2Name: null,
+                          label: currentAoi.countryName || currentAoi.label };
+                        setCurrentAoi(next);
+                        if (activeProject) void updateProject(activeProject.id, { aoi: next });
+                      }} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 p-1.5 text-xs text-slate-200">
+                      <option value="gaul2025">FAO GAUL 2025 — país / ADM1 / ADM2</option>
+                      <option value="geoboundaries">geoBoundaries v6 — país</option>
+                    </select>
+                  </label>
+                  {currentAoi.boundarySource === "gaul2025" && <GAULAreaSelect countryCode={currentAoi.countryCode} disabled={isRunning} loadUnits={loadGAULUnits}
+                    selection={{ adminLevel: currentAoi.adminLevel ?? 0, admin1Code: currentAoi.admin1Code ?? null,
+                      admin1Name: currentAoi.admin1Name ?? null, admin2Code: currentAoi.admin2Code ?? null, admin2Name: currentAoi.admin2Name ?? null }}
+                    onChange={(selection) => {
+                      const next: AreaOfInterest = { ...currentAoi, ...selection,
+                        label: [selection.admin2Name, selection.admin1Name, currentAoi.countryName].filter(Boolean).join(", ") };
+                      setCurrentAoi(next); setAgentContext(null);
+                      if (activeProject) void updateProject(activeProject.id, { aoi: next });
+                    }} />}
+                </>}
+                <p className="text-[10px] text-slate-400">Os novos motores públicos usam a geometria da fonte seleccionada. Países grandes podem exigir uma unidade ADM1/ADM2 menor.</p>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-[10px] font-semibold text-slate-400 block mb-1">
@@ -1451,5 +1502,6 @@ export default function GeoMozAIAgentTab() {
     </div>
   );
 }
+
 
 

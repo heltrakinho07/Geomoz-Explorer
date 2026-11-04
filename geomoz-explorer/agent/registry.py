@@ -262,6 +262,12 @@ for _decl in TOOL_DECLARATIONS:
             "scale_m": _PUBLIC_SCALE, "cloud_pct": {"type": "number"}},
             "required": ["index", "start_date_1", "end_date_1", "start_date_2", "end_date_2"]}
 TOOL_DECLARATIONS += [
+    {"name": "list_administrative_units", "description": "Lista atributos de unidades FAO GAUL 2025. ADM1 por ISO alfa-3; ADM2 exige o código GAUL1 do pai. Não transfere geometrias nem calcula indicadores.",
+     "parameters": {"type": "object", "properties": {
+         "country_code": {"type": "string", "description": "ISO alfa-3, ex.: MOZ, PRT, BRA"},
+         "level": {"type": "integer", "enum": [1, 2]},
+         "parent_code": {"type": "integer", "description": "Código GAUL1 obrigatório para listar ADM2"}},
+         "required": ["country_code", "level"]}},
     {"name": "list_public_datasets", "description": "Lista fontes públicas mundiais, resoluções, cobertura, período, termos e estado de integração. Só metadados; não executa análises nem exige autenticação GEE.",
      "parameters": {"type": "object", "properties": {}}},
     {"name": "get_public_landcover", "description": "Mapa e áreas reais por classe da cobertura global WorldCover v200. Refere-se estritamente a 2021; ignora o período do projecto por ser um produto estático.",
@@ -310,6 +316,44 @@ class ToolDispatcher:
                 logger.warning("Agent GEE init attempt notice: %s", e)
 
         try:
+            # Existing GEE/GeoPandas tools also need the selected GAUL polygon,
+            # rather than the navigation bbox supplied by the country picker.
+            public_tools = {"list_administrative_units", "list_public_datasets", "calculate_zonal_statistics",
+                            "detect_temporal_change", "get_public_landcover", "get_global_climate", "resolve_aoi"}
+            if aoi.get("source") == "country" and aoi.get("boundarySource") == "gaul2025" and tool_name not in public_tools:
+                import asyncio
+                def resolve_legacy_region():
+                    import json
+                    import gee_module
+                    from agent.administrative_boundaries import administrative_geometry
+                    from agent.earth_engine_tools import validate_geometry
+                    gee_module._init_gee(token=gee_token, project=gee_project)
+                    geom, meta = administrative_geometry(aoi.get("countryCode"), aoi.get("adminLevel", 0),
+                                                          aoi.get("admin1Code"), aoi.get("admin2Code"))
+                    geojson = geom.getInfo()
+                    if len(json.dumps(geojson)) > 1_000_000:
+                        raise ValueError("Limite GAUL demasiado complexo para esta ferramenta. Seleccione uma unidade ADM1/ADM2 menor ou use os motores do painel Dados públicos.")
+                    validate_geometry(geojson)
+                    return geojson, meta
+                key = (aoi.get("countryCode"), aoi.get("adminLevel", 0), aoi.get("admin1Code"), aoi.get("admin2Code"))
+                cached = context.get("_gaul_geometry_cache")
+                if not cached or cached[0] != key:
+                    region_geom, meta = await asyncio.to_thread(resolve_legacy_region)
+                    context["_gaul_geometry_cache"] = (key, region_geom, meta)
+                else:
+                    _, region_geom, meta = cached
+                context["_administrative_metadata"] = meta
+                context["aoi"] = {**aoi, "geometry": region_geom, "boundaryDataset": meta["dataset"]}
+
+            if tool_name == "list_administrative_units":
+                import asyncio
+                def load_units():
+                    import gee_module
+                    from agent.administrative_boundaries import list_units
+                    gee_module._init_gee(token=gee_token, project=gee_project)
+                    return list_units(args["country_code"], args["level"], args.get("parent_code"))
+                return await asyncio.to_thread(load_units)
+
             if tool_name == "list_public_datasets":
                 from agent.public_datasets import public_catalogue
                 return public_catalogue()
@@ -328,13 +372,25 @@ class ToolDispatcher:
                 import asyncio
                 boundary_code = aoi.get("countryCode") if aoi.get("source") == "country" else (
                     "MOZ" if aoi.get("source") == "mozambique" and not province and region_geom is None else None)
+                boundary_source = aoi.get("boundarySource") or "geoboundaries"
+                if boundary_source not in ("gaul2025", "geoboundaries"):
+                    return {"status": "error", "message": "Fonte de limites administrativos não suportada."}
+                boundary_metadata = {}
                 def run_public_analysis():
                     import gee_module
                     from agent import earth_engine_tools as public
                     gee_module._init_gee(token=gee_token, project=gee_project)
                     region = region_geom
                     if boundary_code:
-                        region = public.country_geometry(boundary_code)
+                        if boundary_source == "gaul2025":
+                            from agent.administrative_boundaries import administrative_geometry
+                            region, metadata = administrative_geometry(boundary_code, aoi.get("adminLevel", 0),
+                                                                       aoi.get("admin1Code"), aoi.get("admin2Code"))
+                            boundary_metadata.update(metadata)
+                        else:
+                            if aoi.get("adminLevel", 0) != 0:
+                                raise ValueError("Seleccione FAO GAUL 2025 para analisar unidades ADM1/ADM2.")
+                            region = public.country_geometry(boundary_code)
                     elif region is None:
                         if not province:
                             raise ValueError("Seleccione um país, província ou AOI desenhada. A vista mundial não define uma área de análise.")
@@ -360,11 +416,14 @@ class ToolDispatcher:
                 result = await asyncio.to_thread(run_public_analysis)
                 if boundary_code and result.get("status") == "success":
                     from agent.public_datasets import source
-                    result["boundarySource"] = source("WM/geoLab/geoBoundaries/600/ADM0")
+                    boundary_asset = boundary_metadata.get("dataset") or "WM/geoLab/geoBoundaries/600/ADM0"
+                    result["boundarySource"] = source(boundary_asset)
+                    result["administrativeSelection"] = dict(boundary_metadata)
                     result["countryCode"] = boundary_code
-                    result["warning"] += " Limite nacional geoBoundaries v6; não foi usada a caixa envolvente apresentada na selecção."
+                    result["warning"] += (" Limite administrativo FAO GAUL 2025 seleccionado por códigos hierárquicos." if boundary_metadata
+                                          else " Limite nacional geoBoundaries v6.") + " Não foi usada a caixa envolvente como limite de cálculo."
                     context["aoi"] = {**aoi, "geometry": None,
-                                      "boundaryDataset": "WM/geoLab/geoBoundaries/600/ADM0"}
+                                      "boundaryDataset": boundary_asset}
                 return result
 
             if tool_name == "resolve_aoi":
@@ -779,5 +838,6 @@ class ToolDispatcher:
                 }
             logger.exception("Error executing tool '%s': %s", tool_name, exc)
             return {"status": "error", "message": err_str}
+
 
 

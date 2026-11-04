@@ -92,6 +92,9 @@ async def execute_tool(name, args, context, declarations, implementation):
             problem = "Período de análise inválido. Use YYYY-MM-DD."
     if context.get("_aoi_error") and name != "resolve_aoi":
         problem = "Análise bloqueada: a área de estudo não foi validada."
+    if name == "resolve_aoi":
+        context.pop("_gaul_geometry_cache", None)
+        context.pop("_administrative_metadata", None)
     if problem:
         output = failure(problem)
     else:
@@ -101,6 +104,11 @@ async def execute_tool(name, args, context, declarations, implementation):
                 output = failure("A ferramenta devolveu um resultado inválido.")
         except Exception:
             output = failure("A ferramenta falhou. Tente uma área ou período menor.")
+    administrative = context.get("_administrative_metadata")
+    if administrative and name not in ("list_public_datasets", "list_administrative_units", "resolve_aoi") and output.get("status") == "success":
+        from agent.public_datasets import source
+        output["boundarySource"] = source(administrative["dataset"])
+        output["administrativeSelection"] = dict(administrative)
     action = output.get("map_action") or {}
     if action.get("type") == "ADD_LAYER" and not action.get("tileUrl"):
         output = failure("A ferramenta não devolveu uma camada raster válida.")
@@ -147,7 +155,7 @@ def build_dossier(result, context):
                             "parameters": {}, "scope": safe(context.get("aoi") or {}),
                             "period": safe(context.get("temporalWindow") or {}),
                             "source": safe(output.get("source")), "result": safe(output)})
-    analytical = [r for r in records if r["tool"] not in ("resolve_aoi", "list_public_datasets")]
+    analytical = [r for r in records if r["tool"] not in ("resolve_aoi", "list_public_datasets", "list_administrative_units")]
     successful = [r for r in analytical if r["status"] == "success"]
     failed = [r for r in records if r["status"] != "success"]
     warnings = []
@@ -178,4 +186,5 @@ def build_dossier(result, context):
                               "successfulTools": len(successful), "failedTools": len(failed),
                               "evidence": records, "limitations": warnings}
     return result
+
 

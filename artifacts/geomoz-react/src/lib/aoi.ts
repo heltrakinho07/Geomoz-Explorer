@@ -28,6 +28,14 @@ export interface AreaOfInterest {
   /** Selected world country name (source === "country") */
   countryName?: string | null;
 
+  /** Administrative boundary provider for global public-data engines. */
+  boundarySource?: "gaul2025" | "geoboundaries";
+  adminLevel?: 0 | 1 | 2;
+  admin1Code?: number | null;
+  admin1Name?: string | null;
+  admin2Code?: number | null;
+  admin2Name?: string | null;
+
   /** Custom GeoJSON geometry (source === "upload" | "draw" | "country") */
   geometry: GeoJSON.GeoJSON | null;
 
@@ -314,3 +322,4 @@ export function aoiToMapBounds(
     east: Math.min(180, east + lonPad),
   };
 }
+

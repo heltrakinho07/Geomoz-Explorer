@@ -72,6 +72,8 @@ class GeoMozAgent:
         context = deepcopy(current_map_state) if isinstance(current_map_state, dict) else {}
         context.pop("_execution_evidence", None)
         context.pop("_aoi_error", None)
+        context.pop("_gaul_geometry_cache", None)
+        context.pop("_administrative_metadata", None)
         result = await cls._process_user_request(
             user_message, context, chat_history, gemini_api_key,
             openai_api_key, provider, model)
@@ -96,7 +98,7 @@ class GeoMozAgent:
         if public_request is not None or catalogue_requested:
             if catalogue_requested and public_request is None:
                 public_request = {"tool": "list_public_datasets", "args": {}}
-            allowed = {"list_public_datasets", "calculate_zonal_statistics", "detect_temporal_change",
+            allowed = {"list_administrative_units", "list_public_datasets", "calculate_zonal_statistics", "detect_temporal_change",
                        "get_public_landcover", "get_global_climate"}
             if not isinstance(public_request, dict) or public_request.get("tool") not in allowed or not isinstance(public_request.get("args", {}), dict):
                 return {"status": "error", "steps": [], "runs": [], "map_actions": [],
@@ -104,7 +106,7 @@ class GeoMozAgent:
             name = public_request["tool"]
             output = await ToolDispatcher.execute(name, public_request.get("args", {}), current_map_state)
             success = output.get("status") == "success"
-            return {"status": "reference" if name == "list_public_datasets" and success else "completed" if success else "error",
+            return {"status": "reference" if name in ("list_public_datasets", "list_administrative_units") and success else "completed" if success else "error",
                     "provider": "public-data-engine", "model": "Earth Engine / dados públicos",
                     "steps": [{"id": "public", "name": name.replace("_", " "),
                                "status": "completed" if success else "error",
@@ -454,9 +456,10 @@ class GeoMozAgent:
             scope = resolve_geology_scope(user_message, current_map_state)
             geo_context = current_map_state
             geo_context["aoi"] = {
+                **(aoi if not scope["province"] and not scope["district"] else {}),
                 "province": scope["province"], "district": scope["district"],
                 "geometry": scope["geometry"],
-                "label": ", ".join(filter(None, [scope["district"], scope["province"]])) or "Moçambique",
+                "label": ", ".join(filter(None, [scope["district"], scope["province"]])) or aoi.get("label") or "Moçambique",
             }
             result = await ToolDispatcher.execute(
                 "get_geology_units",
@@ -581,4 +584,5 @@ class GeoMozAgent:
         return {"status": "completed", "provider": "deterministic",
                 "plan": [step["name"] for step in steps_log], "steps": steps_log,
                 "map_actions": map_actions, "runs": executed_runs, "synthesis": synthesis}
+
 

@@ -45,6 +45,14 @@ CATALOGUE = [
      "uses": ["Reflectância", "Índices espectrais"],
      "limitations": "Factores de escala e QA obrigatórios; temperatura pode não estar disponível em todas as cenas."},
 ]
+for _level in (1, 2):
+    CATALOGUE.append({"id": f"FAO/GAUL/2025/level{_level}", "name": f"FAO GAUL 2025 ADM{_level}",
+                      "resolutionM": [], "coverage": "Unidades administrativas mundiais; verificar a existência no país seleccionado",
+                      "period": "Edição 2025", "license": "CC BY 4.0", "connection": "implemented",
+                      "uses": ["Selecção hierárquica e delimitação de AOI por código GAUL"],
+                      "limitations": "ADM1/ADM2 não correspondem universalmente a província/distrito. O limite nacional é derivado pela união de ADM1; não representa cadastro.",
+                      "citation": "FAO. 2025. Global Administrative Unit Layers (GAUL). https://data.apps.fao.org. Licence: CC-BY-4.0"})
+
 for _dataset in CATALOGUE:
     _dataset["catalogUrl"] = "https://developers.google.com/earth-engine/datasets/catalog/" + _dataset["id"].replace("/", "_")
 
@@ -59,3 +67,4 @@ def public_catalogue():
             "summary": "Fontes públicas mundiais:\n" + "\n".join(
                 f"- {row['name']}: {row['period']}; {row['coverage']} ({row['connection']})." for row in CATALOGUE),
             "warning": "Dados públicos não significam processamento Earth Engine sem custos. O acesso exige projecto GEE autorizado e cumprimento dos termos de cada fonte."}
+
