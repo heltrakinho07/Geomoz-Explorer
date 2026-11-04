@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { jsPDF } from "jspdf";
 import { Download, FileUp, Image as ImageIcon, Loader2, Mountain, RotateCcw, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useTerrainSession } from "@/context/TerrainSessionContext";
 import { useProject } from "@/context/ProjectContext";
+import TerrainSciencePanel from "@/components/TerrainSciencePanel";
 import { decodeTerrainScene, encodeTerrainScene, MAX_TERRAIN_SCENE_BYTES } from "@/lib/terrain-scene";
 import {
   createTerrainRenderer,
@@ -15,6 +15,7 @@ import {
 interface TerrainStudioProps {
   open: boolean;
   onClose: () => void;
+  embedded?: boolean;
   geeEnabled?: boolean;
   geeRegion?: {
     province: string | null;
@@ -23,11 +24,8 @@ interface TerrainStudioProps {
   };
 }
 
-/**
- * An isolated modal, not a second map canvas over the GeoMoz workspace.
- * All DEM bytes stay in memory and are discarded when leaving the Studio.
- */
-export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRegion }: TerrainStudioProps) {
+/** Native GeoMoz analysis module: same navigation, project context and design system. */
+export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRegion, embedded = false }: TerrainStudioProps) {
   const { terrain, setTerrain } = useTerrainSession();
   const { activeProject } = useProject();
   const [busy, setBusy] = useState(false);
@@ -51,8 +49,29 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   }, [open, onClose]);
 
   useEffect(() => () => {
-    if (textureUrl) URL.revokeObjectURL(textureUrl);
+    if (textureUrl?.startsWith("blob:")) URL.revokeObjectURL(textureUrl);
   }, [textureUrl]);
+
+  // The GIS Workspace is a separately compiled engine on the same origin.
+  // Receive an explicitly selected GeoTIFF from its in-place terrain panel,
+  // rather than asking the user to browse for a file a second time.
+  useEffect(() => {
+    if (!embedded || window.parent === window) return;
+    const receive = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== window.parent) return;
+      const message = event.data as {type?: string; file?: unknown} | null;
+      if (message?.type !== "geomoz:terrain:import-file") return;
+      if (!(message.file instanceof File)) {
+        setError("A camada raster transferida não é um ficheiro GeoTIFF válido.");
+        return;
+      }
+      void loadGeoTiff(message.file);
+    };
+    window.addEventListener("message", receive);
+    window.parent.postMessage({type: "geomoz:terrain:ready"}, window.location.origin);
+    return () => window.removeEventListener("message", receive);
+  }, [embedded]);
+
 
   useEffect(() => {
     if (!open || !terrain || !canvasRef.current) return;
@@ -273,53 +292,53 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
     }
   }
 
-  if (!open || typeof document === "undefined") return null;
-  return createPortal(
-    <div role="dialog" aria-modal="true" aria-label="GeoMoz 3D Terrain Studio"
-      className="fixed inset-0 z-[3000] flex flex-col bg-slate-950 text-slate-100">
-      <header className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-b border-slate-700 bg-slate-900 px-4 py-3">
+  if (!open) return null;
+  return (
+    <div data-testid="geomoz-terrain-module" role="region" aria-label="Terreno 3D"
+      className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <header className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-amber-500/15 p-2 text-amber-300"><Mountain size={20}/></div>
+          <div className="rounded-xl bg-sky-100 p-2 text-sky-600 dark:bg-sky-900/30 dark:text-sky-300"><Mountain size={20}/></div>
           <div>
-            <h2 className="text-base font-semibold">GeoMoz 3D Terrain Studio</h2>
-            <p className="text-[11px] text-slate-400">
-              DEM científico · Malha WebGL · Visualização local interactiva
+            <h2 className="text-sm font-bold">Modelo Digital de Terreno · 3D</h2>
+            <p className="text-[11px] text-slate-600 dark:text-slate-300">
+              Relevo, altimetria e modelos digitais · projecto GeoMoz
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" disabled={!terrain}
             onClick={saveScene}
-            className="rounded-lg border border-amber-500/60 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-slate-700 disabled:opacity-40">
+            className="rounded-lg border border-sky-300 dark:border-sky-600 px-3 py-2 text-xs font-semibold text-sky-700 dark:text-sky-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
             <Download size={13} className="mr-1 inline"/> .geomoz
           </button>
           <button type="button" disabled={!terrain || !!rendererError}
             onClick={downloadCanvas}
-            className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-semibold hover:bg-slate-700 disabled:opacity-40">
+            className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
             <Download size={13} className="mr-1 inline"/> PNG
           </button>
           <button type="button" disabled={!terrain || !!rendererError}
             onClick={exportPdf}
-            className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-semibold hover:bg-slate-700 disabled:opacity-40">
+            className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
             <Download size={13} className="mr-1 inline"/> PDF
           </button>
           <button type="button" onClick={onClose} aria-label="Fechar Terrain Studio"
-            className="rounded-lg border border-slate-600 p-2 hover:bg-slate-700">
+            className="rounded-lg border border-slate-300 dark:border-slate-600 p-2 hover:bg-slate-100 dark:hover:bg-slate-700">
             <X size={17}/>
           </button>
         </div>
       </header>
 
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
-        <aside className="order-2 max-h-[42vh] w-full shrink-0 space-y-5 overflow-y-auto border-t border-slate-700 bg-slate-900 p-4 md:order-1 md:max-h-none md:w-72 md:border-r md:border-t-0">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+        <aside className="order-2 max-h-[42vh] w-full shrink-0 space-y-5 overflow-y-auto border-t border-slate-200 bg-white p-4 md:order-1 md:max-h-none md:w-72 md:border-r md:border-t-0 dark:border-slate-700 dark:bg-slate-900">
           <div>
-            <label className="mb-2 block text-xs font-semibold text-slate-300" htmlFor="terrain-studio-dem">
+            <label className="mb-2 block text-xs font-semibold text-slate-700 dark:text-slate-200" htmlFor="terrain-studio-dem">
               1. Modelo digital de elevação
             </label>
             {geeRegion && (
               <button type="button" disabled={busy || !geeEnabled}
                 onClick={() => void loadFromGEE()}
-                className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/50 bg-emerald-600 px-3 py-2.5 text-xs font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40">
+                className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-sky-500/50 bg-sky-600 px-3 py-2.5 text-xs font-bold text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-40">
                 {busy ? <Loader2 size={15} className="animate-spin"/> : <Mountain size={15}/>}
                 Gerar do DEM Copernicus (GEE)
               </button>
@@ -329,7 +348,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               onChange={event => void loadScene(event.target.files?.[0])} />
             <button type="button" disabled={busy}
               onClick={() => sceneInputRef.current?.click()}
-              className="mb-2 w-full rounded-lg border border-slate-600 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800 disabled:opacity-40">
+              className="mb-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-sky-400 hover:bg-sky-50 disabled:opacity-40 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
               Reabrir cena 3D (.geomoz)
             </button>
             <input ref={fileInputRef} id="terrain-studio-dem" type="file"
@@ -337,105 +356,106 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               onChange={event => void loadGeoTiff(event.target.files?.[0])}/>
             <button type="button" onClick={() => fileInputRef.current?.click()}
               disabled={busy}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-3 py-2.5 text-xs font-bold text-slate-950 hover:bg-amber-400 disabled:opacity-50">
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-sky-600 px-3 py-2.5 text-xs font-bold text-white hover:bg-sky-500 disabled:opacity-50">
               {busy ? <Loader2 size={15} className="animate-spin"/> : <FileUp size={15}/>}
               {busy ? "A processar DEM..." : "Importar GeoTIFF / COG"}
             </button>
             {terrain && (
-              <div className="mb-2 rounded-lg border border-emerald-600/40 bg-emerald-950/25 px-3 py-2 text-[11px] text-emerald-300">
-                Modelo partilhado com o projecto{activeProject ? ": " + activeProject.name : ""}.
-                Pode alternar entre GeoAnálises e GIS Workspace sem voltar a processá-lo.
+              <div className="mb-2 rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-600/40 dark:bg-emerald-950/25 px-3 py-2 text-[11px] text-emerald-700 dark:text-emerald-300">
+                {embedded
+                  ? "DEM temporário do GIS Workspace. A camada raster original permanece no mapa; pode guardar esta vista como .geomoz."
+                  : "Modelo partilhado na sessão GeoMoz" + (activeProject ? ": " + activeProject.name : "") + ". Pode alternar entre os módulos sem voltar a processá-lo."}
               </div>
             )}
-            <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
               Até 32 MB. A malha é calculada na API GeoMoz e não fica guardada.
               Com o GEE conectado, é possível gerar directamente a pré-visualização
               da área seleccionada. A opção local aceita GeoTIFF do projecto.
             </p>
           </div>
           <div className="space-y-2">
-            <label htmlFor="terrain-studio-style" className="block text-xs font-semibold text-slate-300">
+            <label htmlFor="terrain-studio-style" className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
               2. Estilo de superfície
             </label>
             <select id="terrain-studio-style" value={style}
               onChange={event => setStyle(event.target.value as TerrainVisualStyle)}
-              className="w-full rounded-lg border border-slate-600 bg-slate-800 p-2 text-xs">
+              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 p-2 text-xs">
               <option value="hypsometric">Hipsometria e relevo sombreado</option>
               <option value="grayscale">Relevo em escala de cinzentos</option>
               <option value="imagery" disabled={!textureUrl}>Imagem de satélite / ortofoto</option>
             </select>
-            <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-emerald-600/50 bg-emerald-950/20 p-2.5 text-xs text-emerald-200 hover:bg-emerald-900/30 ${!terrain || textureBusy ? "pointer-events-none opacity-50" : ""}`}>
+            <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-600/50 dark:bg-emerald-950/20 p-2.5 text-xs text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 ${!terrain || textureBusy ? "pointer-events-none opacity-50" : ""}`}>
               {textureBusy ? <Loader2 size={14} className="animate-spin"/> : <ImageIcon size={14}/>}
               {textureBusy ? "A alinhar textura RGB..." : "GeoTIFF RGB georreferenciado"}
               <input type="file" accept=".tif,.tiff,image/tiff" disabled={!terrain || textureBusy}
                 className="sr-only" onChange={event => void loadAlignedTexture(event.target.files?.[0])}/>
             </label>
-            <p className="text-[10px] leading-relaxed text-slate-400">
+            <p className="text-[10px] leading-relaxed text-slate-600 dark:text-slate-300">
               A imagem RGB (bandas 1, 2 e 3) é automaticamente reprojetada e alinhada
               com a grelha métrica do DEM, preservando pixels sem dados.
             </p>
-            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-600 p-2.5 text-xs text-slate-300 hover:bg-slate-800">
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 p-2.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-800">
               <ImageIcon size={14}/> Carregar textura alinhada
               <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only"
                 onChange={event => loadTexture(event.target.files?.[0])}/>
             </label>
-            <p className="text-[10px] leading-relaxed text-slate-400">
+            <p className="text-[10px] leading-relaxed text-slate-600 dark:text-slate-300">
               A textura deve ter a mesma extensão e orientação geográfica do DEM.
             </p>
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs font-semibold">
               <label htmlFor="terrain-studio-exaggeration">3. Exagero vertical</label>
-              <span className="text-amber-300">{exaggeration.toFixed(1)}×</span>
+              <span className="text-sky-600 dark:text-sky-400">{exaggeration.toFixed(1)}×</span>
             </div>
             <input id="terrain-studio-exaggeration" type="range" min="1" max="15"
               step="0.5" value={exaggeration}
               onChange={event => setExaggeration(Number(event.target.value))}
-              className="w-full accent-amber-400"/>
+              className="w-full accent-sky-600"/>
             <button type="button" onClick={() => {setExaggeration(2);setStyle("hypsometric");}}
-              className="flex items-center gap-2 text-[11px] text-slate-400 hover:text-white">
+              className="flex items-center gap-2 text-[11px] text-slate-600 hover:text-sky-700 dark:text-slate-300 dark:hover:text-sky-300">
               <RotateCcw size={12}/> Restaurar estilo
             </button>
           </div>
           {terrain && (
-            <section aria-label="Metadados de elevação" className="space-y-2 rounded-xl border border-slate-700 bg-slate-800/50 p-3 text-xs">
+            <section aria-label="Metadados de elevação" className="space-y-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-xs">
               <p className="truncate font-semibold" title={terrain.name}>{terrain.name}</p>
-              <p className="text-slate-400">CRS de trabalho: {terrain.crs}</p>
+              <p className="text-slate-600 dark:text-slate-300">CRS de trabalho: {terrain.crs}</p>
               <div className="grid grid-cols-2 gap-2">
-                <div><span className="block text-slate-400">Mínima</span>{terrain.minElevation.toFixed(1)} m</div>
-                <div><span className="block text-slate-400">Máxima</span>{terrain.maxElevation.toFixed(1)} m</div>
-                <div><span className="block text-slate-400">Média</span>{terrain.meanElevation.toFixed(1)} m</div>
-                <div><span className="block text-slate-400">Válidas</span>{(terrain.validFraction*100).toFixed(1)}%</div>
+                <div><span className="block text-slate-600 dark:text-slate-300">Mínima</span>{terrain.minElevation.toFixed(1)} m</div>
+                <div><span className="block text-slate-600 dark:text-slate-300">Máxima</span>{terrain.maxElevation.toFixed(1)} m</div>
+                <div><span className="block text-slate-600 dark:text-slate-300">Média</span>{terrain.meanElevation.toFixed(1)} m</div>
+                <div><span className="block text-slate-600 dark:text-slate-300">Válidas</span>{(terrain.validFraction*100).toFixed(1)}%</div>
               </div>
-              <p className="text-[10px] text-slate-400">Amostragem de pré-visualização: {terrain.width} × {terrain.height} pixels. Não substitui o raster original.</p>
+              <p className="text-[10px] text-slate-600 dark:text-slate-300">Amostragem de pré-visualização: {terrain.width} × {terrain.height} pixels. Não substitui o raster original.</p>
             </section>
           )}
-          {error && <p role="alert" className="rounded-lg border border-rose-700 bg-rose-950/40 p-3 text-xs text-rose-200">{error}</p>}
+          {terrain && <TerrainSciencePanel terrain={terrain} />}
+          {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 dark:border-rose-700 dark:bg-rose-950/40 p-3 text-xs text-rose-700 dark:text-rose-200">{error}</p>}
           {rendererError && <p role="alert" className="rounded-lg border border-rose-700 bg-rose-950/40 p-3 text-xs text-rose-200">{rendererError}</p>}
         </aside>
-        <section className="relative order-1 min-h-[220px] flex-1 overflow-hidden md:order-2"
+        <section className="relative order-1 min-h-[220px] flex-1 overflow-hidden bg-slate-100 md:order-2 dark:bg-slate-950"
           aria-label="Visualizador tridimensional do DEM">
           {terrain ? (
             <canvas ref={canvasRef} aria-label="Modelo tridimensional de elevação"
               className="block h-full w-full cursor-grab touch-none active:cursor-grabbing"/>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-              <Mountain size={56} className="text-amber-400/60"/>
+              <Mountain size={56} className="text-sky-500/60"/>
               <div>
                 <h3 className="text-lg font-semibold">Transformar DEM em terreno 3D</h3>
-                <p className="mt-2 max-w-md text-sm text-slate-400">
+                <p className="mt-2 max-w-md text-sm text-slate-600 dark:text-slate-300">
                   Importe um GeoTIFF de elevação com CRS definido. A superfície manterá
                   a escala horizontal métrica e os vazios NoData não serão preenchidos artificialmente.
                 </p>
               </div>
             </div>
           )}
-          {terrain && <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 text-xs text-slate-300 backdrop-blur">
+          {terrain && <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/80 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 backdrop-blur">
             Arrastar para rodar · Roda do rato para aproximar · Elevação em metros
           </div>}
         </section>
-      </main>
-    </div>,
-    document.body
+      </div>
+    </div>
   );
 }

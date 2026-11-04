@@ -4,9 +4,10 @@ import {geoMozSpecialistText} from "./geomoz-specialist-locale";
 import { GEOMOZ_ROLLOUT } from "../../lib/geomoz-workbench-profile";
 import {GeoMozLayerProperties} from "./GeoMozLayerProperties";
 import {GeoMozDigitizingTools} from "./GeoMozDigitizingTools";
+import { rasterExportUrl } from "../../lib/raster-export";
 import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { useAppStore, effectiveLayerRenderState, resolveLayerCapabilities, pluginOwnsPaint, rendererAppliesOpacity, supportsBridgedOpacity } from "@geolibre/core";
-import { Layers3, Search, ChevronLeft, ChevronRight, Eye, EyeOff, Crosshair, SlidersHorizontal, Table2, Palette, FileStack, Map as MapIcon, FolderOpen, History, CheckCircle2, AlertCircle } from "lucide-react";
+import { Mountain, Layers3, Search, ChevronLeft, ChevronRight, Eye, EyeOff, Crosshair, SlidersHorizontal, Table2, Palette, FileStack, Map as MapIcon, FolderOpen, History, CheckCircle2, AlertCircle } from "lucide-react";
 import { LayerPanel as EngineLayerPanel } from "../panels/LayerPanel";
 import { setLayersPanelCollapsed } from "../../lib/layer-panel-collapse";
 type Props = ComponentProps<typeof EngineLayerPanel>;
@@ -73,7 +74,12 @@ export function GeoMozLayerPanel(props:Props) {
       </div>
       {selected&&<section className="gm-layer-inspector" data-selected-layer-name={selected.name} data-selected-layer-id={selected.id} aria-label={ui("Camada seleccionada")}><small>{ui("CAMADA SELECCIONADA")}</small><h3 title={selected.name}>{selected.name}</h3>
         {(!pluginOwnsPaint(selected)||supportsBridgedOpacity(selected.id)||rendererAppliesOpacity(selected,renderer))&&<label className="gm-opacity">{ui("Opacidade")} <output>{Math.round(selected.opacity*100)}%</output><input aria-label={ui("Opacidade da camada")} type="range" min="0" max="1" step="0.01" value={selected.opacity} onChange={event=>opacity(selected.id,Number(event.target.value))}/></label>}
-        <div className="gm-inspector-actions">{resolveLayerCapabilities(selected).query&&["geojson","duckdb-query","geoparquet","flatgeobuf"].includes(selected.type)&&<button type="button" onClick={()=>openTable(true)}><Table2 size={14}/> {ui("Tabela")}</button>}{!viewer&&selected.type==="geojson"&&<button type="button" aria-expanded={quickStyle} aria-label={ui("Editar simbologia")} onClick={()=>setQuickStyle(!quickStyle)}><Palette size={14}/> {ui("Simbologia")}</button>}{!viewer&&props.onOpenStylePanel&&<button type="button" onClick={()=>{select(selected.id);props.onOpenStylePanel?.();}}><Palette size={14}/> {ui("Estilos avançados")}</button>}{GEOMOZ_ROLLOUT.fullLayerManager&&<button type="button" onClick={()=>setAdvanced(true)}><SlidersHorizontal size={14}/> {ui("Propriedades")}</button>}</div>
+        <div className="gm-inspector-actions">{resolveLayerCapabilities(selected).query&&["geojson","duckdb-query","geoparquet","flatgeobuf"].includes(selected.type)&&<button type="button" onClick={()=>openTable(true)}><Table2 size={14}/> {ui("Tabela")}</button>}{!viewer&&selected.type==="geojson"&&<button type="button" aria-expanded={quickStyle} aria-label={ui("Editar simbologia")} onClick={()=>setQuickStyle(!quickStyle)}><Palette size={14}/> {ui("Simbologia")}</button>}{!viewer&&(selected.type==="cog"||selected.type==="raster")&&<button
+          type="button" data-testid="geomoz-layer-open-terrain"
+          disabled={!rasterExportUrl(selected)}
+          title={rasterExportUrl(selected)?"Visualizar DEM do projecto em 3D":"Este raster não tem ficheiro GeoTIFF acessível"}
+          onClick={()=>window.dispatchEvent(new CustomEvent("geomoz:terrain:open",{detail:{layerId:selected.id}}))}>
+          <Mountain size={14}/> Abrir DEM em 3D</button>}{!viewer&&props.onOpenStylePanel&&<button type="button" onClick={()=>{select(selected.id);props.onOpenStylePanel?.();}}><Palette size={14}/> {ui("Estilos avançados")}</button>}{GEOMOZ_ROLLOUT.fullLayerManager&&<button type="button" onClick={()=>setAdvanced(true)}><SlidersHorizontal size={14}/> {ui("Propriedades")}</button>}</div>
         {quickStyle&&!viewer&&selected.type==="geojson"&&<div className="gm-quick-style" role="group" aria-label={ui("Estilo rápido da camada")}>
           <label>{ui("Cor do símbolo")}<input aria-label={ui("Cor do símbolo")} type="color" value={selected.style.fillColor||"#0284c7"} onChange={e=>setLayerStyle(selected.id,{fillColor:e.target.value,vectorStyleMode:"single",proportionalSizeEnabled:false})}/></label>
           <label>{ui("Cor do contorno")}<input aria-label={ui("Cor do contorno")} type="color" value={selected.style.strokeColor||"#0f172a"} onChange={e=>setLayerStyle(selected.id,{strokeColor:e.target.value})}/></label>

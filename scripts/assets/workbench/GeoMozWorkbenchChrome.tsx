@@ -2,6 +2,7 @@ import type {RefObject} from "react";
 import type {MapEngine} from "@geolibre/map";
 import {GeoMozSeismicPanel} from "./GeoMozSeismicPanel";
 import {GeoMozTopographicProfile} from "./GeoMozTopographicProfile";
+import {GeoMozTerrainWorkspace} from "./GeoMozTerrainWorkspace";
 import {GeoMozFloatingToolCard} from "./GeoMozFloatingToolCard";
 import {GeoMozSettingsMenu} from "./GeoMozSettingsMenu";
 import {GeoMozQmsCatalog} from "./GeoMozQmsCatalog";
@@ -13,7 +14,7 @@ import { GEOMOZ_ROLLOUT, curateGeoMozCommands } from "../../lib/geomoz-workbench
 import {useLanguage} from "../../hooks/useLanguage";
 import { useTranslation } from "react-i18next";
 import { workbenchText, translatedCommand, workbenchCoreLabel, type WorkbenchCopyKey } from "./geomoz-workbench-locale";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useAppStore, DEFAULT_PROJECT_NAME } from "@geolibre/core";
 import { ArrowUpRight, Search, ChevronDown, Layers3, Grid2X2, Command as CommandIcon, Compass, Activity, Image, Database, Info, FileText, Route } from "lucide-react";
 import type { Command } from "../../lib/commands";
@@ -119,6 +120,18 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   const [aboutOpen,setAboutOpen]=useState(false);
   const [seismicOpen,setSeismicOpen]=useState(false);
   const [topoOpen,setTopoOpen]=useState(false);
+  const [terrainOpen,setTerrainOpen]=useState(false);
+  const [terrainLayerId,setTerrainLayerId]=useState<string|null>(null);
+  useEffect(()=>{
+    const openTerrain=(event:Event)=>{
+      const layerId=(event as CustomEvent<{layerId?:string}>).detail?.layerId;
+      setTerrainLayerId(typeof layerId==="string"?layerId:null);
+      setTerrainOpen(true);
+      setOpenToolCard(null);
+    };
+    window.addEventListener("geomoz:terrain:open",openTerrain);
+    return ()=>window.removeEventListener("geomoz:terrain:open",openTerrain);
+  },[]);
   const [qmsOpen,setQmsOpen]=useState(false);
   const [openToolCard,setOpenToolCard]=useState<string|null>(null);
   const [ngwOpen,setNgwOpen]=useState(false);
@@ -162,10 +175,10 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
               onClick={()=>{setOpenToolCard(null);setTopoOpen(true);setSeismicOpen(false);}}>
               <Route size={17}/><span>{txt("topography")}</span>
             </button>}
-            {group.label==="Raster"&&<a href="/analises?terrain3d=1" data-action="geomoz-terrain-studio-3d"
-              target="_blank" rel="noopener noreferrer" onClick={()=>setOpenToolCard(null)}>
-              <Image size={17}/><span>{txt("terrain3D")}</span><ArrowUpRight size={13}/>
-            </a>}
+            {group.label==="Raster"&&<button type="button" data-action="geomoz-terrain-studio-3d"
+              onClick={()=>{setTerrainLayerId(null);setTerrainOpen(true);setOpenToolCard(null);}}>
+              <Image size={17}/><span>{txt("terrain3D")}</span>
+            </button>}
             {group.label==="Vector"&&<button type="button" data-testid="geomoz-create-layer" onClick={()=>{setOpenToolCard(null);setLayerWizardOpen(true);}}>
               <Layers3 size={17}/><span>{txt("newLayer")}</span>
             </button>}
@@ -213,6 +226,9 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
             open={openToolCard===group.label}
             onToggle={()=>setOpenToolCard(openToolCard===group.label?null:group.label)}
             onClose={()=>setOpenToolCard(null)}>
+            {group.label==="Raster"&&<button type="button" data-action="geomoz-terrain-studio-3d"
+              onClick={()=>{setTerrainLayerId(null);setTerrainOpen(true);setOpenToolCard(null);}}>
+              <Image size={17}/><span>{txt("terrain3D")}</span></button>}
             {group.items.map(command=>{const Icon=command.icon??CommandIcon;return <button key={command.id} type="button" data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??commandLabel(command)} onClick={()=>{if(!command.disabledReason){setOpenToolCard(null);command.run();}}}><Icon size={17}/><span>{commandLabel(command)}</span></button>;})}{group.label==="Serviços de mapas"&&!viewer&&<>
             <button type="button" data-action="geomoz-qms" aria-expanded={qmsOpen} onClick={()=>{setOpenToolCard(null);setQmsOpen(!qmsOpen);setNgwOpen(false);}}><Database size={17}/><span>NextGIS QMS</span></button>
             <button type="button" data-action="geomoz-nextgis-web" aria-expanded={ngwOpen} onClick={()=>{setOpenToolCard(null);setNgwOpen(!ngwOpen);setQmsOpen(false);}}><Database size={17}/><span>NextGIS Web</span></button>
@@ -248,6 +264,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
       {topoOpen&&!viewer&&<GeoMozTopographicProfile mapControllerRef={mapControllerRef} onClose={()=>setTopoOpen(false)}/>}
       {seismicOpen&&!viewer&&<GeoMozSeismicPanel mapControllerRef={mapControllerRef} onClose={()=>{setSeismicOpen(false);if(task==="seismic")setTask("data");}}/>}
     </header>
+    <GeoMozTerrainWorkspace open={terrainOpen} preferredLayerId={terrainLayerId} onClose={()=>setTerrainOpen(false)}/>
     <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} renderTrigger={false}/>
   </TaskContext.Provider>;
 }

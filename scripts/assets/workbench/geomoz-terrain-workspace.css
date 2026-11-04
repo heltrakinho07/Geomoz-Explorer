@@ -1,0 +1,88 @@
+/* GeoMoz native 3D terrain panel. Keeps GeoLibre chrome and project in memory. */
+.gm-terrain-workspace {
+  position: fixed;
+  z-index: 1150;
+  top: 109px;
+  right: 0;
+  bottom: 0;
+  left: min(18rem, 17vw);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #f8fafc;
+  color: #0f172a;
+  border-left: 1px solid #cbd5e1;
+  box-shadow: -6px 0 24px rgba(15, 23, 42, .08);
+}
+.gm-terrain-workspace-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-height: 60px;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+}
+.gm-terrain-workspace-title { display: flex; align-items: center; gap: 10px; margin-right: auto; color: #0284c7; }
+.gm-terrain-workspace-title strong { display: block; font-size: 14px; color: #0f172a; }
+.gm-terrain-workspace-title small { display: block; font-size: 10px; color: #64748b; }
+.gm-terrain-workspace-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: #475569;
+}
+.gm-terrain-workspace-selector select {
+  min-width: 160px;
+  max-width: min(29vw, 290px);
+  min-height: 36px;
+  padding: 6px 26px 6px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #0f172a;
+  background: #fff;
+}
+.gm-terrain-workspace-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.gm-terrain-workspace-load { background: #0284c7; color: #fff; border: 1px solid #0284c7; }
+.gm-terrain-workspace-load:hover:not(:disabled) { background: #0369a1; }
+.gm-terrain-workspace-load:disabled { opacity: .55; cursor: not-allowed; }
+.gm-terrain-workspace-close { background: #f8fafc; color: #334155; border: 1px solid #cbd5e1; }
+.gm-terrain-workspace-close:hover { border-color: #0284c7; color: #0369a1; }
+.gm-terrain-workspace-frame { flex: 1; width: 100%; min-height: 0; border: none; background: #f8fafc; }
+.gm-terrain-workspace-error, .gm-terrain-workspace-notice {
+  margin: 0;
+  padding: 7px 14px;
+  font-size: 12px;
+  border-bottom: 1px solid #fecaca;
+  color: #9f1239;
+  background: #fff1f2;
+}
+.gm-terrain-workspace-notice { border-color: #bae6fd; color: #075985; background: #f0f9ff; }
+.gm-terrain-spin { animation: gm-terrain-spin .9s linear infinite; }
+@keyframes gm-terrain-spin { to { transform: rotate(360deg); } }
+@media(max-width:1050px) { .gm-terrain-workspace { left: 0; top: 108px; } }
+@media(max-width:640px) {
+  .gm-terrain-workspace { top: 105px; }
+  .gm-terrain-workspace-toolbar { gap: 6px; padding: 8px; }
+  .gm-terrain-workspace-selector { order: 3; width: 100%; }
+  .gm-terrain-workspace-selector select { flex: 1; min-width: 0; max-width: none; }
+  .gm-terrain-workspace-title small { display: none; }
+}
+.dark .gm-terrain-workspace { background: #0f172a; color: #f1f5f9; border-color: #334155; }
+.dark .gm-terrain-workspace-toolbar { background: #111c31; border-color: #334155; }
+.dark .gm-terrain-workspace-title strong { color: #f1f5f9; }
+.dark .gm-terrain-workspace-selector { color: #cbd5e1; }
+.dark .gm-terrain-workspace-selector select, .dark .gm-terrain-workspace-close { background: #1e293b; color: #f1f5f9; border-color: #475569; }
+.dark .gm-terrain-workspace-frame { background: #0f172a; }
