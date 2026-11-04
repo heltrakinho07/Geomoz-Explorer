@@ -56,7 +56,7 @@ describe("GeoAnálises: scroll and responsive inspector", () => {
     expect(analytics).toContain('useState(false);\n  const [resultsPanelOpen');
     expect(analytics).toContain('aria-label="Abrir filtros e parâmetros"');
     expect(shell).toContain("h-[100dvh]");
-    expect(shell).toContain('aria-label="Abrir menu de navegação"');
+    expect(shell).toContain('aria-label={copy("explorer.openNav")}');
   });
 });
 
