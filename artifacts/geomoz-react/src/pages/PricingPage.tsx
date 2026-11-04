@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useLocation } from "wouter";
+import { Link as WLink, useLocation } from "wouter";
 import { ArrowLeft, ArrowRight, BookOpen, Building2, CalendarClock, Check, CheckCircle2, ChevronRight, Cloud, CreditCard, GraduationCap, Layers3, LockKeyhole, Moon, ShieldCheck, Smartphone, Sun, Users, Wallet, X, Zap } from "lucide-react";
 import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
 import { useGeoMozTheme } from "@/hooks/useGeoMozTheme";
@@ -184,27 +184,27 @@ export default function PricingPage() {
     <div data-geomoz-system="pricing" className="gm-dashboard gm-pricing min-h-screen text-slate-900 dark:text-slate-100">
       <header className="gm-pricing-topbar sticky top-0 z-30 border-b border-slate-200/85 dark:border-slate-800 bg-white/85 dark:bg-slate-950/90 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-[72px] flex items-center justify-between gap-4">
-          <a href={home} className="flex items-center gap-3 min-w-0 hover:opacity-90 transition-opacity" aria-label="GeoMoz Explorer — início">
+          <WLink href={home} className="flex items-center gap-3 min-w-0 hover:opacity-90 transition-opacity" aria-label="GeoMoz Explorer — início">
             <GeoMozBrandIcon alt="GeoMoz Explorer" className="h-10 w-10 rounded-xl shadow-md shadow-sky-500/15" width={40} height={40} />
             <span className="flex flex-col min-w-0 leading-tight">
               <span className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white">GeoMoz <span className="text-sky-600 dark:text-sky-400">Explorer</span></span>
               <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Planos e subscrições</span>
             </span>
-          </a>
+          </WLink>
           <nav aria-label="Navegação de planos" className="flex items-center gap-2 sm:gap-3">
             <button type="button" onClick={toggleTheme} className="grid place-items-center h-10 w-10 rounded-xl text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800" title={theme === "dark" ? "Activar modo claro" : "Activar modo escuro"} aria-label={theme === "dark" ? "Activar modo claro" : "Activar modo escuro"}>
               {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
             </button>
-            <a href={home} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/75 dark:bg-slate-800/60 px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 hover:text-sky-700 dark:hover:text-sky-300 transition-colors">
+            <WLink href={home} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/75 dark:bg-slate-800/60 px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 hover:text-sky-700 dark:hover:text-sky-300 transition-colors">
               <ArrowLeft size={16} /> <span className="hidden sm:inline">Voltar à plataforma</span><span className="sm:hidden">Voltar</span>
-            </a>
+            </WLink>
           </nav>
         </div>
       </header>
 
       <main className="gm-dashboard-content max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-9 pb-16">
         <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-medium">
-          <a href={home} className="hover:text-sky-600">GeoMoz Explorer</a><ChevronRight size={14} />
+          <WLink href={home} className="hover:text-sky-600">GeoMoz Explorer</WLink><ChevronRight size={14} />
           <span className="text-sky-700 dark:text-sky-300 font-bold">Planos e subscrições</span>
         </div>
 
