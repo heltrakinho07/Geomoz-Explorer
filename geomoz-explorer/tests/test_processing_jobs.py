@@ -11,6 +11,25 @@ import pytest
 from fastapi.testclient import TestClient
 
 
+@pytest.fixture(autouse=True)
+def server_managed_processing_entitlement(monkeypatch: pytest.MonkeyPatch) -> None:
+    """This module tests GDAL I/O, not the subscription policy.
+
+    Keep the policy server-side in production; isolated entitlement/credits
+    behaviour is verified by test_subscription_access.py.
+    """
+    import api
+    import billing
+
+    monkeypatch.setattr(api, "require_subscription_feature",
+                        lambda uid, feature: {"limits": {"concurrent_jobs": 2}})
+    monkeypatch.setattr(billing, "reserve_cloud_job_credit",
+                        lambda uid, job_id: {"reserved": 1})
+    monkeypatch.setattr(billing, "settle_cloud_job_credit",
+                        lambda uid, job_id, *, success: {"status": "completed" if success else "refunded"})
+
+
+
 def test_hillshade_command_is_allowlisted_and_shell_free(tmp_path: Path) -> None:
     from processing_jobs import _gdal_tool_command
 
