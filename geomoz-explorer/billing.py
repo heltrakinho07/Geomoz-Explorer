@@ -540,6 +540,10 @@ def reserve_cloud_job_credit(uid: str, job_id: str):
             return {"alreadyReserved": True}
         bill = bill_snap.to_dict() if bill_snap.exists else {}
         plan = _effective_plan(bill)
+        # A refund or expiry between the API entitlement check and the atomic
+        # reservation must never fall back to the free plan's credit allowance.
+        if plan not in ("academic", "pro", "teams", "enterprise"):
+            raise HTTPException(402, "Esta operação exige uma subscrição activa.")
         used = int(bill.get("creditsUsed", 0) or 0) if bill.get("creditCycle") == cycle else 0
         limit = get_plan_limits(plan)["credits"]
         if limit is not None and used + MANAGED_RASTER_COST > limit:
