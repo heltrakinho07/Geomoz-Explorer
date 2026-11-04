@@ -120,6 +120,43 @@ test("floating tool panels translate the complete help, heading and close contro
   assert.match(chrome,/txt\("terrain3D"\)/);
 });
 
+
+test("upstream i18next language controls native GeoMoz cartographic and 3D panels",async()=>{
+ const {workbenchText}=await import("../assets/workbench/geomoz-workbench-locale.ts");
+ const {geoMozSpecialistText}=await import("../assets/workbench/geomoz-specialist-locale.ts");
+ const expected={
+  en:["Catalog","Symbology","Free layout elements","Map and legend on the page","3D terrain","Scientific DEM analysis"],
+  es:["Catálogo","Simbología","Elementos libres","Mapa y leyenda en la página","Terreno 3D","Análisis científico del MDE"],
+  fr:["Catalogue","Symbologie","Éléments libres","Carte et légende sur la page","Terrain 3D","Analyse scientifique du MNT"],
+  pt:["Catálogo","Simbologia","Elementos livres","Mapa e legenda na página","Terreno 3D","Análise científica do DEM"]
+ };
+ for(const [language,values] of Object.entries(expected)){
+  assert.equal(workbenchText(language,"catalog"),values[0]);
+  assert.equal(workbenchText(language,"symbology"),values[1]);
+  for(const [index,key] of ["Elementos livres","Mapa e legenda na página","Terreno 3D","Análise científica do DEM"].entries()){
+   assert.equal(geoMozSpecialistText(language,key),values[index+2]);
+  }
+ }
+ assert.equal(geoMozSpecialistText("de","Terreno 3D"),"3D terrain",
+   "Native GeoLibre locales not yet reviewed for GeoMoz-specific copy use English fallback");
+ const nativeSource=readFileSync(new URL("../assets/workbench/GeoMozTerrainWorkspace.tsx",import.meta.url),"utf8");
+ const scienceSource=readFileSync(new URL("../../artifacts/geomoz-react/src/components/TerrainSciencePanel.tsx",import.meta.url),"utf8");
+ const mapFrame=readFileSync(new URL("../assets/workbench/GeoMozMapPlacement.tsx",import.meta.url),"utf8");
+ const items=readFileSync(new URL("../assets/workbench/GeoMozLayoutItems.tsx",import.meta.url),"utf8");
+ const preparer=readFileSync(new URL("../prepare-geomoz-workbench.mjs",import.meta.url),"utf8");
+ for(const src of [nativeSource,mapFrame,items]) {
+  assert.match(src,/useLanguage\(\)/,"Each GeoMoz owner panel must subscribe to active i18next locale");
+  assert.match(src,/geoMozSpecialistText\(language,pt\)/);
+ }
+ assert.match(nativeSource,/translate=\{ui\}/,"Native 3D forwards active locale into the shared science panel");
+ assert.match(scienceSource,/translate\?: \(portuguese:string\)=>string;/);
+ assert.match(scienceSource,/ui\("Análise científica do DEM"\)/);
+ assert.match(preparer,/workbenchText\(i18n\.language, "catalog"\)/);
+ assert.match(preparer,/workbenchText\(i18n\.language, "symbology"\)/);
+ assert.doesNotMatch(preparer, /<h1 className="sr-only">GeoMoz GIS Workspace — mapa e análise<\/h1>/,
+   "Do not replace upstream reactive document title with a hardcoded Portuguese string");
+});
+
 test("topographic route is kept above raster layers after map style changes",()=>{
   const src=readFileSync(new URL("../assets/workbench/GeoMozTopographicProfile.tsx",import.meta.url),"utf8");
   assert.match(src,/map\.moveLayer\(id\)/);

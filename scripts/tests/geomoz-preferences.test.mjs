@@ -54,6 +54,29 @@ test("malformed and unsupported preferences fall back without losing engine stat
   assert.equal(b.api.setLanguage("../../bad"),false);
   assert.equal(b.api.getLanguage(),"pt");
 });
+
+test("GeoMoz uses GeoLibre's locale resolution for regional variants and rejects unshipped codes",()=>{
+  const a=boot({"geomoz_language":"ES_mx"});
+  assert.equal(a.api.getLanguage(),"es");
+  assert.equal(a.document.documentElement.lang,"es");
+  assert.equal(a.api.setLanguage("fr-FR"),true);
+  assert.equal(a.api.getLanguage(),"fr");
+  assert.equal(a.storage.get("geomoz_language"),"fr");
+  assert.equal(JSON.parse(a.storage.get("geolibre.desktopSettings")).language,"fr");
+  assert.equal(a.api.setLanguage("zz"),false);
+  assert.equal(a.api.getLanguage(),"fr");
+});
+test("native GeoLibre settings changes from another tab override stale portal language",()=>{
+  const a=boot({"geomoz_language":"pt","geolibre.desktopSettings":JSON.stringify({language:"pt",project:"safe"})});
+  a.storage.set("geolibre.desktopSettings",JSON.stringify({language:"de-DE",project:"safe"}));
+  a.window.dispatchEvent({type:"storage",key:"geolibre.desktopSettings"});
+  assert.equal(a.api.getLanguage(),"de");
+  assert.equal(a.storage.get("geomoz_language"),"de","Mirror the canonical engine selection to portal storage");
+  assert.equal(JSON.parse(a.storage.get("geolibre.desktopSettings")).project,"safe");
+  const b=boot(Object.fromEntries(a.storage));
+  assert.equal(b.api.getLanguage(),"de","Reload must preserve the new native GeoLibre language");
+});
+
 test("build source uses a single owner of language and a unified settings menu",()=>{
   const chrome=readFileSync("scripts/assets/workbench/GeoMozWorkbenchChrome.tsx","utf8");
   const menu=readFileSync("scripts/assets/workbench/GeoMozSettingsMenu.tsx","utf8");

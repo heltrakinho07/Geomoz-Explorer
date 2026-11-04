@@ -78,15 +78,14 @@ class TestGeoMozAgent(unittest.TestCase):
                 self.assertEqual(precip_res["map_action"]["id"], "agent_precipitation_chirps")
 
                 # 4. AHP
-                mock_gee.compute_groundwater_ahp.return_value = {"tile": "https://example.org/{z}/{x}/{y}", "classes": [], "weights": []}
                 ahp_res = await ToolDispatcher.execute("run_multicriteria_ahp", {"theme": "groundwater"}, {})
                 self.assertEqual(ahp_res["status"], "success")
                 self.assertIn("agent_ahp_groundwater", ahp_res["map_action"]["id"])
 
                 # 5. Temporal change
                 change_res = await ToolDispatcher.execute("detect_temporal_change", {"index": "ndvi"}, {})
-                self.assertEqual(change_res["status"], "error")
-                self.assertNotIn("map_action", change_res)
+                self.assertEqual(change_res["status"], "success")
+                self.assertIn("agent_change_ndvi", change_res["map_action"]["id"])
 
                 # 6. SMAP Soil Moisture
                 mock_gee.compute_soil_moisture_smap.return_value = {
@@ -146,5 +145,4 @@ class TestGeoMozAgent(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
 

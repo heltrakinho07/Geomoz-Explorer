@@ -1872,6 +1872,741 @@ const entries: Record<string, {en:string;es:string;fr:string}> = {
     "en": "GeoMoz GIS Workspace · GEOLÍTHICA. Built on open-source technology under the respective licences listed in third-party notices.",
     "es": "GeoMoz GIS Workspace · GEOLÍTHICA. Basado en tecnología de código abierto bajo las licencias indicadas en los avisos de terceros.",
     "fr": "GeoMoz GIS Workspace · GEOLÍTHICA. Basé sur des technologies open source sous les licences mentionnées dans les notices de tiers."
+  },
+  "Elementos livres": {
+    "en": "Free layout elements",
+    "es": "Elementos libres",
+    "fr": "Éléments libres"
+  },
+  "Adicionar texto": {
+    "en": "Add text",
+    "es": "Añadir texto",
+    "fr": "Ajouter du texte"
+  },
+  "Adicionar moldura": {
+    "en": "Add frame",
+    "es": "Añadir marco",
+    "fr": "Ajouter un cadre"
+  },
+  "Logótipo / imagem": {
+    "en": "Logo / image",
+    "es": "Logotipo / imagen",
+    "fr": "Logo / image"
+  },
+  "Carregar logótipo": {
+    "en": "Upload logo",
+    "es": "Cargar logotipo",
+    "fr": "Importer un logo"
+  },
+  "Use uma imagem até 2 MB.": {
+    "en": "Use an image up to 2 MB.",
+    "es": "Utilice una imagen de hasta 2 MB.",
+    "fr": "Utilisez une image de 2 Mo maximum."
+  },
+  "Limite de imagens do layout atingido.": {
+    "en": "Layout image size limit reached.",
+    "es": "Se alcanzó el límite de imágenes del diseño.",
+    "fr": "Limite d’images de la mise en page atteinte."
+  },
+  "Use uma imagem até 16 milhões de píxeis.": {
+    "en": "Use an image with up to 16 million pixels.",
+    "es": "Utilice una imagen de hasta 16 millones de píxeles.",
+    "fr": "Utilisez une image de 16 millions de pixels maximum."
+  },
+  "Formato não suportado": {
+    "en": "Unsupported format",
+    "es": "Formato no admitido",
+    "fr": "Format non pris en charge"
+  },
+  "Arraste um item na página para mover. Shift + arrastar redimensiona. As posições são percentagens da página.": {
+    "en": "Drag an element to move it. Shift + drag to resize. Positions are percentages of the page.",
+    "es": "Arrastre un elemento para moverlo. Mayús + arrastrar para redimensionar. Las posiciones son porcentajes de la página.",
+    "fr": "Faites glisser un élément pour le déplacer. Maj + glisser pour redimensionner. Les positions sont des pourcentages de la page."
+  },
+  "Item seleccionado": {
+    "en": "Selected element",
+    "es": "Elemento seleccionado",
+    "fr": "Élément sélectionné"
+  },
+  "Seleccionar item": {
+    "en": "Select element",
+    "es": "Seleccionar elemento",
+    "fr": "Sélectionner un élément"
+  },
+  "Imagem": {
+    "en": "Image",
+    "es": "Imagen",
+    "fr": "Image"
+  },
+  "Moldura": {
+    "en": "Frame",
+    "es": "Marco",
+    "fr": "Cadre"
+  },
+  "Bloquear posição": {
+    "en": "Lock position",
+    "es": "Bloquear posición",
+    "fr": "Verrouiller la position"
+  },
+  "Visível": {
+    "en": "Visible",
+    "es": "Visible",
+    "fr": "Visible"
+  },
+  "Largura (%)": {
+    "en": "Width (%)",
+    "es": "Anchura (%)",
+    "fr": "Largeur (%)"
+  },
+  "Altura (%)": {
+    "en": "Height (%)",
+    "es": "Altura (%)",
+    "fr": "Hauteur (%)"
+  },
+  "Texto do item": {
+    "en": "Element text",
+    "es": "Texto del elemento",
+    "fr": "Texte de l’élément"
+  },
+  "Tamanho (pt)": {
+    "en": "Size (pt)",
+    "es": "Tamaño (pt)",
+    "fr": "Taille (pt)"
+  },
+  "Cor": {
+    "en": "Colour",
+    "es": "Color",
+    "fr": "Couleur"
+  },
+  "Fundo": {
+    "en": "Background",
+    "es": "Fondo",
+    "fr": "Arrière-plan"
+  },
+  "Remover item": {
+    "en": "Remove element",
+    "es": "Eliminar elemento",
+    "fr": "Supprimer l’élément"
+  },
+  "Posição do mapa e da legenda": {
+    "en": "Map and legend placement",
+    "es": "Posición del mapa y la leyenda",
+    "fr": "Position de la carte et de la légende"
+  },
+  "Mapa e legenda na página": {
+    "en": "Map and legend on the page",
+    "es": "Mapa y leyenda en la página",
+    "fr": "Carte et légende sur la page"
+  },
+  "Posição personalizada do mapa": {
+    "en": "Custom map placement",
+    "es": "Posición personalizada del mapa",
+    "fr": "Position personnalisée de la carte"
+  },
+  "Posição personalizada da legenda": {
+    "en": "Custom legend placement",
+    "es": "Posición personalizada de la leyenda",
+    "fr": "Position personnalisée de la légende"
+  },
+  "Tamanho relativo": {
+    "en": "Relative size",
+    "es": "Tamaño relativo",
+    "fr": "Taille relative"
+  },
+  "As posições usam a página como referência. A escala cartográfica acompanha o tamanho do mapa. Active «Legenda» para a apresentar; confirme que cabe na página antes de exportar.": {
+    "en": "Positions are relative to the page. Map scale follows the map frame size. Enable “Legend” to display it; check that it fits before exporting.",
+    "es": "Las posiciones son relativas a la página. La escala depende del tamaño del mapa. Active «Leyenda» para mostrarla y compruebe que cabe antes de exportar.",
+    "fr": "Les positions sont relatives à la page. L’échelle dépend de la taille du cadre de carte. Activez «Légende» pour l’afficher et vérifiez qu’elle tient avant l’export."
+  },
+  "mapa": {
+    "en": "map",
+    "es": "mapa",
+    "fr": "carte"
+  },
+  "legenda": {
+    "en": "legend",
+    "es": "leyenda",
+    "fr": "légende"
+  },
+  "Novo texto": {
+    "en": "New text",
+    "es": "Texto nuevo",
+    "fr": "Nouveau texte"
+  },
+  "x do item": {
+    "en": "element x",
+    "es": "x del elemento",
+    "fr": "x de l’élément"
+  },
+  "y do item": {
+    "en": "element y",
+    "es": "y del elemento",
+    "fr": "y de l’élément"
+  },
+  "width do item": {
+    "en": "element width",
+    "es": "anchura del elemento",
+    "fr": "largeur de l’élément"
+  },
+  "height do item": {
+    "en": "element height",
+    "es": "altura del elemento",
+    "fr": "hauteur de l’élément"
+  },
+  "Terreno 3D do GIS Workspace": {
+    "en": "3D terrain in GIS Workspace",
+    "es": "Terreno 3D del espacio SIG",
+    "fr": "Terrain 3D de l’espace SIG"
+  },
+  "Terreno 3D": {
+    "en": "3D terrain",
+    "es": "Terreno 3D",
+    "fr": "Terrain 3D"
+  },
+  "Projecto actual": {
+    "en": "Current project",
+    "es": "Proyecto actual",
+    "fr": "Projet actuel"
+  },
+  "DEM do projecto": {
+    "en": "Project DEM",
+    "es": "MDE del proyecto",
+    "fr": "MNT du projet"
+  },
+  "Seleccionar DEM do GIS Workspace": {
+    "en": "Select GIS Workspace DEM",
+    "es": "Seleccionar MDE del espacio SIG",
+    "fr": "Sélectionner le MNT de l’espace SIG"
+  },
+  "Nenhuma camada GeoTIFF disponível": {
+    "en": "No GeoTIFF layer available",
+    "es": "No hay capas GeoTIFF disponibles",
+    "fr": "Aucune couche GeoTIFF disponible"
+  },
+  "A processar DEM…": {
+    "en": "Processing DEM…",
+    "es": "Procesando MDE…",
+    "fr": "Traitement du MNT…"
+  },
+  "Visualizar camada em 3D": {
+    "en": "View layer in 3D",
+    "es": "Visualizar capa en 3D",
+    "fr": "Afficher la couche en 3D"
+  },
+  "Voltar ao mapa GIS": {
+    "en": "Return to GIS map",
+    "es": "Volver al mapa SIG",
+    "fr": "Retour à la carte SIG"
+  },
+  "Voltar ao mapa": {
+    "en": "Back to map",
+    "es": "Volver al mapa",
+    "fr": "Retour à la carte"
+  },
+  "Dados, relevo e análise": {
+    "en": "Data, terrain and analysis",
+    "es": "Datos, relieve y análisis",
+    "fr": "Données, relief et analyse"
+  },
+  "Modelo gerado a partir de uma camada do projecto GIS, sem reimportar o raster.": {
+    "en": "Model created from a GIS project layer, without reimporting the raster.",
+    "es": "Modelo creado a partir de una capa del proyecto SIG, sin volver a importar el ráster.",
+    "fr": "Modèle créé à partir d’une couche du projet SIG, sans réimporter le raster."
+  },
+  "Guardar .geomoz": {
+    "en": "Save .geomoz",
+    "es": "Guardar .geomoz",
+    "fr": "Enregistrer .geomoz"
+  },
+  "Reabrir cena do terreno": {
+    "en": "Reopen terrain scene",
+    "es": "Volver a abrir escena del terreno",
+    "fr": "Rouvrir la scène du terrain"
+  },
+  "Reabrir cena": {
+    "en": "Reopen scene",
+    "es": "Reabrir escena",
+    "fr": "Rouvrir la scène"
+  },
+  "pré-visualização": {
+    "en": "preview",
+    "es": "vista previa",
+    "fr": "aperçu"
+  },
+  "Estilo de relevo": {
+    "en": "Terrain style",
+    "es": "Estilo del relieve",
+    "fr": "Style du relief"
+  },
+  "Hipsometria · relevo sombreado": {
+    "en": "Hypsometry · hillshade",
+    "es": "Hipsometría · sombreado del relieve",
+    "fr": "Hypsométrie · ombrage du relief"
+  },
+  "Relevo em escala de cinzentos": {
+    "en": "Grayscale terrain",
+    "es": "Relieve en escala de grises",
+    "fr": "Relief en niveaux de gris"
+  },
+  "Exagero vertical": {
+    "en": "Vertical exaggeration",
+    "es": "Exageración vertical",
+    "fr": "Exagération verticale"
+  },
+  "Restaurar estilo": {
+    "en": "Reset style",
+    "es": "Restablecer estilo",
+    "fr": "Réinitialiser le style"
+  },
+  "Os resultados científicos provêm da malha simplificada. Para cálculos finais, execute as ferramentas de geoprocessamento sobre o GeoTIFF original.": {
+    "en": "Scientific results are derived from a simplified mesh. For final calculations, run geoprocessing tools on the original GeoTIFF.",
+    "es": "Los resultados científicos proceden de una malla simplificada. Para los cálculos definitivos, procese el GeoTIFF original.",
+    "fr": "Les résultats scientifiques proviennent d’un maillage simplifié. Pour les calculs définitifs, utilisez le GeoTIFF d’origine."
+  },
+  "Visualizador tridimensional": {
+    "en": "3D viewer",
+    "es": "Visor tridimensional",
+    "fr": "Visionneuse 3D"
+  },
+  "Modelo 3D do terreno. Clique para seleccionar um ponto do perfil.": {
+    "en": "3D terrain model. Click to select a profile point.",
+    "es": "Modelo 3D del terreno. Haga clic para seleccionar un punto del perfil.",
+    "fr": "Modèle 3D du terrain. Cliquez pour sélectionner un point du profil."
+  },
+  "Terreno 3D do projecto SIG": {
+    "en": "3D terrain from the GIS project",
+    "es": "Terreno 3D del proyecto SIG",
+    "fr": "Terrain 3D du projet SIG"
+  },
+  "Seleccione uma camada DEM GeoTIFF existente e clique em «Visualizar camada em 3D».": {
+    "en": "Select an existing GeoTIFF DEM layer and click “View layer in 3D”.",
+    "es": "Seleccione una capa MDE GeoTIFF y pulse «Visualizar capa en 3D».",
+    "fr": "Sélectionnez une couche MNT GeoTIFF et cliquez sur «Afficher la couche en 3D»."
+  },
+  "Clique na superfície para definir o ponto ": {
+    "en": "Click the surface to set point ",
+    "es": "Haga clic en la superficie para definir el punto ",
+    "fr": "Cliquez sur la surface pour définir le point "
+  },
+  "Arrastar: rodar · Roda: aproximar · Escolher A/B: consultar elevação": {
+    "en": "Drag: rotate · Wheel: zoom · Choose A/B: inspect elevation",
+    "es": "Arrastrar: girar · Rueda: ampliar · Elegir A/B: consultar elevación",
+    "fr": "Glisser : tourner · Molette : zoomer · Choisir A/B : relever l’altitude"
+  },
+  "Esta camada não tem uma origem GeoTIFF acessível.": {
+    "en": "This layer has no accessible GeoTIFF source.",
+    "es": "Esta capa no tiene una fuente GeoTIFF accesible.",
+    "fr": "Cette couche ne dispose pas d’une source GeoTIFF accessible."
+  },
+  "A origem do raster deve utilizar HTTPS.": {
+    "en": "The raster source must use HTTPS.",
+    "es": "La fuente del ráster debe utilizar HTTPS.",
+    "fr": "La source raster doit utiliser HTTPS."
+  },
+  "Não foi possível ler o GeoTIFF seleccionado.": {
+    "en": "Could not read the selected GeoTIFF.",
+    "es": "No se pudo leer el GeoTIFF seleccionado.",
+    "fr": "Impossible de lire le GeoTIFF sélectionné."
+  },
+  "Este DEM excede 32 MB. Recorte-o no GIS Workspace.": {
+    "en": "This DEM exceeds 32 MB. Clip it in GIS Workspace.",
+    "es": "Este MDE supera los 32 MB. Recórtelo en el espacio SIG.",
+    "fr": "Ce MNT dépasse 32 Mo. Découpez-le dans l’espace SIG."
+  },
+  "A origem do raster não disponibilizou dados.": {
+    "en": "The raster source returned no data.",
+    "es": "La fuente del ráster no proporcionó datos.",
+    "fr": "La source raster n’a renvoyé aucune donnée."
+  },
+  "Leitura do DEM cancelada.": {
+    "en": "DEM read cancelled.",
+    "es": "Lectura del MDE cancelada.",
+    "fr": "Lecture du MNT annulée."
+  },
+  "A origem do DEM está vazia.": {
+    "en": "The DEM source is empty.",
+    "es": "La fuente del MDE está vacía.",
+    "fr": "La source du MNT est vide."
+  },
+  "Falha na consulta altimétrica.": {
+    "en": "Could not retrieve elevation.",
+    "es": "Error al consultar la elevación.",
+    "fr": "Échec de la lecture altimétrique."
+  },
+  "O WebGL2 não pôde carregar o modelo.": {
+    "en": "WebGL2 could not load the model.",
+    "es": "WebGL2 no pudo cargar el modelo.",
+    "fr": "WebGL2 n’a pas pu charger le modèle."
+  },
+  "Seleccione um DEM GeoTIFF no catálogo do projecto.": {
+    "en": "Select a GeoTIFF DEM in the project catalog.",
+    "es": "Seleccione un MDE GeoTIFF del catálogo del proyecto.",
+    "fr": "Sélectionnez un MNT GeoTIFF dans le catalogue du projet."
+  },
+  "A processar o DEM seleccionado…": {
+    "en": "Processing the selected DEM…",
+    "es": "Procesando el MDE seleccionado…",
+    "fr": "Traitement du MNT sélectionné…"
+  },
+  "Não foi possível preparar o DEM.": {
+    "en": "Could not prepare the DEM.",
+    "es": "No se pudo preparar el MDE.",
+    "fr": "Impossible de préparer le MNT."
+  },
+  "Não foi possível guardar a cena.": {
+    "en": "Could not save the scene.",
+    "es": "No se pudo guardar la escena.",
+    "fr": "Impossible d’enregistrer la scène."
+  },
+  "Cena .geomoz inválida (máximo 4 MB).": {
+    "en": "Invalid .geomoz scene (maximum 4 MB).",
+    "es": "Escena .geomoz no válida (máximo 4 MB).",
+    "fr": "Scène .geomoz invalide (4 Mo maximum)."
+  },
+  "Cena 3D reaberta. A camada raster original permanece no projecto SIG.": {
+    "en": "3D scene reopened. The original raster remains in the GIS project.",
+    "es": "Escena 3D reabierta. El ráster original permanece en el proyecto SIG.",
+    "fr": "Scène 3D rouverte. Le raster d’origine reste dans le projet SIG."
+  },
+  "Cena .geomoz inválida.": {
+    "en": "Invalid .geomoz scene.",
+    "es": "Escena .geomoz no válida.",
+    "fr": "Scène .geomoz invalide."
+  },
+  "Não foi possível exportar a vista 3D.": {
+    "en": "Could not export the 3D view.",
+    "es": "No se pudo exportar la vista 3D.",
+    "fr": "Impossible d’exporter la vue 3D."
+  },
+  "Terreno 3D · GeoMoz": {
+    "en": "3D terrain · GeoMoz",
+    "es": "Terreno 3D · GeoMoz",
+    "fr": "Terrain 3D · GeoMoz"
+  },
+  "Pré-visualização do DEM. A perspectiva não tem escala constante.": {
+    "en": "DEM preview. Perspective does not have a constant scale.",
+    "es": "Vista previa del MDE. La perspectiva no tiene escala constante.",
+    "fr": "Aperçu du MNT. La perspective ne possède pas d’échelle constante."
+  },
+  "Falha na exportação do mapa 3D para PDF.": {
+    "en": "Could not export the 3D map to PDF.",
+    "es": "No se pudo exportar el mapa 3D a PDF.",
+    "fr": "Échec de l’exportation de la carte 3D en PDF."
+  },
+  "Não existem curvas de nível para adicionar.": {
+    "en": "No contour lines to add.",
+    "es": "No hay curvas de nivel para añadir.",
+    "fr": "Aucune courbe de niveau à ajouter."
+  },
+  "O perfil não tem segmentos válidos.": {
+    "en": "The profile has no valid segments.",
+    "es": "El perfil no tiene segmentos válidos.",
+    "fr": "Le profil n’a aucun segment valide."
+  },
+  "Curvas de nível adicionadas ao catálogo SIG (": {
+    "en": "Contour lines added to the GIS catalog (",
+    "es": "Curvas de nivel añadidas al catálogo SIG (",
+    "fr": "Courbes de niveau ajoutées au catalogue SIG ("
+  },
+  "Perfil topográfico adicionado ao projecto (": {
+    "en": "Topographic profile added to the project (",
+    "es": "Perfil topográfico añadido al proyecto (",
+    "fr": "Profil topographique ajouté au projet ("
+  },
+  "Modelo 3D do projecto: ": {
+    "en": "Project 3D model: ",
+    "es": "Modelo 3D del proyecto: ",
+    "fr": "Modèle 3D du projet : "
+  },
+  " válido": {
+    "en": " valid",
+    "es": " válido",
+    "fr": " valide"
+  },
+  "Curvas de nível · Terreno 3D": {
+    "en": "Contour lines · 3D terrain",
+    "es": "Curvas de nivel · Terreno 3D",
+    "fr": "Courbes de niveau · Terrain 3D"
+  },
+  "Perfil A→B · Terreno 3D": {
+    "en": "Profile A→B · 3D terrain",
+    "es": "Perfil A→B · Terreno 3D",
+    "fr": "Profil A→B · Terrain 3D"
+  },
+  "GeoMoz · Terreno 3D": {
+    "en": "GeoMoz · 3D terrain",
+    "es": "GeoMoz · Terreno 3D",
+    "fr": "GeoMoz · Terrain 3D"
+  },
+  "Análise científica do DEM": {
+    "en": "Scientific DEM analysis",
+    "es": "Análisis científico del MDE",
+    "fr": "Analyse scientifique du MNT"
+  },
+  "Medições estimadas a partir da grelha simplificada (": {
+    "en": "Measurements estimated from a simplified grid (",
+    "es": "Mediciones estimadas a partir de la malla simplificada (",
+    "fr": "Mesures estimées à partir d’une grille simplifiée ("
+  },
+  "Para cálculos finais utilize o raster original nas ferramentas SIG.": {
+    "en": "For final calculations, use the original raster in GIS tools.",
+    "es": "Para los cálculos definitivos, utilice el ráster original en las herramientas SIG.",
+    "fr": "Pour les calculs définitifs, utilisez le raster d’origine dans les outils SIG."
+  },
+  "Declive médio": {
+    "en": "Mean slope",
+    "es": "Pendiente media",
+    "fr": "Pente moyenne"
+  },
+  "Declive máximo": {
+    "en": "Maximum slope",
+    "es": "Pendiente máxima",
+    "fr": "Pente maximale"
+  },
+  "Perfil A → B": {
+    "en": "Profile A → B",
+    "es": "Perfil A → B",
+    "fr": "Profil A → B"
+  },
+  "Clique no terreno para A": {
+    "en": "Click terrain to set A",
+    "es": "Haga clic en el terreno para A",
+    "fr": "Cliquez sur le terrain pour A"
+  },
+  "Escolher A no terreno": {
+    "en": "Choose A on terrain",
+    "es": "Elegir A en el terreno",
+    "fr": "Choisir A sur le terrain"
+  },
+  "Clique no terreno para B": {
+    "en": "Click terrain to set B",
+    "es": "Haga clic en el terreno para B",
+    "fr": "Cliquez sur le terrain pour B"
+  },
+  "Escolher B no terreno": {
+    "en": "Choose B on terrain",
+    "es": "Elegir B en el terreno",
+    "fr": "Choisir B sur le terrain"
+  },
+  "Ponto A · longitude": {
+    "en": "Point A · longitude",
+    "es": "Punto A · longitud",
+    "fr": "Point A · longitude"
+  },
+  "Ponto A · latitude": {
+    "en": "Point A · latitude",
+    "es": "Punto A · latitud",
+    "fr": "Point A · latitude"
+  },
+  "Ponto B · longitude": {
+    "en": "Point B · longitude",
+    "es": "Punto B · longitud",
+    "fr": "Point B · longitude"
+  },
+  "Ponto B · latitude": {
+    "en": "Point B · latitude",
+    "es": "Punto B · latitud",
+    "fr": "Point B · latitude"
+  },
+  "Longitude do ponto A": {
+    "en": "Point A longitude",
+    "es": "Longitud del punto A",
+    "fr": "Longitude du point A"
+  },
+  "Latitude do ponto A": {
+    "en": "Point A latitude",
+    "es": "Latitud del punto A",
+    "fr": "Latitude du point A"
+  },
+  "Longitude do ponto B": {
+    "en": "Point B longitude",
+    "es": "Longitud del punto B",
+    "fr": "Longitude du point B"
+  },
+  "Latitude do ponto B": {
+    "en": "Point B latitude",
+    "es": "Latitud del punto B",
+    "fr": "Latitude du point B"
+  },
+  "Perfil altimétrico A para B": {
+    "en": "Elevation profile A to B",
+    "es": "Perfil altimétrico A a B",
+    "fr": "Profil altimétrique de A à B"
+  },
+  "Elevação mínima:": {
+    "en": "Minimum elevation:",
+    "es": "Elevación mínima:",
+    "fr": "Altitude minimale :"
+  },
+  "Elevação máxima:": {
+    "en": "Maximum elevation:",
+    "es": "Elevación máxima:",
+    "fr": "Altitude maximale :"
+  },
+  "Desnível acumulado ↑": {
+    "en": "Cumulative gain ↑",
+    "es": "Desnivel acumulado ↑",
+    "fr": "Dénivelé cumulé ↑"
+  },
+  "Declive A→B:": {
+    "en": "Slope A→B:",
+    "es": "Pendiente A→B:",
+    "fr": "Pente A→B :"
+  },
+  "Adicionar perfil ao projecto SIG": {
+    "en": "Add profile to GIS project",
+    "es": "Añadir perfil al proyecto SIG",
+    "fr": "Ajouter le profil au projet SIG"
+  },
+  "Defina pontos válidos dentro do DEM e fora das células NoData.": {
+    "en": "Set valid points inside the DEM and outside NoData cells.",
+    "es": "Defina puntos válidos dentro del MDE y fuera de las celdas NoData.",
+    "fr": "Définissez des points valides dans le MNT et hors des cellules NoData."
+  },
+  "Curvas de nível · equidistância (m)": {
+    "en": "Contour lines · interval (m)",
+    "es": "Curvas de nivel · equidistancia (m)",
+    "fr": "Courbes de niveau · équidistance (m)"
+  },
+  "Equidistância das curvas de nível": {
+    "en": "Contour interval",
+    "es": "Equidistancia de curvas de nivel",
+    "fr": "Équidistance des courbes de niveau"
+  },
+  "Gerar curvas de nível (pré-visualização)": {
+    "en": "Generate contour lines (preview)",
+    "es": "Generar curvas de nivel (vista previa)",
+    "fr": "Générer des courbes de niveau (aperçu)"
+  },
+  "segmentos calculados · GeoJSON WGS84": {
+    "en": "segments calculated · GeoJSON WGS84",
+    "es": "segmentos calculados · GeoJSON WGS84",
+    "fr": "segments calculés · GeoJSON WGS84"
+  },
+  "Adicionar curvas ao catálogo SIG": {
+    "en": "Add contours to GIS catalog",
+    "es": "Añadir curvas al catálogo SIG",
+    "fr": "Ajouter les courbes au catalogue SIG"
+  },
+  "Falha ao desenhar o gráfico.": {
+    "en": "Could not render the chart.",
+    "es": "No se pudo dibujar el gráfico.",
+    "fr": "Impossible de tracer le graphique."
+  },
+  "Não foi possível criar o gráfico de exportação.": {
+    "en": "Could not create the export chart.",
+    "es": "No se pudo crear el gráfico de exportación.",
+    "fr": "Impossible de créer le graphique d’export."
+  },
+  "Falha ao exportar o gráfico.": {
+    "en": "Could not export chart.",
+    "es": "No se pudo exportar el gráfico.",
+    "fr": "Échec de l’exportation du graphique."
+  },
+  "Falha ao gerar curvas de nível.": {
+    "en": "Could not generate contours.",
+    "es": "No se pudieron generar curvas de nivel.",
+    "fr": "Échec de la génération des courbes de niveau."
+  },
+  "GeoMoz · Perfil topográfico A → B": {
+    "en": "GeoMoz · Topographic profile A → B",
+    "es": "GeoMoz · Perfil topográfico A → B",
+    "fr": "GeoMoz · Profil topographique A → B"
+  },
+  "Distância: ": {
+    "en": "Distance: ",
+    "es": "Distancia: ",
+    "fr": "Distance : "
+  },
+  "Elevação: ": {
+    "en": "Elevation: ",
+    "es": "Elevación: ",
+    "fr": "Altitude : "
+  },
+  "Estimativa da malha 3D simplificada. Não substitui a análise do DEM original.": {
+    "en": "Simplified 3D mesh estimate. Not a substitute for original DEM analysis.",
+    "es": "Estimación de la malla 3D simplificada. No sustituye al análisis del MDE original.",
+    "fr": "Estimation du maillage 3D simplifié. Ne remplace pas l’analyse du MNT d’origine."
+  },
+  "Modelo GLB exportado em metros com metadados do CRS do projecto.": {
+    "en": "GLB model exported in metres with project CRS metadata.",
+    "es": "Modelo GLB exportado en metros con metadatos del SRC del proyecto.",
+    "fr": "Modèle GLB exporté en mètres avec les métadonnées du SCR du projet."
+  },
+  "Falha ao exportar GLB.": {
+    "en": "Could not export GLB.",
+    "es": "No se pudo exportar el GLB.",
+    "fr": "Impossible d’exporter le GLB."
+  },
+  "Nível de detalhe do relevo": {
+    "en": "Terrain level of detail",
+    "es": "Nivel de detalle del relieve",
+    "fr": "Niveau de détail du relief"
+  },
+  "Detalhe do terreno 3D": {
+    "en": "3D terrain detail",
+    "es": "Detalle del terreno 3D",
+    "fr": "Détail du terrain 3D"
+  },
+  "Automático com o zoom": {
+    "en": "Automatic with zoom",
+    "es": "Automático según el zoom",
+    "fr": "Automatique selon le zoom"
+  },
+  "Detalhe máximo": {
+    "en": "Maximum detail",
+    "es": "Detalle máximo",
+    "fr": "Détail maximal"
+  },
+  "LOD 2 · equilibrado": {
+    "en": "LOD 2 · balanced",
+    "es": "LOD 2 · equilibrado",
+    "fr": "LOD 2 · équilibré"
+  },
+  "LOD 4 · rápido": {
+    "en": "LOD 4 · fast",
+    "es": "LOD 4 · rápido",
+    "fr": "LOD 4 · rapide"
+  },
+  "A rectificar o raster com GDAL e a adicionar o GeoTIFF ao mapa…": {
+    "en": "Rectifying raster with GDAL and adding GeoTIFF to the map…",
+    "es": "Rectificando el ráster con GDAL y añadiendo GeoTIFF al mapa…",
+    "fr": "Rectification du raster avec GDAL et ajout du GeoTIFF à la carte…"
+  },
+  "O GDAL gerou um raster vazio.": {
+    "en": "GDAL produced an empty raster.",
+    "es": "GDAL generó un ráster vacío.",
+    "fr": "GDAL a produit un raster vide."
+  },
+  "Não foi possível rectificar e adicionar o GeoTIFF. ": {
+    "en": "Could not rectify and add GeoTIFF. ",
+    "es": "No se pudo rectificar ni añadir el GeoTIFF. ",
+    "fr": "Impossible de rectifier et d’ajouter le GeoTIFF. "
+  },
+  "Verifique os GCPs e a ligação ao motor GDAL.": {
+    "en": "Check GCPs and the connection to the GDAL engine.",
+    "es": "Compruebe los GCP y la conexión al motor GDAL.",
+    "fr": "Vérifiez les points d’appui et la connexion au moteur GDAL."
+  },
+  "A processar raster…": {
+    "en": "Processing raster…",
+    "es": "Procesando ráster…",
+    "fr": "Traitement du raster…"
+  },
+  "Também pode clicar em «Associar no mapa». As coordenadas UTM são convertidas para WGS 84. Distribua pelo menos quatro GCPs, preferencialmente perto dos quatro cantos da carta, e confira o RMS.": {
+    "en": "You can also click “Link on map”. UTM coordinates are converted to WGS 84. Distribute at least four GCPs, preferably near the four map corners, and check the RMS.",
+    "es": "También puede pulsar «Vincular en el mapa». Las coordenadas UTM se convierten a WGS 84. Distribuya al menos cuatro GCP, preferiblemente cerca de las esquinas del mapa, y compruebe el RMS.",
+    "fr": "Vous pouvez également cliquer sur « Associer sur la carte ». Les coordonnées UTM sont converties en WGS 84. Répartissez au moins quatre points d’appui près des coins de la carte et vérifiez le RMS."
+  },
+  "RMSE afim (referência): ": {
+    "en": "Affine RMSE (reference): ",
+    "es": "RMSE afín (referencia): ",
+    "fr": "RMSE affine (référence) : "
+  },
+  "«Adicionar ao mapa» rectifica com o método escolhido e cria um GeoTIFF WGS 84. O SRC de saída acima é usado apenas no ficheiro descarregado. A precisão depende dos GCPs.": {
+    "en": "“Add to map” rectifies using the selected method and creates a WGS 84 GeoTIFF. The output CRS above only affects the downloaded file. Accuracy depends on the GCPs.",
+    "es": "«Añadir al mapa» rectifica mediante el método seleccionado y crea un GeoTIFF WGS 84. El SRC de salida anterior solo afecta al archivo descargado. La precisión depende de los GCP.",
+    "fr": "« Ajouter à la carte » effectue le redressement choisi et crée un GeoTIFF WGS 84. Le SCR de sortie ci-dessus s’applique uniquement au fichier téléchargé. La précision dépend des points d’appui."
   }
 };
 export function geoMozSpecialistText(language:string, portuguese:string):string {
