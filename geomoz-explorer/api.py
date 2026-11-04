@@ -218,6 +218,12 @@ _thread_pool_executor = ThreadPoolExecutor(max_workers=4)
 
 app = FastAPI(title="GeoMoz API", version="2.1.0")
 
+# GeoMoz PayZeno subscriptions and server-enforced cloud project limits.
+from billing import router as billing_router
+from project_quota import router as project_quota_router
+app.include_router(billing_router)
+app.include_router(project_quota_router)
+
 # ee.Initialize mutates global Earth Engine SDK state. Serialize the complete
 # authentication + computation lifecycle of GEE requests in each Python worker.
 # Each request initializes using the Firebase-authenticated user's own credentials.
