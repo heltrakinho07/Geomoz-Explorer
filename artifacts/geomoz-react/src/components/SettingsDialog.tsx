@@ -125,7 +125,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     } catch (err: any) {
       setTestResult({
         connected: false,
-        message: err?.message || "Erro ao guardar projeto.",
+        message: err?.message || t("settings.feedback.saveProjectError"),
       });
     } finally {
       setSavingProject(false);
@@ -151,7 +151,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     } catch (err: any) {
       setTestResult({
         connected: false,
-        message: err?.message || "Erro ao guardar chave de serviço.",
+        message: err?.message || t("settings.feedback.saveKeyError"),
       });
     } finally {
       setSavingSa(false);
@@ -165,13 +165,13 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
       await connectGee(projectIdInput.trim() || undefined, accountInput.trim() || undefined);
       setTestResult({
         connected: true,
-        message: "Conta Google autorizada e ligação verificada no Earth Engine. Consulte o estado da sessão acima.",
+        message: t("settings.feedback.googleAuthorized"),
       });
     } catch (err: any) {
       console.error(err);
       setTestResult({
         connected: false,
-        message: err?.message || "Erro ao autenticar com a conta Google.",
+        message: err?.message || t("settings.feedback.googleAuthError"),
       });
     } finally {
       setConnectingGoogle(false);
@@ -193,7 +193,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     } catch (err) {
       setApiCheckResult({
         connected: false,
-        message: err instanceof Error ? err.message : "Não foi possível concluir o diagnóstico da API.",
+        message: err instanceof Error ? err.message : t("settings.feedback.apiDiagnosticError"),
       });
     } finally {
       setCheckingApi(false);
@@ -211,23 +211,23 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.detail || data.message || `A API GeoMoz respondeu HTTP ${res.status}.`);
+        throw new Error(data.detail || data.message || `${t("settings.feedback.httpError")} ${res.status}.`);
       }
       if (data.connected && data.user_connected) {
         setTestResult({
           connected: true,
-          message: `Conexão ativa! Projeto: ${data.project || "Padrão"} (${data.auth_type || "Cota Verificada"}). ${data.message || ""}`,
+          message: `${t("settings.feedback.connected")} ${t("settings.feedback.project")} ${data.project || t("settings.feedback.default")} (${data.auth_type || t("settings.feedback.verifiedQuota")}). ${data.message || ""}`,
         });
       } else {
         setTestResult({
           connected: false,
-          message: data.message || "GEE não conectado ou credenciais pendentes.",
+          message: data.message || t("settings.feedback.geePending"),
         });
       }
     } catch (e: any) {
       setTestResult({
         connected: false,
-        message: e.message || "Erro de conexão ao servidor.",
+        message: e.message || t("settings.feedback.serverError"),
       });
     } finally {
       setTesting(false);
@@ -241,12 +241,12 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
       const result = await validateRealSentinel2Ndvi();
       setNdviResult({
         success: true,
-        message: `${result.message} Período: ${result.dateRange}. Área: ${result.projectNote}.`,
+        message: `${result.message} ${t("settings.feedback.period")} ${result.dateRange}. ${t("settings.feedback.area")} ${result.projectNote}.`,
       });
     } catch (caught) {
       setNdviResult({
         success: false,
-        message: caught instanceof Error ? caught.message : "O teste real Sentinel-2 NDVI não foi concluído.",
+        message: caught instanceof Error ? caught.message : t("settings.feedback.ndviError"),
       });
     } finally {
       setTestingNdvi(false);
@@ -256,7 +256,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const handleSavePreferences = () => {
     try {
       localStorage.setItem("geomoz_preferred_basemap", preferredBasemap);
-      alert("Preferências guardadas com sucesso.");
+      alert(t("settings.feedback.preferencesSaved"));
     } catch {}
   };
 
