@@ -196,6 +196,7 @@ module.exports=async function validateRasterProcessing(page){
  await lod.selectOption("low");
  await lod.selectOption("medium");
  await lod.selectOption("auto");
+ await terrain.getByTestId("geomoz-terrain-tab-export").click();
  const binaryDownload=page.waitForEvent("download");
  await terrain.getByTestId("geomoz-terrain-export-glb").click();
  const glbFile="workbench-browser-artifacts/terrain-native-manica.glb";
@@ -204,6 +205,7 @@ module.exports=async function validateRasterProcessing(page){
  assert.equal(glb.toString("ascii",0,4),"glTF","Export must contain a real glTF 2.0 GLB header");
  assert.equal(glb.readUInt32LE(4),2,"GLB export must be version 2");
  assert.equal(glb.readUInt32LE(8),glb.byteLength,"GLB binary length must match the header");
+ await terrain.getByTestId("geomoz-terrain-tab-analysis").click();
 
  assert.equal(await page.locator(".gm-layer-row").count(),layerCountBefore,
    "Opening DEM 3D must preserve the same GIS layers");
@@ -211,18 +213,18 @@ module.exports=async function validateRasterProcessing(page){
  // Shared GeoMoz preference -> GeoLibre i18next must translate an already open
  // 3D studio and its scientific panel without losing the DEM or map project.
  for(const {code,heading,science,source} of [
-   {code:"en",heading:"Data, terrain and analysis",science:"Scientific DEM analysis",source:"Project DEM"},
-   {code:"es",heading:"Datos, relieve y análisis",science:"Análisis científico del MDE",source:"MDE del proyecto"},
-   {code:"fr",heading:"Données, relief et analyse",science:"Analyse scientifique du MNT",source:"MNT du projet"},
-   {code:"pt",heading:"Dados, relevo e análise",science:"Análise científica do DEM",source:"DEM do projecto"},
+   {code:"en",heading:"Terrain layers",science:"Scientific DEM analysis",source:"Project DEM"},
+   {code:"es",heading:"Capas del terreno",science:"Análisis científico del MDE",source:"MDE del proyecto"},
+   {code:"fr",heading:"Couches du terrain",science:"Analyse scientifique du MNT",source:"MNT du projet"},
+   {code:"pt",heading:"Camadas do terreno",science:"Análise científica do DEM",source:"DEM do projecto"},
  ]) {
    const accepted=await page.evaluate(code=>window.GeoMozPreferences?.setLanguage(code),code);
    assert.equal(accepted,true,"Cross-module preference bridge must accept "+code);
    await page.waitForFunction(({code,heading,science,source})=>{
      const root=document.querySelector('[data-testid="geomoz-workbench-terrain"]');
      return document.documentElement.lang===code &&
-       root?.querySelector(".gm-terrain-native-sidebar h3")?.textContent===heading &&
-       root?.querySelector("summary")?.textContent?.includes(science) &&
+       root?.querySelector(".gm-terrain-panel-head span:first-child")?.textContent?.trim()===heading &&
+       root?.querySelector(".gm-terrain-inspector-section h3")?.textContent===science &&
        root?.querySelector(".gm-terrain-workspace-selector span")?.textContent===source;
    },{code,heading,science,source},{timeout:12000});
    assert.equal(await canvas.count(),1,"Changing language must not remount or lose native DEM canvas");
@@ -256,6 +258,48 @@ module.exports=async function validateRasterProcessing(page){
  await terrain.getByRole("button",{name:"Adicionar curvas ao catálogo SIG"}).click();
  await page.locator('.gm-layer-row[data-layer-name="Curvas de nível · Terreno 3D"]').waitFor();
  assert.equal(await page.locator(".gm-layer-row").count(),layerCountBefore+2);
+ // Import a geological vector into the SAME project and automatically drape it.
+ await terrain.getByRole("button",{name:"Adicionar camada"}).click();
+ const polygon={type:"FeatureCollection",features:[{type:"Feature",
+   properties:{litologia:"Basalto",formacao:"Unidade de teste"},
+   geometry:{type:"Polygon",coordinates:[[
+     [32,-27],[34,-27],[34,-24],[32,-24],[32,-27]
+   ]]}}]};
+ await terrain.getByLabel("Carregar camada GeoJSON ou GeoTIFF para o terreno 3D")
+   .setInputFiles({name:"geologia_teste.geojson",mimeType:"application/geo+json",
+     buffer:Buffer.from(JSON.stringify(polygon))});
+ const overlay=terrain.getByTestId("geomoz-3d-layer-row");
+ await overlay.waitFor({state:"visible"});
+ assert.match(await overlay.innerText(),/geologia_teste\.geojson/);
+ await terrain.getByTestId("geomoz-terrain-tab-symbols").click();
+ await terrain.getByLabel("Tipo de simbologia 3D").selectOption("categorized");
+ await terrain.getByLabel("Cor da classe Basalto").fill("#e11d48");
+ const opacity=terrain.getByLabel("Transparência da camada 3D");
+ await opacity.focus();
+ await opacity.press("Home");
+ for(let step=0;step<9;step++)await opacity.press("ArrowRight");
+ assert.equal(await terrain.getByLabel("Transparência da camada 3D").inputValue(),"45");
+ await terrain.getByLabel("Mostrar classe Basalto").uncheck();
+ await terrain.getByLabel("Mostrar classe Basalto").check();
+ // Clicking the same georeferenced mesh queries overlapping vector attributes.
+ await page.mouse.click(view.x+view.width*.49,view.y+view.height*.50);
+ await terrain.getByTestId("geomoz-3d-identify").waitFor({state:"visible"});
+ assert.match(await terrain.getByTestId("geomoz-3d-identify").innerText(),/Basalto/);
+ await terrain.getByTestId("geomoz-terrain-tab-export").click();
+ const overlayGLB=page.waitForEvent("download");
+ await terrain.getByTestId("geomoz-terrain-export-glb").click();
+ const drapedFile="workbench-browser-artifacts/terrain-geology-draped.glb";
+ await (await overlayGLB).saveAs(drapedFile);
+ const textured=await readFile(drapedFile);
+ const jsonLength=textured.readUInt32LE(12);
+ const gltfJson=JSON.parse(textured.subarray(20,20+jsonLength).toString("utf8").trim());
+ assert.equal(gltfJson.images?.[0]?.mimeType,"image/png",
+   "GLB must contain georeferenced overlay texture");
+ assert.equal(gltfJson.materials?.[0]?.pbrMetallicRoughness?.baseColorTexture?.index,0);
+ assert.equal(await page.locator(".gm-layer-row").count(),layerCountBefore+3,
+   "Direct 3D GeoJSON imports must remain in the same original GIS project");
+ console.log("Real geologic polygon draped/clipped, styled categorically, queried and GLB-textured.");
+
  await terrain.getByRole("button",{name:"Voltar ao mapa GIS"}).click();
  await terrain.waitFor({state:"hidden"});
  assert.equal(await realDem.count(),1,"Closing native 3D must retain the original raster");

@@ -3222,3 +3222,41 @@ async def terrain_gee_rgb_texture(
         raise HTTPException(status_code=502, detail="Falha ao descarregar a textura Sentinel-2.") from exc
     except Exception as exc:
         handle_gee_api_error(exc, prefix="Textura Sentinel-2 3D", uid=uid)
+
+
+class GEETerrainLandcoverRequest(BaseModel):
+    crs: str
+    bounds_meters: list[float]
+    width: int
+    height: int
+
+
+@app.post("/geomoz-api/terrain/gee-worldcover")
+async def terrain_gee_worldcover(
+    req: GEETerrainLandcoverRequest,
+    uid: str = Depends(require_gee_auth),
+):
+    """Return WorldCover 2021 classes on the exact authenticated DEM grid.
+
+    ESA WorldCover is a COVER map for 2021, not current cadastral land use.
+    The source GeoTIFF is a temporary Google export and is not persisted.
+    """
+    from starlette.concurrency import run_in_threadpool
+    from terrain_dem import TerrainInputError
+    from terrain_landcover import worldcover_gee_overlay
+    import httpx
+
+    try:
+        return await run_in_threadpool(
+            worldcover_gee_overlay, crs=req.crs,
+            bounds_meters=req.bounds_meters,
+            width=req.width, height=req.height,
+        )
+    except (TerrainInputError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502, detail="Não foi possível descarregar ESA WorldCover."
+        ) from exc
+    except Exception as exc:
+        handle_gee_api_error(exc, prefix="Cobertura do solo 3D", uid=uid)

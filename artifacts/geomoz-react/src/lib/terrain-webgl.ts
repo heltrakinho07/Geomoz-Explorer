@@ -32,6 +32,7 @@ export interface TerrainRenderOptions {
   exaggeration: number;
   style: TerrainVisualStyle;
   textureUrl?: string | null;
+  terrainBaseStyle?: "hypsometric" | "grayscale";
   /** Rendering-only LOD; scientific sample grid and coordinates never change. */
   detailLevel?: "auto" | "full" | "medium" | "low";
   /** Surface picking is active only when the user explicitly enables it. */
@@ -209,11 +210,16 @@ const FRAGMENT_SOURCE = [
   " if(uOverlay==1) {fragColor=vec4(0.08,0.85,0.98,1.0);return;}",
   " float illumination=max(dot(normalize(vNormal),normalize(vec3(0.4,0.88,0.52))),0.0);",
   " vec4 imagery=texture(uTexture,vUv);",
-  " vec3 base=uStyle==2 ? mix(relief(vHeight),imagery.rgb,imagery.a) :",
+  " vec3 base=(uStyle==2 || uStyle==3) ? mix(uStyle==3 ? vec3(0.29+0.63*vHeight) : relief(vHeight),imagery.rgb,imagery.a) :",
   "   uStyle==1 ? vec3(0.29+0.63*vHeight) : relief(vHeight);",
-  " fragColor=vec4(base*(0.45+0.55*illumination),1.0);",
+  " fragColor=vec4(base*(uStyle>=2 ? (0.75+0.25*illumination) : (0.45+0.55*illumination)),1.0);",
   "}"
 ].join("\n");
+
+/** Preserve orbit camera per canvas across texture/legend/opacity changes. */
+const cameraStates=new WeakMap<HTMLCanvasElement,{
+  source:TerrainMeshData;yaw:number;pitch:number;distance:number
+}>();
 
 /** Return a cleanup function. All GL allocations and event handlers are reclaimed. */
 export function createTerrainRenderer(
@@ -343,7 +349,11 @@ export function createTerrainRenderer(
   let lastMatrix:Float32Array|null=null;
 
   let destroyed=false, imageLoaded=false, frame=0;
-  let yaw=0.72, pitch=0.90, distance=2.0;
+  // Rebuilding a GL texture for symbology MUST NOT reset the user's camera.
+  const saved=cameraStates.get(canvas);
+  let yaw=saved?.source===data?saved.yaw:0.72;
+  let pitch=saved?.source===data?saved.pitch:0.90;
+  let distance=saved?.source===data?saved.distance:2.0;
   const draw=()=>{
     if(destroyed)return;
     const rect=canvas.getBoundingClientRect();
@@ -367,7 +377,8 @@ export function createTerrainRenderer(
     gl.uniform1i(gl.getUniformLocation(program,"uOverlay"),0);
     gl.uniformMatrix4fv(gl.getUniformLocation(program,"uViewProjection"),false,matrix);
     gl.uniform1i(gl.getUniformLocation(program,"uStyle"),
-      options.style==="imagery"&&imageLoaded ? 2 : options.style==="grayscale" ? 1 : 0);
+      options.style==="imagery"&&imageLoaded ? (options.terrainBaseStyle==="grayscale"?3:2) :
+      options.style==="grayscale" ? 1 : 0);
     gl.uniform1i(gl.getUniformLocation(program,"uTexture"),0);
     gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
     const selectedDetail = options.detailLevel && options.detailLevel !== "auto"
@@ -435,6 +446,7 @@ export function createTerrainRenderer(
   const resize=new ResizeObserver(requestDraw);resize.observe(canvas);
   draw();
   return ()=>{
+    cameraStates.set(canvas,{source:data,yaw,pitch,distance});
     destroyed=true; if(frame)cancelAnimationFrame(frame);resize.disconnect();
     image.onload=null;image.src="";
     canvas.removeEventListener("pointerdown",pointerDown);
