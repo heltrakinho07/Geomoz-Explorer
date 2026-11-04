@@ -221,13 +221,33 @@ app = FastAPI(title="GeoMoz API", version="2.1.0")
 # GeoMoz PayZeno subscriptions and server-enforced cloud project limits.
 from billing import router as billing_router
 from project_quota import router as project_quota_router
+from admin import router as admin_router
 app.include_router(billing_router)
 app.include_router(project_quota_router)
+app.include_router(admin_router)
 
 # ee.Initialize mutates global Earth Engine SDK state. Serialize the complete
 # authentication + computation lifecycle of GEE requests in each Python worker.
 # Each request initializes using the Firebase-authenticated user's own credentials.
 _gee_request_lock = asyncio.Lock()
+
+@app.middleware("http")
+async def restrict_disabled_modules(request: Request, call_next):
+    # Server-side controls complement SPA route visibility; direct API access
+    # to a disabled scientific module must also be blocked.
+    from platform_config import blocked_api_module, get_features
+    from fastapi.responses import JSONResponse
+    module = blocked_api_module(request.url.path)
+    if module:
+        try:
+            active = get_features().get(module, True)
+        except Exception:
+            # Fail closed for module APIs, not for health or payment callbacks.
+            return JSONResponse(status_code=503, content={"detail": "Configuração dos módulos indisponível."})
+        if not active:
+            return JSONResponse(status_code=403, content={"detail": "Módulo temporariamente indisponível."})
+    return await call_next(request)
+
 
 @app.middleware("http")
 async def isolate_gee_requests(request: Request, call_next):
