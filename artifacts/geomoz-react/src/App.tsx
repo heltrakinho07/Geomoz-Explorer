@@ -145,6 +145,7 @@ export default function App() {
                 <Route path="/mapa">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/estatisticas">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/analises">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+                <Route path="/terreno-3d">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/hidrografia">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/agua-subterranea">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/geoperigos">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>

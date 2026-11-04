@@ -275,6 +275,26 @@ async function settleRecovery(page){
         "Profile requires a real DEM and two map points");
       await topo.getByRole("button",{name:"Fechar perfil topográfico"}).click();
       await topo.waitFor({state:"hidden"});
+      // The DEM 3D tool is an in-place Workbench view, not a new browser page.
+      await trigger.click();
+      const terrainAction=page.getByTestId("geomoz-tools-flyout").locator('[data-action="geomoz-terrain-studio-3d"]');
+      await terrainAction.waitFor({state:"visible"});
+      const originalUrl=page.url();
+      await terrainAction.click();
+      const terrainPanel=page.getByTestId("geomoz-workbench-terrain");
+      await terrainPanel.waitFor({state:"visible"});
+      assert.equal(page.url(),originalUrl,"Opening Terrain 3D must not leave the GIS Workspace");
+      assert.equal(await terrainPanel.locator('iframe[src="/terreno-3d?embedded=1"]').count(),1,
+        "Terrain Studio must render inside the current Workbench");
+      assert.equal(await page.getByTestId("geomoz-layer-catalog").count(),1,
+        "Underlying raster layer catalogue must remain mounted");
+      assert.equal(await terrainPanel.getByRole("button",{name:"Visualizar camada em 3D"}).isDisabled(),true,
+        "A DEM must be selected before importing");
+      await terrainPanel.getByRole("button",{name:"Voltar ao mapa GIS"}).click();
+      await terrainPanel.waitFor({state:"hidden"});
+      assert.equal(await page.getByTestId("geomoz-layer-catalog").count(),1,
+        "Closing 3D must preserve the Workbench session and map");
+
     }
     if(label==="Vector")assert.equal(await flyout.locator('[data-command="add.vector"]').count(),1,"Vector import must remain available when opened");
     if(label==="Serviços de mapas"){

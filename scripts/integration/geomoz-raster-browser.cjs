@@ -172,5 +172,36 @@ module.exports=async function validateRasterProcessing(page){
  await topo.getByRole("button",{name:"Fechar perfil topográfico"}).click();
  console.log("Real raster profile sampled, plotted and exported from DEM COG.");
 
+ // Verify an actual raster already in the GIS project transfers to the
+ // embedded 3D module without the user selecting that file a second time.
+ // The receiver is a controlled same-origin document: this test validates
+ // the File transfer contract independently from Firebase/GEE authentication.
+ await page.route(/\/terreno-3d\?embedded=1$/, route=>route.fulfill({
+   status:200, contentType:"text/html",
+   body:'<!doctype html><html><body data-received="no"><script>'+
+      'window.addEventListener("message",e=>{if(e.origin!==location.origin||e.source!==parent)return;'+
+      'if(e.data?.type==="geomoz:terrain:import-file"&&e.data.file instanceof File){'+
+      'document.body.dataset.received="yes";document.body.dataset.size=String(e.data.file.size);'+
+      'document.body.dataset.filename=e.data.file.name;}});'+
+      'parent.postMessage({type:"geomoz:terrain:ready"},location.origin);'+
+      '</script></body></html>'
+ }));
+ await realDem.locator(".gm-layer-select").click();
+ await page.getByTestId("geomoz-layer-open-terrain").click();
+ const terrain=page.getByTestId("geomoz-workbench-terrain");
+ await terrain.waitFor({state:"visible"});
+ assert.equal(await terrain.locator('iframe[src="/terreno-3d?embedded=1"]').count(),1);
+ await terrain.getByLabel("Seleccionar DEM do GIS Workspace").selectOption({label:"reprojected"});
+ await terrain.getByTestId("geomoz-workbench-terrain-import").click();
+ const received=page.frameLocator('iframe[src="/terreno-3d?embedded=1"]').locator("body[data-received='yes']");
+ await received.waitFor({state:"attached",timeout:20000});
+ assert.ok(Number(await received.getAttribute("data-size"))>0,"Embedded 3D received the real GeoTIFF bytes");
+ assert.equal(await received.getAttribute("data-filename"),"reprojected.tif");
+ await terrain.getByRole("button",{name:"Voltar ao mapa GIS"}).click();
+ await terrain.waitFor({state:"hidden"});
+ assert.equal(await realDem.count(),1,"Closing terrain preview must not remove the source raster");
+ await page.unroute(/\/terreno-3d\?embedded=1$/);
+ console.log("Existing GIS COG successfully transferred to embedded 3D without re-import.");
+
  console.log("Real browser DEM slope, hillshade, reprojection and polygon cutline outputs validated.");
 };

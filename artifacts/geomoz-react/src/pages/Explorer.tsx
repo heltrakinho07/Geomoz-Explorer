@@ -75,6 +75,7 @@ type Tab =
   | "Dashboard"
   | "Mapa"
   | "GIS Workspace"
+  | "Terreno 3D"
   | "Análise"
   | "GeoAnálises"
   | "Bacias Hidrográficas"
@@ -89,12 +90,6 @@ function ExplorerContent() {
   const { user } = useAuth();
   const { geeConnected, geeProject } = useGeeAuth();
   const { activeProject } = useProject();
-  const [terrainStudioOpen, setTerrainStudioOpen] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("terrain3d") === "1");
-  useEffect(() => {
-    const show = () => setTerrainStudioOpen(true);
-    window.addEventListener("geomoz:terrain-studio:open", show);
-    return () => window.removeEventListener("geomoz:terrain-studio:open", show);
-  }, []);
 
   const [province, setProvince] = useState<string | null>(null);
   const [district, setDistrict] = useState<string | null>(null);
@@ -111,6 +106,7 @@ function ExplorerContent() {
     const hash = window.location.hash.toLowerCase();
     const search = new URLSearchParams(window.location.search);
     const tabParam = search.get("tab")?.toLowerCase();
+    if (path.includes("terreno-3d") || hash.includes("terreno-3d") || search.get("terrain3d") === "1" || tabParam === "terreno-3d") return "Terreno 3D";
 
     if (path.includes("analis") || hash.includes("analis") || tabParam?.includes("analis")) {
       return "GeoAnálises";
@@ -169,6 +165,7 @@ function ExplorerContent() {
         Dashboard: "dashboard",
         Mapa: "mapa",
         "GIS Workspace": "gis-workspace",
+        "Terreno 3D": "terreno-3d",
         Análise: "estatisticas",
         GeoAnálises: "analises",
         "Bacias Hidrográficas": "hidrografia",
@@ -185,6 +182,12 @@ function ExplorerContent() {
       }
     } catch {}
   };
+
+  useEffect(() => {
+    const show = () => setActiveTab("Terreno 3D");
+    window.addEventListener("geomoz:terrain-studio:open", show);
+    return () => window.removeEventListener("geomoz:terrain-studio:open", show);
+  }, []);
 
   useEffect(() => {
     const onPopState = () => {
@@ -419,6 +422,12 @@ function ExplorerContent() {
           title: "Mapa Geoespacial",
           subtitle: "2D / 3D Hipsometria & Relevo",
         };
+      case "Terreno 3D":
+        return {
+          icon: <Mountain size={18} className="text-sky-500 shrink-0" />,
+          title: "Terreno 3D",
+          subtitle: "DEM, modelação do relevo e visualização tridimensional",
+        };
       case "GIS Workspace":
         return {
           icon: <Cpu size={18} className="text-indigo-500 shrink-0" />,
@@ -480,6 +489,15 @@ function ExplorerContent() {
   const {theme} = useGeoMozTheme();
 
   const currentTabMeta = getTabMeta(activeTab);
+  // Render the same module inside the GIS Workbench without a second sidebar.
+  // The original Workbench stays mounted behind its panel, retaining all layers.
+  const embeddedTerrain = typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).get("embedded") === "1";
+  if (embeddedTerrain) {
+    return <TerrainStudio open embedded onClose={() => {
+      if (window.parent !== window) window.parent.postMessage({type: "geomoz:terrain:close"}, window.location.origin);
+    }} geeEnabled={geeConnected} geeRegion={{ province, district, geometry: aoiToAPI(aoi).geometry }} />;
+  }
 
   return (
     <div
@@ -488,8 +506,6 @@ function ExplorerContent() {
         theme === "dark" ? "dark bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900"
       }`}
     >
-      <TerrainStudio open={terrainStudioOpen} onClose={() => setTerrainStudioOpen(false)}
-        geeEnabled={geeConnected} geeRegion={{ province, district, geometry: aoiToAPI(aoi).geometry }} />
       {/* A dedicated GIS application shell replaces generic navigation. */}
       {activeTab !== "GIS Workspace" && <Sidebar
         activeTab={activeTab}
@@ -593,15 +609,11 @@ function ExplorerContent() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => setTerrainStudioOpen(true)}
-              data-testid="geomoz-terrain-studio-open"
-              className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg border border-amber-400/70 bg-amber-50 px-3 text-xs font-bold text-amber-900 hover:bg-amber-100 dark:bg-amber-950/30 dark:text-amber-200"
-              title="Terreno 3D com DEM GeoTIFF ou Copernicus GLO-30">
-              <Mountain size={16}/><span className="hidden sm:inline">Terreno 3D</span><span className="sm:hidden">3D</span>
-            </button>
-            <button type="button" data-testid="geomoz-print-open" onClick={()=>setPrintOpen(true)} className="gm-system-print-button inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 shadow-sm hover:border-sky-400 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100" aria-label="Abrir layout de impressão" title="Composição cartográfica / relatório A4 ou A3"><Printer size={16}/><span className="hidden xl:inline">Layout de impressão</span></button>
-          </div>
+          <button type="button" data-testid="geomoz-print-open" onClick={()=>setPrintOpen(true)}
+            className="gm-system-print-button inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 shadow-sm hover:border-sky-400 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            aria-label="Abrir layout de impressão" title="Composição cartográfica / relatório A4 ou A3">
+            <Printer size={16}/><span className="hidden xl:inline">Layout de impressão</span>
+          </button>
           {/* Right: Geocoding Search Input (only on Mapa) */}
           {activeTab === "Mapa" && (
             <div className="flex items-center gap-2">
@@ -802,6 +814,11 @@ function ExplorerContent() {
               viewMode={globalViewMode}
               onViewModeChange={handleGlobalViewModeChange}
             />
+          )}
+
+          {activeTab === "Terreno 3D" && (
+            <TerrainStudio open onClose={() => setActiveTab("Mapa")}
+              geeEnabled={geeConnected} geeRegion={{ province, district, geometry: aoiToAPI(aoi).geometry }} />
           )}
 
           {activeTab === "GIS Workspace" && (
