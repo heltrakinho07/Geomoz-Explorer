@@ -133,28 +133,28 @@ async function settleRecovery(page){
   // Regression: titles and command labels were localized but every floating
   // tool panel still displayed the Portuguese "FERRAMENTAS" and description.
   for(const copy of [
-    {code:"en",vector:"Vector",hydrology:"Hydrology",
+    {code:"en",vector:"Vector",hydrology:"Hydrology",raster:"Raster",
       section:"GEOMOZ GIS WORKSPACE / TOOLS",
       help:"Select a tool to work with the layers in your project.",
       hydroHelp:"Open watershed, groundwater and terrain analysis tools.",
       aria:"Tools: ",close:"Close ",newLayer:"New layer / Digitize",
       vectorCommand:"Vector / GeoPackage",watersheds:"Watersheds",
       terrain3D:"Generate 3D map from DEM"},
-    {code:"es",vector:"Vector",hydrology:"Hidrología",
+    {code:"es",vector:"Vector",hydrology:"Hidrología",raster:"Ráster",
       section:"GEOMOZ GIS WORKSPACE / HERRAMIENTAS",
       help:"Seleccione una herramienta para trabajar con las capas del proyecto.",
       hydroHelp:"Acceda a los análisis de cuencas, aguas subterráneas y terreno.",
       aria:"Herramientas: ",close:"Cerrar ",newLayer:"Nueva capa / Digitalizar",
       vectorCommand:"Vector / GeoPackage",watersheds:"Cuencas hidrográficas",
       terrain3D:"Generar mapa 3D a partir del MDE"},
-    {code:"fr",vector:"Vecteur",hydrology:"Hydrologie",
+    {code:"fr",vector:"Vecteur",hydrology:"Hydrologie",raster:"Raster",
       section:"GEOMOZ GIS WORKSPACE / OUTILS",
       help:"Sélectionnez un outil pour travailler avec les couches de votre projet.",
       hydroHelp:"Accédez aux analyses des bassins versants, des eaux souterraines et du terrain.",
       aria:"Outils : ",close:"Fermer ",newLayer:"Nouvelle couche / Numériser",
       vectorCommand:"Vecteur / GeoPackage",watersheds:"Bassins versants",
       terrain3D:"Générer une carte 3D à partir du MNT"},
-    {code:"pt",vector:"Vector",hydrology:"Hidrologia",
+    {code:"pt",vector:"Vector",hydrology:"Hidrologia",raster:"Raster",
       section:"GEOMOZ GIS WORKSPACE / FERRAMENTAS",
       help:"Seleccione uma ferramenta para trabalhar com as camadas do projecto.",
       hydroHelp:"Aceda às análises de bacias hidrográficas, águas subterrâneas e terreno.",
@@ -187,10 +187,10 @@ async function settleRecovery(page){
     assert.equal(await flyout.getByRole("link",{name:copy.watersheds,exact:true}).getAttribute("href"),"/hidrografia");
     await flyout.getByRole("button",{name:copy.close+copy.hydrology,exact:true}).click();
     await flyout.waitFor({state:"hidden"});
-    await cards.getByRole("button",{name:"Raster",exact:true}).click();
+    await cards.getByRole("button",{name:copy.raster,exact:true}).click();
     await flyout.waitFor({state:"visible"});
     assert.equal((await flyout.locator('[data-action="geomoz-terrain-studio-3d"]').innerText()).trim(),copy.terrain3D);
-    await flyout.getByRole("button",{name:copy.close+"Raster",exact:true}).click();
+    await flyout.getByRole("button",{name:copy.close+copy.raster,exact:true}).click();
     await flyout.waitFor({state:"hidden"});
   }
   // Leave the original test's preferences dialog open in Portuguese.
