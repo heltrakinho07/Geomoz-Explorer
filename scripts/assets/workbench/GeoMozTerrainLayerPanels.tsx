@@ -7,6 +7,8 @@ import {terrainCategoryFields,terrainCategories} from "./geomoz-terrain-layers";
 
 export interface ProjectVectorOption {
   id:string;name:string;geojson:FeatureCollection;
+  style?:{fillColor:string;fillOpacity:number;vectorStyleMode:string;
+    vectorStyleProperty:string;vectorStyleStops:readonly {value:string|number;color:string;label?:string}[]};
 }
 interface CatalogueProps {
   layers:TerrainOverlay[];
