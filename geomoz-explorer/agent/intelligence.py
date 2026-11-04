@@ -122,7 +122,9 @@ async def execute_tool(name, args, context, declarations, implementation):
     record = {"id": f"evidence_{len(evidence) + 1}", "tool": name,
               "status": "success" if success else "error",
               "parameters": safe(args), "scope": safe(deepcopy(context.get("aoi") or {})),
-              "period": safe(context.get("temporalWindow") or {}),
+              "period": safe(output.get("period") or ({"year": output["year"]} if output.get("year") else
+                              {"A": output["periodA"], "B": output["periodB"]} if output.get("periodA") else
+                              context.get("temporalWindow") or {})),
               "executedAt": datetime.now(timezone.utc).isoformat(),
               "durationMs": round((monotonic() - started) * 1000),
               "source": safe(output.get("source")),
@@ -145,7 +147,7 @@ def build_dossier(result, context):
                             "parameters": {}, "scope": safe(context.get("aoi") or {}),
                             "period": safe(context.get("temporalWindow") or {}),
                             "source": safe(output.get("source")), "result": safe(output)})
-    analytical = [r for r in records if r["tool"] != "resolve_aoi"]
+    analytical = [r for r in records if r["tool"] not in ("resolve_aoi", "list_public_datasets")]
     successful = [r for r in analytical if r["status"] == "success"]
     failed = [r for r in records if r["status"] != "success"]
     warnings = []
@@ -176,3 +178,4 @@ def build_dossier(result, context):
                               "successfulTools": len(successful), "failedTools": len(failed),
                               "evidence": records, "limitations": warnings}
     return result
+

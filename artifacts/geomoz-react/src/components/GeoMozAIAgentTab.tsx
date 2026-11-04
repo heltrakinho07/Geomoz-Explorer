@@ -1,8 +1,10 @@
+import { WORLD_COUNTRIES } from "@/lib/world-countries";
+import { PublicDataTools, type PublicAnalysisRequest } from "./PublicDataTools";
 import { GeoIntelligenceDossier, type IntelligenceDossier } from "./GeoIntelligenceDossier";
 import React, { useState, useRef, useEffect } from "react";
 import { useProject } from "../context/ProjectContext";
 import { apiFetch } from "@/lib/api";
-import { aoiToAPI, mozambiqueAOI, GLOBAL_AOI, type AreaOfInterest } from "@/lib/aoi";
+import { aoiToAPI, mozambiqueAOI, countryAOI, GLOBAL_AOI, type AreaOfInterest } from "@/lib/aoi";
 import { useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
 import AreaSelect from "./AreaSelect";
 import {
@@ -62,6 +64,17 @@ const AGENT_MODELS: Record<string, { value: string; label: string }[]> = {
     { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite" },
   ],
 };
+
+function ZoomToPublicAOI({ aoi }: { aoi: AreaOfInterest }) {
+  const map = useMap();
+  const boundsKey = JSON.stringify(aoi.bounds || null);
+  useEffect(() => {
+    if (aoi.source !== "mozambique" && aoi.bounds) {
+      map.fitBounds(aoi.bounds, { padding: [24, 24], maxZoom: 11 });
+    }
+  }, [map, aoi.source, boundsKey]);
+  return null;
+}
 
 function ZoomToGeology({ bounds }: { bounds?: number[] }) {
   const map = useMap();
@@ -445,7 +458,7 @@ export default function GeoMozAIAgentTab() {
   };
 
   // Submit natural language prompt
-  const handlePromptSubmit = async (customText?: string) => {
+  const handlePromptSubmit = async (customText?: string, publicRequest?: PublicAnalysisRequest) => {
     const textToSend = customText ?? prompt.trim();
     if (!textToSend || isRunning) return;
 
@@ -479,6 +492,9 @@ export default function GeoMozAIAgentTab() {
       const aoiPayload = aoiToAPI(currentAoi);
       const currentMapState = {
         aoi: {
+          source: currentAoi.source,
+          countryCode: currentAoi.countryCode,
+          countryName: currentAoi.countryName,
           label: currentAoi.label || "Moçambique",
           province: aoiPayload.province || null,
           district: aoiPayload.district || null,
@@ -488,6 +504,14 @@ export default function GeoMozAIAgentTab() {
         gee_token: (typeof window !== "undefined" ? localStorage.getItem("geomoz_gee_token") : null) || undefined,
         gee_project: (typeof window !== "undefined" ? localStorage.getItem("geomoz_gee_project") : null) || "geoprocessamento-426809",
         agentContext,
+        publicAnalysis: publicRequest ? {
+          ...publicRequest,
+          args: publicRequest.tool === "detect_temporal_change" ? {
+            ...publicRequest.args,
+            start_date_2: analysisPeriod.startDate,
+            end_date_2: analysisPeriod.endDate,
+          } : publicRequest.args,
+        } : undefined,
       };
 
       // Multi-turn message history conversion
@@ -859,7 +883,7 @@ export default function GeoMozAIAgentTab() {
                 <div className="flex items-start gap-1.5">
                   <AlertTriangle size={12} className="text-amber-400 shrink-0 mt-0.5" />
                   <p className="leading-tight">
-                    A área está como <strong>Mundo (Global)</strong>. Para evitar lentidão e bloqueios no cálculo dos satélites, selecione uma província ou distrito de Moçambique:
+                    A área está como <strong>Mundo (Global)</strong>. Para evitar lentidão e bloqueios no cálculo dos satélites, seleccione um país no selector de área, uma província ou um polígono:
                   </p>
                 </div>
                 <div className="flex gap-1.5 pt-0.5 pl-4 flex-wrap">
@@ -898,6 +922,20 @@ export default function GeoMozAIAgentTab() {
             {/* Expanded AOI Selector Dropdowns */}
             {showAoiSelector && (
               <div className="p-2.5 bg-slate-900 border border-slate-700/80 rounded-xl space-y-2 mt-1 shadow-lg">
+                <label className="block text-[10px] font-semibold text-slate-400">País — análises públicas mundiais
+                  <select aria-label="País para análise mundial" value={currentAoi.source === "country" ? currentAoi.countryCode || "" : ""}
+                    onChange={(event) => {
+                      const country = WORLD_COUNTRIES.find((item) => item.code === event.target.value);
+                      if (!country) return;
+                      const next = countryAOI(country);
+                      setCurrentAoi(next); setSelectedProvince(null); setSelectedDistrict(null); setAgentContext(null);
+                      if (activeProject) void updateProject(activeProject.id, { aoi: next });
+                    }} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 p-1.5 text-xs text-slate-200">
+                    <option value="">Escolher país</option>
+                    {WORLD_COUNTRIES.map((country) => <option key={country.code} value={country.code}>{country.flag} {country.name}</option>)}
+                  </select>
+                </label>
+                <p className="text-[10px] text-slate-400">Nos novos motores públicos, o cálculo usa limites geoBoundaries v6. Países grandes podem exigir uma AOI menor.</p>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-[10px] font-semibold text-slate-400 block mb-1">
@@ -1232,6 +1270,7 @@ export default function GeoMozAIAgentTab() {
 
         {/* Bottom Input Area */}
         <div className="p-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex-none space-y-2">
+          <PublicDataTools disabled={isRunning} onRun={(label, request) => { void handlePromptSubmit(label, request); }} />
           {/* Quick prompt suggestion pills */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
             {SUGGESTED_PROMPTS.map((sp, idx) => (
@@ -1370,7 +1409,7 @@ export default function GeoMozAIAgentTab() {
             />
 
             {/* Interactive Province & District boundary visualization & selection */}
-            <AreaSelect
+            {currentAoi.source === "mozambique" && <AreaSelect
               province={selectedProvince}
               district={selectedDistrict}
               onProvinceChange={handleProvinceChange}
@@ -1378,7 +1417,8 @@ export default function GeoMozAIAgentTab() {
               selectable={true}
               fit={true}
               accent="#8b5cf6"
-            />
+            />}
+            <ZoomToPublicAOI aoi={currentAoi} />
 
             {activeTileUrl && (
               <TileLayer
@@ -1411,4 +1451,5 @@ export default function GeoMozAIAgentTab() {
     </div>
   );
 }
+
 

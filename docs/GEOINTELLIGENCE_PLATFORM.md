@@ -11,8 +11,11 @@ O GeoMoz AI Agent transforma pedidos em ferramentas espaciais e resultados no ma
 - Dossiê JSON por resposta, com identificador, estados concluído/parcial/erro/sem cálculo e limitações. As credenciais e URLs de tiles são omitidas da exportação.
 - Valores zero preservados em NDVI e humidade; precipitação deriva das estatísticas, respeitando o ano explicitamente pedido.
 - Modelos OpenAI e Gemini usam o mesmo executor. Todas as chamadas de ferramentas numa resposta Gemini são processadas.
-- Remoção das áreas zonais e precipitação fixas. Sem raster/máscara integrado, a ferramenta zonal declara indisponibilidade.
-- A ferramenta de alteração temporal declara indisponibilidade: a implementação anterior mostrava apenas o segundo período.
+- Remoção das áreas zonais e precipitação fixas. Estatísticas zonais e áreas por limiar calculam agora um índice Sentinel-2 real sobre a AOI, com área válida e escala explícitas.
+- Comparação temporal real B − A entre dois períodos explícitos, na intersecção de pixels válidos, com áreas de aumento/diminuição. Não confirma desflorestação ou área ardida.
+- Novos motores WorldCover 2021 (áreas por classe) e ERA5-Land (precipitação acumulada e temperatura média no período). Catálogo documenta nove fontes e distingue motores ligados de fontes apenas identificadas.
+- Selecção mundial por país com limites geoBoundaries ADM0 v6 nos novos motores públicos; o rectângulo de visualização não é usado como fronteira de cálculo. Consulta geológica continua limitada à carta de Moçambique.
+- Painel de dados públicos executa análises sem depender de OpenAI/Gemini. O cálculo exige acesso GEE autorizado; consultar metadados não exige autenticação GEE.
 - Potencial hidrogeológico usa o motor existente de seis factores, devolvendo classes e pesos. É apresentado como sobreposição ponderada exploratória; não como AHP validado nem confirmação de água.
 - Triagem de cheias identifica apenas classes topográficas. Não afirma modelar a probabilidade de inundação nem a exposição.
 
@@ -26,7 +29,7 @@ Os dossiês ficam na conversa da sessão e podem ser descarregados; ainda não e
 
 ## Próximas entregas para a plataforma completa
 
-1. Registo de fontes por versão, resolução, CRS, licença, data de aquisição, cobertura e qualidade; identificadores estáveis de rasters/feições. Estatísticas zonais e diferenças temporais sobre esses produtos reais.
+1. Registo de fontes por versão, resolução, CRS, licença, data de aquisição, cobertura e qualidade; identificadores estáveis de rasters/feições. Identificadores persistentes para rasters/feições e reuso de produtos; as estatísticas e diferenças já funcionam por recomputação explícita Sentinel-2.
 2. Plano de análise visível antes da execução, orçamento por ferramenta, jobs persistentes, progresso, cancelamento no servidor e reexecução pelo dossiê. Ligação explícita entre critérios, pesos, resultados e conclusões.
 3. Biblioteca de estudos por projecto, permissões, histórico e exportação GeoTIFF/GeoPackage/PDF com metodologia e proveniência completas. Reutilizar o GIS Workspace para cartografia e edição.
 4. Fluxos temáticos validados para geologia/minerais, água, agricultura/florestas, geoperigos e planeamento territorial. Cada fluxo exige dados adequados e validação; índices isolados não bastam.
@@ -41,3 +44,8 @@ PYTHONPATH=geomoz-explorer python -m unittest discover -s geomoz-explorer/tests 
 pnpm --dir artifacts/geomoz-react exec vitest run src/components/__tests__/GeoIntelligenceDossier.test.tsx
 pnpm run typecheck
 ```
+
+
+## Motores públicos mundiais
+
+A implementação e os limites das fontes estão em [GLOBAL_PUBLIC_DATA.md](GLOBAL_PUBLIC_DATA.md). Não há garantia de cobertura completa de todos os sensores em todos os locais/períodos, nem de ausência de custos GEE. A escala de análise é comunicada; para controlar o número de pixels, pode ser superior à resolução nativa. O produto WorldCover mantém a data 2021 independentemente do período do projecto. ERA5-Land recusa períodos com dias em falta. Não existe fallback silencioso para uma área em Moçambique nos novos motores.

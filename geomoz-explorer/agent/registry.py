@@ -239,6 +239,39 @@ TOOL_DECLARATIONS = [
 ]
 
 
+# Public global analytics use documented, fixed assets only.
+_PUBLIC_INDEX = {"type": "string", "enum": ["ndvi", "ndwi", "mndwi", "ndbi", "nbr"]}
+_PUBLIC_SCALE = {"type": "number", "description": "Escala de análise em metros; pode ser aumentada explicitamente no resultado para AOIs grandes."}
+_PUBLIC_DATES = {"start_date": {"type": "string", "description": "YYYY-MM-DD; início inclusivo"},
+                 "end_date": {"type": "string", "description": "YYYY-MM-DD; fim exclusivo"}}
+for _decl in TOOL_DECLARATIONS:
+    if _decl["name"] == "calculate_zonal_statistics":
+        _decl["description"] = "Calcula de facto estatísticas e área por limiar de NDVI/NDWI/MNDWI/NDBI/NBR em Sentinel-2; percentagens referem-se à área válida, não a pixels sem observação. Disponível mundialmente dentro da cobertura do sensor."
+        _decl["parameters"] = {"type": "object", "properties": {
+            "index": _PUBLIC_INDEX, "layer_name": {"type": "string", "description": "Compatibilidade: código exacto do índice, não um nome livre de camada"},
+            **_PUBLIC_DATES, "threshold": {"type": "number", "description": "Limiar de -1 a 1, opcional"},
+            "comparison": {"type": "string", "enum": ["gte", "gt", "lte", "lt"]},
+            "scale_m": _PUBLIC_SCALE, "cloud_pct": {"type": "number"}}}
+    if _decl["name"] == "detect_temporal_change":
+        _decl["description"] = "Calcula diferença Sentinel-2 B menos A entre dois períodos explícitos, na intersecção dos pixels válidos. Quantifica áreas de aumento/diminuição por limiar; não confirma desflorestação nem área ardida."
+        _decl["parameters"] = {"type": "object", "properties": {
+            "index": _PUBLIC_INDEX,
+            **{key: {"type": "string", "description": "YYYY-MM-DD; fim exclusivo"}
+               for key in ("start_date_1", "end_date_1", "start_date_2", "end_date_2")},
+            "threshold": {"type": "number", "description": "Limiar absoluto de mudança > 0 e <= 2"},
+            "scale_m": _PUBLIC_SCALE, "cloud_pct": {"type": "number"}},
+            "required": ["index", "start_date_1", "end_date_1", "start_date_2", "end_date_2"]}
+TOOL_DECLARATIONS += [
+    {"name": "list_public_datasets", "description": "Lista fontes públicas mundiais, resoluções, cobertura, período, termos e estado de integração. Só metadados; não executa análises nem exige autenticação GEE.",
+     "parameters": {"type": "object", "properties": {}}},
+    {"name": "get_public_landcover", "description": "Mapa e áreas reais por classe da cobertura global WorldCover v200. Refere-se estritamente a 2021; ignora o período do projecto por ser um produto estático.",
+     "parameters": {"type": "object", "properties": {"scale_m": _PUBLIC_SCALE}}},
+    {"name": "get_global_climate", "description": "Clima terrestre mundial ERA5-Land: total de precipitação (mm) ou média da temperatura do ar (°C) no período. Exige todos os dias disponíveis; reanálise, não previsão.",
+     "parameters": {"type": "object", "properties": {**_PUBLIC_DATES,
+         "variable": {"type": "string", "enum": ["precipitation", "temperature"]}, "scale_m": _PUBLIC_SCALE}}},
+]
+
+
 # ── Tool Execution Dispatcher ──────────────────────────────────────────────────
 
 class ToolDispatcher:
@@ -277,6 +310,63 @@ class ToolDispatcher:
                 logger.warning("Agent GEE init attempt notice: %s", e)
 
         try:
+            if tool_name == "list_public_datasets":
+                from agent.public_datasets import public_catalogue
+                return public_catalogue()
+
+            if tool_name in ("calculate_zonal_statistics", "detect_temporal_change", "get_public_landcover", "get_global_climate"):
+                # Reject incomplete analytical requests before any authentication/RPC.
+                from agent import earth_engine_tools as public
+                dates = context.get("temporalWindow") or {}
+                if tool_name == "calculate_zonal_statistics":
+                    if (args.get("index") or args.get("layer_name")) not in public.INDEX_BANDS:
+                        return {"status": "error", "message": "Indique um código de índice válido: ndvi, ndwi, mndwi, ndbi ou nbr."}
+                    public.validate_period(args.get("start_date") or dates.get("startDate"), args.get("end_date") or dates.get("endDate"), "2017-03-28")
+                if tool_name == "get_global_climate":
+                    public.validate_period(args.get("start_date") or dates.get("startDate"), args.get("end_date") or dates.get("endDate"), "1950-01-02")
+                # Keep blocking Earth Engine RPCs off the async request loop.
+                import asyncio
+                boundary_code = aoi.get("countryCode") if aoi.get("source") == "country" else (
+                    "MOZ" if aoi.get("source") == "mozambique" and not province and region_geom is None else None)
+                def run_public_analysis():
+                    import gee_module
+                    from agent import earth_engine_tools as public
+                    gee_module._init_gee(token=gee_token, project=gee_project)
+                    region = region_geom
+                    if boundary_code:
+                        region = public.country_geometry(boundary_code)
+                    elif region is None:
+                        if not province:
+                            raise ValueError("Seleccione um país, província ou AOI desenhada. A vista mundial não define uma área de análise.")
+                        import api
+                        region = api._region_geojson(province=province, district=district)
+                    if isinstance(region, dict):
+                        public.validate_geometry(region)
+                    dates = context.get("temporalWindow") or {}
+                    start = args.get("start_date") or dates.get("startDate")
+                    end = args.get("end_date") or dates.get("endDate")
+                    if tool_name == "calculate_zonal_statistics":
+                        index = args.get("index") or args.get("layer_name")
+                        return public.zonal_statistics(region, index, start, end,
+                            args.get("threshold"), args.get("comparison") or "gte",
+                            args.get("scale_m", 30), args.get("cloud_pct", 30))
+                    if tool_name == "detect_temporal_change":
+                        return public.temporal_change(region, args["index"],
+                            args["start_date_1"], args["end_date_1"], args["start_date_2"], args["end_date_2"],
+                            args.get("scale_m", 30), args.get("cloud_pct", 30), args.get("threshold", 0.2))
+                    if tool_name == "get_public_landcover":
+                        return public.landcover(region, args.get("scale_m", 30))
+                    return public.climate(region, start, end, args.get("variable") or "precipitation", args.get("scale_m", 11132))
+                result = await asyncio.to_thread(run_public_analysis)
+                if boundary_code and result.get("status") == "success":
+                    from agent.public_datasets import source
+                    result["boundarySource"] = source("WM/geoLab/geoBoundaries/600/ADM0")
+                    result["countryCode"] = boundary_code
+                    result["warning"] += " Limite nacional geoBoundaries v6; não foi usada a caixa envolvente apresentada na selecção."
+                    context["aoi"] = {**aoi, "geometry": None,
+                                      "boundaryDataset": "WM/geoLab/geoBoundaries/600/ADM0"}
+                return result
+
             if tool_name == "resolve_aoi":
                 prov_name = args.get("province", "Maputo")
                 dist_name = args.get("district")
@@ -500,12 +590,6 @@ class ToolDispatcher:
                     }
                 }
 
-            elif tool_name == "calculate_zonal_statistics":
-                return {
-                    "status": "error",
-                    "message": "Estatísticas zonais indisponíveis: esta ferramenta ainda não recebe um raster ou máscara calculada. Nenhuma área foi estimada.",
-                }
-
             elif tool_name == "get_geology_units":
                 from starlette.concurrency import run_in_threadpool
                 from agent.geology_data import summarize_geology
@@ -594,9 +678,6 @@ class ToolDispatcher:
                         "map_action": {"type": "ADD_LAYER", "id": "agent_ahp_groundwater",
                                        "name": "Potencial hidrogeológico — sobreposição ponderada",
                                        "tileUrl": result.get("tile"), "opacity": 0.85}}
-
-            elif tool_name == "detect_temporal_change":
-                return {"status": "error", "message": "Comparação temporal indisponível neste agente: a diferença entre os dois períodos ainda não está integrada. Nenhuma alteração foi quantificada."}
 
             elif tool_name == "get_soil_moisture_smap":
                 import gee_module
@@ -698,4 +779,5 @@ class ToolDispatcher:
                 }
             logger.exception("Error executing tool '%s': %s", tool_name, exc)
             return {"status": "error", "message": err_str}
+
 

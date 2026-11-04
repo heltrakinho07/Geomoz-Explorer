@@ -21,7 +21,7 @@ export interface IntelligenceDossier {
 
 const labels: Record<string, string> = {
   completed: "Execução concluída", partial: "Resultados parciais", error: "Execução com falhas",
-  unverified: "Resposta sem cálculo", needs_input: "Faltam dados para analisar",
+  unverified: "Resposta sem cálculo", needs_input: "Faltam dados para analisar", reference: "Consulta de fontes",
 };
 
 export function GeoIntelligenceDossier({ dossier }: { dossier: IntelligenceDossier }) {

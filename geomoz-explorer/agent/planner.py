@@ -4,6 +4,7 @@ Uses Gemini 2.0 Flash Function Calling with fallback to deterministic spatial he
 """
 
 import os
+import re
 from copy import deepcopy
 from agent.intelligence import build_dossier
 import json
@@ -89,11 +90,38 @@ class GeoMozAgent:
     ) -> Dict[str, Any]:
         """Orchestrate plan, execute tools, and return map actions and synthesis."""
         current_map_state = current_map_state if isinstance(current_map_state, dict) else {}
+        public_request = current_map_state.get("publicAnalysis")
+        catalogue_requested = any(phrase in _fold_text(user_message) for phrase in
+                                  ("dados publicos", "fontes publicas", "catalogo de dados", "fontes globais"))
+        if public_request is not None or catalogue_requested:
+            if catalogue_requested and public_request is None:
+                public_request = {"tool": "list_public_datasets", "args": {}}
+            allowed = {"list_public_datasets", "calculate_zonal_statistics", "detect_temporal_change",
+                       "get_public_landcover", "get_global_climate"}
+            if not isinstance(public_request, dict) or public_request.get("tool") not in allowed or not isinstance(public_request.get("args", {}), dict):
+                return {"status": "error", "steps": [], "runs": [], "map_actions": [],
+                        "synthesis": "Pedido de análise pública inválido."}
+            name = public_request["tool"]
+            output = await ToolDispatcher.execute(name, public_request.get("args", {}), current_map_state)
+            success = output.get("status") == "success"
+            return {"status": "reference" if name == "list_public_datasets" and success else "completed" if success else "error",
+                    "provider": "public-data-engine", "model": "Earth Engine / dados públicos",
+                    "steps": [{"id": "public", "name": name.replace("_", " "),
+                               "status": "completed" if success else "error",
+                               "resultSummary": output.get("summary") or output.get("message", "Sem resultado.")}],
+                    "map_actions": [output["map_action"]] if output.get("map_action") else [],
+                    "runs": [{"tool": name, "output": output}],
+                    "synthesis": output.get("summary") or output.get("message", "Sem resultado.")}
+
         # Published GeoMoz geology is a deterministic public catalogue. Even if
         # an OpenAI/Gemini key is configured, catalogue-only questions must not
         # depend on third-party model availability or Google Earth Engine login.
         context = current_map_state.get("agentContext")
         if is_catalogue_request(user_message) or is_geology_followup(user_message, context):
+            aoi = current_map_state.get("aoi") or {}
+            if aoi.get("source") == "country" and aoi.get("countryCode") != "MOZ":
+                return {"status": "needs_input", "steps": [], "runs": [], "map_actions": [],
+                        "synthesis": "A carta geológica actualmente ligada ao GeoMoz cobre Moçambique. Ainda não está ligada uma carta geológica para este país. Os índices de satélite globais não substituem uma carta geológica."}
             return await cls._run_heuristic_planner(user_message, current_map_state)
 
         clean_openai = (openai_api_key or os.getenv("OPENAI_API_KEY") or "").strip().strip("`").strip('"').strip("'")
@@ -461,7 +489,29 @@ class GeoMozAgent:
 
         # Deterministic domain plans use the same audited tools as model plans.
         text = folded_message
-        if any(w in text for w in ("inunda", "cheia", "alagamento", "flood")):
+        if any(w in text for w in ("alteracao temporal", "mudanca temporal", "comparar periodos", "comparacao temporal", "desmat", "desflorest")):
+            dates = re.findall(r"\b\d{4}-\d{2}-\d{2}\b", user_message)
+            years = re.findall(r"\b(?:19|20)\d{2}\b", user_message)
+            if len(dates) == 4:
+                start1, end1, start2, end2 = dates
+            elif len(years) == 2:
+                start1, end1 = f"{years[0]}-01-01", f"{int(years[0])+1}-01-01"
+                start2, end2 = f"{years[1]}-01-01", f"{int(years[1])+1}-01-01"
+            else:
+                return {"status": "needs_input", "steps": [], "runs": [], "map_actions": [],
+                        "synthesis": "Indique dois anos (ex.: comparar períodos NDVI 2020 e 2025) ou use o painel Dados públicos para definir as quatro datas. A diferença será B − A."}
+            index = next((code for code in ("mndwi", "ndwi", "ndbi", "nbr", "ndvi") if code in text), "ndvi")
+            plan = [("detect_temporal_change", {"index": index, "start_date_1": start1, "end_date_1": end1,
+                     "start_date_2": start2, "end_date_2": end2}, "Diferença temporal Sentinel-2 (B − A)")]
+        elif any(w in text for w in ("worldcover", "cobertura do solo", "ocupacao do solo")):
+            plan = [("get_public_landcover", {}, "Cobertura do solo — WorldCover 2021")]
+        elif any(w in text for w in ("era5", "temperatura do ar", "clima global")):
+            variable = "temperature" if "temperatura" in text else "precipitation"
+            plan = [("get_global_climate", {"variable": variable}, "Clima terrestre — ERA5-Land")]
+        elif any(w in text for w in ("estatisticas zonais", "estatistica zonal", "estatisticas de ndvi")):
+            index = next((code for code in ("mndwi", "ndwi", "ndbi", "nbr", "ndvi") if code in text), "ndvi")
+            plan = [("calculate_zonal_statistics", {"index": index}, "Estatísticas zonais Sentinel-2")]
+        elif any(w in text for w in ("inunda", "cheia", "alagamento", "flood")):
             plan = [("calculate_index", {"index": "mndwi"}, "Água superficial (MNDWI)"),
                     ("get_flood_susceptibility", {}, "Triagem topográfica de cheias"),
                     ("get_river_network", {}, "Rede hidrográfica")]
@@ -488,8 +538,6 @@ class GeoMozAgent:
             plan = [("run_alphaearth_pca", {}, "Representação de embeddings AlphaEarth")]
         elif any(w in text for w in ("lineament", "fratur", "fractur", "falha")):
             plan = [("extract_lineaments", {}, "Densidade de lineamentos do relevo")]
-        elif any(w in text for w in ("alteracao temporal", "mudanca temporal", "desmat", "desflorest")):
-            plan = [("detect_temporal_change", {}, "Comparação temporal")]
         elif any(w in text for w in ("decliv", "slope")):
             plan = [("calculate_slope", {}, "Declive do terreno")]
         elif any(w in text for w in ("curvas", "elevacao", "altimetr")):
@@ -502,7 +550,7 @@ class GeoMozAgent:
 
         if not province and not (aoi.get("geometry") or aoi.get("customGeometry")):
             return {"status": "needs_input", "steps": [], "runs": [], "map_actions": [],
-                    "synthesis": "Seleccione uma província, distrito ou desenhe uma área de estudo para iniciar a análise."}
+                    "synthesis": "Seleccione um país, província, distrito ou desenhe uma área de estudo. A vista mundial não define uma AOI de análise."}
 
         async def execute_recorded(name, args, label):
             output = await ToolDispatcher.execute(name, args, current_map_state)
@@ -533,3 +581,4 @@ class GeoMozAgent:
         return {"status": "completed", "provider": "deterministic",
                 "plan": [step["name"] for step in steps_log], "steps": steps_log,
                 "map_actions": map_actions, "runs": executed_runs, "synthesis": synthesis}
+
