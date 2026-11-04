@@ -131,10 +131,6 @@ def reserve_managed_job(uid, job_id, cost=JOB_CREDIT_COST):
         plan = _effective_plan(state)
         _check_feature(plan, "cloud_jobs", flags)
         limits = _limits(plan)
-        used = credits_used(state, cycle)
-        cap = limits["credits"]
-        if cap is not None and used + cost > cap:
-            raise HTTPException(402, "Créditos GeoMoz insuficientes. Consulte os planos.")
         quota = quota_snap.to_dict() if quota_snap.exists else {}
         raw = quota.get("activeJobs") if isinstance(quota, dict) else {}
         raw = raw if isinstance(raw, dict) else {}
@@ -143,6 +139,10 @@ def reserve_managed_job(uid, job_id, cost=JOB_CREDIT_COST):
         slots = limits["concurrent_jobs"]
         if slots is not None and len(active) >= slots:
             raise HTTPException(429, "Limite de processos simultâneos do plano atingido.")
+        used = credits_used(state, cycle)
+        cap = limits["credits"]
+        if cap is not None and used + cost > cap:
+            raise HTTPException(402, "Créditos GeoMoz insuficientes. Consulte os planos.")
         active[job_id] = epoch + JOB_LEASE_SECONDS
         transaction.set(event_ref, {
             "type": "managed_gdal", "cost": cost, "cycle": cycle,
