@@ -3,6 +3,28 @@
  * For additional languages, custom labels fall back to English, not Portuguese.
  */
 const entries: Record<string, {en:string;es:string;fr:string}> = {
+  // Real-world 3D terrain geolocation, basemaps and comparison view.
+  "Modelo 3D": {"en":"3D model","es":"Modelo 3D","fr":"Modèle 3D"},
+  "Mapa 3D": {"en":"3D map","es":"Mapa 3D","fr":"Carte 3D"},
+  "2D / 3D": {"en":"2D / 3D","es":"2D / 3D","fr":"2D / 3D"},
+  "Modos de visualização do terreno": {"en":"Terrain view modes","es":"Modos de visualización del terreno","fr":"Modes de visualisation du terrain"},
+  "Localização do DEM no basemap": {"en":"DEM location on basemap","es":"Ubicación del MDE en el mapa base","fr":"Localisation du MNT sur le fond de carte"},
+  "Modelo local de elevação 3D": {"en":"Local 3D elevation model","es":"Modelo local de elevación 3D","fr":"Modèle local d'élévation 3D"},
+  "DEM georreferenciado sobre mapa de base": {"en":"Georeferenced DEM over basemap","es":"MDE georreferenciado sobre el mapa base","fr":"MNT géoréférencé sur un fond de carte"},
+  "Mapa de base": {"en":"Basemap","es":"Mapa base","fr":"Fond de carte"},
+  "Escolher mapa de base": {"en":"Choose basemap","es":"Elegir mapa base","fr":"Choisir un fond de carte"},
+  "Satélite": {"en":"Satellite","es":"Satélite","fr":"Satellite"},
+  "Topográfico": {"en":"Topographic","es":"Topográfico","fr":"Topographique"},
+  "OpenStreetMap": {"en":"OpenStreetMap","es":"OpenStreetMap","fr":"OpenStreetMap"},
+  "Elevação": {"en":"Elevation","es":"Elevación","fr":"Élévation"},
+  "Fonte da elevação 3D": {"en":"3D elevation source","es":"Fuente de elevación 3D","fr":"Source d'élévation 3D"},
+  "DEM carregado": {"en":"Loaded DEM","es":"MDE cargado","fr":"MNT chargé"},
+  "Relevo global de referência": {"en":"Global reference terrain","es":"Relieve global de referencia","fr":"Relief mondial de référence"},
+  "Localizar DEM": {"en":"Locate DEM","es":"Localizar MDE","fr":"Localiser le MNT"},
+  "Localização real do DEM": {"en":"Actual DEM location","es":"Ubicación real del MDE","fr":"Localisation réelle du MNT"},
+  "Cursor": {"en":"Cursor","es":"Cursor","fr":"Curseur"},
+  "Contorno azul: extensão do DEM. Fora do DEM, o relevo local é uma referência plana; não corresponde a medições.": {"en":"Blue outline: DEM extent. Outside the DEM, local terrain is a flat reference surface, not measured elevation.","es":"Contorno azul: extensión del MDE. Fuera del MDE, el terreno local es una referencia plana, no una elevación medida.","fr":"Contour bleu : emprise du MNT. En dehors du MNT, le relief local est une surface plane de référence, non une altitude mesurée."},
+  "Este DEM não possui coordenadas ou um CRS geográfico válido para o mapa.": {"en":"This DEM lacks valid geographic coordinates or a supported CRS for the map.","es":"Este MDE no tiene coordenadas geográficas válidas ni un SRC compatible con el mapa.","fr":"Ce MNT ne possède pas de coordonnées géographiques valides ni de SCR pris en charge par la carte."},
   "Catálogo GeoMoz de mapas-base": {
     "en": "GeoMoz basemap catalog",
     "es": "Catálogo GeoMoz de mapas base",
