@@ -94,7 +94,9 @@ export const PORTAL_CATALOGS = {
     "settings.dark": "Modo escuro",
     "settings.reduceMotion": "Reduzir animações",
     "settings.openWorkspace": "Abrir GIS Workspace com estas preferências",
-    "settings.basemap": "Mapa-base predefinido"
+    "settings.basemap": "Mapa-base predefinido",
+    "settings.portalLanguages": "Idiomas com tradução GeoMoz revista",
+    "settings.nativeLanguages": "Outros idiomas do motor SIG (portal em inglês)"
   },
   "en": {
     "sidebar.brandSubtitle": "Geospatial studies",
@@ -187,7 +189,9 @@ export const PORTAL_CATALOGS = {
     "settings.dark": "Dark mode",
     "settings.reduceMotion": "Reduce animations",
     "settings.openWorkspace": "Open GIS Workspace with these preferences",
-    "settings.basemap": "Default basemap"
+    "settings.basemap": "Default basemap",
+    "settings.portalLanguages": "GeoMoz-reviewed languages",
+    "settings.nativeLanguages": "Other GIS engine languages (portal in English)"
   },
   "es": {
     "sidebar.brandSubtitle": "Estudios geoespaciales",
@@ -280,7 +284,9 @@ export const PORTAL_CATALOGS = {
     "settings.dark": "Modo oscuro",
     "settings.reduceMotion": "Reducir animaciones",
     "settings.openWorkspace": "Abrir GIS Workspace con estas preferencias",
-    "settings.basemap": "Mapa base predeterminado"
+    "settings.basemap": "Mapa base predeterminado",
+    "settings.portalLanguages": "Idiomas revisados de GeoMoz",
+    "settings.nativeLanguages": "Otros idiomas del motor SIG (portal en inglés)"
   },
   "fr": {
     "sidebar.brandSubtitle": "Études géospatiales",
@@ -373,7 +379,9 @@ export const PORTAL_CATALOGS = {
     "settings.dark": "Mode sombre",
     "settings.reduceMotion": "Réduire les animations",
     "settings.openWorkspace": "Ouvrir GIS Workspace avec ces préférences",
-    "settings.basemap": "Fond de carte par défaut"
+    "settings.basemap": "Fond de carte par défaut",
+    "settings.portalLanguages": "Langues revues pour GeoMoz",
+    "settings.nativeLanguages": "Autres langues du moteur SIG (portail en anglais)"
   }
 } as const;
 export type PortalCopyKey = keyof typeof PORTAL_CATALOGS.pt;
@@ -388,3 +396,30 @@ export function portalText(language: string, key: PortalCopyKey): string {
   const catalog = PORTAL_CATALOGS[resolvedPortalLocale(language)];
   return catalog[key] || PORTAL_CATALOGS.en[key];
 }
+
+/** Keep the portal selector aligned with GeoLibre's shipped native catalogs.
+ * The four portal locales are explicitly distinguished from GIS-only locales.
+ */
+export const GEOLIBRE_LANGUAGE_OPTIONS = [
+  { code: "pt", nativeName: "Português" },
+  { code: "en", nativeName: "English" },
+  { code: "es", nativeName: "Español" },
+  { code: "fr", nativeName: "Français" },
+  { code: "ar", nativeName: "العربية" },
+  { code: "az", nativeName: "Azərbaycanca" },
+  { code: "de", nativeName: "Deutsch" },
+  { code: "fa", nativeName: "فارسی" },
+  { code: "he", nativeName: "עברית" },
+  { code: "hi", nativeName: "हिन्दी" },
+  { code: "id", nativeName: "Bahasa Indonesia" },
+  { code: "it", nativeName: "Italiano" },
+  { code: "ja", nativeName: "日本語" },
+  { code: "ka", nativeName: "ქართული" },
+  { code: "ko", nativeName: "한국어" },
+  { code: "nl", nativeName: "Nederlands" },
+  { code: "ru", nativeName: "Русский" },
+  { code: "th", nativeName: "ไทย" },
+  { code: "tr", nativeName: "Türkçe" },
+  { code: "vi", nativeName: "Tiếng Việt" },
+  { code: "zh", nativeName: "中文" },
+] as const;
