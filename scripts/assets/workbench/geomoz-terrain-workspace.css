@@ -86,3 +86,59 @@
 .dark .gm-terrain-workspace-selector { color: #cbd5e1; }
 .dark .gm-terrain-workspace-selector select, .dark .gm-terrain-workspace-close { background: #1e293b; color: #f1f5f9; border-color: #475569; }
 .dark .gm-terrain-workspace-frame { background: #0f172a; }
+
+/* Single native WebGL module and science sidebar, using the Workspace shell. */
+.gm-terrain-native {display:flex;min-width:0;min-height:0;flex:1;overflow:hidden;}
+.gm-terrain-native-sidebar {
+  flex:0 0 300px;max-width:38%;height:100%;overflow-y:auto;
+  padding:14px;display:flex;flex-direction:column;gap:11px;
+  border-right:1px solid #e2e8f0;background:#fff;
+  color:#0f172a;
+}
+.gm-terrain-native-sidebar h3 {margin:0;font-weight:700;font-size:14px;color:#0f172a;}
+.gm-terrain-native-sidebar>p {font-size:11px;line-height:1.5;color:#64748b;margin:0;}
+.gm-terrain-native-actions {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;}
+.gm-terrain-native-actions button,.gm-terrain-native-reset {
+  display:flex;align-items:center;justify-content:center;gap:5px;
+  min-height:35px;padding:6px 8px;
+  border-radius:8px;border:1px solid #cbd5e1;background:#f8fafc;
+  color:#334155;font-weight:600;font-size:11px;cursor:pointer;
+}
+.gm-terrain-native-actions button:hover:not(:disabled),.gm-terrain-native-reset:hover {
+  background:#e0f2fe;color:#0369a1;border-color:#7dd3fc;
+}
+.gm-terrain-native-actions button:disabled {opacity:.4;cursor:not-allowed;}
+.gm-terrain-native-info {border:1px solid #bae6fd;background:#f0f9ff;
+  display:flex;flex-direction:column;gap:5px;padding:10px;border-radius:10px;font-size:12px;}
+.gm-terrain-native-info small {color:#475569;}
+.gm-terrain-native-label {font-size:12px;font-weight:600;display:flex;flex-direction:column;gap:6px;}
+.gm-terrain-native-label select {border:1px solid #cbd5e1;border-radius:8px;background:white;
+  min-height:36px;padding:6px;color:#0f172a;}
+.gm-terrain-native-label input[type=range] {width:100%;accent-color:#0284c7;}
+.gm-terrain-native-reset {justify-content:flex-start;background:transparent;border:0;}
+.gm-terrain-native-hint {font-size:10px;color:#64748b;line-height:1.5;}
+.gm-terrain-native-viewport {position:relative;flex:1;min-width:0;min-height:0;
+  background:#0f1e33;overflow:hidden;}
+.gm-terrain-native-canvas {display:block;width:100%;height:100%;touch-action:none;cursor:grab;}
+.gm-terrain-native-canvas:active {cursor:grabbing;}
+.gm-terrain-native-empty {position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;color:#bae6fd;}
+.gm-terrain-native-empty p {max-width:350px;color:#94a3b8;font-size:13px;line-height:1.5;}
+.gm-terrain-native-empty strong {color:#f8fafc;font-size:16px;}
+.gm-terrain-native-help {position:absolute;pointer-events:none;bottom:14px;left:14px;
+  border-radius:9px;border:1px solid #475569;background:#0f172add;color:#f1f5f9;
+  padding:8px 12px;font-size:12px;}
+.gm-terrain-render-error {position:absolute;bottom:12px;right:12px;max-width:420px;
+  padding:11px;border-radius:10px;background:#fee2e2;color:#9f1239;font-size:12px;}
+.dark .gm-terrain-native-sidebar {background:#111c31;border-color:#334155;color:#e2e8f0;}
+.dark .gm-terrain-native-sidebar h3 {color:#f1f5f9;}
+.dark .gm-terrain-native-info {background:#122b46;border-color:#24547e;}
+.dark .gm-terrain-native-info small,.dark .gm-terrain-native-sidebar>p {color:#94a3b8;}
+.dark .gm-terrain-native-actions button {background:#1e293b;color:#f1f5f9;border-color:#475569;}
+.dark .gm-terrain-native-label select {background:#1e293b;color:#f1f5f9;border-color:#475569;}
+@media(max-width:760px){
+  .gm-terrain-native {flex-direction:column-reverse;}
+  .gm-terrain-native-sidebar {flex:none;width:100%;max-width:none;height:40%;min-height:195px;
+    border-right:0;border-top:1px solid #cbd5e1;}
+  .gm-terrain-native-viewport {height:60%;min-height:200px;flex:1;}
+}
