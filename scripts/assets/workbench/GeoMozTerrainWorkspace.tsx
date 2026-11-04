@@ -102,6 +102,22 @@ function makeProfileGeoJSON(profile:TerrainProfile):FeatureCollection {
 export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
   const {language}=useLanguage();
   const ui=(pt:string)=>geoMozSpecialistText(language,pt);
+  // Keep notices in a language-neutral source form. Interpolate DEM names
+  // and scientific identifiers only after translating the fixed copy.
+  const uiNotice=(message:string)=>{
+    const model="Modelo 3D do projecto: ";
+    if(message.startsWith(model)){
+      const remainder=message.slice(model.length);
+      const valid=" válido";
+      return ui(model)+(remainder.endsWith(valid)
+        ?remainder.slice(0,-valid.length)+ui(valid):remainder);
+    }
+    for(const prefix of [
+      "Curvas de nível adicionadas ao catálogo SIG (",
+      "Perfil topográfico adicionado ao projecto (",
+    ])if(message.startsWith(prefix))return ui(prefix)+message.slice(prefix.length);
+    return ui(message);
+  };
   const layers=useAppStore(s=>s.layers);
   const currentId=useAppStore(s=>s.selectedLayerId);
   const projectName=useAppStore(s=>s.projectName);
@@ -269,7 +285,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
       </button>
     </header>
     {error&&<p className="gm-terrain-workspace-error" role="alert">{ui(error)}</p>}
-    {!error&&notice&&<p className="gm-terrain-workspace-notice" role="status">{ui(notice)}</p>}
+    {!error&&notice&&<p className="gm-terrain-workspace-notice" role="status">{uiNotice(notice)}</p>}
     <div className="gm-terrain-native">
       <aside className="gm-terrain-native-sidebar">
         <h3>{ui("Dados, relevo e análise")}</h3>
