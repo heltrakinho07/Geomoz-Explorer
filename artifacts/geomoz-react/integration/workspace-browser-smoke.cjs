@@ -76,10 +76,9 @@ const server = createServer(async (req, res) => {
     await page.screenshot({path:"workspace-browser-artifacts/sidebar-action-dock.png"});
     await sidebar.evaluate(element=>element.style.removeProperty("--gm-sidebar-width"));
     await settingsAction.click();
-    await page.getByRole("dialog").waitFor({state:"visible"});
-    // Native GeoLibre and portal share the saved locale, but the portal must
-    // actually translate its navigation, dashboard and settings without a reload.
-    await page.getByRole("button",{name:"Preferências",exact:true}).click();
+    // Settings is now an integrated page, not a Radix dialog.
+    await page.getByTestId("geomoz-settings-page").waitFor({state:"visible"});
+    await page.getByTestId("settings-section-preferences").click();
     const portalLocale=page.getByTestId("geomoz-portal-language");
     await portalLocale.waitFor();
     if(await portalLocale.locator("option").count()!==21) throw Error("Portal selector lost upstream GeoLibre locales.");
@@ -96,42 +95,36 @@ const server = createServer(async (req, res) => {
         const persisted=JSON.parse(localStorage.getItem("geolibre.desktopSettings")||"{}").language;
         return api?.getLanguage()===copy.code && persisted===copy.code &&
           document.documentElement.lang===copy.actual &&
-          document.querySelector(".gm-sidebar")?.textContent?.includes(copy.navigation) &&
-          document.querySelector(".gm-dashboard-hero")?.textContent?.includes(copy.banner) &&
           document.querySelector('[data-testid="geomoz-portal-language"]')?.getAttribute("aria-label")===copy.settings;
       },copy,{timeout:18000});
     }
-    console.log("Portal and GeoLibre preferences synchronize 21 locales; PT/EN/ES/FR content switches without reload.");
-    await page.keyboard.press("Escape");
-    await page.getByRole("dialog").waitFor({state:"hidden"});
-    // Geoperigos is an integrated scientific module, not a separate locale.
-    // Exercise real rendered controls with the same Settings preference selector.
+    await page.getByRole("link",{name:"Voltar à plataforma",exact:true}).click();
+    await page.getByTestId("sidebar-action-dock").waitFor();
+    await page.waitForFunction(()=>document.querySelector(".gm-sidebar")?.textContent?.includes("Bacias hidrográficas") &&
+      document.querySelector(".gm-dashboard-hero")?.textContent?.includes("Centro de Comando Geoespacial"));
+    console.log("Portal and GeoLibre preferences synchronize 21 locales in the settings page; PT/EN/ES/FR switch without reload.");
+
+    // The same translation preference must survive leaving Settings and
+    // re-entering Geoperigos, not just work inside a modal overlay.
     await page.getByRole("button",{name:"Geoperigos",exact:true}).click();
     await page.getByRole("heading",{name:"Geoperigos",exact:true}).waitFor();
     await page.getByRole("button",{name:"Mapear cheia",exact:true}).waitFor();
-    await settingsAction.click();
-    await page.getByRole("dialog").waitFor({state:"visible"});
-    await page.getByRole("button",{name:"Preferências",exact:true}).click();
-    const hazardsLocale=page.getByTestId("geomoz-portal-language");
     for(const copy of [
       {code:"en",heading:"Geohazards",action:"Map flooding"},
       {code:"fr",heading:"Géorisques",action:"Cartographier l'inondation"},
       {code:"es",heading:"Geopeligros",action:"Cartografiar inundación"},
       {code:"pt",heading:"Geoperigos",action:"Mapear cheia"},
     ]){
-      await hazardsLocale.selectOption(copy.code);
-      // Radix Dialog marks the underlying page aria-hidden while Settings is open.
-      // Inspect rendered DOM during the modal, then verify accessible controls after closing.
-      await page.waitForFunction(copy=>[...document.querySelectorAll("h2")]
-        .some(node=>node.textContent?.trim()===copy.heading) &&
-        [...document.querySelectorAll("button")].some(node=>node.textContent?.trim()===copy.action),
-        copy,{timeout:18000});
+      await settingsAction.click();
+      await page.getByTestId("geomoz-settings-page").waitFor();
+      await page.getByTestId("settings-section-preferences").click();
+      await page.getByTestId("geomoz-portal-language").selectOption(copy.code);
+      await page.getByRole("link",{name:"Voltar à plataforma",exact:true}).click();
+      await page.getByRole("button",{name:copy.heading,exact:true}).click();
+      await page.getByRole("heading",{name:copy.heading,exact:true}).waitFor({state:"visible"});
+      await page.getByRole("button",{name:copy.action,exact:true}).waitFor({state:"visible"});
     }
-    await page.keyboard.press("Escape");
-    await page.getByRole("dialog").waitFor({state:"hidden"});
-    await page.getByRole("heading",{name:"Geoperigos",exact:true}).waitFor({state:"visible"});
-    await page.getByRole("button",{name:"Mapear cheia",exact:true}).waitFor({state:"visible"});
-    console.log("Geoperigos form and flood controls translated in PT/EN/ES/FR without reloading.");
+    console.log("Geoperigos form and flood controls translated in PT/EN/ES/FR across the dedicated Settings page.");
     await page.getByRole("button",{name:"GIS Workspace",exact:true}).click();
     await page.getByRole("heading",{name:"Da área de estudo ao resultado.",exact:true}).waitFor();
     await page.locator('[data-testid="cesium-workspace"] .cesium-widget canvas').waitFor();
