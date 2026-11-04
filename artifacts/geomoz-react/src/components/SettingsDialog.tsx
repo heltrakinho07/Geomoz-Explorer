@@ -29,15 +29,18 @@ import {
   Trash2,
   Globe,
   Layers,
+  CreditCard,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { useSubscription } from "@/hooks/useSubscription";
+import { formatMzn } from "@/lib/plans";
 
 interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-type SettingsTab = "gee" | "profile" | "preferences" | "storage";
+type SettingsTab = "gee" | "profile" | "preferences" | "storage" | "billing";
 
 export default function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { user, signOut } = useAuth();
@@ -57,6 +60,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     refreshStatus,
   } = useGeeAuth();
   const { projects } = useProject();
+  const subscription = useSubscription();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("gee");
   const [projectIdInput, setProjectIdInput] = useState(
@@ -234,6 +238,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
 
           {/* Settings Tabs */}
           <div className="flex items-center gap-1 mt-4 pt-3 border-t border-slate-800/80 overflow-x-auto">
+            <button onClick={() => setActiveTab("billing")} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${activeTab === "billing" ? "bg-sky-500 text-white" : "text-slate-400 hover:text-white"}`}><CreditCard size={14}/>Plano e subscrição</button>
             <button
               onClick={() => setActiveTab("gee")}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
@@ -286,6 +291,19 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
 
         {/* Content Body */}
         <div className="p-5 max-h-[65vh] overflow-y-auto space-y-4">
+          {activeTab === "billing" && (
+            <div className="p-5 space-y-4 text-slate-800 dark:text-slate-100">
+              <h3 className="font-bold text-lg">Plano e subscrição</h3>
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50 dark:bg-slate-800">
+                <p className="text-xs text-slate-500">Plano actual</p>
+                <p className="text-xl font-bold">GeoMoz {subscription.planData.name}</p>
+                <p className="text-sm mt-2">Créditos disponíveis: {subscription.remainingCredits.toLocaleString("pt-PT")}</p>
+                <p className="text-sm">Armazenamento: {(subscription.storageUsedBytes / (1024 ** 3)).toFixed(2)} GB / {subscription.planData.storageBytes === null ? "Personalizado" : (subscription.planData.storageBytes / (1024 ** 3)).toFixed(1) + " GB"}</p>
+                <p className="text-xs mt-2 text-slate-500">Estado: {subscription.status}</p>
+              </div>
+              <a href="/planos" className="block text-center py-3 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-semibold text-sm">Comparar planos e gerir subscrição</a>
+            </div>
+          )}
           {activeTab === "gee" && (
             <div className="space-y-4">
               {/* Status Card */}
