@@ -673,7 +673,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Geoperigos</h2>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{h("title")}</h2>
                 <button
                   type="button"
                   onClick={() => setGeeDialogOpen(true)}
@@ -682,13 +682,13 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
                       ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
                       : "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100"
                   }`}
-                  title={isGeeConnected ? "Conta GEE conectada" : "Clique para conectar Google Earth Engine"}
+                  title={isGeeConnected ? h("gee.connectedTitle") : h("gee.connectTitle")}
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${isGeeConnected ? "bg-emerald-500" : "bg-amber-500"}`} />
-                  {isGeeConnected ? "GEE Ativo" : "Conectar GEE"}
+                  {isGeeConnected ? h("gee.active") : h("gee.connect")}
                 </button>
               </div>
-              <p className="text-[10px] text-slate-400">Cheias · Erosão · Fogo · Seca · Área queimada · Solo SMAP</p>
+              <p className="text-[10px] text-slate-400">{h("subtitle")}</p>
             </div>
           </div>
           <button
@@ -704,16 +704,16 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
         <div className="p-3 border-b border-slate-100 dark:border-slate-800">
           <div className="grid grid-cols-3 gap-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
             {([
-              ["flood", "Cheias", Waves],
-              ["erosion", "Erosão", Mountain],
-              ["wildfire", "Focos", Flame],
-              ["drought", "Seca", Droplets],
-              ["burned", "Queimada", Layers],
-              ["soil_moisture", "Solo SMAP", Sprout],
+              ["flood", "tool.flood", Waves],
+              ["erosion", "tool.erosion", Mountain],
+              ["wildfire", "tool.wildfire", Flame],
+              ["drought", "tool.drought", Droplets],
+              ["burned", "tool.burned", Layers],
+              ["soil_moisture", "tool.soil", Sprout],
             ] as const).map(([t, label, Icon]) => (
               <button key={t} onClick={() => { setTool(t); setError(null); }}
                 className={`flex items-center justify-center gap-1 text-[11px] font-medium py-2 rounded-lg transition-all ${tool === t ? "bg-white dark:bg-slate-700 text-rose-700 dark:text-rose-400 shadow-sm font-semibold" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}>
-                <Icon size={12} /> {label}
+                <Icon size={12} /> {h(label)}
               </button>
             ))}
           </div>
@@ -723,24 +723,24 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
           <div className="m-3 p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-[11px] text-amber-800 dark:text-amber-300 space-y-1.5">
             <div className="font-semibold flex items-center gap-1">
               <AlertTriangle size={13} className="text-amber-600" />
-              <span>Google Earth Engine Necessário</span>
+              <span>{h("gee.required")}</span>
             </div>
             <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-relaxed">
-              Sentinel-1, CHIRPS, MODIS e os rasters RUSLE são processados pelo Google Earth Engine e requerem autenticação GEE ativa.
+              {h("gee.explanation")}
             </p>
             <button
               type="button"
               onClick={() => setGeeDialogOpen(true)}
               className="w-full py-1.5 px-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
             >
-              Conectar Google Earth Engine
+              {h("gee.connectTitle")}
             </button>
           </div>
         )}
 
         {/* Área de estudo — AOI global */}
         <div className="p-3 border-b border-slate-100 dark:border-slate-800">
-          <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Área de Estudo</h4>
+          <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">{h("studyArea")}</h4>
           <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
         </div>
 
@@ -749,10 +749,10 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
           <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
             <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-xl p-2.5 text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
               <Info size={12} className="mt-0.5 shrink-0 text-blue-500" />
-              <span>Radar Sentinel-1 vê <strong>através das nuvens</strong>. Compara o evento com os 60 dias anteriores para isolar a água nova.</span>
+              <span>{h("flood.description")}</span>
             </div>
             <div>
-              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Eventos conhecidos</label>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">{h("presets")}</label>
               <div className="grid grid-cols-2 gap-1">
                 {FLOOD_PRESETS.map(p => (
                   <button key={p.label} onClick={() => {
@@ -770,35 +770,35 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> Início</label>
+                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> {h("start")}</label>
                 <input type="date" value={eventStart} onChange={e => setEventStart(e.target.value)}
                   className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500" />
               </div>
               <div>
-                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> Fim</label>
+                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> {h("end")}</label>
                 <input type="date" value={eventEnd} onChange={e => setEventEnd(e.target.value)}
                   className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500" />
               </div>
             </div>
             <label className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-300">
-              Mostrar água permanente <input type="checkbox" checked={showPerm} onChange={e => setShowPerm(e.target.checked)} className="accent-blue-600" />
+              {h("permanentWater")} <input type="checkbox" checked={showPerm} onChange={e => setShowPerm(e.target.checked)} className="accent-blue-600" />
             </label>
             <button onClick={runFlood} disabled={loading}
               className="w-full flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors cursor-pointer">
               {loading ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
-                  <span>A processar radar Sentinel-1...</span>
+                  <span>{h("flood.processing")}</span>
                 </>
               ) : flood ? (
                 <>
                   <RefreshCw size={14} />
-                  <span>Recalcular Cheia</span>
+                  <span>{h("flood.recalculate")}</span>
                 </>
               ) : (
                 <>
                   <Play size={14} />
-                  <span>Mapear cheia</span>
+                  <span>{h("flood.map")}</span>
                 </>
               )}
             </button>
@@ -810,10 +810,10 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
           <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-2.5 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
               <Info size={12} className="mt-0.5 shrink-0 text-amber-500" />
-              <span>RUSLE: <strong>A = R·K·LS·C·P</strong> — chuva (CHIRPS) × solo × declive (DEM) × cobertura (NDVI). Resultado em t/ha/ano.</span>
+              <span><strong>A = R·K·LS·C·P</strong> — {h("erosion.description")}</span>
             </div>
             <div>
-              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Ano — <strong className="text-slate-700 dark:text-slate-200">{year}</strong></label>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">{h("year")} — <strong className="text-slate-700 dark:text-slate-200">{year}</strong></label>
               <input type="range" min={2018} max={2024} step={1} value={year} onChange={e => setYear(+e.target.value)} className="w-full accent-amber-500" />
               <div className="flex justify-between text-[10px] text-slate-400"><span>2018</span><span>2024</span></div>
             </div>
@@ -822,17 +822,17 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
               {loading ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
-                  <span>A calcular RUSLE...</span>
+                  <span>{h("erosion.processing")}</span>
                 </>
               ) : erosion ? (
                 <>
                   <RefreshCw size={14} />
-                  <span>Recalcular Erosão ({year})</span>
+                  <span>{h("erosion.recalculate")} ({year})</span>
                 </>
               ) : (
                 <>
                   <Play size={14} />
-                  <span>Calcular erosão</span>
+                  <span>{h("erosion.calculate")}</span>
                 </>
               )}
             </button>
@@ -844,11 +844,11 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
           <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-2.5 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
               <Info size={12} className="mt-0.5 shrink-0 text-amber-500" />
-              <span>NASA FIRMS/LANCE: usa <strong>VIIRS 375 m</strong> nos períodos recentes e <strong>MODIS 1 km</strong> como série histórica. A fonte é escolhida automaticamente pela data.</span>
+              <span>{h("wildfire.description")}</span>
             </div>
 
             <div>
-              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Temporadas e Regiões Críticas</label>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">{h("wildfire.seasons")}</label>
               <div className="grid grid-cols-2 gap-1">
                 {WILDFIRE_PRESETS.map(p => (
                   <button
@@ -873,7 +873,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1">
-                  <Calendar size={9} /> Início
+                  <Calendar size={9} /> {h("start")}
                 </label>
                 <input
                   type="date"
@@ -884,7 +884,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
               </div>
               <div>
                 <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1">
-                  <Calendar size={9} /> Fim
+                  <Calendar size={9} /> {h("end")}
                 </label>
                 <input
                   type="date"
@@ -918,17 +918,17 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
               {loading ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
-                  <span>A consultar FIRMS...</span>
+                  <span>{h("wildfire.processing")}</span>
                 </>
               ) : wildfire ? (
                 <>
                   <RefreshCw size={14} />
-                  <span>Recalcular Queimadas</span>
+                  <span>{h("wildfire.recalculate")}</span>
                 </>
               ) : (
                 <>
                   <Flame size={14} />
-                  <span>Mapear Focos de Queimadas</span>
+                  <span>{h("wildfire.map")}</span>
                 </>
               )}
             </button>
@@ -941,15 +941,15 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
           <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
             <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/50 rounded-xl p-2.5 text-[11px] text-orange-800 dark:text-orange-300 flex items-start gap-2">
               <Info size={12} className="mt-0.5 shrink-0 text-orange-500" />
-              <span><strong>SPI × NDVI:</strong> anomalia de precipitação CHIRPS face à climatologia e resposta da vegetação MODIS. SPI &lt; -1 indica seca meteorológica relevante.</span>
+              <span>{h("drought.description")}</span>
             </div>
             <div>
-              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Ano analisado — <strong className="text-slate-700 dark:text-slate-200">{droughtYear}</strong></label>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">{h("drought.year")} — <strong className="text-slate-700 dark:text-slate-200">{droughtYear}</strong></label>
               <input type="range" min={2006} max={2025} step={1} value={droughtYear} onChange={e => setDroughtYear(+e.target.value)} className="w-full accent-orange-500" />
               <div className="flex justify-between text-[10px] text-slate-400"><span>2006</span><span>2025</span></div>
             </div>
             <div>
-              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Início da climatologia</label>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">{h("drought.climStart")}</label>
               <select value={climStart} onChange={e => setClimStart(+e.target.value)}
                 className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200">
                 {[1991, 1995, 2000, 2001, 2005, 2010].filter(v => v <= droughtYear - 5).map(v => <option key={v} value={v}>{v}</option>)}
@@ -957,9 +957,9 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
             </div>
             <button onClick={runDrought} disabled={loading}
               className="w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors cursor-pointer">
-              {loading ? <><Loader2 size={14} className="animate-spin" /><span>A analisar seca...</span></> :
-               drought ? <><RefreshCw size={14} /><span>Recalcular Seca</span></> :
-               <><Play size={14} /><span>Mapear seca</span></>}
+              {loading ? <><Loader2 size={14} className="animate-spin" /><span>{h("drought.processing")}</span></> :
+               drought ? <><RefreshCw size={14} /><span>{h("drought.recalculate")}</span></> :
+               <><Play size={14} /><span>{h("drought.map")}</span></>}
             </button>
           </div>
         )}
@@ -969,25 +969,25 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
           <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
             <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-xl p-2.5 text-[11px] text-red-800 dark:text-red-300 flex items-start gap-2">
               <Info size={12} className="mt-0.5 shrink-0 text-red-500" />
-              <span><strong>MODIS MCD64A1:</strong> área efetivamente queimada a 500 m. Complementa os focos ativos FIRMS com a cicatriz histórica do fogo.</span>
+              <span>{h("burned.description")}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> Início</label>
+                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> {h("start")}</label>
                 <input type="date" value={burnedStart} onChange={e => setBurnedStart(e.target.value)}
                   className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200" />
               </div>
               <div>
-                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> Fim</label>
+                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> {h("end")}</label>
                 <input type="date" value={burnedEnd} onChange={e => setBurnedEnd(e.target.value)}
                   className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200" />
               </div>
             </div>
             <button onClick={runBurnedArea} disabled={loading}
               className="w-full flex items-center justify-center gap-2 bg-red-700 hover:bg-red-800 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors cursor-pointer">
-              {loading ? <><Loader2 size={14} className="animate-spin" /><span>A mapear área queimada...</span></> :
-               burned ? <><RefreshCw size={14} /><span>Recalcular Área Queimada</span></> :
-               <><Flame size={14} /><span>Mapear área queimada</span></>}
+              {loading ? <><Loader2 size={14} className="animate-spin" /><span>{h("burned.processing")}</span></> :
+               burned ? <><RefreshCw size={14} /><span>{h("burned.recalculate")}</span></> :
+               <><Flame size={14} /><span>{h("burned.map")}</span></>}
             </button>
           </div>
         )}
@@ -997,11 +997,11 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
           <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
             <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-xl p-2.5 text-[11px] text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
               <Sprout size={13} className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <span><strong>NASA-USDA SMAP:</strong> humidade na zona radicular (0–100 cm) e anomalias a 10 km. Crucial para diagnosticar stress hídrico agrícola em Moçambique.</span>
+              <span>{h("soil.description")}</span>
             </div>
 
             <div>
-              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Campanhas e Cenários</label>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">{h("soil.campaigns")}</label>
               <div className="grid grid-cols-2 gap-1">
                 {SOIL_MOISTURE_PRESETS.map(p => (
                   <button
@@ -1026,22 +1026,22 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
             </div>
 
             <div>
-              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Camada do Sensor SMAP</label>
+              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">{h("soil.layer")}</label>
               <select
                 value={soilLayer}
                 onChange={e => setSoilLayer(e.target.value as any)}
                 className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
-                <option value="susm">Zona Radicular Subsuperficial (0–100 cm, mm)</option>
-                <option value="susma">Anomalia da Zona Radicular (Z-score)</option>
-                <option value="ssm">Camada Superficial (0–5 cm, mm)</option>
-                <option value="smp">Perfil de Humidade Relativa (%)</option>
+                <option value="susm">{h("soil.layer.susm")}</option>
+                <option value="susma">{h("soil.layer.susma")}</option>
+                <option value="ssm">{h("soil.layer.ssm")}</option>
+                <option value="smp">{h("soil.layer.smp")}</option>
               </select>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> Início</label>
+                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> {h("start")}</label>
                 <input
                   type="date"
                   value={soilStart}
@@ -1051,7 +1051,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
                 />
               </div>
               <div>
-                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> Fim</label>
+                <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block flex items-center gap-1"><Calendar size={9} /> {h("end")}</label>
                 <input
                   type="date"
                   value={soilEnd}
@@ -1070,17 +1070,17 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
               {loading ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
-                  <span>A consultar SMAP...</span>
+                  <span>{h("soil.processing")}</span>
                 </>
               ) : soilMoisture ? (
                 <>
                   <RefreshCw size={14} />
-                  <span>Recalcular Humidade do Solo</span>
+                  <span>{h("soil.recalculate")}</span>
                 </>
               ) : (
                 <>
                   <Sprout size={14} />
-                  <span>Mapear Humidade do Solo</span>
+                  <span>{h("soil.map")}</span>
                 </>
               )}
             </button>
@@ -1097,7 +1097,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
         type="button"
         onClick={() => setDesktopSidebarOpen(v => !v)}
         style={{ left: desktopSidebarOpen ? sidebarSize.width : 0 }}
-        title={desktopSidebarOpen ? "Recolher painel" : "Expandir painel"}
+        title={desktopSidebarOpen ? h("sidebar.collapse") : h("sidebar.expand")}
         className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-l-0 border-slate-200 dark:border-slate-700 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
       >
         {desktopSidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
@@ -1112,7 +1112,7 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
           className="md:hidden absolute top-3 left-3 z-[600] flex items-center gap-1.5 px-3 py-1.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl shadow-md border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
         >
           <SlidersHorizontal size={13} className="text-rose-600 dark:text-rose-400" />
-          Filtros
+          {h("filters")}
         </button>
 
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl={false}>
