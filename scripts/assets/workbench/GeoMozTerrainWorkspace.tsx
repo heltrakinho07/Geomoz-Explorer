@@ -13,7 +13,7 @@ import type { FeatureCollection } from "geojson";
 import { terrainRasterLayerOptions } from "../../lib/terrain-raster-layer";
 import {
   ArrowLeft, Layers3, Loader2, Mountain, RotateCcw,
-  Download, Image as ImageIcon, X,
+  Download, Image as ImageIcon, X, Map as MapIcon, Columns2, Box,
 } from "lucide-react";
 import {
   createTerrainRenderer, type TerrainMeshData, type TerrainVisualStyle, type TerrainPick,
@@ -27,6 +27,8 @@ import GeoMozTerrainSciencePanel, {type TerrainPickedPoint}
 import { geomozNativeTerrainPreview } from "./geomoz-native-terrain-dem";
 import { encodeTerrainGLB } from "../../lib/geomoz-terrain-glb";
 import GeoMozTerrainLayers from "./GeoMozTerrainLayers";
+import GeoMozTerrainGeoMap from "./GeoMozTerrainGeoMap";
+import {validTerrainGeography} from "./geomoz-terrain-tiles";
 import { terrainOverlayTexture, type GeoMozTerrainOverlay } from "./geomoz-terrain-overlays";
 import "./geomoz-terrain-workspace.css";
 
@@ -135,6 +137,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
   const [style,setStyle]=useState<TerrainVisualStyle>("hypsometric");
   const [detailLevel,setDetailLevel]=useState<"auto"|"full"|"medium"|"low">("auto");
   const [workspaceTab,setWorkspaceTab]=useState<"layers"|"style"|"analysis"|"export">("layers");
+  const [viewMode,setViewMode]=useState<"model"|"map"|"split">("split");
   const [overlays,setOverlays]=useState<GeoMozTerrainOverlay[]>([]);
   const overlayTexture=useMemo(()=>terrain?terrainOverlayTexture(terrain,overlays):null,[terrain,overlays]);
   const [exaggeration,setExaggeration]=useState(2);
@@ -170,7 +173,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     }catch(cause){setError(cause instanceof Error?cause.message:"Falha na consulta altimétrica.");}
   };
   useEffect(()=>{
-    if(!open||!terrain||!canvasRef.current)return;
+    if(!open||!terrain||viewMode==="map"||!canvasRef.current)return;
     setRendererError(null);
     try {
       return createTerrainRenderer(canvasRef.current,terrain,{
@@ -183,7 +186,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     }catch(cause){
       setRendererError(cause instanceof Error?cause.message:"O WebGL2 não pôde carregar o modelo.");
     }
-  },[open,terrain,exaggeration,style,detailLevel,pickTarget,picked,overlayTexture]);
+  },[open,terrain,exaggeration,style,detailLevel,pickTarget,picked,overlayTexture,viewMode]);
 
   async function openSelectedDEM(){
     const layer=options.find(o=>o.id===selected);
@@ -196,7 +199,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
       const preview=await geomozNativeTerrainPreview(bytes,layer.name);
       if(controller.signal.aborted)return;
       setTerrain(preview);setPicked({});setLastPick(null);setPickTarget(null);
-      setOverlays([]);setWorkspaceTab("layers");
+      setOverlays([]);setWorkspaceTab("layers");setViewMode("split");
       setNotice("Modelo 3D do projecto: "+layer.name+
         " · "+preview.crs+" · "+preview.validFraction.toLocaleString("pt-PT",{style:"percent",maximumFractionDigits:1})+" válido");
     }catch(cause){
@@ -234,7 +237,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
       const scene=decodeTerrainScene(await file.text());
       setTerrain(scene.terrain);setStyle(scene.style);setExaggeration(scene.exaggeration);
       setPicked({});setPickTarget(null);setLastPick(null);
-      setOverlays([]);
+      setOverlays([]);setViewMode("split");
       setNotice("Cena 3D reaberta. A camada raster original permanece no projecto SIG.");
     }catch(cause){setError(cause instanceof Error?cause.message:"Cena .geomoz inválida.");}
     finally{if(sceneInputRef.current)sceneInputRef.current.value="";}
@@ -345,8 +348,8 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
                 aria-label={ui("Reabrir cena do terreno")} onChange={event=>void loadScene(event.target.files?.[0])}/>
               <button type="button" onClick={()=>sceneInputRef.current?.click()}>{ui("Reabrir cena")}</button>
               <button type="button" disabled={!terrain} onClick={exportGLB} data-testid="geomoz-terrain-export-glb">GLB 3D</button>
-              <button type="button" disabled={!terrain||!!rendererError} onClick={downloadPNG}>PNG</button>
-              <button type="button" disabled={!terrain||!!rendererError} onClick={()=>void downloadPDF()}>PDF</button>
+              <button type="button" disabled={!terrain||!!rendererError||viewMode==="map"} onClick={downloadPNG}>PNG</button>
+              <button type="button" disabled={!terrain||!!rendererError||viewMode==="map"} onClick={()=>void downloadPDF()}>PDF</button>
             </div>
             <p className="gm-terrain-native-hint">As camadas vectoriais do 3D ficam disponíveis na vista actual. O GLB exportado contém a malha do DEM; a textura vectorial deve ser exportada separadamente numa próxima versão.</p>
           </>}
@@ -381,19 +384,40 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
         </div>
       </aside>
       <div className="gm-terrain-native-viewport" aria-label={ui("Visualizador tridimensional")}>
-        {terrain?<canvas ref={canvasRef} className="gm-terrain-native-canvas"
-          data-testid="geomoz-native-terrain-canvas"
-          aria-label={ui("Modelo 3D do terreno. Clique para seleccionar um ponto do perfil.")}/>:
-        <div className="gm-terrain-native-empty">
-          <ImageIcon size={42}/>
-          <strong>{ui("Terreno 3D do projecto SIG")}</strong>
-          <p>{ui("Seleccione uma camada DEM GeoTIFF existente e clique em «Visualizar camada em 3D».")}</p>
-        </div>}
-        {terrain&&<div className="gm-terrain-native-help">
-          {pickTarget?ui("Clique na superfície para definir o ponto ")+pickTarget:
-            ui("Arrastar: rodar · Roda: aproximar · Escolher A/B: consultar elevação")}
-        </div>}
-        {rendererError&&<p className="gm-terrain-render-error" role="alert">{rendererError}</p>}
+        {terrain&&<nav className="gm-terrain-view-switch" aria-label={ui("Modos de visualização do terreno")}>
+          {([
+            ["model","Modelo 3D",Box],
+            ["map","Mapa 3D",MapIcon],
+            ["split","2D / 3D",Columns2]
+          ] as const).map(([mode,label,Icon])=><button key={mode} type="button"
+            className={viewMode===mode?"gm-terrain-view-active":""}
+            data-testid={"terrain-view-"+mode}
+            aria-pressed={viewMode===mode}
+            disabled={mode!=="model"&&!validTerrainGeography(terrain)}
+            onClick={()=>setViewMode(mode)}><Icon size={15}/>{ui(label)}</button>)}
+        </nav>}
+        {terrain?<div className={"gm-terrain-comparison gm-terrain-comparison-"+viewMode}>
+          {viewMode!=="map"&&<div className="gm-terrain-model-pane" aria-label={ui("Modelo local de elevação 3D")}>
+            <canvas ref={canvasRef} className="gm-terrain-native-canvas"
+              data-testid="geomoz-native-terrain-canvas"
+              aria-label={ui("Modelo 3D do terreno. Clique para seleccionar um ponto do perfil.")}/>
+            <div className="gm-terrain-native-help">
+              {pickTarget?ui("Clique na superfície para definir o ponto ")+pickTarget:
+                ui("Arrastar: rodar · Roda: aproximar · Escolher A/B: consultar elevação")}
+            </div>
+          </div>}
+          {viewMode!=="model"&&<div className="gm-terrain-map-pane"
+            aria-label={ui("Localização do DEM no basemap")}>
+            <GeoMozTerrainGeoMap terrain={terrain} overlays={overlays}
+              exaggeration={exaggeration} translate={ui}/>
+          </div>}
+        </div>:
+          <div className="gm-terrain-native-empty">
+            <ImageIcon size={42}/>
+            <strong>{ui("Terreno 3D do projecto SIG")}</strong>
+            <p>{ui("Seleccione uma camada DEM GeoTIFF existente e clique em «Visualizar camada em 3D».")}</p>
+          </div>}
+        {rendererError&&viewMode!=="map"&&<p className="gm-terrain-render-error" role="alert">{rendererError}</p>}
       </div>
     </div>
   </section>;
