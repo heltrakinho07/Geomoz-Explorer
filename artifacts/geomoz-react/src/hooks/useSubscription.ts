@@ -10,13 +10,16 @@ export interface BillingState {
   periodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   creditsUsed: number;
+  creditCycle: string | null;
   storageUsedBytes: number;
 }
-const FREE: BillingState = {plan:"community",status:"active",periodEnd:null,cancelAtPeriodEnd:false,creditsUsed:0,storageUsedBytes:0};
+const FREE: BillingState = {plan:"community",status:"active",periodEnd:null,cancelAtPeriodEnd:false,creditsUsed:0,creditCycle:null,storageUsedBytes:0};
 export function useSubscription() {
   const {user} = useAuth();
   const [state,setState] = useState<BillingState>(FREE);
   const [loading,setLoading] = useState(true);
+  const [now,setNow] = useState(Date.now());
+  useEffect(()=>{const timer=window.setInterval(()=>setNow(Date.now()),60_000);return ()=>window.clearInterval(timer);},[]);
   const [error,setError] = useState<string | null>(null);
   useEffect(()=>{
     setState(FREE);setError(null);
@@ -27,14 +30,21 @@ export function useSubscription() {
       const plan=isPlanId(data?.plan)?data.plan:"community";
       const status = data?.status;
       const validStatus = status === undefined ? "active" : (["active","trialing","past_due","cancelled","expired"].includes(status) ? status as BillingState["status"] : "expired");
-      const usable = validStatus==="active" || validStatus==="trialing";
-      setState({plan:usable?plan:"community",status:validStatus,periodEnd:typeof data?.periodEnd==="string"?data.periodEnd:null,cancelAtPeriodEnd:data?.cancelAtPeriodEnd===true,creditsUsed:typeof data?.creditsUsed==="number"?Math.max(0,data.creditsUsed):0,storageUsedBytes:typeof data?.storageUsedBytes==="number"?Math.max(0,data.storageUsedBytes):0});
+      const periodEnd = typeof data?.periodEnd==="string"?data.periodEnd:null;
+      const unexpired = plan==="community" || (!!periodEnd && Date.parse(periodEnd)>Date.now());
+      const usable = (validStatus==="active" || validStatus==="trialing") && unexpired;
+      const cycle = typeof data?.creditCycle==="string"?data.creditCycle:null;
+      setState({plan:usable?plan:"community",status:unexpired?validStatus:"expired",periodEnd,cancelAtPeriodEnd:data?.cancelAtPeriodEnd===true,creditsUsed:typeof data?.creditsUsed==="number"?Math.max(0,data.creditsUsed):0,creditCycle:cycle,storageUsedBytes:typeof data?.storageUsedBytes==="number"?Math.max(0,data.storageUsedBytes):0});
       setLoading(false);
     },err=>{setError(err.message);setState(FREE);setLoading(false);});
     return unsubscribe;
   },[user?.uid]);
-  return { ...state, planData:PLANS[state.plan], loading, error,
-    can:(feature:PlanFeature)=>hasPlanFeature(state.plan,feature),
-    remainingCredits:Math.max(0,(PLANS[state.plan].credits??Number.MAX_SAFE_INTEGER)-state.creditsUsed),
+  const stillValid=state.plan==="community" || (state.periodEnd!==null && Date.parse(state.periodEnd)>now);
+  const plan=stillValid?state.plan:"community";
+  const utcMonth=new Date(now).toISOString().slice(0,7);
+  const consumed=state.creditCycle===utcMonth?state.creditsUsed:0;
+  return { ...state, plan, planData:PLANS[plan], loading, error,
+    can:(feature:PlanFeature)=>hasPlanFeature(plan,feature),
+    remainingCredits:Math.max(0,(PLANS[plan].credits??Number.MAX_SAFE_INTEGER)-consumed),
   };
 }
