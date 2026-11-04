@@ -19,6 +19,8 @@ interface Props {
   terrain: TerrainMeshData;
   overlays: GeoMozTerrainOverlay[];
   exaggeration: number;
+  /** Split view uses a north-up, truly flat overview alongside the local 3D canvas. */
+  flat?: boolean;
   translate?: (value: string) => string;
 }
 const BASEMAPS: Record<Basemap, { label: string; url: string; attribution: string }> = {
@@ -91,7 +93,6 @@ function colourPaint(overlay: GeoMozTerrainOverlay): string | maplibregl.Express
 }
 
 function syncGeoOverlays(map: maplibregl.Map, overlays: GeoMozTerrainOverlay[]) {
-  if (!map.isStyleLoaded()) return;
   const style = map.getStyle();
   for (const layer of [...(style.layers ?? [])]) {
     if (layer.id.startsWith(VECTOR_PREFIX)) map.removeLayer(layer.id);
@@ -128,7 +129,7 @@ function syncGeoOverlays(map: maplibregl.Map, overlays: GeoMozTerrainOverlay[]) 
 }
 
 export default function GeoMozTerrainGeoMap({
-  terrain, overlays, exaggeration, translate = (value) => value,
+  terrain, overlays, exaggeration, flat = false, translate = (value) => value,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -161,7 +162,8 @@ export default function GeoMozTerrainGeoMap({
       map = new maplibregl.Map({
         container: container.current, style: makeStyle("satellite"),
         center: [(west + east) / 2, (south + north) / 2],
-        zoom: 9, pitch: 55, bearing: -15,
+        zoom: 9, pitch: flat ? 0 : 55, bearing: flat ? 0 : -15,
+        dragRotate: !flat, touchPitch: !flat,
         maxPitch: 85, attributionControl: true,
       });
       const instance = map;
@@ -181,7 +183,7 @@ export default function GeoMozTerrainGeoMap({
             encoding: "terrarium", tileSize: 256, maxzoom: 14,
           });
         }
-        instance.setTerrain({
+        instance.setTerrain(flat ? null : {
           source: elevationRef.current === "local" ? LOCAL_DEM : GLOBAL_DEM,
           exaggeration,
         });
@@ -246,10 +248,13 @@ export default function GeoMozTerrainGeoMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
-    map.setTerrain({
+    map.setTerrain(flat ? null : {
       source: elevation === "local" ? LOCAL_DEM : GLOBAL_DEM, exaggeration,
     });
-  }, [elevation, exaggeration]);
+    if (flat) map.dragRotate.disable();
+    else map.dragRotate.enable();
+    map.easeTo({ pitch: flat ? 0 : 55, bearing: flat ? 0 : map.getBearing(), duration: 350 });
+  }, [elevation, exaggeration, flat]);
 
   if (!isValid) return <div className="gm-terrain-map-unavailable" role="alert">
     {translate("Este DEM não possui coordenadas ou um CRS geográfico válido para o mapa.")}
