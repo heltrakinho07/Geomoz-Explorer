@@ -12,6 +12,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
+import { apiFetch } from "../lib/api";
 import type {
   GeoMozProject,
   CreateProjectInput,
@@ -171,6 +172,34 @@ export async function createProject(
   uid: string,
   input: CreateProjectInput
 ): Promise<GeoMozProject> {
+  // Authenticated cloud projects must be created by the server quota API.
+  // Never silently fall back to local-only on a quota or network failure.
+  if (uid && !uid.startsWith("guest_")) {
+    const response = await apiFetch("/geomoz-api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(stripUndefined({
+        name: input.name,
+        description: input.description || "",
+        category: input.category,
+        aoi: input.aoi || {},
+        period: input.period,
+      })),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(
+        typeof result.detail === "string" ? result.detail : "Não foi possível criar o projecto na cloud."
+      );
+    }
+    const newProject = result as GeoMozProject;
+    saveLocalProjects(uid, [
+      newProject,
+      ...getLocalProjects(uid).filter((p) => p.id !== newProject.id),
+    ]);
+    return newProject;
+  }
+
   const now = new Date().toISOString();
   const id = "proj_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
 
@@ -273,6 +302,27 @@ export async function updateProject(
  * Delete a project and its runs
  */
 export async function deleteProject(uid: string, projectId: string): Promise<void> {
+  if (uid && !uid.startsWith("guest_")) {
+    const response = await apiFetch(
+      "/geomoz-api/projects/" + encodeURIComponent(projectId),
+      { method: "DELETE" }
+    );
+    // Some historical projects only exist in the browser local cache.
+    if (!response.ok && response.status !== 404) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(
+        typeof error.detail === "string" ? error.detail : "Não foi possível eliminar o projecto."
+      );
+    }
+    saveLocalProjects(
+      uid,
+      getLocalProjects(uid).filter((project) => project.id !== projectId)
+    );
+    try {
+      localStorage.removeItem(LOCAL_RUNS_KEY(uid, projectId));
+    } catch {}
+    return;
+  }
   // 1. Delete locally
   const currentList = getLocalProjects(uid);
   saveLocalProjects(uid, currentList.filter((p) => p.id !== projectId));
