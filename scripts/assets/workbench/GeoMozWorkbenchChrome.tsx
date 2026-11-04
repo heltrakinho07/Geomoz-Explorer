@@ -223,7 +223,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
             title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={19}/><span>{command.id==="plugin.maplibre-gl-geo-editor"&&command.keywords?.includes("deactivate")?txt("finishDrawing"):commandLabel(command)}</span></button>;
         })}</div><small>{categoryLabel(group.label)}</small></>}</section>)}
         {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group gm-ribbon-optional">
-          <GeoMozFloatingToolCard title={categoryLabel("Hidrologia")} icon={Activity}
+          <GeoMozFloatingToolCard title={categoryLabel("Hidrologia")} description={txt("hydrologyToolsHelp")} icon={Activity}
             open={openToolCard==="Hidrologia"}
             onToggle={()=>setOpenToolCard(openToolCard==="Hidrologia"?null:"Hidrologia")}
             onClose={()=>setOpenToolCard(null)} testId="geomoz-hydrology-card">
