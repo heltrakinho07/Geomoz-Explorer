@@ -61,7 +61,8 @@ export async function createTerrainRasterDrape(
     const image=await tiff.getImage();
     const w=image.getWidth(),h=image.getHeight();
     if(w<2||h<2||w*h>100_000_000)throw Error("Raster demasiado grande.");
-    if(!image.fileDirectory.ModelPixelScale||!image.fileDirectory.ModelTiepoint)
+    const geoTags=image.fileDirectory as unknown as Record<string,unknown>;
+    if(!geoTags.ModelPixelScale||!geoTags.ModelTiepoint)
       throw Error("Reprojecte rasters inclinados para um GeoTIFF norte-acima.");
     const sourceCrs=crsFromKeys(image.getGeoKeys() as Record<string,unknown>);
     const bounds=image.getBoundingBox() as number[];
