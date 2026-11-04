@@ -128,7 +128,7 @@ export function buildTerrainLodIndices(
  * world coordinates; unlike map-plane ray casting this respects terrain relief.
  */
 export function pickTerrainTriangle(
-  vertices: Float32Array, indices: readonly number[], matrix: Float32Array,
+  vertices: Float32Array, indices: ArrayLike<number>, matrix: Float32Array,
   xPx: number, yPx: number, widthPx: number, heightPx: number
 ): [number, number, number] | null {
   if (widthPx<=0 || heightPx<=0 || !Number.isFinite(xPx) || !Number.isFinite(yPx)) return null;
