@@ -211,9 +211,9 @@ module.exports=async function validateRasterProcessing(page){
  await page.locator('.gm-layer-row[data-layer-name="Perfil A→B · Terreno 3D"]').waitFor();
  assert.equal(await page.locator(".gm-layer-row").count(),layerCountBefore+1,
    "Profile must be added to the same GIS layer catalog");
- const csvPromise=page.waitForEvent("download");
+ const terrainCsvPromise=page.waitForEvent("download");
  await terrain.getByRole("button",{name:"CSV",exact:true}).click();
- await (await csvPromise).saveAs("workbench-browser-artifacts/terrain-native-profile.csv");
+ await (await terrainCsvPromise).saveAs("workbench-browser-artifacts/terrain-native-profile.csv");
  await terrain.getByLabel("Equidistância das curvas de nível").fill("20");
  await terrain.getByRole("button",{name:"Gerar curvas de nível (pré-visualização)"}).click();
  await terrain.getByRole("button",{name:"Adicionar curvas ao catálogo SIG"}).click();
