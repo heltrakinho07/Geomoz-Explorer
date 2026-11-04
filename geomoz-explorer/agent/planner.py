@@ -459,7 +459,7 @@ class GeoMozAgent:
                 **(aoi if not scope["province"] and not scope["district"] else {}),
                 "province": scope["province"], "district": scope["district"],
                 "geometry": scope["geometry"],
-                "label": ", ".join(filter(None, [scope["district"], scope["province"]])) or "Moçambique",
+                "label": ", ".join(filter(None, [scope["district"], scope["province"]])) or aoi.get("label") or "Moçambique",
             }
             result = await ToolDispatcher.execute(
                 "get_geology_units",
