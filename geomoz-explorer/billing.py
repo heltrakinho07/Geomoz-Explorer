@@ -26,6 +26,8 @@ except ImportError:  # Optional dependency for local test installs; required in 
     firestore = None
     firebase_auth = None
 
+from platform_config import get_plan_config, get_plan_limits, read_config
+
 router = APIRouter(prefix="/geomoz-api/billing", tags=["billing"])
 GB = 1024 ** 3
 PLAN_LIMITS = {
@@ -245,7 +247,7 @@ def me(uid: str = Depends(_uid)):
     plan = _effective_plan(state)
     return {
         "plan": plan, "status": state.get("status", "active"),
-        "periodEnd": state.get("periodEnd"), "limits": PLAN_LIMITS[plan],
+        "periodEnd": state.get("periodEnd"), "limits": get_plan_limits(plan),
         "creditsUsed": state.get("creditsUsed", 0),
         "storageUsedBytes": state.get("storageUsedBytes", 0),
         "cancelAtPeriodEnd": False,
@@ -256,6 +258,12 @@ def me(uid: str = Depends(_uid)):
 
 def _checkout_enabled():
     return os.environ.get("GEOMOZ_BILLING_ENABLED", "false").strip().lower() == "true"
+
+
+@router.get("/catalog")
+def public_catalog():
+    """Public catalogue is server-sourced; clients never choose the price."""
+    return read_config()
 
 
 @router.get("/config")
@@ -289,12 +297,18 @@ async def checkout(payload: CheckoutRequest, uid: str = Depends(_uid)):
     current = current_snap.to_dict() if current_snap.exists else {}
     if payload.plan == "academic" and not current.get("academicApproved"):
         raise HTTPException(403, "É necessária a validação da elegibilidade académica.")
+    plan_config = get_plan_config(payload.plan)
+    if not plan_config["enabled"]:
+        raise HTTPException(403, "Este plano não está disponível para novas subscrições.")
+    unit_price = plan_config["monthlyMzn"] if payload.period == "monthly" else plan_config["yearlyMzn"]
+    if not isinstance(unit_price, int) or unit_price <= 0:
+        raise HTTPException(503, "O preço deste plano precisa de configuração.")
     _key()  # Fail before reserving a payment when not configured.
     base = os.environ.get("GEOMOZ_PUBLIC_URL", "https://geomoz.geolithica.com").rstrip("/")
     if not base.startswith("https://"):
         raise HTTPException(503, "URL público GeoMoz inválido.")
     now = _utcnow()
-    total = PRICES_MZN[pair] * 100
+    total = unit_price * 100
     fingerprint = hashlib.sha256(
         f"{uid}|{payload.plan}|{payload.period}|{phone}|{name}|{email}|{total}".encode()
     ).hexdigest()
@@ -480,7 +494,7 @@ def charge_managed_cloud_credits(uid: str, cost: int, operation_id: str):
         state = bill_snap.to_dict() if bill_snap.exists else {}
         plan = _effective_plan(state)
         used = int(state.get("creditsUsed", 0) or 0) if state.get("creditCycle") == cycle else 0
-        limit = PLAN_LIMITS[plan]["credits"]
+        limit = get_plan_limits(plan)["credits"]
         if limit is not None and used + cost > limit:
             raise HTTPException(402, "Créditos insuficientes.")
         transaction.set(event_ref, {"credits": cost, "cycle": cycle, "createdAt": firestore.SERVER_TIMESTAMP})
