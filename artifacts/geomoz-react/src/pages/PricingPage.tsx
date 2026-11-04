@@ -52,13 +52,21 @@ export default function PricingPage() {
   const [history, setHistory] = useState<PaymentRecord[]>([]);
   const [checking, setChecking] = useState(false);
   const [checkoutEnabled, setCheckoutEnabled] = useState(false);
+  const [teamsCheckoutEnabled, setTeamsCheckoutEnabled] = useState(false);
+  const [academicApproved, setAcademicApproved] = useState(false);
+  const [requestMessage, setRequestMessage] = useState("");
+  const [recentRequest, setRecentRequest] = useState<{plan: PlanId; status: string} | null>(null);
   const [serverPlans, setServerPlans] = useState<Record<string, Partial<GeoMozPlan> & {enabled?:boolean}>>({});
 
   useEffect(() => {
     let mounted = true;
     apiFetch("/geomoz-api/billing/config")
       .then(async res => res.ok ? res.json() : null)
-      .then(data => { if (mounted) setCheckoutEnabled(data?.checkoutEnabled === true); })
+      .then(data => {
+        if (!mounted) return;
+        setCheckoutEnabled(data?.checkoutEnabled === true);
+        setTeamsCheckoutEnabled(data?.teamsCheckoutEnabled === true);
+      })
       .catch(() => { if (mounted) setCheckoutEnabled(false); });
     return () => { mounted = false; };
   }, []);
@@ -71,6 +79,40 @@ export default function PricingPage() {
       .catch(() => undefined);
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (authLoading || !user || user.uid === "guest_user") {
+      setAcademicApproved(false);
+      setRecentRequest(null);
+      return;
+    }
+    let mounted = true;
+    apiFetch("/geomoz-api/billing/me")
+      .then(async response => response.ok ? response.json() : null)
+      .then(data => { if (mounted) setAcademicApproved(data?.academicApproved === true); })
+      .catch(() => { if (mounted) setAcademicApproved(false); });
+    apiFetch("/geomoz-api/billing/requests/me")
+      .then(async response => response.ok ? response.json() : null)
+      .then(data => {
+        if (mounted && data?.request?.plan) setRecentRequest({
+          plan: data.request.plan as PlanId,
+          status: String(data.request.status || "pending"),
+        });
+      }).catch(() => undefined);
+    try {
+      const stored = window.sessionStorage.getItem("geomoz_pending_plan");
+      if (stored) {
+        window.sessionStorage.removeItem("geomoz_pending_plan");
+        const decoded = JSON.parse(stored);
+        if (PLAN_ORDER.includes(decoded.plan) && decoded.plan !== "community"
+            && typeof decoded.time === "number" && Date.now() - decoded.time < 1800000) {
+          setAnnual(decoded.annual === true);
+          setSelected(decoded.plan as PlanId);
+        }
+      }
+    } catch {}
+    return () => { mounted = false; };
+  }, [user?.uid, authLoading]);
 
   useEffect(() => {
     setCustomerName(user?.displayName || "");
@@ -130,22 +172,61 @@ export default function PricingPage() {
 
   function selectPlan(plan: PlanId) {
     setNotice("");
-    if (plan === "community") { navigate(user ? "/dashboard" : "/"); return; }
-    if (serverPlans[plan]?.enabled === false) { setNotice("Este plano está temporariamente indisponível."); return; }
-    if (plan !== "enterprise" && !checkoutEnabled) {
-      setNotice("Os pagamentos estão em validação. O acesso aos planos pagos estará disponível após a conclusão dos testes de segurança.");
+    if (plan === "community") {
+      navigate(user && user.uid !== "guest_user" ? "/dashboard" : "/");
       return;
     }
-    if (plan === "enterprise") {
-      window.location.href = "mailto:contacto@geolithica.com?subject=Proposta%20GeoMoz%20Enterprise";
+    if (serverPlans[plan]?.enabled === false) {
+      setNotice("Este plano está temporariamente indisponível.");
       return;
     }
-    if (!user || user.uid === "guest_user") { navigate("/login"); return; }
+    if (!user || user.uid === "guest_user") {
+      // Whitelisted return route restores the selected plan after login.
+      try {
+        window.sessionStorage.setItem("geomoz_pending_plan", JSON.stringify({
+          plan, annual, time: Date.now(),
+        }));
+      } catch {}
+      navigate("/login?next=/planos");
+      return;
+    }
+    setRequestMessage("");
     setSelected(plan);
   }
 
-  async function checkout() {
+  async function submitPlanRequest() {
     if (!selected || !user || user.uid === "guest_user") return;
+    setWorking(true);
+    setNotice("");
+    try {
+      const response = await apiFetch("/geomoz-api/billing/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan: selected, period: annual ? "yearly" : "monthly",
+          message: requestMessage.trim(),
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof result.detail === "string" ? result.detail : "Não foi possível registar o pedido.");
+      }
+      setRecentRequest({ plan: selected, status: String(result.request?.status || "pending") });
+      setNotice("Pedido de adesão registado. Pode acompanhar o estado nesta página; a nossa equipa analisará o pedido. Não foi efectuada qualquer cobrança.");
+      setSelected(null);
+      setRequestMessage("");
+    } catch (error: any) {
+      setNotice(String(error?.message || "Não foi possível submeter o pedido."));
+      setSelected(null);
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function checkout() {
+    if (!selected || !user || user.uid === "guest_user" || !checkoutEnabled) return;
+    if (selected === "enterprise" || (selected === "teams" && !teamsCheckoutEnabled)
+        || (selected === "academic" && !academicApproved)) return;
     setWorking(true);
     setNotice("");
     try {
@@ -178,6 +259,11 @@ export default function PricingPage() {
 
   const home = user && user.uid !== "guest_user" ? "/dashboard" : "/";
   const activePlan = selected ? { ...PLANS[selected], ...(serverPlans[selected] || {}) } : null;
+  const requestOnly = Boolean(selected && (
+    !checkoutEnabled || selected === "enterprise" ||
+    (selected === "teams" && !teamsCheckoutEnabled) ||
+    (selected === "academic" && !academicApproved)
+  ));
   const paymentId = new URLSearchParams(window.location.search).get("payment_id");
 
   return (
@@ -254,9 +340,23 @@ export default function PricingPage() {
           </div>
         )}
         {billing.error && <div className="mb-5 text-sm text-amber-700 dark:text-amber-300">Não foi possível consultar a subscrição. O estado será actualizado quando a ligação for restabelecida.</div>}
+        {recentRequest && (
+          <div className="gm-dashboard-panel mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl p-4 text-sm" role="status">
+            <span><strong>Pedido {recentRequest.plan}:</strong> {
+              recentRequest.status === "pending" ? "recebido, aguarda análise" :
+              recentRequest.status === "in_review" ? "em análise" :
+              recentRequest.status === "completed" ? "analisado pela equipa" : "encerrado"
+            }.</span>
+            <button type="button" className="font-bold text-sky-600 dark:text-sky-300 hover:underline" onClick={() => {
+              apiFetch("/geomoz-api/billing/requests/me").then(async response => response.ok ? response.json() : null)
+                .then(data => { if (data?.request) setRecentRequest({ plan: data.request.plan, status: data.request.status }); })
+                .catch(() => setNotice("Não foi possível actualizar o pedido."));
+            }}>Actualizar estado</button>
+          </div>
+        )
         {!checkoutEnabled && <div className="gm-pricing-readiness mb-6 rounded-xl border border-amber-200/85 dark:border-amber-800/60 bg-amber-50/90 dark:bg-amber-950/25 p-4 text-sm text-amber-900 dark:text-amber-200 flex items-start gap-3">
           <CalendarClock size={19} className="shrink-0 mt-0.5"/>
-          <div><strong>Subscrições em preparação.</strong> Os planos estão disponíveis para consulta. Os pagamentos serão activados após a conclusão das verificações de segurança.</div>
+          <div><strong>Pedidos de adesão abertos.</strong> Pode escolher um plano e submeter o pedido à Administração GeoMoz. Os pagamentos online serão activados depois da validação de segurança, sem qualquer cobrança nesta fase.</div>
         </div>}
 
         <div className="gm-pricing-grid grid sm:grid-cols-2 xl:grid-cols-3 gap-5 lg:gap-6" aria-label="Comparação de planos">
@@ -312,10 +412,10 @@ export default function PricingPage() {
                   {features[id].map(feature => <li key={feature} className="flex gap-2.5 text-sm text-slate-700 dark:text-slate-200"><Check size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" /> {feature}</li>)}
                 </ul>
                 <button type="button" onClick={() => selectPlan(id)}
-                  disabled={billing.loading || disabled || (!checkoutEnabled && id !== "community" && id !== "enterprise")}
+                  disabled={billing.loading || disabled}
                   className={"gm-pricing-card-button w-full flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-extrabold transition-all disabled:cursor-not-allowed " +
-                    (highlighted ? "bg-gradient-to-r from-sky-500 to-indigo-600 text-white hover:from-sky-600 hover:to-indigo-700 shadow-md shadow-sky-500/15" : "bg-slate-900 dark:bg-sky-700 text-white hover:bg-sky-700 dark:hover:bg-sky-600")}>
-                  {disabled ? "Indisponível" : id === "enterprise" ? "Pedir proposta" : id === "community" ? "Começar gratuitamente" : !checkoutEnabled ? "Em preparação" : current ? "Renovar plano" : "Escolher plano"}
+                    "bg-gradient-to-r from-sky-500 to-indigo-600 text-white hover:from-sky-600 hover:to-indigo-700 shadow-md shadow-sky-500/15"}>
+                  {disabled ? "Indisponível" : id === "enterprise" ? "Pedir proposta" : id === "community" ? (current ? "Abrir GeoMoz" : "Começar gratuitamente") : (!checkoutEnabled || (id === "teams" && !teamsCheckoutEnabled) || (id === "academic" && !academicApproved)) ? "Solicitar adesão" : current ? "Renovar plano" : "Escolher plano"}
                   {id === "enterprise" ? <ArrowRight size={16}/> : null}
                 </button>
               </article>
@@ -381,12 +481,12 @@ export default function PricingPage() {
 
       {selected && activePlan && (
         <div className="fixed inset-0 z-50 bg-slate-950/65 backdrop-blur-sm flex justify-center items-center p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setSelected(null); }}>
-          <section role="dialog" aria-modal="true" aria-label="Pagamento seguro GeoMoz" className="gm-pricing-checkout gm-dashboard-panel w-full max-w-lg max-h-[92dvh] overflow-y-auto rounded-3xl p-6 space-y-5 shadow-2xl">
+          <section role="dialog" aria-modal="true" aria-label={requestOnly ? "Pedido de adesão GeoMoz" : "Pagamento seguro GeoMoz"} className="gm-pricing-checkout gm-dashboard-panel w-full max-w-lg max-h-[92dvh] overflow-y-auto rounded-3xl p-6 space-y-5 shadow-2xl">
             <div className="flex justify-between gap-3 items-start">
               <div className="flex gap-3 items-start">
                 <GeoMozBrandIcon className="h-10 w-10 rounded-xl shrink-0" alt="" width={40} height={40}/>
                 <div>
-                  <div className="text-xs uppercase font-bold tracking-wider text-sky-600 dark:text-sky-300">Pagamento seguro · GeoMoz</div>
+                  <div className="text-xs uppercase font-bold tracking-wider text-sky-600 dark:text-sky-300">{requestOnly ? "Adesão e subscrições · GeoMoz" : "Pagamento seguro · GeoMoz"}</div>
                   <h2 className="text-xl font-extrabold mt-1">{activePlan.name}</h2>
                   <p className="text-sm text-slate-500 dark:text-slate-400">{formatMzn((annual ? activePlan.yearlyMzn : activePlan.monthlyMzn) ?? 0)} · {annual ? "12 meses" : "1 mês"}</p>
                 </div>
@@ -396,21 +496,31 @@ export default function PricingPage() {
             <label className="block text-sm font-semibold">Nome do titular
               <input value={customerName} onChange={e => setCustomerName(e.target.value)} autoComplete="name" className="gm-pricing-input mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-950/75 px-3.5 py-3 text-sm outline-none focus:border-sky-500" placeholder="Nome e apelido" required />
             </label>
-            <label className="block text-sm font-semibold">Região de pagamento
+            {!requestOnly && <label className="block text-sm font-semibold">Região de pagamento
               <select value={region} onChange={e => setRegion(e.target.value as Region)} className="gm-pricing-input mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-950/75 px-3.5 py-3 text-sm outline-none focus:border-sky-500">
                 <option value="mz">Moçambique — carteiras móveis e cartões</option>
                 <option value="international">Internacional — cartões quando disponíveis</option>
               </select>
             </label>
-            {region === "mz" ? <label className="block text-sm font-semibold">Contacto moçambicano
+            {!requestOnly && (region === "mz" ? <label className="block text-sm font-semibold">Contacto moçambicano
               <input value={phone} onChange={e => setPhone(e.target.value)} type="tel" autoComplete="tel" className="gm-pricing-input mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-950/75 px-3.5 py-3 text-sm outline-none focus:border-sky-500" placeholder="+258 84 000 0000" required />
-            </label> : <p className="text-xs text-slate-500 dark:text-slate-400">Cartões internacionais dependem da disponibilidade para a sua região. Os métodos activos serão apresentados no próximo passo.</p>}
-            {selected === "academic" && <p className="text-xs text-amber-700 dark:text-amber-300">O plano Academic exige elegibilidade confirmada antes de efectuar o pagamento.</p>}
-            <button type="button" disabled={working || !checkoutEnabled || !customerName.trim() || (region === "mz" && !phone.trim())} onClick={checkout}
+            </label> : <p className="text-xs text-slate-500 dark:text-slate-400">Cartões internacionais dependem da disponibilidade para a sua região. Os métodos activos serão apresentados no próximo passo.</p>)}
+            {selected === "academic" && !academicApproved && <p className="text-xs text-amber-700 dark:text-amber-300">A equipa verificará a elegibilidade académica antes de disponibilizar o pagamento.</p>}
+            {requestOnly && (
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold" htmlFor="plan-request-message">Mensagem para a equipa GeoMoz{selected === "enterprise" ? " (obrigatória)" : " (opcional)"}</label>
+                <textarea id="plan-request-message" maxLength={1000} rows={3}
+                  className="gm-pricing-input w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-950/75 p-3 text-sm"
+                  placeholder={selected === "academic" ? "Instituição de ensino e finalidade académica" : selected === "enterprise" ? "Descreva a organização e as necessidades do projecto" : "Descreva brevemente o seu interesse"}
+                  value={requestMessage} onChange={event => setRequestMessage(event.target.value)} />
+                <p className="text-xs text-slate-500 dark:text-slate-400">Este pedido não cria uma subscrição paga nem gera qualquer débito. A Administração poderá analisá-lo.</p>
+              </div>
+            )
+            <button type="button" disabled={working || (requestOnly ? (selected === "enterprise" && requestMessage.trim().length < 8) : (!checkoutEnabled || !customerName.trim() || (region === "mz" && !phone.trim())))} onClick={requestOnly ? submitPlanRequest : checkout}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-extrabold shadow-md shadow-sky-500/15 disabled:opacity-45 disabled:cursor-not-allowed">
-              {working ? "A preparar pagamento..." : "Continuar para pagamento seguro"} <ArrowRight size={17}/>
+              {working ? (requestOnly ? "A registar pedido..." : "A preparar pagamento...") : (requestOnly ? "Submeter pedido de adesão" : "Continuar para pagamento seguro")} <ArrowRight size={17}/>
             </button>
-            <p className="text-xs text-slate-500 dark:text-slate-400 text-center">O acesso só será activado após confirmação do pagamento. Não armazenamos os dados do seu cartão.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 text-center">{requestOnly ? "A escolha do plano não representa uma cobrança. Receberá confirmação quando houver uma decisão." : "O acesso só será activado após confirmação do pagamento. Não armazenamos os dados do seu cartão."}</p>
           </section>
         </div>
       )}
