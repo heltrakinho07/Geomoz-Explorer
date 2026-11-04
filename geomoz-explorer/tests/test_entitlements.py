@@ -5,7 +5,6 @@ tests without Google credentials. Production uses Firestore's real transactions.
 """
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-from datetime import datetime, timezone
 from threading import RLock
 from types import SimpleNamespace
 
