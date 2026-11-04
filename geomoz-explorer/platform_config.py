@@ -8,7 +8,10 @@ from datetime import datetime, timezone
 from threading import Lock
 from time import monotonic
 
-from firebase_admin import firestore
+try:
+    from firebase_admin import firestore
+except ImportError:  # Minimal CI installs do not ship Firebase Admin.
+    firestore = None
 
 PLAN_ORDER = ("community", "academic", "pro", "teams", "enterprise")
 GB = 1024 ** 3
@@ -108,13 +111,9 @@ def update_plan_config(code, changes):
                 raise ValueError("Limite acima do máximo permitido.")
         elif key in ("monthlyMzn", "yearlyMzn") and code != "enterprise":
             raise ValueError("Planos comerciais precisam de preços numéricos.")
-    ref = _doc()
-    snap = ref.get()
-    current = snap.to_dict() if snap.exists else {}
-    plans = current.get("plans", {}) if isinstance(current.get("plans"), dict) else {}
-    existing = plans.get(code, {}) if isinstance(plans.get(code), dict) else {}
-    plans[code] = {**existing, **changes}
-    ref.set({"plans": plans, "updatedAt": datetime.now(timezone.utc).isoformat()}, merge=True)
+    # Firestore recursively merges nested maps, avoiding cross-plan lost writes.
+    _doc().set({"plans": {code: changes},
+                "updatedAt": datetime.now(timezone.utc).isoformat()}, merge=True)
     invalidate_cache()
     return read_config(fresh=True)["plans"][code]
 
@@ -124,14 +123,8 @@ def update_features(changes):
         raise ValueError("Módulo desconhecido.")
     if any(not isinstance(v, bool) for v in changes.values()):
         raise ValueError("As funcionalidades recebem apenas valores booleanos.")
-    ref = _doc()
-    snap = ref.get()
-    current = snap.to_dict() if snap.exists else {}
-    existing = current.get("features", {}) if isinstance(current.get("features"), dict) else {}
-    ref.set({
-        "features": {**existing, **changes},
-        "updatedAt": datetime.now(timezone.utc).isoformat(),
-    }, merge=True)
+    _doc().set({"features": changes,
+                "updatedAt": datetime.now(timezone.utc).isoformat()}, merge=True)
     invalidate_cache()
     return get_features()
 
