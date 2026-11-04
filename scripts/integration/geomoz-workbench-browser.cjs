@@ -170,15 +170,6 @@ async function settleRecovery(page){
     await page.waitForFunction(code=>document.documentElement.lang===code,copy.code);
     const cards=page.locator(".gm-compact-tool-list");
     const flyout=page.getByTestId("geomoz-tools-flyout");
-    const openCard=async(name,description)=>{
-      await cards.getByRole("button",{name,exact:true}).click();
-      await flyout.waitFor({state:"visible"});
-      assert.equal((await flyout.locator(".gm-tool-flyout-header small").innerText()).trim(),copy.section);
-      assert.equal((await flyout.locator(".gm-tool-flyout-header p").innerText()).trim(),description);
-      assert.equal(await flyout.getAttribute("aria-label"),copy.aria+name);
-      await flyout.getByRole("button",{name:copy.close+name,exact:true}).click();
-      await flyout.waitFor({state:"hidden"});
-    };
     await cards.getByRole("button",{name:copy.vector,exact:true}).click();
     await flyout.waitFor({state:"visible"});
     assert.equal((await flyout.locator(".gm-tool-flyout-header small").innerText()).trim(),copy.section);
