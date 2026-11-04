@@ -37,6 +37,7 @@ import { validateRealSentinel2Ndvi } from "@/lib/gee-ndvi-validation";
 import { useGeoMozTheme } from "@/hooks/useGeoMozTheme";
 import { useGeoMozPreferences } from "@/hooks/useGeoMozPreferences";
 import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import { GEOLIBRE_LANGUAGE_OPTIONS, PORTAL_TRANSLATED_LANGUAGES } from "@/i18n/portal";
 import { useSubscription } from "@/hooks/useSubscription";
 
 interface SettingsDialogProps {
@@ -787,13 +788,19 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                 <label className="flex flex-col gap-2 text-xs text-slate-700 dark:text-slate-200">
                   <span className="font-semibold">{t("settings.languageLabel")}</span>
                   <select data-testid="geomoz-portal-language" aria-label={t("settings.languageLabel")}
-                    value={["pt","en","es","fr"].includes(uiLanguage)?uiLanguage:"en"}
+                    value={uiLanguage}
                     onChange={event=>setUiLanguage(event.target.value)}
                     className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
-                    <option value="pt">Português</option>
-                    <option value="en">English</option>
-                    <option value="es">Español</option>
-                    <option value="fr">Français</option>
+                    <optgroup label={t("settings.portalLanguages")}>
+                      {GEOLIBRE_LANGUAGE_OPTIONS.filter(option =>
+                        PORTAL_TRANSLATED_LANGUAGES.some(code => code === option.code)
+                      ).map(option => <option key={option.code} value={option.code}>{option.nativeName}</option>)}
+                    </optgroup>
+                    <optgroup label={t("settings.nativeLanguages")}>
+                      {GEOLIBRE_LANGUAGE_OPTIONS.filter(option =>
+                        !PORTAL_TRANSLATED_LANGUAGES.some(code => code === option.code)
+                      ).map(option => <option key={option.code} value={option.code}>{option.nativeName}</option>)}
+                    </optgroup>
                   </select>
                   <span className="text-[11px] text-slate-500 dark:text-slate-400">{t("settings.languageHint")}</span>
                 </label>
