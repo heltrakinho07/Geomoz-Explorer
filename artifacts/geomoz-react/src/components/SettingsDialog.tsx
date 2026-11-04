@@ -51,7 +51,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useGeoMozTheme();
   const { language: uiLanguage, setLanguage: setUiLanguage, reducedMotion, setReducedMotion } = useGeoMozPreferences();
-  const { t } = usePortalTranslation();
+  const { t, translatedLocale } = usePortalTranslation();
   const {
     geeConnected,
     oauthReady,
@@ -834,7 +834,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                         : "border-slate-200 dark:border-slate-700"
                     }`}
                   >
-                    Google Híbrido (Satélite + Vias)
+                    {t("settings.basemapHybrid")}
                   </button>
                   <button
                     type="button"
@@ -845,7 +845,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                         : "border-slate-200 dark:border-slate-700"
                     }`}
                   >
-                    Satélite Puro
+                    {t("settings.basemapSatellite")}
                   </button>
                   <button
                     type="button"
@@ -856,7 +856,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                         : "border-slate-200 dark:border-slate-700"
                     }`}
                   >
-                    Google Terreno / Altimetria
+                    {t("settings.basemapTerrain")}
                   </button>
                   <button
                     type="button"
@@ -873,7 +873,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
 
                 <div className="pt-3 border-t border-slate-200 dark:border-slate-700 flex justify-end">
                   <Button size="sm" onClick={handleSavePreferences} className="text-xs bg-sky-600 hover:bg-sky-700">
-                    Guardar Preferências
+                    {t("settings.savePreferences")}
                   </Button>
                 </div>
               </div>
@@ -885,25 +885,25 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-3">
                 <div>
                   <h4 className="text-lg font-bold text-slate-900 dark:text-slate-50">{subscription.planData.name}</h4>
-                  <p className="text-xs text-slate-500">Plano de acesso ao GeoMoz Explorer</p>
+                  <p className="text-xs text-slate-500">{t("settings.billingDescription")}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
-                    <div className="text-xs text-slate-500">Projectos de estudo</div>
-                    <div className="font-bold mt-1">{projects.length} / {subscription.planData.projects ?? "Ilimitado"}</div>
+                    <div className="text-xs text-slate-500">{t("settings.projectQuota")}</div>
+                    <div className="font-bold mt-1">{projects.length} / {subscription.planData.projects ?? t("settings.unlimited")}</div>
                   </div>
                   <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
-                    <div className="text-xs text-slate-500">Créditos restantes</div>
-                    <div className="font-bold mt-1">{subscription.planData.credits === null ? "Personalizado" : subscription.remainingCredits}</div>
+                    <div className="text-xs text-slate-500">{t("settings.remainingCredits")}</div>
+                    <div className="font-bold mt-1">{subscription.planData.credits === null ? t("settings.custom") : subscription.remainingCredits}</div>
                   </div>
                 </div>
                 {subscription.periodEnd && (
-                  <p className="text-xs text-slate-500">Válido até {new Date(subscription.periodEnd).toLocaleDateString("pt-PT")}. Renovação manual via PayZeno.</p>
+                  <p className="text-xs text-slate-500">{t("settings.validUntil")} {new Date(subscription.periodEnd).toLocaleDateString(translatedLocale === "pt" ? "pt-MZ" : translatedLocale)}. {t("settings.renewalHint")}</p>
                 )}
                 <a href="/planos" className="inline-flex items-center gap-2 rounded-lg bg-sky-600 text-white px-4 py-2 text-sm font-semibold hover:bg-sky-700">
-                  <CreditCard size={16} /> Consultar planos e pagamentos
+                  <CreditCard size={16} /> {t("settings.plansAndPayments")}
                 </a>
-                <p className="text-xs text-slate-500">Créditos de processamento cloud GeoMoz não substituem as quotas do Google Earth Engine do utilizador.</p>
+                <p className="text-xs text-slate-500">{t("settings.cloudQuotaNote")}</p>
               </div>
             </div>
           )}
@@ -912,18 +912,18 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
             <div className="space-y-4">
               <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3">
                 <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-                  Resumo de Armazenamento no Firestore
+                  {t("settings.storageSummary")}
                 </h4>
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
-                    <div className="text-slate-400 text-[11px]">Projetos de Estudo</div>
+                    <div className="text-slate-400 text-[11px]">{t("settings.projectQuota")}</div>
                     <div className="text-lg font-bold text-slate-800 dark:text-white mt-0.5">
                       {projects.length}
                     </div>
                   </div>
                   <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
-                    <div className="text-slate-400 text-[11px]">Estado da Nuvem</div>
-                    <div className="text-sm font-bold text-emerald-600 mt-0.5">Sincronizado</div>
+                    <div className="text-slate-400 text-[11px]">{t("settings.cloudStatus")}</div>
+                    <div className="text-sm font-bold text-emerald-600 mt-0.5">{t("settings.synced")}</div>
                   </div>
                 </div>
               </div>
