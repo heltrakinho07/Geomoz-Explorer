@@ -1,0 +1,30 @@
+name: GeoIntelligence evidence
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'geomoz-explorer/agent/**'
+      - 'geomoz-explorer/tests/test_agent*'
+      - '.github/workflows/geointelligence-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'geomoz-explorer/agent/**'
+      - 'geomoz-explorer/tests/test_agent*'
+      - '.github/workflows/geointelligence-ci.yml'
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Evidence and dispatcher regressions (no network or GIS credentials)
+        env:
+          PYTHONPATH: geomoz-explorer
+        run: |
+          python -m unittest discover -s geomoz-explorer/tests -p test_agent_intelligence.py -v
+          python -m unittest discover -s geomoz-explorer/tests -p test_agent_tools.py -v
+          python -m unittest discover -s geomoz-explorer/tests -p test_agent_public_data.py -v
+
