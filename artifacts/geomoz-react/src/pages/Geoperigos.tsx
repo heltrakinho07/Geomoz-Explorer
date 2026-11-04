@@ -16,6 +16,8 @@ import {
   ChevronLeft, ChevronRight, RefreshCw, Thermometer, Sprout,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import { hazardsText, type HazardsCopyKey } from "@/i18n/hazards";
 import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
@@ -164,6 +166,9 @@ interface Props {
 
 export default function Geoperigos({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
   const { toast } = useToast();
+  const { translatedLocale } = usePortalTranslation();
+  const h = useCallback((key: HazardsCopyKey) => hazardsText(translatedLocale, key), [translatedLocale]);
+  const numberLocale = translatedLocale === "pt" ? "pt-MZ" : translatedLocale;
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const { geeConnected: isGeeConnected, loading: geeAuthLoading } = useGeeAuth();
   const [geeDialogOpen, setGeeDialogOpen] = useState(false);
@@ -213,8 +218,8 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
     if (!isGeeConnected) {
       setGeeDialogOpen(true);
       toast({
-        title: "Google Earth Engine necessário",
-        description: "Conecte a sua conta GEE para processar imagens Sentinel-1.",
+        title: h("gee.required"),
+        description: h("gee.connectForSentinel"),
       });
       return;
     }
@@ -242,23 +247,23 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
       const data = await r.json();
       setFlood(data);
       toast({
-        title: "Mapeamento de cheia concluído!",
-        description: `Área inundada identificada: ${data.areaKm2} km² (Sentinel-1 SAR).`,
+        title: h("toast.floodSuccess"),
+        description: `${h("toast.floodArea")} ${data.areaKm2} km² (Sentinel-1 SAR).`,
       });
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === "AbortError";
-      const msg = aborted ? "A análise de radar demorou demasiado. Reduza a área (escolha uma província)." : String(e instanceof Error ? e.message : e);
+      const msg = aborted ? h("toast.floodTimeout") : String(e instanceof Error ? e.message : e);
       setError(msg);
-      toast({ variant: "destructive", title: "Erro nas cheias", description: msg });
+      toast({ variant: "destructive", title: h("toast.floodError"), description: msg });
     } finally { clearTimeout(timer); setLoading(false); }
-  }, [aoi, province, district, eventStart, eventEnd, isGeeConnected]);
+  }, [aoi, province, district, eventStart, eventEnd, isGeeConnected, h]);
 
   const runErosion = useCallback(async () => {
     if (!isGeeConnected) {
       setGeeDialogOpen(true);
       toast({
-        title: "Google Earth Engine necessário",
-        description: "Conecte a sua conta GEE para calcular o modelo RUSLE.",
+        title: h("gee.required"),
+        description: h("gee.connectForRUSLE"),
       });
       return;
     }
@@ -285,23 +290,23 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
       const data = await r.json();
       setErosion(data);
       toast({
-        title: "Cálculo RUSLE concluído!",
-        description: `Perda média estimada: ${data.meanTPerHa ?? "—"} t/ha/ano (ano ${year}).`,
+        title: h("toast.erosionSuccess"),
+        description: `${h("toast.erosionLoss")} ${data.meanTPerHa ?? "—"} t/ha/year (${h("year").toLowerCase()} ${year}).`,
       });
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === "AbortError";
-      const msg = aborted ? "O cálculo RUSLE demorou demasiado. Escolha uma província em vez de todo o país." : String(e instanceof Error ? e.message : e);
+      const msg = aborted ? h("toast.erosionTimeout") : String(e instanceof Error ? e.message : e);
       setError(msg);
-      toast({ variant: "destructive", title: "Erro na erosão", description: msg });
+      toast({ variant: "destructive", title: h("toast.erosionError"), description: msg });
     } finally { clearTimeout(timer); setLoading(false); }
-  }, [aoi, province, district, year, isGeeConnected]);
+  }, [aoi, province, district, year, isGeeConnected, h]);
 
   const runWildfire = useCallback(async () => {
     if (!isGeeConnected) {
       setGeeDialogOpen(true);
       toast({
-        title: "Google Earth Engine necessário",
-        description: "Conecte a sua conta GEE para consultar os focos de calor da NASA FIRMS.",
+        title: h("gee.required"),
+        description: h("gee.connectForFIRMS"),
       });
       return;
     }
@@ -330,24 +335,24 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
       const data = await r.json();
       setWildfire(data);
       toast({
-        title: "Deteção de focos de queimada concluída!",
-        description: `Identificados ${data.hotspotCount.toLocaleString("pt-PT")} focos de calor ativos (NASA FIRMS).`,
+        title: h("toast.wildfireSuccess"),
+        description: `${h("toast.wildfireCount")} ${data.hotspotCount.toLocaleString(numberLocale)} (NASA FIRMS).`,
       });
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === "AbortError";
-      const msg = aborted ? "A consulta de focos demorou demasiado. Reduza o intervalo de datas ou selecione uma província." : String(e instanceof Error ? e.message : e);
+      const msg = aborted ? h("toast.wildfireTimeout") : String(e instanceof Error ? e.message : e);
       setError(msg);
-      toast({ variant: "destructive", title: "Erro nos focos de calor", description: msg });
+      toast({ variant: "destructive", title: h("toast.wildfireError"), description: msg });
     } finally { clearTimeout(timer); setLoading(false); }
-  }, [aoi, province, district, wildfireStart, wildfireEnd, minConfidence, isGeeConnected]);
+  }, [aoi, province, district, wildfireStart, wildfireEnd, minConfidence, isGeeConnected, h, numberLocale]);
 
 
   const runDrought = useCallback(async () => {
     if (!isGeeConnected) {
       setGeeDialogOpen(true);
       toast({
-        title: "Google Earth Engine necessário",
-        description: "Conecte a sua conta GEE para analisar CHIRPS e MODIS.",
+        title: h("gee.required"),
+        description: h("gee.connectForDrought"),
       });
       return;
     }
@@ -375,25 +380,25 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
       const data = await r.json();
       setDrought(data);
       toast({
-        title: "Análise de seca concluída!",
+        title: h("toast.droughtSuccess"),
         description: data.stats?.droughtPct != null
-          ? `${data.stats.droughtPct}% da área apresenta SPI < -1.`
-          : "Mapa SPI × NDVI gerado com CHIRPS e MODIS.",
+          ? `${data.stats.droughtPct}% ${h("toast.droughtShare")}`
+          : h("toast.droughtMap"),
       });
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === "AbortError";
-      const msg = aborted ? "A análise de seca demorou demasiado. Reduza a área de estudo." : String(e instanceof Error ? e.message : e);
+      const msg = aborted ? h("toast.droughtTimeout") : String(e instanceof Error ? e.message : e);
       setError(msg);
-      toast({ variant: "destructive", title: "Erro na análise de seca", description: msg });
+      toast({ variant: "destructive", title: h("toast.droughtError"), description: msg });
     } finally { clearTimeout(timer); setLoading(false); }
-  }, [aoi, province, district, droughtYear, climStart, isGeeConnected]);
+  }, [aoi, province, district, droughtYear, climStart, isGeeConnected, h]);
 
   const runBurnedArea = useCallback(async () => {
     if (!isGeeConnected) {
       setGeeDialogOpen(true);
       toast({
-        title: "Google Earth Engine necessário",
-        description: "Conecte a sua conta GEE para consultar MODIS MCD64A1.",
+        title: h("gee.required"),
+        description: h("gee.connectForBurned"),
       });
       return;
     }
@@ -421,23 +426,23 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
       const data = await r.json();
       setBurned(data);
       toast({
-        title: "Área queimada mapeada!",
-        description: `${data.areaKm2.toLocaleString("pt-PT")} km² identificados pelo MODIS MCD64A1.`,
+        title: h("toast.burnedSuccess"),
+        description: `${data.areaKm2.toLocaleString(numberLocale)} km² ${h("toast.burnedArea")}`,
       });
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === "AbortError";
-      const msg = aborted ? "A análise de área queimada demorou demasiado. Reduza a área ou o período." : String(e instanceof Error ? e.message : e);
+      const msg = aborted ? h("toast.burnedTimeout") : String(e instanceof Error ? e.message : e);
       setError(msg);
-      toast({ variant: "destructive", title: "Erro na área queimada", description: msg });
+      toast({ variant: "destructive", title: h("toast.burnedError"), description: msg });
     } finally { clearTimeout(timer); setLoading(false); }
-  }, [aoi, province, district, burnedStart, burnedEnd, isGeeConnected]);
+  }, [aoi, province, district, burnedStart, burnedEnd, isGeeConnected, h, numberLocale]);
 
   const runSoilMoisture = useCallback(async () => {
     if (!isGeeConnected) {
       setGeeDialogOpen(true);
       toast({
-        title: "Google Earth Engine necessário",
-        description: "Conecte a sua conta GEE para consultar o sensor NASA SMAP.",
+        title: h("gee.required"),
+        description: h("gee.connectForSMAP"),
       });
       return;
     }
@@ -466,16 +471,16 @@ export default function Geoperigos({ aoi, province, district, onProvinceChange, 
       const data: SoilMoistureResult = await r.json();
       setSoilMoisture(data);
       toast({
-        title: "Análise de humidade do solo concluída!",
-        description: `NASA SMAP: ${data.stressPct}% da área sob défice hídrico (${data.riskLevel}).`,
+        title: h("toast.soilSuccess"),
+        description: `NASA SMAP: ${data.stressPct}% ${h("toast.soilDeficit")} (${data.riskLevel}).`,
       });
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === "AbortError";
-      const msg = aborted ? "A consulta SMAP demorou demasiado. Reduza o intervalo de datas ou a área." : String(e instanceof Error ? e.message : e);
+      const msg = aborted ? h("toast.soilTimeout") : String(e instanceof Error ? e.message : e);
       setError(msg);
-      toast({ variant: "destructive", title: "Erro na humidade do solo", description: msg });
+      toast({ variant: "destructive", title: h("toast.soilError"), description: msg });
     } finally { clearTimeout(timer); setLoading(false); }
-  }, [aoi, province, district, soilStart, soilEnd, soilLayer, isGeeConnected]);
+  }, [aoi, province, district, soilStart, soilEnd, soilLayer, isGeeConnected, h]);
 
   const erosionTotal = erosion ? erosion.classes.reduce((s, c) => s + c.areaKm2, 0) || 1 : 1;
 
