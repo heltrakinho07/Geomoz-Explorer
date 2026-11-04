@@ -126,8 +126,8 @@ export function encodeTerrainGLB(
   const valid = (i: number) => mesh.heights[i] !== null;
   for (let r = 0; r < height - 1; r++) for (let c = 0; c < width - 1; c++) {
     const a = r * width + c, b = a + 1, d = a + width, e = d + 1;
-    if (valid(a) && valid(b) && valid(d)) indices.push(a, d, b);
-    if (valid(b) && valid(d) && valid(e)) indices.push(b, d, e);
+    if (valid(a) && valid(b) && valid(d)) indices.push(a, b, d);
+    if (valid(b) && valid(d) && valid(e)) indices.push(b, e, d);
   }
   if (!indices.length) throw new Error("DEM sem triângulos válidos para GLB.");
 
@@ -157,7 +157,8 @@ export function encodeTerrainGLB(
     { bufferView: uvView, componentType: 5126, count, type: "VEC2" },
     { bufferView: colourView, componentType: 5121, count, type: "VEC4", normalized: true },
     { bufferView: indexView, componentType: 5123, count: indices.length, type: "SCALAR",
-      min: [Math.min(...indices)], max: [Math.max(...indices)] }
+      min: [indices.reduce((a, b) => Math.min(a, b), 65535)],
+      max: [indices.reduce((a, b) => Math.max(a, b), 0)] }
   ];
   const gltf: Record<string, unknown> = {
     asset: { version: "2.0", generator: "GeoMoz 3D Terrain Studio" },
