@@ -28,7 +28,7 @@ import { geomozNativeTerrainPreview } from "./geomoz-native-terrain-dem";
 import { encodeTerrainGLB, imageToGLBTexture } from "../../lib/geomoz-terrain-glb";
 import {GeoMozTerrainLayerCatalogue,GeoMozTerrainLayerSymbology}
   from "./GeoMozTerrainLayerPanels";
-import {composeTerrainTexture,createPolygonOverlay,terrainCategories,generateOverlayId,
+import {composeTerrainTexture,createPolygonOverlay,terrainCategories,identifyTerrainOverlayAt,generateOverlayId,
   type TerrainOverlay} from "./geomoz-terrain-layers";
 import {importTerrainRasterOverlay} from "./geomoz-terrain-raster-overlay";
 import {loadWorldCoverFromAuthenticatedGeoMoz} from "./geomoz-terrain-gee-bridge";
@@ -150,6 +150,8 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
   const [pickTarget,setPickTarget]=useState<Target|null>(null);
   const [lastPick,setLastPick]=useState<TerrainPickedPoint|null>(null);
   const [picked,setPicked]=useState<Partial<Record<Target,TerrainPick>>>({});
+  const [inspection,setInspection]=useState<{lon:number;lat:number;z:number;
+    results:{layer:string;value:string;properties?:Record<string,unknown>}[]}|null>(null);
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const sceneInputRef=useRef<HTMLInputElement>(null);
   const abortRef=useRef<AbortController|null>(null);
@@ -159,7 +161,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     .map(layer=>({id:layer.id,name:layer.name,geojson:layer.geojson!,style:layer.style})),[layers]);
 
   useEffect(()=>{
-    setOverlays([]);setSelectedOverlay(null);setTextureUrl(null);
+    setOverlays([]);setSelectedOverlay(null);setTextureUrl(null);setInspection(null);
     textureVersion.current++;
   },[terrain]);
   useEffect(()=>{
@@ -195,9 +197,12 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
   },[open]);
 
   const selectPoint=(point:TerrainPick)=>{
-    if(!pickTarget||!terrain)return;
+    if(!terrain)return;
     try {
       const [lon,lat]=terrainToGeographic(terrain,point.xMeters,point.yMeters);
+      setInspection({lon,lat,z:point.elevationMeters,
+        results:identifyTerrainOverlayAt(terrain,overlays,lon,lat)});
+      if(!pickTarget)return;
       setPicked(previous=>({...previous,[pickTarget]:point}));
       setLastPick({target:pickTarget,lon,lat,elevationMeters:point.elevationMeters});
       setPickTarget(pickTarget==="A"?"B":null);
@@ -210,7 +215,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     try {
       return createTerrainRenderer(canvasRef.current,terrain,{
         exaggeration,style: textureUrl?"imagery":style,terrainBaseStyle:style==="grayscale"?"grayscale":"hypsometric",detailLevel,textureUrl,
-        pickEnabled:!!pickTarget,onPick:selectPoint,
+        pickEnabled:true,onPick:selectPoint,
         profileOverlay:picked.A&&picked.B?
           {start:[picked.A.xMeters,picked.A.yMeters],
            end:[picked.B.xMeters,picked.B.yMeters]}:null
@@ -218,7 +223,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     }catch(cause){
       setRendererError(cause instanceof Error?cause.message:"O WebGL2 não pôde carregar o modelo.");
     }
-  },[open,terrain,exaggeration,style,detailLevel,textureUrl,pickTarget,picked]);
+  },[open,terrain,exaggeration,style,detailLevel,textureUrl,pickTarget,picked,overlays]);
 
   async function openSelectedDEM(){
     const layer=options.find(o=>o.id===selected);
@@ -437,6 +442,20 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
         {terrain&&<div className="gm-terrain-native-help">
           {pickTarget?ui("Clique na superfície para definir o ponto ")+pickTarget:
             ui("Arrastar: rodar · Roda: aproximar · Escolher A/B: consultar elevação")}
+        </div>}
+        {inspection&&<div className="gm-terrain-identify" data-testid="geomoz-3d-identify">
+          <div className="gm-terrain-identify-head"><strong>Consulta do terreno</strong>
+            <button type="button" onClick={()=>setInspection(null)} aria-label="Fechar identificação"><X size={14}/></button>
+          </div>
+          <div className="gm-terrain-identify-coords">
+            {inspection.lon.toFixed(6)}°, {inspection.lat.toFixed(6)}° · {inspection.z.toFixed(1)} m
+          </div>
+          {inspection.results.length?inspection.results.map((item,index)=>
+            <div className="gm-terrain-identify-layer" key={item.layer+index}>
+              <strong>{item.layer}</strong><span>{item.value}</span>
+              {item.properties&&Object.entries(item.properties).slice(0,5).map(([key,value])=>
+                <small key={key}>{key}: {String(value??"—").slice(0,80)}</small>)}
+            </div>):<small>Sem classes temáticas neste ponto.</small>}
         </div>}
         {rendererError&&<p className="gm-terrain-render-error" role="alert">{rendererError}</p>}
       </main>
