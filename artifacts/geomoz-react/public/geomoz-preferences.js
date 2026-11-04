@@ -45,9 +45,11 @@
     if (!code) return false;
     const changed = code !== language;
     language = code;
-    // The portal remains Portuguese until its own strings are translated.
-    // Do not falsely label Portuguese content as another language for assistive technologies.
-    if (document.body?.dataset.geomozApp === "workbench") document.documentElement.lang = code;
+    // The GIS workspace owns its language/RTL via i18next. The portal uses
+    // reviewed PT/EN/ES/FR catalogs and falls back to EN for other GIS locales.
+    // This runs before React boots and again on every preference change.
+    const portalLocale = ["pt", "en", "es", "fr"].includes(code) ? code : "en";
+    document.documentElement.lang = document.body?.dataset.geomozApp === "workbench" ? code : portalLocale;
     if (persist) {
       try {
         localStorage.setItem(languageKey, code);
