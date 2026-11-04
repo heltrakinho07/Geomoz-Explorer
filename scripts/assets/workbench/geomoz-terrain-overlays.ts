@@ -7,7 +7,7 @@
  * feature heights: the existing WebGL DEM supplies every draped elevation.
  */
 import proj4 from "proj4";
-import type { Feature, FeatureCollection, Geometry, GeoJsonProperties } from "geojson";
+import type { FeatureCollection, Geometry } from "geojson";
 import type { TerrainMeshData } from "../../lib/geomoz-terrain-webgl";
 
 export type GeoMozOverlayMode="single"|"categorized";
