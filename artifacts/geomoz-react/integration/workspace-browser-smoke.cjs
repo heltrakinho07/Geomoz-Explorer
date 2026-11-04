@@ -120,11 +120,17 @@ const server = createServer(async (req, res) => {
       {code:"pt",heading:"Geoperigos",action:"Mapear cheia"},
     ]){
       await hazardsLocale.selectOption(copy.code);
-      await page.getByRole("heading",{name:copy.heading,exact:true}).waitFor({state:"visible"});
-      await page.getByRole("button",{name:copy.action,exact:true}).waitFor({state:"visible"});
+      // Radix Dialog marks the underlying page aria-hidden while Settings is open.
+      // Inspect rendered DOM during the modal, then verify accessible controls after closing.
+      await page.waitForFunction(copy=>[...document.querySelectorAll("h2")]
+        .some(node=>node.textContent?.trim()===copy.heading) &&
+        [...document.querySelectorAll("button")].some(node=>node.textContent?.trim()===copy.action),
+        copy,{timeout:18000});
     }
     await page.keyboard.press("Escape");
     await page.getByRole("dialog").waitFor({state:"hidden"});
+    await page.getByRole("heading",{name:"Geoperigos",exact:true}).waitFor({state:"visible"});
+    await page.getByRole("button",{name:"Mapear cheia",exact:true}).waitFor({state:"visible"});
     console.log("Geoperigos form and flood controls translated in PT/EN/ES/FR without reloading.");
     await page.getByRole("button",{name:"GIS Workspace",exact:true}).click();
     await page.getByRole("heading",{name:"Da área de estudo ao resultado.",exact:true}).waitFor();
