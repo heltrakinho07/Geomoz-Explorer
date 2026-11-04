@@ -205,3 +205,57 @@ export async function composeTerrainTexture(
   }
   return canvas.toDataURL("image/png");
 }
+
+export interface TerrainLayerIdentify {layer:string;value:string;properties?:Record<string,unknown>}
+function inRing(ring:number[][],lon:number,lat:number):boolean {
+  let inside=false;
+  for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+    const [xi,yi]=ring[i],[xj,yj]=ring[j];
+    if((yi>lat)!==(yj>lat) &&
+      lon < (xj-xi)*(lat-yi)/(yj-yi)+xi)inside=!inside;
+  }
+  return inside;
+}
+function featureContains(
+  feature:FeatureCollection["features"][number],lon:number,lat:number
+):boolean {
+  if(!isPolygon(feature))return false;
+  const polygons=feature.geometry.type==="Polygon"?
+    [feature.geometry.coordinates]:feature.geometry.coordinates;
+  for(const rings of polygons){
+    if(!rings.length||!inRing(rings[0],lon,lat))continue;
+    if(!rings.slice(1).some(hole=>inRing(hole,lon,lat)))return true;
+  }
+  return false;
+}
+export function identifyTerrainOverlayAt(
+  mesh:TerrainMeshData,layers:readonly TerrainOverlay[],lon:number,lat:number
+):TerrainLayerIdentify[] {
+  const [x,y]=xyFromLonLat(mesh,lon,lat);
+  const [left,bottom,right,top]=mesh.boundsMeters;
+  if(x<left||x>right||y<bottom||y>top)return [];
+  const col=Math.min(mesh.width-1,Math.floor((x-left)/(right-left)*mesh.width));
+  const row=Math.min(mesh.height-1,Math.floor((top-y)/(top-bottom)*mesh.height));
+  const result:TerrainLayerIdentify[]=[];
+  for(const layer of [...layers].reverse()){
+    if(!layer.visible||layer.opacity<=0)continue;
+    if(layer.kind==="categories"&&layer.values){
+      const v=layer.values[row*mesh.width+col];
+      const cat=layer.categories.find(c=>c.value===String(v));
+      if(v!==null&&(layer.renderStyle==="single"||cat?.enabled))
+        result.push({layer:layer.name,value:cat?.label??"Classe "+String(v)});
+    }else if(layer.kind==="vector"&&layer.data){
+      const match=layer.data.features.find(f=>featureContains(f,lon,lat));
+      if(match){
+        const raw=String(match.properties?.[layer.field??""]??"Feição vectorial");
+        const cat=layer.categories.find(c=>c.value===raw);
+        if(layer.renderStyle==="single"||cat?.enabled)
+          result.push({layer:layer.name,value:cat?.label??raw,
+            properties:(match.properties??{}) as Record<string,unknown>});
+      }
+    }else if(layer.kind==="imagery"){
+      result.push({layer:layer.name,value:"Imagem RGB"});
+    }
+  }
+  return result;
+}
