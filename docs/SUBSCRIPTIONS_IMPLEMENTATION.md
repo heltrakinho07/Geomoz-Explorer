@@ -1,34 +1,55 @@
-# GeoMoz Explorer — Subscrições (implementação inicial)
+# GeoMoz Explorer — PayZeno + subscrições
 
-## Incluído neste ramo
+## Estado da implementação
 
-- Catálogo Community (0 MZN), Academic (299/2.990 MZN), Pro (1.199/11.990 MZN), Teams (4.999/49.990 MZN), Enterprise sob consulta.
-- UI em `/planos` e separador «Plano e subscrição» em Definições, ligada a `billing/{uid}`.
-- Regras Firestore que tornam os documentos de facturação, eventos e uso **read-only** para o navegador.
-- API FastAPI autenticada para checkout, portal e webhook Stripe; assinatura Stripe verificada, janela de cinco minutos e deduplicação transaccional de eventos.
-- Função interna `charge_managed_cloud_credits(uid, cost, operation_id)` com débito atómico e idempotente e ciclo mensal UTC.
-- Testes unitários para catálogo de planos.
+A subscrição GeoMoz Explorer usa **PayZeno Hosted Checkout** para pagamentos em **MZN**, com o mesmo contrato técnico adoptado na GeoAcademy e sem misturar as bases de dados nem as matrículas. O ciclo mensal/anual é uma **compra única de acesso por 1/12 meses**, não uma autorização de débito recorrente.
 
-## Configuração obrigatória antes de oferecer pagamentos
+- Catálogo: Community 0 MZN, Academic 299/2.990 MZN, Pro 1.199/11.990 MZN, Teams 4.999/49.990 MZN, Enterprise sob consulta.
+- Página `/planos`, selector mensal/anual, região Moçambique/internacional e telefone; `Definições → Plano e subscrição`.
+- `POST /geomoz-api/billing/checkout` exige Firebase ID token válido, lê preço no servidor e cria uma transacção `billingPayments/{id}` com referência `GMZ-{id}`.
+- PayZeno `POST https://api.payzeno.io/v1/checkout/sessions` com `Api-Key`, `Idempotency-Key`, `amount` em centavos, `currency=MZN`, `reference`, `customer`, `success_url`, `cancel_url`. Sem `payment_methods`, para disponibilizar todos os métodos permitidos pela conta (M-Pesa, e-Mola, cartões quando activos).
+- `POST /geomoz-api/billing/webhook` verifica `X-Signature` HMAC-SHA256 (hex, base64 e prefixo `sha256=`), referências GeoMoz, montante e moeda. O evento `payment.succeeded` dispara também `GET /v1/checkout/sessions/{id}/status` autenticado antes de activar o plano.
+- `GET /geomoz-api/billing/payments/{id}` permite reconciliação *server-to-server* depois do retorno e apenas ao comprador autenticado.
+- `GET /geomoz-api/billing/history` mostra o histórico por utilizador. `GET /geomoz-api/billing/me` devolve o plano efectivo, com expiração.
+- Transacção Firestore idempotente aplica pagamentos **uma vez**, estende períodos para renovação do mesmo plano, revoga o acesso do último pagamento no caso de reembolso ou chargeback.
+- Firestore `billing/{uid}` legível só pelo próprio, nunca alterável pelo browser; `billingPayments`, `billingCheckoutState` e `billingEvents` só pelo backend Firebase Admin. `charge_managed_cloud_credits` está pronto para integração com trabalhadores cloud.
+- Não ocorre acesso pago por URL de sucesso ou pela sessão PayZeno ainda pendente.
 
-No Cloud Run, definir via Secret Manager:
-`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-`STRIPE_PRICE_PRO_MONTHLY`, `STRIPE_PRICE_PRO_YEARLY`,
-`STRIPE_PRICE_TEAMS_MONTHLY`, `STRIPE_PRICE_TEAMS_YEARLY`,
-`STRIPE_PRICE_ACADEMIC_MONTHLY`, `STRIPE_PRICE_ACADEMIC_YEARLY`,
-e `GEOMOZ_PUBLIC_URL=https://geomoz.geolithica.com`.
+## Configuração obrigatória em produção
 
-Criar os preços recorrentes reais no Stripe com moeda compatível com a conta e conferir que montantes, periodicidades, taxas e conversões correspondem à tabela pública. Associar o webhook a `https://geomoz.geolithica.com/geomoz-api/billing/webhook` com eventos `checkout.session.completed`, `customer.subscription.updated` e `customer.subscription.deleted`. **Não** marcar pagamentos como confirmados a partir do URL de retorno.
+Definir no serviço backend do GeoMoz Explorer (Cloud Run) via Secret Manager:
 
-O Academic está bloqueado por defeito até à verificação administrativa, que define `academicApproved: true` no documento `billing/{uid}` através de uma credencial de servidor. Não conceder permissão de escrita no Firestore ao cliente.
+| Variável | Função |
+|---|---|
+| `PAYZENO_API_KEY` | Chave PayZeno com permissão para criar e consultar sessões |
+| `PAYZENO_WEBHOOK_SECRET` | Segredo correspondente à mesma aplicação/chave PayZeno |
+| `GEOMOZ_PUBLIC_URL` | `https://geomoz.geolithica.com` |
 
-## Limitações importantes e trabalho pré-produção
+No painel PayZeno, registar o webhook **GeoMoz**:
+`https://geomoz.geolithica.com/geomoz-api/billing/webhook`
 
-1. O fluxo M-Pesa/E-Mola ainda não está integrado: requer credenciais empresariais, especificação contratual, validação assinada de callbacks e reconciliação. Não activar botões de pagamento local antes disso.
-2. A função de débito de créditos existe, mas **ainda deve ser ligada a cada worker de cloud jobs** (reserva/reembolso/resultado) para aplicar quotas em todas as análises. Operações GEE BYO pertencem ao projecto do utilizador e não podem ser contabilizadas como créditos GeoMoz.
-3. A criação de projectos mantém uma via Firestore/local de compatibilidade. Para quotas inultrapassáveis, migrar a criação para uma API autenticada transaccional e tornar `users/{uid}/projects` exclusivamente escrita pelo servidor. Não interpretar os limites apresentados no frontend como controlos de segurança já aplicados.
-4. Storage, lugares Teams e concorrência de jobs necessitam de medição real, contadores atómicos, gestão de organizações e regras de servidor antes de activar comercialmente.
-5. Validar testes CI, deploy em staging, Stripe test mode, cenários de pagamento recusado, cancelamento, renovação, webhook duplicado, expiração, downgrade e acesso de terceiros. Implementar gestão de impostos e facturação segundo requisitos locais.
-6. Configurar alertas financeiros e limites de custo de GEE/Cloud Run/Storage antes de activar processamento cloud gerido.
+**Importante:** A PayZeno permite chaves por aplicação, com URL de webhook associado à chave. Para continuar a usar a mesma conta merchant da GeoAcademy, crie uma **chave/aplicação específica para GeoMoz Explorer** e o seu segredo/webhook, usando os mesmos gateways activos. Não altere o endpoint GeoAcademy existente para apontar ao GeoMoz, sob risco de quebrar as matrículas da GeoAcademy. Não partilhe a chave em código, frontend ou Git.
 
-**Nunca publicar a branch como um sistema de facturação plenamente operacional sem estes passos.**
+O modo `all` omite o campo `payment_methods`. Num checkout internacional, o campo obrigatório `customer.phone` usa o contacto técnico de referência adoptado pela GeoAcademy (+258860406315); não é número de autenticação nem de cobrança móvel. Os cartões só aparecem se a conta merchant suportar esse canal.
+
+A elegibilidade Academic permanece sujeita a validação administrativa `billing/{uid}.academicApproved=true` feita exclusivamente no backend.
+
+## Testes de aceitação e segurança antes do lançamento
+
+1. Testar com chave PayZeno de sandbox, quando disponível; em produção, apenas fazer uma compra real controlada e autorizada.
+2. Confirmar preço MZN x100, método de pagamento disponível, valores de retorno e expiração do checkout.
+3. Verificar assinatura ausente/inválida; referência ou valor divergentes; eventos repetidos; eventos fora de ordem.
+4. Simular e validar `pending`, `paid`, `failed`, `cancelled`, `expired`, `refunded`, `chargeback`, mês com 28/29 dias, renovação antecipada e downgrade.
+5. Confirmar autenticação obrigatória em `/checkout`, `/payments/{id}`, `/history` e isolamento entre utilizadores.
+6. Confirmar operações do GeoMoz que cobram créditos no backend, com reserva/compensação de créditos após falha.
+7. Restringir projectos cloud, armazenamento, lugares e jobs com verificações de servidor — actualmente o módulo de quotas existe mas os fluxos de trabalho ainda precisam de migração de compatibilidade local.
+8. Implementar gestão institucional Teams, facturação fiscal e comprovativos conforme exigências legais. Não expor secrets nem chaves PayZeno ao cliente.
+9. Confirmar que a aplicação PayZeno da GeoAcademy continua a receber o seu webhook próprio.
+
+## Referências de implementação
+
+- Código existente GeoAcademy (Lovable): `supabase/functions/create-payment/index.ts`, `payzeno-webhook/index.ts` e `verify-payment/index.ts`.
+- Documentação oficial: https://payzeno.io/api
+- Não assumir cobrança automática de subscrição; o modelo actual é **pagamento pontual renovável manualmente**.
+
+**Não promover este módulo a cobrança comercial em produção antes de configurar a aplicação PayZeno do GeoMoz, efectuar testes ponta a ponta e aplicar quotas em todos os serviços relevantes.**
