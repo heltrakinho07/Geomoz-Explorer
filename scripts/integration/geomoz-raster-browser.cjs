@@ -189,6 +189,7 @@ module.exports=async function validateRasterProcessing(page){
    const c=document.querySelector('[data-testid="geomoz-native-terrain-canvas"]');
    return c instanceof HTMLCanvasElement&&c.width>50&&c.height>50;
  },{timeout:12000});
+ await terrain.getByTestId("terrain-tab-export").click();
  assert.match(await terrain.innerText(),/EPSG:4326 → EPSG:32736/);
 
  // The upstream Terrain Studio feature set must survive localization merges.
@@ -233,13 +234,21 @@ module.exports=async function validateRasterProcessing(page){
  });
  await terrain.getByText("solo_classes.tif").waitFor({timeout:25000});
  assert.match(await terrain.innerText(),/Raster categorizado/);
- await terrain.getByLabel("Transparência do raster").fill("35");
+ await terrain.getByLabel("Transparência do raster").evaluate((el)=>{
+   const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set;
+   setter.call(el,"35");el.dispatchEvent(new Event("input",{bubbles:true}));
+   el.dispatchEvent(new Event("change",{bubbles:true}));
+ });
  assert.equal(await terrain.getByLabel("Transparência do raster").inputValue(),"35");
  await terrain.getByTestId("terrain-tab-style").click();
  await terrain.getByLabel("Modo de simbologia").selectOption("categorized");
  await terrain.getByLabel("Campo para categorização").selectOption("lito");
  await terrain.getByLabel("Cor da categoria Arenito").fill("#aa7733");
- await terrain.getByLabel("Transparência da camada no terreno").fill("45");
+ await terrain.getByLabel("Transparência da camada no terreno").evaluate((el)=>{
+   const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set;
+   setter.call(el,"45");el.dispatchEvent(new Event("input",{bubbles:true}));
+   el.dispatchEvent(new Event("change",{bubbles:true}));
+ });
  assert.equal(await terrain.getByLabel("Transparência da camada no terreno").inputValue(),"45");
  assert.equal(await canvas.count(),1,"Overlay symbology must not remove terrain canvas");
 
