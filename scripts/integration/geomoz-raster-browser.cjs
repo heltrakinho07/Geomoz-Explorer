@@ -190,7 +190,8 @@ module.exports=async function validateRasterProcessing(page){
    return c instanceof HTMLCanvasElement&&c.width>50&&c.height>50;
  },{timeout:12000});
  assert.match(await terrain.innerText(),/EPSG:4326 → EPSG:32736/);
- // Verify interactive LOD and portable GLB from the very same source DEM.
+
+ // The upstream Terrain Studio feature set must survive localization merges.
  const lod=terrain.getByLabel("Detalhe do terreno 3D");
  await lod.selectOption("low");
  await lod.selectOption("medium");
@@ -206,6 +207,28 @@ module.exports=async function validateRasterProcessing(page){
 
  assert.equal(await page.locator(".gm-layer-row").count(),layerCountBefore,
    "Opening DEM 3D must preserve the same GIS layers");
+
+ // Shared GeoMoz preference -> GeoLibre i18next must translate an already open
+ // 3D studio and its scientific panel without losing the DEM or map project.
+ for(const {code,heading,science,source} of [
+   {code:"en",heading:"Data, terrain and analysis",science:"Scientific DEM analysis",source:"Project DEM"},
+   {code:"es",heading:"Datos, relieve y análisis",science:"Análisis científico del MDE",source:"MDE del proyecto"},
+   {code:"fr",heading:"Données, relief et analyse",science:"Analyse scientifique du MNT",source:"MNT du projet"},
+   {code:"pt",heading:"Dados, relevo e análise",science:"Análise científica do DEM",source:"DEM do projecto"},
+ ]) {
+   const accepted=await page.evaluate(code=>window.GeoMozPreferences?.setLanguage(code),code);
+   assert.equal(accepted,true,"Cross-module preference bridge must accept "+code);
+   await page.waitForFunction(({code,heading,science,source})=>{
+     const root=document.querySelector('[data-testid="geomoz-workbench-terrain"]');
+     return document.documentElement.lang===code &&
+       root?.querySelector(".gm-terrain-native-sidebar h3")?.textContent===heading &&
+       root?.querySelector("summary")?.textContent?.includes(science) &&
+       root?.querySelector(".gm-terrain-workspace-selector span")?.textContent===source;
+   },{code,heading,science,source},{timeout:12000});
+   assert.equal(await canvas.count(),1,"Changing language must not remount or lose native DEM canvas");
+ }
+ console.log("GeoLibre i18next and GeoMoz shared preferences translated 3D studio and scientific panel live in PT/EN/ES/FR.");
+
  // Picking at A and B uses hit-testing on real projected WebGL triangles.
  const view=await canvas.boundingBox();
  assert.ok(view?.width>200&&view.height>180,"WebGL terrain has usable dimensions");
