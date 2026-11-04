@@ -18,7 +18,11 @@ from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from firebase_admin import firestore, auth as firebase_auth
+try:
+    from firebase_admin import firestore, auth as firebase_auth
+except ImportError:  # Optional dependency for local test installs; required in production.
+    firestore = None
+    firebase_auth = None
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/geomoz-api/billing", tags=["billing"])
