@@ -269,13 +269,17 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
   };
 
 
+  const selectedLanguageName = GEOLIBRE_LANGUAGE_OPTIONS.find(option => option.code === uiLanguage)?.nativeName ?? uiLanguage;
+  const localeBase = uiLanguage.toLowerCase().replace(/_/g, "-").split("-")[0];
+  const isPortalReviewed = PORTAL_TRANSLATED_LANGUAGES.some(code => code === localeBase);
+
   const sections: { id: SettingsTab; label: string; subtitle: string; Icon: typeof Cpu }[] = [
-    { id: "gee", label: "Google Earth Engine", subtitle: "Ligação, API e projectos", Icon: Cpu },
-    { id: "profile", label: t("settings.accountTab"), subtitle: "Dados, segurança e acessos", Icon: User },
-    { id: "preferences", label: t("settings.preferencesTab"), subtitle: "Idioma, mapas e visualização", Icon: Sliders },
-    { id: "storage", label: t("settings.storageTab"), subtitle: "Dados, cache e quotas", Icon: Database },
-    { id: "billing", label: t("settings.billingTab"), subtitle: "Plano actual e limites", Icon: CreditCard },
-    { id: "documentation", label: t("sidebar.nav.docs"), subtitle: "Guias e apoio técnico", Icon: BookOpen },
+    { id: "gee", label: "Google Earth Engine", subtitle: t("settings.section.geeSubtitle"), Icon: Cpu },
+    { id: "profile", label: t("settings.accountTab"), subtitle: t("settings.section.profileSubtitle"), Icon: User },
+    { id: "preferences", label: t("settings.preferencesTab"), subtitle: t("settings.section.preferencesSubtitle"), Icon: Sliders },
+    { id: "storage", label: t("settings.storageTab"), subtitle: t("settings.section.storageSubtitle"), Icon: Database },
+    { id: "billing", label: t("settings.billingTab"), subtitle: t("settings.section.billingSubtitle"), Icon: CreditCard },
+    { id: "documentation", label: t("sidebar.nav.docs"), subtitle: t("settings.section.documentationSubtitle"), Icon: BookOpen },
   ];
 
   const settingsBody = (
@@ -740,6 +744,14 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
                     </optgroup>
                   </select>
                   <span className="text-[11px] text-slate-500 dark:text-slate-400">{t("settings.languageHint")}</span>
+                  {isPortalReviewed ? (
+                    <span data-testid="geomoz-language-reviewed-info" className="block text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">{t("settings.languageReviewedDescription")}</span>
+                  ) : (
+                    <span data-testid="geomoz-language-fallback" role="status" className="block rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                      <strong className="mb-1 block">{t("settings.languagePartialTitle")}</strong>
+                      <span>{t("settings.languagePartialDescription").replace("{name}", selectedLanguageName)}</span>
+                    </span>
+                  )}
                 </label>
                 <label className="flex items-center justify-between gap-3 text-xs text-slate-700 dark:text-slate-200">
                   <span className="font-semibold">{t("settings.appearance")}</span>
@@ -818,16 +830,16 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
           )}
 
           {activeTab === "documentation" && (
-            <section className="space-y-4" aria-label="Documentação do GeoMoz">
+            <section className="space-y-4" aria-label={t("settings.documentation.title")}>
               <div className="relative overflow-hidden rounded-2xl border border-sky-200/80 dark:border-sky-800/50 bg-gradient-to-br from-sky-50 via-white to-indigo-50 dark:from-sky-950/40 dark:via-slate-900 dark:to-indigo-950/30 p-5">
                 <div className="flex items-start gap-3">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300">
                     <BookOpen size={22}/>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white">Documentação do GeoMoz</h3>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">{t("settings.documentation.title")}</h3>
                     <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-                      Consulte os guias, ferramentas científicas, formatos de dados, fluxos de trabalho, limitações e funcionalidades disponíveis.
+                      {t("settings.documentation.description")}
                     </p>
                   </div>
                 </div>
@@ -837,15 +849,15 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
                   data-testid="settings-open-documentation"
                   className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-md shadow-sky-500/15 transition hover:brightness-110 sm:w-auto"
                 >
-                  Consultar documentação completa <ArrowUpRight size={16}/>
+                  {t("settings.documentation.open")} <ArrowUpRight size={16}/>
                 </a>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {[
-                  ["Guias de utilização", "Primeiros passos, projectos e navegação"],
-                  ["Ferramentas científicas", "SIG, raster, vector, hidrologia e IA"],
-                  ["Dados e serviços", "Fontes geoespaciais e interoperabilidade"],
-                  ["Estado e roadmap", "Capacidades, condições e evolução"],
+                  [t("settings.documentation.guides"), t("settings.documentation.guidesDescription")],
+                  [t("settings.documentation.science"), t("settings.documentation.scienceDescription")],
+                  [t("settings.documentation.data"), t("settings.documentation.dataDescription")],
+                  [t("settings.documentation.roadmap"), t("settings.documentation.roadmapDescription")],
                 ].map(([heading, description]) => (
                   <div key={heading} className="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white/75 dark:bg-slate-800/50 p-3.5">
                     <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{heading}</p>
@@ -927,7 +939,7 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
             </Link>
             <Link href="/dashboard" className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-sky-300 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
               <ArrowLeft size={15} aria-hidden="true" />
-              <span>Voltar à plataforma</span>
+              <span>{t("settings.chrome.back")}</span>
             </Link>
           </div>
         </header>
@@ -945,12 +957,12 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
                 </div>
               </div>
               <div className="hidden items-center gap-2 rounded-full border border-sky-200 bg-white/85 px-3 py-1.5 text-xs font-semibold text-sky-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-sky-300 lg:flex">
-                <ShieldCheck size={15} aria-hidden="true" /> Preferências da conta GeoMoz
+                <ShieldCheck size={15} aria-hidden="true" /> {t("settings.chrome.accountPreferences")}
               </div>
             </div>
             <div className="grid min-w-0 items-start gap-6 lg:grid-cols-[270px_minmax(0,1fr)]">
-              <nav aria-label="Secções de definições" className="min-w-0 rounded-2xl border border-slate-200/80 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/90 lg:sticky lg:top-24">
-                <h2 className="px-3 pb-3 pt-2 text-sm font-bold text-slate-900 dark:text-white">Definições</h2>
+              <nav aria-label={t("settings.chrome.sectionNav")} className="min-w-0 rounded-2xl border border-slate-200/80 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/90 lg:sticky lg:top-24">
+                <h2 className="px-3 pb-3 pt-2 text-sm font-bold text-slate-900 dark:text-white">{t("sidebar.settings")}</h2>
                 <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-1">
                   {sections.map(({id, label, subtitle, Icon}) => (
                     <button key={id} type="button" data-testid={`settings-section-${id}`}
@@ -966,7 +978,7 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
                       </span>
                     </button>
                   ))}
-                  {adminAccess && <Link href="/administracao" className="flex items-center gap-3 rounded-xl px-3 py-3 text-xs font-semibold text-sky-700 hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-slate-800"><ShieldCheck size={18}/>Administração GeoMoz</Link>}
+                  {adminAccess && <Link href="/administracao" className="flex items-center gap-3 rounded-xl px-3 py-3 text-xs font-semibold text-sky-700 hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-slate-800"><ShieldCheck size={18}/>{t("settings.chrome.admin")}</Link>}
                 </div>
               </nav>
               <section aria-labelledby="settings-current-section" className="min-w-0 rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6 lg:p-7">
@@ -982,7 +994,7 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
                   </div>
                   {activeTab === "gee" && (
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-[11px] font-semibold text-sky-700 dark:border-sky-900 dark:bg-sky-950/50 dark:text-sky-300">
-                      <Cloud size={14} aria-hidden="true" /> Processamento na nuvem
+                      <Cloud size={14} aria-hidden="true" /> {t("settings.chrome.cloudProcessing")}
                     </span>
                   )}
                 </div>
@@ -1081,7 +1093,7 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
               <span>{t("sidebar.nav.docs")}</span>
             </button>
             {adminAccess && <a href="/administracao" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-sky-300 hover:bg-white/10 shrink-0">
-              <ShieldCheck size={14} /> Administração GeoMoz
+              <ShieldCheck size={14} /> {t("settings.chrome.admin")}
             </a>}
           </div>
         </div>

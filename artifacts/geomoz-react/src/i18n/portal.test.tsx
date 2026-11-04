@@ -167,3 +167,45 @@ describe("GeoMoz geohazards scientific module localization", () => {
   });
 });
 
+
+describe("GeoMoz Settings language coverage and consistency", () => {
+  it("localizes the complete settings navigation chrome in each reviewed language", () => {
+    const keys = [
+      "settings.chrome.back", "settings.chrome.accountPreferences",
+      "settings.chrome.sectionNav", "settings.chrome.cloudProcessing",
+      "settings.section.geeSubtitle", "settings.section.profileSubtitle",
+      "settings.section.preferencesSubtitle", "settings.section.storageSubtitle",
+      "settings.section.billingSubtitle", "settings.section.documentationSubtitle",
+      "settings.documentation.title", "settings.documentation.description",
+      "settings.documentation.open", "settings.languagePartialTitle",
+      "settings.languagePartialDescription", "settings.languageReviewedDescription",
+    ] as const;
+    for (const key of keys) {
+      for (const language of PORTAL_TRANSLATED_LANGUAGES) {
+        expect(portalText(language, key), language + ": " + key).toBeTruthy();
+      }
+    }
+    expect(portalText("en", "settings.chrome.accountPreferences")).toBe("GeoMoz account preferences");
+    expect(portalText("es", "settings.chrome.back")).toBe("Volver a la plataforma");
+    expect(portalText("fr", "settings.section.preferencesSubtitle")).toBe("Langue, cartes et affichage");
+    expect(portalText("it", "settings.chrome.accountPreferences")).toBe("GeoMoz account preferences");
+    expect(portalText("it", "settings.languagePartialDescription")).toContain("{name}");
+  });
+
+  it("does not mix fixed Portuguese strings into English/Italian settings and advertises GIS-only fallback", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/components/SettingsDialog.tsx"), "utf8");
+    for (const key of [
+      "settings.chrome.accountPreferences", "settings.chrome.sectionNav", "settings.chrome.back",
+      "settings.section.preferencesSubtitle", "settings.documentation.title",
+      "settings.documentation.description", "settings.chrome.cloudProcessing",
+      "settings.languagePartialTitle", "settings.languagePartialDescription",
+    ]) {
+      expect(source).toContain(`t("${key}")`);
+    }
+    expect(source).toContain('data-testid="geomoz-language-fallback"');
+    expect(source).toContain('data-testid="geomoz-language-reviewed-info"');
+    expect(source).not.toContain("Preferências da conta GeoMoz");
+    expect(source).not.toContain('aria-label="Secções de definições"');
+    expect(source).not.toContain('subtitle: "Idioma, mapas e visualização"');
+  });
+});
