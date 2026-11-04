@@ -190,6 +190,20 @@ module.exports=async function validateRasterProcessing(page){
    return c instanceof HTMLCanvasElement&&c.width>50&&c.height>50;
  },{timeout:12000});
  assert.match(await terrain.innerText(),/EPSG:4326 → EPSG:32736/);
+ // Verify interactive LOD and portable GLB from the very same source DEM.
+ const lod=terrain.getByLabel("Detalhe do terreno 3D");
+ await lod.selectOption("low");
+ await lod.selectOption("medium");
+ await lod.selectOption("auto");
+ const binaryDownload=page.waitForEvent("download");
+ await terrain.getByTestId("geomoz-terrain-export-glb").click();
+ const glbFile="workbench-browser-artifacts/terrain-native-manica.glb";
+ await (await binaryDownload).saveAs(glbFile);
+ const glb=await readFile(glbFile);
+ assert.equal(glb.toString("ascii",0,4),"glTF","Export must contain a real glTF 2.0 GLB header");
+ assert.equal(glb.readUInt32LE(4),2,"GLB export must be version 2");
+ assert.equal(glb.readUInt32LE(8),glb.byteLength,"GLB binary length must match the header");
+
  assert.equal(await page.locator(".gm-layer-row").count(),layerCountBefore,
    "Opening DEM 3D must preserve the same GIS layers");
  // Picking at A and B uses hit-testing on real projected WebGL triangles.
