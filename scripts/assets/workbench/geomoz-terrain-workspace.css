@@ -283,3 +283,19 @@
 .dark .gm-terrain-field select{background:#1e293b;color:#f1f5f9;border-color:#475569;}
 .dark .gm-terrain-stack-title,.dark .gm-terrain-panel-head,.dark .gm-terrain-inspector-layer-name{color:#f1f5f9;}
 .dark .gm-terrain-clip-banner{background:#102d2c;color:#86efac;border-color:#155e48;}
+
+.gm-terrain-identify{position:absolute;right:12px;top:65px;z-index:8;width:270px;
+  max-height:calc(100% - 180px);overflow-y:auto;background:#fffef6;color:#0f172a;
+  border:1px solid #94a3b8;border-radius:12px;box-shadow:0 12px 40px #0007;padding:11px;
+  font-size:11px;}
+.gm-terrain-identify-head{display:flex;justify-content:space-between;align-items:center;
+  border-bottom:1px solid #e2e8f0;padding-bottom:7px;}
+.gm-terrain-identify-head strong{font-size:12px;}
+.gm-terrain-identify-head button{color:#64748b;padding:2px;}
+.gm-terrain-identify-coords{font-size:10px;color:#0369a1;font-weight:700;padding:8px 0;
+  border-bottom:1px solid #e2e8f0;}
+.gm-terrain-identify-layer{display:flex;flex-direction:column;gap:5px;padding:9px 0;
+  border-bottom:1px solid #e2e8f0;word-wrap:break-word;}
+.gm-terrain-identify-layer strong{font-size:11px;}
+.gm-terrain-identify-layer span{font-weight:750;color:#0369a1;}
+.gm-terrain-identify-layer small{font-size:10px;color:#64748b;}
