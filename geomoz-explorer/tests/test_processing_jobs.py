@@ -124,6 +124,27 @@ def test_create_processing_job_endpoint_queues_upload(
     assert kwargs["parameters"] == {"azimuth": 300}
 
 
+def test_unentitled_user_cannot_queue_managed_raster_job(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import api
+    import billing
+    from fastapi import HTTPException
+
+    def deny(*args, **kwargs):
+        raise HTTPException(status_code=402, detail="Requer plano Academic ou Pro")
+
+    reservations = MagicMock()
+    monkeypatch.setattr(api, "require_subscription_feature", deny)
+    monkeypatch.setattr(billing, "reserve_cloud_job_credit", reservations)
+    response = client.post(
+        "/geomoz-api/processing/jobs", data={"tool": "slope", "parameters": "{}"},
+        files={"input_file": ("dem.tif", b"II*\x00", "image/tiff")},
+    )
+    assert response.status_code == 402
+    reservations.assert_not_called()
+
+
 def test_create_processing_job_rejects_unknown_tool(client: TestClient) -> None:
     response = client.post(
         "/geomoz-api/processing/jobs",
