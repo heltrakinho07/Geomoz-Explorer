@@ -274,7 +274,10 @@ module.exports=async function validateRasterProcessing(page){
  await terrain.getByTestId("geomoz-terrain-tab-symbols").click();
  await terrain.getByLabel("Tipo de simbologia 3D").selectOption("categorized");
  await terrain.getByLabel("Cor da classe Basalto").fill("#e11d48");
- await terrain.getByLabel("Transparência da camada 3D").fill("45");
+ const opacity=terrain.getByLabel("Transparência da camada 3D");
+ await opacity.focus();
+ await opacity.press("Home");
+ for(let step=0;step<9;step++)await opacity.press("ArrowRight");
  assert.equal(await terrain.getByLabel("Transparência da camada 3D").inputValue(),"45");
  await terrain.getByLabel("Mostrar classe Basalto").uncheck();
  await terrain.getByLabel("Mostrar classe Basalto").check();
