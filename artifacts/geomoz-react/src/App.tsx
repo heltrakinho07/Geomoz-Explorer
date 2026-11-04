@@ -14,6 +14,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { GeeAuthProvider } from "@/hooks/useGeeAuth";
 import { ProjectProvider } from "@/context/ProjectContext";
 import PwaInstallPrompt from "@/components/PwaInstallPrompt";
+import SettingsDialog from "@/components/SettingsDialog";
 import WorkspaceAuthBridge from "@/components/WorkspaceAuthBridge";
 
 
@@ -163,6 +164,8 @@ export default function App() {
                 <Route path="/auth/workspace-check">{() => <WorkspaceAuthBridge />}</Route>
                 <Route path="/register">{() => <LandingPage initialAuthMode="register" />}</Route>
                 <Route path="/planos">{() => <PricingPage />}</Route>
+                <Route path="/definicoes">{() => <ProtectedRoute><SettingsDialog open embedded onOpenChange={() => {}} /></ProtectedRoute>}</Route>
+                <Route path="/settings">{() => <ProtectedRoute><SettingsDialog open embedded onOpenChange={() => {}} /></ProtectedRoute>}</Route>
                 <Route path="/documentacao">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/administracao">{() => <ProtectedRoute><React.Suspense fallback={<div className="min-h-screen grid place-items-center">A abrir administração GeoMoz...</div>}><AdminConsole /></React.Suspense></ProtectedRoute>}</Route>
                 <Route path="/view/hidro">{() => <HidroWebGisViewer />}</Route>
