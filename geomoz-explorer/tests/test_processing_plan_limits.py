@@ -67,3 +67,30 @@ def test_callback_failure_does_not_corrupt_queue_cleanup(sandbox):
     accepted = _submit("user1", "f" * 32, on_complete=broken_callback)
     assert jobs.delete_processing_job(accepted.id, "user1")
     assert not jobs._callbacks
+
+
+def test_result_download_settles_credit_only_when_output_exists(monkeypatch, tmp_path):
+    import asyncio
+    import api
+    import billing
+
+    job_id = "1" * 32
+    output = tmp_path / "result.tif"
+    output.write_bytes(b"II*\x00" + b"\x00" * 64)
+    job = SimpleNamespace(id=job_id, status="completed", output_name=output.name,
+                          error=None, tool="slope")
+    monkeypatch.setattr(api, "get_processing_job", lambda current, uid: job)
+    monkeypatch.setattr(api, "get_processing_job_output", lambda current, uid: output)
+    settled = []
+    monkeypatch.setattr(billing, "settle_cloud_job_credit",
+                        lambda uid, jid, *, success: settled.append((uid, jid, success)))
+
+    response = asyncio.run(api.processing_job_result(job_id, uid="verified-user"))
+    assert response.status_code == 200
+    assert settled == [("verified-user", job_id, True)]
+
+    monkeypatch.setattr(api, "get_processing_job_output", lambda current, uid: None)
+    with pytest.raises(Exception) as error:
+        asyncio.run(api.processing_job_result(job_id, uid="verified-user"))
+    assert getattr(error.value, "status_code", None) == 410
+    assert settled == [("verified-user", job_id, True)]
