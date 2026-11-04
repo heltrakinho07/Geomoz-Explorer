@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { act, renderHook, cleanup } from "@testing-library/react";
-import { PORTAL_CATALOGS, portalText, resolvedPortalLocale } from "./portal";
+import { PORTAL_CATALOGS, GEOLIBRE_LANGUAGE_OPTIONS, PORTAL_TRANSLATED_LANGUAGES, portalText, resolvedPortalLocale } from "./portal";
 import { usePortalTranslation } from "./usePortalTranslation";
 
 describe("GeoMoz portal catalogs", () => {
@@ -23,6 +23,19 @@ describe("GeoMoz portal catalogs", () => {
     expect(portalText("pt", "settings.languageLabel")).toBe("Idioma da interface");
     expect(portalText("en", "settings.languageLabel")).toBe("Interface language");
     expect(portalText("fr", "sidebar.settings")).toBe("Paramètres");
+  });
+
+  it("preserves all 21 GeoLibre locales without misrepresenting the selected one", () => {
+    const languages = GEOLIBRE_LANGUAGE_OPTIONS.map(option => option.code);
+    expect(languages.length).toBe(21);
+    expect(new Set(languages).size).toBe(21);
+    for(const locale of PORTAL_TRANSLATED_LANGUAGES){
+      expect(languages).toContain(locale);
+      expect(resolvedPortalLocale(locale)).toBe(locale);
+    }
+    for(const locale of languages.filter(code => !PORTAL_TRANSLATED_LANGUAGES.some(translated => translated === code))){
+      expect(resolvedPortalLocale(locale)).toBe("en");
+    }
   });
 
   it("normalizes regional locales and uses English for missing portal catalogs", () => {
