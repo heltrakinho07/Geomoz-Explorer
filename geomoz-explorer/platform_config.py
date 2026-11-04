@@ -3,6 +3,7 @@
 Firestore platformConfig/commerce is the sole mutable configuration document.
 Public endpoints may expose catalogue and module availability, never credentials.
 """
+import os
 from copy import deepcopy
 from datetime import datetime, timezone
 from threading import Lock
@@ -45,6 +46,11 @@ def _doc():
 
 
 def read_config(*, fresh=False):
+    # The lightweight Python CI installs FastAPI without firebase-admin.
+    # Use immutable defaults in this explicitly marked CI environment only.
+    # Production retains fail-closed behaviour when Firestore cannot be read.
+    if firestore is None and os.environ.get("CI", "").lower() == "true":
+        return {"plans": deepcopy(DEFAULT_PLANS), "features": deepcopy(DEFAULT_FEATURES)}
     now = monotonic()
     with _cache_lock:
         if not fresh and _cached["value"] is not None and now < _cached["until"]:
