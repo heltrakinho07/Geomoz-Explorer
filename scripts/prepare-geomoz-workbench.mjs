@@ -79,8 +79,12 @@ write("lib/georeference-gdal.ts",georefGdal);
 let georeferencer=read("components/layout/GeoreferencerDialog.tsx");
 georeferencer=once(georeferencer,
   'import { releaseBodyPointerEvents } from "../../lib/radix-compat";',
-  'import { releaseBodyPointerEvents } from "../../lib/radix-compat";\nimport { addRasterToMap } from "@geolibre/plugins";\nimport { createAppAPI } from "../../hooks/usePlugins";',
+  'import { releaseBodyPointerEvents } from "../../lib/radix-compat";\nimport { addRasterToMap } from "@geolibre/plugins";\nimport { createAppAPI } from "../../hooks/usePlugins";\nimport { geoMozSpecialistText } from "../geomoz/geomoz-specialist-locale";',
   "use production raster pipeline");
+georeferencer=once(georeferencer,
+  '  const { t } = useTranslation();',
+  '  const { t, i18n } = useTranslation();\n  const ui = useCallback((pt: string) => geoMozSpecialistText(i18n.language,pt),[i18n.language]);',
+  "GeoMoz georeferencer locale binding");
 georeferencer=once(georeferencer,
   'import {\n  DEFAULT_LAYER_STYLE,\n  type GeoLibreLayer,\n  shouldZoomToNewLayers,\n  useAppStore,\n} from "@geolibre/core";\n',
   "",
@@ -111,7 +115,7 @@ const rasterApply=[
 '      return;',
 '    }',
 '    setExporting(true);',
-'    setNotice({ msg: "A rectificar o raster com GDAL e a adicionar o GeoTIFF ao mapa…", kind: "info" });',
+'    setNotice({ msg: ui("A rectificar o raster com GDAL e a adicionar o GeoTIFF ao mapa…"), kind: "info" });',
 '    try {',
 '      // Never pin the raw scan to four corners: run the selected GDAL warp.',
 '      // Map layers use EPSG:4326; the user-selected output CRS is for export.',
@@ -119,7 +123,7 @@ const rasterApply=[
 '        image.url, image.name || "carta-rectificada", gcps, transform,',
 '        "EPSG:4326", outputResampling, true,',
 '      );',
-'      if (!bytes.byteLength) throw new Error("O GDAL gerou um raster vazio.");',
+'      if (!bytes.byteLength) throw new Error(ui("O GDAL gerou um raster vazio."));',
 '      const name = (image.name || "Carta") + " · rectificada";',
 '      const cog = new File([bytes as BlobPart], name + ".tif", { type: "image/tiff" });',
 '      await addRasterToMap(createAppAPI(mapControllerRef), cog, {',
@@ -130,14 +134,14 @@ const rasterApply=[
 '    } catch (error) {',
 '      console.error("GeoMoz: falha ao rectificar e carregar a carta", error);',
 '      setNotice({',
-'        msg: "Não foi possível rectificar e adicionar o GeoTIFF. " +',
-'          (error instanceof Error ? error.message : "Verifique os GCPs e a ligação ao motor GDAL."),',
+'        msg: ui("Não foi possível rectificar e adicionar o GeoTIFF. ") +',
+'          (error instanceof Error ? error.message : ui("Verifique os GCPs e a ligação ao motor GDAL.")),',
 '        kind: "error",',
 '      });',
 '    } finally {',
 '      setExporting(false);',
 '    }',
-'  }, [affine, image, exporting, gcps, transform, outputResampling, geomozPixelResiduals, opacity, mapControllerRef, onOpenChange]);',
+'  }, [affine, image, exporting, gcps, transform, outputResampling, geomozPixelResiduals, opacity, mapControllerRef, onOpenChange, ui]);',
 ''].join("\n");
 georeferencer=georeferencer.slice(0,applyStart)+rasterApply+georeferencer.slice(applyEnd);
 georeferencer=once(georeferencer,
@@ -146,19 +150,19 @@ georeferencer=once(georeferencer,
   "disable map addition during GDAL");
 georeferencer=once(georeferencer,
   '{t("georeferencer.addToMap")}',
-  '{exporting ? "A processar raster…" : t("georeferencer.addToMap")}',
+  '{exporting ? ui("A processar raster…") : t("georeferencer.addToMap")}',
   "show raster processing");
 georeferencer=once(georeferencer,
   '                  <p className="text-xs text-muted-foreground sm:col-span-4">Também pode clicar em «Associar no mapa». As coordenadas UTM são convertidas para WGS 84 para alinhar o raster com as camadas do mapa.</p>',
-  '                  <p className="text-xs text-muted-foreground sm:col-span-4">Também pode clicar em «Associar no mapa». As coordenadas UTM são convertidas para WGS 84. Distribua pelo menos quatro GCPs, preferencialmente perto dos quatro cantos da carta, e confira o RMS.</p>',
+  '                  <p className="text-xs text-muted-foreground sm:col-span-4">{ui("Também pode clicar em «Associar no mapa». As coordenadas UTM são convertidas para WGS 84. Distribua pelo menos quatro GCPs, preferencialmente perto dos quatro cantos da carta, e confira o RMS.")}</p>',
   "georeferencing guidance");
 georeferencer=once(georeferencer,
   '{"RMSE: " + (geomozPixelResiduals?.rms.toFixed(2) ?? "—") + " px"}',
-  '{"RMSE afim (referência): " + (geomozPixelResiduals?.rms.toFixed(2) ?? "—") + " px"}',
+  '{ui("RMSE afim (referência): ") + (geomozPixelResiduals?.rms.toFixed(2) ?? "—") + " px"}',
   "label preliminary affine fit RMS");
 georeferencer=once(georeferencer,
   '                  <p className="text-xs text-muted-foreground">\n                    {affine && gcps.length < minGcpsForTransform(transform)',
-  '                  <p className="text-xs text-muted-foreground">«Adicionar ao mapa» rectifica com o método escolhido e cria um GeoTIFF WGS 84. O SRC de saída acima é usado apenas no ficheiro descarregado. A precisão depende dos GCPs.</p>\n                  <p className="text-xs text-muted-foreground">\n                    {affine && gcps.length < minGcpsForTransform(transform)',
+  '                  <p className="text-xs text-muted-foreground">{ui("«Adicionar ao mapa» rectifica com o método escolhido e cria um GeoTIFF WGS 84. O SRC de saída acima é usado apenas no ficheiro descarregado. A precisão depende dos GCPs.")}</p>\n                  <p className="text-xs text-muted-foreground">\n                    {affine && gcps.length < minGcpsForTransform(transform)',
   "explain the two output destinations");
 write("components/layout/GeoreferencerDialog.tsx",georeferencer);
 
