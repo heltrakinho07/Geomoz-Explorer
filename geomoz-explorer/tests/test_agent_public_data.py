@@ -11,7 +11,7 @@ from agent.planner import GeoMozAgent
 from agent.registry import ToolDispatcher
 
 GEOMETRY = {"type": "Polygon", "coordinates": [[[32, -20], [33, -20], [33, -19], [32, -19], [32, -20]]]}
-GRID = {"scale": 30, "crs": "EPSG:6933"}
+GRID = {"scale": 30, "crs": engine.ANALYSIS_CRS_WKT}
 
 class Info:
     def __init__(self, value): self.value = value
@@ -53,6 +53,28 @@ FAKE_EE = SimpleNamespace(
                             stdDev=lambda: Reducer("stdDev"), count=lambda: Reducer("count"), sum=lambda: Reducer("sum")))
 
 class PublicDataTests(unittest.TestCase):
+    def test_reduction_grid_sends_explicit_wkt_and_preserves_metric_scale(self):
+        region = MagicMock()
+        region.area.return_value.getInfo.return_value = 1_000_000
+        with patch.dict("sys.modules", {"ee": SimpleNamespace()}):
+            selected, grid, area = engine._grid(region, 30)
+        self.assertIs(selected, region)
+        self.assertTrue(grid["crs"].startswith("PROJCS["))
+        self.assertEqual(grid["scale"], 30)
+        self.assertEqual(area, 1_000_000)
+        meta = engine._base(engine.WORLDCOVER, grid, area, "")
+        self.assertEqual(meta["analysisCRS"], "EPSG:6933")
+        self.assertEqual(meta["analysisCRSWKT"], grid["crs"])
+
+    def test_wkt_is_equivalent_to_epsg_6933_in_independent_proj_parser(self):
+        try:
+            from pyproj import CRS
+        except ImportError:
+            self.skipTest("PROJ validation runs in the full Python API CI")
+        supplied = CRS.from_wkt(engine.ANALYSIS_CRS_WKT)
+        self.assertTrue(supplied.equals(CRS.from_epsg(6933), ignore_axis_order=True))
+        self.assertEqual(supplied.axis_info[0].unit_name, "metre")
+
     def test_temporal_delta_uses_b_minus_a_on_common_observations(self):
         before = Raster([.2, .8, .1, .5], [True, True, False, True])
         after = Raster([.6, .4, .9, .7], [True, True, True, False])
