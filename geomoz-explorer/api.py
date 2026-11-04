@@ -223,16 +223,42 @@ from billing import router as billing_router
 from project_quota import router as project_quota_router
 from admin import router as admin_router
 from billing_plan_requests import router as plan_requests_router, admin_router as admin_plan_requests_router
+from entitlements import router as entitlements_router
 app.include_router(billing_router)
 app.include_router(project_quota_router)
 app.include_router(admin_router)
 app.include_router(plan_requests_router)
 app.include_router(admin_plan_requests_router)
+app.include_router(entitlements_router)
 
 # ee.Initialize mutates global Earth Engine SDK state. Serialize the complete
 # authentication + computation lifecycle of GEE requests in each Python worker.
 # Each request initializes using the Firebase-authenticated user's own credentials.
 _gee_request_lock = asyncio.Lock()
+
+@app.middleware("http")
+async def enforce_optional_scientific_plan_access(request: Request, call_next):
+    """When enabled, block paid scientific APIs by verified Firebase entitlements.
+
+    BYO Earth Engine requests never consume GeoMoz-managed processing credits.
+    Read-only status/auth callbacks and billing webhook are never intercepted.
+    """
+    from entitlements import ensure_scientific_access, science_plan_required
+    from fastapi.responses import JSONResponse
+
+    if science_plan_required(request.url.path, request.method):
+        uid = _extract_uid_from_header(request.headers.get("Authorization", ""))
+        if not uid:
+            return JSONResponse(status_code=401, content={"detail": "Sessão Firebase necessária."})
+        try:
+            await run_in_threadpool(ensure_scientific_access, uid)
+        except HTTPException as exc:
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+        except Exception:
+            logger.exception("Falha ao verificar permissões científicas")
+            return JSONResponse(status_code=503, content={"detail": "Permissões indisponíveis."})
+    return await call_next(request)
+
 
 @app.middleware("http")
 async def restrict_disabled_modules(request: Request, call_next):
@@ -349,10 +375,22 @@ async def create_processing_job_endpoint(
             detail=f'Ferramenta "{tool_id}" não suportada. Use: {", ".join(SUPPORTED_HEAVY_GIS_TOOLS)}.',
         )
 
+    from entitlements import (
+        finish_managed_job, managed_jobs_enforced, reserve_managed_job,
+        JOB_CREDIT_COST,
+    )
+    from uuid import uuid4
+
+    enforce_quota = managed_jobs_enforced()
+    operation_id = uuid4().hex if enforce_quota else None
+    reserved = False
     try:
         parsed_parameters = parse_job_parameters(parameters)
-        # The UploadFile spool is copied in bounded chunks on a worker thread:
-        # never materialize a large DEM as one Python bytes object.
+        if enforce_quota:
+            # This is a managed GDAL job, NOT a BYO Earth Engine operation.
+            await run_in_threadpool(reserve_managed_job, uid, operation_id)
+            reserved = True
+        # The UploadFile spool is copied in bounded chunks on a worker thread.
         job = await run_in_threadpool(
             create_processing_job,
             uid=uid,
@@ -360,14 +398,30 @@ async def create_processing_job_endpoint(
             input_name=input_file.filename or "input.tif",
             input_stream=input_file.file,
             parameters=parsed_parameters,
+            operation_id=operation_id,
+            on_finished=(
+                (lambda succeeded: finish_managed_job(uid, operation_id, success=succeeded))
+                if enforce_quota else None
+            ),
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        if reserved:
+            try:
+                await run_in_threadpool(
+                    finish_managed_job, uid, operation_id, success=False
+                )
+            except Exception:
+                logger.exception("Falha na reversão da quota do job %s", operation_id)
+        if isinstance(exc, ValueError):
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise
     finally:
         await input_file.close()
 
     return {
         "job": job.public_dict(),
+        "quotaEnforced": enforce_quota,
+        "creditsReserved": JOB_CREDIT_COST if enforce_quota else 0,
         "status_url": f"/geomoz-api/processing/jobs/{job.id}",
         "result_url": f"/geomoz-api/processing/jobs/{job.id}/result",
     }
