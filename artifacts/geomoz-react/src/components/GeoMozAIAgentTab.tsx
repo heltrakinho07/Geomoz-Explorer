@@ -1,3 +1,4 @@
+import { GeoIntelligenceDossier, type IntelligenceDossier } from "./GeoIntelligenceDossier";
 import React, { useState, useRef, useEffect } from "react";
 import { useProject } from "../context/ProjectContext";
 import { apiFetch } from "@/lib/api";
@@ -99,6 +100,7 @@ interface WorkflowStep {
 }
 
 interface ChatMessage {
+  intelligence?: IntelligenceDossier;
   id: string;
   sender: "user" | "agent";
   text: string;
@@ -121,8 +123,8 @@ interface QuickWorkflow {
 const QUICK_WORKFLOWS: QuickWorkflow[] = [
   {
     id: "agricultural_potential",
-    title: "Potencial Agrícola & Vigor Vegetal",
-    description: "Avalia biomassa ativa, humidade em culturas e classes de declividade para aptidão agrícola.",
+    title: "Vigor da Vegetação (NDVI)",
+    description: "Calcula o NDVI para explorar o vigor da vegetação no período seleccionado. Não estima produção ou biomassa.",
     icon: <Sprout size={16} className="text-emerald-500" />,
     badge: "Agricultura · Sentinel-2",
     indices: [
@@ -133,7 +135,7 @@ const QUICK_WORKFLOWS: QuickWorkflow[] = [
   },
   {
     id: "water_stress_smap",
-    title: "Humidade do Solo & Seca (NASA SMAP)",
+    title: "Humidade do Solo (NASA SMAP)",
     description: "Mapeia a humidade na zona radicular (0-100cm) e à superfície via NASA-USDA SMAP 9km.",
     icon: <Droplets size={16} className="text-cyan-500" />,
     badge: "NASA SMAP · Radar Radiometer",
@@ -282,6 +284,13 @@ export default function GeoMozAIAgentTab() {
     handleProvinceChange(null);
   };
 
+  const [analysisPeriod, setAnalysisPeriod] = useState(() => activeProject?.period || {
+    startDate: `${new Date().getFullYear() - 1}-01-01`,
+    endDate: `${new Date().getFullYear()}-01-01`,
+  });
+  useEffect(() => {
+    if (activeProject?.period) setAnalysisPeriod(activeProject.period);
+  }, [activeProject?.period]);
   const [prompt, setPrompt] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [steps, setSteps] = useState<WorkflowStep[]>([]);
@@ -430,223 +439,9 @@ export default function GeoMozAIAgentTab() {
 
   const isAIActive = Boolean(openaiApiKey.trim() || geminiApiKey.trim());
 
-  // Execute quick predefined workflow
+  // All entry points share the same validated execution/evidence pipeline.
   const runWorkflow = async (workflow: QuickWorkflow) => {
-    const aoiLabel = currentAoi?.label || "Moçambique (Geral)";
-    setIsRunning(true);
-    setSynthesis(null);
-    setCompletedRuns([]);
-    setActiveTileUrl(null);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, 75000);
-
-    const initialSteps: WorkflowStep[] = [
-      { id: "aoi", name: `Delimitação da AOI: ${aoiLabel}`, status: "pending" },
-      ...workflow.indices.map((idx) => ({
-        id: idx.code,
-        name: `Cálculo ${idx.name} (${idx.sensor})`,
-        status: "pending" as const,
-      })),
-      { id: "synthesis", name: "Síntese Técnica & Diagnóstico AI", status: "pending" },
-      { id: "save", name: `Persistência dos Resultados`, status: "pending" },
-    ];
-    setSteps(initialSteps);
-
-    const aoiPayload = aoiToAPI(currentAoi);
-    const startDate = activeProject?.period?.startDate || "2024-01-01";
-    const endDate = activeProject?.period?.endDate || "2024-12-31";
-
-    const computedRuns: any[] = [];
-
-    try {
-      setSteps((prev) =>
-        prev.map((s, i) => (i === 0 ? { ...s, status: "completed", resultSummary: "AOI validada" } : s))
-      );
-
-      for (let i = 0; i < workflow.indices.length; i++) {
-        if (controller.signal.aborted) break;
-
-        const stepIdx = i + 1;
-        const targetIdx = workflow.indices[i];
-        setSteps((prev) =>
-          prev.map((s, idx) => (idx === stepIdx ? { ...s, status: "running" } : s))
-        );
-
-        try {
-          let res: Response;
-          if (targetIdx.code === "alphaearth_pca") {
-            res = await apiFetch("/geomoz-api/gee/embedding", {
-              method: "POST",
-              signal: controller.signal,
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                year: Number(endDate.slice(0, 4)) || 2024,
-                province: aoiPayload.province || null,
-                district: aoiPayload.district || null,
-                geometry: aoiPayload.geometry || null,
-              }),
-            });
-          } else if (targetIdx.code === "smap_rootzone") {
-            res = await apiFetch("/geomoz-api/gee/soil-moisture", {
-              method: "POST",
-              signal: controller.signal,
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                depth: "rootzone",
-                start_date: startDate,
-                end_date: endDate,
-                province: aoiPayload.province || null,
-                district: aoiPayload.district || null,
-                geometry: aoiPayload.geometry || null,
-              }),
-            });
-          } else if (targetIdx.code === "erosion_rusle") {
-            res = await apiFetch("/geomoz-api/gee/erosion", {
-              method: "POST",
-              signal: controller.signal,
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                year: Number(endDate.slice(0, 4)) || 2023,
-                province: aoiPayload.province || null,
-                district: aoiPayload.district || null,
-                geometry: aoiPayload.geometry || null,
-              }),
-            });
-          } else {
-            res = await apiFetch("/geomoz-api/gee/index", {
-              method: "POST",
-              signal: controller.signal,
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                index: targetIdx.code,
-                province: aoiPayload.province || null,
-                district: aoiPayload.district || null,
-                geometry: aoiPayload.geometry || null,
-                start_date: startDate,
-                end_date: endDate,
-                cloud_pct: 30,
-              }),
-            });
-          }
-
-          if (!res.ok) throw new Error(`Erro GEE HTTP ${res.status}`);
-
-          const data = await res.json();
-          const meanVal = data.stats?.p50 ?? data.stats?.mean ?? data.stats?.meanSoilLossTha;
-          const summaryStr = meanVal !== undefined ? `Média: ${Number(meanVal).toFixed(3)}` : "Processado";
-
-          setSteps((prev) =>
-            prev.map((s, idx) =>
-              idx === stepIdx ? { ...s, status: "completed", resultSummary: summaryStr } : s
-            )
-          );
-
-          const runObj = {
-            name: targetIdx.name,
-            type: "remote_sensing" as const,
-            sensor: targetIdx.sensor,
-            code: targetIdx.code,
-            dateRange: { start: startDate, end: endDate },
-            metrics: {
-              min: data.stats?.p10 ?? data.stats?.min,
-              max: data.stats?.p90 ?? data.stats?.max,
-              mean: data.stats?.p50 ?? data.stats?.mean,
-              cloudCoverPercentage: 30,
-            },
-            tileUrl: data.tileUrl || data.tile_url,
-          };
-
-          computedRuns.push(runObj);
-          if (i === 0) {
-            setActiveTileUrl(runObj.tileUrl);
-            setActiveTileName(runObj.name);
-          }
-        } catch (err: any) {
-          const isAborted = controller.signal.aborted;
-          const errDetail = isAborted
-            ? "Tempo limite (75 s) ou cancelado. Dica: selecione uma província/distrito."
-            : err.message;
-          setSteps((prev) =>
-            prev.map((s, idx) =>
-              idx === stepIdx ? { ...s, status: "error", resultSummary: errDetail } : s
-            )
-          );
-        }
-      }
-
-      setCompletedRuns(computedRuns);
-
-      // Synthesis step
-      const synthStepIdx = workflow.indices.length + 1;
-      setSteps((prev) =>
-        prev.map((s, idx) => (idx === synthStepIdx ? { ...s, status: "running" } : s))
-      );
-
-      let finalDiag = `Diagnóstico executivo de ${workflow.title} concluído para ${aoiLabel}.`;
-      try {
-        const synthRes = await apiFetch("/geomoz-api/ai/synthesize-study", {
-          method: "POST",
-          signal: controller.signal,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectName: activeProject?.name || workflow.title,
-            category: activeProject?.category || "estudo_geral",
-            aoiLabel,
-            period: activeProject?.period || { startDate, endDate },
-            runs: computedRuns,
-          }),
-        });
-        if (synthRes.ok) {
-          const synthData = await synthRes.json();
-          finalDiag = synthData.synthesis || finalDiag;
-        }
-      } catch {}
-
-      setSynthesis(finalDiag);
-      setSteps((prev) =>
-        prev.map((s, idx) =>
-          idx === synthStepIdx ? { ...s, status: "completed", resultSummary: "Diagnóstico gerado" } : s
-        )
-      );
-
-      // Save to project if active
-      if (activeProject) {
-        for (const run of computedRuns) {
-          await saveRunToActiveProject(run);
-        }
-      }
-
-      setSteps((prev) =>
-        prev.map((s, idx) =>
-          idx === workflow.indices.length + 2
-            ? { ...s, status: "completed", resultSummary: `${computedRuns.length} análises processadas` }
-            : s
-        )
-      );
-
-      // Append assistant message in chat
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `msg_${Date.now()}`,
-          sender: "agent",
-          text: finalDiag,
-          timestamp: new Date().toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }),
-          steps: initialSteps,
-          runs: computedRuns,
-          provider: "workflow",
-          model: workflow.badge,
-        },
-      ]);
-    } finally {
-      clearTimeout(timeoutId);
-      abortRef.current = null;
-      setIsRunning(false);
-    }
+    await handlePromptSubmit(`${workflow.title}. ${workflow.description}`);
   };
 
   // Submit natural language prompt
@@ -689,7 +484,7 @@ export default function GeoMozAIAgentTab() {
           district: aoiPayload.district || null,
           geometry: aoiPayload.geometry || null,
         },
-        temporalWindow: activeProject?.period || { startDate: "2024-01-01", endDate: "2024-12-31" },
+        temporalWindow: analysisPeriod,
         gee_token: (typeof window !== "undefined" ? localStorage.getItem("geomoz_gee_token") : null) || undefined,
         gee_project: (typeof window !== "undefined" ? localStorage.getItem("geomoz_gee_project") : null) || "geoprocessamento-426809",
         agentContext,
@@ -744,20 +539,25 @@ export default function GeoMozAIAgentTab() {
       }
 
       const finalSteps: WorkflowStep[] = data.steps && data.steps.length > 0 ? data.steps : [
-        { id: "exec", name: "Análise ReAct Processada", status: "completed", resultSummary: "Concluído" },
+        { id: "exec", name: "Resposta do agente", status: data.status === "completed" ? "completed" : "error", resultSummary: data.status === "completed" ? "Concluído" : "Ver dossiê" },
       ];
       setSteps(finalSteps);
 
       const computedLayers: any[] = [];
       const vectorWarnings: string[] = [];
       for (const act of data.map_actions || []) {
+        if (act.type === "SET_AOI" && act.province) {
+          setSelectedProvince(act.province);
+          setSelectedDistrict(act.district || null);
+          setCurrentAoi(mozambiqueAOI(act.province, act.district || null));
+        }
         if (act.type === "ADD_LAYER" && act.tileUrl) {
           computedLayers.push({
             name: act.name || "Camada Calculada",
             type: "remote_sensing",
             sensor: "GeoMoz AI",
             code: act.id,
-            dateRange: activeProject?.period,
+            dateRange: analysisPeriod,
             metrics: {},
             tileUrl: act.tileUrl,
           });
@@ -817,7 +617,7 @@ export default function GeoMozAIAgentTab() {
         ? "Camada geológica generalizada; estatísticas calculadas nos polígonos originais."
         : null));
 
-      const answer = data.synthesis || "Análise geoespacial concluída.";
+      const answer = data.synthesis || "Não foi devolvida uma síntese. Consulte o dossiê de execução.";
       const finalSynthesis = vectorWarnings.length
         ? answer + "\n\n**Mapa geológico:** " + vectorWarnings.join("; ")
         : answer;
@@ -831,6 +631,7 @@ export default function GeoMozAIAgentTab() {
         timestamp: new Date().toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }),
         steps: finalSteps,
         runs: computedLayers,
+        intelligence: data.intelligence,
         provider: data.provider || provider,
         model: data.model || (data.provider === "deterministic-geology" ? "Catálogo GeoMoz" : model),
       };
@@ -1266,10 +1067,10 @@ export default function GeoMozAIAgentTab() {
               <div className="p-3 bg-violet-50/70 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl space-y-1.5">
                 <div className="flex items-center gap-1.5 font-bold text-xs text-violet-800 dark:text-violet-300">
                   <Sparkles size={14} />
-                  <span>Bem-vindo ao Copiloto Geoespacial GeoMoz</span>
+                  <span>GeoMoz · Geointeligência Geoespacial</span>
                 </div>
                 <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
-                  Faça pedidos em linguagem natural sobre o território de Moçambique. O agente orquestra ferramentas de satélite (GEE), modelos hidrológicos e litologia oficial para devolver mapas e diagnósticos técnicos fundamentados.
+                  Faça pedidos em linguagem natural sobre o território de Moçambique. Consulte dados geológicos e execute análises com as ferramentas disponíveis. Cada pedido apresenta as evidências calculadas, a área utilizada e as limitações num dossiê exportável.
                 </p>
               </div>
 
@@ -1347,7 +1148,9 @@ export default function GeoMozAIAgentTab() {
                         {msg.steps.map((st, idx) => (
                           <div key={st.id || idx} className="flex items-center justify-between text-[11px]">
                             <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 truncate">
-                              <CheckCircle2 size={11} className="text-emerald-500 shrink-0" />
+                              {st.status === "completed"
+                                ? <CheckCircle2 size={11} className="text-emerald-500 shrink-0" />
+                                : <AlertTriangle size={11} className="text-amber-500 shrink-0" />}
                               <span className="truncate">{st.name}</span>
                             </div>
                             {st.resultSummary && (
@@ -1362,6 +1165,8 @@ export default function GeoMozAIAgentTab() {
 
                     {/* Text Synthesis */}
                     <GeoAgentMarkdown text={msg.text} />
+
+                    {msg.intelligence && <GeoIntelligenceDossier dossier={msg.intelligence} />}
 
                     {/* Layers generated buttons */}
                     {msg.runs && msg.runs.length > 0 && (
@@ -1442,6 +1247,14 @@ export default function GeoMozAIAgentTab() {
             ))}
           </div>
 
+          <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-500 dark:text-slate-400">
+            <label>Data inicial
+              <input type="date" aria-label="Data inicial da análise" disabled={isRunning} value={analysisPeriod.startDate} onChange={(e) => setAnalysisPeriod((p) => ({ ...p, startDate: e.target.value }))} className="block w-full rounded border border-slate-200 bg-transparent p-1 dark:border-slate-700" />
+            </label>
+            <label>Data final (exclusiva)
+              <input type="date" aria-label="Data final da análise" disabled={isRunning} value={analysisPeriod.endDate} min={analysisPeriod.startDate} onChange={(e) => setAnalysisPeriod((p) => ({ ...p, endDate: e.target.value }))} className="block w-full rounded border border-slate-200 bg-transparent p-1 dark:border-slate-700" />
+            </label>
+          </div>
           {/* Input Form */}
           <form
             onSubmit={(e) => {
@@ -1598,3 +1411,4 @@ export default function GeoMozAIAgentTab() {
     </div>
   );
 }
+
