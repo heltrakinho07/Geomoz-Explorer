@@ -3,7 +3,6 @@ GeoMoz Tool Registry — Deterministic Geospatial Tools for GeoMoz AI Agent.
 Every tool is validated, typed, and maps to robust GEE or GeoPandas routines.
 """
 
-import os
 import logging
 from typing import Dict, Any, Optional, List
 
@@ -323,7 +322,6 @@ class ToolDispatcher:
                 import asyncio
                 def resolve_legacy_region():
                     import json
-                    import gee_module
                     from agent.administrative_boundaries import administrative_geometry
                     from agent.earth_engine_tools import validate_geometry
                     _ensure_gee()
@@ -347,7 +345,6 @@ class ToolDispatcher:
             if tool_name == "list_administrative_units":
                 import asyncio
                 def load_units():
-                    import gee_module
                     from agent.administrative_boundaries import list_units
                     _ensure_gee()
                     return list_units(args["country_code"], args["level"], args.get("parent_code"))
@@ -376,7 +373,6 @@ class ToolDispatcher:
                     return {"status": "error", "message": "Fonte de limites administrativos não suportada."}
                 boundary_metadata = {}
                 def run_public_analysis():
-                    import gee_module
                     from agent import earth_engine_tools as public
                     _ensure_gee()
                     region = region_geom
