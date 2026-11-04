@@ -1,6 +1,8 @@
 import { SidebarResize, useSidebarWidth } from "./SidebarResize";
 import "./sidebar-footer-actions.css";
 import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import type { PortalCopyKey } from "@/i18n/portal";
 import {useGeoMozTheme} from "@/hooks/useGeoMozTheme";
 import React, { useState, useEffect } from "react";
 import { Link } from "wouter";
@@ -58,22 +60,22 @@ export interface SidebarProps {
 
 interface NavItem {
   id: string;
-  label: string;
+  labelKey: PortalCopyKey;
   icon: React.ReactNode;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: "Dashboard", label: "Dashboard", icon: <LayoutDashboard size={20} /> },
-  { id: "Mapa", label: "Mapa 2D / 3D", icon: <Globe size={20} /> },
-  { id: "GIS Workspace", label: "GIS Workspace", icon: <Database size={20} /> },
-  { id: "Terreno 3D", label: "Terreno 3D · DEM", icon: <Mountain size={20} /> },
-  { id: "GeoAnálises", label: "GeoAnálises", icon: <Satellite size={20} /> },
-  { id: "Bacias Hidrográficas", label: "Bacias Hidrográficas", icon: <Droplets size={20} /> },
-  { id: "Água Subterrânea", label: "Água Subterrânea", icon: <Droplet size={20} /> },
-  { id: "Geoperigos", label: "Geoperigos", icon: <AlertTriangle size={20} /> },
-  { id: "GeoMoz AI", label: "GeoMoz AI Agent", icon: <BrainCircuit size={20} /> },
-  { id: "Exportar", label: "Dossiê & Exportar", icon: <FileText size={20} /> },
-  { id: "Documentação", label: "Documentação", icon: <BookOpen size={20} /> },
+  { id: "Dashboard", labelKey: "sidebar.nav.dashboard", icon: <LayoutDashboard size={20} /> },
+  { id: "Mapa", labelKey: "sidebar.nav.map", icon: <Globe size={20} /> },
+  { id: "GIS Workspace", labelKey: "sidebar.nav.workspace", icon: <Database size={20} /> },
+  { id: "Terreno 3D", labelKey: "sidebar.nav.terrain", icon: <Mountain size={20} /> },
+  { id: "GeoAnálises", labelKey: "sidebar.nav.analyses", icon: <Satellite size={20} /> },
+  { id: "Bacias Hidrográficas", labelKey: "sidebar.nav.watersheds", icon: <Droplets size={20} /> },
+  { id: "Água Subterrânea", labelKey: "sidebar.nav.groundwater", icon: <Droplet size={20} /> },
+  { id: "Geoperigos", labelKey: "sidebar.nav.hazards", icon: <AlertTriangle size={20} /> },
+  { id: "GeoMoz AI", labelKey: "sidebar.nav.ai", icon: <BrainCircuit size={20} /> },
+  { id: "Exportar", labelKey: "sidebar.nav.export", icon: <FileText size={20} /> },
+  { id: "Documentação", labelKey: "sidebar.nav.docs", icon: <BookOpen size={20} /> },
 ];
 
 export default function Sidebar({
@@ -91,6 +93,7 @@ export default function Sidebar({
   const { geeConnected, geeProject } = useGeeAuth();
   const { activeProject, activeRuns } = useProject();
   const { canInstall, isStandalone, promptInstall } = usePwa();
+  const { t } = usePortalTranslation();
 
   // Dark mode theme state synchronized with landing page & localStorage
   const {theme,toggleTheme} = useGeoMozTheme();
@@ -128,7 +131,7 @@ export default function Sidebar({
         <Link
           href="/"
           className="flex items-center gap-3 overflow-hidden hover:opacity-90 transition-opacity cursor-pointer"
-          title="GeoMoz Explorer — Início"
+          title={"GeoMoz Explorer — "+t("sidebar.home")}
         >
           <GeoMozBrandIcon className="h-9 w-9 rounded-xl shadow-md shadow-sky-500/20" width={36} height={36} />
           {!collapsed && (
@@ -137,7 +140,7 @@ export default function Sidebar({
                 GeoMoz <span className="text-sky-600 dark:text-sky-400">Explorer</span>
               </span>
               <span className="text-xs text-slate-500 dark:text-slate-400 font-medium tracking-normal truncate">
-                Estudos Geoespaciais
+                {t("sidebar.brandSubtitle")}
               </span>
             </div>
           )}
@@ -146,7 +149,7 @@ export default function Sidebar({
         <button
           onClick={() => setCollapsed((v) => !v)}
           className="hidden md:flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-          title={collapsed ? "Expandir barra lateral" : "Recolher barra lateral"}
+          title={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
         >
           {collapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
         </button>
@@ -155,7 +158,7 @@ export default function Sidebar({
           <button
             onClick={onMobileClose}
             className="md:hidden p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            title="Fechar menu"
+            title={t("sidebar.closeMenu")}
           >
             <X size={20} />
           </button>
@@ -173,7 +176,7 @@ export default function Sidebar({
                 ? "flex justify-center bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
                 : "bg-slate-50/80 dark:bg-slate-900/90 border-slate-200 dark:border-slate-800 hover:border-sky-500/60 dark:hover:border-sky-500/60 hover:bg-sky-50/40 dark:hover:bg-slate-850 shadow-xs"
             }`}
-            title={`Estudo Ativo: ${activeProject.name} (Clique para alternar ou gerir)`}
+            title={`${t("sidebar.activeStudy")}: ${activeProject.name} (${t("sidebar.studyHint")})`}
           >
             {collapsed ? (
               <div className="w-8 h-8 rounded-lg bg-sky-500/15 text-sky-600 dark:text-sky-400 flex items-center justify-center">
@@ -183,7 +186,7 @@ export default function Sidebar({
               <div>
                 <div className="flex items-center justify-between gap-1 mb-1.5">
                   <span className="text-xs uppercase font-extrabold tracking-wider text-sky-600 dark:text-sky-400 flex items-center gap-1.5">
-                    <FolderKanban size={13} /> Estudo Ativo
+                    <FolderKanban size={13} /> {t("sidebar.activeStudy")}
                   </span>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold">
                     {activeRuns.length} runs
@@ -206,14 +209,14 @@ export default function Sidebar({
             className={`w-full text-left rounded-xl p-3 border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-sky-500/60 text-slate-600 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-50/30 dark:hover:bg-slate-900/50 transition-all cursor-pointer ${
               collapsed ? "flex justify-center" : "flex items-center gap-2.5"
             }`}
-            title="Clique para criar ou selecionar um Projeto de Estudo"
+            title={t("sidebar.createStudyHint")}
           >
             <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
               <Plus size={16} />
             </div>
             {!collapsed && (
               <div className="text-sm font-semibold truncate">
-                <span>Criar / Selecionar Estudo</span>
+                <span>{t("sidebar.createStudy")}</span>
               </div>
             )}
           </button>
@@ -233,7 +236,7 @@ export default function Sidebar({
                   ? "bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-md shadow-sky-500/25"
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/90 dark:hover:bg-slate-900"
               } ${collapsed ? "justify-center px-0" : ""}`}
-              title={collapsed ? item.label : undefined}
+              title={collapsed ? t(item.labelKey) : undefined}
             >
               <div
                 className={`shrink-0 transition-transform duration-200 group-hover:scale-105 ${
@@ -242,7 +245,7 @@ export default function Sidebar({
               >
                 {item.icon}
               </div>
-              {!collapsed && <span className="truncate">{item.label}</span>}
+              {!collapsed && <span className="truncate">{t(item.labelKey)}</span>}
             </button>
           );
         })}
@@ -261,8 +264,8 @@ export default function Sidebar({
           } ${collapsed ? "justify-center p-2" : ""}`}
           title={
             geeConnected
-              ? `Google Earth Engine Conectado (Projeto: ${geeProject || "Padrão"})`
-              : "Conectar Google Earth Engine (Clique para configurar)"
+              ? `${t("sidebar.geeConnectedTitle")} (${geeProject || t("sidebar.defaultProject")})`
+              : t("sidebar.geeConnectTitle")
           }
         >
           <div className="shrink-0">
@@ -275,10 +278,10 @@ export default function Sidebar({
           {!collapsed && (
             <div className="flex-1 min-w-0 text-left">
               <div className="text-xs font-bold leading-tight truncate">
-                {geeConnected ? "GEE Conectado" : "Conectar GEE"}
+                {geeConnected ? t("sidebar.geeConnected") : t("sidebar.geeConnect")}
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                {geeConnected ? geeProject || "Quota Ativa" : "Requer autenticação"}
+                {geeConnected ? geeProject || t("sidebar.quotaActive") : t("sidebar.authRequired")}
               </div>
             </div>
           )}
@@ -288,7 +291,7 @@ export default function Sidebar({
         <div
           className={`gm-sidebar-action-dock${collapsed ? " gm-sidebar-action-dock--collapsed" : ""}${!isStandalone && canInstall ? " gm-sidebar-action-dock--install" : ""}`}
           role="group"
-          aria-label="Aparência, instalação e definições"
+          aria-label={t("sidebar.actions")}
           data-testid="sidebar-action-dock"
         >
           <button
@@ -296,9 +299,9 @@ export default function Sidebar({
             onClick={toggleTheme}
             data-mode={isDark ? "dark" : "light"}
             className="gm-sidebar-action gm-sidebar-action--theme"
-            aria-label={isDark ? "Ativar modo claro" : "Ativar modo noturno"}
+            aria-label={isDark ? t("sidebar.enableLight") : t("sidebar.enableDark")}
             aria-pressed={isDark}
-            title={isDark ? "Mudar para Modo Claro" : "Mudar para Modo Noturno"}
+            title={isDark ? t("sidebar.enableLight") : t("sidebar.enableDark")}
             data-testid="sidebar-theme-action"
           >
             <span className="gm-sidebar-action__icon" aria-hidden="true">
@@ -306,7 +309,7 @@ export default function Sidebar({
             </span>
             {!collapsed && (
               <span className="gm-sidebar-action__label">
-                {isDark ? "Modo Claro" : "Modo Noturno"}
+                {isDark ? t("sidebar.light") : t("sidebar.dark")}
               </span>
             )}
           </button>
@@ -316,14 +319,14 @@ export default function Sidebar({
               type="button"
               onClick={promptInstall}
               className="gm-sidebar-action gm-sidebar-action--install"
-              aria-label="Instalar GeoMoz Explorer como aplicação"
-              title="Instalar GeoMoz Explorer como Aplicação"
+              aria-label={t("sidebar.installTitle")}
+              title={t("sidebar.installTitle")}
               data-testid="sidebar-install-action"
             >
               <span className="gm-sidebar-action__icon" aria-hidden="true">
                 <Download size={17} />
               </span>
-              {!collapsed && <span className="gm-sidebar-action__label">Instalar App</span>}
+              {!collapsed && <span className="gm-sidebar-action__label">{t("sidebar.install")}</span>}
             </button>
           )}
 
@@ -331,14 +334,14 @@ export default function Sidebar({
             type="button"
             onClick={onOpenSettings}
             className="gm-sidebar-action gm-sidebar-action--settings"
-            aria-label="Abrir definições do sistema"
-            title="Definições do Sistema"
+            aria-label={t("sidebar.openSettings")}
+            title={t("sidebar.settingsTitle")}
             data-testid="sidebar-settings-action"
           >
             <span className="gm-sidebar-action__icon" aria-hidden="true">
               <Settings size={17} />
             </span>
-            {!collapsed && <span className="gm-sidebar-action__label">Definições</span>}
+            {!collapsed && <span className="gm-sidebar-action__label">{t("sidebar.settings")}</span>}
           </button>
         </div>
 
@@ -355,7 +358,7 @@ export default function Sidebar({
                   {user.photoURL ? (
                     <img
                       src={user.photoURL}
-                      alt={user.displayName || "Utilizador"}
+                      alt={user.displayName || t("sidebar.user")}
                       className="h-full w-full object-cover rounded-full"
                     />
                   ) : (
@@ -377,7 +380,7 @@ export default function Sidebar({
                 <button
                   onClick={() => signOut()}
                   className="text-slate-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
-                  title="Terminar Sessão"
+                  title={t("sidebar.signOut")}
                 >
                   <LogOut size={16} />
                 </button>
@@ -389,10 +392,10 @@ export default function Sidebar({
               className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-sm font-bold transition-all shadow-md shadow-sky-600/20 cursor-pointer ${
                 collapsed ? "justify-center px-0" : ""
               }`}
-              title="Iniciar Sessão"
+              title={t("sidebar.signIn")}
             >
               <LogIn size={17} />
-              {!collapsed && <span>Entrar na Conta</span>}
+              {!collapsed && <span>{t("sidebar.signIn")}</span>}
             </button>
           )}
         </div>

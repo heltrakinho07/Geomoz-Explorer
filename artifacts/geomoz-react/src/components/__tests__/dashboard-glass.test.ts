@@ -32,7 +32,9 @@ describe("GeoMoz Dashboard glassmorphism", () => {
       expect(styles).toContain(`data-module="${id}"`);
     }
     expect(source).toContain("data-module={mod.id}");
-    expect(source).toContain('aria-label={`Abrir módulo: ${mod.title}`}');
+    expect(source).toContain("t(mod.titleKey)");
+    expect(source).toContain("t(mod.descriptionKey)");
+    expect(source).toContain('aria-label={`${t("dashboard.openModule")}: ${t(mod.titleKey)}`}');
     expect(source).toContain("onClick={() => onTabChange?.(mod.tab)}");
     expect(source).toMatch(/<button\s+type="button"\s+key=\{mod.id\}/);
     expect(source).toContain("gm-dashboard-module__footer");

@@ -9,11 +9,11 @@ describe("Earth Engine connect buttons remain operable", () => {
   it("opens Google OAuth from the main Settings click, regardless of capability preflight", () => {
     const settings = read("src/components/SettingsDialog.tsx");
     expect(settings).toContain("onClick={handleConnectGee}");
-    expect(settings).toContain("<span>Ligar com a Conta Google</span>");
+    expect(settings).toContain('<span>{t("settings.gee.connectGoogle")}</span>');
     expect(settings).not.toContain(
       "onClick={oauthReady ? handleConnectGee : () => { void refreshStatus(); }}"
     );
-    expect(settings).toContain("Voltar a verificar a API");
+    expect(settings).toContain('t("settings.gee.retryApi")');
     expect(settings).toContain('href="https://code.earthengine.google.com/"');
     expect(settings).toContain('rel="noopener noreferrer"');
   });
