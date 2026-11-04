@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { ArrowLeft, Building2, Check, CreditCard, GraduationCap, Layers3, ShieldCheck, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Building2, CalendarClock, Check, CheckCircle2, ChevronRight, Cloud, CreditCard, GraduationCap, Layers3, LockKeyhole, Moon, ShieldCheck, Smartphone, Sun, Users, Wallet, X, Zap } from "lucide-react";
+import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
+import { useGeoMozTheme } from "@/hooks/useGeoMozTheme";
+import "@/components/dashboard-glass.css";
+import "./pricing-geomoz.css";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
 import { PLANS, PLAN_ORDER, formatMzn, type PlanId, type GeoMozPlan } from "@/lib/plans";
@@ -23,8 +27,18 @@ type PaymentRecord = {
 };
 type Region = "mz" | "international";
 
+const planIcons: Record<PlanId, React.ElementType> = {
+  community: Layers3, academic: GraduationCap, pro: Zap, teams: Users, enterprise: Building2,
+};
+
+function formatStorage(bytes: number | null): string {
+  if (bytes === null) return "Personalizado";
+  return new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 1 }).format(bytes / 1024 ** 3) + " GB";
+}
+
 export default function PricingPage() {
   const [, navigate] = useLocation();
+  const { theme, toggleTheme } = useGeoMozTheme();
   const { user, loading: authLoading, getIdToken } = useAuth();
   const billing = useSubscription();
   const [annual, setAnnual] = useState(false);
@@ -74,11 +88,11 @@ export default function PricingPage() {
       if (!response.ok) throw new Error(result.detail || "Não foi possível verificar o pagamento.");
       const status = String(result.status || "pending");
       const messages: Record<string, string> = {
-        paid: "Pagamento confirmado pelo PayZeno. O plano está activo.",
+        paid: "Pagamento confirmado. O plano está activo.",
         pending: "Pagamento ainda pendente de confirmação. Pode voltar a verificar.",
         expired: "A sessão de pagamento expirou.",
         cancelled: "O pagamento foi cancelado.",
-        failed: "O PayZeno não confirmou o pagamento.",
+        failed: "O pagamento não foi confirmado.",
         refunded: "Pagamento reembolsado; o acesso foi actualizado.",
         chargeback: "O pagamento foi contestado; contacte o suporte.",
       };
@@ -119,11 +133,11 @@ export default function PricingPage() {
     if (plan === "community") { navigate(user ? "/dashboard" : "/"); return; }
     if (serverPlans[plan]?.enabled === false) { setNotice("Este plano está temporariamente indisponível."); return; }
     if (plan !== "enterprise" && !checkoutEnabled) {
-      setNotice("O checkout PayZeno está em validação. O pagamento será disponibilizado após os testes de segurança.");
+      setNotice("Os pagamentos estão em validação. O acesso aos planos pagos estará disponível após a conclusão dos testes de segurança.");
       return;
     }
     if (plan === "enterprise") {
-      setNotice("Solicite uma proposta institucional à equipa GEOLÍTHICA.");
+      window.location.href = "mailto:contacto@geolithica.com?subject=Proposta%20GeoMoz%20Enterprise";
       return;
     }
     if (!user || user.uid === "guest_user") { navigate("/login"); return; }
@@ -149,13 +163,13 @@ export default function PricingPage() {
         }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(typeof result.detail === "string" ? result.detail : "Não foi possível iniciar o pagamento.");
+      if (!response.ok) throw new Error(typeof result.detail === "string" ? result.detail.replace(/payzeno/gi, "serviço de pagamentos") : "Não foi possível iniciar o pagamento.");
       if (typeof result.url !== "string" || !result.url.startsWith("https://checkout.payzeno.io/")) {
-        throw new Error("O PayZeno devolveu um endereço inesperado.");
+        throw new Error("O serviço de pagamentos devolveu um endereço inesperado.");
       }
       window.location.assign(result.url);
     } catch (error: any) {
-      setNotice(error?.message || "Não foi possível iniciar o checkout PayZeno.");
+      setNotice(error?.message || "Não foi possível iniciar o pagamento seguro.");
     } finally {
       setWorking(false);
     }
