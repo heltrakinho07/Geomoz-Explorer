@@ -1872,6 +1872,186 @@ const entries: Record<string, {en:string;es:string;fr:string}> = {
     "en": "GeoMoz GIS Workspace · GEOLÍTHICA. Built on open-source technology under the respective licences listed in third-party notices.",
     "es": "GeoMoz GIS Workspace · GEOLÍTHICA. Basado en tecnología de código abierto bajo las licencias indicadas en los avisos de terceros.",
     "fr": "GeoMoz GIS Workspace · GEOLÍTHICA. Basé sur des technologies open source sous les licences mentionnées dans les notices de tiers."
+  },
+  "Elementos livres": {
+    "en": "Free layout elements",
+    "es": "Elementos libres",
+    "fr": "Éléments libres"
+  },
+  "Adicionar texto": {
+    "en": "Add text",
+    "es": "Añadir texto",
+    "fr": "Ajouter du texte"
+  },
+  "Adicionar moldura": {
+    "en": "Add frame",
+    "es": "Añadir marco",
+    "fr": "Ajouter un cadre"
+  },
+  "Logótipo / imagem": {
+    "en": "Logo / image",
+    "es": "Logotipo / imagen",
+    "fr": "Logo / image"
+  },
+  "Carregar logótipo": {
+    "en": "Upload logo",
+    "es": "Cargar logotipo",
+    "fr": "Importer un logo"
+  },
+  "Use uma imagem até 2 MB.": {
+    "en": "Use an image up to 2 MB.",
+    "es": "Utilice una imagen de hasta 2 MB.",
+    "fr": "Utilisez une image de 2 Mo maximum."
+  },
+  "Limite de imagens do layout atingido.": {
+    "en": "Layout image size limit reached.",
+    "es": "Se alcanzó el límite de imágenes del diseño.",
+    "fr": "Limite d’images de la mise en page atteinte."
+  },
+  "Use uma imagem até 16 milhões de píxeis.": {
+    "en": "Use an image with up to 16 million pixels.",
+    "es": "Utilice una imagen de hasta 16 millones de píxeles.",
+    "fr": "Utilisez une image de 16 millions de pixels maximum."
+  },
+  "Formato não suportado": {
+    "en": "Unsupported format",
+    "es": "Formato no admitido",
+    "fr": "Format non pris en charge"
+  },
+  "Arraste um item na página para mover. Shift + arrastar redimensiona. As posições são percentagens da página.": {
+    "en": "Drag an element to move it. Shift + drag to resize. Positions are percentages of the page.",
+    "es": "Arrastre un elemento para moverlo. Mayús + arrastrar para redimensionar. Las posiciones son porcentajes de la página.",
+    "fr": "Faites glisser un élément pour le déplacer. Maj + glisser pour redimensionner. Les positions sont des pourcentages de la page."
+  },
+  "Item seleccionado": {
+    "en": "Selected element",
+    "es": "Elemento seleccionado",
+    "fr": "Élément sélectionné"
+  },
+  "Seleccionar item": {
+    "en": "Select element",
+    "es": "Seleccionar elemento",
+    "fr": "Sélectionner un élément"
+  },
+  "Imagem": {
+    "en": "Image",
+    "es": "Imagen",
+    "fr": "Image"
+  },
+  "Moldura": {
+    "en": "Frame",
+    "es": "Marco",
+    "fr": "Cadre"
+  },
+  "Bloquear posição": {
+    "en": "Lock position",
+    "es": "Bloquear posición",
+    "fr": "Verrouiller la position"
+  },
+  "Visível": {
+    "en": "Visible",
+    "es": "Visible",
+    "fr": "Visible"
+  },
+  "Largura (%)": {
+    "en": "Width (%)",
+    "es": "Anchura (%)",
+    "fr": "Largeur (%)"
+  },
+  "Altura (%)": {
+    "en": "Height (%)",
+    "es": "Altura (%)",
+    "fr": "Hauteur (%)"
+  },
+  "Texto do item": {
+    "en": "Element text",
+    "es": "Texto del elemento",
+    "fr": "Texte de l’élément"
+  },
+  "Tamanho (pt)": {
+    "en": "Size (pt)",
+    "es": "Tamaño (pt)",
+    "fr": "Taille (pt)"
+  },
+  "Cor": {
+    "en": "Colour",
+    "es": "Color",
+    "fr": "Couleur"
+  },
+  "Fundo": {
+    "en": "Background",
+    "es": "Fondo",
+    "fr": "Arrière-plan"
+  },
+  "Remover item": {
+    "en": "Remove element",
+    "es": "Eliminar elemento",
+    "fr": "Supprimer l’élément"
+  },
+  "Posição do mapa e da legenda": {
+    "en": "Map and legend placement",
+    "es": "Posición del mapa y la leyenda",
+    "fr": "Position de la carte et de la légende"
+  },
+  "Mapa e legenda na página": {
+    "en": "Map and legend on the page",
+    "es": "Mapa y leyenda en la página",
+    "fr": "Carte et légende sur la page"
+  },
+  "Posição personalizada do mapa": {
+    "en": "Custom map placement",
+    "es": "Posición personalizada del mapa",
+    "fr": "Position personnalisée de la carte"
+  },
+  "Posição personalizada da legenda": {
+    "en": "Custom legend placement",
+    "es": "Posición personalizada de la leyenda",
+    "fr": "Position personnalisée de la légende"
+  },
+  "Tamanho relativo": {
+    "en": "Relative size",
+    "es": "Tamaño relativo",
+    "fr": "Taille relative"
+  },
+  "As posições usam a página como referência. A escala cartográfica acompanha o tamanho do mapa. Active «Legenda» para a apresentar; confirme que cabe na página antes de exportar.": {
+    "en": "Positions are relative to the page. Map scale follows the map frame size. Enable “Legend” to display it; check that it fits before exporting.",
+    "es": "Las posiciones son relativas a la página. La escala depende del tamaño del mapa. Active «Leyenda» para mostrarla y compruebe que cabe antes de exportar.",
+    "fr": "Les positions sont relatives à la page. L’échelle dépend de la taille du cadre de carte. Activez «Légende» pour l’afficher et vérifiez qu’elle tient avant l’export."
+  },
+  "mapa": {
+    "en": "map",
+    "es": "mapa",
+    "fr": "carte"
+  },
+  "legenda": {
+    "en": "legend",
+    "es": "leyenda",
+    "fr": "légende"
+  },
+  "Novo texto": {
+    "en": "New text",
+    "es": "Texto nuevo",
+    "fr": "Nouveau texte"
+  },
+  "x do item": {
+    "en": "element x",
+    "es": "x del elemento",
+    "fr": "x de l’élément"
+  },
+  "y do item": {
+    "en": "element y",
+    "es": "y del elemento",
+    "fr": "y de l’élément"
+  },
+  "width do item": {
+    "en": "element width",
+    "es": "anchura del elemento",
+    "fr": "largeur de l’élément"
+  },
+  "height do item": {
+    "en": "element height",
+    "es": "altura del elemento",
+    "fr": "hauteur de l’élément"
   }
 };
 export function geoMozSpecialistText(language:string, portuguese:string):string {
