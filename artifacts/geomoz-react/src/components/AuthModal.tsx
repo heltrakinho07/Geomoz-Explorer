@@ -349,12 +349,14 @@ export default function AuthModal({
               {/* Full Name for Registration */}
               {mode === "register" && (
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                  <label htmlFor="geomoz-auth-name" className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
                     <UserIcon size={12} className="text-slate-400" />
                     <span>Nome Completo</span>
                   </label>
                   <input
+                    id="geomoz-auth-name"
                     type="text"
+                    autoComplete="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Ex: Engenheiro(a) João Silva"
@@ -365,12 +367,14 @@ export default function AuthModal({
 
               {/* Email */}
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                <label htmlFor="geomoz-auth-email" className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
                   <Mail size={12} className="text-slate-400" />
                   <span>Endereço de E-mail</span>
                 </label>
                 <input
+                  id="geomoz-auth-email"
                   type="email"
+                  autoComplete="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -383,7 +387,7 @@ export default function AuthModal({
               {mode !== "forgot" && (
                 <div className="space-y-1">
                   <div className="flex justify-between items-center">
-                    <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                    <label htmlFor="geomoz-auth-password" className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
                       <Lock size={12} className="text-slate-400" />
                       <span>Palavra-passe</span>
                     </label>
@@ -402,7 +406,10 @@ export default function AuthModal({
                   </div>
                   <div className="relative">
                     <input
+                      id="geomoz-auth-password"
                       type={showPassword ? "text" : "password"}
+                      autoComplete={mode === "register" ? "new-password" : "current-password"}
+                      minLength={mode === "register" ? 6 : undefined}
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -424,12 +431,15 @@ export default function AuthModal({
               {/* Confirm Password for Registration */}
               {mode === "register" && (
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                  <label htmlFor="geomoz-auth-confirm" className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
                     <Lock size={12} className="text-slate-400" />
                     <span>Confirmar Palavra-passe</span>
                   </label>
                   <input
+                    id="geomoz-auth-confirm"
                     type={showPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    minLength={6}
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
