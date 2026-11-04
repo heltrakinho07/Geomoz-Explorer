@@ -20,6 +20,8 @@ interface Props {
   onRequestPick?: (target:"A"|"B") => void;
   onAddContours?: (data:TerrainContourCollection)=>void;
   onAddProfile?: (data:TerrainProfile)=>void;
+  /** Optional translated scientific UI copy; default preserves portal Portuguese. */
+  translate?: (portuguese:string)=>string;
 }
 
 function saveText(content: string, filename: string, mime: string): void {
@@ -29,7 +31,8 @@ function saveText(content: string, filename: string, mime: string): void {
   window.setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
-export default function TerrainSciencePanel({terrain,pickedPoint,activePickTarget,onRequestPick,onAddContours,onAddProfile}:Props) {
+export default function TerrainSciencePanel({terrain,pickedPoint,activePickTarget,onRequestPick,onAddContours,onAddProfile,translate}:Props) {
+  const ui=(pt:string)=>translate?.(pt)??pt;
   const graphRef=useRef<SVGSVGElement>(null);
   const [exporting,setExporting]=useState<"png"|"pdf"|null>(null);
   const [aLon,setALon]=useState("");
@@ -103,13 +106,13 @@ export default function TerrainSciencePanel({terrain,pickedPoint,activePickTarge
       }else{
         const {default:jsPDF}=await import("jspdf");
         const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
-        pdf.setFontSize(15);pdf.text("GeoMoz · Perfil topográfico A → B",12,16);
+        pdf.setFontSize(15);pdf.text(ui("GeoMoz · Perfil topográfico A → B"),12,16);
         pdf.setFontSize(10);pdf.text(
-          "Distância: "+(profile.distanceM/1000).toFixed(2)+" km  ·  "+
-          "Elevação: "+profile.minElevationM.toFixed(1)+"–"+
+          ui("Distância: ")+(profile.distanceM/1000).toFixed(2)+" km  ·  "+
+          ui("Elevação: ")+profile.minElevationM.toFixed(1)+"–"+
           profile.maxElevationM.toFixed(1)+" m",12,24);
         pdf.addImage(canvas.toDataURL("image/png"),"PNG",12,32,273,90);
-        pdf.setFontSize(8);pdf.text("Estimativa da malha 3D simplificada. Não substitui a análise do DEM original.",12,130);
+        pdf.setFontSize(8);pdf.text(ui("Estimativa da malha 3D simplificada. Não substitui a análise do DEM original."),12,130);
         pdf.text("Created with GeoMoz Explorer",12,139);
         pdf.save("geomoz_perfil_3d.pdf");
       }
@@ -141,40 +144,40 @@ export default function TerrainSciencePanel({terrain,pickedPoint,activePickTarge
   const actionClass="inline-flex items-center justify-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100 disabled:opacity-50 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-200";
   return <details className="rounded-xl border border-sky-200 bg-sky-50/60 p-3 text-xs dark:border-sky-900 dark:bg-slate-800/60" open>
     <summary className="cursor-pointer font-bold text-sky-900 dark:text-sky-200">
-      <BarChart2 size={14} className="mr-1.5 inline"/> Análise científica do DEM
+      <BarChart2 size={14} className="mr-1.5 inline"/> {ui("Análise científica do DEM")}
     </summary>
     <p className="mt-2 text-[11px] text-slate-600 dark:text-slate-300">
-      Medições estimadas a partir da grelha simplificada ({terrain.width} × {terrain.height}).
-      Para cálculos finais utilize o raster original nas ferramentas SIG.
+      {ui("Medições estimadas a partir da grelha simplificada (")}{terrain.width} × {terrain.height}).
+      {ui("Para cálculos finais utilize o raster original nas ferramentas SIG.")}
     </p>
     <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-white p-2 dark:bg-slate-900">
-      <div><span className="block text-slate-500">Declive médio</span><b>{slope.meanDeg.toFixed(1)}°</b></div>
-      <div><span className="block text-slate-500">Declive máximo</span><b>{slope.maxDeg.toFixed(1)}°</b></div>
+      <div><span className="block text-slate-500">{ui("Declive médio")}</span><b>{slope.meanDeg.toFixed(1)}°</b></div>
+      <div><span className="block text-slate-500">{ui("Declive máximo")}</span><b>{slope.maxDeg.toFixed(1)}°</b></div>
     </div>
-    <div className="mt-3 flex items-center gap-1.5 font-semibold"><Route size={13}/> Perfil A → B</div>
+    <div className="mt-3 flex items-center gap-1.5 font-semibold"><Route size={13}/> {ui("Perfil A → B")}</div>
     {onRequestPick&&<div className="mt-2 grid grid-cols-2 gap-2">
       <button type="button" className={actionClass}
         aria-pressed={activePickTarget==="A"} onClick={()=>onRequestPick("A")}>
-        <MapPin size={13}/> {activePickTarget==="A"?"Clique no terreno para A":"Escolher A no terreno"}
+        <MapPin size={13}/> {ui(activePickTarget==="A"?"Clique no terreno para A":"Escolher A no terreno")}
       </button>
       <button type="button" className={actionClass}
         aria-pressed={activePickTarget==="B"} onClick={()=>onRequestPick("B")}>
-        <MapPin size={13}/> {activePickTarget==="B"?"Clique no terreno para B":"Escolher B no terreno"}
+        <MapPin size={13}/> {ui(activePickTarget==="B"?"Clique no terreno para B":"Escolher B no terreno")}
       </button>
     </div>}
     {pickedPoint&&<p className="mt-1 text-[11px] text-sky-700 dark:text-sky-300">
-      Ponto {pickedPoint.target}: {pickedPoint.lon.toFixed(5)}°, {pickedPoint.lat.toFixed(5)}°
+      {ui("Ponto")} {pickedPoint.target}: {pickedPoint.lon.toFixed(5)}°, {pickedPoint.lat.toFixed(5)}°
       · {pickedPoint.elevationMeters.toFixed(1)} m
     </p>}
     <div className="mt-2 grid grid-cols-2 gap-2">
-      <label>Ponto A · longitude<input aria-label="Longitude do ponto A" type="number" step="any" value={aLon} onChange={e=>setALon(e.target.value)} className={coordClass}/></label>
-      <label>Ponto A · latitude<input aria-label="Latitude do ponto A" type="number" step="any" value={aLat} onChange={e=>setALat(e.target.value)} className={coordClass}/></label>
-      <label>Ponto B · longitude<input aria-label="Longitude do ponto B" type="number" step="any" value={bLon} onChange={e=>setBLon(e.target.value)} className={coordClass}/></label>
-      <label>Ponto B · latitude<input aria-label="Latitude do ponto B" type="number" step="any" value={bLat} onChange={e=>setBLat(e.target.value)} className={coordClass}/></label>
+      <label>{ui("Ponto A · longitude")}<input aria-label={ui("Longitude do ponto A")} type="number" step="any" value={aLon} onChange={e=>setALon(e.target.value)} className={coordClass}/></label>
+      <label>{ui("Ponto A · latitude")}<input aria-label={ui("Latitude do ponto A")} type="number" step="any" value={aLat} onChange={e=>setALat(e.target.value)} className={coordClass}/></label>
+      <label>{ui("Ponto B · longitude")}<input aria-label={ui("Longitude do ponto B")} type="number" step="any" value={bLon} onChange={e=>setBLon(e.target.value)} className={coordClass}/></label>
+      <label>{ui("Ponto B · latitude")}<input aria-label={ui("Latitude do ponto B")} type="number" step="any" value={bLat} onChange={e=>setBLat(e.target.value)} className={coordClass}/></label>
     </div>
     {profile?<div className="mt-3">
       <svg ref={graphRef} viewBox="0 0 300 94" className="h-28 w-full rounded-lg bg-white dark:bg-slate-900"
-        role="img" aria-label="Perfil altimétrico A para B">
+        role="img" aria-label={ui("Perfil altimétrico A para B")}>
         <path d="M12 8 V78 H288" stroke="currentColor" strokeOpacity=".35" fill="none"/>
         <path d={plot} stroke="#0284c7" strokeWidth="2" strokeLinejoin="round" fill="none"/>
         <text x="12" y="90" fontSize="9" fill="currentColor">A · 0 km</text>
@@ -183,10 +186,10 @@ export default function TerrainSciencePanel({terrain,pickedPoint,activePickTarge
         </text>
       </svg>
       <div className="mt-1 grid grid-cols-2 gap-2">
-        <span>Elevação mínima: <b>{profile.minElevationM.toFixed(1)} m</b></span>
-        <span>Elevação máxima: <b>{profile.maxElevationM.toFixed(1)} m</b></span>
-        <span>Desnível acumulado ↑ <b>{profile.gainM.toFixed(0)} m</b></span>
-        <span>Declive A→B: <b>{profile.averageGradePct.toFixed(1)}%</b></span>
+        <span>{ui("Elevação mínima:")} <b>{profile.minElevationM.toFixed(1)} m</b></span>
+        <span>{ui("Elevação máxima:")} <b>{profile.maxElevationM.toFixed(1)} m</b></span>
+        <span>{ui("Desnível acumulado ↑")} <b>{profile.gainM.toFixed(0)} m</b></span>
+        <span>{ui("Declive A→B:")} <b>{profile.averageGradePct.toFixed(1)}%</b></span>
       </div>
 
       <div className="mt-2 grid grid-cols-3 gap-1.5">
@@ -199,31 +202,31 @@ export default function TerrainSciencePanel({terrain,pickedPoint,activePickTarge
           onClick={()=>void exportProfileFigure("pdf")}><Download size={13}/> PDF</button>
       </div>
       {onAddProfile&&<button type="button" className={actionClass+" mt-2 w-full"}
-        onClick={()=>onAddProfile(profile)}><Route size={13}/> Adicionar perfil ao projecto SIG</button>}
+        onClick={()=>onAddProfile(profile)}><Route size={13}/> {ui("Adicionar perfil ao projecto SIG")}</button>}
 
     </div>:<p className="mt-2 text-amber-700 dark:text-amber-300">
-      <MapPin size={12} className="mr-1 inline"/> Defina pontos válidos dentro do DEM e fora das células NoData.
+      <MapPin size={12} className="mr-1 inline"/> {ui("Defina pontos válidos dentro do DEM e fora das células NoData.")}
     </p>}
     <div className="mt-4 border-t border-sky-200 pt-3 dark:border-slate-700">
-      <label className="font-semibold">Curvas de nível · equidistância (m)
+      <label className="font-semibold">{ui("Curvas de nível · equidistância (m)")}
         <input type="number" min="1" max="100000" step="1" className={coordClass}
-          aria-label="Equidistância das curvas de nível"
+          aria-label={ui("Equidistância das curvas de nível")}
           value={interval} onChange={e=>setInterval(e.target.value)}/>
       </label>
       <button type="button" onClick={generateContours} className={actionClass+" mt-2 w-full"}>
-        Gerar curvas de nível (pré-visualização)
+        {ui("Gerar curvas de nível (pré-visualização)")}
       </button>
       {contours&&<div className="mt-2">
         <p className="text-emerald-700 dark:text-emerald-300">
-          {contours.features.length} segmentos calculados · GeoJSON WGS84
+          {contours.features.length} {ui("segmentos calculados · GeoJSON WGS84")}
         </p>
         <button type="button" onClick={exportContours} className={actionClass+" mt-1 w-full"}>
-          <Download size={13}/> Exportar GeoJSON
+          <Download size={13}/> {ui("Exportar GeoJSON")}
         </button>
         {onAddContours&&<button type="button" onClick={()=>onAddContours(contours)}
-          className={actionClass+" mt-1 w-full"}>Adicionar curvas ao catálogo SIG</button>}
+          className={actionClass+" mt-1 w-full"}>{ui("Adicionar curvas ao catálogo SIG")}</button>}
       </div>}
-      {error&&<p role="alert" className="mt-2 text-rose-700 dark:text-rose-300">{error}</p>}
+      {error&&<p role="alert" className="mt-2 text-rose-700 dark:text-rose-300">{ui(error)}</p>}
     </div>
   </details>;
 }
