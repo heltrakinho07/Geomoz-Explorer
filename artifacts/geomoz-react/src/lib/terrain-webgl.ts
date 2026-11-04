@@ -19,10 +19,24 @@ export interface TerrainMeshData {
 
 export type TerrainVisualStyle = "hypsometric" | "grayscale" | "imagery";
 
+export interface TerrainPick {
+  xMeters: number;
+  yMeters: number;
+  elevationMeters: number;
+}
+export interface TerrainProfileOverlay {
+  start: [number, number];
+  end: [number, number];
+}
 export interface TerrainRenderOptions {
   exaggeration: number;
   style: TerrainVisualStyle;
   textureUrl?: string | null;
+  /** Surface picking is active only when the user explicitly enables it. */
+  pickEnabled?: boolean;
+  onPick?: (point: TerrainPick) => void;
+  /** Profile A→B is rendered just above the DEM, not behind raster pixels. */
+  profileOverlay?: TerrainProfileOverlay | null;
 }
 
 function compile(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
@@ -75,6 +89,55 @@ function multiply(a: Float32Array, b: Float32Array): Float32Array {
   return o;
 }
 
+/**
+ * CPU screen-space triangle pick against the EXACT vertices submitted to WebGL.
+ * Selects the nearest visible triangle and perspective-correct interpolates
+ * world coordinates; unlike map-plane ray casting this respects terrain relief.
+ */
+export function pickTerrainTriangle(
+  vertices: Float32Array, indices: readonly number[], matrix: Float32Array,
+  xPx: number, yPx: number, widthPx: number, heightPx: number
+): [number, number, number] | null {
+  if (widthPx<=0 || heightPx<=0 || !Number.isFinite(xPx) || !Number.isFinite(yPx)) return null;
+  const count=vertices.length/9;
+  const screen=new Float64Array(count*4);
+  for(let i=0;i<count;i++){
+    const v=i*9, x=vertices[v], y=vertices[v+1], z=vertices[v+2];
+    const cx=matrix[0]*x+matrix[4]*y+matrix[8]*z+matrix[12];
+    const cy=matrix[1]*x+matrix[5]*y+matrix[9]*z+matrix[13];
+    const cz=matrix[2]*x+matrix[6]*y+matrix[10]*z+matrix[14];
+    const cw=matrix[3]*x+matrix[7]*y+matrix[11]*z+matrix[15];
+    screen[i*4]=cw>0?(cx/cw+1)*0.5*widthPx:NaN;
+    screen[i*4+1]=cw>0?(1-cy/cw)*0.5*heightPx:NaN;
+    screen[i*4+2]=cw>0?cz/cw:Infinity;
+    screen[i*4+3]=cw;
+  }
+  let nearest=Infinity,found:[number,number,number]|null=null;
+  for(let i=0;i<indices.length;i+=3){
+    const ai=indices[i],bi=indices[i+1],ci=indices[i+2];
+    const a=ai*4,b=bi*4,c=ci*4;
+    const ax=screen[a],ay=screen[a+1],bx=screen[b],by=screen[b+1],cx=screen[c],cy=screen[c+1];
+    if(![ax,ay,bx,by,cx,cy].every(Number.isFinite))continue;
+    const det=(by-cy)*(ax-cx)+(cx-bx)*(ay-cy);
+    if(Math.abs(det)<1e-9)continue;
+    const wa=((by-cy)*(xPx-cx)+(cx-bx)*(yPx-cy))/det;
+    const wb=((cy-ay)*(xPx-cx)+(ax-cx)*(yPx-cy))/det;
+    const wc=1-wa-wb;
+    if(wa < -1e-5 || wb < -1e-5 || wc < -1e-5)continue;
+    const depth=wa*screen[a+2]+wb*screen[b+2]+wc*screen[c+2];
+    if(depth>=nearest || depth < -1 || depth > 1)continue;
+    const pa=wa/screen[a+3],pb=wb/screen[b+3],pc=wc/screen[c+3];
+    const total=pa+pb+pc;
+    if(!Number.isFinite(total)||total<=0)continue;
+    const o=ai*9,p=bi*9,q=ci*9;
+    const interpolate=(axis:number)=>
+      (pa*vertices[o+axis]+pb*vertices[p+axis]+pc*vertices[q+axis])/total;
+    found=[interpolate(0),interpolate(1),interpolate(2)];
+    nearest=depth;
+  }
+  return found;
+}
+
 const VERTEX_SOURCE = [
   "#version 300 es",
   "in vec3 aPosition;",
@@ -82,12 +145,14 @@ const VERTEX_SOURCE = [
   "in float aAltitude;",
   "in vec2 aUv;",
   "uniform mat4 uViewProjection;",
+  "uniform int uOverlay;",
   "out vec3 vNormal;",
   "out float vHeight;",
   "out vec2 vUv;",
   "void main() {",
   " vNormal=aNormal; vHeight=aAltitude; vUv=aUv;",
   " gl_Position=uViewProjection*vec4(aPosition,1.0);",
+  " gl_PointSize=uOverlay==1 ? 12.0 : 1.0;",
   "}"
 ].join("\n");
 
@@ -98,6 +163,7 @@ const FRAGMENT_SOURCE = [
   "in float vHeight;",
   "in vec2 vUv;",
   "uniform int uStyle;",
+  "uniform int uOverlay;",
   "uniform sampler2D uTexture;",
   "out vec4 fragColor;",
   "vec3 relief(float h) {",
@@ -106,6 +172,7 @@ const FRAGMENT_SOURCE = [
   " return mix(vec3(0.67,0.58,0.36),vec3(0.95,0.95,0.92),(h-0.64)/0.36);",
   "}",
   "void main() {",
+  " if(uOverlay==1) {fragColor=vec4(0.08,0.85,0.98,1.0);return;}",
   " float illumination=max(dot(normalize(vNormal),normalize(vec3(0.4,0.88,0.52))),0.0);",
   " vec4 imagery=texture(uTexture,vUv);",
   " vec3 base=uStyle==2 ? mix(relief(vHeight),imagery.rgb,imagery.a) :",
@@ -176,12 +243,16 @@ export function createTerrainRenderer(
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,elementBuffer);
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices),gl.STATIC_DRAW);
   const stride=9*4;
-  for(const [name,sz,offset] of [
-    ["aPosition",3,0],["aNormal",3,12],["aAltitude",1,24],["aUv",2,28]
-  ] as [string,number,number][]) {
-    const loc=gl.getAttribLocation(program,name);
-    if(loc>=0) {gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,sz,gl.FLOAT,false,stride,offset);}
-  }
+  const bindAttributes=(source:WebGLBuffer)=>{
+    gl.bindBuffer(gl.ARRAY_BUFFER,source);
+    for(const [name,sz,offset] of [
+      ["aPosition",3,0],["aNormal",3,12],["aAltitude",1,24],["aUv",2,28]
+    ] as [string,number,number][]) {
+      const loc=gl.getAttribLocation(program,name);
+      if(loc>=0) {gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,sz,gl.FLOAT,false,stride,offset);}
+    }
+  };
+  bindAttributes(buffer);
   gl.enable(gl.DEPTH_TEST);
   gl.disable(gl.CULL_FACE);
   gl.bindTexture(gl.TEXTURE_2D,texture);
@@ -190,6 +261,46 @@ export function createTerrainRenderer(
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
   gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([150,170,140,255]));
+
+  // Add a georeferenced A→B profile overlay directly to the 3D renderer.
+  // Only valid DEM samples are joined; NoData areas remain disconnected.
+  const overlayLines:number[]=[];
+  const overlayPoints:number[]=[];
+  const overlaySample=(x:number,y:number):number[]|null=>{
+    const u=(x-left)/extentX*(width-1);
+    const v=(top-y)/extentZ*(height-1);
+    if(u<0||v<0||u>width-1||v>height-1)return null;
+    const x0=Math.floor(u),y0=Math.floor(v),x1=Math.min(width-1,x0+1),y1=Math.min(height-1,y0+1);
+    const a=y0*width+x0,b=y0*width+x1,c=y1*width+x0,d=y1*width+x1;
+    if(![a,b,c,d].every(isValid))return null;
+    const dx=u-x0,dy=v-y0;
+    const z=(elevation(a)*(1-dx)+elevation(b)*dx)*(1-dy)+
+      (elevation(c)*(1-dx)+elevation(d)*dx)*dy;
+    return [(x-(left+right)/2)/extent, (z-data.minElevation)*options.exaggeration/extent+0.003,
+      (y-(bottom+top)/2)/extent];
+  };
+  const overlayVertex=(xyz:number[])=>[xyz[0],xyz[1],xyz[2],0,1,0,1,0,0];
+  if(options.profileOverlay){
+    const start=options.profileOverlay.start,end=options.profileOverlay.end;
+    let previous:number[]|null=null;
+    for(let i=0;i<=128;i++){
+      const t=i/128;
+      const point=overlaySample(start[0]+(end[0]-start[0])*t,start[1]+(end[1]-start[1])*t);
+      if(point&&previous)overlayLines.push(...overlayVertex(previous),...overlayVertex(point));
+      previous=point;
+    }
+    for(const point of [start,end]){
+      const vertex=overlaySample(...point);
+      if(vertex)overlayPoints.push(...overlayVertex(vertex));
+    }
+  }
+  const overlayLineBuffer=overlayLines.length?gl.createBuffer():null;
+  const overlayPointBuffer=overlayPoints.length?gl.createBuffer():null;
+  if(overlayLineBuffer){gl.bindBuffer(gl.ARRAY_BUFFER,overlayLineBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(overlayLines),gl.STATIC_DRAW);}
+  if(overlayPointBuffer){gl.bindBuffer(gl.ARRAY_BUFFER,overlayPointBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(overlayPoints),gl.STATIC_DRAW);}
+  let lastMatrix:Float32Array|null=null;
 
   let destroyed=false, imageLoaded=false, frame=0;
   let yaw=0.72, pitch=0.90, distance=2.0;
@@ -210,7 +321,10 @@ export function createTerrainRenderer(
       Math.cos(yaw)*Math.cos(pitch)*distance
     ];
     const matrix=multiply(perspective(Math.PI/4,w/h),lookAt(eye,[0,targetY,0]));
+    lastMatrix=matrix;
     gl.useProgram(program);
+    bindAttributes(buffer);
+    gl.uniform1i(gl.getUniformLocation(program,"uOverlay"),0);
     gl.uniformMatrix4fv(gl.getUniformLocation(program,"uViewProjection"),false,matrix);
     gl.uniform1i(gl.getUniformLocation(program,"uStyle"),
       options.style==="imagery"&&imageLoaded ? 2 : options.style==="grayscale" ? 1 : 0);
@@ -218,6 +332,14 @@ export function createTerrainRenderer(
     gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,elementBuffer);
     gl.drawElements(gl.TRIANGLES,indices.length,gl.UNSIGNED_SHORT,0);
+    if(overlayLineBuffer||overlayPointBuffer){
+      gl.uniform1i(gl.getUniformLocation(program,"uOverlay"),1);
+      if(overlayLineBuffer){bindAttributes(overlayLineBuffer);
+        gl.drawArrays(gl.LINES,0,overlayLines.length/9);}
+      if(overlayPointBuffer){bindAttributes(overlayPointBuffer);
+        gl.drawArrays(gl.POINTS,0,overlayPoints.length/9);}
+      gl.uniform1i(gl.getUniformLocation(program,"uOverlay"),0);
+    }
   };
   const requestDraw=()=>{
     if(!frame&&!destroyed)frame=requestAnimationFrame(()=>{frame=0;draw();});
@@ -231,17 +353,31 @@ export function createTerrainRenderer(
     };
     image.src=options.textureUrl;
   }
-  let down: {x:number;y:number}|null=null;
+  let down: {x:number;y:number;initialX:number;initialY:number;dragged:boolean}|null=null;
   const pointerDown=(event: PointerEvent)=>{
-    down={x:event.clientX,y:event.clientY};canvas.setPointerCapture(event.pointerId);
+    down={x:event.clientX,y:event.clientY,initialX:event.clientX,initialY:event.clientY,dragged:false};canvas.setPointerCapture(event.pointerId);
   };
   const pointerMove=(event: PointerEvent)=>{
     if(!down)return;
+    if(Math.hypot(event.clientX-down.initialX,event.clientY-down.initialY)>5) down.dragged=true;
     yaw+=(event.clientX-down.x)*0.008;
     pitch=Math.min(1.48,Math.max(0.12,pitch+(event.clientY-down.y)*0.008));
-    down={x:event.clientX,y:event.clientY};requestDraw();
+    down.x=event.clientX;down.y=event.clientY;requestDraw();
   };
-  const pointerUp=()=>{down=null;};
+  const pointerUp=(event:PointerEvent)=>{
+    const clicked=down&&!down.dragged&&options.pickEnabled&&!!options.onPick;
+    down=null;
+    if(!clicked||!lastMatrix)return;
+    const rect=canvas.getBoundingClientRect();
+    const hit=pickTerrainTriangle(vertices,indices,lastMatrix,
+      event.clientX-rect.left,event.clientY-rect.top,rect.width,rect.height);
+    if(!hit)return;
+    options.onPick?.({
+      xMeters:(left+right)/2+hit[0]*extent,
+      yMeters:(bottom+top)/2+hit[2]*extent,
+      elevationMeters:data.minElevation+hit[1]*extent/options.exaggeration
+    });
+  };
   const wheel=(event: WheelEvent)=>{
     event.preventDefault();distance=Math.min(7,Math.max(0.75,distance*Math.exp(event.deltaY*0.001)));
     requestDraw();
@@ -261,7 +397,10 @@ export function createTerrainRenderer(
     canvas.removeEventListener("pointerup",pointerUp);
     canvas.removeEventListener("pointercancel",pointerUp);
     canvas.removeEventListener("wheel",wheel);
-    gl.deleteBuffer(buffer);gl.deleteBuffer(elementBuffer);gl.deleteTexture(texture);
+    gl.deleteBuffer(buffer);gl.deleteBuffer(elementBuffer);
+    if(overlayLineBuffer)gl.deleteBuffer(overlayLineBuffer);
+    if(overlayPointBuffer)gl.deleteBuffer(overlayPointBuffer);
+    gl.deleteTexture(texture);
     gl.deleteProgram(program);gl.deleteShader(vertex);gl.deleteShader(fragment);
   };
 }
