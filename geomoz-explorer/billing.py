@@ -90,13 +90,13 @@ def _add_months(start, months):
     return start.replace(year=year, month=month, day=day)
 
 
-def _effective_plan(state):
+def _effective_plan(state, now=None):
     plan = state.get("plan", "community")
     if state.get("status", "active") not in ("active", "trialing") or plan not in PLAN_LIMITS:
         return "community"
     if plan != "community":
         end = _parse_date(state.get("periodEnd"))
-        if end is None or end <= _utcnow():
+        if end is None or end <= (now or _utcnow()):
             return "community"
     return plan
 
