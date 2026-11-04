@@ -164,7 +164,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
             </button>}
             {group.label==="Raster"&&<a href="/analises?terrain3d=1" data-action="geomoz-terrain-studio-3d"
               target="_blank" rel="noopener noreferrer" onClick={()=>setOpenToolCard(null)}>
-              <Image size={17}/><span>Gerar mapa 3D do DEM</span><ArrowUpRight size={13}/>
+              <Image size={17}/><span>{txt("terrain3D")}</span><ArrowUpRight size={13}/>
             </a>}
             {group.label==="Vector"&&<button type="button" data-testid="geomoz-create-layer" onClick={()=>{setOpenToolCard(null);setLayerWizardOpen(true);}}>
               <Layers3 size={17}/><span>{txt("newLayer")}</span>
@@ -186,7 +186,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
               <FileText size={17}/><span>{txt("print")}</span>
             </button>}
           </GeoMozFloatingToolCard>)}
-          {!viewer&&<GeoMozFloatingToolCard title={categoryLabel("Hidrologia")} icon={Activity}
+          {!viewer&&<GeoMozFloatingToolCard title={categoryLabel("Hidrologia")} description={txt("hydrologyToolsHelp")} icon={Activity}
             open={openToolCard==="Hidrologia"}
             onToggle={()=>{setOpenToolCard(openToolCard==="Hidrologia"?null:"Hidrologia");setSeismicOpen(false);}}
             onClose={()=>setOpenToolCard(null)} testId="geomoz-hydrology-card">
