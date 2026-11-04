@@ -85,7 +85,7 @@ export default function PricingPage() {
     try {
       const response = await apiFetch("/geomoz-api/billing/payments/" + encodeURIComponent(paymentId));
       const result = await response.json();
-      if (!response.ok) throw new Error(result.detail || "Não foi possível verificar o pagamento.");
+      if (!response.ok) throw new Error(String(result.detail || "Não foi possível verificar o pagamento.").replace(/payzeno/gi, "serviço de pagamentos"));
       const status = String(result.status || "pending");
       const messages: Record<string, string> = {
         paid: "Pagamento confirmado. O plano está activo.",
@@ -98,7 +98,7 @@ export default function PricingPage() {
       };
       setNotice(messages[status] || "Estado actual: " + status);
     } catch (error: any) {
-      setNotice(error?.message || "Falha na verificação do pagamento.");
+      setNotice(String(error?.message || "Falha na verificação do pagamento.").replace(/payzeno/gi, "serviço de pagamentos"));
     } finally {
       setChecking(false);
     }
@@ -124,7 +124,7 @@ export default function PricingPage() {
       if (!response.ok) throw new Error(result.detail || "Histórico indisponível.");
       setHistory(Array.isArray(result.payments) ? result.payments : []);
     } catch (error: any) {
-      setNotice(error?.message || "Não foi possível carregar o histórico.");
+      setNotice(String(error?.message || "Não foi possível carregar o histórico.").replace(/payzeno/gi, "serviço de pagamentos"));
     }
   }
 
