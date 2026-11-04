@@ -2337,6 +2337,196 @@ const entries: Record<string, {en:string;es:string;fr:string}> = {
     "en": "GeoMoz · 3D terrain",
     "es": "GeoMoz · Terreno 3D",
     "fr": "GeoMoz · Terrain 3D"
+  },
+  "Análise científica do DEM": {
+    "en": "Scientific DEM analysis",
+    "es": "Análisis científico del MDE",
+    "fr": "Analyse scientifique du MNT"
+  },
+  "Medições estimadas a partir da grelha simplificada (": {
+    "en": "Measurements estimated from a simplified grid (",
+    "es": "Mediciones estimadas a partir de la malla simplificada (",
+    "fr": "Mesures estimées à partir d’une grille simplifiée ("
+  },
+  "Para cálculos finais utilize o raster original nas ferramentas SIG.": {
+    "en": "For final calculations, use the original raster in GIS tools.",
+    "es": "Para los cálculos definitivos, utilice el ráster original en las herramientas SIG.",
+    "fr": "Pour les calculs définitifs, utilisez le raster d’origine dans les outils SIG."
+  },
+  "Declive médio": {
+    "en": "Mean slope",
+    "es": "Pendiente media",
+    "fr": "Pente moyenne"
+  },
+  "Declive máximo": {
+    "en": "Maximum slope",
+    "es": "Pendiente máxima",
+    "fr": "Pente maximale"
+  },
+  "Perfil A → B": {
+    "en": "Profile A → B",
+    "es": "Perfil A → B",
+    "fr": "Profil A → B"
+  },
+  "Clique no terreno para A": {
+    "en": "Click terrain to set A",
+    "es": "Haga clic en el terreno para A",
+    "fr": "Cliquez sur le terrain pour A"
+  },
+  "Escolher A no terreno": {
+    "en": "Choose A on terrain",
+    "es": "Elegir A en el terreno",
+    "fr": "Choisir A sur le terrain"
+  },
+  "Clique no terreno para B": {
+    "en": "Click terrain to set B",
+    "es": "Haga clic en el terreno para B",
+    "fr": "Cliquez sur le terrain pour B"
+  },
+  "Escolher B no terreno": {
+    "en": "Choose B on terrain",
+    "es": "Elegir B en el terreno",
+    "fr": "Choisir B sur le terrain"
+  },
+  "Ponto A · longitude": {
+    "en": "Point A · longitude",
+    "es": "Punto A · longitud",
+    "fr": "Point A · longitude"
+  },
+  "Ponto A · latitude": {
+    "en": "Point A · latitude",
+    "es": "Punto A · latitud",
+    "fr": "Point A · latitude"
+  },
+  "Ponto B · longitude": {
+    "en": "Point B · longitude",
+    "es": "Punto B · longitud",
+    "fr": "Point B · longitude"
+  },
+  "Ponto B · latitude": {
+    "en": "Point B · latitude",
+    "es": "Punto B · latitud",
+    "fr": "Point B · latitude"
+  },
+  "Longitude do ponto A": {
+    "en": "Point A longitude",
+    "es": "Longitud del punto A",
+    "fr": "Longitude du point A"
+  },
+  "Latitude do ponto A": {
+    "en": "Point A latitude",
+    "es": "Latitud del punto A",
+    "fr": "Latitude du point A"
+  },
+  "Longitude do ponto B": {
+    "en": "Point B longitude",
+    "es": "Longitud del punto B",
+    "fr": "Longitude du point B"
+  },
+  "Latitude do ponto B": {
+    "en": "Point B latitude",
+    "es": "Latitud del punto B",
+    "fr": "Latitude du point B"
+  },
+  "Perfil altimétrico A para B": {
+    "en": "Elevation profile A to B",
+    "es": "Perfil altimétrico A a B",
+    "fr": "Profil altimétrique de A à B"
+  },
+  "Elevação mínima:": {
+    "en": "Minimum elevation:",
+    "es": "Elevación mínima:",
+    "fr": "Altitude minimale :"
+  },
+  "Elevação máxima:": {
+    "en": "Maximum elevation:",
+    "es": "Elevación máxima:",
+    "fr": "Altitude maximale :"
+  },
+  "Desnível acumulado ↑": {
+    "en": "Cumulative gain ↑",
+    "es": "Desnivel acumulado ↑",
+    "fr": "Dénivelé cumulé ↑"
+  },
+  "Declive A→B:": {
+    "en": "Slope A→B:",
+    "es": "Pendiente A→B:",
+    "fr": "Pente A→B :"
+  },
+  "Adicionar perfil ao projecto SIG": {
+    "en": "Add profile to GIS project",
+    "es": "Añadir perfil al proyecto SIG",
+    "fr": "Ajouter le profil au projet SIG"
+  },
+  "Defina pontos válidos dentro do DEM e fora das células NoData.": {
+    "en": "Set valid points inside the DEM and outside NoData cells.",
+    "es": "Defina puntos válidos dentro del MDE y fuera de las celdas NoData.",
+    "fr": "Définissez des points valides dans le MNT et hors des cellules NoData."
+  },
+  "Curvas de nível · equidistância (m)": {
+    "en": "Contour lines · interval (m)",
+    "es": "Curvas de nivel · equidistancia (m)",
+    "fr": "Courbes de niveau · équidistance (m)"
+  },
+  "Equidistância das curvas de nível": {
+    "en": "Contour interval",
+    "es": "Equidistancia de curvas de nivel",
+    "fr": "Équidistance des courbes de niveau"
+  },
+  "Gerar curvas de nível (pré-visualização)": {
+    "en": "Generate contour lines (preview)",
+    "es": "Generar curvas de nivel (vista previa)",
+    "fr": "Générer des courbes de niveau (aperçu)"
+  },
+  "segmentos calculados · GeoJSON WGS84": {
+    "en": "segments calculated · GeoJSON WGS84",
+    "es": "segmentos calculados · GeoJSON WGS84",
+    "fr": "segments calculés · GeoJSON WGS84"
+  },
+  "Adicionar curvas ao catálogo SIG": {
+    "en": "Add contours to GIS catalog",
+    "es": "Añadir curvas al catálogo SIG",
+    "fr": "Ajouter les courbes au catalogue SIG"
+  },
+  "Falha ao desenhar o gráfico.": {
+    "en": "Could not render the chart.",
+    "es": "No se pudo dibujar el gráfico.",
+    "fr": "Impossible de tracer le graphique."
+  },
+  "Não foi possível criar o gráfico de exportação.": {
+    "en": "Could not create the export chart.",
+    "es": "No se pudo crear el gráfico de exportación.",
+    "fr": "Impossible de créer le graphique d’export."
+  },
+  "Falha ao exportar o gráfico.": {
+    "en": "Could not export chart.",
+    "es": "No se pudo exportar el gráfico.",
+    "fr": "Échec de l’exportation du graphique."
+  },
+  "Falha ao gerar curvas de nível.": {
+    "en": "Could not generate contours.",
+    "es": "No se pudieron generar curvas de nivel.",
+    "fr": "Échec de la génération des courbes de niveau."
+  },
+  "GeoMoz · Perfil topográfico A → B": {
+    "en": "GeoMoz · Topographic profile A → B",
+    "es": "GeoMoz · Perfil topográfico A → B",
+    "fr": "GeoMoz · Profil topographique A → B"
+  },
+  "Distância: ": {
+    "en": "Distance: ",
+    "es": "Distancia: ",
+    "fr": "Distance : "
+  },
+  "Elevação: ": {
+    "en": "Elevation: ",
+    "es": "Elevación: ",
+    "fr": "Altitude : "
+  },
+  "Estimativa da malha 3D simplificada. Não substitui a análise do DEM original.": {
+    "en": "Simplified 3D mesh estimate. Not a substitute for original DEM analysis.",
+    "es": "Estimación de la malla 3D simplificada. No sustituye al análisis del MDE original.",
+    "fr": "Estimation du maillage 3D simplifié. Ne remplace pas l’analyse du MNT d’origine."
   }
 };
 export function geoMozSpecialistText(language:string, portuguese:string):string {
