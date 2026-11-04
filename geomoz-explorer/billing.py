@@ -269,7 +269,9 @@ def public_catalog():
 @router.get("/config")
 def config():
     """Public-safe commercial readiness. No secrets or merchant credentials."""
-    return {"provider": "payzeno", "checkoutEnabled": _checkout_enabled(), "automaticRenewal": False}
+    return {"provider": "payzeno", "checkoutEnabled": _checkout_enabled(),
+            "teamsCheckoutEnabled": os.environ.get("GEOMOZ_TEAMS_CHECKOUT_ENABLED", "false").strip().lower() == "true",
+            "automaticRenewal": False}
 
 
 @router.post("/checkout")
@@ -279,6 +281,9 @@ async def checkout(payload: CheckoutRequest, uid: str = Depends(_uid)):
     pair = (payload.plan, payload.period)
     if pair not in PRICES_MZN:
         raise HTTPException(400, "Plano ou período de pagamento inválido.")
+    # Collaboration seats are not yet fully enforced; avoid selling unavailable Teams access.
+    if payload.plan == "teams" and os.environ.get("GEOMOZ_TEAMS_CHECKOUT_ENABLED", "false").strip().lower() != "true":
+        raise HTTPException(503, "As subscrições Teams estão disponíveis por pedido de adesão.")
     if payload.checkout_region not in ("mz", "international"):
         raise HTTPException(400, "Região de checkout inválida.")
     try:
