@@ -199,6 +199,18 @@ export const HAZARDS_MESSAGES = {
   "pdf.crop": ["Cultura","Crop","Cultivo","Culture"],
   "pdf.sensitivity": ["Sensibilidade","Sensitivity","Sensibilidad","Sensibilité"],
   "pdf.condition": ["Condição actual","Current condition","Condición actual","État actuel"],
+  "preset.flood.idai": ["Idai (março 2019)","Idai (March 2019)","Idai (marzo 2019)","Idai (mars 2019)"],
+  "preset.flood.kenneth": ["Kenneth (abril 2019)","Kenneth (April 2019)","Kenneth (abril 2019)","Kenneth (avril 2019)"],
+  "preset.flood.eloise": ["Eloise (janeiro 2021)","Eloise (January 2021)","Eloise (enero 2021)","Eloise (janvier 2021)"],
+  "preset.flood.freddy": ["Freddy (março 2023)","Freddy (March 2023)","Freddy (marzo 2023)","Freddy (mars 2023)"],
+  "preset.fire.niassa": ["Niassa e Cabo Delgado (2024)","Niassa and Cabo Delgado (2024)","Niassa y Cabo Delgado (2024)","Niassa et Cabo Delgado (2024)"],
+  "preset.fire.zambezia": ["Zambézia e Sofala (2024)","Zambézia and Sofala (2024)","Zambézia y Sofala (2024)","Zambézia et Sofala (2024)"],
+  "preset.fire.tete": ["Tete e Manica (2024)","Tete and Manica (2024)","Tete y Manica (2024)","Tete et Manica (2024)"],
+  "preset.fire.drySeason": ["Época seca 2023","Dry season 2023","Estación seca 2023","Saison sèche 2023"],
+  "preset.soil.main": ["Campanha principal 2023/24 (floração)","Main season 2023/24 (flowering)","Campaña principal 2023/24 (floración)","Campagne principale 2023/24 (floraison)"],
+  "preset.soil.elnino": ["Seca El Niño Sul 2024 (jan–abr)","El Niño southern drought 2024 (Jan–Apr)","Sequía El Niño sur 2024 (ene–abr)","Sécheresse El Niño au sud 2024 (jan–avr)"],
+  "preset.soil.cool": ["Época seca/fresca 2024 (jun–ago)","Dry/cool season 2024 (Jun–Aug)","Estación seca/fresca 2024 (jun–ago)","Saison sèche/fraîche 2024 (juin–août)"],
+  "preset.soil.sowing": ["Sementeira 2024/25 (nov–dez)","Sowing 2024/25 (Nov–Dec)","Siembra 2024/25 (nov–dic)","Semis 2024/25 (nov–déc)"],
 } as const satisfies Record<string, readonly [string, string, string, string]>;
 
 export type HazardsCopyKey = keyof typeof HAZARDS_MESSAGES;
