@@ -71,6 +71,9 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
   const resumeGisWorkspace =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("next") === "/gis-workspace/";
+  const resumePlans =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("next") === "/planos";
   const [authModalOpen, setAuthModalOpen] = useState(Boolean(initialAuthMode));
   const [authMode, setAuthMode] = useState<AuthMode>(initialAuthMode || "login");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -2715,6 +2718,8 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         onSuccess={() => {
           if (resumeGisWorkspace && auth.currentUser) {
             window.location.replace("/gis-workspace/");
+          } else if (resumePlans && auth.currentUser) {
+            setLocation("/planos");
           } else {
             setLocation("/app");
           }
