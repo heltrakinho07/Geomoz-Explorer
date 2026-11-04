@@ -251,6 +251,7 @@ def me(uid: str = Depends(_uid)):
         "creditsUsed": state.get("creditsUsed", 0),
         "storageUsedBytes": state.get("storageUsedBytes", 0),
         "cancelAtPeriodEnd": False,
+        "academicApproved": state.get("academicApproved") is True,
         "provider": state.get("paymentProvider") or "payzeno",
         "automaticRenewal": False,
     }
