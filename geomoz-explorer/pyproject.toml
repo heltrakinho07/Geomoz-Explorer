@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["api", "gee_module", "gee_presets", "terrain_dem", "terrain_gee", "terrain_texture"]
+py-modules = ["api", "billing", "gee_module", "gee_presets", "terrain_dem", "terrain_gee", "terrain_texture"]
 
 [tool.setuptools.packages.find]
 include = ["utils*"]
