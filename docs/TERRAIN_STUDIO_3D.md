@@ -61,3 +61,26 @@ pnpm run build
 - Para importar uma ortofoto/Sentinel-2 como GeoTIFF RGB, as bandas 1/2/3 devem representar R/G/B. É necessária georreferenciação válida; PNG sem referência só pode ser aplicado com alinhamento manual prévio.
 - O modelo é reamostrado para visualização, não para medições científicas de detalhe.
 - Forge3D-Web permanece numa via experimental separada; ainda não é uma dependência de produção.
+
+
+## Integração nativa GIS Workspace → Terreno 3D (fase 2026-11-04)
+
+- **Sem iframe e sem mensagens entre aplicações:** `GeoMozTerrainWorkspace` é um componente React nativo do GIS Workbench, ligado ao mesmo `useAppStore` do GeoLibre. A sessão, as camadas, a selecção e o mapa 2D permanecem em memória.
+- **DEM existente sem segunda importação:** `terrainRasterLayerOptions` identifica as camadas COG/GeoTIFF com fonte exportável. O navegador descarrega, com limite de 32 MB em streaming, os bytes da mesma origem já associada à camada. `geomoz-native-terrain-dem.ts` lê a banda altimétrica com geotiff.js e calcula a pré-visualização com proj4. Preserva NoData e aceita CRS EPSG:4326, 3857 e UTM WGS84 32601–32660 / 32701–32760. Outros CRS precisam de conversão prévia nas ferramentas Raster.
+- **Um único motor 3D:** os ficheiros `terrain-webgl.ts`, `terrain-analysis.ts` e `terrain-scene.ts` do Explorer são incorporados no build do GeoLibre a partir das mesmas fontes. A vista 3D renderiza directamente num canvas WebGL2.
+- **Picking real de terreno:** quando o utilizador activa A ou B, o renderer intersecta o clique com os triângulos projectados da malha, calcula a cota da superfície e converte as coordenadas métricas em longitude/latitude.
+- **Linha A→B sobreposta ao 3D:** os perfis seleccionados são amostrados na malha e representados em linhas e pontos directamente no WebGL, acima da superfície.
+- **Devolução ao projecto:** o botão «Adicionar perfil ao projecto SIG» cria uma camada GeoJSON MultiLineString com altitudes; «Adicionar curvas ao catálogo SIG» cria a camada GeoJSON de curvas de nível. Ambas usam `useAppStore().addGeoJsonLayer` e permanecem no projecto 2D após fechar a vista 3D.
+- **Exportações:** cena de pré-visualização `.geomoz`, PNG/PDF da vista 3D; perfil CSV/PNG/PDF e curvas GeoJSON.
+
+### Critérios de validade e limites
+
+- A geometria de perfis e curvas resulta de uma **grelha de pré-visualização 193 × 193**, não da resolução original do DEM. Para resultados finais, gerar curvas e declives no módulo Raster sobre o GeoTIFF original.
+- Restrições: ficheiro até 32 MB, fonte até 100 milhões de pixels, número e tamanho de curvas limitados. O raster original não é duplicado em Firestore nem em Cloud Run.
+- Rotação/skew de GeoTIFF, CRS sem identificação EPSG válida e projeções diferentes das explicitadas requerem conversão ou reprojectação prévia.
+- O GEE autenticado continua acessível ao módulo Terreno 3D do GeoMoz Explorer; a nova execução puramente local no GIS Workbench não reutiliza credenciais pessoais Google/GEE.
+- Escalabilidade COG por janelas/tiles e LOD, texturas Sentinel/Landsat automáticas, persistência da cena no projecto completo e GLB/glTF permanecem a desenvolver.
+
+### Testes integrados
+
+O pipeline `GeoMoz Workbench CI` compila o motor GIS upstream e executa `scripts/integration/geomoz-raster-browser.cjs`, que deve verificar o uso de um DEM real do catálogo, a criação do canvas WebGL, a consulta da superfície, o perfil A→B, as curvas de nível e a preservação da camada original. O frontend executa os testes de geometria, precisão, NoData e picking do renderer.

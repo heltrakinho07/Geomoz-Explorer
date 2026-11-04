@@ -4,12 +4,14 @@ import { Download, FileUp, Image as ImageIcon, Loader2, Mountain, RotateCcw, X }
 import { apiFetch } from "@/lib/api";
 import { useTerrainSession } from "@/context/TerrainSessionContext";
 import { useProject } from "@/context/ProjectContext";
-import TerrainSciencePanel from "@/components/TerrainSciencePanel";
+import TerrainSciencePanel, {type TerrainPickedPoint} from "@/components/TerrainSciencePanel";
+import {terrainToGeographic} from "@/lib/terrain-analysis";
 import { decodeTerrainScene, encodeTerrainScene, MAX_TERRAIN_SCENE_BYTES } from "@/lib/terrain-scene";
 import {
   createTerrainRenderer,
   type TerrainMeshData,
   type TerrainVisualStyle,
+  type TerrainPick,
 } from "@/lib/terrain-webgl";
 
 interface TerrainStudioProps {
@@ -35,6 +37,9 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   const [exaggeration, setExaggeration] = useState(2);
   const [style, setStyle] = useState<TerrainVisualStyle>("hypsometric");
   const [textureUrl, setTextureUrl] = useState<string | null>(null);
+  const [pickTarget,setPickTarget]=useState<"A"|"B"|null>(null);
+  const [picked,setPicked]=useState<Partial<Record<"A"|"B",TerrainPick>>>({});
+  const [lastPick,setLastPick]=useState<TerrainPickedPoint|null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sceneInputRef = useRef<HTMLInputElement>(null);
@@ -52,25 +57,24 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
     if (textureUrl?.startsWith("blob:")) URL.revokeObjectURL(textureUrl);
   }, [textureUrl]);
 
-  // The GIS Workspace is a separately compiled engine on the same origin.
-  // Receive an explicitly selected GeoTIFF from its in-place terrain panel,
-  // rather than asking the user to browse for a file a second time.
-  useEffect(() => {
-    if (!embedded || window.parent === window) return;
-    const receive = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin || event.source !== window.parent) return;
-      const message = event.data as {type?: string; file?: unknown} | null;
-      if (message?.type !== "geomoz:terrain:import-file") return;
-      if (!(message.file instanceof File)) {
-        setError("A camada raster transferida não é um ficheiro GeoTIFF válido.");
-        return;
-      }
-      void loadGeoTiff(message.file);
-    };
-    window.addEventListener("message", receive);
-    window.parent.postMessage({type: "geomoz:terrain:ready"}, window.location.origin);
-    return () => window.removeEventListener("message", receive);
-  }, [embedded]);
+  // Both the GIS Workspace and Explorer now use the same WebGL renderer.
+  // There is no iframe handoff; a click resolves a genuine 3D triangle.
+  useEffect(()=>{
+    setPickTarget(null);setPicked({});setLastPick(null);
+  },[terrain]);
+
+  const selectTerrainPoint=(point:TerrainPick)=>{
+    if(!pickTarget||!terrain)return;
+    try {
+      const [lon,lat]=terrainToGeographic(terrain,point.xMeters,point.yMeters);
+      setPicked(previous=>({...previous,[pickTarget]:point}));
+      setLastPick({target:pickTarget,lon,lat,elevationMeters:point.elevationMeters});
+      setPickTarget(pickTarget==="A"?"B":null);
+      setError(null);
+    }catch(cause){
+      setError(cause instanceof Error?cause.message:"Falha na consulta de elevação.");
+    }
+  };
 
 
   useEffect(() => {
@@ -79,12 +83,17 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
     try {
       return createTerrainRenderer(canvasRef.current, terrain, {
         exaggeration, style, textureUrl,
+        pickEnabled:!!pickTarget,onPick:selectTerrainPoint,
+        profileOverlay:picked.A&&picked.B?{
+          start:[picked.A.xMeters,picked.A.yMeters],
+          end:[picked.B.xMeters,picked.B.yMeters]
+        }:null,
       });
     } catch (cause) {
       setRendererError(cause instanceof Error ? cause.message : String(cause));
       return undefined;
     }
-  }, [open, terrain, exaggeration, style, textureUrl]);
+  }, [open, terrain, exaggeration, style, textureUrl, pickTarget, picked]);
 
   async function loadGeoTiff(file: File | undefined) {
     if (!file) return;
@@ -430,7 +439,8 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               <p className="text-[10px] text-slate-600 dark:text-slate-300">Amostragem de pré-visualização: {terrain.width} × {terrain.height} pixels. Não substitui o raster original.</p>
             </section>
           )}
-          {terrain && <TerrainSciencePanel terrain={terrain} />}
+          {terrain && <TerrainSciencePanel terrain={terrain} pickedPoint={lastPick}
+            activePickTarget={pickTarget} onRequestPick={setPickTarget} />}
           {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 dark:border-rose-700 dark:bg-rose-950/40 p-3 text-xs text-rose-700 dark:text-rose-200">{error}</p>}
           {rendererError && <p role="alert" className="rounded-lg border border-rose-700 bg-rose-950/40 p-3 text-xs text-rose-200">{rendererError}</p>}
         </aside>
@@ -452,7 +462,8 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
             </div>
           )}
           {terrain && <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/80 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 backdrop-blur">
-            Arrastar para rodar · Roda do rato para aproximar · Elevação em metros
+            {pickTarget?"Clique sobre o relevo para marcar "+pickTarget:
+              "Arrastar: rodar · Roda: aproximar · Seleccione A/B para consultar a elevação"}
           </div>}
         </section>
       </div>

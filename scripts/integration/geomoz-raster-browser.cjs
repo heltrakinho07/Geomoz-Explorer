@@ -172,36 +172,57 @@ module.exports=async function validateRasterProcessing(page){
  await topo.getByRole("button",{name:"Fechar perfil topográfico"}).click();
  console.log("Real raster profile sampled, plotted and exported from DEM COG.");
 
- // Verify an actual raster already in the GIS project transfers to the
- // embedded 3D module without the user selecting that file a second time.
- // The receiver is a controlled same-origin document: this test validates
- // the File transfer contract independently from Firebase/GEE authentication.
- await page.route(/\/terreno-3d\?embedded=1$/, route=>route.fulfill({
-   status:200, contentType:"text/html",
-   body:'<!doctype html><html><body data-received="no"><script>'+
-      'window.addEventListener("message",e=>{if(e.origin!==location.origin||e.source!==parent)return;'+
-      'if(e.data?.type==="geomoz:terrain:import-file"&&e.data.file instanceof File){'+
-      'document.body.dataset.received="yes";document.body.dataset.size=String(e.data.file.size);'+
-      'document.body.dataset.filename=e.data.file.name;}});'+
-      'parent.postMessage({type:"geomoz:terrain:ready"},location.origin);'+
-      '</script></body></html>'
- }));
+ // Test the real native renderer against an existing GeoTIFF in the project.
+ // No iframe, no postMessage and no file chooser: source bytes come directly
+ // from the existing local COG's layer metadata and are reprojected in-browser.
+ const layerCountBefore=await page.locator(".gm-layer-row").count();
  await realDem.locator(".gm-layer-select").click();
  await page.getByTestId("geomoz-layer-open-terrain").click();
  const terrain=page.getByTestId("geomoz-workbench-terrain");
  await terrain.waitFor({state:"visible"});
- assert.equal(await terrain.locator('iframe[src="/terreno-3d?embedded=1"]').count(),1);
+ assert.equal(await terrain.locator("iframe").count(),0,"3D must be native to GIS Workspace");
  await terrain.getByLabel("Seleccionar DEM do GIS Workspace").selectOption({label:"reprojected"});
  await terrain.getByTestId("geomoz-workbench-terrain-import").click();
- const received=page.frameLocator('iframe[src="/terreno-3d?embedded=1"]').locator("body[data-received='yes']");
- await received.waitFor({state:"attached",timeout:20000});
- assert.ok(Number(await received.getAttribute("data-size"))>0,"Embedded 3D received the real GeoTIFF bytes");
- assert.equal(await received.getAttribute("data-filename"),"reprojected.tif");
+ const canvas=terrain.getByTestId("geomoz-native-terrain-canvas");
+ await canvas.waitFor({state:"visible",timeout:25000});
+ await page.waitForFunction(()=>{
+   const c=document.querySelector('[data-testid="geomoz-native-terrain-canvas"]');
+   return c instanceof HTMLCanvasElement&&c.width>50&&c.height>50;
+ },{timeout:12000});
+ assert.match(await terrain.innerText(),/EPSG:4326 → EPSG:32736/);
+ assert.equal(await page.locator(".gm-layer-row").count(),layerCountBefore,
+   "Opening DEM 3D must preserve the same GIS layers");
+ // Picking at A and B uses hit-testing on real projected WebGL triangles.
+ const view=await canvas.boundingBox();
+ assert.ok(view?.width>200&&view.height>180,"WebGL terrain has usable dimensions");
+ const clickVisible=async (target,pts)=>{
+   await terrain.getByRole("button",{name:new RegExp("(Escolher "+target+" no terreno|Clique no terreno para "+target+")")}).click();
+   for(const [x,y] of pts){
+     await page.mouse.click(view.x+view.width*x,view.y+view.height*y);
+     if(await terrain.getByText(new RegExp("Ponto "+target+":")).count())return;
+   }
+   throw Error("Click-to-elevation failed to select point "+target);
+ };
+ await clickVisible("A",[[.5,.5],[.48,.53],[.52,.49],[.45,.55]]);
+ await clickVisible("B",[[.55,.5],[.5,.55],[.6,.5],[.51,.48]]);
+ const profile=terrain.getByRole("img",{name:"Perfil altimétrico A para B"});
+ await profile.waitFor({state:"visible"});
+ await terrain.getByRole("button",{name:"Adicionar perfil ao projecto SIG"}).click();
+ await page.locator('.gm-layer-row[data-layer-name="Perfil A→B · Terreno 3D"]').waitFor();
+ assert.equal(await page.locator(".gm-layer-row").count(),layerCountBefore+1,
+   "Profile must be added to the same GIS layer catalog");
+ const terrainCsvPromise=page.waitForEvent("download");
+ await terrain.getByRole("button",{name:"CSV",exact:true}).click();
+ await (await terrainCsvPromise).saveAs("workbench-browser-artifacts/terrain-native-profile.csv");
+ await terrain.getByLabel("Equidistância das curvas de nível").fill("20");
+ await terrain.getByRole("button",{name:"Gerar curvas de nível (pré-visualização)"}).click();
+ await terrain.getByRole("button",{name:"Adicionar curvas ao catálogo SIG"}).click();
+ await page.locator('.gm-layer-row[data-layer-name="Curvas de nível · Terreno 3D"]').waitFor();
+ assert.equal(await page.locator(".gm-layer-row").count(),layerCountBefore+2);
  await terrain.getByRole("button",{name:"Voltar ao mapa GIS"}).click();
  await terrain.waitFor({state:"hidden"});
- assert.equal(await realDem.count(),1,"Closing terrain preview must not remove the source raster");
- await page.unroute(/\/terreno-3d\?embedded=1$/);
- console.log("Existing GIS COG successfully transferred to embedded 3D without re-import.");
+ assert.equal(await realDem.count(),1,"Closing native 3D must retain the original raster");
+ console.log("Real DEM rendered natively; A/B selected on WebGL surface; profile and contours stored in original GIS project.");
 
  console.log("Real browser DEM slope, hillshade, reprojection and polygon cutline outputs validated.");
 };

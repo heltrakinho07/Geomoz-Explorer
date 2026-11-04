@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { TerrainMeshData } from "../terrain-webgl";
+import { pickTerrainTriangle, type TerrainMeshData } from "../terrain-webgl";
 import {
   sampleTerrain, terrainProfile, terrainToGeographic,
   previewContours, terrainSlopeSummary,
@@ -60,5 +60,25 @@ describe("GeoMoz terrain analytical preview",()=>{
     expect(s.validCells).toBe(1);
     expect(s.meanDeg).toBeCloseTo(8.049,2);
     expect(s.maxDeg).toBeCloseTo(s.meanDeg);
+  });
+});
+
+describe("3D terrain WebGL surface picking",()=>{
+  const vertices=new Float32Array([
+    -.5,-.5,0, 0,1,0, .5,0,0,
+     .5,-.5,0, 0,1,0, .5,1,0,
+       0, .5,0, 0,1,0, .5,.5,1
+  ]);
+  const identity=new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+  it("intersects projected triangles with perspective-correct world coordinates",()=>{
+    const hit=pickTerrainTriangle(vertices,[0,1,2],identity,100,110,200,200);
+    expect(hit).not.toBeNull();
+    expect(hit?.[0]).toBeCloseTo(0,4);
+    expect(hit?.[1]).toBeCloseTo(-.1,3);
+    expect(hit?.[2]).toBeCloseTo(0,4);
+  });
+  it("ignores clicks outside the surface or missing NoData triangles",()=>{
+    expect(pickTerrainTriangle(vertices,[0,1,2],identity,0,0,200,200)).toBeNull();
+    expect(pickTerrainTriangle(vertices,[],identity,100,110,200,200)).toBeNull();
   });
 });
