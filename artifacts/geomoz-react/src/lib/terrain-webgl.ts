@@ -32,6 +32,7 @@ export interface TerrainRenderOptions {
   exaggeration: number;
   style: TerrainVisualStyle;
   textureUrl?: string | null;
+  terrainBaseStyle?: "hypsometric" | "grayscale";
   /** Rendering-only LOD; scientific sample grid and coordinates never change. */
   detailLevel?: "auto" | "full" | "medium" | "low";
   /** Surface picking is active only when the user explicitly enables it. */
@@ -376,7 +377,7 @@ export function createTerrainRenderer(
     gl.uniform1i(gl.getUniformLocation(program,"uOverlay"),0);
     gl.uniformMatrix4fv(gl.getUniformLocation(program,"uViewProjection"),false,matrix);
     gl.uniform1i(gl.getUniformLocation(program,"uStyle"),
-      options.style==="imagery"&&imageLoaded ? 2 :
+      options.style==="imagery"&&imageLoaded ? (options.terrainBaseStyle==="grayscale"?3:2) :
       options.style==="grayscale" ? 1 : 0);
     gl.uniform1i(gl.getUniformLocation(program,"uTexture"),0);
     gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
