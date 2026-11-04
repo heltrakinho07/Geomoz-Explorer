@@ -31,13 +31,14 @@ import {
   Layers,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import BillingPanel from "@/components/BillingPanel";
 
 interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-type SettingsTab = "gee" | "profile" | "preferences" | "storage";
+type SettingsTab = "gee" | "profile" | "preferences" | "storage" | "billing";
 
 export default function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { user, signOut } = useAuth();
@@ -70,6 +71,12 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const [savingSa, setSavingSa] = useState(false);
   const [testResult, setTestResult] = useState<{ connected: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
+
+  React.useEffect(() => {
+    const openBilling = () => setActiveTab("billing");
+    window.addEventListener("geomoz:open-billing", openBilling);
+    return () => window.removeEventListener("geomoz:open-billing", openBilling);
+  }, []);
 
   // Sync inputs with active context and user profile
   React.useEffect(() => {
@@ -235,6 +242,15 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
           {/* Settings Tabs */}
           <div className="flex items-center gap-1 mt-4 pt-3 border-t border-slate-800/80 overflow-x-auto">
             <button
+              onClick={() => setActiveTab("billing")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                activeTab === "billing" ? "bg-sky-500 text-white shadow-sm" : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <ShieldCheck size={14} /><span>Plano e Subscrição</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab("gee")}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
                 activeTab === "gee"
@@ -286,6 +302,8 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
 
         {/* Content Body */}
         <div className="p-5 max-h-[65vh] overflow-y-auto space-y-4">
+          {activeTab === "billing" && <BillingPanel />}
+
           {activeTab === "gee" && (
             <div className="space-y-4">
               {/* Status Card */}

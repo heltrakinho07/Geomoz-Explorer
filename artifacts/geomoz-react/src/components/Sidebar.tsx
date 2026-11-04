@@ -26,6 +26,7 @@ import {
   Moon,
   X,
   Download,
+  CreditCard,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
@@ -297,6 +298,19 @@ export default function Sidebar({
               </div>
             </div>
           )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            onOpenSettings?.();
+            window.dispatchEvent(new Event("geomoz:open-billing"));
+          }}
+          className={`w-full flex items-center gap-2.5 rounded-xl border border-sky-200 dark:border-sky-900 bg-white dark:bg-slate-900 hover:bg-sky-50 dark:hover:bg-slate-800 text-sky-700 dark:text-sky-300 px-3 py-2.5 transition-colors text-xs font-bold ${collapsed ? "justify-center" : ""}`}
+          title="Plano e subscrição"
+        >
+          <CreditCard size={17} className="shrink-0" />
+          {!collapsed && <span>Plano e subscrição</span>}
         </button>
 
         {/* Theme (Day / Night) & Settings Row */}
