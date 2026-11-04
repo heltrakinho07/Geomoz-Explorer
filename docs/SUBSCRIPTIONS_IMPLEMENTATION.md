@@ -15,6 +15,12 @@ A subscrição GeoMoz Explorer usa **PayZeno Hosted Checkout** para pagamentos e
 - Firestore `billing/{uid}` legível só pelo próprio, nunca alterável pelo browser; `billingPayments`, `billingCheckoutState` e `billingEvents` só pelo backend Firebase Admin. `charge_managed_cloud_credits` está pronto para integração com trabalhadores cloud.
 - Não ocorre acesso pago por URL de sucesso ou pela sessão PayZeno ainda pendente.
 
+## Gate de lançamento e activação segura
+
+O checkout fica **desactivado por defeito** (`GEOMOZ_BILLING_ENABLED=false`). `GET /geomoz-api/billing/config` expõe apenas a disponibilidade do checkout. Para disponibilizar pagamentos, só depois de verificar CI, quotas anunciadas, aplicação/chave PayZeno do GeoMoz, webhook assinado e testes controlados, adicionar `GEOMOZ_BILLING_ENABLED=true` como variável normal no Cloud Run. O frontend mostra «Em validação» até à activação. Nunca utilizar a variável para esconder erros de webhook.
+
+O ramo de produção correcto é `feat/payzeno-subscriptions-main-20261104` com PR para `main`. A PR #162 assenta num ramo legado divergente e **não deve ser merged para `main`**.
+
 ## Configuração obrigatória em produção
 
 Definir no serviço backend do GeoMoz Explorer (Cloud Run) via Secret Manager:
