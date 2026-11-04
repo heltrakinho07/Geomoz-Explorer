@@ -50,7 +50,8 @@ const server = createServer(async (req, res) => {
     await page.goto("http://127.0.0.1:4178/");
     await page.getByTitle("Ativar Modo Noturno",{exact:true}).first().click();
     await page.waitForFunction(()=>document.documentElement.dataset.geomozTheme==="dark");
-    await page.getByRole("button",{name:"Explorar",exact:true}).click();
+    // Landing primary entry now exposes the descriptive accessible name.
+    await page.getByRole("button",{name:"Explorar GeoMoz",exact:true}).click();
     await page.getByRole("button",{name:"Continuar como Convidado (Explorar sem conta)",exact:true}).click();
     // Theme action now has a descriptive accessible name and compact icon/label layout.
     const themeAction=page.getByTestId("sidebar-theme-action");
