@@ -52,6 +52,19 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
 
+      - name: Deploy Firestore security rules before exposing subscription UI
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          CREDENTIALS_PATH="$RUNNER_TEMP/geomoz-firebase-ci.json"
+          trap 'rm -f "$CREDENTIALS_PATH"' EXIT
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$CREDENTIALS_PATH"
+          chmod 600 "$CREDENTIALS_PATH"
+          export GOOGLE_APPLICATION_CREDENTIALS="$CREDENTIALS_PATH"
+          npx --yes firebase-tools deploy --only firestore:rules \
+            --project geoprocessamento-426809 --non-interactive
+
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
