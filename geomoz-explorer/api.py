@@ -225,7 +225,8 @@ _gee_request_lock = asyncio.Lock()
 
 @app.middleware("http")
 async def isolate_gee_requests(request: Request, call_next):
-    if request.url.path.startswith("/geomoz-api/gee/"):
+    if (request.url.path.startswith("/geomoz-api/gee/") or
+            request.url.path.startswith("/geomoz-api/terrain/gee-")):
         async with _gee_request_lock:
             return await call_next(request)
     return await call_next(request)
@@ -3154,3 +3155,44 @@ async def terrain_rgb_texture(
         )
     except (ValueError, TypeError, TerrainInputError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class GEETerrainRGBRequest(BaseModel):
+    crs: str
+    bounds_meters: list[float]
+    width: int
+    height: int
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    cloud_pct: int = 30
+
+
+@app.post("/geomoz-api/terrain/gee-rgb-texture")
+async def terrain_gee_rgb_texture(
+    req: GEETerrainRGBRequest,
+    uid: str = Depends(require_gee_auth),
+):
+    """Cloud-masked Sentinel-2 true-colour texture on the *exact* DEM CRS/grid.
+
+    This endpoint requires the currently authenticated user's Earth Engine
+    credentials. Imagery is not publicly proxied or persisted by the API.
+    """
+    from starlette.concurrency import run_in_threadpool
+    from terrain_dem import TerrainInputError
+    from terrain_satellite import sentinel2_rgb_texture
+    import httpx
+
+    try:
+        return await run_in_threadpool(
+            sentinel2_rgb_texture,
+            crs=req.crs, bounds_meters=req.bounds_meters,
+            width=req.width, height=req.height,
+            start_date=req.start_date, end_date=req.end_date,
+            cloud_pct=req.cloud_pct,
+        )
+    except (TerrainInputError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Falha ao descarregar a textura Sentinel-2.") from exc
+    except Exception as exc:
+        handle_gee_api_error(exc, prefix="Textura Sentinel-2 3D", uid=uid)
