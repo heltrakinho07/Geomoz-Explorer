@@ -199,7 +199,8 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
       const preview=await geomozNativeTerrainPreview(bytes,layer.name);
       if(controller.signal.aborted)return;
       setTerrain(preview);setPicked({});setLastPick(null);setPickTarget(null);
-      setOverlays([]);setWorkspaceTab("layers");setViewMode("split");
+      setOverlays([]);setWorkspaceTab("layers");
+      setViewMode(validTerrainGeography(preview)?"split":"model");
       setNotice("Modelo 3D do projecto: "+layer.name+
         " · "+preview.crs+" · "+preview.validFraction.toLocaleString("pt-PT",{style:"percent",maximumFractionDigits:1})+" válido");
     }catch(cause){
@@ -237,7 +238,8 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
       const scene=decodeTerrainScene(await file.text());
       setTerrain(scene.terrain);setStyle(scene.style);setExaggeration(scene.exaggeration);
       setPicked({});setPickTarget(null);setLastPick(null);
-      setOverlays([]);setViewMode("split");
+      setOverlays([]);
+      setViewMode(validTerrainGeography(scene.terrain)?"split":"model");
       setNotice("Cena 3D reaberta. A camada raster original permanece no projecto SIG.");
     }catch(cause){setError(cause instanceof Error?cause.message:"Cena .geomoz inválida.");}
     finally{if(sceneInputRef.current)sceneInputRef.current.value="";}
@@ -409,7 +411,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
           {viewMode!=="model"&&<div className="gm-terrain-map-pane"
             aria-label={ui("Localização do DEM no basemap")}>
             <GeoMozTerrainGeoMap terrain={terrain} overlays={overlays}
-              exaggeration={exaggeration} translate={ui}/>
+              exaggeration={exaggeration} flat={viewMode==="split"} translate={ui}/>
           </div>}
         </div>:
           <div className="gm-terrain-native-empty">
