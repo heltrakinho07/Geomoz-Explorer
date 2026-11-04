@@ -11,7 +11,7 @@ import "./geomoz-terrain-workspace.css";
 interface SourceLayer {
   id:string;name:string;type:string;visible:boolean;opacity:number;
   geojson?:FeatureCollection;
-  style?:{fillColor?:string;strokeColor?:string};
+  style?:{fillColor?:string;strokeColor?:string;vectorStyleMode?:string;vectorStyleProperty?:string;vectorStyleStops?:{value:string|number;color:string}[]};
 }
 interface Props {
   layers:readonly SourceLayer[];
@@ -45,6 +45,16 @@ export default function GeoMozTerrainLayers({
     try {
       const item=defaultTerrainOverlay("project-"+layer.id,layer.name,layer.geojson,
         layer.opacity,layer.style?.fillColor,layer.style?.strokeColor);
+      // Honour a categorized renderer already authored in the 2D GIS Workspace.
+      const original=layer.style;
+      if(original?.vectorStyleMode==="categorized"&&original.vectorStyleProperty){
+        item.mode="categorized";
+        item.field=original.vectorStyleProperty;
+        const legend=Object.fromEntries((original.vectorStyleStops??[])
+          .filter(stop=>/^#[a-f\\d]{6}$/i.test(stop.color))
+          .map(stop=>[String(stop.value),stop.color]));
+        item.categories={...item.categories,...legend};
+      }
       onChange([...overlays,item]);setSelectedId(item.id);
       setLoadError("");onNotice("Camada do catálogo adicionada ao terreno 3D.");
     }catch(e){setLoadError(e instanceof Error?e.message:"Não foi possível ler a camada.");}
