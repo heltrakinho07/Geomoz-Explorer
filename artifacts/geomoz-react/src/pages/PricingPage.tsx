@@ -182,7 +182,7 @@ export default function PricingPage() {
           <button type="button" role="switch" aria-checked={annual} aria-label="Alternar periodicidade" onClick={() => setAnnual(!annual)} className={`rounded-full w-12 h-7 p-1 transition-colors ${annual ? "bg-sky-600" : "bg-slate-300 dark:bg-slate-700"}`}>
             <span className={`block bg-white rounded-full w-5 h-5 transition-transform ${annual ? "translate-x-5" : ""}`} />
           </button>
-          <span className={annual ? "font-bold text-sm" : "text-sm text-slate-500"}>Anual <span className="text-emerald-600 text-xs">2 meses grátis</span></span>
+          <span className={annual ? "font-bold text-sm" : "text-sm text-slate-500"}>Anual <span className="text-emerald-600 text-xs">Consultar valor anual</span></span>
         </div>
         {notice && <div role="status" className="max-w-2xl mx-auto mb-6 border border-sky-300 bg-sky-50 text-sky-950 rounded-xl p-4 text-sm">
           {notice}
