@@ -94,3 +94,35 @@ O pipeline `GeoMoz Workbench CI` compila o motor GIS upstream e executa `scripts
 - **LOD de renderização:** «Automático» alterna entre índices de detalhe completo, 2 e 4 consoante o zoom. «Detalhe máximo», «Equilibrado» e «Rápido» permitem escolha manual. Triângulos de baixa resolução não atravessam células NoData. O LOD reduz o **número de triângulos desenhados**, mas não aumenta a resolução da malha de pré-visualização nem permite abrir DEM >32 MB; blocos COG com carregamento progressivo continuam para fase posterior.
 - **Compartilhamento:** o motor WebGL, o exportador GLB e as rotinas de LOD são o mesmo código-fonte nos módulos Explorer e GIS Workspace. A fonte `terrain-glb.ts` é copiada com import ajustado no build do GeoLibre.
 - **Testes:** `terrain-glb.test.ts` verifica cabeçalho GLB, chunks JSON/BIN, máscaras NoData, textura binária, tamanho do DEM 193×193 e níveis de detalhe. `test_terrain_satellite.py` executa verificação de grelha, períodos, filtros e pedido GEE simulado, sem credenciais reais. A autenticação real do GEE exige validação manual.
+
+
+## GeoMoz 3D — cartografia temática por camadas (fase 2026-11-04)
+
+O GIS Workspace oferece agora um fluxo integrado **Catálogo → Mapa 3D → Inspector**. Os painéis deixam de misturar a importação, simbologia, análises e exportações numa única sidebar.
+
+1. **Carregue um DEM** já presente no GIS Workspace, clique em «Visualizar camada em 3D».
+2. Em «Camadas do terreno», clique em «Adicionar camada» para escolher:
+   - um **GeoJSON de polígonos** da geologia, solos, unidades litológicas ou uso/cobertura do solo;
+   - uma **camada vectorial já no projecto**, que reaproveita simbologia simples/categorizada do GeoLibre;
+   - um **GeoTIFF de classes** (1–100 valores distintos), usando nearest-neighbour, ou um GeoTIFF **RGB**; o navegador reprojeta estes rasters para o CRS métrico do DEM;
+   - **ESA WorldCover 2021 pelo GEE** (11 classes). O portal autentica a chamada, não envia tokens à aplicação GeoLibre nem guarda os dados de origem num segundo servidor.
+3. O motor limita a representação à **extensão e grelha do DEM**: fora da superfície não são gerados novos triângulos ou pixels visíveis. O arquivo original permanece intacto. Importações GeoJSON criam também uma camada no catálogo 2D do mesmo projecto SIG.
+4. Em «Simbologia», seleccione **categorizada por atributo/classe** ou **cor única**, escolha o campo, edite cores de cada classe, active/desactive classes e regule a **transparência**. É possível reordenar, ocultar e remover camadas do modelo.
+5. Clique no relevo para consultar **longitude, latitude, elevação e atributos** das camadas temáticas que intersectam o ponto. Os controlos de perfil A→B, declive e curvas de nível permanecem no separador «Análise».
+6. Em «Exportar», PNG/PDF exportam a vista e **GLB** incorpora a textura temática composta (quando disponível), incluindo metadados CRS no glTF `extras`. O ficheiro `.geomoz` continua a guardar só a malha DEM de pré-visualização; as camadas temáticas devem permanecer no projecto SIG para reutilização.
+
+### Dados Earth Engine: significado e limites científicos
+
+**ESA WorldCover v200** mapeia **cobertura** do solo a 10 m, referente a **2021**, não usos actuais dos terrenos nem classes cadastrais. Deve citar «ESA WorldCover Consortium (2021), CC BY 4.0». O GeoMoz exporta códigos da banda `Map` e reproduz a paleta ESA, permitindo edições sem alterar a identidade das classes. Usa nearest-neighbour, NoData explícito, limite de área de 300 km por lado e uma grelha máxima 255 × 255 para a pré-visualização GEE. O Earth Engine depende da autenticação e das quotas da conta de cada utilizador; não está garantida disponibilidade automática fora de sessões autorizadas.
+
+**Atenção:** esta fase efectua *recorte visual georreferenciado* e não modifica nem substitui os ficheiros de origem. O GeoTIFF original continua a ser a fonte de análises rigorosas; a malha de visualização 193 × 193 serve para exploração, não como produto científico à resolução completa. O suporte a recorte vectorial persistente e a COG por tiles/LOD progressivo permanece uma fase seguinte.
+
+### Limites de importação e controlo de recursos
+
+- GeoJSON: máximo 8 MB, até 5 000 feições, 180 000 vértices; coordenadas WGS84 e geometria Polygon/MultiPolygon.
+- GeoTIFF: máximo 32 MB, até 100 milhões de pixels de origem; banda única interpretada como classes discretas com até 100 valores; 3+ bandas interpretadas como RGB; com EPSG identificado.
+- As texturas temáticas ficam em memória, por sessão, e o renderer mantém a posição da câmara ao editar cores/transparência. Não há duplicação do raster original no servidor.
+
+### Validação
+
+CI Python inclui `test_terrain_landcover.py` para o recorte e a reprojecção `nearest` dos códigos WorldCover; CI Chromium `geomoz-raster-browser.cjs` verifica importação real de GeoJSON geológico, herança do projecto, simbologia categorizada, transparência, identificação do ponto e exportação GLB texturizada. A autenticação GEE com utilizador real permanece prova manual obrigatória.
