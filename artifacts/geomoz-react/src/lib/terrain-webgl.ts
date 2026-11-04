@@ -32,6 +32,8 @@ export interface TerrainRenderOptions {
   exaggeration: number;
   style: TerrainVisualStyle;
   textureUrl?: string | null;
+  /** Rendering-only LOD; scientific sample grid and coordinates never change. */
+  detailLevel?: "auto" | "full" | "medium" | "low";
   /** Surface picking is active only when the user explicitly enables it. */
   pickEnabled?: boolean;
   onPick?: (point: TerrainPick) => void;
@@ -87,6 +89,37 @@ function multiply(a: Float32Array, b: Float32Array): Float32Array {
   for(let col=0;col<4;col++) for(let row=0;row<4;row++)
     for(let k=0;k<4;k++) o[col*4+row] += a[k*4+row]*b[col*4+k];
   return o;
+}
+
+/**
+ * Build a lower-detail index buffer from the same DEM vertices.
+ * For coarser cells, any hidden NoData inside the cell suppresses the whole
+ * cell: an LOD NEVER invents terrain over missing source pixels.
+ */
+export function buildTerrainLodIndices(
+  heights: readonly (number | null)[], width: number, height: number, stride: 1 | 2 | 4
+): Uint16Array {
+  if (!Number.isInteger(width) || !Number.isInteger(height) ||
+      width < 2 || height < 2 || width * height > 65535 ||
+      heights.length !== width * height) {
+    throw new Error("Grelha de terreno inválida para LOD.");
+  }
+  const isValid = (i: number) => heights[i] !== null && Number.isFinite(heights[i]);
+  const triangles: number[] = [];
+  for(let r=0;r<height-1;r+=stride)for(let c=0;c<width-1;c+=stride) {
+    const re=Math.min(height-1,r+stride),ce=Math.min(width-1,c+stride);
+    const a=r*width+c,b=r*width+ce,d=re*width+c,e=re*width+ce;
+    if (stride > 1) {
+      let clean=true;
+      for(let y=r;y<=re && clean;y++)for(let x=c;x<=ce;x++) {
+        if(!isValid(y*width+x)){clean=false;break;}
+      }
+      if(!clean)continue;
+    }
+    if(isValid(a)&&isValid(b)&&isValid(d))triangles.push(a,b,d);
+    if(isValid(b)&&isValid(e)&&isValid(d))triangles.push(b,e,d);
+  }
+  return new Uint16Array(triangles);
 }
 
 /**
@@ -231,18 +264,24 @@ export function createTerrainRenderer(
       vertices[o+7]=col/(width-1);vertices[o+8]=1-row/(height-1);
     }
   }
-  const indices: number[]=[];
-  for(let row=0;row<height-1;row++) for(let col=0;col<width-1;col++) {
-    const a=row*width+col,b=a+1,c=a+width,d=c+1;
-    if(isValid(a)&&isValid(b)&&isValid(c)) indices.push(a,b,c);
-    if(isValid(b)&&isValid(d)&&isValid(c)) indices.push(b,d,c);
+  const fullIndices = buildTerrainLodIndices(data.heights,width,height,1);
+  if (fullIndices.length===0) throw new Error("O DEM não contém uma superfície contínua utilizável.");
+  const levels: Record<"full" | "medium" | "low", { data: Uint16Array; buffer: WebGLBuffer }> = {
+    full: {data: fullIndices, buffer: elementBuffer},
+    medium: {data: buildTerrainLodIndices(data.heights,width,height,2), buffer: gl.createBuffer()!},
+    low: {data: buildTerrainLodIndices(data.heights,width,height,4), buffer: gl.createBuffer()!}
+  };
+  if(!levels.medium.buffer || !levels.low.buffer) {
+    throw new Error("Sem memória GPU para níveis de detalhe do DEM.");
   }
-  if(indices.length===0) throw new Error("O DEM não contém uma superfície contínua utilizável.");
+  let pickedIndices: Uint16Array=fullIndices;
   gl.useProgram(program);
   gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
   gl.bufferData(gl.ARRAY_BUFFER,vertices,gl.STATIC_DRAW);
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,elementBuffer);
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices),gl.STATIC_DRAW);
+  for(const level of [levels.full,levels.medium,levels.low]) {
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,level.buffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,level.data,gl.STATIC_DRAW);
+  }
   const stride=9*4;
   const bindAttributes=(source:WebGLBuffer)=>{
     gl.bindBuffer(gl.ARRAY_BUFFER,source);
@@ -331,8 +370,13 @@ export function createTerrainRenderer(
       options.style==="imagery"&&imageLoaded ? 2 : options.style==="grayscale" ? 1 : 0);
     gl.uniform1i(gl.getUniformLocation(program,"uTexture"),0);
     gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,elementBuffer);
-    gl.drawElements(gl.TRIANGLES,indices.length,gl.UNSIGNED_SHORT,0);
+    const selectedDetail = options.detailLevel && options.detailLevel !== "auto"
+      ? options.detailLevel : distance > 4.1 ? "low" : distance > 2.8 ? "medium" : "full";
+    const requested = levels[selectedDetail];
+    const visibleLod = requested.data.length ? requested : levels.full;
+    pickedIndices = visibleLod.data;
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,visibleLod.buffer);
+    gl.drawElements(gl.TRIANGLES,visibleLod.data.length,gl.UNSIGNED_SHORT,0);
     if(overlayLineBuffer||overlayPointBuffer){
       gl.uniform1i(gl.getUniformLocation(program,"uOverlay"),1);
       if(overlayLineBuffer){bindAttributes(overlayLineBuffer);
@@ -370,7 +414,7 @@ export function createTerrainRenderer(
     down=null;
     if(!clicked||!lastMatrix)return;
     const rect=canvas.getBoundingClientRect();
-    const hit=pickTerrainTriangle(vertices,indices,lastMatrix,
+    const hit=pickTerrainTriangle(vertices,pickedIndices,lastMatrix,
       event.clientX-rect.left,event.clientY-rect.top,rect.width,rect.height);
     if(!hit)return;
     options.onPick?.({
@@ -399,6 +443,7 @@ export function createTerrainRenderer(
     canvas.removeEventListener("pointercancel",pointerUp);
     canvas.removeEventListener("wheel",wheel);
     gl.deleteBuffer(buffer);gl.deleteBuffer(elementBuffer);
+    gl.deleteBuffer(levels.medium.buffer);gl.deleteBuffer(levels.low.buffer);
     if(overlayLineBuffer)gl.deleteBuffer(overlayLineBuffer);
     if(overlayPointBuffer)gl.deleteBuffer(overlayPointBuffer);
     gl.deleteTexture(texture);
