@@ -286,6 +286,7 @@ def create_processing_job(
     input_bytes: Optional[bytes] = None,
     input_stream: Optional[BinaryIO] = None,
     parameters: Optional[Dict[str, Any]] = None,
+    max_active_per_user: Optional[int] = None,
 ) -> ProcessingJob:
     if not uid:
         raise ValueError("Autenticação necessária.")
@@ -311,8 +312,16 @@ def create_processing_job(
                   if candidate.status in _ACTIVE_STATES]
         if len(active) >= _MAX_ACTIVE_GLOBAL:
             raise ValueError("Capacidade de jobs ocupada. Repita mais tarde.")
-        if sum(candidate.uid == uid for candidate in active) >= _MAX_ACTIVE_PER_USER:
-            raise ValueError("Limite de jobs ativos por utilizador atingido.")
+        if max_active_per_user is not None and (
+            type(max_active_per_user) is not int or max_active_per_user < 1
+        ):
+            raise ValueError("O plano não permite novos jobs simultâneos.")
+        effective_limit = min(
+            _MAX_ACTIVE_PER_USER,
+            max_active_per_user if max_active_per_user is not None else _MAX_ACTIVE_PER_USER
+        )
+        if sum(candidate.uid == uid for candidate in active) >= effective_limit:
+            raise ValueError("Limite de jobs activos por utilizador atingido.")
         _jobs[job_id] = job
         _cancellations[job_id] = threading.Event()
 
