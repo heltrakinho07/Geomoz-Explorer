@@ -10,7 +10,7 @@ from typing import Final
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from billing import _db, _effective_plan, _uid, _utcnow
+from billing import _db, _effective_plan, _uid, _utcnow, reconcile_stale_cloud_job_credits
 from platform_config import get_features, get_plan_limits
 
 router = APIRouter(prefix="/geomoz-api/billing", tags=["billing"])
@@ -86,6 +86,9 @@ def load_access(uid: str) -> dict:
     """Fetch server-owned billing and quota records; never trust client fields."""
     if not uid or "/" in uid or len(uid) > 128:
         raise HTTPException(401, "Conta inválida.")
+    # Recover reservations abandoned by a worker crash/deployment. The TTL is
+    # longer than the maximum GDAL processing timeout.
+    reconcile_stale_cloud_job_credits(uid)
     database = _db()
     bill_snap = database.collection("billing").document(uid).get()
     state = bill_snap.to_dict() if bill_snap.exists else {}
