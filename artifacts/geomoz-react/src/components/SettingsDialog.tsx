@@ -32,6 +32,9 @@ import {
   Layers,
   BookOpen,
   ArrowUpRight,
+  ArrowLeft,
+  ChevronRight,
+  Cloud,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { diagnoseGeeApi } from "@/lib/gee-connection-diagnostics";
@@ -41,15 +44,18 @@ import { useGeoMozPreferences } from "@/hooks/useGeoMozPreferences";
 import { usePortalTranslation } from "@/i18n/usePortalTranslation";
 import { GEOLIBRE_LANGUAGE_OPTIONS, PORTAL_TRANSLATED_LANGUAGES } from "@/i18n/portal";
 import { useSubscription } from "@/hooks/useSubscription";
+import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
+import { Link } from "wouter";
 
 interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  embedded?: boolean;
 }
 
 type SettingsTab = "gee" | "profile" | "preferences" | "storage" | "billing" | "documentation";
 
-export default function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
+export default function SettingsDialog({ open, onOpenChange, embedded = false }: SettingsDialogProps) {
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useGeoMozTheme();
   const { language: uiLanguage, setLanguage: setUiLanguage, reducedMotion, setReducedMotion } = useGeoMozPreferences();
@@ -262,99 +268,18 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
     } catch {}
   };
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl p-0 overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl">
-        {/* Header */}
-        <div className="p-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-md">
-              <Settings size={20} />
-            </div>
-            <div>
-              <DialogTitle className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                {t("settings.title")}
-              </DialogTitle>
-              <DialogDescription className="text-xs text-slate-300 mt-0.5">
-                {t("settings.subtitle")}
-              </DialogDescription>
-            </div>
-          </div>
 
-          {/* Settings Tabs */}
-          <div className="flex items-center gap-1 mt-4 pt-3 border-t border-slate-800/80 overflow-x-auto">
-            <button
-              onClick={() => setActiveTab("gee")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
-                activeTab === "gee"
-                  ? "bg-sky-500 text-white shadow-sm"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <Cpu size={14} />
-              <span>Google Earth Engine</span>
-            </button>
+  const sections: { id: SettingsTab; label: string; subtitle: string; Icon: typeof Cpu }[] = [
+    { id: "gee", label: "Google Earth Engine", subtitle: "Ligação, API e projectos", Icon: Cpu },
+    { id: "profile", label: t("settings.accountTab"), subtitle: "Dados, segurança e acessos", Icon: User },
+    { id: "preferences", label: t("settings.preferencesTab"), subtitle: "Idioma, mapas e visualização", Icon: Sliders },
+    { id: "storage", label: t("settings.storageTab"), subtitle: "Dados, cache e quotas", Icon: Database },
+    { id: "billing", label: t("settings.billingTab"), subtitle: "Plano actual e limites", Icon: CreditCard },
+    { id: "documentation", label: t("sidebar.nav.docs"), subtitle: "Guias e apoio técnico", Icon: BookOpen },
+  ];
 
-            <button
-              onClick={() => setActiveTab("profile")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
-                activeTab === "profile"
-                  ? "bg-sky-500 text-white shadow-sm"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <User size={14} />
-              <span>{t("settings.accountTab")}</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("preferences")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
-                activeTab === "preferences"
-                  ? "bg-sky-500 text-white shadow-sm"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <Sliders size={14} />
-              <span>{t("settings.preferencesTab")}</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("storage")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
-                activeTab === "storage"
-                  ? "bg-sky-500 text-white shadow-sm"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <Database size={14} />
-              <span>{t("settings.storageTab")}</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("billing")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${activeTab === "billing" ? "bg-sky-500 text-white shadow-sm" : "text-slate-400 hover:text-white"}`}
-            >
-              <CreditCard size={14} />
-              <span>{t("settings.billingTab")}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("documentation")}
-              className={"flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 " +
-                (activeTab === "documentation" ? "bg-sky-500 text-white shadow-sm" : "text-slate-400 hover:text-white")}
-              data-testid="settings-documentation-tab"
-            >
-              <BookOpen size={14} />
-              <span>{t("sidebar.nav.docs")}</span>
-            </button>
-            {adminAccess && <a href="/administracao" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-sky-300 hover:bg-white/10 shrink-0">
-              <ShieldCheck size={14} /> Administração GeoMoz
-            </a>}
-          </div>
-        </div>
-
-        {/* Content Body */}
-        <div className="p-5 max-h-[65vh] overflow-y-auto space-y-4">
+  const settingsBody = (
+        <div className="min-w-0 space-y-5">
           {activeTab === "gee" && (
             <div className="space-y-4">
               {/* Status Card */}
@@ -981,6 +906,187 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
             </div>
           )}
         </div>
+  );
+
+  if (embedded) {
+    const current = sections.find(section => section.id === activeTab) ?? sections[0];
+    const CurrentIcon = current.Icon;
+    return (
+      <div data-testid="geomoz-settings-page" data-geomoz-system="settings"
+        className={theme === "dark"
+          ? "dark min-h-screen bg-slate-950 text-slate-100"
+          : "min-h-screen bg-[#f5f8fd] text-slate-900"}>
+        <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/90">
+          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+            <Link href="/dashboard" className="inline-flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500">
+              <GeoMozBrandIcon className="h-9 w-9 rounded-xl shadow-sm" width={36} height={36} />
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-black tracking-tight">GeoMoz <span className="text-sky-600 dark:text-sky-400">Explorer</span></span>
+                <span className="block truncate text-[10px] text-slate-500 dark:text-slate-400">{t("settings.title")}</span>
+              </span>
+            </Link>
+            <Link href="/dashboard" className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-sky-300 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+              <ArrowLeft size={15} aria-hidden="true" />
+              <span>Voltar à plataforma</span>
+            </Link>
+          </div>
+        </header>
+        <main className="relative isolate overflow-hidden px-4 pb-14 pt-8 sm:px-6 lg:px-8">
+          <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 bg-gradient-to-r from-sky-100/70 via-white to-indigo-100/70 dark:from-slate-900 dark:via-slate-950 dark:to-indigo-950/30" />
+          <div className="mx-auto max-w-7xl space-y-8">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-lg shadow-sky-600/15">
+                  <Settings size={25} aria-hidden="true" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-black tracking-tight sm:text-3xl">{t("settings.title")}</h1>
+                  <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t("settings.subtitle")}</p>
+                </div>
+              </div>
+              <div className="hidden items-center gap-2 rounded-full border border-sky-200 bg-white/85 px-3 py-1.5 text-xs font-semibold text-sky-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-sky-300 lg:flex">
+                <ShieldCheck size={15} aria-hidden="true" /> Preferências da conta GeoMoz
+              </div>
+            </div>
+            <div className="grid min-w-0 items-start gap-6 lg:grid-cols-[270px_minmax(0,1fr)]">
+              <nav aria-label="Secções de definições" className="min-w-0 rounded-2xl border border-slate-200/80 bg-white/90 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/90 lg:sticky lg:top-24">
+                <h2 className="px-3 pb-3 pt-2 text-sm font-bold text-slate-900 dark:text-white">Definições</h2>
+                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-1">
+                  {sections.map(({id, label, subtitle, Icon}) => (
+                    <button key={id} type="button" data-testid={`settings-section-${id}`}
+                      onClick={() => setActiveTab(id)}
+                      aria-current={activeTab === id ? "page" : undefined}
+                      className={`group flex min-w-0 items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 ${activeTab === id
+                        ? "bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow-md shadow-indigo-600/15"
+                        : "text-slate-700 hover:bg-sky-50 dark:text-slate-200 dark:hover:bg-slate-800"}`}>
+                      <Icon size={19} className="shrink-0" aria-hidden="true"/>
+                      <span className="min-w-0">
+                        <span className="block text-xs font-bold sm:text-sm">{label}</span>
+                        <span className={`mt-0.5 hidden text-[11px] leading-snug lg:block ${activeTab === id ? "text-sky-100" : "text-slate-500 dark:text-slate-400"}`}>{subtitle}</span>
+                      </span>
+                    </button>
+                  ))}
+                  {adminAccess && <Link href="/administracao" className="flex items-center gap-3 rounded-xl px-3 py-3 text-xs font-semibold text-sky-700 hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-slate-800"><ShieldCheck size={18}/>Administração GeoMoz</Link>}
+                </div>
+              </nav>
+              <section aria-labelledby="settings-current-section" className="min-w-0 rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6 lg:p-7">
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-5 dark:border-slate-800">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-sky-600 ring-1 ring-sky-100 dark:bg-slate-800 dark:text-sky-400 dark:ring-slate-700">
+                      <CurrentIcon size={23} aria-hidden="true"/>
+                    </div>
+                    <div className="min-w-0">
+                      <h2 id="settings-current-section" className="text-lg font-black tracking-tight sm:text-xl">{current.label}</h2>
+                      <p className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{current.subtitle}</p>
+                    </div>
+                  </div>
+                  {activeTab === "gee" && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-[11px] font-semibold text-sky-700 dark:border-sky-900 dark:bg-sky-950/50 dark:text-sky-300">
+                      <Cloud size={14} aria-hidden="true" /> Processamento na nuvem
+                    </span>
+                  )}
+                </div>
+                {settingsBody}
+              </section>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl p-0 overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl">
+        {/* Header */}
+        <div className="p-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border-b border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-md">
+              <Settings size={20} />
+            </div>
+            <div>
+              <DialogTitle className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                {t("settings.title")}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-300 mt-0.5">
+                {t("settings.subtitle")}
+              </DialogDescription>
+            </div>
+          </div>
+
+          {/* Settings Tabs */}
+          <div className="flex items-center gap-1 mt-4 pt-3 border-t border-slate-800/80 overflow-x-auto">
+            <button
+              onClick={() => setActiveTab("gee")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                activeTab === "gee"
+                  ? "bg-sky-500 text-white shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Cpu size={14} />
+              <span>Google Earth Engine</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("profile")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                activeTab === "profile"
+                  ? "bg-sky-500 text-white shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <User size={14} />
+              <span>{t("settings.accountTab")}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("preferences")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                activeTab === "preferences"
+                  ? "bg-sky-500 text-white shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Sliders size={14} />
+              <span>{t("settings.preferencesTab")}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("storage")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                activeTab === "storage"
+                  ? "bg-sky-500 text-white shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Database size={14} />
+              <span>{t("settings.storageTab")}</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("billing")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${activeTab === "billing" ? "bg-sky-500 text-white shadow-sm" : "text-slate-400 hover:text-white"}`}
+            >
+              <CreditCard size={14} />
+              <span>{t("settings.billingTab")}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("documentation")}
+              className={"flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 " +
+                (activeTab === "documentation" ? "bg-sky-500 text-white shadow-sm" : "text-slate-400 hover:text-white")}
+              data-testid="settings-documentation-tab"
+            >
+              <BookOpen size={14} />
+              <span>{t("sidebar.nav.docs")}</span>
+            </button>
+            {adminAccess && <a href="/administracao" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-sky-300 hover:bg-white/10 shrink-0">
+              <ShieldCheck size={14} /> Administração GeoMoz
+            </a>}
+          </div>
+        </div>
+
+        <div className="max-h-[65vh] overflow-y-auto p-5">{settingsBody}</div>
       </DialogContent>
     </Dialog>
   );
