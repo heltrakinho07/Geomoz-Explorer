@@ -69,6 +69,10 @@ service cloud.firestore {
     match /billingEvents/{eventId} { allow read, write: if false; }
     match /billingProjectQuota/{userId} { allow read, write: if false; }
 
+    // Administrative data is only available through verified Firebase Admin SDK.
+    match /platformConfig/{documentId} { allow read, write: if false; }
+    match /adminAudit/{documentId} { allow read, write: if false; }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;

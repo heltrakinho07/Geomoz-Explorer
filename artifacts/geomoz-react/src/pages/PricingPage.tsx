@@ -3,15 +3,15 @@ import { useLocation } from "wouter";
 import { ArrowLeft, Building2, Check, CreditCard, GraduationCap, Layers3, ShieldCheck, X } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
-import { PLANS, PLAN_ORDER, formatMzn, type PlanId } from "@/lib/plans";
+import { PLANS, PLAN_ORDER, formatMzn, type PlanId, type GeoMozPlan } from "@/lib/plans";
 import { apiFetch } from "@/lib/api";
 
 const features: Record<PlanId, string[]> = {
-  community: ["GIS Workspace e ferramentas SIG locais", "3 projectos e 500 MB", "20 créditos mensais de teste"],
-  academic: ["Análises científicas e GEE próprio", "15 projectos e 5 GB", "150 créditos mensais · elegibilidade académica"],
-  pro: ["Processamento e exportação avançados", "75 projectos e 30 GB", "800 créditos mensais"],
-  teams: ["Até cinco utilizadores", "200 projectos e 150 GB", "3.000 créditos mensais"],
-  enterprise: ["Integrações, APIs e SLA", "Capacidades personalizadas", "Licenciamento institucional"],
+  community: ["GIS Workspace e ferramentas SIG locais"],
+  academic: ["Análises científicas e GEE próprio", "Elegibilidade académica"],
+  pro: ["Processamento e exportação avançados"],
+  teams: ["Colaboração e equipas"],
+  enterprise: ["Integrações, APIs e SLA", "Licenciamento institucional"],
 };
 type PaymentRecord = {
   id: string;
@@ -38,6 +38,7 @@ export default function PricingPage() {
   const [history, setHistory] = useState<PaymentRecord[]>([]);
   const [checking, setChecking] = useState(false);
   const [checkoutEnabled, setCheckoutEnabled] = useState(false);
+  const [serverPlans, setServerPlans] = useState<Record<string, Partial<GeoMozPlan> & {enabled?:boolean}>>({});
 
   useEffect(() => {
     let mounted = true;
@@ -46,6 +47,15 @@ export default function PricingPage() {
       .then(data => { if (mounted) setCheckoutEnabled(data?.checkoutEnabled === true); })
       .catch(() => { if (mounted) setCheckoutEnabled(false); });
     return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    apiFetch("/geomoz-api/billing/catalog")
+      .then(async res => res.ok ? res.json() : null)
+      .then(data => { if (active && data?.plans) setServerPlans(data.plans); })
+      .catch(() => undefined);
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -107,6 +117,7 @@ export default function PricingPage() {
   function selectPlan(plan: PlanId) {
     setNotice("");
     if (plan === "community") { navigate(user ? "/dashboard" : "/"); return; }
+    if (serverPlans[plan]?.enabled === false) { setNotice("Este plano está temporariamente indisponível."); return; }
     if (plan !== "enterprise" && !checkoutEnabled) {
       setNotice("O checkout PayZeno está em validação. O pagamento será disponibilizado após os testes de segurança.");
       return;
@@ -171,7 +182,7 @@ export default function PricingPage() {
           <button type="button" role="switch" aria-checked={annual} aria-label="Alternar periodicidade" onClick={() => setAnnual(!annual)} className={`rounded-full w-12 h-7 p-1 transition-colors ${annual ? "bg-sky-600" : "bg-slate-300 dark:bg-slate-700"}`}>
             <span className={`block bg-white rounded-full w-5 h-5 transition-transform ${annual ? "translate-x-5" : ""}`} />
           </button>
-          <span className={annual ? "font-bold text-sm" : "text-sm text-slate-500"}>Anual <span className="text-emerald-600 text-xs">2 meses grátis</span></span>
+          <span className={annual ? "font-bold text-sm" : "text-sm text-slate-500"}>Anual <span className="text-emerald-600 text-xs">Consultar valor anual</span></span>
         </div>
         {notice && <div role="status" className="max-w-2xl mx-auto mb-6 border border-sky-300 bg-sky-50 text-sky-950 rounded-xl p-4 text-sm">
           {notice}
@@ -194,14 +205,14 @@ export default function PricingPage() {
         {!checkoutEnabled && <p className="text-center text-sm text-amber-700 dark:text-amber-300 mb-6">Pagamentos temporariamente em validação. Os planos podem ser consultados sem efectuar cobranças.</p>}
       <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-4">
           {PLAN_ORDER.map(id => {
-            const p = PLANS[id], current = billing.plan === id;
+            const p = { ...PLANS[id], ...(serverPlans[id] || {}) }, current = billing.plan === id;
             return <section key={id} className={`rounded-2xl border flex flex-col p-5 shadow-sm ${id === "pro" ? "border-sky-500 ring-2 ring-sky-200 dark:ring-sky-800 bg-white dark:bg-slate-900" : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"}`}>
               <div className="flex items-center gap-2 mb-4 text-sky-600">{id === "academic" ? <GraduationCap size={20} /> : id === "enterprise" ? <Building2 size={20} /> : <Layers3 size={20} />}<h2 className="font-bold">{p.name}</h2></div>
               <p className="text-xs text-slate-500 dark:text-slate-400 min-h-10">{p.audience}</p>
               <div className="mt-4 min-h-16"><div className="text-2xl font-bold tracking-tight">{id === "enterprise" ? "Sob consulta" : formatMzn(annual ? (p.yearlyMzn ?? 0) : (p.monthlyMzn ?? 0))}</div><div className="text-xs text-slate-500">{id === "enterprise" ? "Contrato institucional" : annual ? "por ano" : "por mês"}</div></div>
-              <ul className="space-y-3 mt-6 mb-8 flex-1">{features[id].map(feature => <li key={feature} className="flex gap-2 text-sm"><Check size={16} className="text-emerald-600 shrink-0 mt-0.5" />{feature}</li>)}</ul>
-              <button type="button" disabled={billing.loading || (!checkoutEnabled && id !== "community" && id !== "enterprise")} onClick={() => selectPlan(id)} className="w-full rounded-xl bg-sky-600 disabled:bg-slate-300 disabled:text-slate-500 text-white font-semibold py-3 text-sm hover:bg-sky-700 transition-colors">
-                {current && id !== "community" ? "Renovar / Gerir período" : id === "enterprise" ? "Solicitar proposta" : id === "community" ? "Começar gratuitamente" : !checkoutEnabled ? "Em validação" : "Escolher plano"}
+              <ul className="space-y-3 mt-6 mb-8 flex-1"><li className="text-sm font-semibold">{p.projects === null ? "Projectos ilimitados" : p.projects + " projectos cloud"} · {p.credits === null ? "créditos personalizados" : p.credits + " créditos/mês"}</li>{features[id].map(feature => <li key={feature} className="flex gap-2 text-sm"><Check size={16} className="text-emerald-600 shrink-0 mt-0.5" />{feature}</li>)}</ul>
+              <button type="button" disabled={billing.loading || p.enabled === false || (!checkoutEnabled && id !== "community" && id !== "enterprise")} onClick={() => selectPlan(id)} className="w-full rounded-xl bg-sky-600 disabled:bg-slate-300 disabled:text-slate-500 text-white font-semibold py-3 text-sm hover:bg-sky-700 transition-colors">
+                {current && id !== "community" ? "Renovar / Gerir período" : id === "enterprise" ? "Solicitar proposta" : id === "community" ? "Começar gratuitamente" : p.enabled === false ? "Indisponível" : !checkoutEnabled ? "Em validação" : "Escolher plano"}
               </button>
             </section>;
           })}

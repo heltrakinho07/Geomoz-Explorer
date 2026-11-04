@@ -11,7 +11,8 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from billing import PLAN_LIMITS, _db, _effective_plan, _uid, firestore
+from billing import _db, _effective_plan, _uid, firestore
+from platform_config import get_plan_limits
 
 router = APIRouter(prefix="/geomoz-api/projects", tags=["projects"])
 ProjectCategory = Literal[
@@ -103,7 +104,7 @@ def create_project(payload: CreateProjectRequest, uid: str = Depends(_uid)):
         count = int(current.get("count", 0)) if current is not None else existing_count
         entitlement = billing_snap.to_dict() if billing_snap.exists else {}
         plan = _effective_plan(entitlement)
-        quota_check(count, PLAN_LIMITS[plan]["projects"])
+        quota_check(count, get_plan_limits(plan)["projects"])
         transaction.create(project_ref, record)
         transaction.set(quota_ref, {
             "count": count + 1,

@@ -1,0 +1,457 @@
+import React, { useCallback, useEffect, useState } from "react";
+import { Link as WLink } from "wouter";
+import {
+  Activity, ArrowLeft, BarChart3, Check, ChevronLeft, ChevronRight,
+  CreditCard, Database, ExternalLink, Eye, Globe2, LockKeyhole, RefreshCw,
+  Save, Search, Settings2, Shield, ShieldCheck, ShieldAlert, SlidersHorizontal,
+  Users, X, Zap,
+} from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { apiFetch } from "@/lib/api";
+import { PLAN_ORDER, formatMzn, type PlanId } from "@/lib/plans";
+
+type AdminRole = "superadmin" | "admin" | "support";
+type Section = "overview" | "users" | "plans" | "features" | "payments" | "audit";
+
+interface Session {
+  uid: string; email: string; role: AdminRole; canEdit: boolean; isSuperadmin: boolean;
+}
+interface AdminUser {
+  uid: string; email: string; displayName: string; disabled: boolean;
+  emailVerified: boolean; role: string; plan: PlanId;
+  periodEnd?: string | null; academicApproved: boolean; billingStatus: string;
+  createdAt?: number | null; lastSignInAt?: number | null;
+}
+interface PlanConfig {
+  name: string; enabled: boolean; monthlyMzn: number | null; yearlyMzn: number | null;
+  projects: number | null; storageBytes: number | null; credits: number | null;
+  seats: number | null; concurrentJobs: number | null;
+}
+interface Payment {
+  id: string; uid: string; plan: string; period: string; amountMzn: number;
+  currency: string; status: string; reference: string; createdAt: string; paidAt?: string;
+}
+interface AuditEntry {
+  id: string; actorUid: string; actorRole: string; action: string; target: string;
+  details?: Record<string, unknown>; at: string;
+}
+interface Overview {
+  users: number; usersCountExact: boolean; recentPayments: number;
+  recentSettledMzn: number; recentPaymentsByStatus: Record<string, number>;
+  billingCheckoutEnabled: boolean; features: Record<string, boolean>;
+}
+type Catalog = Record<PlanId, PlanConfig>;
+
+const initialNavigation: { id: Section; label: string; icon: React.ElementType; hint: string }[] = [
+  { id: "overview", label: "Visão geral", icon: BarChart3, hint: "Indicadores e operação" },
+  { id: "users", label: "Utilizadores", icon: Users, hint: "Contas e permissões" },
+  { id: "plans", label: "Planos", icon: CreditCard, hint: "Preços e quotas" },
+  { id: "features", label: "Funcionalidades", icon: SlidersHorizontal, hint: "Módulos do GeoMoz" },
+  { id: "payments", label: "Pagamentos", icon: Database, hint: "Transacções PayZeno" },
+  { id: "audit", label: "Auditoria", icon: ShieldCheck, hint: "Acções administrativas" },
+];
+const FEATURE_NAMES: Record<string, string> = {
+  gis_workspace: "GIS Workspace", geo_ai: "GeoMoz AI Agent",
+  hydrology: "Hidrologia", terrain_3d: "Terrain Studio 3D",
+  remote_sensing: "Detecção remota", seismic_catalogs: "Catálogos sísmicos",
+};
+const LIMIT_FIELDS: { key: keyof PlanConfig; label: string }[] = [
+  { key: "projects", label: "Projectos cloud" },
+  { key: "storageBytes", label: "Armazenamento (bytes)" },
+  { key: "credits", label: "Créditos / mês" },
+  { key: "seats", label: "Utilizadores" },
+  { key: "concurrentJobs", label: "Processos simultâneos" },
+];
+const card = "rounded-2xl border border-slate-200/70 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 shadow-sm backdrop-blur-xl";
+const input = "w-full min-w-0 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/10";
+const btn = "inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+const primary = btn + " bg-sky-600 text-white hover:bg-sky-700";
+const subtle = btn + " border border-slate-200 dark:border-white/15 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800";
+const fmtDate = (s?: string | null) => s ? new Date(s).toLocaleDateString("pt-PT") : "—";
+const fmtTime = (s?: string | null) => s ? new Date(s).toLocaleString("pt-PT") : "—";
+
+async function jsonApi<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+  const response = await apiFetch(path, {
+    method,
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const json = await response.json().catch(() => ({})) as { detail?: string };
+  if (!response.ok) throw new Error(typeof json.detail === "string" ? json.detail : "Operação não concluída (" + response.status + ").");
+  return json as T;
+}
+
+function StatusTag({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "good" | "warn" | "danger" | "neutral" }) {
+  const tones = {
+    good: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
+    warn: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+    danger: "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300",
+    neutral: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+  };
+  return <span className={"inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold " + tones[tone]}>{children}</span>;
+}
+
+export default function AdminConsole() {
+  const { user, loading: authLoading } = useAuth();
+  const [identity, setIdentity] = useState<Session | null>(null);
+  const [authError, setAuthError] = useState("");
+  const [section, setSection] = useState<Section>("overview");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
+  const [searchEmail, setSearchEmail] = useState("");
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [drafts, setDrafts] = useState<Catalog | null>(null);
+  const [features, setFeatures] = useState<Record<string, boolean>>({});
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [grantPlan, setGrantPlan] = useState<PlanId>("pro");
+  const [grantThrough, setGrantThrough] = useState("");
+  const [grantReason, setGrantReason] = useState("");
+
+  const loadSection = useCallback(async (target: Section, token?: string, email?: string) => {
+    setBusy(true);
+    setNotice("");
+    try {
+      if (target === "overview") {
+        const data = await jsonApi<Overview>("/geomoz-api/admin/overview");
+        setOverview(data);
+      } else if (target === "users") {
+        const query = email ? "?email=" + encodeURIComponent(email) :
+          "?limit=30" + (token ? "&page_token=" + encodeURIComponent(token) : "");
+        const response = await jsonApi<{ users: AdminUser[]; nextPageToken?: string }>("/geomoz-api/admin/users" + query);
+        setUsers(response.users);
+        setNextPageToken(response.nextPageToken || null);
+      } else if (target === "plans" || target === "features") {
+        const response = await jsonApi<{ plans: Catalog; features: Record<string, boolean> }>("/geomoz-api/admin/plans");
+        setCatalog(response.plans);
+        setDrafts(JSON.parse(JSON.stringify(response.plans)) as Catalog);
+        setFeatures(response.features);
+      } else if (target === "payments") {
+        const response = await jsonApi<{ payments: Payment[] }>("/geomoz-api/admin/payments?limit=80");
+        setPayments(response.payments);
+      } else if (target === "audit") {
+        const response = await jsonApi<{ events: AuditEntry[] }>("/geomoz-api/admin/audit?limit=80");
+        setAudit(response.events);
+      }
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Não foi possível carregar a secção.");
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user || user.uid === "guest_user") { setAuthError("É necessário iniciar sessão com uma conta administrativa."); return; }
+    let active = true;
+    jsonApi<Session>("/geomoz-api/admin/me")
+      .then(result => { if (active) { setIdentity(result); setAuthError(""); } })
+      .catch(err => { if (active) setAuthError(err instanceof Error ? err.message : "Acesso não autorizado."); });
+    return () => { active = false; };
+  }, [user?.uid, authLoading]);
+
+  useEffect(() => {
+    if (identity) void loadSection(section);
+  }, [identity?.uid, section, loadSection]);
+
+  const act = async (callback: () => Promise<unknown>, success: string, refresh: Section = section) => {
+    setBusy(true);
+    setNotice("");
+    try {
+      await callback();
+      setNotice(success);
+      await loadSection(refresh, undefined, refresh === "users" ? searchEmail.trim() || undefined : undefined);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Operação não concluída.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const go = (destination: Section) => { setSection(destination); setNotice(""); setSelectedUser(null); };
+  const guard = (question: string) => window.confirm(question);
+  const canWrite = identity?.canEdit === true;
+  const isRoot = identity?.isSuperadmin === true;
+
+  if (authLoading || (!identity && !authError)) return (
+    <div className="min-h-screen grid place-items-center bg-slate-950 text-slate-100"><RefreshCw size={28} className="animate-spin text-sky-400" /> A verificar permissões...</div>
+  );
+  if (!identity) return (
+    <div className="min-h-screen bg-slate-950 grid place-items-center p-6 text-slate-100">
+      <div className="max-w-md w-full rounded-3xl bg-slate-900 border border-slate-800 p-8 text-center shadow-2xl">
+        <LockKeyhole size={38} className="mx-auto mb-4 text-amber-400" />
+        <h1 className="text-xl font-bold mb-2">Acesso administrativo restrito</h1>
+        <p className="text-sm text-slate-400 mb-5">{authError}</p>
+        <WLink href="/dashboard" className={subtle}>Regressar ao GeoMoz</WLink>
+      </div>
+    </div>
+  );
+
+  const currentMenu = initialNavigation.find(item => item.id === section);
+  return (
+    <div className="min-h-screen bg-[#f3f7fb] text-slate-900 dark:bg-[#070e1c] dark:text-white">
+      <div className="pointer-events-none fixed inset-0 opacity-70" style={{ background: "radial-gradient(circle at 70% 0%, rgba(14,165,233,.12),transparent 40%)" }} />
+      <div className="relative lg:flex min-h-screen">
+        <aside className="lg:sticky lg:top-0 lg:h-screen lg:w-[264px] lg:flex-shrink-0 bg-[#0b1830] text-slate-100 px-4 py-5 lg:px-5 lg:py-7 border-b lg:border-r border-slate-800/80">
+          <div className="flex items-center justify-between lg:block">
+            <WLink href="/dashboard" className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-sky-500/15 border border-sky-400/30 grid place-items-center"><Globe2 size={24} className="text-sky-300" /></div>
+              <div><div className="font-extrabold tracking-tight text-xl leading-none">GeoMoz</div><div className="text-[10px] uppercase tracking-[0.22em] text-sky-300 mt-1.5">Administration</div></div>
+            </WLink>
+            <WLink href="/dashboard" className="lg:hidden text-slate-400 hover:text-white" title="Voltar"><X size={20} /></WLink>
+          </div>
+          <div className="mt-7 hidden lg:block rounded-2xl p-3.5 bg-white/5 border border-white/10">
+            <div className="flex items-center gap-2"><ShieldCheck size={17} className="text-emerald-300" /><span className="font-bold text-xs">Acesso verificado</span></div>
+            <div className="mt-2 text-xs truncate text-slate-400" title={identity.email}>{identity.email}</div>
+            <div className="text-[11px] text-sky-300 font-bold uppercase mt-2">{identity.role}</div>
+          </div>
+          <nav aria-label="Secções administrativas" className="mt-5 lg:mt-8 flex lg:flex-col gap-1.5 overflow-x-auto pb-2 lg:pb-0">
+            {initialNavigation.map(item => {
+              const Icon = item.icon;
+              return (
+                <button key={item.id} type="button" onClick={() => go(item.id)}
+                  aria-current={section === item.id ? "page" : undefined}
+                  className={"min-w-max lg:min-w-0 w-auto lg:w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors " +
+                    (section === item.id ? "bg-sky-500/20 border border-sky-400/25 text-white" : "hover:bg-white/5 text-slate-400 border border-transparent")}>
+                  <Icon size={18} className={section === item.id ? "text-sky-300" : ""} />
+                  <div><div className="text-sm font-semibold">{item.label}</div><div className="hidden lg:block text-[11px] text-slate-500">{item.hint}</div></div>
+                </button>
+              );
+            })}
+          </nav>
+          <div className="hidden lg:block mt-8 border-t border-white/10 pt-5">
+            <WLink href="/dashboard" className="flex gap-2 items-center px-3 py-2 text-xs text-slate-400 hover:text-sky-300"><ArrowLeft size={15} /> Regresso ao GIS Workspace</WLink>
+          </div>
+        </aside>
+
+        <main className="flex-1 min-w-0 max-w-[1600px] mx-auto px-4 sm:px-7 lg:px-10 py-7 lg:py-9">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+            <div>
+              <p className="uppercase tracking-[0.23em] text-sky-600 dark:text-sky-400 text-[11px] font-bold">GEOLÍTHICA · Gestão da plataforma</p>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mt-2">{currentMenu?.label}</h1>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{currentMenu?.hint}</p>
+            </div>
+            <div className="flex gap-2">
+              <button className={subtle} onClick={() => void loadSection(section)} disabled={busy}><RefreshCw size={15} className={busy ? "animate-spin" : ""} /> Actualizar</button>
+              <WLink href="/dashboard" className={subtle}><ExternalLink size={15} /> Workspace</WLink>
+            </div>
+          </div>
+          {notice && <div role="status" className="mb-6 p-4 rounded-xl border border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-900/60 dark:bg-sky-950/35 dark:text-sky-100 text-sm flex justify-between gap-3">
+            {notice}<button onClick={() => setNotice("")} aria-label="Fechar notificação"><X size={16}/></button>
+          </div>}
+
+          {section === "overview" && (
+            <div className="space-y-6">
+              <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                {[
+                  { icon: Users, title: "Contas Firebase", value: overview ? (overview.usersCountExact ? "" : "≥ ") + overview.users.toLocaleString("pt-PT") : "—", note: "Utilizadores registados" },
+                  { icon: CreditCard, title: "Pagamentos recentes", value: overview?.recentPayments ?? "—", note: "Últimas 100 transacções" },
+                  { icon: Activity, title: "Pagamentos liquidados", value: overview ? formatMzn(overview.recentSettledMzn) : "—", note: "Somente últimas 100 transacções" },
+                  { icon: Zap, title: "Checkout PayZeno", value: overview?.billingCheckoutEnabled ? "Activo" : "Em validação", note: "Controlo seguro no Cloud Run" },
+                ].map((kpi, i) => {
+                  const Icon = kpi.icon;
+                  return <div key={i} className={card + " p-5"}>
+                    <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-900/25 grid place-items-center mb-4"><Icon size={20} className="text-sky-600 dark:text-sky-300" /></div>
+                    <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">{kpi.title}</div>
+                    <div className="font-extrabold tracking-tight text-2xl mt-2">{kpi.value}</div>
+                    <p className="text-xs text-slate-500 mt-2">{kpi.note}</p>
+                  </div>;
+                })}
+              </div>
+              <div className="grid lg:grid-cols-2 gap-5">
+                <section className={card + " p-6"}>
+                  <h2 className="font-bold text-lg mb-5">Estado operacional</h2>
+                  {[
+                    ["API e autenticação", "Firebase Admin"],
+                    ["Cobrança", overview?.billingCheckoutEnabled ? "Disponível" : "Desactivada por segurança"],
+                    ["Gateway", "PayZeno · sem renovação automática"],
+                    ["Controlo comercial", "Custom Claims + Firestore"],
+                  ].map(([name, status]) => <div key={name} className="flex justify-between gap-3 border-b last:border-0 border-slate-100 dark:border-slate-800 py-3 text-sm"><span className="text-slate-500">{name}</span><span className="font-semibold text-right">{status}</span></div>)}
+                </section>
+                <section className={card + " p-6"}>
+                  <h2 className="font-bold text-lg mb-5">Últimas transacções</h2>
+                  {Object.entries(overview?.recentPaymentsByStatus || {}).map(([status, count]) => <div key={status} className="flex justify-between border-b last:border-0 border-slate-100 dark:border-slate-800 py-3 text-sm"><span>{status}</span><b>{count}</b></div>)}
+                  {!Object.keys(overview?.recentPaymentsByStatus || {}).length && <p className="text-sm text-slate-500">Sem registos de pagamento recentes.</p>}
+                  <button className={subtle + " mt-5"} onClick={() => go("payments")}>Ver pagamentos <ChevronRight size={16}/></button>
+                </section>
+              </div>
+            </div>
+          )}
+
+          {section === "users" && <div className="space-y-5">
+            <div className={card + " p-4 sm:p-5 flex flex-wrap items-end gap-3"}>
+              <div className="flex-1 min-w-[230px]">
+                <label htmlFor="admin-user-search" className="block text-xs font-bold text-slate-500 mb-2">Procurar por e-mail exacto</label>
+                <div className="relative"><Search size={17} className="absolute top-3 left-3 text-slate-400"/>
+                  <input id="admin-user-search" className={input + " pl-10"} value={searchEmail} type="email" placeholder="utilizador@dominio.com" onChange={e => setSearchEmail(e.target.value)} onKeyDown={e => { if (e.key === "Enter") void loadSection("users", undefined, searchEmail.trim() || undefined); }} />
+                </div>
+              </div>
+              <button className={primary} disabled={busy} onClick={() => void loadSection("users", undefined, searchEmail.trim() || undefined)}>Pesquisar</button>
+              <button className={subtle} onClick={() => {setSearchEmail(""); void loadSection("users");}}>Limpar</button>
+            </div>
+            <section className={card + " overflow-hidden"}>
+              <div className="overflow-x-auto"><table className="w-full text-left text-sm">
+                <thead className="text-[11px] font-bold uppercase tracking-wider text-slate-500 bg-slate-50/90 dark:bg-slate-800/65">
+                  <tr><th className="px-5 py-4">Conta</th><th className="px-4 py-4">Perfil</th><th className="px-4 py-4">Plano</th><th className="px-4 py-4">Estado</th><th className="px-4 py-4 text-right">Acções</th></tr>
+                </thead>
+                <tbody>{users.map(account => <tr key={account.uid} className="border-t border-slate-100 dark:border-slate-800 hover:bg-sky-50/40 dark:hover:bg-slate-800/40">
+                  <td className="px-5 py-4 min-w-[210px]"><div className="font-bold">{account.displayName || "Sem nome"}</div><div className="text-xs text-slate-500 break-all">{account.email || account.uid}</div></td>
+                  <td className="px-4 py-4"><StatusTag tone={account.role === "superadmin" ? "warn" : "neutral"}>{account.role}</StatusTag></td>
+                  <td className="px-4 py-4"><div className="font-semibold capitalize">{account.plan}</div><div className="text-[11px] text-slate-500">{fmtDate(account.periodEnd)}</div></td>
+                  <td className="px-4 py-4"><StatusTag tone={account.disabled ? "danger" : "good"}>{account.disabled ? "Bloqueado" : "Activo"}</StatusTag>{account.academicApproved && <div className="text-[11px] text-emerald-600 mt-1">Academic aprovado</div>}</td>
+                  <td className="px-4 py-4 text-right">
+                    <button className={subtle + " !px-3 !py-2"} onClick={() => { setSelectedUser(account); setGrantPlan(account.plan); setGrantThrough(account.periodEnd?.slice(0,10) || ""); setGrantReason(""); }}><Settings2 size={15}/> Gerir</button>
+                  </td>
+                </tr>)}</tbody>
+              </table></div>
+              {!users.length && <p className="p-6 text-sm text-slate-500">Nenhuma conta encontrada nesta consulta.</p>}
+              <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-slate-100 dark:border-slate-800">
+                <span className="text-xs text-slate-500">{users.length} conta(s) nesta página</span>
+                <div className="flex gap-2"><button className={subtle + " !py-2"} onClick={() => void loadSection("users")}><ChevronLeft size={14}/> Início</button>
+                  <button className={subtle + " !py-2"} disabled={!nextPageToken || busy || Boolean(searchEmail)} onClick={() => void loadSection("users", nextPageToken || undefined)}>Seguinte <ChevronRight size={14}/></button></div>
+              </div>
+            </section>
+          </div>}
+
+          {section === "plans" && <div className="grid lg:grid-cols-2 2xl:grid-cols-3 gap-5">
+            {PLAN_ORDER.map(code => {
+              const plan = drafts?.[code] || catalog?.[code];
+              if (!plan) return null;
+              const original = catalog?.[code];
+              return <section className={card + " p-5 space-y-4"} key={code}>
+                <div className="flex items-center justify-between gap-2">
+                  <div><h2 className="font-extrabold text-lg">{plan.name}</h2><p className="text-xs text-slate-500">Plano {code}</p></div>
+                  <StatusTag tone={plan.enabled ? "good" : "warn"}>{plan.enabled ? "Disponível" : "Suspenso"}</StatusTag>
+                </div>
+                <label className="flex justify-between items-center gap-3 text-sm rounded-xl border border-slate-200 dark:border-slate-700 p-3">
+                  <span className="font-semibold">Disponível para novas adesões</span>
+                  <input type="checkbox" className="h-4 w-4 accent-sky-600" checked={plan.enabled} disabled={!isRoot || code === "community"} onChange={e => setDrafts(prev => prev ? { ...prev, [code]: { ...prev[code], enabled: e.target.checked } } : prev)} />
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {[{key:"monthlyMzn",label:"Mensal (MZN)"},{key:"yearlyMzn",label:"Anual (MZN)"}].map(field => <label className="block text-xs font-semibold text-slate-500" key={field.key}>{field.label}
+                    <input type="number" min="1" step="1" className={input + " mt-1.5"} value={plan[field.key as "monthlyMzn" | "yearlyMzn"] ?? ""} disabled={!isRoot || code === "community" || code === "enterprise"}
+                      onChange={e => setDrafts(prev => prev ? { ...prev, [code]: { ...prev[code], [field.key]: e.target.value === "" ? null : Number(e.target.value) } } : prev)} />
+                  </label>)}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {LIMIT_FIELDS.map(field => <label className="block text-xs font-semibold text-slate-500" key={field.key}>{field.label}
+                    <input type="number" min="0" step="1" className={input + " mt-1.5"} value={(plan[field.key] as number | null) ?? ""} disabled={!isRoot || code === "community"}
+                      onChange={e => setDrafts(prev => prev ? { ...prev, [code]: { ...prev[code], [field.key]: e.target.value === "" ? null : Number(e.target.value) } } : prev)} />
+                  </label>)}
+                </div>
+                <button className={primary + " w-full"} disabled={!isRoot || busy || code === "community" || JSON.stringify(plan) === JSON.stringify(original)}
+                  onClick={() => void act(() => jsonApi("/geomoz-api/admin/plans/" + code, "PATCH", Object.fromEntries(
+                    (["enabled","monthlyMzn","yearlyMzn","projects","storageBytes","credits","seats","concurrentJobs"] as (keyof PlanConfig)[])
+                      .filter(key => plan[key] !== original?.[key]).map(key => [key, plan[key]])
+                  )), "Alterações do plano guardadas.", "plans")}>
+                  <Save size={16}/> Guardar alterações
+                </button>
+              </section>;
+            })}
+            <p className="text-xs text-slate-500 lg:col-span-2 2xl:col-span-3">Alterações de preços aplicam-se apenas a novas sessões de checkout. Planos já pagos mantêm o período contratado. Quotas de armazenamento, processos simultâneos e equipas continuam dependentes dos respectivos serviços de execução.</p>
+          </div>}
+
+          {section === "features" && <div className="grid md:grid-cols-2 gap-4">
+            {Object.entries(FEATURE_NAMES).map(([key,label]) => <section className={card + " p-5 flex items-center justify-between gap-4"} key={key}>
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-sky-50 dark:bg-sky-900/25 text-sky-600 dark:text-sky-300"><Zap size={18}/></div>
+                <div><h2 className="font-bold text-sm">{label}</h2><p className="text-xs text-slate-500 mt-1">Disponibilidade do módulo</p></div>
+              </div>
+              <button role="switch" aria-label={"Alternar " + label} aria-checked={features[key] !== false} disabled={!isRoot || busy}
+                onClick={() => { const state = features[key] !== false; if (guard((state ? "Desactivar" : "Activar") + " " + label + " para os utilizadores?")) void act(() => jsonApi("/geomoz-api/admin/features", "PATCH", { changes: { [key]: !state } }), "Estado do módulo actualizado.", "features"); }}
+                className={"relative shrink-0 w-12 h-7 rounded-full p-1 transition-colors " + (features[key] !== false ? "bg-sky-600" : "bg-slate-300 dark:bg-slate-700")}>
+                <span className={"block rounded-full bg-white h-5 w-5 shadow-sm transition-transform " + (features[key] !== false ? "translate-x-5" : "")} />
+              </button>
+            </section>)}
+            <p className="text-xs text-slate-500 md:col-span-2">Os bloqueios também são aplicados aos endpoints científicos mapeados no servidor. A protecção de motores externos e módulos independentes requer controlos específicos nos respectivos serviços.</p>
+          </div>}
+
+          {section === "payments" && <section className={card + " overflow-hidden"}>
+            <div className="overflow-x-auto"><table className="min-w-[730px] w-full text-left text-sm">
+              <thead className="bg-slate-50 dark:bg-slate-800/70 text-xs uppercase tracking-wider text-slate-500">
+                <tr><th className="px-5 py-4">Referência</th><th className="px-4 py-4">Utilizador</th><th className="px-4 py-4">Plano</th><th className="px-4 py-4">Montante</th><th className="px-4 py-4">Estado</th><th className="px-4 py-4">Data</th></tr>
+              </thead>
+              <tbody>{payments.map(payment => <tr key={payment.id} className="border-t border-slate-100 dark:border-slate-800">
+                <td className="px-5 py-3.5 font-mono text-xs">{payment.reference}</td><td className="px-4 py-3.5 text-xs break-all">{payment.uid}</td>
+                <td className="px-4 py-3.5 capitalize">{payment.plan}<div className="text-xs text-slate-500">{payment.period}</div></td>
+                <td className="px-4 py-3.5 font-bold">{formatMzn(payment.amountMzn)}</td>
+                <td className="px-4 py-3.5"><StatusTag tone={payment.status === "paid" ? "good" : payment.status === "pending" ? "warn" : "danger"}>{payment.status}</StatusTag></td>
+                <td className="px-4 py-3.5 text-xs text-slate-500">{fmtTime(payment.createdAt)}</td>
+              </tr>)}</tbody>
+            </table></div>
+            {!payments.length && <p className="p-6 text-sm text-slate-500">Não existem transacções registadas.</p>}
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500">Últimas 80 transacções PayZeno. O painel não altera estados financeiros confirmados pelo gateway.</div>
+          </section>}
+
+          {section === "audit" && <section className={card + " overflow-hidden"}>
+            <div className="overflow-x-auto"><table className="min-w-[660px] w-full text-left text-sm">
+              <thead className="bg-slate-50 dark:bg-slate-800/70 text-xs uppercase tracking-wider text-slate-500">
+                <tr><th className="px-5 py-4">Acção</th><th className="px-4 py-4">Operador</th><th className="px-4 py-4">Alvo</th><th className="px-4 py-4">Data</th></tr>
+              </thead>
+              <tbody>{audit.map(event => <tr key={event.id} className="border-t border-slate-100 dark:border-slate-800">
+                <td className="px-5 py-4"><StatusTag>{event.action}</StatusTag></td>
+                <td className="px-4 py-4"><div className="font-semibold capitalize">{event.actorRole}</div><div className="text-[11px] text-slate-500 break-all">{event.actorUid}</div></td>
+                <td className="px-4 py-4 text-xs break-all">{event.target}</td>
+                <td className="px-4 py-4 text-xs text-slate-500">{fmtTime(event.at)}</td>
+              </tr>)}</tbody>
+            </table></div>
+            {!audit.length && <p className="p-6 text-sm text-slate-500">Ainda não existem registos de operações administrativas.</p>}
+          </section>}
+        </main>
+      </div>
+
+      {selectedUser && <div role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setSelectedUser(null); }} className="fixed inset-0 bg-[#040c18]/75 backdrop-blur-sm z-50 p-4 flex justify-center items-center">
+        <section role="dialog" aria-modal="true" aria-label="Gerir utilizador" className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-6 sm:p-8">
+          <div className="flex justify-between gap-2 mb-5">
+            <div><div className="text-xs text-sky-600 dark:text-sky-300 font-extrabold uppercase tracking-widest">Gestão da conta</div><h2 className="text-xl font-bold mt-1">{selectedUser.displayName || selectedUser.email}</h2><p className="text-xs break-all text-slate-500 mt-1">{selectedUser.email} · {selectedUser.uid}</p></div>
+            <button aria-label="Fechar" onClick={() => setSelectedUser(null)}><X size={20}/></button>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-4 space-y-3">
+              <h3 className="font-bold text-sm">Estado e elegibilidade</h3>
+              <div className="flex gap-2 flex-wrap"><StatusTag tone={selectedUser.disabled ? "danger" : "good"}>{selectedUser.disabled ? "Bloqueado" : "Activo"}</StatusTag><StatusTag>{selectedUser.role}</StatusTag></div>
+              <button className={subtle + " w-full"} disabled={!canWrite || busy || selectedUser.role === "superadmin"}
+                onClick={() => { const next = !selectedUser.academicApproved; if (guard((next ? "Aprovar" : "Revogar") + " a elegibilidade Academic?")) void act(() => jsonApi("/geomoz-api/admin/users/" + encodeURIComponent(selectedUser.uid) + "/academic", "PATCH", { approved: next }), "Elegibilidade académica actualizada.", "users").then(() => setSelectedUser(null)); }}>
+                <Check size={15}/>{selectedUser.academicApproved ? "Revogar Academic" : "Aprovar Academic"}
+              </button>
+              <button className={subtle + " w-full"} disabled={!isRoot || busy || selectedUser.uid === identity.uid || selectedUser.role === "superadmin"}
+                onClick={() => { const next = !selectedUser.disabled; if (guard((next ? "Bloquear" : "Reactivar") + " esta conta?")) void act(() => jsonApi("/geomoz-api/admin/users/" + encodeURIComponent(selectedUser.uid) + "/status", "PATCH", { disabled: next }), "Estado da conta actualizado.", "users").then(() => setSelectedUser(null)); }}>
+                {selectedUser.disabled ? <ShieldCheck size={15}/> : <ShieldAlert size={15}/>}
+                {selectedUser.disabled ? "Reactivar conta" : "Bloquear conta"}
+              </button>
+              <label className="block text-xs font-semibold">Perfil administrativo
+                <select className={input + " mt-2"} disabled={!isRoot || busy || selectedUser.role === "superadmin" || selectedUser.uid === identity.uid} value={selectedUser.role === "superadmin" ? "superadmin" : selectedUser.role}
+                  onChange={e => { const role = e.target.value; if (guard("Alterar o perfil para " + role + "? O utilizador terá de iniciar sessão novamente.")) void act(() => jsonApi("/geomoz-api/admin/users/" + encodeURIComponent(selectedUser.uid) + "/role", "PATCH", {role}), "Perfil actualizado.", "users").then(() => setSelectedUser(null)); }}>
+                  {selectedUser.role === "superadmin" && <option value="superadmin">Superadmin (externo)</option>}
+                  <option value="user">Utilizador</option><option value="support">Suporte (leitura)</option><option value="admin">Administrador</option>
+                </select>
+              </label>
+            </div>
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-4 space-y-3">
+              <h3 className="font-bold text-sm">Acesso manual ao plano</h3>
+              <label className="block text-xs font-semibold">Plano
+                <select className={input + " mt-2"} value={grantPlan} disabled={!isRoot} onChange={e => setGrantPlan(e.target.value as PlanId)}>
+                  {PLAN_ORDER.map(plan => <option key={plan} value={plan}>{plan}</option>)}
+                </select>
+              </label>
+              {grantPlan !== "community" && <label className="block text-xs font-semibold">Data final da subscrição
+                <input className={input + " mt-2"} type="date" value={grantThrough} onChange={e => setGrantThrough(e.target.value)} disabled={!isRoot} />
+              </label>}
+              <label className="block text-xs font-semibold">Justificação administrativa
+                <textarea className={input + " mt-2 min-h-20"} maxLength={300} value={grantReason} onChange={e => setGrantReason(e.target.value)} placeholder="Motivo da concessão, contrato ou correcção" disabled={!isRoot}/>
+              </label>
+              <button className={primary + " w-full"} disabled={!isRoot || busy || selectedUser.role === "superadmin" || grantReason.trim().length < 5 || (grantPlan !== "community" && !grantThrough)}
+                onClick={() => { if (guard("Atribuir manualmente o plano " + grantPlan + " à conta seleccionada? Esta acção fica auditada.")) void act(() => jsonApi("/geomoz-api/admin/users/" + encodeURIComponent(selectedUser.uid) + "/plan", "PATCH", { plan:grantPlan, through: grantPlan === "community" ? null : grantThrough, reason: grantReason.trim() }), "Plano atribuído.", "users").then(() => setSelectedUser(null)); }}>
+                <Save size={15}/> Atribuir plano
+              </button>
+              <p className="text-[11px] text-slate-500">As concessões manuais não geram um pagamento PayZeno nem um recibo.</p>
+            </div>
+          </div>
+        </section>
+      </div>}
+    </div>
+  );
+}

@@ -66,6 +66,15 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   } = useGeeAuth();
   const { projects } = useProject();
   const subscription = useSubscription();
+  const [adminAccess, setAdminAccess] = React.useState(false);
+  React.useEffect(() => {
+    if (!open || !user || user.uid === "guest_user") { setAdminAccess(false); return; }
+    let active = true;
+    apiFetch("/geomoz-api/admin/me")
+      .then(response => { if (active) setAdminAccess(response.ok); })
+      .catch(() => { if (active) setAdminAccess(false); });
+    return () => { active = false; };
+  }, [open, user?.uid]);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("gee");
   const [projectIdInput, setProjectIdInput] = useState(
@@ -323,6 +332,9 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
               <CreditCard size={14} />
               <span>Plano e subscrição</span>
             </button>
+            {adminAccess && <a href="/administracao" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-sky-300 hover:bg-white/10 shrink-0">
+              <ShieldCheck size={14} /> Administração GeoMoz
+            </a>}
           </div>
         </div>
 
