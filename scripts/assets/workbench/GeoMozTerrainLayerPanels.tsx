@@ -20,13 +20,14 @@ interface CatalogueProps {
   onFromProject:(id:string)=>void;
   onImport:(file:File)=>void;
   onWorldCover:()=>void;
+  translate?:(text:string)=>string;
 }
 function copyLayer(l:TerrainOverlay,patch:Partial<TerrainOverlay>):TerrainOverlay {
   return {...l,...patch};
 }
 export function GeoMozTerrainLayerCatalogue({
   layers,selectedId,projectVectors,busy,loadingGEE,onSelect,onChange,
-  onFromProject,onImport,onWorldCover
+  onFromProject,onImport,onWorldCover,translate=t=>t
 }:CatalogueProps){
   const [sourceOpen,setSourceOpen]=useState(false);
   const [projectSource,setProjectSource]=useState("");
@@ -40,20 +41,19 @@ export function GeoMozTerrainLayerCatalogue({
   };
   return <aside className="gm-terrain-layer-catalog" data-testid="geomoz-3d-layer-catalog">
     <div className="gm-terrain-panel-head">
-      <span><Layers3 size={16}/> Camadas do terreno</span>
+      <span><Layers3 size={16}/> {translate("Camadas do terreno")}</span>
       <span className="gm-terrain-count">{layers.length}</span>
     </div>
     <p className="gm-terrain-panel-intro">
-      Sobreponha geologia, solos e cobertura do solo. Todas as camadas são recortadas
-      automaticamente aos limites do DEM, sem alterar os dados de origem.
+      {translate("Sobreponha geologia, solos e cobertura do solo. As camadas são recortadas aos limites do DEM.")}
     </p>
     <button className="gm-terrain-accent-btn" type="button" onClick={()=>setSourceOpen(x=>!x)}
       aria-expanded={sourceOpen} aria-controls="geomoz-terrain-add-sources">
-      <Plus size={15}/> Adicionar camada
+      <Plus size={15}/> {translate("Adicionar camada")}
     </button>
     {sourceOpen&&<div className="gm-terrain-source-picker" id="geomoz-terrain-add-sources">
       <label className="gm-terrain-upload">
-        <FileUp size={16}/> Importar GeoJSON / GeoTIFF
+        <FileUp size={16}/> {translate("Importar GeoJSON / GeoTIFF")}
         <input type="file" accept=".geojson,.json,.tif,.tiff,application/geo+json"
           aria-label="Carregar camada GeoJSON ou GeoTIFF para o terreno 3D"
           disabled={busy}
@@ -65,7 +65,7 @@ export function GeoMozTerrainLayerCatalogue({
       <div className="gm-terrain-import-row">
         <select value={projectSource} aria-label="Camada vectorial do projecto"
           onChange={e=>setProjectSource(e.target.value)}>
-          <option value="">Camada já existente no projecto…</option>
+          <option value="">{translate("Camada existente no projecto…")}</option>
           {projectVectors.map(l=><option value={l.id} key={l.id}>{l.name}</option>)}
         </select>
         <button type="button" disabled={!projectSource||busy}
@@ -76,18 +76,17 @@ export function GeoMozTerrainLayerCatalogue({
         data-testid="geomoz-3d-worldcover"
         onClick={onWorldCover}>
         {loadingGEE?<span className="gm-terrain-spin">◌</span>:<CloudDownload size={15}/>}
-        {loadingGEE?"A consultar Earth Engine…":"ESA WorldCover 2021 · GEE"}
+        {translate(loadingGEE?"A consultar Earth Engine…":"ESA WorldCover 2021 · GEE")}
       </button>
       <p className="gm-terrain-source-note">
-        WorldCover representa cobertura do solo em 2021, não o cadastro nem o uso actual.
-        Requer uma sessão Google Earth Engine válida.
+        {translate("WorldCover representa cobertura do solo em 2021, não o uso actual. Requer GEE autenticado.")}
       </p>
     </div>}
-    <div className="gm-terrain-stack-title">Ordem de sobreposição <small>Base → topo</small></div>
+    <div className="gm-terrain-stack-title">{translate("Ordem de sobreposição")} <small>{translate("Base → topo")}</small></div>
     {layers.length===0?<div className="gm-terrain-layer-empty">
       <Layers3 size={20}/>
-      <strong>Sem camadas temáticas</strong>
-      <span>Adicione um mapa geológico, solos ou WorldCover para o visualizar no relevo.</span>
+      <strong>{translate("Sem camadas temáticas")}</strong>
+      <span>{translate("Adicione geologia, solos ou WorldCover para visualizar no relevo.")}</span>
     </div>:<div className="gm-terrain-layer-list">
       {layers.map((layer,i)=><div key={layer.id}
         className={"gm-terrain-layer-row"+(layer.id===selectedId?" is-selected":"")}
@@ -118,8 +117,8 @@ export function GeoMozTerrainLayerCatalogue({
       </div>)}
     </div>}
     <div className="gm-terrain-layer-footer">
-      <span className="gm-terrain-legend-dot"/> DEM original preservado
-      <small>Georreferenciação em {layers.length?"camadas locais/GEE":"espera"}</small>
+      <span className="gm-terrain-legend-dot"/> {translate("DEM original preservado")}
+      <small>{translate("Camadas 3D")} · {layers.length}</small>
     </div>
   </aside>;
 }
@@ -127,11 +126,12 @@ export function GeoMozTerrainLayerCatalogue({
 interface StyleProps {
   layer:TerrainOverlay|null;
   onChange:(layer:TerrainOverlay)=>void;
+  translate?:(text:string)=>string;
 }
-export function GeoMozTerrainLayerSymbology({layer,onChange}:StyleProps){
+export function GeoMozTerrainLayerSymbology({layer,onChange,translate:t=s=>s}:StyleProps){
   if(!layer)return <div className="gm-terrain-inspector-placeholder">
-    <Palette size={22}/><strong>Seleccione uma camada</strong>
-    <span>Aqui pode definir classificação, cores, visibilidade e transparência.</span>
+    <Palette size={22}/><strong>{t("Seleccione uma camada")}</strong>
+    <span>{t("Defina classificação, cores, visibilidade e transparência.")}</span>
   </div>;
   const patch=(props:Partial<TerrainOverlay>)=>onChange({...layer,...props});
   const updateCategory=(value:string,changes:Partial<TerrainCategory>)=>
@@ -140,20 +140,20 @@ export function GeoMozTerrainLayerSymbology({layer,onChange}:StyleProps){
   return <div className="gm-terrain-symbols" data-testid="geomoz-3d-symbology">
     <strong className="gm-terrain-inspector-layer-name">{layer.name}</strong>
     <p className="gm-terrain-panel-intro">
-      As alterações são aplicadas directamente à superfície 3D, mantendo a escala métrica.
+      {t("As alterações são aplicadas à superfície 3D, mantendo a escala métrica.")}
     </p>
     <label className="gm-terrain-field">
-      <span>Simbologia</span>
+      <span>{t("Simbologia")}</span>
       <select value={layer.renderStyle} aria-label="Tipo de simbologia 3D"
         onChange={event=>patch({renderStyle:event.target.value as TerrainOverlay["renderStyle"]})}>
         <option value="categorized" disabled={layer.kind==="imagery"||!layer.categories.length}>
-          Categorizada por atributo/classe
+          {t("Categorizada por atributo/classe")}
         </option>
-        <option value="single">Cor única</option>
+        <option value="single">{t("Cor única")}</option>
       </select>
     </label>
     {layer.kind==="vector"&&fields.length>0&&layer.renderStyle==="categorized"&&
-      <label className="gm-terrain-field"><span>Atributo de categorização</span>
+      <label className="gm-terrain-field"><span>{t("Atributo de categorização")}</span>
       <select value={layer.field??""} aria-label="Campo de classificação"
         onChange={event=>{
           if(!layer.data)return;
@@ -165,21 +165,21 @@ export function GeoMozTerrainLayerSymbology({layer,onChange}:StyleProps){
     {layer.kind!=="imagery"&&layer.renderStyle==="single"&&
       <label className="gm-terrain-colour-item">
         <input type="color" aria-label="Cor única" value={layer.singleColor}
-          onChange={e=>patch({singleColor:e.target.value})}/> Cor da camada
+          onChange={e=>patch({singleColor:e.target.value})}/> {t("Cor da camada")}
       </label>}
     <label className="gm-terrain-field">
-      <span>Transparência · {Math.round((1-layer.opacity)*100)}%</span>
+      <span>{t("Transparência")} · {Math.round((1-layer.opacity)*100)}%</span>
       <input type="range" min="0" max="100" step="5"
         aria-label="Transparência da camada 3D" value={Math.round((1-layer.opacity)*100)}
         onChange={e=>patch({opacity:1-Number(e.target.value)/100})}/>
     </label>
     <label className="gm-terrain-checkbox">
       <input type="checkbox" checked={layer.visible} onChange={e=>patch({visible:e.target.checked})}/>
-      Camada visível
+      {t("Camada visível")}
     </label>
     {layer.renderStyle==="categorized"&&layer.categories.length>0&&
       <div className="gm-terrain-class-list">
-        <strong>Legenda · {layer.categories.length} classes</strong>
+        <strong>{t("Legenda")} · {layer.categories.length} {t("classes")}</strong>
         {layer.categories.map(item=><div className="gm-terrain-category" key={item.value}>
           <input type="checkbox" aria-label={"Mostrar classe "+item.label}
             checked={item.enabled} onChange={e=>updateCategory(item.value,{enabled:e.target.checked})}/>
@@ -191,7 +191,7 @@ export function GeoMozTerrainLayerSymbology({layer,onChange}:StyleProps){
       </div>}
     {layer.credit&&<p className="gm-terrain-attribution">{layer.credit}</p>}
     <div className="gm-terrain-clip-banner"><Check size={14}/>
-      <span>Recorte visual automático ao modelo DEM. O ficheiro original não é alterado.</span>
+      <span>{t("Recorte visual automático ao DEM. O ficheiro original não é alterado.")}</span>
     </div>
   </div>;
 }
