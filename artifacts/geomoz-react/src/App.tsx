@@ -1,10 +1,12 @@
-import React, { Component, type ReactNode, type ErrorInfo } from "react";
+import React, { Component, useEffect, useState, type ReactNode, type ErrorInfo } from "react";
 import "@/styles/geomoz-system.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Switch, Route } from "wouter";
 import { Toaster } from "@/components/ui/toaster";
 import LandingPage from "@/pages/LandingPage";
 import PricingPage from "@/pages/PricingPage";
+import { apiFetch } from "@/lib/api";
+const AdminConsole = React.lazy(() => import("@/pages/AdminConsole"));
 import { PrivacyPolicy, TermsOfService } from "@/pages/LegalPages";
 import Explorer from "@/pages/Explorer";
 import HidroWebGisViewer from "@/pages/HidroWebGisViewer";
@@ -125,6 +127,27 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function FeatureRoute({ feature, children }: { feature: string; children: ReactNode }) {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  useEffect(() => {
+    let current = true;
+    apiFetch("/geomoz-api/billing/catalog")
+      .then(async response => response.ok ? response.json() : null)
+      .then(data => { if (current) setEnabled(data?.features?.[feature] === true); })
+      .catch(() => { if (current) setEnabled(false); });
+    return () => { current = false; };
+  }, [feature]);
+  if (enabled === null) return <div className="min-h-screen grid place-items-center text-slate-500">A verificar a disponibilidade do módulo...</div>;
+  if (!enabled) return <div className="min-h-screen grid place-items-center p-5 bg-slate-950 text-slate-100">
+    <div className="max-w-md text-center rounded-2xl border border-slate-700 p-8">
+      <h1 className="font-bold text-xl">Módulo temporariamente indisponível</h1>
+      <p className="text-slate-400 text-sm mt-3">A administração do GeoMoz desactivou este módulo.</p>
+      <a href="/dashboard" className="inline-block text-sky-300 mt-5">Voltar ao painel</a>
+    </div>
+  </div>;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -140,19 +163,20 @@ export default function App() {
                 <Route path="/auth/workspace-check">{() => <WorkspaceAuthBridge />}</Route>
                 <Route path="/register">{() => <LandingPage initialAuthMode="register" />}</Route>
                 <Route path="/planos">{() => <PricingPage />}</Route>
+                <Route path="/administracao">{() => <ProtectedRoute><React.Suspense fallback={<div className="min-h-screen grid place-items-center">A abrir administração GeoMoz...</div>}><AdminConsole /></React.Suspense></ProtectedRoute>}</Route>
                 <Route path="/view/hidro">{() => <HidroWebGisViewer />}</Route>
                 <Route path="/share/hidro/:id">{(params) => <HidroWebGisViewer id={params.id} />}</Route>
                 <Route path="/app">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/explorer">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/mapa">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/estatisticas">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-                <Route path="/analises">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-                <Route path="/terreno-3d">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-                <Route path="/hidrografia">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-                <Route path="/agua-subterranea">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+                <Route path="/analises">{() => <ProtectedRoute><FeatureRoute feature="remote_sensing"><Explorer /></FeatureRoute></ProtectedRoute>}</Route>
+                <Route path="/terreno-3d">{() => <ProtectedRoute><FeatureRoute feature="terrain_3d"><Explorer /></FeatureRoute></ProtectedRoute>}</Route>
+                <Route path="/hidrografia">{() => <ProtectedRoute><FeatureRoute feature="hydrology"><Explorer /></FeatureRoute></ProtectedRoute>}</Route>
+                <Route path="/agua-subterranea">{() => <ProtectedRoute><FeatureRoute feature="hydrology"><Explorer /></FeatureRoute></ProtectedRoute>}</Route>
                 <Route path="/geoperigos">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/geoprocessamento">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
-                <Route path="/geomoz-ai">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
+                <Route path="/geomoz-ai">{() => <ProtectedRoute><FeatureRoute feature="geo_ai"><Explorer /></FeatureRoute></ProtectedRoute>}</Route>
                 <Route path="/dashboard">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/exportar">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 {/* Fallback to Explorer protected for any other direct link */}
