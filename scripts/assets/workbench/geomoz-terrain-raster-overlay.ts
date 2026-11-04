@@ -79,12 +79,11 @@ export async function createTerrainRasterDrape(
     const canvas=document.createElement("canvas");canvas.width=SIZE;canvas.height=SIZE;
     const ctx=canvas.getContext("2d");if(!ctx)throw Error("Canvas raster indisponível.");
     const frame=ctx.createImageData(SIZE,SIZE);
-    const types:number[] = [], classifiedValues=new Set<number>();
+    const classifiedValues=new Set<number>();
     let covered=0;
     const pixels:{pos:number;value:number}[]=[];
     const convert=(terrain.crs===sourceCrs)?([x,y]:[number,number])=>[x,y]:
       (p:[number,number])=>proj4(terrain.crs,sourceCrs,p) as [number,number];
-    const spread=channels[0];
     const idx=(col:number,row:number)=>row*n+col;
     for(let row=0;row<SIZE;row++)for(let col=0;col<SIZE;col++){
       const x=left+(col+0.5)/SIZE*(right-left);
