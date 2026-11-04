@@ -25,6 +25,18 @@ describe("GeoMoz portal catalogs", () => {
     expect(portalText("fr", "sidebar.settings")).toBe("Paramètres");
   });
 
+  it("localizes dashboard project metadata, report metrics, basemap choices, billing and storage", () => {
+    expect(portalText("en", "dashboard.aoiLabel")).toBe("Study area:");
+    expect(portalText("es", "dashboard.calculateIndices")).toBe("Calcular índices");
+    expect(portalText("fr", "dashboard.category.water")).toBe("Ressources en eau et aquifères");
+    expect(portalText("en", "dashboard.mean")).toBe("Mean");
+    expect(portalText("en", "dashboard.tag.ai")).toBe("Intelligent agent");
+    expect(portalText("en", "settings.basemapHybrid")).toContain("satellite and roads");
+    expect(portalText("fr", "settings.storageSummary")).toBe("Résumé du stockage Firestore");
+    expect(portalText("es", "settings.plansAndPayments")).toBe("Ver planes y pagos");
+    expect(portalText("en", "settings.renewalHint")).not.toContain("PayZeno");
+  });
+
   it("preserves all 21 GeoLibre locales without misrepresenting the selected one", () => {
     const languages = GEOLIBRE_LANGUAGE_OPTIONS.map(option => option.code);
     expect(languages.length).toBe(21);
