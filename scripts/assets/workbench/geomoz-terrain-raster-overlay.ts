@@ -82,7 +82,8 @@ export async function importTerrainRasterOverlay(
       lows.push(values[Math.floor(values.length*.02)]??0);
       highs.push(values[Math.floor(values.length*.98)]??255);
     }
-    const isByte=image.getFileDirectory().BitsPerSample?.[0]===8;
+    const directory=image.getFileDirectory() as unknown as {BitsPerSample?:number[]};
+    const isByte=directory.BitsPerSample?.[0]===8;
     for(let i=0;i<pixelData.length;i++){
       const [cx,cy]=positions[i];
       if(cx<0)continue;
