@@ -13,7 +13,7 @@ import type { FeatureCollection } from "geojson";
 import { terrainRasterLayerOptions } from "../../lib/terrain-raster-layer";
 import {
   ArrowLeft, Layers3, Loader2, Mountain, RotateCcw,
-  Download, Image as ImageIcon, X, Palette, BarChart3, Settings2, FileArchive, ZoomIn, Layers,
+  Download, Image as ImageIcon, X, Palette, BarChart3, Settings2, FileArchive, Layers,
 } from "lucide-react";
 import {
   createTerrainRenderer, type TerrainMeshData, type TerrainVisualStyle, type TerrainPick,
