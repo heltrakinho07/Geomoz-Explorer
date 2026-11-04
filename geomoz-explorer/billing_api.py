@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field, EmailStr
 
 from billing_core import PLANS, current_plan, monthly_cycle, period_end, public_catalogue, remaining_credits, utcnow
-from api import require_firebase_auth
+from billing_auth import require_billing_auth
 
 router = APIRouter(prefix="/geomoz-api/billing", tags=["billing"])
 
@@ -108,7 +108,7 @@ def list_plans():
 
 
 @router.get("/me")
-def current_subscription(uid: str = Depends(require_firebase_auth)):
+def current_subscription(uid: str = Depends(require_billing_auth)):
     account = _account(uid)
     plan_id = current_plan(account)
     tier = PLANS[plan_id]
@@ -173,7 +173,7 @@ def _stripe_checkout(order_id: str, plan: str, amount_mzn: int) -> tuple[str, st
 
 
 @router.post("/checkout")
-def checkout(body: CheckoutRequest, uid: str = Depends(require_firebase_auth)):
+def checkout(body: CheckoutRequest, uid: str = Depends(require_billing_auth)):
     account = _account(uid)
     if body.plan == "academic" and not account.get("academic_verified"):
         raise HTTPException(403, "Solicite a validação académica antes de aderir ao Academic.")
@@ -288,7 +288,7 @@ class AcademicRequest(BaseModel):
 
 
 @router.post("/academic-request")
-def academic_request(body: AcademicRequest, uid: str = Depends(require_firebase_auth)):
+def academic_request(body: AcademicRequest, uid: str = Depends(require_billing_auth)):
     db = _db()
     db.collection("billing_academic_requests").document(uid).set({
         "uid": uid, "institution": body.institution.strip(),
@@ -304,7 +304,7 @@ class AcademicDecision(BaseModel):
 
 
 @router.post("/admin/academic/{target_uid}")
-def review_academic(target_uid: str, body: AcademicDecision, uid: str = Depends(require_firebase_auth)):
+def review_academic(target_uid: str, body: AcademicDecision, uid: str = Depends(require_billing_auth)):
     _require_admin(uid)
     db = _db()
     db.collection("billing_accounts").document(target_uid).set({
@@ -323,7 +323,7 @@ class EnterpriseRequest(BaseModel):
 
 
 @router.post("/enterprise-request")
-def enterprise_request(body: EnterpriseRequest, uid: str = Depends(require_firebase_auth)):
+def enterprise_request(body: EnterpriseRequest, uid: str = Depends(require_billing_auth)):
     ref = _db().collection("billing_enterprise_requests").document()
     ref.set({**body.model_dump(), "uid": uid, "status": "pending", "created_at": _iso_now()})
     return {"status": "pending", "request_id": ref.id}
