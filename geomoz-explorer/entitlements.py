@@ -6,7 +6,6 @@ the user's own OAuth credentials are NOT billed with GeoMoz credits.
 import os
 import re
 import time
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 
