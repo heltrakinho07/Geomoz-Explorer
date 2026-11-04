@@ -41,6 +41,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   const [rendererError, setRendererError] = useState<string | null>(null);
   const [exaggeration, setExaggeration] = useState(2);
   const [style, setStyle] = useState<TerrainVisualStyle>("hypsometric");
+  const [detailLevel, setDetailLevel] = useState<"auto"|"full"|"medium"|"low">("auto");
   const [textureUrl, setTextureUrl] = useState<string | null>(null);
   const [pickTarget,setPickTarget]=useState<"A"|"B"|null>(null);
   const [picked,setPicked]=useState<Partial<Record<"A"|"B",TerrainPick>>>({});
@@ -67,6 +68,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   useEffect(()=>{
     setPickTarget(null);setPicked({});setLastPick(null);
     textureRequestId.current += 1;
+    setTextureBusy(false);
     setTextureUrl(null);
     setTextureDescription(null);
   },[terrain]);
@@ -90,7 +92,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
     setRendererError(null);
     try {
       return createTerrainRenderer(canvasRef.current, terrain, {
-        exaggeration, style, textureUrl,
+        exaggeration, style, textureUrl, detailLevel,
         pickEnabled:!!pickTarget,onPick:selectTerrainPoint,
         profileOverlay:picked.A&&picked.B?{
           start:[picked.A.xMeters,picked.A.yMeters],
@@ -101,7 +103,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
       setRendererError(cause instanceof Error ? cause.message : String(cause));
       return undefined;
     }
-  }, [open, terrain, exaggeration, style, textureUrl, pickTarget, picked]);
+  }, [open, terrain, exaggeration, style, textureUrl, pickTarget, picked, detailLevel]);
 
   async function loadGeoTiff(file: File | undefined) {
     if (!file) return;
@@ -508,6 +510,21 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
                 {textureDescription}
               </p>}
             </div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
+              Nível de detalhe (LOD)
+              <select value={detailLevel} aria-label="Nível de detalhe do terreno 3D"
+                onChange={event => setDetailLevel(event.target.value as typeof detailLevel)}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-xs text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                <option value="auto">Automático com o zoom</option>
+                <option value="full">Detalhe máximo · grelha completa</option>
+                <option value="medium">Desempenho equilibrado · LOD 2</option>
+                <option value="low">Máximo desempenho · LOD 4</option>
+              </select>
+            </label>
+            <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-300">
+              O LOD ajusta os triângulos desenhados sem alterar o DEM original, os perfis
+              científicos ou os pixels sem dados. DEM extensos ainda requerem recorte.
+            </p>
             <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-600/50 dark:bg-emerald-950/20 p-2.5 text-xs text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 ${!terrain || textureBusy ? "pointer-events-none opacity-50" : ""}`}>
               {textureBusy ? <Loader2 size={14} className="animate-spin"/> : <ImageIcon size={14}/>}
               {textureBusy ? "A alinhar textura RGB..." : "GeoTIFF RGB georreferenciado"}
