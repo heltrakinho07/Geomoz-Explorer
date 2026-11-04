@@ -18,6 +18,7 @@ import {
   ArrowRight,
   ExternalLink,
   Layers,
+  Cloud,
   Sparkles,
   MapPin,
   Activity,
@@ -149,13 +150,13 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
       hero: {
         badge: "Copernicus DEM 30m • Google Earth Engine • GeoMoz AI",
         badgeNew: "AVANÇADO",
-        titlePre: "Inteligência Geoespacial, Deteção Remota e ",
-        titleHighlight: "Morfometria Planetária 3D",
+        titlePre: "Inteligência Geoespacial com Deteção Remota, ",
+        titleHighlight: "Relevo 3D e IA",
         subtitle:
-          "A plataforma analítica definitiva que une o processamento em nuvem do Google Earth Engine, modelos de terreno Copernicus 30m em tempo real, hidrologia multicritério e inteligência artificial preditiva. De Moçambique para qualquer coordenada do globo, 100% no seu navegador.",
-        ctaPrimary: "Lançar Plataforma",
+          "Explore dados de satélite, modelos digitais de terreno e análises territoriais num único ambiente. Combine Google Earth Engine, cartografia, hidrologia e GeoMoz AI para transformar informação geoespacial em decisões fundamentadas.",
+        ctaPrimary: "Explorar plataforma",
         ctaSecondary: "Criar Conta Gratuita",
-        ctaExplore: "Ver Recursos Analíticos",
+        ctaExplore: "Ver como funciona",
         hudBadge: "Motor Digital WebGL 3D • Copernicus GLO-30",
         hudLocation: "Monte Namúli, Zambézia • 15.3667° S, 37.0333° E",
         elevation: "Elevação Real",
@@ -341,13 +342,13 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
       hero: {
         badge: "Copernicus DEM 30m • Google Earth Engine • GeoMoz AI",
         badgeNew: "ADVANCED",
-        titlePre: "Geospatial Intelligence, Remote Sensing & ",
-        titleHighlight: "3D Planetary Morphometry",
+        titlePre: "Geospatial intelligence with remote sensing, ",
+        titleHighlight: "3D terrain and AI",
         subtitle:
-          "The definitive analytical platform merging Google Earth Engine cloud computation, real-time Copernicus 30m digital terrain models, multi-criteria hydrogeology, and predictive artificial intelligence. From Mozambique to any coordinate on the planet, 100% in your browser.",
-        ctaPrimary: "Launch Platform",
+          "Explore satellite data, digital terrain models and territorial analysis in one workspace. Combine Google Earth Engine, mapping, hydrology and GeoMoz AI to turn geospatial information into informed decisions.",
+        ctaPrimary: "Explore platform",
         ctaSecondary: "Create Free Account",
-        ctaExplore: "View Analytical Features",
+        ctaExplore: "See how it works",
         hudBadge: "3D WebGL Digital Engine • Copernicus GLO-30",
         hudLocation: "Mount Namúli, Zambézia • 15.3667° S, 37.0333° E",
         elevation: "True Elevation",
@@ -919,7 +920,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
           </div>
 
           {/* Main Headline */}
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight max-w-5xl leading-[1.15] mb-6">
+          <h1 className="max-w-5xl text-3xl font-black tracking-tight leading-[1.12] sm:text-5xl lg:text-[3.65rem] mb-6">
             {t.hero.titlePre}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-600 via-indigo-600 to-purple-600 dark:from-sky-400 dark:via-indigo-300 dark:to-purple-400">
               {t.hero.titleHighlight}
@@ -936,7 +937,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
           </p>
 
           {/* Action CTAs */}
-          <div className="flex flex-col sm:flex-row items-center gap-3.5 mb-12 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row items-center gap-3.5 mb-7 w-full sm:w-auto">
             <Button
               size="lg"
               onClick={handleLaunchApp}
@@ -951,7 +952,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
               size="lg"
               variant="ghost"
               onClick={() => {
-                const el = document.getElementById("recursos");
+                const el = document.getElementById("visao-geral");
                 el?.scrollIntoView({ behavior: "smooth" });
               }}
               className={`w-full sm:w-auto text-sm font-semibold h-auto py-3 px-4 ${
@@ -963,8 +964,9 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
             </Button>
           </div>
 
-          {/* ── Realistic Interactive 3D Terrain & Telemetry Canvas Frame ──────────── */}
+          {/* ── Product preview: illustrative metrics, not a live API connection ── */}
           <div
+            id="visao-geral"
             className={`w-full max-w-5xl rounded-2xl p-2 md:p-3 border shadow-2xl relative overflow-hidden group transition-colors ${
               isDark
                 ? "bg-gradient-to-b from-slate-800 via-slate-900 to-slate-950 border-slate-800 shadow-sky-950/40"
@@ -990,7 +992,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
               <div className="flex items-center gap-2 text-[10px]">
                 <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 font-mono font-bold">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Copernicus GLO-30 Active
+                  {lang === "pt" ? "Pré-visualização ilustrativa" : "Illustrative preview"}
                 </span>
               </div>
             </div>
