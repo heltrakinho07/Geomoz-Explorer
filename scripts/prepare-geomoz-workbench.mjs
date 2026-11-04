@@ -185,6 +185,9 @@ write("lib/geomoz-terrain-analysis.ts",
 write("lib/geomoz-terrain-scene.ts",
   readFileSync(new URL("../artifacts/geomoz-react/src/lib/terrain-scene.ts",import.meta.url),"utf8")
     .replace('"./terrain-webgl"','"./geomoz-terrain-webgl"'));
+write("lib/geomoz-terrain-glb.ts",
+  readFileSync(new URL("../artifacts/geomoz-react/src/lib/terrain-glb.ts",import.meta.url),"utf8")
+    .replace('"./terrain-webgl"','"./geomoz-terrain-webgl"'));
 write("components/geomoz/GeoMozTerrainSciencePanel.tsx",
   readFileSync(new URL("../artifacts/geomoz-react/src/components/TerrainSciencePanel.tsx",import.meta.url),"utf8")
     .replace('"@/lib/terrain-webgl"','"../../lib/geomoz-terrain-webgl"')
