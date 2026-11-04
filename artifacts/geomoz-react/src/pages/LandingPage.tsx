@@ -784,19 +784,6 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
               {isDark ? <Sun size={16} /> : <Moon size={16} />}
             </button>
 
-            {/* PWA Install Button in Desktop Navbar */}
-            {!isStandalone && canInstall && (
-              <button
-                type="button"
-                onClick={promptInstall}
-                title={lang === "pt" ? "Instalar GeoMoz Explorer no Computador / Telemóvel" : "Install GeoMoz Explorer App"}
-                className="hidden sm:flex h-9 px-2.5 rounded-xl border border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 text-xs font-bold items-center gap-1.5 hover:bg-sky-100 dark:hover:bg-sky-900/60 transition-all shadow-xs cursor-pointer"
-              >
-                <Download size={14} className="text-sky-500" />
-                <span>{lang === "pt" ? "Instalar App" : "Install App"}</span>
-              </button>
-            )}
-
             {/* Auth / Account Buttons */}
             {user ? (
               <div className="flex items-center gap-2">
