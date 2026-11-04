@@ -20,6 +20,19 @@ export default function PricingPage(){
   const [annual,setAnnual]=useState(false);
   const [working,setWorking]=useState<PlanId|null>(null);
   const [notice,setNotice]=useState("");
+  async function manageSubscription(){
+    setNotice("");
+    try{
+      if(!user || user.uid==="guest_user")throw new Error("Inicie sessão para gerir a subscrição.");
+      const token=await getIdToken();
+      if(!token)throw new Error("Sessão não autenticada.");
+      const response=await apiFetch("/geomoz-api/billing/portal",{method:"POST",headers:{"Authorization":`Bearer ${token}`}});
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.detail||"Não foi possível abrir o portal.");
+      if(typeof result.url!=="string" || !result.url.startsWith("https://"))throw new Error("URL inválido.");
+      window.location.assign(result.url);
+    }catch(e:any){setNotice(e.message||"Erro ao abrir o portal.");}
+  }
   async function checkout(plan:PlanId){
     setNotice("");
     if(!user || user.uid==="guest_user"){navigate("/login");return;}
@@ -59,6 +72,7 @@ export default function PricingPage(){
         <span className={annual?"font-bold text-sm":"text-sm text-slate-500"}>Anual <span className="text-emerald-600 text-xs">2 meses grátis</span></span>
       </div>
       {notice&&<div role="alert" className="max-w-2xl mx-auto mb-6 border border-amber-300 bg-amber-50 text-amber-950 rounded-xl p-4 text-sm">{notice}</div>}
+      {!billing.loading && billing.plan!=="community" && <div className="mb-6 text-center"><button onClick={manageSubscription} className="text-sm font-semibold underline underline-offset-4 text-sky-600">Gerir pagamento, facturas e cancelamento</button></div>}
       {billing.error&&<p className="text-center text-amber-700 text-sm mb-4">Não foi possível confirmar o plano actual. É apresentado o acesso Community por segurança.</p>}
       <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-4">
         {PLAN_ORDER.map(id=>{const p=PLANS[id], current=billing.plan===id;return <section key={id} className={`rounded-2xl border flex flex-col p-5 shadow-sm ${id==="pro"?"border-sky-500 ring-2 ring-sky-200 dark:ring-sky-800 bg-white dark:bg-slate-900":"border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"}`}>
