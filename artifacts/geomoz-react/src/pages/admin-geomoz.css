@@ -1,0 +1,142 @@
+/*
+ * GeoMoz Administration — shared Explorer brand and dashboard glass surfaces.
+ * Reuses dashboard-glass.css; local rules cover only administrator screens.
+ * Does not recolour map canvases, scientific plots or raster styles.
+ */
+.gm-admin {
+  --gm-admin-accent: var(--geomoz-accent, #0284c7);
+  font-family: var(--app-font-sans, ui-sans-serif, system-ui, sans-serif);
+  min-width: 0;
+  overflow-x: clip;
+}
+.gm-admin-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+}
+.gm-admin-sidebar {
+  position: relative;
+  z-index: 10;
+  min-width: 0;
+  box-shadow: 9px 0 30px -28px rgba(15,23,42,.2);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
+}
+.dark .gm-admin-sidebar {
+  box-shadow: 8px 0 36px -26px rgba(0,0,0,.8);
+}
+.gm-admin-sidebar__brand {
+  min-height: 74px;
+}
+.gm-admin-sidebar__identity {
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.gm-admin-nav__item {
+  min-height: 54px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.gm-admin-nav__item[aria-current="page"] {
+  border-color: rgba(186,230,253,.3);
+}
+.gm-admin-nav__item:not([aria-current="page"]):hover {
+  border-color: rgba(148,163,184,.14);
+}
+.gm-admin-hero {
+  border-radius: 23px;
+  box-shadow: 0 22px 40px -30px rgba(3, 37, 65, .7);
+}
+.gm-admin-panel {
+  overflow: hidden;
+  transition: border-color .18s, box-shadow .18s;
+}
+.gm-admin-panel:hover {
+  border-color: rgba(14,165,233,.3);
+}
+.dark .gm-admin-panel:hover {
+  border-color: rgba(56,189,248,.28);
+}
+.gm-admin-kpi {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.gm-admin-kpi::before {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  inset: 0;
+  opacity: .7;
+  background: radial-gradient(ellipse at 100% 0%, rgba(14,165,233,.13), transparent 63%);
+}
+.gm-admin-kpi[data-kpi="1"]::before { background: radial-gradient(ellipse at 100% 0%, rgba(99,102,241,.13), transparent 63%); }
+.gm-admin-kpi[data-kpi="2"]::before { background: radial-gradient(ellipse at 100% 0%, rgba(16,185,129,.12), transparent 63%); }
+.gm-admin-kpi[data-kpi="3"]::before { background: radial-gradient(ellipse at 100% 0%, rgba(245,158,11,.13), transparent 63%); }
+.gm-admin-kpi > * { position: relative; z-index: 1; }
+.gm-admin-kpi__icon {
+  border: 1px solid rgba(14,165,233,.14);
+  box-shadow: 0 8px 20px -14px rgba(2,132,199,.3);
+}
+.gm-admin-input {
+  transition: border-color .18s, box-shadow .18s;
+}
+.gm-admin-input:disabled { cursor: not-allowed; opacity: .58; }
+.gm-admin-table-wrap thead th { white-space: nowrap; }
+.gm-admin-table-wrap tbody tr {
+  transition: background-color .16s ease;
+}
+.gm-admin-table-wrap tbody tr:hover {
+  background: rgba(224,242,254,.3);
+}
+.dark .gm-admin-table-wrap tbody tr:hover {
+  background: rgba(15,59,87,.28);
+}
+.gm-admin-button-primary:focus-visible,
+.gm-admin-button-subtle:focus-visible,
+.gm-admin-nav__item:focus-visible,
+.gm-admin-theme-toggle:focus-visible,
+.gm-admin-input:focus-visible,
+.gm-admin a:focus-visible {
+  outline: 2px solid #0284c7;
+  outline-offset: 3px;
+}
+.dark .gm-admin :is(button,a,input,select,textarea):focus-visible {
+  outline-color: #7dd3fc;
+}
+.gm-admin-modal {
+  -webkit-backdrop-filter: blur(24px) saturate(135%);
+  backdrop-filter: blur(24px) saturate(135%);
+}
+@media (min-width: 1024px) {
+  .gm-admin-sidebar { overflow-y: auto; overflow-x: clip; }
+  .gm-admin-content { max-height: 100dvh; overflow-y: auto; }
+}
+@media (max-width: 1023px) {
+  .gm-admin-sidebar__identity,
+  .gm-admin-sidebar__brand { width: auto; }
+  .gm-admin-sidebar__identity { margin-bottom: 0; }
+  .gm-admin-nav { overscroll-behavior-x: contain; scroll-snap-type: x proximity; }
+  .gm-admin-nav__item { scroll-snap-align: start; min-height: 46px; }
+}
+@media (max-width: 520px) {
+  .gm-admin-content { padding-inline: 14px; }
+  .gm-admin-hero { border-radius: 18px; }
+  .gm-admin-modal { max-height: 94dvh; padding: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gm-admin :is(button,a,.gm-admin-panel,.gm-admin-input) {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+html[data-geomoz-reduced-motion="true"] .gm-admin * {
+  animation-duration: .01ms !important;
+  transition-duration: .01ms !important;
+}
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .gm-admin-sidebar { background: #fff; }
+  .dark .gm-admin-sidebar { background: #020617; }
+  .gm-admin-modal { background: #fff; }
+  .dark .gm-admin-modal { background: #0f172a; }
+}

@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { useLocation } from "wouter";
-import { ArrowLeft, Building2, Check, CreditCard, GraduationCap, Layers3, ShieldCheck, X } from "lucide-react";
+import { Link as WLink, useLocation } from "wouter";
+import { ArrowLeft, ArrowRight, BookOpen, Building2, CalendarClock, Check, CheckCircle2, ChevronRight, Cloud, CreditCard, GraduationCap, Layers3, LockKeyhole, Moon, ShieldCheck, Smartphone, Sun, Users, Wallet, X, Zap } from "lucide-react";
+import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
+import { useGeoMozTheme } from "@/hooks/useGeoMozTheme";
+import "@/components/dashboard-glass.css";
+import "./pricing-geomoz.css";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
 import { PLANS, PLAN_ORDER, formatMzn, type PlanId, type GeoMozPlan } from "@/lib/plans";
@@ -23,8 +27,18 @@ type PaymentRecord = {
 };
 type Region = "mz" | "international";
 
+const planIcons: Record<PlanId, React.ElementType> = {
+  community: Layers3, academic: GraduationCap, pro: Zap, teams: Users, enterprise: Building2,
+};
+
+function formatStorage(bytes: number | null): string {
+  if (bytes === null) return "Personalizado";
+  return new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 1 }).format(bytes / 1024 ** 3) + " GB";
+}
+
 export default function PricingPage() {
   const [, navigate] = useLocation();
+  const { theme, toggleTheme } = useGeoMozTheme();
   const { user, loading: authLoading, getIdToken } = useAuth();
   const billing = useSubscription();
   const [annual, setAnnual] = useState(false);
@@ -71,20 +85,20 @@ export default function PricingPage() {
     try {
       const response = await apiFetch("/geomoz-api/billing/payments/" + encodeURIComponent(paymentId));
       const result = await response.json();
-      if (!response.ok) throw new Error(result.detail || "Não foi possível verificar o pagamento.");
+      if (!response.ok) throw new Error(String(result.detail || "Não foi possível verificar o pagamento.").replace(/payzeno/gi, "serviço de pagamentos"));
       const status = String(result.status || "pending");
       const messages: Record<string, string> = {
-        paid: "Pagamento confirmado pelo PayZeno. O plano está activo.",
+        paid: "Pagamento confirmado. O plano está activo.",
         pending: "Pagamento ainda pendente de confirmação. Pode voltar a verificar.",
         expired: "A sessão de pagamento expirou.",
         cancelled: "O pagamento foi cancelado.",
-        failed: "O PayZeno não confirmou o pagamento.",
+        failed: "O pagamento não foi confirmado.",
         refunded: "Pagamento reembolsado; o acesso foi actualizado.",
         chargeback: "O pagamento foi contestado; contacte o suporte.",
       };
       setNotice(messages[status] || "Estado actual: " + status);
     } catch (error: any) {
-      setNotice(error?.message || "Falha na verificação do pagamento.");
+      setNotice(String(error?.message || "Falha na verificação do pagamento.").replace(/payzeno/gi, "serviço de pagamentos"));
     } finally {
       setChecking(false);
     }
@@ -110,7 +124,7 @@ export default function PricingPage() {
       if (!response.ok) throw new Error(result.detail || "Histórico indisponível.");
       setHistory(Array.isArray(result.payments) ? result.payments : []);
     } catch (error: any) {
-      setNotice(error?.message || "Não foi possível carregar o histórico.");
+      setNotice(String(error?.message || "Não foi possível carregar o histórico.").replace(/payzeno/gi, "serviço de pagamentos"));
     }
   }
 
@@ -119,11 +133,11 @@ export default function PricingPage() {
     if (plan === "community") { navigate(user ? "/dashboard" : "/"); return; }
     if (serverPlans[plan]?.enabled === false) { setNotice("Este plano está temporariamente indisponível."); return; }
     if (plan !== "enterprise" && !checkoutEnabled) {
-      setNotice("O checkout PayZeno está em validação. O pagamento será disponibilizado após os testes de segurança.");
+      setNotice("Os pagamentos estão em validação. O acesso aos planos pagos estará disponível após a conclusão dos testes de segurança.");
       return;
     }
     if (plan === "enterprise") {
-      setNotice("Solicite uma proposta institucional à equipa GEOLÍTHICA.");
+      window.location.href = "mailto:contacto@geolithica.com?subject=Proposta%20GeoMoz%20Enterprise";
       return;
     }
     if (!user || user.uid === "guest_user") { navigate("/login"); return; }
@@ -149,103 +163,257 @@ export default function PricingPage() {
         }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(typeof result.detail === "string" ? result.detail : "Não foi possível iniciar o pagamento.");
+      if (!response.ok) throw new Error(typeof result.detail === "string" ? result.detail.replace(/payzeno/gi, "serviço de pagamentos") : "Não foi possível iniciar o pagamento.");
       if (typeof result.url !== "string" || !result.url.startsWith("https://checkout.payzeno.io/")) {
-        throw new Error("O PayZeno devolveu um endereço inesperado.");
+        throw new Error("O serviço de pagamentos devolveu um endereço inesperado.");
       }
       window.location.assign(result.url);
     } catch (error: any) {
-      setNotice(error?.message || "Não foi possível iniciar o checkout PayZeno.");
+      setNotice(error?.message || "Não foi possível iniciar o pagamento seguro.");
     } finally {
       setWorking(false);
     }
   }
 
+
+  const home = user && user.uid !== "guest_user" ? "/dashboard" : "/";
+  const activePlan = selected ? { ...PLANS[selected], ...(serverPlans[selected] || {}) } : null;
+  const paymentId = new URLSearchParams(window.location.search).get("payment_id");
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
-      <header className="sticky top-0 z-20 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
-          <button onClick={() => navigate(user ? "/dashboard" : "/")} className="flex items-center gap-2 text-sm font-semibold">
-            <ArrowLeft size={17} /> <Layers3 className="text-sky-600" size={20} /> GeoMoz Explorer
-          </button>
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Planos e subscrição</span>
+    <div data-geomoz-system="pricing" className="gm-dashboard gm-pricing min-h-screen text-slate-900 dark:text-slate-100">
+      <header className="gm-pricing-topbar sticky top-0 z-30 border-b border-slate-200/85 dark:border-slate-800 bg-white/85 dark:bg-slate-950/90 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-[72px] flex items-center justify-between gap-4">
+          <WLink href={home} className="flex items-center gap-3 min-w-0 hover:opacity-90 transition-opacity" aria-label="GeoMoz Explorer — início">
+            <GeoMozBrandIcon alt="GeoMoz Explorer" className="h-10 w-10 rounded-xl shadow-md shadow-sky-500/15" width={40} height={40} />
+            <span className="flex flex-col min-w-0 leading-tight">
+              <span className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white">GeoMoz <span className="text-sky-600 dark:text-sky-400">Explorer</span></span>
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Planos e subscrições</span>
+            </span>
+          </WLink>
+          <nav aria-label="Navegação de planos" className="flex items-center gap-2 sm:gap-3">
+            <button type="button" onClick={toggleTheme} className="grid place-items-center h-10 w-10 rounded-xl text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800" title={theme === "dark" ? "Activar modo claro" : "Activar modo escuro"} aria-label={theme === "dark" ? "Activar modo claro" : "Activar modo escuro"}>
+              {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
+            </button>
+            <WLink href={home} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/75 dark:bg-slate-800/60 px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 hover:text-sky-700 dark:hover:text-sky-300 transition-colors">
+              <ArrowLeft size={16} /> <span className="hidden sm:inline">Voltar à plataforma</span><span className="sm:hidden">Voltar</span>
+            </WLink>
+          </nav>
         </div>
       </header>
-      <main className="max-w-7xl mx-auto px-4 py-12">
-        <div className="text-center mb-9">
-          <div className="inline-flex items-center gap-2 text-sky-700 dark:text-sky-300 text-xs font-semibold uppercase tracking-widest"><ShieldCheck size={16} /> Acesso transparente</div>
-          <h1 className="text-3xl sm:text-5xl font-bold tracking-tight mt-3">SIG profissional, à sua escala.</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-3 max-w-2xl mx-auto">Explore gratuitamente. Evolua para projectos científicos, processamento em cloud e colaboração profissional.</p>
+
+      <main className="gm-dashboard-content max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-9 pb-16">
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-medium">
+          <WLink href={home} className="hover:text-sky-600">GeoMoz Explorer</WLink><ChevronRight size={14} />
+          <span className="text-sky-700 dark:text-sky-300 font-bold">Planos e subscrições</span>
         </div>
-        <div className="flex items-center justify-center gap-3 mb-8">
-          <span className={!annual ? "font-bold text-sm" : "text-sm text-slate-500"}>Mensal</span>
-          <button type="button" role="switch" aria-checked={annual} aria-label="Alternar periodicidade" onClick={() => setAnnual(!annual)} className={`rounded-full w-12 h-7 p-1 transition-colors ${annual ? "bg-sky-600" : "bg-slate-300 dark:bg-slate-700"}`}>
-            <span className={`block bg-white rounded-full w-5 h-5 transition-transform ${annual ? "translate-x-5" : ""}`} />
-          </button>
-          <span className={annual ? "font-bold text-sm" : "text-sm text-slate-500"}>Anual <span className="text-emerald-600 text-xs">Consultar valor anual</span></span>
-        </div>
-        {notice && <div role="status" className="max-w-2xl mx-auto mb-6 border border-sky-300 bg-sky-50 text-sky-950 rounded-xl p-4 text-sm">
-          {notice}
-          {new URLSearchParams(window.location.search).get("payment_id") && <button type="button" disabled={checking} className="ml-3 underline font-semibold disabled:opacity-50" onClick={() => verifyPayment(new URLSearchParams(window.location.search).get("payment_id") || "")}>Verificar novamente</button>}
+
+        <section className="gm-dashboard-hero gm-pricing-hero p-6 sm:p-8 mb-7" aria-labelledby="pricing-title">
+          <div className="relative z-10 grid gap-6 md:grid-cols-[1fr_auto] md:items-end">
+            <div className="max-w-[760px]">
+              <span className="inline-flex items-center gap-2 rounded-full border border-sky-400/30 bg-sky-500/20 px-3 py-1 text-xs font-semibold text-sky-200">
+                <ShieldCheck size={14}/> GeoMoz Explorer · Subscrições
+              </span>
+              <h1 id="pricing-title" className="mt-4 text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight text-white">
+                O plano certo para cada <span className="text-sky-300">projecto geoespacial.</span>
+              </h1>
+              <p className="mt-3 text-sm sm:text-base leading-relaxed text-slate-300">
+                Do trabalho SIG individual à investigação, consultoria e colaboração institucional. Uma única plataforma, com diferentes níveis de utilização.
+              </p>
+            </div>
+            <div className="gm-pricing-hero-status rounded-2xl border border-white/15 bg-white/10 backdrop-blur-lg p-4 min-w-[190px]">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-sky-200">O seu acesso</div>
+              <div className="mt-1.5 text-xl font-extrabold text-white">{user && user.uid !== "guest_user" ? billing.planData.name : "Explorar GeoMoz"}</div>
+              <div className="mt-1 text-xs text-slate-300">{user && user.uid !== "guest_user" ? "Plano associado à sua conta" : "Comece pelo plano Community"}</div>
+            </div>
+          </div>
+          <div className="gm-dashboard-hero__divider relative z-10 mt-6 pt-4 border-t flex flex-wrap gap-3 sm:gap-6 text-xs text-slate-200">
+            <span className="inline-flex items-center gap-2"><CheckCircle2 size={15} className="text-emerald-300" /> Sem renovação automática</span>
+            <span className="inline-flex items-center gap-2"><LockKeyhole size={15} className="text-sky-300" /> Confirmação segura</span>
+            <span className="inline-flex items-center gap-2"><Cloud size={15} className="text-sky-300" /> Ferramentas SIG e análises científicas</span>
+          </div>
+        </section>
+
+        <section aria-label="Periodicidade de subscrição" className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <div>
+            <h2 className="text-xl font-extrabold tracking-tight">Escolha o seu plano</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Preços em meticais (MZN), sem débitos automáticos.</p>
+          </div>
+          <div className="gm-pricing-period inline-flex items-center p-1 rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white/85 dark:bg-slate-900/85 shadow-sm" role="group" aria-label="Duração do plano">
+            <button type="button" onClick={() => setAnnual(false)} aria-pressed={!annual}
+              className={"rounded-lg px-4 py-2.5 text-sm font-bold transition-all " + (!annual ? "bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-md shadow-sky-500/15" : "text-slate-500 dark:text-slate-300 hover:text-sky-700 dark:hover:text-white")}>Mensal</button>
+            <button type="button" onClick={() => setAnnual(true)} aria-pressed={annual}
+              className={"rounded-lg px-4 py-2.5 text-sm font-bold transition-all " + (annual ? "bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-md shadow-sky-500/15" : "text-slate-500 dark:text-slate-300 hover:text-sky-700 dark:hover:text-white")}>Anual</button>
+          </div>
+        </section>
+
+        {notice && (
+          <div role="status" className="gm-dashboard-panel mb-6 max-w-4xl rounded-xl p-4 text-sm flex flex-wrap gap-3 items-center justify-between">
+            <div className="flex gap-2"><ShieldCheck size={17} className="text-sky-600 dark:text-sky-300 shrink-0"/><span>{notice}</span></div>
+            {paymentId && /^[0-9a-f]{32}$/.test(paymentId) && <button type="button" disabled={checking} className="text-sky-700 dark:text-sky-300 underline font-semibold disabled:opacity-50" onClick={() => verifyPayment(paymentId)}>Verificar novamente</button>}
+          </div>
+        )}
+        {billing.error && <div className="mb-5 text-sm text-amber-700 dark:text-amber-300">Não foi possível consultar a subscrição. O estado será actualizado quando a ligação for restabelecida.</div>}
+        {!checkoutEnabled && <div className="gm-pricing-readiness mb-6 rounded-xl border border-amber-200/85 dark:border-amber-800/60 bg-amber-50/90 dark:bg-amber-950/25 p-4 text-sm text-amber-900 dark:text-amber-200 flex items-start gap-3">
+          <CalendarClock size={19} className="shrink-0 mt-0.5"/>
+          <div><strong>Subscrições em preparação.</strong> Os planos estão disponíveis para consulta. Os pagamentos serão activados após a conclusão das verificações de segurança.</div>
         </div>}
-        {user && user.uid !== "guest_user" && <div className="mb-6 text-center">
-          <button type="button" onClick={loadHistory} className="text-sm font-semibold underline underline-offset-4 text-sky-600">
-            {showHistory ? "Ocultar pagamentos" : "Consultar pagamentos e renovações"}
-          </button>
-        </div>}
-        {showHistory && <div className="max-w-3xl mx-auto mb-8 rounded-xl border border-slate-200 dark:border-slate-800 p-5 bg-white dark:bg-slate-900">
-          <h2 className="font-bold mb-3">Histórico de pagamentos PayZeno</h2>
-          {history.length ? <ul className="space-y-2">{history.map(item => <li key={item.id} className="flex flex-wrap gap-2 items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 text-sm">
-            <span>GeoMoz {item.plan} · {item.period === "yearly" ? "Anual" : "Mensal"}</span>
-            <span>{formatMzn(item.amountMzn)} · {item.status}</span>
-          </li>)}</ul> : <p className="text-sm text-slate-500">Sem pagamentos registados.</p>}
-          <p className="text-xs mt-4 text-slate-500">Os períodos não são renovados automaticamente. Pode efectuar uma nova compra antes do vencimento.</p>
-        </div>}
-        {billing.error && <p className="text-center text-amber-700 text-sm mb-4">Não foi possível consultar a subscrição. Acesso Community apresentado por segurança.</p>}
-        {!checkoutEnabled && <p className="text-center text-sm text-amber-700 dark:text-amber-300 mb-6">Pagamentos temporariamente em validação. Os planos podem ser consultados sem efectuar cobranças.</p>}
-      <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-4">
+
+        <div className="gm-pricing-grid grid sm:grid-cols-2 xl:grid-cols-3 gap-5 lg:gap-6" aria-label="Comparação de planos">
           {PLAN_ORDER.map(id => {
-            const p = { ...PLANS[id], ...(serverPlans[id] || {}) }, current = billing.plan === id;
-            return <section key={id} className={`rounded-2xl border flex flex-col p-5 shadow-sm ${id === "pro" ? "border-sky-500 ring-2 ring-sky-200 dark:ring-sky-800 bg-white dark:bg-slate-900" : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"}`}>
-              <div className="flex items-center gap-2 mb-4 text-sky-600">{id === "academic" ? <GraduationCap size={20} /> : id === "enterprise" ? <Building2 size={20} /> : <Layers3 size={20} />}<h2 className="font-bold">{p.name}</h2></div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 min-h-10">{p.audience}</p>
-              <div className="mt-4 min-h-16"><div className="text-2xl font-bold tracking-tight">{id === "enterprise" ? "Sob consulta" : formatMzn(annual ? (p.yearlyMzn ?? 0) : (p.monthlyMzn ?? 0))}</div><div className="text-xs text-slate-500">{id === "enterprise" ? "Contrato institucional" : annual ? "por ano" : "por mês"}</div></div>
-              <ul className="space-y-3 mt-6 mb-8 flex-1"><li className="text-sm font-semibold">{p.projects === null ? "Projectos ilimitados" : p.projects + " projectos cloud"} · {p.credits === null ? "créditos personalizados" : p.credits + " créditos/mês"}</li>{features[id].map(feature => <li key={feature} className="flex gap-2 text-sm"><Check size={16} className="text-emerald-600 shrink-0 mt-0.5" />{feature}</li>)}</ul>
-              <button type="button" disabled={billing.loading || p.enabled === false || (!checkoutEnabled && id !== "community" && id !== "enterprise")} onClick={() => selectPlan(id)} className="w-full rounded-xl bg-sky-600 disabled:bg-slate-300 disabled:text-slate-500 text-white font-semibold py-3 text-sm hover:bg-sky-700 transition-colors">
-                {current && id !== "community" ? "Renovar / Gerir período" : id === "enterprise" ? "Solicitar proposta" : id === "community" ? "Começar gratuitamente" : p.enabled === false ? "Indisponível" : !checkoutEnabled ? "Em validação" : "Escolher plano"}
-              </button>
-            </section>;
+            const p = { ...PLANS[id], ...(serverPlans[id] || {}) };
+            const Icon = planIcons[id];
+            const current = user && user.uid !== "guest_user" && billing.plan === id && !billing.error;
+            const highlighted = id === "pro";
+            const amount = annual ? p.yearlyMzn : p.monthlyMzn;
+            const disabled = p.enabled === false;
+            return (
+              <article key={id} data-plan={id} className={"gm-pricing-card gm-dashboard-panel relative flex flex-col p-5 sm:p-6 " + (highlighted ? "gm-pricing-card--featured" : "")}>
+                {highlighted && <span className="gm-pricing-featured-label absolute top-0 right-0 rounded-bl-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-3.5 py-2 text-[10px] uppercase tracking-wider font-extrabold text-white">Para profissionais</span>}
+                <div className="flex items-start justify-between gap-3 mt-2">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="gm-pricing-plan-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-sky-200 dark:border-sky-800 bg-sky-50/95 dark:bg-sky-950/40 text-sky-600 dark:text-sky-300"><Icon size={22}/></span>
+                    <div className="min-w-0">
+                      <h3 className="text-lg font-extrabold tracking-tight">{p.name}</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{p.audience}</p>
+                    </div>
+                  </div>
+                  {current && <span className="gm-pricing-current inline-flex rounded-full bg-emerald-100 dark:bg-emerald-900/35 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">Plano actual</span>}
+                </div>
+                <div className="mt-6 pb-5 border-b border-slate-200/75 dark:border-slate-700/75">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-3xl sm:text-[34px] font-black tracking-tight text-slate-900 dark:text-white">{id === "enterprise" ? "Sob consulta" : formatMzn(amount ?? 0)}</span>
+                  </div>
+                  <span className="mt-1 block text-xs font-medium text-slate-500 dark:text-slate-400">{id === "enterprise" ? "Condições para instituições" : id === "community" ? "Acesso gratuito" : annual ? "Total por 12 meses" : "Total por 1 mês"}</span>
+                </div>
+                <div className="mt-5 grid grid-cols-2 gap-2.5">
+                  <div className="gm-pricing-metric rounded-xl bg-slate-50/90 dark:bg-slate-800/60 p-3 border border-slate-200/60 dark:border-slate-700/50">
+                    <Layers3 size={15} className="text-sky-600 dark:text-sky-300"/>
+                    <div className="mt-2 text-sm font-extrabold">{p.projects === null ? "À medida" : p.projects}</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Projectos cloud</div>
+                  </div>
+                  <div className="gm-pricing-metric rounded-xl bg-slate-50/90 dark:bg-slate-800/60 p-3 border border-slate-200/60 dark:border-slate-700/50">
+                    <Zap size={15} className="text-sky-600 dark:text-sky-300"/>
+                    <div className="mt-2 text-sm font-extrabold">{p.credits === null ? "À medida" : p.credits.toLocaleString("pt-PT")}</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Créditos / mês</div>
+                  </div>
+                  <div className="gm-pricing-metric rounded-xl bg-slate-50/90 dark:bg-slate-800/60 p-3 border border-slate-200/60 dark:border-slate-700/50">
+                    <Cloud size={15} className="text-sky-600 dark:text-sky-300"/>
+                    <div className="mt-2 text-sm font-extrabold">{formatStorage(p.storageBytes)}</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Armazenamento*</div>
+                  </div>
+                  <div className="gm-pricing-metric rounded-xl bg-slate-50/90 dark:bg-slate-800/60 p-3 border border-slate-200/60 dark:border-slate-700/50">
+                    <Users size={15} className="text-sky-600 dark:text-sky-300"/>
+                    <div className="mt-2 text-sm font-extrabold">{p.seats === null ? "À medida" : p.seats}</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Utilizadores*</div>
+                  </div>
+                </div>
+                <ul className="mt-5 mb-6 flex-1 space-y-3">
+                  {features[id].map(feature => <li key={feature} className="flex gap-2.5 text-sm text-slate-700 dark:text-slate-200"><Check size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" /> {feature}</li>)}
+                </ul>
+                <button type="button" onClick={() => selectPlan(id)}
+                  disabled={billing.loading || disabled || (!checkoutEnabled && id !== "community" && id !== "enterprise")}
+                  className={"gm-pricing-card-button w-full flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-extrabold transition-all disabled:cursor-not-allowed " +
+                    (highlighted ? "bg-gradient-to-r from-sky-500 to-indigo-600 text-white hover:from-sky-600 hover:to-indigo-700 shadow-md shadow-sky-500/15" : "bg-slate-900 dark:bg-sky-700 text-white hover:bg-sky-700 dark:hover:bg-sky-600")}>
+                  {disabled ? "Indisponível" : id === "enterprise" ? "Pedir proposta" : id === "community" ? "Começar gratuitamente" : !checkoutEnabled ? "Em preparação" : current ? "Renovar plano" : "Escolher plano"}
+                  {id === "enterprise" ? <ArrowRight size={16}/> : null}
+                </button>
+              </article>
+            );
           })}
         </div>
-        <p className="mt-8 text-center text-sm text-slate-500">Pagamento único por período contratado, sem débito automático. O checkout PayZeno apresenta os métodos activos e compatíveis, incluindo M-Pesa, e-Mola e cartões quando disponíveis.</p>
-        <p className="mt-3 text-center text-sm text-slate-500">O Google Earth Engine associado à sua conta segue as regras e quotas do respectivo projecto Google Cloud; os créditos GeoMoz destinam-se apenas ao processamento gerido pela plataforma.</p>
-        <p className="mt-3 text-center text-xs text-slate-500"><CreditCard size={13} className="inline mr-1" /> A confirmação é realizada no servidor e não pelo redireccionamento.</p>
-      </main>
-      {selected && <div className="fixed inset-0 z-50 bg-black/55 flex justify-center items-center p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setSelected(null); }}>
-        <section role="dialog" aria-modal="true" aria-label="Dados do pagamento" className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 shadow-2xl p-6 space-y-4">
-          <div className="flex justify-between gap-3 items-start">
-            <div><div className="text-xs uppercase font-bold tracking-wider text-sky-600">Checkout PayZeno</div><h2 className="text-xl font-bold mt-1">GeoMoz {PLANS[selected].name}</h2>
-              <p className="text-sm text-slate-500">{formatMzn(annual ? PLANS[selected].yearlyMzn ?? 0 : PLANS[selected].monthlyMzn ?? 0)} · {annual ? "12 meses" : "1 mês"}</p>
+
+        <p className="mt-4 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+          * Armazenamento partilhado, colaboração e limites de processamento avançado dependem da disponibilização técnica dos serviços correspondentes. Os créditos GeoMoz são independentes das quotas Google Earth Engine da sua conta.
+        </p>
+
+        <section className="gm-pricing-payment-section gm-dashboard-panel mt-9 rounded-2xl p-5 sm:p-7" aria-labelledby="payment-methods-title">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="max-w-2xl">
+              <div className="text-xs uppercase tracking-wider font-bold text-sky-600 dark:text-sky-300">Pagamento e segurança</div>
+              <h2 id="payment-methods-title" className="mt-1.5 text-xl sm:text-2xl font-extrabold">Como pode efectuar o pagamento?</h2>
+              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                Em Moçambique, poderá utilizar carteira móvel ou cartão, conforme os métodos activos no momento do pagamento. Para o exterior, a disponibilidade de cartões internacionais depende da modalidade habilitada.
+              </p>
             </div>
-            <button type="button" aria-label="Fechar" onClick={() => setSelected(null)}><X size={20} /></button>
+            <span className="inline-flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-300 font-bold"><ShieldCheck size={17}/> Processamento seguro</span>
           </div>
-          <label className="block text-sm font-medium">Nome do titular
-            <input value={customerName} onChange={e => setCustomerName(e.target.value)} autoComplete="name" className="mt-1 w-full rounded-lg px-3 py-2 border border-slate-300 dark:border-slate-700 bg-transparent" placeholder="Nome e apelido" required />
-          </label>
-          <label className="block text-sm font-medium">Região de pagamento
-            <select value={region} onChange={e => setRegion(e.target.value as Region)} className="mt-1 w-full rounded-lg px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900">
-              <option value="mz">Moçambique — M-Pesa, e-Mola ou cartão</option>
-              <option value="international">Internacional — cartão (quando activo)</option>
-            </select>
-          </label>
-          {region === "mz" ? <label className="block text-sm font-medium">Contacto moçambicano
-            <input value={phone} onChange={e => setPhone(e.target.value)} type="tel" autoComplete="tel" className="mt-1 w-full rounded-lg px-3 py-2 border border-slate-300 dark:border-slate-700 bg-transparent" placeholder="+258 84 000 0000" required />
-          </label> : <p className="text-xs text-slate-500">O checkout internacional utiliza um contacto técnico de referência. O pagamento por cartão depende da habilitação do método na sua conta PayZeno.</p>}
-          {selected === "academic" && <p className="text-xs text-amber-700">Este plano requer verificação académica antes de pagar.</p>}
-          <button type="button" disabled={working || !customerName.trim() || (region === "mz" && !phone.trim())} onClick={checkout} className="w-full py-3 rounded-xl bg-sky-600 text-white font-bold disabled:opacity-50">{working ? "A iniciar checkout…" : "Prosseguir para PayZeno"}</button>
-          <p className="text-xs text-slate-500">O GeoMoz não guarda os dados do cartão. O acesso só será activado após confirmação segura do pagamento.</p>
+          <div className="mt-6 grid sm:grid-cols-3 gap-3">
+            <div className="gm-pricing-payment-method flex gap-3 items-start rounded-xl border border-slate-200/80 dark:border-slate-700 p-4 bg-white/65 dark:bg-slate-800/35">
+              <span className="gm-pricing-payment-icon"><Smartphone size={21}/></span>
+              <div><h3 className="font-bold text-sm">M-Pesa</h3><p className="text-xs mt-1 text-slate-500 dark:text-slate-400">Pagamento móvel em Moçambique, quando disponível.</p></div>
+            </div>
+            <div className="gm-pricing-payment-method flex gap-3 items-start rounded-xl border border-slate-200/80 dark:border-slate-700 p-4 bg-white/65 dark:bg-slate-800/35">
+              <span className="gm-pricing-payment-icon"><Wallet size={21}/></span>
+              <div><h3 className="font-bold text-sm">e-Mola</h3><p className="text-xs mt-1 text-slate-500 dark:text-slate-400">Pagamento por carteira móvel, quando disponível.</p></div>
+            </div>
+            <div className="gm-pricing-payment-method flex gap-3 items-start rounded-xl border border-slate-200/80 dark:border-slate-700 p-4 bg-white/65 dark:bg-slate-800/35">
+              <span className="gm-pricing-payment-icon"><CreditCard size={21}/></span>
+              <div><h3 className="font-bold text-sm">Cartão bancário</h3><p className="text-xs mt-1 text-slate-500 dark:text-slate-400">Cartões nacionais ou internacionais, se habilitados.</p></div>
+            </div>
+          </div>
+          <div className="mt-5 pt-4 border-t border-slate-200/80 dark:border-slate-700 flex flex-wrap gap-3 justify-between items-center text-xs text-slate-500 dark:text-slate-400">
+            <span className="inline-flex items-center gap-2"><CalendarClock size={15} className="text-sky-600 dark:text-sky-300"/> O pagamento é único para o período escolhido, sem renovação automática.</span>
+            <span className="inline-flex items-center gap-2"><LockKeyhole size={15} className="text-sky-600 dark:text-sky-300"/> O GeoMoz não armazena dados de cartões; a confirmação é feita no servidor.</span>
+          </div>
         </section>
-      </div>}
+
+        {user && user.uid !== "guest_user" && (
+          <section className="gm-dashboard-panel mt-6 rounded-2xl p-5 sm:p-6" aria-label="Pagamentos e renovações">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div><h2 className="font-extrabold text-lg">Pagamentos e renovações</h2><p className="text-xs mt-1 text-slate-500 dark:text-slate-400">Consulte os movimentos associados à sua conta GeoMoz.</p></div>
+              <button type="button" onClick={loadHistory} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 text-sm font-bold text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-slate-800">
+                <BookOpen size={16}/> {showHistory ? "Ocultar histórico" : "Ver histórico"}
+              </button>
+            </div>
+            {showHistory && <div className="mt-5 pt-5 border-t border-slate-200/80 dark:border-slate-700">
+              {history.length ? <ul className="space-y-3">{history.map(item => (
+                <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 p-3 text-sm">
+                  <span className="font-semibold">GeoMoz {item.plan} · {item.period === "yearly" ? "Anual" : "Mensal"}</span>
+                  <span>{formatMzn(item.amountMzn)}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">{item.status === "paid" ? "Confirmado" : item.status === "pending" ? "Pendente" : item.status}</span>
+                </li>))}</ul> : <p className="text-sm text-slate-500">Ainda não existem pagamentos registados.</p>}
+              <p className="mt-4 text-xs text-slate-500">A subscrição não é renovada automaticamente. Poderá adquirir um novo período antes do vencimento.</p>
+            </div>}
+          </section>
+        )}
+      </main>
+
+      {selected && activePlan && (
+        <div className="fixed inset-0 z-50 bg-slate-950/65 backdrop-blur-sm flex justify-center items-center p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setSelected(null); }}>
+          <section role="dialog" aria-modal="true" aria-label="Pagamento seguro GeoMoz" className="gm-pricing-checkout gm-dashboard-panel w-full max-w-lg max-h-[92dvh] overflow-y-auto rounded-3xl p-6 space-y-5 shadow-2xl">
+            <div className="flex justify-between gap-3 items-start">
+              <div className="flex gap-3 items-start">
+                <GeoMozBrandIcon className="h-10 w-10 rounded-xl shrink-0" alt="" width={40} height={40}/>
+                <div>
+                  <div className="text-xs uppercase font-bold tracking-wider text-sky-600 dark:text-sky-300">Pagamento seguro · GeoMoz</div>
+                  <h2 className="text-xl font-extrabold mt-1">{activePlan.name}</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">{formatMzn((annual ? activePlan.yearlyMzn : activePlan.monthlyMzn) ?? 0)} · {annual ? "12 meses" : "1 mês"}</p>
+                </div>
+              </div>
+              <button type="button" aria-label="Fechar" onClick={() => setSelected(null)} className="rounded-xl p-2 hover:bg-slate-100 dark:hover:bg-slate-800"><X size={19}/></button>
+            </div>
+            <label className="block text-sm font-semibold">Nome do titular
+              <input value={customerName} onChange={e => setCustomerName(e.target.value)} autoComplete="name" className="gm-pricing-input mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-950/75 px-3.5 py-3 text-sm outline-none focus:border-sky-500" placeholder="Nome e apelido" required />
+            </label>
+            <label className="block text-sm font-semibold">Região de pagamento
+              <select value={region} onChange={e => setRegion(e.target.value as Region)} className="gm-pricing-input mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-950/75 px-3.5 py-3 text-sm outline-none focus:border-sky-500">
+                <option value="mz">Moçambique — carteiras móveis e cartões</option>
+                <option value="international">Internacional — cartões quando disponíveis</option>
+              </select>
+            </label>
+            {region === "mz" ? <label className="block text-sm font-semibold">Contacto moçambicano
+              <input value={phone} onChange={e => setPhone(e.target.value)} type="tel" autoComplete="tel" className="gm-pricing-input mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-950/75 px-3.5 py-3 text-sm outline-none focus:border-sky-500" placeholder="+258 84 000 0000" required />
+            </label> : <p className="text-xs text-slate-500 dark:text-slate-400">Cartões internacionais dependem da disponibilidade para a sua região. Os métodos activos serão apresentados no próximo passo.</p>}
+            {selected === "academic" && <p className="text-xs text-amber-700 dark:text-amber-300">O plano Academic exige elegibilidade confirmada antes de efectuar o pagamento.</p>}
+            <button type="button" disabled={working || !checkoutEnabled || !customerName.trim() || (region === "mz" && !phone.trim())} onClick={checkout}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-extrabold shadow-md shadow-sky-500/15 disabled:opacity-45 disabled:cursor-not-allowed">
+              {working ? "A preparar pagamento..." : "Continuar para pagamento seguro"} <ArrowRight size={17}/>
+            </button>
+            <p className="text-xs text-slate-500 dark:text-slate-400 text-center">O acesso só será activado após confirmação do pagamento. Não armazenamos os dados do seu cartão.</p>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
