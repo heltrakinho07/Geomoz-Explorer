@@ -82,3 +82,12 @@ def test_project_creation_input_validation():
     with pytest.raises(HTTPException) as exc:
         validate_project(project)
     assert exc.value.status_code == 422
+
+
+def test_checkout_off_by_default(monkeypatch):
+    from billing import _checkout_enabled, config
+    monkeypatch.delenv("GEOMOZ_BILLING_ENABLED", raising=False)
+    assert _checkout_enabled() is False
+    assert config()["checkoutEnabled"] is False
+    monkeypatch.setenv("GEOMOZ_BILLING_ENABLED", "true")
+    assert _checkout_enabled() is True
