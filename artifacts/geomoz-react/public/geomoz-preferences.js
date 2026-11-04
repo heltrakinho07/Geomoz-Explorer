@@ -47,7 +47,7 @@
     language = code;
     // The portal remains Portuguese until its own strings are translated.
     // Do not falsely label Portuguese content as another language for assistive technologies.
-    if (document.body?.dataset.geomozApp === "workbench") document.documentElement.lang = next;
+    if (document.body?.dataset.geomozApp === "workbench") document.documentElement.lang = code;
     if (persist) {
       try {
         localStorage.setItem(languageKey, code);
