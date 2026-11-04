@@ -284,8 +284,10 @@ async function settleRecovery(page){
       const terrainPanel=page.getByTestId("geomoz-workbench-terrain");
       await terrainPanel.waitFor({state:"visible"});
       assert.equal(page.url(),originalUrl,"Opening Terrain 3D must not leave the GIS Workspace");
-      assert.equal(await terrainPanel.locator('iframe[src="/terreno-3d?embedded=1"]').count(),1,
-        "Terrain Studio must render inside the current Workbench");
+      assert.equal(await terrainPanel.locator("iframe").count(),0,
+        "Terrain Studio must be a native React view, not a second app in an iframe");
+      assert.equal(await terrainPanel.getByTestId("geomoz-native-terrain-canvas").count(),0,
+        "Native 3D canvas must only mount after loading a real DEM");
       assert.equal(await page.getByTestId("geomoz-layer-catalog").count(),1,
         "Underlying raster layer catalogue must remain mounted");
       assert.equal(await terrainPanel.getByRole("button",{name:"Visualizar camada em 3D"}).isDisabled(),true,
