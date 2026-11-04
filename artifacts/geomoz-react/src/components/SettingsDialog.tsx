@@ -33,7 +33,6 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useSubscription } from "@/hooks/useSubscription";
-import { formatMzn } from "@/lib/plans";
 
 interface SettingsDialogProps {
   open: boolean;
