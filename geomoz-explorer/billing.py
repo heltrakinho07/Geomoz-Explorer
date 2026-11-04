@@ -185,7 +185,7 @@ def _apply_payment(payment, status, event_id):
         changes = {}
         bchanges = {}
         now = _utcnow()
-        if status == "paid" and current == "pending":
+        if status == "paid" and current in ("pending", "failed", "cancelled", "expired"):
             start = now
             # Renewal of same active plan extends the existing period rather than losing remaining days.
             if _effective_plan(bill) == stored["plan"]:
@@ -200,9 +200,9 @@ def _apply_payment(payment, status, event_id):
                 "billingCycle": stored["period"], "paymentProvider": "payzeno",
                 "cancelAtPeriodEnd": False,
             }
-        elif status in ("refunded", "chargeback") and current == "paid":
+        elif status in ("refunded", "chargeback") and current in ("pending", "paid"):
             changes = {"status": status}
-            if bill.get("lastPaymentId") == stored["id"]:
+            if current == "paid" and bill.get("lastPaymentId") == stored["id"]:
                 bchanges = {"status": "cancelled", "periodEnd": _iso(now)}
         elif status in ("failed", "cancelled", "expired") and current == "pending":
             changes = {"status": status}
