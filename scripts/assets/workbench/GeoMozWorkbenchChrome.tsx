@@ -164,13 +164,13 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
             </button>}
             {group.label==="Raster"&&<a href="/analises?terrain3d=1" data-action="geomoz-terrain-studio-3d"
               target="_blank" rel="noopener noreferrer" onClick={()=>setOpenToolCard(null)}>
-              <Image size={17}/><span>Gerar mapa 3D do DEM</span><ArrowUpRight size={13}/>
+              <Image size={17}/><span>{txt("terrain3D")}</span><ArrowUpRight size={13}/>
             </a>}
             {group.label==="Vector"&&<button type="button" data-testid="geomoz-create-layer" onClick={()=>{setOpenToolCard(null);setLayerWizardOpen(true);}}>
               <Layers3 size={17}/><span>{txt("newLayer")}</span>
             </button>}
             {group.items.map(command=>{const Icon=command.icon??CommandIcon;return <button key={command.id} type="button"
-              data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??command.title}
+              data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??commandLabel(command)}
               onClick={()=>{if(!command.disabledReason){setOpenToolCard(null);command.run();}}}>
               <Icon size={17}/><span>{commandLabel(command)}</span>
             </button>;})}
@@ -186,7 +186,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
               <FileText size={17}/><span>{txt("print")}</span>
             </button>}
           </GeoMozFloatingToolCard>)}
-          {!viewer&&<GeoMozFloatingToolCard title={categoryLabel("Hidrologia")} icon={Activity}
+          {!viewer&&<GeoMozFloatingToolCard title={categoryLabel("Hidrologia")} description={txt("hydrologyToolsHelp")} icon={Activity}
             open={openToolCard==="Hidrologia"}
             onToggle={()=>{setOpenToolCard(openToolCard==="Hidrologia"?null:"Hidrologia");setSeismicOpen(false);}}
             onClose={()=>setOpenToolCard(null)} testId="geomoz-hydrology-card">
@@ -213,17 +213,17 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
             open={openToolCard===group.label}
             onToggle={()=>setOpenToolCard(openToolCard===group.label?null:group.label)}
             onClose={()=>setOpenToolCard(null)}>
-            {group.items.map(command=>{const Icon=command.icon??CommandIcon;return <button key={command.id} type="button" data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason){setOpenToolCard(null);command.run();}}}><Icon size={17}/><span>{commandLabel(command)}</span></button>;})}{group.label==="Serviços de mapas"&&!viewer&&<>
+            {group.items.map(command=>{const Icon=command.icon??CommandIcon;return <button key={command.id} type="button" data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??commandLabel(command)} onClick={()=>{if(!command.disabledReason){setOpenToolCard(null);command.run();}}}><Icon size={17}/><span>{commandLabel(command)}</span></button>;})}{group.label==="Serviços de mapas"&&!viewer&&<>
             <button type="button" data-action="geomoz-qms" aria-expanded={qmsOpen} onClick={()=>{setOpenToolCard(null);setQmsOpen(!qmsOpen);setNgwOpen(false);}}><Database size={17}/><span>NextGIS QMS</span></button>
             <button type="button" data-action="geomoz-nextgis-web" aria-expanded={ngwOpen} onClick={()=>{setOpenToolCard(null);setNgwOpen(!ngwOpen);setQmsOpen(false);}}><Database size={17}/><span>NextGIS Web</span></button>
           </>}
           </GeoMozFloatingToolCard>:<><div>{group.items.map(command=>{
           const Icon=command.icon??CommandIcon;
           return <button key={command.id} type="button" data-command={command.id} aria-pressed={command.id==="plugin.maplibre-gl-geo-editor"?command.keywords?.includes("deactivate"):undefined} disabled={!!command.disabledReason}
-            title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={19}/><span>{command.id==="plugin.maplibre-gl-geo-editor"&&command.keywords?.includes("deactivate")?txt("finishDrawing"):commandLabel(command)}</span></button>;
+            title={command.disabledReason??commandLabel(command)} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={19}/><span>{command.id==="plugin.maplibre-gl-geo-editor"&&command.keywords?.includes("deactivate")?txt("finishDrawing"):commandLabel(command)}</span></button>;
         })}</div><small>{categoryLabel(group.label)}</small></>}</section>)}
         {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group gm-ribbon-optional">
-          <GeoMozFloatingToolCard title={categoryLabel("Hidrologia")} icon={Activity}
+          <GeoMozFloatingToolCard title={categoryLabel("Hidrologia")} description={txt("hydrologyToolsHelp")} icon={Activity}
             open={openToolCard==="Hidrologia"}
             onToggle={()=>setOpenToolCard(openToolCard==="Hidrologia"?null:"Hidrologia")}
             onClose={()=>setOpenToolCard(null)} testId="geomoz-hydrology-card">

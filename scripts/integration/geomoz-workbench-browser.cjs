@@ -130,6 +130,73 @@ async function settleRecovery(page){
   }
   console.log("Portuguese, English, Spanish and French specialist catalog translations updated without reload.");
 
+  // Regression: titles and command labels were localized but every floating
+  // tool panel still displayed the Portuguese "FERRAMENTAS" and description.
+  for(const copy of [
+    {code:"en",vector:"Vector",hydrology:"Hydrology",raster:"Raster",
+      section:"GEOMOZ GIS WORKSPACE / TOOLS",
+      help:"Select a tool to work with the layers in your project.",
+      hydroHelp:"Open watershed, groundwater and terrain analysis tools.",
+      aria:"Tools: ",close:"Close ",newLayer:"New layer / Digitize",
+      vectorCommand:"Vector / GeoPackage",watersheds:"Watersheds",
+      terrain3D:"Generate 3D map from DEM"},
+    {code:"es",vector:"Vector",hydrology:"Hidrología",raster:"Ráster",
+      section:"GEOMOZ GIS WORKSPACE / HERRAMIENTAS",
+      help:"Seleccione una herramienta para trabajar con las capas del proyecto.",
+      hydroHelp:"Acceda a los análisis de cuencas, aguas subterráneas y terreno.",
+      aria:"Herramientas: ",close:"Cerrar ",newLayer:"Nueva capa / Digitalizar",
+      vectorCommand:"Vector / GeoPackage",watersheds:"Cuencas hidrográficas",
+      terrain3D:"Generar mapa 3D a partir del MDE"},
+    {code:"fr",vector:"Vecteur",hydrology:"Hydrologie",raster:"Raster",
+      section:"GEOMOZ GIS WORKSPACE / OUTILS",
+      help:"Sélectionnez un outil pour travailler avec les couches de votre projet.",
+      hydroHelp:"Accédez aux analyses des bassins versants, des eaux souterraines et du terrain.",
+      aria:"Outils : ",close:"Fermer ",newLayer:"Nouvelle couche / Numériser",
+      vectorCommand:"Vecteur / GeoPackage",watersheds:"Bassins versants",
+      terrain3D:"Générer une carte 3D à partir du MNT"},
+    {code:"pt",vector:"Vector",hydrology:"Hidrologia",raster:"Raster",
+      section:"GEOMOZ GIS WORKSPACE / FERRAMENTAS",
+      help:"Seleccione uma ferramenta para trabalhar com as camadas do projecto.",
+      hydroHelp:"Aceda às análises de bacias hidrográficas, águas subterrâneas e terreno.",
+      aria:"Ferramentas: ",close:"Fechar ",newLayer:"Nova camada / Digitalizar",
+      vectorCommand:"Vector / GeoPackage",watersheds:"Bacias hidrográficas",
+      terrain3D:"Gerar mapa 3D do DEM"},
+  ]){
+    const settings=page.getByTestId("geomoz-settings-menu");
+    if(await settings.getAttribute("open")===null){
+      await page.getByTestId("geomoz-settings-trigger").click();
+    }
+    await page.getByTestId("geomoz-language-selector").selectOption(copy.code);
+    await page.waitForFunction(code=>document.documentElement.lang===code,copy.code);
+    const cards=page.locator(".gm-compact-tool-list");
+    const flyout=page.getByTestId("geomoz-tools-flyout");
+    await cards.getByRole("button",{name:copy.vector,exact:true}).click();
+    await flyout.waitFor({state:"visible"});
+    assert.equal((await flyout.locator(".gm-tool-flyout-header small").innerText()).trim(),copy.section);
+    assert.equal((await flyout.locator(".gm-tool-flyout-header p").innerText()).trim(),copy.help);
+    assert.equal(await flyout.getAttribute("aria-label"),copy.aria+copy.vector);
+    await flyout.getByRole("button",{name:copy.newLayer,exact:true}).waitFor();
+    await flyout.getByRole("button",{name:copy.vectorCommand,exact:true}).waitFor();
+    await flyout.getByRole("button",{name:copy.close+copy.vector,exact:true}).click();
+    await flyout.waitFor({state:"hidden"});
+    await cards.getByRole("button",{name:copy.hydrology,exact:true}).click();
+    await flyout.waitFor({state:"visible"});
+    assert.equal((await flyout.locator(".gm-tool-flyout-header small").innerText()).trim(),copy.section);
+    assert.equal((await flyout.locator(".gm-tool-flyout-header p").innerText()).trim(),copy.hydroHelp);
+    assert.equal(await flyout.getAttribute("aria-label"),copy.aria+copy.hydrology);
+    assert.equal(await flyout.getByRole("link",{name:copy.watersheds,exact:true}).getAttribute("href"),"/hidrografia");
+    await flyout.getByRole("button",{name:copy.close+copy.hydrology,exact:true}).click();
+    await flyout.waitFor({state:"hidden"});
+    await cards.getByRole("button",{name:copy.raster,exact:true}).click();
+    await flyout.waitFor({state:"visible"});
+    assert.equal((await flyout.locator('[data-action="geomoz-terrain-studio-3d"]').innerText()).trim(),copy.terrain3D);
+    await flyout.getByRole("button",{name:copy.close+copy.raster,exact:true}).click();
+    await flyout.waitFor({state:"hidden"});
+  }
+  // Leave the original test's preferences dialog open in Portuguese.
+  await page.getByTestId("geomoz-settings-trigger").click();
+  console.log("Vector, Hydrology and Raster floating cards consistently translated in PT/EN/ES/FR.");
+
   const motion=page.getByTestId("geomoz-reduced-motion");
   await motion.check();
   assert.equal(await page.evaluate(()=>localStorage.getItem("geomoz_reduce_motion")),"true");

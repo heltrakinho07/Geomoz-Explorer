@@ -43,6 +43,11 @@ const workbenchCopy = {
   newLayerShort:"Nova camada", finishDrawing:"Terminar desenho", geology:"Cartografia geológica / temática",
   seismicData:"Dados GeoMoz · USGS / ISC", mapLayout:"Cartografia vectorial A4/A3",
   commandTitle:"Comandos de ", globalData:"Dados globais", tools:"Ferramentas",
+  flyoutSection:"GEOMOZ GIS WORKSPACE / FERRAMENTAS",
+  flyoutHelp:"Seleccione uma ferramenta para trabalhar com as camadas do projecto.",
+  flyoutAria:"Ferramentas: ", flyoutClose:"Fechar ",
+  hydrologyToolsHelp:"Aceda às análises de bacias hidrográficas, águas subterrâneas e terreno.",
+  terrain3D:"Gerar mapa 3D do DEM",
   },
  en: {
   current:"CURRENT PROJECT", projectName:"Project name", search:"Search tools…",
@@ -64,6 +69,11 @@ const workbenchCopy = {
   newLayerShort:"New layer", finishDrawing:"Finish drawing", geology:"Geological / thematic cartography",
   seismicData:"GeoMoz data · USGS / ISC", mapLayout:"A4/A3 vector cartography",
   commandTitle:"Commands for ", globalData:"Global data", tools:"Tools",
+  flyoutSection:"GEOMOZ GIS WORKSPACE / TOOLS",
+  flyoutHelp:"Select a tool to work with the layers in your project.",
+  flyoutAria:"Tools: ", flyoutClose:"Close ",
+  hydrologyToolsHelp:"Open watershed, groundwater and terrain analysis tools.",
+  terrain3D:"Generate 3D map from DEM",
   },
  es: {
   current:"PROYECTO ACTUAL", projectName:"Nombre del proyecto", search:"Buscar herramientas…",
@@ -85,6 +95,11 @@ const workbenchCopy = {
   newLayerShort:"Nueva capa", finishDrawing:"Terminar dibujo", geology:"Cartografía geológica / temática",
   seismicData:"Datos GeoMoz · USGS / ISC", mapLayout:"Cartografía vectorial A4/A3",
   commandTitle:"Comandos de ", globalData:"Datos globales", tools:"Herramientas",
+  flyoutSection:"GEOMOZ GIS WORKSPACE / HERRAMIENTAS",
+  flyoutHelp:"Seleccione una herramienta para trabajar con las capas del proyecto.",
+  flyoutAria:"Herramientas: ", flyoutClose:"Cerrar ",
+  hydrologyToolsHelp:"Acceda a los análisis de cuencas, aguas subterráneas y terreno.",
+  terrain3D:"Generar mapa 3D a partir del MDE",
   },
  fr: {
   current:"PROJET ACTUEL", projectName:"Nom du projet", search:"Rechercher des outils…",
@@ -106,6 +121,11 @@ const workbenchCopy = {
   newLayerShort:"Nouvelle couche", finishDrawing:"Terminer le dessin", geology:"Cartographie géologique / thématique",
   seismicData:"Données GeoMoz · USGS / ISC", mapLayout:"Cartographie vectorielle A4/A3",
   commandTitle:"Commandes de ", globalData:"Données mondiales", tools:"Outils",
+  flyoutSection:"GEOMOZ GIS WORKSPACE / OUTILS",
+  flyoutHelp:"Sélectionnez un outil pour travailler avec les couches de votre projet.",
+  flyoutAria:"Outils : ", flyoutClose:"Fermer ",
+  hydrologyToolsHelp:"Accédez aux analyses des bassins versants, des eaux souterraines et du terrain.",
+  terrain3D:"Générer une carte 3D à partir du MNT",
   },
 } as const;
 export type WorkbenchCopyKey=keyof typeof workbenchCopy.pt;

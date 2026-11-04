@@ -1,9 +1,13 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, X, type LucideIcon } from "lucide-react";
+import { useLanguage } from "../../hooks/useLanguage";
+import { workbenchText, type WorkbenchCopyKey } from "./geomoz-workbench-locale";
 
 interface GeoMozFloatingToolCardProps {
   title: string;
+  /** Optional category-specific help, in the current workspace locale. */
+  description?: string;
   icon: LucideIcon;
   open: boolean;
   onToggle: () => void;
@@ -23,9 +27,11 @@ type FlyoutPosition = CSSProperties & { maxHeight: number; width: number };
  * descendants (which are lost when a card is portaled straight into body).
  */
 export function GeoMozFloatingToolCard({
-  title, icon: Icon, open, onToggle, onClose, children, testId,
+  title, description, icon: Icon, open, onToggle, onClose, children, testId,
 }: GeoMozFloatingToolCardProps) {
   const id = useId();
+  const { language } = useLanguage();
+  const txt = (key: WorkbenchCopyKey) => workbenchText(language, key);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const [position, setPosition] = useState<FlyoutPosition | null>(null);
@@ -99,15 +105,15 @@ export function GeoMozFloatingToolCard({
       </button>
       {open && position && chrome && createPortal(
         <section ref={panelRef} id={id} role="dialog" aria-modal="false"
-          aria-label={"Ferramentas: " + title} data-testid="geomoz-tools-flyout"
+          aria-label={txt("flyoutAria") + title} data-testid="geomoz-tools-flyout"
           className="gm-tool-flyout" style={position}>
           <header className="gm-tool-flyout-header">
             <div>
-              <small>GEOMOZ GIS WORKSPACE / FERRAMENTAS</small>
+              <small>{txt("flyoutSection")}</small>
               <h2><Icon size={18} aria-hidden="true" /> {title}</h2>
-              <p>Seleccione uma ferramenta para trabalhar com as camadas do projecto.</p>
+              <p>{description ?? txt("flyoutHelp")}</p>
             </div>
-            <button type="button" aria-label={"Fechar " + title} onClick={onClose}>
+            <button type="button" aria-label={txt("flyoutClose") + title} onClick={onClose}>
               <X size={17} aria-hidden="true" />
             </button>
           </header>
