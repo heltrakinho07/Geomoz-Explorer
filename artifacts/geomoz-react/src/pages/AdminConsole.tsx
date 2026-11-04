@@ -51,7 +51,7 @@ const initialNavigation: { id: Section; label: string; icon: React.ElementType; 
   { id: "users", label: "Utilizadores", icon: Users, hint: "Contas e permissões" },
   { id: "plans", label: "Planos", icon: CreditCard, hint: "Preços e quotas" },
   { id: "features", label: "Funcionalidades", icon: SlidersHorizontal, hint: "Módulos do GeoMoz" },
-  { id: "payments", label: "Pagamentos", icon: Database, hint: "Transacções PayZeno" },
+  { id: "payments", label: "Pagamentos", icon: Database, hint: "Transacções e subscrições" },
   { id: "audit", label: "Auditoria", icon: ShieldCheck, hint: "Acções administrativas" },
 ];
 const FEATURE_NAMES: Record<string, string> = {
