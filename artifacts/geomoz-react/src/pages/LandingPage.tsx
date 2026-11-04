@@ -964,6 +964,15 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
             </Button>
           </div>
 
+
+          <div aria-label={lang === "pt" ? "Vantagens do GeoMoz" : "GeoMoz benefits"}
+            className="mb-9 flex w-full max-w-4xl flex-wrap items-center justify-center gap-x-6 gap-y-3 rounded-2xl border border-slate-200/80 bg-white/80 px-5 py-3 text-[11px] font-semibold text-slate-700 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-200 sm:text-xs">
+            <span className="inline-flex items-center gap-2"><Cloud size={16} className="text-sky-600 dark:text-sky-400" />{lang === "pt" ? "Processamento na nuvem" : "Cloud processing"}</span>
+            <span className="inline-flex items-center gap-2"><Layers size={16} className="text-sky-600 dark:text-sky-400" />{lang === "pt" ? "Dados geoespaciais globais" : "Global geospatial data"}</span>
+            <span className="inline-flex items-center gap-2"><ShieldCheck size={16} className="text-sky-600 dark:text-sky-400" />{lang === "pt" ? "Análises reproduzíveis" : "Reproducible analysis"}</span>
+            <span className="inline-flex items-center gap-2"><BrainCircuit size={16} className="text-indigo-600 dark:text-indigo-400" />{lang === "pt" ? "IA aplicada ao território" : "AI for territorial insights"}</span>
+          </div>
+
           {/* ── Product preview: illustrative metrics, not a live API connection ── */}
           <div
             id="visao-geral"
@@ -1127,6 +1136,22 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                 </button>
               </div>
             </div>
+          </div>
+
+          <div aria-label={lang === "pt" ? "Módulos em destaque" : "Featured modules"} className="mt-5 grid w-full max-w-5xl gap-3 text-left sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { Icon: Mountain, pt: "Relevo 3D", en: "3D terrain", ptDesc: "Modelos de elevação, perfis topográficos e morfometria.", enDesc: "Elevation models, topographic profiles and terrain analysis.", anchor: "#relevo-3d" },
+              { Icon: Satellite, pt: "Deteção Remota", en: "Remote sensing", ptDesc: "Sentinel e Landsat para índices espectrais e monitorização.", enDesc: "Sentinel and Landsat spectral indices and monitoring.", anchor: "#detecao-remota" },
+              { Icon: Droplets, pt: "Hidrologia", en: "Hydrology", ptDesc: "Bacias, drenagem e recursos hídricos com ferramentas SIG.", enDesc: "Catchments, drainage and GIS water-resource tools.", anchor: "#hidrogeologia" },
+              { Icon: BrainCircuit, pt: "GeoMoz AI", en: "GeoMoz AI", ptDesc: "Interpretação de padrões espaciais com apoio de IA.", enDesc: "AI-assisted interpretation of spatial patterns.", anchor: "#recursos" },
+            ].map(({ Icon, pt, en, ptDesc, enDesc, anchor }) => (
+              <a key={pt} href={anchor} className="group/card flex min-w-0 flex-col gap-2.5 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900/90 dark:hover:border-sky-800">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-sky-100 to-indigo-100 text-sky-700 dark:from-sky-950 dark:to-indigo-950 dark:text-sky-300"><Icon size={21} aria-hidden="true" /></span>
+                <strong className="text-sm text-slate-900 dark:text-white">{lang === "pt" ? pt : en}</strong>
+                <span className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">{lang === "pt" ? ptDesc : enDesc}</span>
+                <span className="mt-auto inline-flex items-center gap-1 text-[11px] font-bold text-sky-700 dark:text-sky-400">{lang === "pt" ? "Saber mais" : "Learn more"} <ArrowRight size={13} /></span>
+              </a>
+            ))}
           </div>
         </div>
       </section>
