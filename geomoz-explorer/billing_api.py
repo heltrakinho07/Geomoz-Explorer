@@ -104,7 +104,9 @@ def _confirm_paid_order(order_id: str, event_id: str, provider: str, amount_mzn:
 
 @router.get("/plans")
 def list_plans():
-    return {"plans": public_catalogue(), "currency": "MZN", "billing_mode": "prepaid_non_renewing"}
+    return {"plans": public_catalogue(), "currency": "MZN", "billing_mode": "prepaid_non_renewing",
+            "payment_methods": {"stripe": bool(os.getenv("STRIPE_SECRET_KEY") and os.getenv("STRIPE_WEBHOOK_SECRET")),
+                                "mpesa": False, "emola": False}}
 
 
 @router.get("/me")
@@ -142,8 +144,10 @@ class CheckoutRequest(BaseModel):
 
 def _stripe_checkout(order_id: str, plan: str, amount_mzn: int) -> tuple[str, str]:
     secret = os.getenv("STRIPE_SECRET_KEY", "").strip()
-    if not secret:
+    if not secret or not os.getenv("STRIPE_WEBHOOK_SECRET"):
         raise HTTPException(503, "Pagamento por cartão ainda não está configurado.")
+    if os.getenv("STRIPE_CURRENCY", "mzn").lower() != "mzn":
+        raise HTTPException(503, "Valores MZN requerem cobrança MZN; conversão de moedas não configurada.")
     origin = _safe_origin()
     fields = {
         "mode": "payment",
@@ -177,7 +181,7 @@ def checkout(body: CheckoutRequest, uid: str = Depends(require_billing_auth)):
     account = _account(uid)
     if body.plan == "academic" and not account.get("academic_verified"):
         raise HTTPException(403, "Solicite a validação académica antes de aderir ao Academic.")
-    if body.provider == "stripe" and not os.getenv("STRIPE_SECRET_KEY"):
+    if body.provider == "stripe" and not (os.getenv("STRIPE_SECRET_KEY") and os.getenv("STRIPE_WEBHOOK_SECRET")):
         raise HTTPException(503, "Stripe não está configurado. Escolha outro método.")
     amount_mzn = PLANS[body.plan]["monthly_mzn" if body.interval == "month" else "annual_mzn"]
     order_id = uuid4().hex
