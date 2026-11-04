@@ -28,8 +28,8 @@ describe("GeoMoz sidebar footer action dock", () => {
     expect(sidebar).toContain('data-testid="sidebar-settings-action"');
     expect(sidebar).toContain("onClick={onOpenSettings}");
     expect(sidebar).toContain("aria-pressed={isDark}");
-    expect(sidebar).toContain('aria-label="Abrir definições do sistema"');
-    expect(sidebar).toContain('aria-label="Instalar GeoMoz Explorer como aplicação"');
+    expect(sidebar).toContain('aria-label={t("sidebar.openSettings")}');
+    expect(sidebar).toContain('aria-label={t("sidebar.installTitle")}');
   });
 
   it("respects collapsed navigation, light/dark contrast and reduced motion", () => {
