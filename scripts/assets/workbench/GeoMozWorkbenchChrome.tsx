@@ -170,7 +170,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
               <Layers3 size={17}/><span>{txt("newLayer")}</span>
             </button>}
             {group.items.map(command=>{const Icon=command.icon??CommandIcon;return <button key={command.id} type="button"
-              data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??command.title}
+              data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??commandLabel(command)}
               onClick={()=>{if(!command.disabledReason){setOpenToolCard(null);command.run();}}}>
               <Icon size={17}/><span>{commandLabel(command)}</span>
             </button>;})}
@@ -213,14 +213,14 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
             open={openToolCard===group.label}
             onToggle={()=>setOpenToolCard(openToolCard===group.label?null:group.label)}
             onClose={()=>setOpenToolCard(null)}>
-            {group.items.map(command=>{const Icon=command.icon??CommandIcon;return <button key={command.id} type="button" data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason){setOpenToolCard(null);command.run();}}}><Icon size={17}/><span>{commandLabel(command)}</span></button>;})}{group.label==="Serviços de mapas"&&!viewer&&<>
+            {group.items.map(command=>{const Icon=command.icon??CommandIcon;return <button key={command.id} type="button" data-command={command.id} disabled={!!command.disabledReason} title={command.disabledReason??commandLabel(command)} onClick={()=>{if(!command.disabledReason){setOpenToolCard(null);command.run();}}}><Icon size={17}/><span>{commandLabel(command)}</span></button>;})}{group.label==="Serviços de mapas"&&!viewer&&<>
             <button type="button" data-action="geomoz-qms" aria-expanded={qmsOpen} onClick={()=>{setOpenToolCard(null);setQmsOpen(!qmsOpen);setNgwOpen(false);}}><Database size={17}/><span>NextGIS QMS</span></button>
             <button type="button" data-action="geomoz-nextgis-web" aria-expanded={ngwOpen} onClick={()=>{setOpenToolCard(null);setNgwOpen(!ngwOpen);setQmsOpen(false);}}><Database size={17}/><span>NextGIS Web</span></button>
           </>}
           </GeoMozFloatingToolCard>:<><div>{group.items.map(command=>{
           const Icon=command.icon??CommandIcon;
           return <button key={command.id} type="button" data-command={command.id} aria-pressed={command.id==="plugin.maplibre-gl-geo-editor"?command.keywords?.includes("deactivate"):undefined} disabled={!!command.disabledReason}
-            title={command.disabledReason??command.title} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={19}/><span>{command.id==="plugin.maplibre-gl-geo-editor"&&command.keywords?.includes("deactivate")?txt("finishDrawing"):commandLabel(command)}</span></button>;
+            title={command.disabledReason??commandLabel(command)} onClick={()=>{if(!command.disabledReason)command.run();}}><Icon size={19}/><span>{command.id==="plugin.maplibre-gl-geo-editor"&&command.keywords?.includes("deactivate")?txt("finishDrawing"):commandLabel(command)}</span></button>;
         })}</div><small>{categoryLabel(group.label)}</small></>}</section>)}
         {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group gm-ribbon-optional">
           <GeoMozFloatingToolCard title={categoryLabel("Hidrologia")} description={txt("hydrologyToolsHelp")} icon={Activity}
