@@ -48,6 +48,8 @@ jobs:
           docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
           docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}/${{ env.SERVICE_NAME }}:latest
 
+      # IMPORTANT: use update-* flags, not set-*. set-* removes manually
+      # configured PayZeno secrets/GEOMOZ_PUBLIC_URL on every new deployment.
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
@@ -61,8 +63,8 @@ jobs:
             --max-instances 10 \
             --min-instances 0 \
             --timeout 300s \
-            --set-env-vars="^@^PYTHONUNBUFFERED=1@FIREBASE_PROJECT_ID=geoprocessamento-426809@ALLOW_SERVER_GEE_FALLBACK=true@CORS_ORIGINS=https://geoprocessamento-426809.web.app,https://geoprocessamento-426809.firebaseapp.com,https://geomoz.geolithica.com" \
-            --set-secrets=GEE_SERVICE_ACCOUNT_KEY=geomoz-gee-key:latest
+            --update-env-vars="^@^PYTHONUNBUFFERED=1@FIREBASE_PROJECT_ID=geoprocessamento-426809@ALLOW_SERVER_GEE_FALLBACK=true@CORS_ORIGINS=https://geoprocessamento-426809.web.app,https://geoprocessamento-426809.firebaseapp.com,https://geomoz.geolithica.com" \
+            --update-secrets=GEE_SERVICE_ACCOUNT_KEY=geomoz-gee-key:latest
 
       - name: Get Service URL
         id: service-url
