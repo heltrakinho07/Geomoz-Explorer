@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Switch, Route } from "wouter";
 import { Toaster } from "@/components/ui/toaster";
 import LandingPage from "@/pages/LandingPage";
+import PricingPage from "@/pages/PricingPage";
 import Explorer from "@/pages/Explorer";
 import HidroWebGisViewer from "@/pages/HidroWebGisViewer";
 import { AuthProvider } from "@/hooks/useAuth";
@@ -132,6 +133,7 @@ export default function App() {
                 <Route path="/">{() => <LandingPage />}</Route>
                 <Route path="/login">{() => <LandingPage initialAuthMode="login" />}</Route>
                 <Route path="/register">{() => <LandingPage initialAuthMode="register" />}</Route>
+                <Route path="/planos">{() => <PricingPage />}</Route>
                 <Route path="/view/hidro">{() => <HidroWebGisViewer />}</Route>
                 <Route path="/share/hidro/:id">{(params) => <HidroWebGisViewer id={params.id} />}</Route>
                 <Route path="/app">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
