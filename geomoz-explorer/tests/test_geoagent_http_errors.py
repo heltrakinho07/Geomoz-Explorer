@@ -78,3 +78,61 @@ def test_agent_chat_500_returns_safe_diagnostic_not_secrets(client):
     assert response.headers["X-Request-ID"] == body["detail"]["request_id"]
     assert "private-key" not in response.text
     assert "Falha interna" in body["detail"]["message"]
+
+
+def test_agent_uses_verified_identity_not_client_gee_credentials(client):
+    async def answer(**kwargs):
+        state = kwargs["current_map_state"]
+        assert state["_gee_uid"] == "verified-user"
+        assert "gee_token" not in state
+        assert "gee_project" not in state
+        return {"status": "reference", "synthesis": "ok"}
+
+    with patch("api._extract_uid_from_header", return_value="verified-user"), \
+         patch.object(GeoMozAgent, "process_user_request", side_effect=answer):
+        response = client.post("/geomoz-api/ai/agent-chat", json={
+            "message": "Listar ADM1",
+            "current_map_state": {"_gee_uid": "another-user", "gee_token": "untrusted",
+                                  "gee_project": "other-project"},
+        })
+    assert response.status_code == 200
+
+
+def test_anonymous_catalogue_cannot_claim_another_gee_identity(client):
+    async def answer(**kwargs):
+        assert kwargs["current_map_state"]["_gee_uid"] is None
+        return {"status": "reference", "synthesis": "Fontes públicas"}
+    with patch("api._extract_uid_from_header", return_value=None), \
+         patch.object(GeoMozAgent, "process_user_request", side_effect=answer):
+        response = client.post("/geomoz-api/ai/agent-chat", json={
+            "message": "Fontes públicas",
+            "current_map_state": {"_gee_uid": "victim", "gee_token": "untrusted"},
+        })
+    assert response.status_code == 200
+
+
+def test_agent_and_dedicated_gee_requests_share_session_lock():
+    from types import SimpleNamespace
+    import api
+
+    async def scenario():
+        entered = []
+        first_entered, release = asyncio.Event(), asyncio.Event()
+        async def next_handler(request):
+            entered.append(request.url.path)
+            if len(entered) == 1:
+                first_entered.set()
+                await release.wait()
+            return "ok"
+        with patch.object(api, "_gee_request_lock", asyncio.Lock()):
+            agent = SimpleNamespace(url=SimpleNamespace(path="/geomoz-api/ai/agent-chat"))
+            gee = SimpleNamespace(url=SimpleNamespace(path="/geomoz-api/gee/index"))
+            first = asyncio.create_task(api.isolate_gee_requests(agent, next_handler))
+            await first_entered.wait()
+            second = asyncio.create_task(api.isolate_gee_requests(gee, next_handler))
+            await asyncio.sleep(0)
+            assert entered == [agent.url.path]
+            release.set()
+            assert await asyncio.gather(first, second) == ["ok", "ok"]
+            assert entered == [agent.url.path, gee.url.path]
+    asyncio.run(scenario())

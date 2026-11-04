@@ -101,7 +101,7 @@ class IntelligenceTests(unittest.IsolatedAsyncioTestCase):
         gee.compute_index_tile.return_value = {"stats": {"mean": 0}, "tileUrl": "https://example.org/tiles"}
         api = MagicMock()
         with patch.dict("sys.modules", {"gee_module": gee, "api": api}):
-            result = await ToolDispatcher.execute("get_precipitation_chirps", {"year": 2025}, {})
+            result = await ToolDispatcher.execute("get_precipitation_chirps", {"year": 2025}, {"_gee_uid": "user-test"})
         self.assertEqual(result["meanRainfallMm"], 0)
         self.assertEqual(gee.compute_index_tile.call_args.kwargs["start_date"], "2025-01-01")
         self.assertEqual(gee.compute_index_tile.call_args.kwargs["end_date"], "2026-01-01")
@@ -110,7 +110,7 @@ class IntelligenceTests(unittest.IsolatedAsyncioTestCase):
         gee = MagicMock()
         gee.compute_index_tile.return_value = {"stats": {"mean": 0, "p50": 0.5}, "tileUrl": "https://example.org/tiles"}
         with patch.dict("sys.modules", {"gee_module": gee, "api": MagicMock()}):
-            result = await ToolDispatcher.execute("calculate_index", {"index": "ndvi"}, {})
+            result = await ToolDispatcher.execute("calculate_index", {"index": "ndvi"}, {"_gee_uid": "user-test"})
         self.assertEqual(result["mean"], "0.000")
 
     async def test_geology_evidence_uses_requested_scope(self):

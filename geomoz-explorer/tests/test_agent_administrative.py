@@ -85,7 +85,7 @@ class GAULTests(unittest.TestCase):
         with patch.dict("sys.modules", {"gee_module": MagicMock()}), \
              patch.object(boundaries, "administrative_geometry", return_value=(selected, {"dataset": boundaries.GAUL2, "level": 2, "version": "2025"})) as resolver, \
              patch.object(engines, "landcover", return_value={"status": "success", "warning": "2021", "year": 2021}) as engine:
-            result = asyncio.run(ToolDispatcher.execute("get_public_landcover", {}, {"aoi": aoi}))
+            result = asyncio.run(ToolDispatcher.execute("get_public_landcover", {}, {"_gee_uid": "user-test", "aoi": aoi}))
         resolver.assert_called_once_with("MOZ", 2, 100, 200)
         engine.assert_called_once_with(selected, 30)
         self.assertEqual(result["boundarySource"]["id"], boundaries.GAUL2)
@@ -100,7 +100,7 @@ class GAULTests(unittest.TestCase):
         gee.compute_index_tile.return_value = {"stats": {"mean": 0}, "tileUrl": "tiles"}
         api = MagicMock()
         api._region_geojson.return_value = geojson
-        state = {"aoi": {"source": "country", "countryCode": "MOZ", "boundarySource": "gaul2025",
+        state = {"_gee_uid": "user-test", "aoi": {"source": "country", "countryCode": "MOZ", "boundarySource": "gaul2025",
                          "adminLevel": 2, "admin1Code": 100, "admin2Code": 200}}
         async def run():
             await ToolDispatcher.execute("calculate_index", {"index": "ndvi"}, state)

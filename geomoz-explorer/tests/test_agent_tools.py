@@ -62,29 +62,29 @@ class TestGeoMozAgent(unittest.TestCase):
 
             with patch.dict("sys.modules", {"gee_module": mock_gee, "api": mock_api}):
                 # 1. Geology tool
-                geo_res = await ToolDispatcher.execute("get_geology_units", {"province": "Tete"}, {})
+                geo_res = await ToolDispatcher.execute("get_geology_units", {"province": "Tete"}, {"_gee_uid": "user-test"})
                 # No real geological dataset in this mock: never return fake units.
                 self.assertEqual(geo_res["status"], "error")
                 self.assertNotIn("map_action", geo_res)
 
                 # 2. Flood susceptibility
-                flood_res = await ToolDispatcher.execute("get_flood_susceptibility", {"province": "Zambezia"}, {})
+                flood_res = await ToolDispatcher.execute("get_flood_susceptibility", {"province": "Zambezia"}, {"_gee_uid": "user-test"})
                 self.assertEqual(flood_res["status"], "success")
                 self.assertEqual(flood_res["map_action"]["id"], "agent_flood_susceptibility")
 
                 # 3. Precipitation CHIRPS
-                precip_res = await ToolDispatcher.execute("get_precipitation_chirps", {"year": 2023}, {})
+                precip_res = await ToolDispatcher.execute("get_precipitation_chirps", {"year": 2023}, {"_gee_uid": "user-test"})
                 self.assertEqual(precip_res["status"], "success")
                 self.assertEqual(precip_res["map_action"]["id"], "agent_precipitation_chirps")
 
                 # 4. AHP
                 mock_gee.compute_groundwater_ahp.return_value = {"tile": "https://example.org/{z}/{x}/{y}", "classes": [], "weights": []}
-                ahp_res = await ToolDispatcher.execute("run_multicriteria_ahp", {"theme": "groundwater"}, {})
+                ahp_res = await ToolDispatcher.execute("run_multicriteria_ahp", {"theme": "groundwater"}, {"_gee_uid": "user-test"})
                 self.assertEqual(ahp_res["status"], "success")
                 self.assertIn("agent_ahp_groundwater", ahp_res["map_action"]["id"])
 
                 # 5. Temporal change
-                change_res = await ToolDispatcher.execute("detect_temporal_change", {"index": "ndvi"}, {})
+                change_res = await ToolDispatcher.execute("detect_temporal_change", {"index": "ndvi"}, {"_gee_uid": "user-test"})
                 self.assertEqual(change_res["status"], "error")
                 self.assertNotIn("map_action", change_res)
 
@@ -93,7 +93,7 @@ class TestGeoMozAgent(unittest.TestCase):
                     "tileUrl": "https://earthengine.googleapis.com/v1/projects/mock/smap",
                     "stats": {"mean": 0.284, "p50": 0.280}
                 }
-                smap_res = await ToolDispatcher.execute("get_soil_moisture_smap", {"depth": "rootzone"}, {})
+                smap_res = await ToolDispatcher.execute("get_soil_moisture_smap", {"depth": "rootzone"}, {"_gee_uid": "user-test"})
                 self.assertEqual(smap_res["status"], "success")
                 self.assertIn("agent_smap_rootzone", smap_res["map_action"]["id"])
                 self.assertEqual(smap_res["depth"], "rootzone")
@@ -103,7 +103,7 @@ class TestGeoMozAgent(unittest.TestCase):
                     "tileUrl": "https://earthengine.googleapis.com/v1/projects/mock/rusle",
                     "stats": {"meanSoilLossTha": 14.8}
                 }
-                rusle_res = await ToolDispatcher.execute("get_water_erosion_rusle", {"year": 2023}, {})
+                rusle_res = await ToolDispatcher.execute("get_water_erosion_rusle", {"year": 2023}, {"_gee_uid": "user-test"})
                 self.assertEqual(rusle_res["status"], "success")
                 self.assertIn("agent_erosion_rusle_2023", rusle_res["map_action"]["id"])
 
@@ -112,7 +112,7 @@ class TestGeoMozAgent(unittest.TestCase):
                     "tileUrl": "https://earthengine.googleapis.com/v1/projects/mock/fire",
                     "stats": {"firePixels": 42}
                 }
-                fire_res = await ToolDispatcher.execute("get_wildfire_activity", {"start_date": "2024-01-01", "end_date": "2024-12-31"}, {})
+                fire_res = await ToolDispatcher.execute("get_wildfire_activity", {"start_date": "2024-01-01", "end_date": "2024-12-31"}, {"_gee_uid": "user-test"})
                 self.assertEqual(fire_res["status"], "success")
                 self.assertEqual(fire_res["firePixelsCount"], 42)
 

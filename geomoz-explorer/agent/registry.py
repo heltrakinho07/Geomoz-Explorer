@@ -3,7 +3,6 @@ GeoMoz Tool Registry — Deterministic Geospatial Tools for GeoMoz AI Agent.
 Every tool is validated, typed, and maps to robust GEE or GeoPandas routines.
 """
 
-import os
 import logging
 from typing import Dict, Any, Optional, List
 
@@ -305,15 +304,14 @@ class ToolDispatcher:
         start_date = args.get("start_date") or period.get("startDate") or "2024-01-01"
         end_date = args.get("end_date") or period.get("endDate") or "2024-12-31"
 
-        gee_token = context.get("gee_token") or args.get("gee_token")
-        gee_project = context.get("gee_project") or args.get("gee_project") or os.environ.get("GEE_PROJECT_ID", "geoprocessamento-426809")
-
         def _ensure_gee():
             import gee_module
-            try:
-                gee_module._init_gee(token=gee_token, project=gee_project)
-            except Exception as e:
-                logger.warning("Agent GEE init attempt notice: %s", e)
+            uid = context.get("_gee_uid")
+            if not uid:
+                raise RuntimeError("Autenticação GeoMoz necessária para utilizar o Google Earth Engine.")
+            # Use the same per-user store and project as the dedicated GEE APIs.
+            # Never fall back to another user's global EE session after an error.
+            gee_module._init_gee(uid=uid, project=None, token=None)
 
         try:
             # Existing GEE/GeoPandas tools also need the selected GAUL polygon,
@@ -324,10 +322,9 @@ class ToolDispatcher:
                 import asyncio
                 def resolve_legacy_region():
                     import json
-                    import gee_module
                     from agent.administrative_boundaries import administrative_geometry
                     from agent.earth_engine_tools import validate_geometry
-                    gee_module._init_gee(token=gee_token, project=gee_project)
+                    _ensure_gee()
                     geom, meta = administrative_geometry(aoi.get("countryCode"), aoi.get("adminLevel", 0),
                                                           aoi.get("admin1Code"), aoi.get("admin2Code"))
                     geojson = geom.getInfo()
@@ -348,9 +345,8 @@ class ToolDispatcher:
             if tool_name == "list_administrative_units":
                 import asyncio
                 def load_units():
-                    import gee_module
                     from agent.administrative_boundaries import list_units
-                    gee_module._init_gee(token=gee_token, project=gee_project)
+                    _ensure_gee()
                     return list_units(args["country_code"], args["level"], args.get("parent_code"))
                 return await asyncio.to_thread(load_units)
 
@@ -377,9 +373,8 @@ class ToolDispatcher:
                     return {"status": "error", "message": "Fonte de limites administrativos não suportada."}
                 boundary_metadata = {}
                 def run_public_analysis():
-                    import gee_module
                     from agent import earth_engine_tools as public
-                    gee_module._init_gee(token=gee_token, project=gee_project)
+                    _ensure_gee()
                     region = region_geom
                     if boundary_code:
                         if boundary_source == "gaul2025":
