@@ -790,7 +790,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(6.5);
         doc.setFont("helvetica", "bold");
-        doc.text(legendType === "lulc" ? "LEGENDA — USO DO SOLO" : "LEGENDA — ESCOAMENTO (CN)", legX + 4, legY + 4.2);
+        doc.text(legendType === "lulc" ? ht("pdfContent.legendLulc") : ht("pdfContent.legendCN"), legX + 4, legY + 4.2);
 
         let ly = legY + 9;
 
@@ -815,9 +815,9 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           });
         } else {
           const cnLegend = [
-            { label: "CN < 50 · Alta Infiltração", color: [26, 152, 80] },
-            { label: "CN 50–75 · Escoamento Médio", color: [254, 224, 139] },
-            { label: "CN > 75 · Alto Escoamento", color: [215, 48, 39] },
+            { label: ht("pdfContent.cnLow"), color: [26, 152, 80] },
+            { label: ht("pdfContent.cnMedium"), color: [254, 224, 139] },
+            { label: ht("pdfContent.cnHigh"), color: [215, 48, 39] },
           ];
           cnLegend.forEach(ci => {
             doc.setFillColor(ci.color[0], ci.color[1], ci.color[2]);
@@ -833,7 +833,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           doc.setTextColor(15, 23, 42);
           doc.setFontSize(6.5);
           doc.setFont("helvetica", "bold");
-          doc.text(`CN Médio da Bacia: ${report.runoff.cnMean ?? "—"}`, legX + 4, ly + 2);
+          doc.text(`${ht("viewer.meanCN")}: ${report.runoff.cnMean ?? "—"}`, legX + 4, ly + 2);
           ly += 5.2;
         }
 
@@ -844,14 +844,14 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
         doc.setTextColor(51, 65, 85);
         doc.setFontSize(6);
         doc.setFont("helvetica", "normal");
-        doc.text("Rede de Drenagem / Linhas de Água", legX + 11, ly + 2);
+        doc.text(ht("pdfContent.drainageNetwork"), legX + 11, ly + 2);
         ly += 4.8;
 
         doc.setDrawColor(13, 71, 161);
         doc.setLineWidth(0.6);
         doc.setFillColor(21, 101, 192, 0.2);
         doc.rect(legX + 4, ly, 4, 3, "FD");
-        doc.text("Limite da Bacia Hidrográfica", legX + 11, ly + 2.2);
+        doc.text(ht("pdfContent.basinBoundary"), legX + 11, ly + 2.2);
 
         // Cartographic Metadata strip under map
         const metaY = mapY + mapH + 8;
@@ -863,12 +863,10 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
         doc.setTextColor(71, 85, 105);
         doc.setFontSize(6.5);
         doc.setFont("helvetica", "bold");
-        doc.text("METADADOS CARTOGRÁFICOS:", mapX + 3, metaY + 4.5);
+        doc.text(ht("pdfContent.metadata"), mapX + 3, metaY + 4.5);
         doc.setFont("helvetica", "normal");
         doc.text(
-          "Sistema de Coordenadas: WGS 84 (EPSG:4326) · Projeção Geográfica Decimal\n" +
-          "Fontes de Dados: ESA WorldCover (10m), HydroSHEDS / WWF, Copernicus DEM (GLO-30), CHIRPS Climatology\n" +
-          "Elaborado por: GeoMoz Explorer · Plataforma WebGIS de Recursos Hídricos e Geologia de Moçambique",
+          `${ht("pdfContent.crs")}\n${ht("pdfContent.sources")}\n${ht("pdfContent.author")}`,
           mapX + 3,
           metaY + 8,
         );
@@ -879,8 +877,8 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       // ── CONDITIONAL MAP PAGES ──────────────────────────────────────────
       if (exportType === "lulc" || exportType === "both") {
         await drawQgisMapPage(
-          "Mapa 1: Uso do Solo & Linhas de Água",
-          "Uso e Cobertura do Solo (ESA WorldCover 10m) & Rede Hidrográfica",
+          ht("pdfContent.mapLulc"),
+          ht("pdfContent.subtitleLulc"),
           report.landcoverTile,
           "lulc",
         );
@@ -888,8 +886,8 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
 
       if (exportType === "cn" || exportType === "both") {
         await drawQgisMapPage(
-          "Mapa 2: Escoamento Superficial (CN)",
-          "Escoamento Superficial (SCS Curve Number) & Rede Hidrográfica",
+          ht("pdfContent.mapCN"),
+          ht("pdfContent.subtitleCN"),
           report.runoff.cnTile,
           "cn",
         );
@@ -901,7 +899,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       setExportModalOpen(false);
     } catch (err) {
       console.error("Erro ao gerar PDF QGIS:", err);
-      alert("Falha ao exportar PDF: " + (err instanceof Error ? err.message : String(err)));
+      alert(ht("pdfContent.exportFailed") + " " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setExportingPdf(false);
     }
