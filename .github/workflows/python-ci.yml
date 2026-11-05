@@ -153,7 +153,7 @@ jobs:
             exit 1
           fi
           echo 'Checking lazily imported GEOAGENTE Python modules inside production container'
-          docker exec geomoz-api-smoke python -c 'from agent.planner import GeoMozAgent; from agent.registry import ToolDispatcher; from agent.geology_data import summarize_geology; print("GEOAGENTE modules import OK")'
+          docker exec geomoz-api-smoke python -c 'import gee_module; from agent.planner import GeoMozAgent; from agent.registry import ToolDispatcher; from agent.geology_data import summarize_geology; print("GEOAGENTE modules import OK")'
           echo 'Running end-to-end Manica geology chat against production Docker image'
           python - <<'PY'
           import json
@@ -177,6 +177,18 @@ jobs:
           assert result.get("status") == "completed", result.get("synthesis") or result.get("status")
           assert result.get("map_actions"), "Geology summary failed to create map action"
           print("GEOAGENTE answered the real Manica geology query inside the Docker image")
+          ndvi_request = urllib.request.Request(
+              url,
+              data=json.dumps({
+                  "message": "Calcular estatísticas zonais de NDVI entre 2025-05-01 e 2025-09-01",
+                  "current_map_state": {"aoi": {"source": "mozambique", "province": "Cabo Delgado", "district": "Montepuez"}},
+              }).encode("utf-8"),
+              headers={"Content-Type": "application/json"}, method="POST",
+          )
+          with urllib.request.urlopen(ndvi_request, timeout=30) as response:
+              ndvi = json.load(response)
+          assert ndvi.get("status") == "error", ndvi
+          assert "Autenticação GeoMoz necessária" in ndvi["synthesis"], ndvi["synthesis"]
           vector_request = urllib.request.Request(
               "http://127.0.0.1:5003/geomoz-api/ai/geology-features",
               data=json.dumps({"province": "Manica"}).encode("utf-8"),

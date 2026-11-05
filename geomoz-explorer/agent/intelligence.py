@@ -6,8 +6,11 @@ no GIS/provider dependency and never exports credentials or raster tile URLs.
 from copy import deepcopy
 from datetime import date, datetime, timezone
 import math
+import logging
 from time import monotonic
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 
 def safe(value):
@@ -102,8 +105,9 @@ async def execute_tool(name, args, context, declarations, implementation):
             output = await implementation(name, args, context)
             if not isinstance(output, dict):
                 output = failure("A ferramenta devolveu um resultado inválido.")
-        except Exception:
-            output = failure("A ferramenta falhou. Tente uma área ou período menor.")
+        except Exception as exc:
+            logger.error("Agent tool %s raised an unexpected %s", name, type(exc).__name__)
+            output = failure("A ferramenta encontrou um erro interno. Repita o pedido ou contacte o suporte com o dossiê.")
     administrative = context.get("_administrative_metadata")
     if administrative and name not in ("list_public_datasets", "list_administrative_units", "resolve_aoi") and output.get("status") == "success":
         from agent.public_datasets import source

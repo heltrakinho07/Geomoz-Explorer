@@ -14,7 +14,9 @@ export interface GeoMozRasterDrape {
   imageDataUrl:string;
   categories:{value:number;label:string;color:string}[];
   coverage:number;
-  mode:"classified"|"rgb";
+  mode:"classified"|"continuous"|"rgb";
+  range?:{min:number;max:number};
+  palette?:"ndvi"|"ndwi"|"terrain";
 }
 const SIZE=384;
 const LIMIT=32*1024*1024;
@@ -44,11 +46,42 @@ function crsFromKeys(keys:Record<string,unknown>):string{
   }
   return code;
 }
-function categoryColor(value:number,values:number[]):[string,string]{
-  if(WORLD_COVER[value] && values.every(v=>WORLD_COVER[v]))return WORLD_COVER[value];
-  if(values.every(v=>v>=1&&v<=12&&Number.isInteger(v)))
-    return ["Textura "+value,SOIL_PALETTE[value-1]];
-  return ["Classe "+value,COLORS[values.indexOf(value)%COLORS.length]];
+/** Every classified value has a legend entry; no implicit upper category limit. */
+export function buildCategoricalRasterLegend(values:readonly number[]){
+  const world=values.every(value=>Boolean(WORLD_COVER[value]));
+  const soil=values.every(value=>Number.isInteger(value)&&value>=1&&value<=12);
+  const hueColour=(index:number)=>{
+    const hue=(index*137.50776405)%360,s=.72,l=.5;
+    const a=s*Math.min(l,1-l);
+    const channel=(n:number)=>{
+      const k=(n+hue/30)%12;
+      return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,Math.min(9-k,1)))))
+        .toString(16).padStart(2,"0");
+    };
+    return "#"+channel(0)+channel(8)+channel(4);
+  };
+  return values.map((value,index)=>{
+    const [label,color]=world?WORLD_COVER[value]:
+      soil?["Textura "+value,SOIL_PALETTE[value-1]] as [string,string]:
+      ["Classe "+value,index<COLORS.length?COLORS[index]:hueColour(index)] as [string,string];
+    return {value,label,color};
+  });
+}
+
+
+const lerp=(a:number,b:number,t:number)=>a+(b-a)*t;
+const clamp=(v:number)=>Math.max(0,Math.min(1,v));
+/** Colour ramps work on the original numeric value; the scientific grid is untouched. */
+export function continuousRasterColor(value:number,min:number,max:number,palette:"ndvi"|"ndwi"|"terrain"="ndvi"):[number,number,number]{
+  const t=clamp((value-min)/Math.max(max-min,1e-10));
+  const ramps:Record<typeof palette,number[][]>={
+    ndvi:[[143,68,40],[224,182,85],[247,246,174],[104,181,97],[5,97,51]],
+    ndwi:[[150,92,45],[229,207,143],[243,243,235],[112,188,216],[19,86,155]],
+    terrain:[[55,109,68],[159,195,104],[227,204,139],[177,136,102],[242,239,223]],
+  };
+  const stops=ramps[palette],part=t*(stops.length-1);
+  const i=Math.min(stops.length-2,Math.floor(part)),f=part-i;
+  return [0,1,2].map(k=>Math.round(lerp(stops[i][k],stops[i+1][k],f))) as [number,number,number];
 }
 
 /**
@@ -84,6 +117,8 @@ async function getTiffTag(directory:unknown,key:string):Promise<unknown>{
 export interface TerrainRasterDrapeOptions {
   signal?:AbortSignal;
   onProgress?:(fraction:number)=>void;
+  renderer?:"auto"|"classified"|"continuous"|"rgb";
+  palette?:"ndvi"|"ndwi"|"terrain";
 }
 function verifyActive(signal?:AbortSignal){
   if(signal?.aborted)throw new DOMException("Importação do raster cancelada.","AbortError");
@@ -129,7 +164,9 @@ export async function createTerrainRasterDrape(
       bounds[2]<=bounds[0]||bounds[3]<=bounds[1])
       throw Error("Extensão geográfica do raster inválida.");
     const n=Math.min(1024,w),m=Math.min(1024,h);
-    const rgb=image.getSamplesPerPixel()>=3;
+    const rgb=options.renderer==="rgb" || (options.renderer!=="classified"&&
+      options.renderer!=="continuous"&&image.getSamplesPerPixel()>=3);
+    if(rgb&&image.getSamplesPerPixel()<3)throw Error("Esta imagem não possui três bandas RGB.");
     const bands=rgb?[0,1,2]:[0];
     const samples=await image.readRasters({samples:bands,width:n,height:m,resampleMethod:"nearest"});
     verifyActive(options.signal);
@@ -141,6 +178,10 @@ export async function createTerrainRasterDrape(
     const ctx=canvas.getContext("2d");if(!ctx)throw Error("Canvas raster indisponível.");
     const frame=ctx.createImageData(SIZE,SIZE);
     const classifiedValues=new Set<number>();
+    const continuousSamples:{pos:number;value:number}[]=[];
+    let minSample=Infinity,maxSample=-Infinity;
+    const autoContinuous=options.renderer==="auto"||options.renderer===undefined;
+    let observedFraction=false;
     let covered=0;
     const pixels:{pos:number;value:number}[]=[];
     const convert=(terrain.crs===sourceCrs)?([x,y]:[number,number])=>[x,y]:
@@ -168,10 +209,18 @@ export async function createTerrainRasterDrape(
       if(rgb){
         for(let i=0;i<3;i++)frame.data[out+i]=Math.max(0,Math.min(255,values[i]));
       }else{
-        const v=Math.round(values[0]);
-        if(classifiedValues.size>128)throw Error("O raster apresenta mais de 128 classes; utilize classificação no módulo Raster.");
-        classifiedValues.add(v);
-        pixels.push({pos:out,value:v});
+        const value=values[0];
+        if(!Number.isInteger(value))observedFraction=true;
+        minSample=Math.min(minSample,value);maxSample=Math.max(maxSample,value);
+        continuousSamples.push({pos:out,value});
+        if(options.renderer==="classified"||autoContinuous){
+          const category=Math.round(value);
+          // In automatic mode, 129 distinct values suffice to detect a
+          // continuous raster. Explicit classification preserves every class.
+          if(options.renderer==="classified"||classifiedValues.size<=128)
+            classifiedValues.add(category);
+          pixels.push({pos:out,value:category});
+        }
       }
       frame.data[out+3]=255;
       covered++;
@@ -180,18 +229,37 @@ export async function createTerrainRasterDrape(
     verifyActive(options.signal);
     options.onProgress?.(1);
     if(covered===0)throw Error("O GeoTIFF não se sobrepõe à extensão do DEM.");
-    const values=[...classifiedValues].sort((a,b)=>a-b);
-    for(const item of pixels){
-      const color=categoryColor(item.value,values)[1];
-      frame.data[item.pos]=parseInt(color.slice(1,3),16);
-      frame.data[item.pos+1]=parseInt(color.slice(3,5),16);
-      frame.data[item.pos+2]=parseInt(color.slice(5,7),16);
+    const continuous=!rgb&&(options.renderer==="continuous"||
+      (autoContinuous&&(observedFraction||classifiedValues.size>128)));
+    // NDVI/NDWI in float form keep their entire numeric range, including negative values.
+    // Values scaled as integers require the explicit "continuous" renderer in the UI.
+    const values=continuous?[]:[...classifiedValues].sort((a,b)=>a-b);
+    const legend=buildCategoricalRasterLegend(values);
+    const categoryPaint=new Map(legend.map(c=>[c.value,c.color]));
+    if(continuous){
+      const min=Number.isFinite(minSample)?minSample:0;
+      const max=Number.isFinite(maxSample)?maxSample:1;
+      const palette=options.palette??"ndvi";
+      for(const item of continuousSamples){
+        const colour=continuousRasterColor(item.value,min,max,palette);
+        frame.data[item.pos]=colour[0];frame.data[item.pos+1]=colour[1];
+        frame.data[item.pos+2]=colour[2];
+      }
+    }else{
+      for(const item of pixels){
+        const color=categoryPaint.get(item.value)??"#64748b";
+        frame.data[item.pos]=parseInt(color.slice(1,3),16);
+        frame.data[item.pos+1]=parseInt(color.slice(3,5),16);
+        frame.data[item.pos+2]=parseInt(color.slice(5,7),16);
+      }
     }
     verifyActive(options.signal);
     ctx.putImageData(frame,0,0);
     verifyActive(options.signal);
-    return {name,imageDataUrl:canvas.toDataURL("image/png"),mode:rgb?"rgb":"classified",
+    return {name,imageDataUrl:canvas.toDataURL("image/png"),mode:rgb?"rgb":continuous?"continuous":"classified",
       coverage:covered/(SIZE*SIZE),
-      categories:values.map(value=>{const [label,color]=categoryColor(value,values);return {value,label,color};})};
+      range:continuous?{min:minSample,max:maxSample}:undefined,
+      palette:continuous?options.palette??"ndvi":undefined,
+      categories:legend};
   }finally {await tiff.close();}
 }

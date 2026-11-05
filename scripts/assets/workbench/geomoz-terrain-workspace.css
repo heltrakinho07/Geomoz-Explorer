@@ -352,7 +352,6 @@
 .dark .gm-terrain-vertical-footer small{color:#cbd5e1}
 .dark .gm-terrain-vertical-footer button{background:#1e293b;color:#7dd3fc;border-color:#255879}
 
-
 /* Compact map tools: no long overlapping toolbar across the terrain. */
 .gm-terrain-geographic-tools{
   display:grid;grid-template-columns:minmax(135px,1fr) minmax(135px,1fr);
