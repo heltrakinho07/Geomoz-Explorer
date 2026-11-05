@@ -78,6 +78,39 @@ export async function fetchBoundedTerrain(source:string,signal:AbortSignal):Prom
   for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
   return bytes.buffer;
 }
+/**
+ * Read local GeoTIFF bytes within the same 32 MB safety bound as catalogue
+ * sources. Streams make cancellation effective before the entire file loads.
+ */
+async function readBoundedRasterFile(file:File,signal:AbortSignal,onProgress:(percent:number)=>void):Promise<ArrayBuffer>{
+  if(file.size===0||file.size>LIMIT)throw Error("GeoTIFF tem de ter até 32 MB.");
+  const reader=file.stream().getReader();
+  const onAbort=()=>{void reader.cancel().catch(()=>undefined);};
+  signal.addEventListener("abort",onAbort,{once:true});
+  const chunks:Uint8Array[]=[];
+  let total=0;
+  try {
+    while(true){
+      if(signal.aborted)throw new DOMException("Importação do raster cancelada.","AbortError");
+      const {done,value}=await reader.read();
+      if(signal.aborted)throw new DOMException("Importação do raster cancelada.","AbortError");
+      if(done)break;
+      total+=value.byteLength;
+      if(total>LIMIT)throw Error("GeoTIFF tem de ter até 32 MB.");
+      chunks.push(value);
+      onProgress(Math.round(total/file.size*100));
+    }
+    if(!total)throw Error("O ficheiro GeoTIFF está vazio.");
+    const bytes=new Uint8Array(total);
+    let offset=0;
+    for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
+    return bytes.buffer;
+  }finally {
+    signal.removeEventListener("abort",onAbort);
+    if(signal.aborted)await reader.cancel().catch(()=>undefined);
+    reader.releaseLock();
+  }
+}
 function saveBlob(blob:Blob,name:string) {
   const url=URL.createObjectURL(blob);
   const anchor=document.createElement("a");anchor.href=url;anchor.download=name;anchor.click();
@@ -142,6 +175,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
   const [overlays,setOverlays]=useState<GeoMozTerrainOverlay[]>([]);
   const [rasterDrape,setRasterDrape]=useState<(GeoMozRasterDrape & {opacity:number;visible:boolean})|null>(null);
   const [rasterBusy,setRasterBusy]=useState(false);
+  const [rasterProgress,setRasterProgress]=useState<{label:string;percent:number|null}|null>(null);
   const overlayTexture=useMemo(()=>terrain?terrainOverlayTexture(terrain,overlays):null,[terrain,overlays]);
   const [exaggeration,setExaggeration]=useState(2);
   const [pickTarget,setPickTarget]=useState<Target|null>(null);
@@ -150,6 +184,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const sceneInputRef=useRef<HTMLInputElement>(null);
   const abortRef=useRef<AbortController|null>(null);
+  const rasterAbortRef=useRef<AbortController|null>(null);
 
   useEffect(()=>{
     if(!open)return;
@@ -161,8 +196,12 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
 
   // On close the current source layer is untouched. Stop any pending transfer.
   useEffect(()=>{
-    if(!open){abortRef.current?.abort();abortRef.current=null;setPickTarget(null);}
-    return ()=>{abortRef.current?.abort();};
+    if(!open){
+      abortRef.current?.abort();abortRef.current=null;
+      rasterAbortRef.current?.abort();rasterAbortRef.current=null;
+      setRasterBusy(false);setRasterProgress(null);setPickTarget(null);
+    }
+    return ()=>{abortRef.current?.abort();rasterAbortRef.current?.abort();};
   },[open]);
 
   const selectPoint=(point:TerrainPick)=>{
@@ -197,6 +236,8 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     const layer=options.find(o=>o.id===selected);
     if(!layer){setError("Seleccione um DEM GeoTIFF no catálogo do projecto.");return;}
     abortRef.current?.abort();
+    rasterAbortRef.current?.abort();rasterAbortRef.current=null;
+    setRasterBusy(false);setRasterProgress(null);
     const controller=new AbortController();abortRef.current=controller;
     setBusy(true);setError(null);setNotice("A processar o DEM seleccionado…");
     try {
@@ -217,21 +258,50 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
       if(abortRef.current===controller){abortRef.current=null;setBusy(false);}
     }
   }
+  function cancelRasterOverlay(){
+    const controller=rasterAbortRef.current;
+    if(!controller)return;
+    controller.abort();
+    rasterAbortRef.current=null;
+    setRasterBusy(false);setRasterProgress(null);
+    setNotice("Importação do raster cancelada. O modelo e as camadas existentes foram preservados.");
+  }
   async function applyRasterOverlay(input:File|{source:string;name:string}){
-    if(!terrain)return;
-    if(rasterBusy)return;
-    setRasterBusy(true);setError(null);
+    if(!terrain||rasterAbortRef.current)return;
+    const controller=new AbortController();
+    rasterAbortRef.current=controller;
+    setRasterBusy(true);setError(null);setNotice("");
+    setRasterProgress({label:"A carregar "+input.name,percent:null});
     try{
       const name=input.name;
       const buffer=input instanceof File
-        ?await input.arrayBuffer()
-        :await fetchBoundedTerrain(input.source,new AbortController().signal);
-      const prepared=await createTerrainRasterDrape(buffer,name,terrain);
+        ?await readBoundedRasterFile(input,controller.signal,percent=>{
+          if(!controller.signal.aborted)
+            setRasterProgress({label:"A ler "+name,percent});
+        })
+        :await fetchBoundedTerrain(input.source,controller.signal);
+      if(controller.signal.aborted)return;
+      setRasterProgress({label:"A alinhar e recortar "+name,percent:0});
+      const prepared=await createTerrainRasterDrape(buffer,name,terrain,{
+        signal:controller.signal,
+        onProgress:fraction=>{
+          if(!controller.signal.aborted)
+            setRasterProgress({label:"A alinhar e recortar "+name,percent:Math.round(fraction*100)});
+        }
+      });
+      if(controller.signal.aborted)return;
       setRasterDrape({...prepared,opacity:0.82,visible:true});
       setNotice("Raster temático sobreposto e recortado à extensão do DEM ("+
         Math.round(prepared.coverage*100)+"% de cobertura).");
-    }catch(cause){setError(cause instanceof Error?cause.message:"Não foi possível processar o raster.");}
-    finally{setRasterBusy(false);}
+    }catch(cause){
+      if(!controller.signal.aborted)
+        setError(cause instanceof Error?cause.message:"Não foi possível processar o raster.");
+    }finally{
+      if(rasterAbortRef.current===controller){
+        rasterAbortRef.current=null;
+        setRasterBusy(false);setRasterProgress(null);
+      }
+    }
   }
   function exportGLB(){
     if(!terrain)return;
@@ -346,7 +416,8 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
             <GeoMozTerrainLayers layers={layers} overlays={overlays} onChange={setOverlays}
               activePanel={workspaceTab} terrainReady={!!terrain}
               rasterOptions={options.filter(o=>o.id!==selected)} raster={rasterDrape}
-              rasterBusy={rasterBusy} onRasterChange={setRasterDrape}
+              rasterBusy={rasterBusy} rasterProgress={rasterProgress}
+              onCancelRaster={cancelRasterOverlay} onRasterChange={setRasterDrape}
               onImportRaster={applyRasterOverlay}
               onNotice={setNotice}/>}
           {workspaceTab==="analysis"&&<>

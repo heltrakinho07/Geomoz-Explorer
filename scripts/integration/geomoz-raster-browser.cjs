@@ -253,11 +253,48 @@ module.exports=async function validateRasterProcessing(page){
      [500000,7199520,500480,7200000],
      "Fixture extent must be expressed in metres in UTM 36S");
  } finally {await thematicTiff.close();}
+ // Delay this one local file stream so the UI's Cancel action is exercised
+ // while bytes are actually being read (no large or external test fixture).
+ await page.evaluate(()=>{
+   const original=File.prototype.stream;
+   window.__undoGeoMozFileStream=()=>{File.prototype.stream=original;};
+   File.prototype.stream=function(...args){
+     const base=original.apply(this,args);
+     if(this.name!=="cancelar_solo.tif")return base;
+     const reader=base.getReader();
+     return new ReadableStream({
+       async pull(controller){
+         await new Promise(resolve=>setTimeout(resolve,800));
+         const {done,value}=await reader.read();
+         if(done)controller.close();else controller.enqueue(value);
+       },
+       cancel(reason){return reader.cancel(reason);}
+     });
+   };
+ });
+ await terrain.getByLabel("Importar GeoTIFF temático").setInputFiles({
+   name:"cancelar_solo.tif",mimeType:"image/tiff",buffer:thematic
+ });
+ const cancelRaster=terrain.getByTestId("geomoz-terrain-raster-cancel");
+ await cancelRaster.waitFor({state:"visible",timeout:8000});
+ assert.equal(await terrain.getByTestId("geomoz-terrain-raster-progress").count(),1,
+   "Raster loading should show an accessible progress panel");
+ await cancelRaster.click();
+ await terrain.getByText("Importação do raster cancelada.",{exact:false}).waitFor();
+ await terrain.getByTestId("geomoz-terrain-raster-progress").waitFor({state:"hidden"});
+ assert.equal(await terrain.locator(".gm-terrain-layer-raster").count(),0,
+   "Cancelled import must not replace an existing raster or add a new one");
+ assert.equal(await terrain.getByTestId("geomoz-native-terrain-canvas").count(),1,
+   "Cancelling a thematic import must preserve the existing 3D DEM");
+ await page.evaluate(()=>window.__undoGeoMozFileStream?.());
+ // A valid import must still work after cancellation of the previous request.
  await terrain.getByLabel("Importar GeoTIFF temático").setInputFiles({
    name:"solo_classes.tif",mimeType:"image/tiff",buffer:thematic
  });
  // Preserve failure details from a real unsuccessful georeferenced raster import.
- await terrain.getByText("solo_classes.tif").waitFor({timeout:25000}).catch(async cause=>{
+ // The file name is also shown while bytes are processing: wait for a
+ // rendered raster card, not a premature match on the progress message.
+ await terrain.locator(".gm-terrain-layer-raster").waitFor({state:"visible",timeout:25000}).catch(async cause=>{
    const message=await terrain.locator(".gm-terrain-workspace-error").allInnerTexts();
    const inline=await terrain.locator(".gm-terrain-layer-error").allInnerTexts();
    throw new Error("Raster thematic import failed: "+[...message,...inline].join(" | ")+

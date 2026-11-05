@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { FileUp, Layers3, Eye, EyeOff, Palette, Trash2 } from "lucide-react";
+import { FileUp, Layers3, Eye, EyeOff, Palette, Trash2, Loader2, XCircle } from "lucide-react";
 import type { FeatureCollection } from "geojson";
 import type { GeoMozTerrainOverlay } from "./geomoz-terrain-overlays";
 import type { GeoMozRasterDrape } from "./geomoz-terrain-raster-overlay";
@@ -24,12 +24,14 @@ interface Props {
   rasterOptions:readonly {id:string;name:string;source:string}[];
   raster:(GeoMozRasterDrape & {opacity:number;visible:boolean})|null;
   rasterBusy:boolean;
+  rasterProgress:{label:string;percent:number|null}|null;
+  onCancelRaster:()=>void;
   onRasterChange:(next:(GeoMozRasterDrape & {opacity:number;visible:boolean})|null)=>void;
   onImportRaster:(input:File|{source:string;name:string})=>Promise<void>;
 }
 export default function GeoMozTerrainLayers({
   layers,overlays,onChange,activePanel,terrainReady,onNotice,
-  rasterOptions,raster,rasterBusy,onRasterChange,onImportRaster
+  rasterOptions,raster,rasterBusy,rasterProgress,onCancelRaster,onRasterChange,onImportRaster
 }:Props) {
   const upload=useRef<HTMLInputElement>(null);
   const rasterInput=useRef<HTMLInputElement>(null);
@@ -136,6 +138,19 @@ export default function GeoMozTerrainLayers({
       }}/>
     <button type="button" disabled={!terrainReady||rasterBusy} className="gm-terrain-layer-secondary"
       onClick={()=>rasterInput.current?.click()}><FileUp size={14}/> Importar GeoTIFF temático</button>
+    {rasterBusy&&<div className="gm-terrain-import-progress" data-testid="geomoz-terrain-raster-progress"
+      aria-label="Progresso da importação de raster">
+      <div role="status" aria-live="polite" className="gm-terrain-import-status">
+        <Loader2 size={15} className="gm-terrain-spin" aria-hidden="true"/>
+        <span>{rasterProgress?.label??"A preparar GeoTIFF temático…"}</span>
+        {rasterProgress?.percent!==null&&rasterProgress?.percent!==undefined&&
+          <strong>{rasterProgress.percent}%</strong>}
+      </div>
+      <progress aria-label="Progresso do raster" max={100}
+        value={rasterProgress?.percent??undefined}/>
+      <button type="button" className="gm-terrain-import-cancel" onClick={onCancelRaster}
+        data-testid="geomoz-terrain-raster-cancel"><XCircle size={15} aria-hidden="true"/> Cancelar importação</button>
+    </div>}
     {raster&&<div className="gm-terrain-layer-raster">
       <div className="gm-terrain-panel-heading">
         <button type="button" aria-label={raster.visible?"Ocultar raster":"Mostrar raster"}
