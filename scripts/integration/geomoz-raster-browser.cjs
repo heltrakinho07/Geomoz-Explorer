@@ -329,7 +329,8 @@ module.exports=async function validateRasterProcessing(page){
    .waitFor({state:"visible",timeout:25000});
  assert.equal(await terrain.getByTestId("geomoz-terrain-raster-layer").count(),2,
    "Adding an NDVI index must preserve the prior soil raster");
- await terrain.getByText("Índice contínuo",{exact:false}).waitFor();
+ await terrain.getByTestId("geomoz-terrain-raster-layer").nth(1)
+   .getByText("Índice contínuo",{exact:false}).waitFor();
  await terrain.getByLabel("Subir solo_classes.tif").click();
  assert.equal(await terrain.getByTestId("geomoz-terrain-raster-layer").count(),2,
    "Reordering draped layers must preserve both imported rasters");
