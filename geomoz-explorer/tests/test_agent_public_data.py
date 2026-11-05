@@ -229,6 +229,23 @@ class PublicDataTests(unittest.TestCase):
         execute.assert_not_awaited()
         self.assertIn("Não encontrei", result["synthesis"])
 
+    def test_unqualified_maputo_does_not_choose_the_province_or_city(self):
+        from agent import administrative_boundaries as boundaries
+
+        state = {"_gee_uid": "user-test",
+                 "aoi": {"source": "country", "countryCode": "MOZ", "label": "Maringue, Sofala"}}
+        units = [
+            {"name": "Maputo", "code": 10, "countryName": "Mozambique", "level": 1},
+            {"name": "Maputo City", "code": 11, "countryName": "Mozambique", "level": 1},
+        ]
+        with patch.dict("sys.modules", {"gee_module": MagicMock(), "ee": MagicMock()}), \
+             patch.object(boundaries, "_read_units", side_effect=[units, []]), \
+             patch.object(ToolDispatcher, "execute", new_callable=AsyncMock) as execute:
+            result = asyncio.run(GeoMozAgent.process_user_request(
+                "Cobertura de solo para Maputo", state))
+        execute.assert_not_awaited()
+        self.assertIn("vários limites FAO GAUL", result["synthesis"])
+
     def test_structured_request_bypasses_llm_but_uses_audited_dispatcher(self):
         state = {"aoi": {"source": "country", "countryCode": "PRT", "geometry": GEOMETRY},
                  "publicAnalysis": {"tool": "get_public_landcover", "args": {}}}

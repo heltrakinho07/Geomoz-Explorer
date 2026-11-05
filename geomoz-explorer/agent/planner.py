@@ -147,7 +147,8 @@ class GeoMozAgent:
                 # An explicit location overrides the map for this analysis only.
                 place = re.search(
                     r"\b(?:(?:em|para|n[ao])\s+(?:(?:a|o)\s+)?"
-                    r"(cidade|distrito|provincia|municipio)\s+d[aeo]\s+|em\s+)"
+                    r"(cidade|distrito|provincia|municipio)\s+d[aeo]\s+|"
+                    r"em\s+|para\s+(?!(?:comparar|calcular|ver|mapear|analisar|obter)\b))"
                     r"([a-z][a-z -]*?)"
                     r"(?=\s+(?:entre|durante|d[eo]\s+\d|em\s+\d|com|para)\b|[,.?!]|$)",
                     _fold_text(user_message),

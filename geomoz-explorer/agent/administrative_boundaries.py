@@ -121,6 +121,8 @@ def find_named_area(country_code, name, kind=None):
                   f"{target} city", f"city of {target}"}
     if kind == "provincia":
         target_names = {target, f"provincia de {target}", f"{target} province"}
+    elif kind is None:
+        target_names = {target, *city_names}
     else:
         target_names = {target}
     levels = (1,) if kind == "provincia" else (2,) if kind == "distrito" else (1, 2)
