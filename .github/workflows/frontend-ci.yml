@@ -140,7 +140,7 @@ jobs:
           CI: "true"
 
       - name: Verify authentication and project wizard flows
-        run: pnpm --dir artifacts/geomoz-react exec vitest run src/components/AuthModal.test.tsx src/components/ProjectWorkspaceModal.test.tsx
+        run: pnpm --dir artifacts/geomoz-react exec vitest run src/components/AuthModal.test.tsx src/components/ProjectWorkspaceModal.test.tsx src/components/GeeCredentialsDialog.test.tsx src/components/CountrySelectModal.test.tsx
         env:
           CI: "true"
 
