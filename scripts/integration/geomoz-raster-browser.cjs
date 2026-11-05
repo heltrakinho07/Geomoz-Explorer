@@ -183,6 +183,11 @@ module.exports=async function validateRasterProcessing(page){
  assert.equal(await terrain.locator("iframe").count(),0,"3D must be native to GIS Workspace");
  await terrain.getByLabel("Seleccionar DEM do GIS Workspace").selectOption({label:"reprojected"});
  await terrain.getByTestId("geomoz-workbench-terrain-import").click();
+ // The preferred mode now overlays the DEM mesh directly on global 3D terrain.
+ await terrain.getByTestId("terrain-view-map").waitFor({state:"visible",timeout:25000});
+ await terrain.getByTestId("geomoz-georeferenced-model-map").waitFor({state:"visible",timeout:25000});
+ assert.equal(await terrain.getByLabel("Sobrepor modelo 3D").isChecked(),true);
+ await terrain.getByTestId("terrain-view-model").click();
  const canvas=terrain.getByTestId("geomoz-native-terrain-canvas");
  await canvas.waitFor({state:"visible",timeout:25000});
  await page.waitForFunction(()=>{
@@ -258,6 +263,9 @@ module.exports=async function validateRasterProcessing(page){
  });
  assert.equal(await terrain.getByLabel("Transparência da camada no terreno").inputValue(),"45");
  assert.equal(await canvas.count(),1,"Overlay symbology must not remove terrain canvas");
+ await terrain.getByTestId("terrain-view-map").click();
+ await terrain.getByTestId("geomoz-georeferenced-model-map").waitFor({state:"visible"});
+ await terrain.getByTestId("terrain-view-model").click();
 
  // Shared language preferences still translate the DEM selector and analysis.
  await terrain.getByTestId("terrain-tab-analysis").click();
