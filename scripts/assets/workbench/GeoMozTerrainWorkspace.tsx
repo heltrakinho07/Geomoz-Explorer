@@ -191,10 +191,12 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
   const [rasterProgress,setRasterProgress]=useState<{label:string;percent:number|null}|null>(null);
   const overlayTexture=useMemo(()=>terrain?terrainOverlayTexture(terrain,overlays):null,[terrain,overlays]);
   const [exaggeration,setExaggeration]=useState(2);
+  const exaggerationPresets=[1,2,3,5,10] as const;
   const [pickTarget,setPickTarget]=useState<Target|null>(null);
   const [lastPick,setLastPick]=useState<TerrainPickedPoint|null>(null);
   const [picked,setPicked]=useState<Partial<Record<Target,TerrainPick>>>({});
   const canvasRef=useRef<HTMLCanvasElement>(null);
+  const mapCaptureRef=useRef<(()=>HTMLCanvasElement|null)|null>(null);
   const sceneInputRef=useRef<HTMLInputElement>(null);
   const abortRef=useRef<AbortController|null>(null);
   const rasterAbortRef=useRef<AbortController|null>(null);
@@ -378,8 +380,11 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     finally{if(sceneInputRef.current)sceneInputRef.current.value="";}
   }
   function downloadPNG(){
-    const canvas=canvasRef.current;
-    if(canvas&&!rendererError)saveBlobFromCanvas(canvas,"geomoz_terreno_3d.png");
+    const canvas=viewMode==="map"?mapCaptureRef.current?.():canvasRef.current;
+    if(canvas&&(viewMode==="map"||!rendererError)){
+      try{saveBlobFromCanvas(canvas,"geomoz_terreno_3d.png");}
+      catch{setError("A exportação PNG não está disponível para mosaicos sem permissão CORS.");}
+    }
   }
   function saveBlobFromCanvas(canvas:HTMLCanvasElement,name:string){
     canvas.toBlob(blob=>{
@@ -388,7 +393,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     },"image/png");
   }
   async function downloadPDF(){
-    const canvas=canvasRef.current;
+    const canvas=viewMode==="map"?mapCaptureRef.current?.():canvasRef.current;
     if(!canvas||!terrain)return;
     setError(null);
     try {
@@ -401,7 +406,8 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
       pdf.addImage(canvas.toDataURL("image/png"),"PNG",(297-w)/2,32,w,h);
       pdf.setFontSize(8);
       pdf.text(ui("Pré-visualização do DEM. A perspectiva não tem escala constante."),12,194);
-      pdf.text("Created with GeoMoz Explorer",12,202);
+      pdf.text(viewMode==="map"?"Mapa-base: Esri / OpenStreetMap. Ver atribuição no mapa.":
+        "Created with GeoMoz Explorer",12,202);
       pdf.save("geomoz_terreno_3d.pdf");
     }catch{setError("Falha na exportação do mapa 3D para PDF.");}
   }
@@ -487,8 +493,8 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
                 aria-label={ui("Reabrir cena do terreno")} onChange={event=>void loadScene(event.target.files?.[0])}/>
               <button type="button" onClick={()=>sceneInputRef.current?.click()}>{ui("Reabrir cena")}</button>
               <button type="button" disabled={!terrain} onClick={exportGLB} data-testid="geomoz-terrain-export-glb">GLB 3D</button>
-              <button type="button" disabled={!terrain||!!rendererError||viewMode==="map"} onClick={downloadPNG}>PNG</button>
-              <button type="button" disabled={!terrain||!!rendererError||viewMode==="map"} onClick={()=>void downloadPDF()}>PDF</button>
+              <button type="button" disabled={!terrain||(viewMode!=="map"&&!!rendererError)} onClick={downloadPNG}>PNG</button>
+              <button type="button" disabled={!terrain||(viewMode!=="map"&&!!rendererError)} onClick={()=>void downloadPDF()}>PDF</button>
             </div>
             <p className="gm-terrain-native-hint">As camadas vectoriais do 3D ficam disponíveis na vista actual. O GLB exportado contém a malha do DEM; a textura vectorial deve ser exportada separadamente numa próxima versão.</p>
           </>}
@@ -497,6 +503,12 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
           <div className="gm-terrain-vertical-heading">
             <label htmlFor="gm-terrain-exaggeration">{ui("3. Exagero vertical")}</label>
             <strong>{exaggeration.toFixed(1)}×</strong>
+          </div>
+          <div className="gm-terrain-exaggeration-presets" role="group" aria-label={ui("Valores rápidos de exagero vertical")}>
+            {exaggerationPresets.map(n=><button key={n} type="button"
+              disabled={!terrain} aria-pressed={exaggeration===n}
+              className={exaggeration===n?"gm-terrain-preset-active":""}
+              onClick={()=>setExaggeration(n)}>{n}×</button>)}
           </div>
           <input id="gm-terrain-exaggeration" type="range" min="1" max="15" step=".5"
             value={exaggeration} disabled={!terrain} aria-label={ui("Exagero vertical")}
@@ -562,7 +574,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
               vectorTexture={overlayTexture}
               rasterTexture={drapeTexture}
               rasterOpacity={drapeTexture?1:0}
-              flat={viewMode==="split"} translate={ui}/>
+              flat={viewMode==="split"} captureRef={mapCaptureRef} translate={ui}/>
           </div>}
         </div>:
           <div className="gm-terrain-native-empty">

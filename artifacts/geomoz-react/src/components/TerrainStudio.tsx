@@ -8,6 +8,7 @@ import { validTerrainGeography } from "@/lib/terrain-map-geo";
 import { apiFetch } from "@/lib/api";
 import { useTerrainSession } from "@/context/TerrainSessionContext";
 import { useProject } from "@/context/ProjectContext";
+import { computeGeoJSONBounds } from "@/lib/aoi";
 import TerrainSciencePanel, {type TerrainPickedPoint} from "@/components/TerrainSciencePanel";
 import { encodeTerrainGLB, imageToGLBTexture } from "@/lib/terrain-glb";
 import {terrainToGeographic} from "@/lib/terrain-analysis";
@@ -44,6 +45,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   const [error, setError] = useState<string | null>(null);
   const [rendererError, setRendererError] = useState<string | null>(null);
   const [exaggeration, setExaggeration] = useState(2);
+  const exaggerationPresets = [1,2,3,5,10] as const;
   const [viewMode, setViewMode] = useState<"map"|"model">("map");
   const [style, setStyle] = useState<TerrainVisualStyle>("hypsometric");
   const [detailLevel, setDetailLevel] = useState<"auto"|"full"|"medium"|"low">("auto");
@@ -68,6 +70,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   const [picked,setPicked]=useState<Partial<Record<"A"|"B",TerrainPick>>>({});
   const [lastPick,setLastPick]=useState<TerrainPickedPoint|null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mapCaptureRef = useRef<(() => HTMLCanvasElement | null) | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sceneInputRef = useRef<HTMLInputElement>(null);
 
@@ -361,20 +364,21 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   }
 
   function downloadCanvas() {
-    const canvas = canvasRef.current;
-    if (!canvas || !terrain || rendererError) return;
-    canvas.toBlob(blob => {
+    const canvas = viewMode === "map" ? mapCaptureRef.current?.() : canvasRef.current;
+    if (!canvas || !terrain || (viewMode !== "map" && rendererError)) return;
+    try { canvas.toBlob(blob => {
       if (!blob) { setError("Não foi possível exportar a imagem."); return; }
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url; a.download = "geomoz_terreno_3d.png"; a.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }, "image/png");
+    }, "image/png"); }
+    catch { setError("Não foi possível exportar o mapa; verifique as permissões CORS dos mosaicos."); }
   }
 
   function exportPdf() {
-    const canvas = canvasRef.current;
-    if (!canvas || !terrain || rendererError) return;
+    const canvas = viewMode === "map" ? mapCaptureRef.current?.() : canvasRef.current;
+    if (!canvas || !terrain || (viewMode !== "map" && rendererError)) return;
     try {
       const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
       pdf.setFont("helvetica", "bold"); pdf.setFontSize(17);
@@ -403,7 +407,8 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
         "A malha é uma pré-visualização do DEM, não um raster analítico.",
         12, 192
       );
-      pdf.text("Created with GeoMoz Explorer", 12, 199);
+      if (viewMode === "map") pdf.text("Mapa-base: Esri / OpenStreetMap. Consulte a atribuição apresentada no mapa.", 12, 199);
+      else pdf.text("Created with GeoMoz Explorer", 12, 199);
       pdf.save("geomoz_terreno_3d.pdf");
     } catch {
       setError("A exportação PDF falhou. Experimente exportar em PNG.");
@@ -413,6 +418,13 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   if (!open) return null;
   const mapReady = !!terrain && validTerrainGeography(terrain);
   const localCanvasReady = viewMode === "model" || !mapReady;
+  const projectBounds=activeProject?.aoi.bounds ??
+    (activeProject?.aoi.geometry?computeGeoJSONBounds(activeProject.aoi.geometry):null);
+  const outOfProjectArea=!!(terrain && projectBounds &&
+    (projectBounds[0][1]>terrain.bounds4326[2] ||
+     projectBounds[1][1]<terrain.bounds4326[0] ||
+     projectBounds[0][0]>terrain.bounds4326[3] ||
+     projectBounds[1][0]<terrain.bounds4326[1]));
   return (
     <div data-testid="geomoz-terrain-module" role="region" aria-label="Terreno 3D"
       className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -439,12 +451,12 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
             {glbBusy ? <Loader2 size={13} className="mr-1 inline animate-spin"/> : <Download size={13} className="mr-1 inline"/>}
             GLB 3D
           </button>
-          <button type="button" disabled={!terrain || !!rendererError || !localCanvasReady}
+          <button type="button" disabled={!terrain || (viewMode !== "map" && !!rendererError)}
             onClick={downloadCanvas}
             className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
             <Download size={13} className="mr-1 inline"/> PNG
           </button>
-          <button type="button" disabled={!terrain || !!rendererError || !localCanvasReady}
+          <button type="button" disabled={!terrain || (viewMode !== "map" && !!rendererError)}
             onClick={exportPdf}
             className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
             <Download size={13} className="mr-1 inline"/> PDF
@@ -579,6 +591,13 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               <label htmlFor="terrain-studio-exaggeration">3. Exagero vertical</label>
               <span className="text-sky-600 dark:text-sky-400">{exaggeration.toFixed(1)}×</span>
             </div>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Valores rápidos de exagero vertical">
+              {exaggerationPresets.map(value=><button key={value} type="button"
+                aria-pressed={exaggeration===value} onClick={()=>setExaggeration(value)}
+                className={`rounded-md border px-2 py-1 text-[11px] font-semibold ${exaggeration===value
+                  ?"border-sky-500 bg-sky-600 text-white":"border-slate-300 text-slate-700 hover:border-sky-400 dark:border-slate-600 dark:text-slate-200"}`}>
+                {value}×</button>)}
+            </div>
             <input id="terrain-studio-exaggeration" type="range" min="1" max="15"
               step="0.5" value={exaggeration}
               onChange={event => setExaggeration(Number(event.target.value))}
@@ -631,7 +650,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               ? <canvas ref={canvasRef} aria-label="Modelo tridimensional de elevação"
                   className="block h-full w-full cursor-grab touch-none active:cursor-grabbing"/>
               : <TerrainBasemap terrain={terrain} exaggeration={exaggeration}
-                  style={style} rasterTexture={composedTexture??textureUrl}/>
+                  style={style} rasterTexture={composedTexture??textureUrl} captureRef={mapCaptureRef}/>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
               <Mountain size={56} className="text-sky-500/60"/>
@@ -644,6 +663,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               </div>
             </div>
           )}
+          {outOfProjectArea && <div role="status" className="absolute bottom-20 left-4 z-30 max-w-sm rounded-lg border border-amber-300 bg-amber-50/95 p-3 text-xs text-amber-900 shadow-sm">A extensão do DEM não intersecta a área de interesse definida no projecto activo. Confirme o ficheiro seleccionado.</div>}
           {terrain && !mapReady && <div role="status" className="absolute left-4 top-4 max-w-xs rounded-lg border border-amber-300 bg-amber-50/95 p-3 text-xs text-amber-900 shadow-sm">O mapa-base 3D requer um DEM com georreferenciação WGS84/UTM válida. O modelo isolado continua disponível.</div>}
           {terrain && localCanvasReady && <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/80 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 backdrop-blur">
             {pickTarget?"Clique sobre o relevo para marcar "+pickTarget:

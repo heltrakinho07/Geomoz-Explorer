@@ -19,9 +19,23 @@ module.exports=async function validateRasterProcessing(page){
   await page.getByTestId("geomoz-tools-flyout").locator('[data-command="proc.raster.'+id+'"]').click();
   const dialog=page.getByRole("dialog").filter({has:page.locator("#raster-input")});
   await dialog.waitFor();
-  const chooser=page.waitForEvent("filechooser");
-  await dialog.locator("#raster-input").locator("..").getByRole("button").click();
-  await (await chooser).setFiles({name:"dem-controlo.tif",mimeType:"image/tiff",buffer:input});
+  if(id==="clip-mask"){
+    // The raster parameter is read-only text, not input[type=file].
+    // Reuse the projected slope raster that was already added to the map.
+    // This exercises the actual asynchronous client layer-loading workflow.
+    await dialog.locator("#raster-input-layer").selectOption({label:"slope"});
+    await page.waitForFunction(()=>{
+      const input=document.querySelector('#raster-input');
+      return input instanceof HTMLInputElement && input.value==="slope";
+    },null,{timeout:25000});
+  }else{
+    // Standard source import uses the system file-picker abstraction.
+    const chooser=page.waitForEvent("filechooser");
+    await dialog.locator("#raster-input").locator("..").getByRole("button").click();
+    await (await chooser).setFiles({
+      name:"dem-controlo.tif",mimeType:"image/tiff",buffer:input
+    });
+  }
   for(const [key,value] of Object.entries(params))await dialog.locator("#"+key).fill(String(value));
   if(maskId)await dialog.locator("#mask_path").selectOption({label:maskId});
   await dialog.getByRole("button",{name:/^(Run|Executar)$/}).click();
@@ -187,6 +201,28 @@ module.exports=async function validateRasterProcessing(page){
  await terrain.getByTestId("terrain-view-map").waitFor({state:"visible",timeout:25000});
  await terrain.getByTestId("geomoz-georeferenced-model-map").waitFor({state:"visible",timeout:25000});
  assert.equal(await terrain.getByLabel("Sobrepor modelo 3D").isChecked(),true);
+ // Regression: switching raster basemaps must replace the actual style, not
+ // retain old satellite imagery while the select says OpenStreetMap.
+ const basemap=terrain.getByLabel("Escolher mapa de base");
+ await basemap.selectOption("streets");
+ await terrain.locator('[data-active-basemap="streets"]').waitFor({state:"visible",timeout:15000});
+ await basemap.selectOption("topographic");
+ await terrain.locator('[data-active-basemap="topographic"]').waitFor({state:"visible",timeout:15000});
+ await basemap.selectOption("satellite");
+ await terrain.locator('[data-active-basemap="satellite"]').waitFor({state:"visible",timeout:15000});
+ const exaggerationPanel=terrain.getByTestId("terrain-workspace-exaggeration");
+ await exaggerationPanel.getByRole("button",{name:"3×",exact:true}).click();
+ assert.match(await exaggerationPanel.innerText(),/3\.0×/);
+ await exaggerationPanel.getByRole("button",{name:"2×",exact:true}).click();
+ await terrain.getByTestId("terrain-tab-export").click();
+ const mapPng=terrain.getByRole("button",{name:"PNG",exact:true});
+ assert.equal(await mapPng.isEnabled(),true,"PNG should be exportable from the geographic map");
+ const mapPngDownload=page.waitForEvent("download",{timeout:25000});
+ await mapPng.click();
+ await (await mapPngDownload).saveAs("workbench-browser-artifacts/terrain-geographic-map.png");
+ const mapPngBytes=await readFile("workbench-browser-artifacts/terrain-geographic-map.png");
+ assert.deepEqual([...mapPngBytes.subarray(0,4)],[137,80,78,71],
+   "Geographic PNG must be a real image");
  await terrain.getByTestId("terrain-view-model").click();
  const canvas=terrain.getByTestId("geomoz-native-terrain-canvas");
  await canvas.waitFor({state:"visible",timeout:25000});
