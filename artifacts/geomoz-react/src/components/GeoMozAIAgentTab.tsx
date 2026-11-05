@@ -78,6 +78,19 @@ function ZoomToPublicAOI({ aoi }: { aoi: AreaOfInterest }) {
   return null;
 }
 
+/** React-Leaflet Pane styles are initial options in some versions.
+ * Apply live split position to both panes so the slider always updates clipping. */
+function SyncSwipePanes({ position }: { position: number }) {
+  const map = useMap();
+  useEffect(() => {
+    const periodA = map.getPane("geoai-period-a");
+    const periodB = map.getPane("geoai-period-b");
+    if (periodA) periodA.style.clipPath = `inset(0 ${100 - position}% 0 0)`;
+    if (periodB) periodB.style.clipPath = `inset(0 0 0 ${position}%)`;
+  }, [map, position]);
+  return null;
+}
+
 function ZoomToGeology({ bounds }: { bounds?: number[] }) {
   const map = useMap();
   const boundsKey = bounds?.join(",") || "";
@@ -1394,6 +1407,7 @@ export default function GeoMozAIAgentTab() {
                     url={selectedTemporal.periodBTileUrl} opacity={layerOpacity}
                     eventHandlers={{ tileerror: () => setMapLayerNotice(copy("map.tileError")) }} />
                 </Pane>
+                <SyncSwipePanes position={swipePosition} />
               </>
             )}
             {!showComparison && renderedTileUrl && (
