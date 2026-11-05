@@ -67,6 +67,10 @@ export function wireGeoMozLargeVector(control: VectorControl, app: GeoLibreAppAP
         action.textContent = "A renderizar";
         const result = await originalAddData(parquet, {
           ...options,
+          // A compressed GeoParquet can be smaller than the auto-threshold;
+          // keep very detailed geology out of full GeoJSON materialisation.
+          format: "geoparquet",
+          renderMode: "tiles",
           name: options?.name ?? source.name.replace(/\.(?:geojson|json)$/i, ""),
         });
         box.remove();
