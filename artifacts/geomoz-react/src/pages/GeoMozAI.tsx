@@ -1029,7 +1029,7 @@ function AboutTab() {
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export default function GeoMozAI() {
+export function GeoMozAILab() {
   const [activeTab, setActiveTab] = useState<AITab>("agent");
   const [loadEnabled, setLoadEnabled] = useState(false);
   const { data: summaryData, isLoading, error } = useProvinceSummary(loadEnabled);
@@ -1099,4 +1099,8 @@ export default function GeoMozAI() {
       )}
     </div>
   );
+}
+
+export default function GeoMozAI() {
+  return <GeoMozAIAgentTab />;
 }

@@ -1,184 +1,256 @@
 import type { Feature, FeatureCollection, GeoJsonProperties, Geometry } from "geojson";
 
-/** Local-only GIS workspace. Files are parsed in the browser, never uploaded. */
-export const MAX_WORKSPACE_FILE_BYTES = 8 * 1024 * 1024;
-export const MAX_WORKSPACE_FEATURES = 5000;
+export type WorkspaceLayerKind = "vector" | "raster" | "service";
+export type WorkspaceStyleMode = "single" | "categorized" | "graduated";
+
+export interface WorkspaceStyle {
+  mode: WorkspaceStyleMode;
+  field?: string;
+  color: string;
+}
 
 export interface WorkspaceLayer {
   id: string;
   name: string;
+  kind: WorkspaceLayerKind;
   visible: boolean;
   opacity: number;
-  format: "GeoJSON" | "CSV";
-  featureCount: number;
-  geojson: FeatureCollection;
+  source: "file" | "url" | "service";
+  format: string;
+  featureCount?: number;
+  geojson?: FeatureCollection;
+  style: WorkspaceStyle;
   createdAt: string;
-  provenance?: {
-    command: string;
-    engine: string;
-    inputLayerName: string;
-    overlayLayerName?: string;
-    durationMs: number;
-    parameters: Record<string, unknown>;
-  };
+}
+
+export interface WorkspaceSelection {
+  layerId: string;
+  featureIndex: number;
+}
+
+export interface WorkspaceFocusRequest {
+  layerId: string;
+  featureIndex?: number;
+  requestId: number;
 }
 
 export interface ParsedWorkspaceFile {
   name: string;
-  format: WorkspaceLayer["format"];
+  format: string;
   geojson: FeatureCollection;
 }
 
-function validateCoordinates(value: unknown, depth = 0): void {
-  if (depth > 12 || !Array.isArray(value) || value.length === 0) {
-    throw new Error("Coordenadas GeoJSON inválidas ou demasiadamente aninhadas.");
-  }
-  if (typeof value[0] === "number") {
-    if (value.length < 2 || !Number.isFinite(value[0]) || !Number.isFinite(value[1])) {
-      throw new Error("Coordenadas GeoJSON não finitas ou incompletas.");
-    }
-    // GeoJSON is WGS84 longitude/latitude (RFC 7946).
-    if (Math.abs(value[0]) > 180 || Math.abs(value[1]) > 90) {
-      throw new Error("As coordenadas devem estar em WGS84 (longitude/latitude).");
-    }
-    return;
-  }
-  value.forEach((part) => validateCoordinates(part, depth + 1));
-}
+export const DEFAULT_WORKSPACE_STYLE: WorkspaceStyle = {
+  mode: "single",
+  color: "#0ea5e9",
+};
 
-function validateGeometry(value: unknown): Geometry {
-  if (!value || typeof value !== "object") {
-    throw new Error("Feição sem geometria válida.");
-  }
-  const geometry = value as { type?: string; coordinates?: unknown; geometries?: unknown };
-  const supported = new Set(["Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon"]);
-  if (geometry.type === "GeometryCollection") {
-    if (!Array.isArray(geometry.geometries) || geometry.geometries.length > MAX_WORKSPACE_FEATURES) {
-      throw new Error("Colecção de geometrias inválida.");
-    }
-    geometry.geometries.forEach((item) => validateGeometry(item));
-    return value as Geometry;
-  }
-  if (!geometry.type || !supported.has(geometry.type)) {
-    throw new Error("Tipo de geometria GeoJSON não suportado.");
-  }
-  validateCoordinates(geometry.coordinates);
-  return value as Geometry;
-}
+export const WORKSPACE_CATEGORY_PALETTE = [
+  "#0ea5e9",
+  "#8b5cf6",
+  "#14b8a6",
+  "#f59e0b",
+  "#ef4444",
+  "#22c55e",
+  "#ec4899",
+  "#6366f1",
+];
 
-function validateFeature(value: unknown): Feature {
-  if (!value || typeof value !== "object" || (value as { type?: string }).type !== "Feature") {
-    throw new Error("A colecção contém um elemento que não é uma feição GeoJSON.");
-  }
-  const item = value as { geometry?: unknown; properties?: unknown; id?: string | number };
-  const geometry = validateGeometry(item.geometry);
-  const props = item.properties && typeof item.properties === "object" && !Array.isArray(item.properties)
-    ? item.properties as GeoJsonProperties : {};
-  return { type: "Feature", id: item.id, geometry, properties: props };
-}
+export const WORKSPACE_GRADUATED_PALETTE = [
+  "#e0f2fe",
+  "#7dd3fc",
+  "#38bdf8",
+  "#0284c7",
+  "#075985",
+];
 
+/** Bound interactive GIS operations to a browser-safe feature count.
+ * Larger imports may be managed separately without passing through this
+ * synchronous geoprocessing engine.
+ */
+export const MAX_WORKSPACE_FEATURES = 5000;
+
+/** Validate a GeoJSON FeatureCollection before computational operations.
+ * Do not mutate the input or silently discard invalid coordinates.
+ */
 export function normalizeWorkspaceGeoJSON(value: unknown): FeatureCollection {
-  if (!value || typeof value !== "object") throw new Error("GeoJSON inválido.");
-  const candidate = value as { type?: string; features?: unknown[] };
-  let features: Feature[];
-  if (candidate.type === "FeatureCollection") {
-    if (!Array.isArray(candidate.features)) throw new Error("A colecção GeoJSON não contém feições.");
-    if (candidate.features.length > MAX_WORKSPACE_FEATURES) {
-      throw new Error(`Máximo de ${MAX_WORKSPACE_FEATURES} feições por ficheiro.`);
-    }
-    features = candidate.features.map(validateFeature);
-  } else if (candidate.type === "Feature") {
-    features = [validateFeature(value)];
-  } else {
-    features = [{ type: "Feature", properties: {}, geometry: validateGeometry(value) }];
+  const collection = asFeatureCollection(value);
+  if (collection.features.length > MAX_WORKSPACE_FEATURES) {
+    throw new Error("Demasiadas feições para processamento local.");
   }
-  if (features.length === 0) throw new Error("O GeoJSON não contém feições.");
+  for (const feature of collection.features) {
+    if (!feature || feature.type !== "Feature" || !feature.geometry) {
+      throw new Error("GeoJSON inválido: todas as feições precisam de geometria.");
+    }
+    const geometry = feature.geometry;
+    const type = geometry.type;
+    if (!["Point","MultiPoint","LineString","MultiLineString","Polygon","MultiPolygon","GeometryCollection"].includes(type)) {
+      throw new Error("Tipo de geometria GeoJSON não suportado.");
+    }
+    const validateCoordinates = (coords: unknown): void => {
+      if (!Array.isArray(coords) || coords.length === 0) {
+        throw new Error("GeoJSON inválido: coordenadas vazias.");
+      }
+      if (typeof coords[0] === "number") {
+        const lon = coords[0], lat = coords[1];
+        if (coords.length < 2 || typeof lat !== "number" ||
+            !Number.isFinite(lon) || !Number.isFinite(lat) ||
+            Math.abs(lon) > 180 || Math.abs(lat) > 90) {
+          throw new Error("GeoJSON inválido: coordenadas fora de WGS84.");
+        }
+      } else {
+        for (const nested of coords) validateCoordinates(nested);
+      }
+    };
+    const validateGeometry = (item: Geometry): void => {
+      if (item.type === "GeometryCollection") {
+        if (!Array.isArray(item.geometries)) throw new Error("Colecção de geometrias inválida.");
+        for (const nested of item.geometries) validateGeometry(nested);
+      } else {
+        validateCoordinates(item.coordinates);
+      }
+    };
+    validateGeometry(geometry);
+  }
+  return collection;
+}
+
+function asFeatureCollection(value: unknown): FeatureCollection {
+  if (!value || typeof value !== "object") {
+    throw new Error("Ficheiro geoespacial inválido.");
+  }
+  const candidate = value as { type?: string; features?: unknown[] };
+  if (candidate.type === "FeatureCollection" && Array.isArray(candidate.features)) {
+    return candidate as FeatureCollection;
+  }
+  if (candidate.type === "Feature") {
+    return { type: "FeatureCollection", features: [candidate as Feature] };
+  }
+  if (typeof candidate.type === "string" && "coordinates" in (candidate as object)) {
+    return {
+      type: "FeatureCollection",
+      features: [{ type: "Feature", properties: {}, geometry: candidate as Geometry }],
+    };
+  }
+  throw new Error("GeoJSON deve ser FeatureCollection, Feature ou Geometry.");
+}
+
+function parseCsv(text: string): FeatureCollection {
+  const rows = text.trim().split(/\r?\n/);
+  if (rows.length < 2) throw new Error("CSV sem registos.");
+  const headers = rows[0].split(",").map((v) => v.trim());
+  const latIndex = headers.findIndex((h) => /^(lat|latitude)$/i.test(h));
+  const lonIndex = headers.findIndex((h) => /^(lon|lng|longitude)$/i.test(h));
+  if (latIndex < 0 || lonIndex < 0) {
+    throw new Error("CSV requer colunas latitude/longitude (ou lat/lon/lng).");
+  }
+
+  const features: Feature[] = [];
+  rows.slice(1).forEach((row, index) => {
+    if (!row.trim()) return;
+    const cells = row.split(",").map((v) => v.trim());
+    const lat = Number(cells[latIndex]);
+    const lon = Number(cells[lonIndex]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    const properties: GeoJsonProperties = {};
+    headers.forEach((header, i) => {
+      if (i !== latIndex && i !== lonIndex) properties[header] = cells[i] ?? "";
+    });
+    features.push({
+      type: "Feature",
+      id: index,
+      properties,
+      geometry: { type: "Point", coordinates: [lon, lat] },
+    });
+  });
+  if (!features.length) throw new Error("CSV não contém coordenadas válidas.");
   return { type: "FeatureCollection", features };
 }
 
-function delimiterFor(csv: string): string {
-  const first = csv.split(/\r?\n/, 1)[0] || "";
-  const options = [",", ";", "\t"];
-  return options.sort((a, b) => first.split(b).length - first.split(a).length)[0];
-}
-
-/** RFC4180-style quoting with support for ; and tab-delimited exports. */
-function csvRows(source: string, delimiter: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let value = "";
-  let quoted = false;
-  for (let i = 0; i < source.length; i++) {
-    const char = source[i];
-    if (char === '"') {
-      if (quoted && source[i + 1] === '"') { value += '"'; i++; }
-      else quoted = !quoted;
-    } else if (char === delimiter && !quoted) {
-      row.push(value.trim()); value = "";
-    } else if ((char === "\n" || char === "\r") && !quoted) {
-      if (char === "\r" && source[i + 1] === "\n") i++;
-      row.push(value.trim()); value = "";
-      if (row.some((cell) => cell !== "")) rows.push(row);
-      row = [];
-      if (rows.length > MAX_WORKSPACE_FEATURES + 1) {
-        throw new Error(`Máximo de ${MAX_WORKSPACE_FEATURES} registos CSV.`);
-      }
-    } else value += char;
-  }
-  if (quoted) throw new Error("CSV com aspas por fechar.");
-  row.push(value.trim());
-  if (row.some((cell) => cell !== "")) rows.push(row);
-  return rows;
-}
-
-export function parseWorkspaceText(filename: string, rawText: string): ParsedWorkspaceFile {
-  if (rawText.length > MAX_WORKSPACE_FILE_BYTES) throw new Error("Ficheiro muito grande (máximo 8 MB).");
-  const extension = filename.split(".").pop()?.toLowerCase();
-  const name = filename.replace(/\.[^.]+$/, "").slice(0, 100) || "Nova camada";
-  if (extension === "geojson" || extension === "json") {
-    let value: unknown;
-    try { value = JSON.parse(rawText); }
-    catch { throw new Error("Não foi possível ler o JSON. Verifique a sintaxe."); }
-    return { name, format: "GeoJSON", geojson: normalizeWorkspaceGeoJSON(value) };
-  }
-  if (extension !== "csv") {
-    throw new Error("Formatos suportados nesta fase: GeoJSON/JSON e CSV.");
-  }
-  const data = csvRows(rawText.replace(/^\uFEFF/, ""), delimiterFor(rawText));
-  if (data.length < 2) throw new Error("CSV sem registos.");
-  const [headers, ...records] = data;
-  const latIndex = headers.findIndex((key) => /^(lat|latitude)$/i.test(key));
-  const lonIndex = headers.findIndex((key) => /^(lon|lng|longitude)$/i.test(key));
-  if (latIndex < 0 || lonIndex < 0) throw new Error("CSV exige colunas latitude e longitude.");
-  const features: Feature[] = [];
-  records.forEach((cells, index) => {
-    const latText = cells[latIndex], lonText = cells[lonIndex];
-    if (!latText || !lonText) return;
-    const lat = Number(latText), lon = Number(lonText);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return;
-    const properties: GeoJsonProperties = {};
-    headers.forEach((header, column) => {
-      if (column !== latIndex && column !== lonIndex && header) properties[header] = cells[column] ?? "";
-    });
-    features.push({
-      type: "Feature", id: index, properties, geometry: { type: "Point", coordinates: [lon, lat] },
-    });
-  });
-  if (features.length === 0) throw new Error("Nenhuma coordenada WGS84 válida encontrada no CSV.");
-  return { name, format: "CSV", geojson: { type: "FeatureCollection", features } };
-}
-
 export async function parseWorkspaceFile(file: File): Promise<ParsedWorkspaceFile> {
-  if (file.size > MAX_WORKSPACE_FILE_BYTES) {
-    throw new Error(`${file.name}: excede o limite de 8 MB.`);
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  const text = await file.text();
+
+  if (extension === "geojson" || extension === "json") {
+    return {
+      name: file.name.replace(/\.[^.]+$/, ""),
+      format: "GeoJSON",
+      geojson: asFeatureCollection(JSON.parse(text)),
+    };
   }
-  return parseWorkspaceText(file.name, await file.text());
+  if (extension === "csv") {
+    return {
+      name: file.name.replace(/\.[^.]+$/, ""),
+      format: "CSV",
+      geojson: parseCsv(text),
+    };
+  }
+
+  throw new Error(
+    "Nesta primeira fase use GeoJSON/JSON ou CSV. Shapefile, GeoPackage, KML e rasters entram no próximo adaptador."
+  );
 }
 
 export function workspaceColumns(layer: WorkspaceLayer): string[] {
-  const columns = new Set<string>();
-  layer.geojson.features.slice(0, 500).forEach((f) => {
-    Object.keys(f.properties ?? {}).forEach((key) => columns.add(key));
+  if (!layer.geojson) return [];
+  const keys = new Set<string>();
+  layer.geojson.features.slice(0, 500).forEach((feature) => {
+    Object.keys(feature.properties ?? {}).forEach((key) => keys.add(key));
   });
-  return [...columns].slice(0, 100);
+  return Array.from(keys);
+}
+
+export function workspaceNumericColumns(layer: WorkspaceLayer): string[] {
+  if (!layer.geojson) return [];
+  return workspaceColumns(layer).filter((key) =>
+    layer.geojson!.features.some((feature) => {
+      const value = Number(feature.properties?.[key]);
+      return Number.isFinite(value);
+    })
+  );
+}
+
+export function workspaceNumericRange(
+  layer: WorkspaceLayer,
+  field?: string
+): [number, number] | null {
+  if (!layer.geojson || !field) return null;
+  const values = layer.geojson.features
+    .map((feature) => Number(feature.properties?.[field]))
+    .filter((value) => Number.isFinite(value));
+  if (!values.length) return null;
+  return [Math.min(...values), Math.max(...values)];
+}
+
+function hashString(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+export function workspaceFeatureColor(
+  layer: WorkspaceLayer,
+  feature: Feature,
+  numericRange?: [number, number] | null
+): string {
+  if (layer.style.mode === "single" || !layer.style.field) {
+    return layer.style.color;
+  }
+
+  const raw = feature.properties?.[layer.style.field];
+  if (layer.style.mode === "categorized") {
+    const index = hashString(String(raw ?? "Sem valor")) % WORKSPACE_CATEGORY_PALETTE.length;
+    return WORKSPACE_CATEGORY_PALETTE[index];
+  }
+
+  const numeric = Number(raw);
+  const range = numericRange ?? workspaceNumericRange(layer, layer.style.field);
+  if (!Number.isFinite(numeric) || !range) return "#94a3b8";
+  const [min, max] = range;
+  if (max <= min) return WORKSPACE_GRADUATED_PALETTE[2];
+  const normalized = Math.max(0, Math.min(0.999, (numeric - min) / (max - min)));
+  const index = Math.floor(normalized * WORKSPACE_GRADUATED_PALETTE.length);
+  return WORKSPACE_GRADUATED_PALETTE[index];
 }

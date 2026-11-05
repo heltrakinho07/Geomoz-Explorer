@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {normalizeLayoutItems} from '../assets/workbench/geomoz-layout-items.ts';
+test('old projects and malformed documents have safe defaults',()=>{assert.deepEqual(normalizeLayoutItems(null),[]);const [i]=normalizeLayoutItems([{x:90,width:80,y:99,height:NaN,color:'url(x)',image:'https://example.com/x.png'}]);assert.equal(i.width,10);assert.equal(i.height,1);assert.equal(i.image,'');assert.equal(i.color,'#111827');});
+test('layout items survive a JSON round trip and preserve locks',()=>{const a=normalizeLayoutItems([{id:'a',kind:'text',text:'Carta de Manica',locked:true,x:15,y:20,width:25,height:10}]);assert.deepEqual(normalizeLayoutItems(JSON.parse(JSON.stringify(a))),a);assert.equal(a[0].locked,true);});
+test('image type and number of elements are bounded',()=>{assert.equal(normalizeLayoutItems(Array.from({length:60},()=>({}))).length,40);assert.equal(normalizeLayoutItems([{kind:'image',image:'data:image/svg+xml;base64,AAAA'}])[0].image,'');});

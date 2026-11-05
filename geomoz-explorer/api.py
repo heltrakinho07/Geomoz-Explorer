@@ -3,14 +3,16 @@ GeoMoz FastAPI backend — serves geomoz data as REST/GeoJSON endpoints.
 Run: uvicorn api:app --host 0.0.0.0 --port 5001
 """
 
+import asyncio
 import json
 import logging
 import os
 import sys
 import time
+from urllib.parse import urlsplit
 from collections import defaultdict
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, Literal
 from concurrent.futures import ThreadPoolExecutor
 import geopandas as gpd
 from shapely.errors import TopologicalError, GEOSException
@@ -18,7 +20,8 @@ from shapely.errors import TopologicalError, GEOSException
 from fastapi import FastAPI, Query, HTTPException, Request, File, UploadFile, Depends, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
+from starlette.concurrency import run_in_threadpool
 # Automatic .env discovery
 for _env_candidate in [
     os.path.join(os.path.dirname(__file__), ".env"),
@@ -77,51 +80,36 @@ async def require_firebase_auth(request: Request) -> str:
 
 
 async def require_gee_auth(request: Request) -> str:
-    """Permit authenticated BYO-GEE or explicitly configured public demo access."""
-    auth_header = request.headers.get("Authorization", "")
-    uid = _extract_uid_from_header(auth_header)
-    gee_project = request.headers.get("X-GEE-Project", "").strip() or None
-    gee_token = request.headers.get("X-GEE-Token", "").strip() or None
+    """Require a verified Firebase UID with that UID's own GEE credentials.
 
-    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower() == "true"
-    has_server_credentials = bool(
-        os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
-        or os.environ.get("GEE_SERVICE_ACCOUNT_FILE", "").strip()
-        or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
-    )
-
-    # Explicitly invalid identity is never treated as an anonymous guest.
-    if auth_header and not uid:
-        raise HTTPException(status_code=401, detail="Token Firebase inválido.")
-
-    if not uid:
-        # Guests must never supply personal GEE credentials or access stored
-        # tokens belonging to the historical shared 'default' identity.
-        if gee_project or gee_token or not (allow_server and has_server_credentials):
-            raise HTTPException(status_code=401, detail="Inicie sessão para utilizar o Google Earth Engine.")
-        from gee_module import _init_gee
-        try:
-            _init_gee(uid=None, project=None, token=None)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        return ""
-
+    Never accept the X-GEE-Token request header as an alternative principal.
+    A Google Cloud project alone does not establish Earth Engine access.
+    """
+    uid = await require_firebase_auth(request)
     import gee_session_store
-    user_token = gee_session_store.get_token(uid)
-    if not gee_token and not gee_project and not user_token and not (allow_server and has_server_credentials):
+
+    try:
+        user_credentials = gee_session_store.get_token(uid) or {}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Armazenamento privado GEE indisponível.") from exc
+
+    if not user_credentials.get("project"):
         raise HTTPException(
             status_code=403,
-            detail="Conecte a sua conta Earth Engine ou peça acesso à quota da plataforma.",
+            detail="Configure o ID do seu próprio projeto Google Cloud antes de utilizar GEE.",
+        )
+    if not any(user_credentials.get(k) for k in
+               ("refresh_token", "access_token", "service_account_key")):
+        raise HTTPException(
+            status_code=403,
+            detail="Ligue as suas próprias credenciais Google Earth Engine antes de executar análises.",
         )
 
     from gee_module import _init_gee
     try:
-        _init_gee(uid=uid, project=gee_project, token=gee_token)
+        _init_gee(uid=uid, project=None, token=None)
     except RuntimeError as exc:
-        msg = str(exc)
-        if "expirou" in msg or "necessary fields" in msg or "refresh" in msg.lower():
-            raise HTTPException(status_code=401, detail=msg) from exc
-        raise HTTPException(status_code=403, detail=msg) from exc
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return uid
 
 
@@ -155,7 +143,16 @@ def handle_gee_api_error(exc: Exception, prefix: str = "Cálculo GEE", uid: str 
             detail="A sua sessão do Google Earth Engine expirou. Por favor clique em 'Reconectar Google Earth Engine' nas Definições ou no cabeçalho para renovar o acesso."
         )
     raise HTTPException(500, f"{prefix} falhou: {exc}")
-from pydantic import BaseModel, field_validator, constr
+from pydantic import BaseModel, field_validator, model_validator, constr, Field
+
+from processing_jobs import (
+    cleanup_expired_jobs,
+    create_processing_job,
+    delete_processing_job,
+    get_processing_job,
+    get_processing_job_output,
+    parse_job_parameters,
+)
 
 # ── Package imports ────────────────────────────────────────────────────────
 # These modules are siblings of api.py in the geomoz-explorer directory.
@@ -222,6 +219,50 @@ _thread_pool_executor = ThreadPoolExecutor(max_workers=4)
 
 app = FastAPI(title="GeoMoz API", version="2.1.0")
 
+# GeoMoz PayZeno subscriptions and server-enforced cloud project limits.
+from billing import router as billing_router
+from project_quota import router as project_quota_router
+from admin import router as admin_router
+from billing_plan_requests import router as plan_requests_router, admin_router as admin_plan_requests_router
+app.include_router(billing_router)
+app.include_router(project_quota_router)
+app.include_router(admin_router)
+app.include_router(plan_requests_router)
+app.include_router(admin_plan_requests_router)
+
+# ee.Initialize mutates global Earth Engine SDK state. Serialize the complete
+# authentication + computation lifecycle of GEE requests in each Python worker.
+# Each request initializes using the Firebase-authenticated user's own credentials.
+_gee_request_lock = asyncio.Lock()
+
+@app.middleware("http")
+async def restrict_disabled_modules(request: Request, call_next):
+    # Server-side controls complement SPA route visibility; direct API access
+    # to a disabled scientific module must also be blocked.
+    from platform_config import blocked_api_module, get_features
+    from fastapi.responses import JSONResponse
+    module = blocked_api_module(request.url.path)
+    if module:
+        try:
+            active = get_features().get(module, True)
+        except Exception:
+            # Fail closed for module APIs, not for health or payment callbacks.
+            return JSONResponse(status_code=503, content={"detail": "Configuração dos módulos indisponível."})
+        if not active:
+            return JSONResponse(status_code=403, content={"detail": "Módulo temporariamente indisponível."})
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def isolate_gee_requests(request: Request, call_next):
+    if (request.url.path.startswith("/geomoz-api/gee/") or
+            request.url.path.startswith("/geomoz-api/terrain/gee-") or
+            request.url.path == "/geomoz-api/ai/agent-chat"):
+        async with _gee_request_lock:
+            return await call_next(request)
+    return await call_next(request)
+
+
 # CORS: accept only explicitly configured origins (production) or known local
 # development/Electron origins. Never combine wildcard origins with credentials.
 _default_cors_origins = [
@@ -270,6 +311,121 @@ async def rate_limit_middleware(request: Request, call_next):
         )
     
     return await call_next(request)
+
+# ── Heavy GIS processing jobs ────────────────────────────────────────────────
+
+SUPPORTED_HEAVY_GIS_TOOLS = {
+    "hillshade": "GDAL DEM hillshade",
+    "slope": "GDAL DEM slope",
+    "aspect": "GDAL DEM aspect",
+    "cog": "Cloud Optimized GeoTIFF conversion",
+}
+
+
+@app.get("/geomoz-api/processing/tools")
+async def processing_tools(uid: str = Depends(require_firebase_auth)):
+    """Return the allowlisted backend processing tools."""
+    return {
+        "tools": [
+            {"id": tool_id, "name": name}
+            for tool_id, name in SUPPORTED_HEAVY_GIS_TOOLS.items()
+        ],
+        "execution": "async",
+        "input": "GeoTIFF/COG",
+    }
+
+
+@app.post("/geomoz-api/processing/jobs", status_code=202)
+async def create_processing_job_endpoint(
+    tool: str = Form(...),
+    parameters: str = Form("{}"),
+    input_file: UploadFile = File(...),
+    uid: str = Depends(require_firebase_auth),
+):
+    """Queue a heavy raster job and return immediately with a job id."""
+    cleanup_expired_jobs()
+    tool_id = tool.strip().lower()
+    if tool_id not in SUPPORTED_HEAVY_GIS_TOOLS:
+        raise HTTPException(
+            status_code=400,
+            detail=f'Ferramenta "{tool_id}" não suportada. Use: {", ".join(SUPPORTED_HEAVY_GIS_TOOLS)}.',
+        )
+
+    try:
+        parsed_parameters = parse_job_parameters(parameters)
+        # The UploadFile spool is copied in bounded chunks on a worker thread:
+        # never materialize a large DEM as one Python bytes object.
+        job = await run_in_threadpool(
+            create_processing_job,
+            uid=uid,
+            tool=tool_id,
+            input_name=input_file.filename or "input.tif",
+            input_stream=input_file.file,
+            parameters=parsed_parameters,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        await input_file.close()
+
+    return {
+        "job": job.public_dict(),
+        "status_url": f"/geomoz-api/processing/jobs/{job.id}",
+        "result_url": f"/geomoz-api/processing/jobs/{job.id}/result",
+    }
+
+
+@app.get("/geomoz-api/processing/jobs/{job_id}")
+async def processing_job_status(
+    job_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Read progress/status for one processing job owned by the caller."""
+    cleanup_expired_jobs()
+    job = get_processing_job(job_id, uid)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
+    return {"job": job.public_dict()}
+
+
+@app.get("/geomoz-api/processing/jobs/{job_id}/result")
+async def processing_job_result(
+    job_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Download the GeoTIFF output after a job reaches completed state."""
+    job = get_processing_job(job_id, uid)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
+    if job.status == "failed":
+        raise HTTPException(status_code=409, detail=job.error or "O job falhou.")
+    if job.status != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail=f'O job ainda está em estado "{job.status}".',
+        )
+
+    output = get_processing_job_output(job_id, uid)
+    if not output:
+        raise HTTPException(status_code=410, detail="Resultado já não está disponível.")
+
+    return FileResponse(
+        path=str(output),
+        media_type="image/tiff",
+        filename=job.output_name or f"{job.tool}.tif",
+    )
+
+
+@app.delete("/geomoz-api/processing/jobs/{job_id}", status_code=204)
+async def processing_job_delete(
+    job_id: str,
+    uid: str = Depends(require_firebase_auth),
+):
+    """Delete a queued/completed job and its temporary files."""
+    if not delete_processing_job(job_id, uid):
+        raise HTTPException(status_code=404, detail="Job não encontrado.")
+    return Response(status_code=204)
+
 
 # ── data loaders (cached) ──────────────────────────────────────────────────────
 
@@ -724,16 +880,21 @@ def gee_configure(req: GEEServiceAccountKeyRequest, uid: str = Depends(require_f
 
     if req.service_account_key is not None and req.service_account_key.strip():
         raw_sa = req.service_account_key.strip()
-        user_data["service_account_key"] = raw_sa
-        changed = True
         try:
             sa_dict = json.loads(raw_sa)
-            if not req.project_id and sa_dict.get("project_id"):
-                req.project_id = sa_dict.get("project_id")
-            if not req.account and sa_dict.get("client_email"):
-                req.account = sa_dict.get("client_email")
-        except Exception as sa_err:
-            logger.warning("Could not parse service account JSON for user '%s': %s", uid, sa_err)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(400, "JSON de conta de serviço inválido.") from exc
+        if not isinstance(sa_dict, dict) or not all(
+            isinstance(sa_dict.get(name), str) and sa_dict[name].strip()
+            for name in ("client_email", "private_key", "project_id")
+        ):
+            raise HTTPException(400, "A chave GEE necessita client_email, private_key e project_id.")
+        user_data["service_account_key"] = raw_sa
+        changed = True
+        if not req.project_id:
+            req.project_id = sa_dict["project_id"]
+        if not req.account:
+            req.account = sa_dict["client_email"]
 
     if req.project_id is not None and req.project_id.strip():
         user_data["project"] = req.project_id.strip()
@@ -798,6 +959,9 @@ class AgentChatRequest(BaseModel):
     current_map_state: Optional[dict] = None
     chat_history: Optional[list] = None
     gemini_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    provider: Optional[str] = "auto"
+    model: Optional[str] = None
 
 class GEEIndexRequest(BaseModel):
     index:      str
@@ -807,6 +971,9 @@ class GEEIndexRequest(BaseModel):
     start_date: str = "2023-01-01"
     end_date:   str = "2023-12-31"
     cloud_pct:  int = 30
+    processing_mode: Literal["fast", "balanced", "detailed"] = "detailed"
+    pre_start_date: Optional[str] = None
+    pre_end_date: Optional[str] = None
 
     @field_validator('cloud_pct')
     @classmethod
@@ -858,6 +1025,8 @@ class GEERenderRequest(BaseModel):
     start_date: str = "2023-01-01"
     end_date:   str = "2023-12-31"
     cloud_pct:  int = 30
+    pre_start_date: Optional[str] = None
+    pre_end_date: Optional[str] = None
     vis_params: dict = {}
 
     @field_validator('cloud_pct')
@@ -934,32 +1103,73 @@ class GEECompositeRequest(BaseModel):
 
 
 
+@app.get("/geomoz-api/gee/oauth/capabilities")
+async def gee_oauth_capabilities(uid: str = Depends(require_firebase_auth)):
+    """Let the client choose ONE Google consent flow, avoiding duplicate popups.
+
+    Only presence of server config is returned; secrets never leave Cloud Run.
+    """
+    from gee_module import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+    return {
+        "code_flow_ready": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET),
+        "token_flow_ready": True,
+        "message": (
+            "Autorização renovável disponível."
+            if GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET
+            else "A ligação temporária está disponível. Para acesso renovável, configure GOOGLE_CLIENT_SECRET no Cloud Run."
+        ),
+    }
+
+
 class OAuthTokenRequest(BaseModel):
     access_token: str
     project: Optional[str] = None
 
 class OAuthCodeRequest(BaseModel):
     code: str
-    redirect_uri: Optional[str] = "postmessage"
+    redirect_uri: Optional[str] = None
     project: Optional[str] = None
 
 @app.post("/geomoz-api/gee/oauth-token")
 async def gee_oauth_token(req: OAuthTokenRequest, uid: str = Depends(require_firebase_auth)):
     import gee_session_store
+    # An empty token/project is the explicit disconnect operation.
+    if not req.access_token and not req.project:
+        gee_session_store.clear_token(uid)
+        from gee_module import reset_gee
+        reset_gee()
+        return {"message": "Credenciais GEE desligadas.", "connected": False}
+    if not req.access_token:
+        raise HTTPException(status_code=400, detail="Token GEE vazio.")
+    user_project = req.project or (gee_session_store.get_token(uid) or {}).get("project")
+    if not user_project:
+        raise HTTPException(status_code=400, detail="Indique o ID do seu projeto Google Cloud.")
+    # Replace, never merge OAuth credentials. A previous Google account's
+    # refresh token must not survive a user switching to another Google account.
+    gee_session_store.clear_token(uid)
     gee_session_store.set_token(uid, {
         "access_token": req.access_token,
-        "project": req.project
+        "project": user_project,
     })
-    if req.access_token or req.project:
-        try:
-            from gee_module import _init_gee
-            _init_gee(uid=uid, project=req.project, token=req.access_token or None)
-        except Exception as e:
-            logger.warning("Immediate GEE init attempt during oauth-token save: %s", e)
-    return {"message": "Token guardado com sucesso."}
+    try:
+        from gee_module import reset_gee, _init_gee
+        reset_gee()
+        _init_gee(uid=uid, project=user_project, token=req.access_token)
+        return {
+            "message": "Credenciais GEE verificadas para a conta autenticada.",
+            "connected": True,
+            "is_permanent": bool((gee_session_store.get_token(uid) or {}).get("refresh_token")),
+        }
+    except Exception as exc:
+        logger.warning("Personal GEE access-token validation failed for user '%s'", uid)
+        return {
+            "connected": False,
+            "message": "Token guardado, mas GEE recusou a autorização. "
+                       "Verifique o acesso Earth Engine e o projeto Google Cloud.",
+        }
 
 @app.post("/geomoz-api/gee/oauth/exchange-code")
-async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(require_firebase_auth)):
+async def gee_oauth_exchange_code(req: OAuthCodeRequest, request: Request, uid: str = Depends(require_firebase_auth)):
     import urllib.request
     import urllib.parse
     import json
@@ -967,12 +1177,30 @@ async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(requ
     import gee_session_store
     from gee_module import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, _init_gee, reset_gee
 
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=503,
+            detail="A autorização renovável não está configurada no servidor. Use a ligação temporária e contacte o administrador.",
+        )
+
+    # GIS popup code model binds the authorization code to the initiating
+    # page origin, not the legacy "postmessage" redirect URI.
+    allowed_origins = set(_configured_cors_origins or _default_cors_origins) - {"null"}
+    return_origin = (req.redirect_uri or "").strip().rstrip("/")
+    request_origin = request.headers.get("origin", "").strip().rstrip("/")
+    if (
+        not return_origin
+        or return_origin not in allowed_origins
+        or (request_origin and request_origin != return_origin)
+    ):
+        raise HTTPException(status_code=400, detail="Origem de autorização OAuth não permitida.")
+
     token_url = "https://oauth2.googleapis.com/token"
     post_data = urllib.parse.urlencode({
         "code": req.code,
         "client_id": GOOGLE_CLIENT_ID,
         "client_secret": GOOGLE_CLIENT_SECRET,
-        "redirect_uri": req.redirect_uri or "postmessage",
+        "redirect_uri": return_origin,
         "grant_type": "authorization_code",
     }).encode("utf-8")
 
@@ -991,16 +1219,22 @@ async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(requ
 
     access_token = token_response.get("access_token")
     refresh_token = token_response.get("refresh_token")
-    project = req.project or "geoprocessamento-426809"
+    if not access_token:
+        raise HTTPException(400, "Google não devolveu um access_token válido.")
+    project = req.project or (gee_session_store.get_token(uid) or {}).get("project")
+    if not project:
+        raise HTTPException(status_code=400, detail="Indique o projeto Google Cloud da sua conta GEE.")
 
-    user_data = gee_session_store.get_token(uid) or {}
-    user_data["access_token"] = access_token
-    if refresh_token:
-        user_data["refresh_token"] = refresh_token
-    user_data["project"] = project
-    user_data["updated_at"] = time.time()
-    user_data["expires_in"] = token_response.get("expires_in", 3600)
-
+    # Never reuse a refresh token from an earlier authorization: it could
+    # belong to a different Google account than this freshly issued code.
+    user_data = {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "project": project,
+        "updated_at": time.time(),
+        "expires_in": token_response.get("expires_in", 3600),
+    }
+    gee_session_store.clear_token(uid)
     gee_session_store.set_token(uid, user_data)
     logger.info("Permanent GEE OAuth credentials stored for user '%s': has_refresh_token=%s", uid, bool(refresh_token or user_data.get("refresh_token")))
 
@@ -1013,7 +1247,7 @@ async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(requ
             "is_permanent": bool(refresh_token or user_data.get("refresh_token")),
             "has_refresh_token": bool(refresh_token or user_data.get("refresh_token")),
             "project": project,
-            "message": "Google Earth Engine conectado permanentemente para a sua conta!",
+            "message": ("Google Earth Engine ligado com acesso renovável." if refresh_token or user_data.get("refresh_token") else "Google Earth Engine ligado apenas nesta sessão; não foi emitido token de renovação."),
         }
     except Exception as e:
         logger.warning("GEE init failed after code exchange for user '%s': %s", uid, e)
@@ -1028,32 +1262,80 @@ async def gee_oauth_exchange_code(req: OAuthCodeRequest, uid: str = Depends(requ
 
 @app.get("/geomoz-api/gee/status")
 async def gee_status_endpoint(request: Request):
-    import gee_session_store
-    auth_header = request.headers.get("Authorization", "")
-    uid = _extract_uid_from_header(auth_header)
-    # Never initialize Earth Engine with caller-provided credentials until
-    # the caller has proven ownership of a Firebase user identity.
-    gee_project = (request.headers.get("X-GEE-Project", "").strip() or None) if uid else None
-    gee_token = (request.headers.get("X-GEE-Token", "").strip() or None) if uid else None
+    from gee_presets import INDEX_REGISTRY
+
+    authorization = request.headers.get("Authorization", "")
+    uid = _extract_uid_from_header(authorization)
+    if authorization and not uid:
+        raise HTTPException(status_code=401, detail="Token Firebase inválido.")
+    if not uid:
+        return {
+            "connected": False,
+            "user_connected": False,
+            "server_connected": False,
+            "allow_server_fallback": False,
+            "auth_type": "none",
+            "project": None,
+            "is_permanent": False,
+            "has_refresh_token": False,
+            "message": "Inicie sessão e conecte a sua própria conta Earth Engine.",
+            "indices": list(INDEX_REGISTRY.keys()),
+        }
 
     from gee_module import gee_status
-    st = gee_status(uid=uid, project=gee_project, token=gee_token)
-    has_sa = bool(os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip())
-    allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower() == "true"
-    user_token = gee_session_store.get_token(uid) if uid else None
+    import gee_session_store
+    try:
+        user_token = gee_session_store.get_token(uid) or {}
+    except Exception as exc:
+        # Log the exception class, not credentials or token payloads.
+        error_type = type(exc).__name__
+        logger.error("GEE Firestore credential lookup unavailable: %s", error_type)
+        if error_type in ("PermissionDenied", "Forbidden"):
+            detail = (
+                "O servidor Cloud Run não tem autorização para ler o Firestore. "
+                "Verifique roles/datastore.user na conta de serviço de execução."
+            )
+        elif error_type in ("NotFound", "FailedPrecondition"):
+            detail = (
+                "A base de dados Firestore (default) pode não existir ou estar indisponível. "
+                "Verifique a base de dados no projecto geoprocessamento-426809."
+            )
+        elif error_type in ("DefaultCredentialsError", "RefreshError"):
+            detail = (
+                "A identidade de serviço do Cloud Run não conseguiu autenticar o acesso ao Firestore. "
+                "Verifique a identidade configurada no serviço."
+            )
+        else:
+            detail = (
+                "Não foi possível consultar as credenciais GEE no Firestore. "
+                "Verifique a disponibilidade do Firestore e as permissões da "
+                "conta de serviço de execução do Cloud Run."
+            )
+        raise HTTPException(status_code=503, detail=detail) from exc
+    try:
+        st = gee_status(uid=uid)
+    except Exception as exc:
+        logger.error("GEE status evaluation unavailable: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Não foi possível avaliar a sessão Earth Engine. "
+                "Verifique as credenciais privadas e os registos do servidor Cloud Run."
+            ),
+        ) from exc
 
-    from gee_presets import INDEX_REGISTRY
     return {
-        "connected": st.get("connected", False),
-        "project": st.get("project") or gee_project,
+        "connected": bool(st.get("connected")),
+        "user_connected": bool(st.get("connected")),
+        "server_connected": False,
+        "allow_server_fallback": False,
         "auth_type": st.get("auth_type"),
+        "project": st.get("project"),
+        "account": st.get("account"),
         "is_permanent": st.get("is_permanent", False),
-        "has_refresh_token": st.get("has_refresh_token", False),
-        "user_connected": bool(gee_token or gee_project or (user_token.get("access_token") if user_token else None) or (user_token.get("refresh_token") if user_token else None)),
-        "server_connected": st.get("auth_type") in ("service_account", "adc") or has_sa,
-        "allow_server_fallback": allow_server,
+        "has_refresh_token": bool(user_token.get("refresh_token")),
         "message": st.get("message"),
-        "indices": list(INDEX_REGISTRY.keys())
+        "indices": list(INDEX_REGISTRY.keys()),
     }
 
 @app.post("/geomoz-api/gee/index")
@@ -1077,7 +1359,10 @@ async def gee_index(req: GEEIndexRequest, uid: str = Depends(require_gee_auth)):
     try:
         result = await loop.run_in_executor(
             _thread_pool_executor,
-            lambda: compute_index_tile(req.index, region, req.start_date, req.end_date, req.cloud_pct),
+            lambda: compute_index_tile(
+                req.index, region, req.start_date, req.end_date, req.cloud_pct,
+                processing_mode=req.processing_mode, pre_start_date=req.pre_start_date, pre_end_date=req.pre_end_date,
+            ),
         )
         result["province"] = req.province
         result["district"] = req.district
@@ -1107,7 +1392,7 @@ async def gee_download_url(req: GEEDownloadRequest, uid: str = Depends(require_g
         result = await loop.run_in_executor(
             _thread_pool_executor,
             lambda: get_index_download_url(
-                req.index, region, req.start_date, req.end_date, req.cloud_pct, req.scale or 30
+                req.index, region, req.start_date, req.end_date, req.cloud_pct, req.scale or 30, req.pre_start_date, req.pre_end_date
             ),
         )
         return result
@@ -1165,24 +1450,97 @@ async def synthesize_study(req: StudySynthesisRequest):
     return {"synthesis": conclusion}
 
 
+class AgentModelCatalogRequest(BaseModel):
+    provider: str
+    api_key: str
+
+
+@app.post("/geomoz-api/ai/models")
+async def agent_model_catalog(req: AgentModelCatalogRequest):
+    """List provider-visible tool-candidate models; keys are never logged/stored."""
+    from agent.model_catalog import discover_models
+    try:
+        return await run_in_threadpool(discover_models, req.provider, req.api_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except Exception:
+        logger.exception("GEOAGENTE model catalogue request failed")
+        raise HTTPException(status_code=503, detail="Catálogo de modelos temporariamente indisponível.") from None
+
+
 @app.post("/geomoz-api/ai/agent-chat")
-async def agent_chat(req: AgentChatRequest):
+async def agent_chat(req: AgentChatRequest, request: Request):
     """
     GeoMoz AI Agent — Interprets spatial intent, executes deterministic GIS tools via ReAct,
     and returns map actions, step checklists, and technical diagnostic synthesis.
     """
     try:
         from agent.planner import GeoMozAgent
+        # Only verified Firebase identity selects the private GEE credential store.
+        # Ignore legacy browser tokens, project overrides and client-supplied UIDs.
+        context = dict(req.current_map_state or {})
+        for key in ("gee_token", "gee_project", "_gee_uid"):
+            context.pop(key, None)
+        context["_gee_uid"] = _extract_uid_from_header(request.headers.get("Authorization", ""))
         result = await GeoMozAgent.process_user_request(
             user_message=req.message,
-            current_map_state=req.current_map_state or {},
+            current_map_state=context,
             chat_history=req.chat_history or [],
-            gemini_api_key=req.gemini_api_key
+            gemini_api_key=req.gemini_api_key,
+            openai_api_key=req.openai_api_key,
+            provider=req.provider or "auto",
+            model=req.model
         )
         return result
+    except Exception:
+        # Never disclose Google/OpenAI API keys, internal paths or stack traces
+        # through user-facing HTTP 500 response bodies.
+        from uuid import uuid4
+
+        request_id = uuid4().hex[:12]
+        logger.exception("GeoMoz AI agent-chat unexpected failure [%s]", request_id)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Falha interna no GEOAGENTE. Repita a consulta; se persistir, envie o código de diagnóstico ao suporte.",
+                "request_id": request_id,
+            },
+            headers={"X-Request-ID": request_id},
+        ) from None
+
+
+class AgentGeologyFeaturesRequest(BaseModel):
+    province: Optional[str] = None
+    district: Optional[str] = None
+    filter_str: Optional[str] = None
+    geometry: Optional[dict] = None
+
+
+@app.post("/geomoz-api/ai/geology-features")
+async def agent_geology_features(req: AgentGeologyFeaturesRequest):
+    """Return real geology polygons separately from the AI text response.
+
+    This read-only dataset is already exposed through /geomoz-api/geology.
+    Keeping the feature payload out of LLM tool results avoids token bloat.
+    """
+    from agent.geology_data import geology_features
+
+    try:
+        return await run_in_threadpool(
+            geology_features,
+            province=req.province,
+            district=req.district,
+            filter_str=req.filter_str,
+            geometry=req.geometry,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Error in agent_chat: %s", exc)
-        raise HTTPException(500, f"Erro na execução do agente GeoMoz: {exc}")
+        logger.exception("GeoMoz geology vector query failed: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Catálogo geológico temporariamente indisponível.",
+        ) from exc
 
 
 @app.post("/geomoz-api/gee/render")
@@ -1215,7 +1573,7 @@ async def gee_render(req: GEERenderRequest, uid: str = Depends(require_gee_auth)
             _thread_pool_executor,
             lambda: compute_index_tile_vis(
                 req.index, region, req.vis_params,
-                req.start_date, req.end_date, req.cloud_pct,
+                req.start_date, req.end_date, req.cloud_pct, req.pre_start_date, req.pre_end_date,
             ),
         )
         result["province"] = req.province
@@ -1523,6 +1881,7 @@ async def gee_landcover(req: GEELandcoverRequest, uid: str = Depends(require_gee
 def gee_indices():
     """List available indices with metadata, grouped (spectral/landsat/terrain)."""
     from gee_presets import INDEX_REGISTRY
+    from gee_module import INDEX_SCIENCE
     return {
         "indices": [
             {
@@ -1532,6 +1891,7 @@ def gee_indices():
                 "bands":   v["bands"],
                 "group":   v["group"],
                 "classNames": v.get("class_names"),
+                "science": INDEX_SCIENCE[k],
             }
             for k, v in INDEX_REGISTRY.items()
         ]
@@ -1544,7 +1904,7 @@ class GEEBasinsRequest(BaseModel):
     province:  Optional[str] = None
     district:  Optional[str] = None
     geometry:  Optional[dict] = None
-    level:     int            = 6   # HydroBASINS level 5–8
+    level:     int            = Field(default=6, ge=1, le=12)  # Pfafstetter 1–12
 
 
 class GEEBasinStatsRequest(BaseModel):
@@ -1687,7 +2047,7 @@ class GEEWatershedRequest(BaseModel):
     district: Optional[str] = None
     geometry: Optional[dict] = None
     max_iter: int            = 60
-    level:    int            = 10
+    level:    int            = Field(default=10, ge=1, le=12)
 
 
 @app.post("/geomoz-api/gee/watershed")
@@ -1696,7 +2056,9 @@ async def gee_watershed(req: GEEWatershedRequest, uid: str = Depends(require_gee
     Basin delineation at a clicked point. Primary method returns the containing
     HydroBASINS sub-basin (instant, real boundary); falls back to iterative D8
     on HydroSHEDS 15DIR if HydroBASINS is unavailable. Returns tile URL +
-    GeoJSON polygon + area km². `level` (6–12) controls HydroBASINS detail.
+    GeoJSON polygon + area km². `level` (1–12) controls the exact HydroBASINS
+    hierarchy; if the collection is unavailable, the result explicitly reports
+    a D8 fallback rather than claiming a different Pfafstetter level.
     """
     import asyncio
     from gee_module import compute_watershed_from_point
@@ -1746,6 +2108,13 @@ async def gee_flood(req: GEEFloodRequest, uid: str = Depends(require_gee_auth)):
     """Sentinel-1 SAR flood extent (change detection) for an event window."""
     import asyncio
     from gee_module import compute_flood_sar
+
+    if req.event_end < req.event_start:
+        raise HTTPException(400, "event_end deve ser igual ou posterior a event_start.")
+    if bool(req.baseline_start) != bool(req.baseline_end):
+        raise HTTPException(400, "baseline_start e baseline_end devem ser informados em conjunto.")
+    if req.baseline_start and req.baseline_end and req.baseline_end < req.baseline_start:
+        raise HTTPException(400, "baseline_end deve ser igual ou posterior a baseline_start.")
 
     region = _region_geojson(req.province, req.district, req.geometry)
     loop   = asyncio.get_event_loop()
@@ -1809,12 +2178,22 @@ class GEEWildfireRequest(BaseModel):
             raise ValueError('Date must be in YYYY-MM-DD format')
         return v
 
+    @field_validator('min_confidence')
+    @classmethod
+    def validate_min_confidence(cls, v):
+        if not 0 <= v <= 100:
+            raise ValueError('min_confidence must be between 0 and 100')
+        return v
+
 
 @app.post("/geomoz-api/gee/wildfire")
 async def gee_wildfire(req: GEEWildfireRequest, uid: str = Depends(require_gee_auth)):
-    """NASA FIRMS active fire detection (thermal anomalies) from MODIS and VIIRS."""
+    """Active-fire detection from VIIRS 375 m with historical MODIS FIRMS fallback."""
     import asyncio
     from gee_module import compute_wildfire_firms
+
+    if req.end_date < req.start_date:
+        raise HTTPException(400, "end_date deve ser igual ou posterior a start_date.")
 
     region = _region_geojson(req.province, req.district, req.geometry)
     loop   = asyncio.get_event_loop()
@@ -1830,6 +2209,130 @@ async def gee_wildfire(req: GEEWildfireRequest, uid: str = Depends(require_gee_a
         raise HTTPException(503, str(exc))
     except Exception as exc:
         raise HTTPException(500, f"GEE wildfire failed: {exc}")
+
+
+class GEEDroughtRequest(BaseModel):
+    province: Optional[str] = None
+    district: Optional[str] = None
+    geometry: Optional[dict] = None
+    year: int = 2024
+    clim_start: int = 2001
+
+
+@app.post("/geomoz-api/gee/drought")
+async def gee_drought(req: GEEDroughtRequest, uid: str = Depends(require_gee_auth)):
+    """SPI-12 approximation from CHIRPS combined with annual MODIS NDVI."""
+    import asyncio
+    from gee_module import compute_spi_ndvi
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    if req.clim_start > req.year - 5:
+        raise HTTPException(400, "clim_start deve ser pelo menos 5 anos anterior ao ano de análise.")
+
+    loop = asyncio.get_event_loop()
+    try:
+        return await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_spi_ndvi(
+                region, req.year, req.clim_start, 250, include_samples=False
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE drought failed: {exc}")
+
+
+class GEEBurnedAreaRequest(BaseModel):
+    province: Optional[str] = None
+    district: Optional[str] = None
+    geometry: Optional[dict] = None
+    start_date: str
+    end_date: str
+
+    @field_validator("start_date", "end_date")
+    @classmethod
+    def validate_burned_date_format(cls, v):
+        from datetime import datetime
+        try:
+            datetime.strptime(v, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("Date must be in YYYY-MM-DD format")
+        return v
+
+
+@app.post("/geomoz-api/gee/burned-area")
+async def gee_burned_area(req: GEEBurnedAreaRequest, uid: str = Depends(require_gee_auth)):
+    """Historical burned-area footprint from MODIS MCD64A1 BurnDate."""
+    import asyncio
+    from gee_module import compute_burned_area
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    if req.end_date < req.start_date:
+        raise HTTPException(400, "end_date deve ser igual ou posterior a start_date.")
+
+    loop = asyncio.get_event_loop()
+    try:
+        return await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_burned_area(region, req.start_date, req.end_date),
+        )
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE burned-area failed: {exc}")
+
+
+class GEESoilMoistureRequest(BaseModel):
+    province: Optional[str] = None
+    district: Optional[str] = None
+    geometry: Optional[dict] = None
+    start_date: str
+    end_date: str
+    layer: str = "susm"
+
+    @field_validator("start_date", "end_date")
+    @classmethod
+    def validate_soil_date_format(cls, v):
+        from datetime import datetime
+        try:
+            datetime.strptime(v, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("Date must be in YYYY-MM-DD format")
+        return v
+
+    @field_validator("layer")
+    @classmethod
+    def validate_layer(cls, v):
+        if v not in {"susm", "ssm", "smp", "susma"}:
+            raise ValueError("layer deve ser 'susm', 'ssm', 'smp' ou 'susma'")
+        return v
+
+
+@app.post("/geomoz-api/gee/soil-moisture")
+async def gee_soil_moisture(req: GEESoilMoistureRequest, uid: str = Depends(require_gee_auth)):
+    """NASA-USDA SMAP soil moisture and root-zone agricultural drought analysis."""
+    import asyncio
+    from gee_module import compute_soil_moisture_smap
+
+    region = _region_geojson(req.province, req.district, req.geometry)
+    if req.end_date < req.start_date:
+        raise HTTPException(400, "end_date deve ser igual ou posterior a start_date.")
+
+    loop = asyncio.get_event_loop()
+    try:
+        return await loop.run_in_executor(
+            _thread_pool_executor,
+            lambda: compute_soil_moisture_smap(
+                region, req.start_date, req.end_date, req.layer
+            ),
+        )
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"GEE soil moisture failed: {exc}")
 
 
 class GEEGroundwaterRequest(BaseModel):
@@ -2349,96 +2852,76 @@ class GEEMapImageRequest(BaseModel):
     dpi: int = 200
     title: Optional[str] = None
 
-    @field_validator("bounds")
+    @field_validator('bounds')
     @classmethod
-    def validate_bounds(cls, value):
-        import math
-
+    def validate_bounds(cls, v):
         required = {"south", "north", "west", "east"}
-        if not isinstance(value, dict) or not required.issubset(value.keys()):
-            raise ValueError(f"bounds must contain {required}")
+        if not isinstance(v, dict) or not required.issubset(v.keys()):
+            raise ValueError(f'bounds must contain {required}')
+        if not (-90 <= v["south"] <= 90 and -90 <= v["north"] <= 90):
+            raise ValueError('latitude bounds must be between -90 and 90')
+        if not (-180 <= v["west"] <= 180 and -180 <= v["east"] <= 180):
+            raise ValueError('longitude bounds must be between -180 and 180')
+        if v["south"] >= v["north"]:
+            raise ValueError('south must be < north')
+        if v["west"] >= v["east"]:
+            raise ValueError('west must be < east')
+        return v
 
-        try:
-            bounds = {key: float(value[key]) for key in required}
-        except (TypeError, ValueError) as exc:
-            raise ValueError("bounds values must be numeric") from exc
-
-        if not all(math.isfinite(item) for item in bounds.values()):
-            raise ValueError("bounds values must be finite")
-        if not -90 <= bounds["south"] < bounds["north"] <= 90:
-            raise ValueError("latitude bounds must satisfy -90 <= south < north <= 90")
-        if not -180 <= bounds["west"] < bounds["east"] <= 180:
-            raise ValueError("longitude bounds must satisfy -180 <= west < east <= 180")
-        return bounds
+    @field_validator('dpi')
+    @classmethod
+    def validate_dpi(cls, v):
+        if not 72 <= v <= 600:
+            raise ValueError('dpi must be between 72 and 600')
+        return v
 
     @field_validator("tile_url")
     @classmethod
-    def validate_tile_url(cls, value):
-        if value is None:
-            return None
-
-        from urllib.parse import urlparse
-
-        value = value.strip()
-        if not value:
-            return None
-        parsed = urlparse(value)
-
-        allowed_hosts = {
-            "earthengine.googleapis.com",
-            "earthengine-highvolume.googleapis.com",
-        }
-        if parsed.scheme != "https" or parsed.hostname not in allowed_hosts:
-            raise ValueError("tile_url must use an authorised Earth Engine HTTPS host")
-        if parsed.username or parsed.password:
-            raise ValueError("tile_url credentials are not allowed")
-        if not all(token in value for token in ("{z}", "{x}", "{y}")):
-            raise ValueError("tile_url must be an XYZ tile template")
-        if len(value) > 4096:
-            raise ValueError("tile_url is too long")
-        return value
-
-    @field_validator("overlay_geojson")
-    @classmethod
-    def validate_overlay_geojson(cls, value):
-        if value is None:
-            return None
-        encoded = json.dumps(value, separators=(",", ":"), default=str)
-        if len(encoded.encode("utf-8")) > 2_000_000:
-            raise ValueError("overlay_geojson exceeds the 2 MB limit")
-        return value
-
-    @field_validator("legend_items")
-    @classmethod
-    def validate_legend_items(cls, value):
-        if value is not None and len(value) > 30:
-            raise ValueError("legend_items supports at most 30 entries")
-        return value
+    def validate_tile_url(cls, v):
+        if v is None:
+            return v
+        parsed = urlsplit(v)
+        if parsed.scheme != "https":
+            raise ValueError("tile_url must use https")
+        if parsed.hostname != "earthengine.googleapis.com":
+            raise ValueError("tile_url host is not allowed")
+        if not all(token in parsed.path for token in ("{z}", "{x}", "{y}")):
+            raise ValueError("tile_url must include {z}/{x}/{y} placeholders")
+        return v
 
     @field_validator("width_mm", "height_mm")
     @classmethod
-    def validate_map_dimensions(cls, value):
-        value = float(value)
-        if not 40 <= value <= 300:
-            raise ValueError("map dimensions must be between 40 and 300 mm")
-        return value
+    def validate_dimensions_mm(cls, v):
+        if not 10 <= v <= 2000:
+            raise ValueError("map dimensions must be between 10mm and 2000mm")
+        return v
 
-    @field_validator("dpi")
+    @field_validator("legend_items")
     @classmethod
-    def validate_dpi(cls, value):
-        if not 72 <= value <= 300:
-            raise ValueError("dpi must be between 72 and 300")
-        return value
+    def validate_legend_items(cls, v):
+        if v is None:
+            return v
+        if len(v) > 30:
+            raise ValueError("legend_items must not contain more than 30 entries")
+        return v
 
-    @field_validator("title", "overlay_label")
+    @field_validator("overlay_geojson")
     @classmethod
-    def validate_map_text(cls, value):
-        if value is None:
-            return None
-        value = value.strip()
-        if len(value) > 180:
-            raise ValueError("map labels must be at most 180 characters")
-        return value
+    def validate_overlay_geojson(cls, v):
+        if v is None:
+            return v
+        payload_size = len(json.dumps(v, ensure_ascii=False).encode("utf-8"))
+        if payload_size > 2_000_000:
+            raise ValueError("overlay_geojson payload exceeds 2MB limit")
+        return v
+
+    @model_validator(mode="after")
+    def validate_render_budget(self):
+        width_px = int(self.width_mm / 25.4 * self.dpi)
+        height_px = int(self.height_mm / 25.4 * self.dpi)
+        if width_px * height_px > 20_000_000:
+            raise ValueError("requested render size exceeds 20 megapixels")
+        return self
 
 
 @app.post("/geomoz-api/gee/map-image")
@@ -2676,7 +3159,6 @@ async def delete_saved_analysis(analysis_id: str, uid: str = Depends(require_fir
     raise HTTPException(404, "Análise não encontrada.")
 
 
-
 # GeoMoz 3D Terrain Studio — authenticated DEM preview, no server-side storage.
 @app.post("/geomoz-api/terrain/mesh")
 async def terrain_mesh_preview(
@@ -2762,3 +3244,44 @@ async def terrain_rgb_texture(
         )
     except (ValueError, TypeError, TerrainInputError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class GEETerrainRGBRequest(BaseModel):
+    crs: str
+    bounds_meters: list[float]
+    width: int
+    height: int
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    cloud_pct: int = 30
+
+
+@app.post("/geomoz-api/terrain/gee-rgb-texture")
+async def terrain_gee_rgb_texture(
+    req: GEETerrainRGBRequest,
+    uid: str = Depends(require_gee_auth),
+):
+    """Cloud-masked Sentinel-2 true-colour texture on the *exact* DEM CRS/grid.
+
+    This endpoint requires the currently authenticated user's Earth Engine
+    credentials. Imagery is not publicly proxied or persisted by the API.
+    """
+    from starlette.concurrency import run_in_threadpool
+    from terrain_dem import TerrainInputError
+    from terrain_satellite import sentinel2_rgb_texture
+    import httpx
+
+    try:
+        return await run_in_threadpool(
+            sentinel2_rgb_texture,
+            crs=req.crs, bounds_meters=req.bounds_meters,
+            width=req.width, height=req.height,
+            start_date=req.start_date, end_date=req.end_date,
+            cloud_pct=req.cloud_pct,
+        )
+    except (TerrainInputError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Falha ao descarregar a textura Sentinel-2.") from exc
+    except Exception as exc:
+        handle_gee_api_error(exc, prefix="Textura Sentinel-2 3D", uid=uid)

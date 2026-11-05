@@ -2,7 +2,7 @@ name: Frontend CI
 
 on:
   push:
-    branches: [main, develop, fix/geology-invalid-geometry]
+    branches: [main, develop]
     paths:
       - "artifacts/geomoz-react/**"
       - "lib/**"
@@ -10,8 +10,11 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".github/workflows/frontend-ci.yml"
+      - "firebase.emulators.json"
+      - "firestore.rules"
+      - "storage.rules"
   pull_request:
-    branches: [main, fix/geology-invalid-geometry]
+    branches: [main]
     paths:
       - "artifacts/geomoz-react/**"
       - "lib/**"
@@ -19,6 +22,9 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".github/workflows/frontend-ci.yml"
+      - "firebase.emulators.json"
+      - "firestore.rules"
+      - "storage.rules"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -28,6 +34,31 @@ env:
   NODE_VERSION: "20"
 
 jobs:
+  firebase-integration:
+    name: GIS Firebase emulator integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm run test:gis:firebase
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: firebase-emulator-logs
+          path: "*-debug.log"
+          retention-days: 7
+
   typecheck:
     name: TypeScript typecheck
     runs-on: ubuntu-latest
@@ -38,7 +69,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 9
 
       - name: Set up Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -56,8 +87,8 @@ jobs:
           BASE_PATH: "/"
           CI: "true"
 
-  gis-workspace-tests:
-    name: GIS Workspace tests (Vitest)
+  gis-smoke-tests:
+    name: GIS processing smoke tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -66,7 +97,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 9
 
       - name: Set up Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -77,8 +108,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Validate GIS Workspace importer and real GIS algorithms
-        run: pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/gis-workspace.test.ts src/lib/__tests__/gis-workspace-engine.test.ts src/lib/__tests__/georeferencing.test.ts src/lib/__tests__/qms-catalog.test.ts src/lib/__tests__/terrain-scene.test.ts
+      - name: Run GIS processing smoke tests
+        run: pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/cesium-feature-pick.test.ts src/lib/__tests__/cesium-raster-style.test.ts src/components/__tests__/GISWorkspaceOverview.test.tsx src/components/__tests__/GISWorkspaceMapLibre.test.tsx src/lib/__tests__/gis-local-dem-project.test.ts src/lib/__tests__/gis-local-geotiff.test.ts src/lib/__tests__/gis-workspace-pro-storage.test.ts src/lib/__tests__/gis-workspace-device-storage.test.ts src/lib/__tests__/terrain-workflow.test.ts src/lib/__tests__/terrain-scene.test.ts src/lib/__tests__/terrain-glb.test.ts src/lib/__tests__/terrain-analysis.test.ts src/lib/__tests__/terrain-workflow-client.test.ts src/components/__tests__/TerrainWorkflowPanel.test.tsx src/lib/__tests__/gis-workspace-sync-readiness.test.ts src/lib/__tests__/gis-geos-reference.test.ts src/lib/__tests__/gis-workspace-processing.test.ts src/lib/__tests__/gis-vector-engine.test.ts src/lib/__tests__/gis-workspace-sync-queue.test.ts src/lib/__tests__/gis-vector-runner.test.ts src/lib/__tests__/whitebox-runtime.test.ts src/lib/__tests__/ogc-wfs.test.ts src/lib/__tests__/nextgis-web.test.ts src/lib/__tests__/qms-catalog.test.ts src/lib/__tests__/gis-data-sources.test.ts src/lib/__tests__/gis-model-graph.test.ts src/lib/__tests__/gis-processing-jobs.test.ts src/lib/__tests__/hydro-request-guard.test.ts
         env:
           CI: "true"
 
@@ -92,7 +123,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 9
 
       - name: Set up Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -103,15 +134,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Validate report exports
-        run: pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/report-export.test.ts
+      - name: Verify report export safety
+        run: pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/report-export.test.ts src/pages/__tests__/legal-pages.test.tsx src/lib/__tests__/gee-connection-diagnostics.test.ts src/pages/__tests__/gee-auth-clickable.test.ts src/lib/__tests__/gee-ndvi-validation.test.ts src/components/__tests__/GeoAgentMarkdown.test.tsx src/components/__tests__/GeoIntelligenceDossier.test.tsx src/components/__tests__/PublicDataTools.test.tsx src/components/__tests__/GAULAreaSelect.test.tsx src/pages/__tests__/gee-processing-time-controls.test.ts src/pages/__tests__/geoanalises-mobile-results.test.tsx src/components/__tests__/Basemap3DRestriction.test.tsx src/components/__tests__/dashboard-glass.test.ts src/components/__tests__/sidebar-footer-actions.test.ts src/i18n/portal.test.tsx src/i18n/shared-map.test.ts src/i18n/groundwater.test.ts src/i18n/terrain.test.ts src/i18n/scienceUi.test.ts
+        env:
+          CI: "true"
+
+      - name: Verify authentication and project wizard flows
+        run: pnpm --dir artifacts/geomoz-react exec vitest run src/components/AuthModal.test.tsx src/components/ProjectWorkspaceModal.test.tsx
         env:
           CI: "true"
 
   build:
     name: Production build
     runs-on: ubuntu-latest
-    needs: [typecheck, gis-workspace-tests, report-export-tests]
+    needs: [typecheck, gis-smoke-tests, report-export-tests, firebase-integration]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -119,7 +155,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 9
 
       - name: Set up Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -129,6 +165,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
+
+      - name: Verify GeoLibre branding and local-build protection
+        run: node --test scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-theme.test.mjs scripts/tests/geomoz-preferences.test.mjs
 
       - name: Build frontend
         run: pnpm run build
@@ -146,6 +185,39 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  workspace-browser:
+    name: Workspace browser regression
+    runs-on: ubuntu-latest
+    needs: [build]
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: artifacts/geomoz-react/dist/public
+      - name: Install pinned browser test runtime
+        run: |
+          npm install --prefix "$RUNNER_TEMP/gis-browser" playwright@1.51.1 html2canvas-pro@1.5.13
+          node "$RUNNER_TEMP/gis-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Verify real OKLCH screenshot capture
+        run: node artifacts/geomoz-react/integration/capture-color-smoke.cjs
+        env:
+          GIS_PLAYWRIGHT_ROOT: ${{ runner.temp }}/gis-browser
+      - name: Verify drawing, HGT import and slope output
+        run: node artifacts/geomoz-react/integration/workspace-browser-smoke.cjs
+        env:
+          GIS_PLAYWRIGHT_ROOT: ${{ runner.temp }}/gis-browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: workspace-browser-screenshots
+          path: workspace-browser-artifacts/
+          retention-days: 7
+
   lint:
     name: Lint (Prettier)
     runs-on: ubuntu-latest
@@ -156,7 +228,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 9
 
       - name: Set up Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -170,3 +242,4 @@ jobs:
       - name: Check formatting with Prettier
         run: npx prettier --check "artifacts/geomoz-react/src/**/*.{ts,tsx}" "lib/**/*.ts"
         continue-on-error: true
+

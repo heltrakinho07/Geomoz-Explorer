@@ -16,6 +16,8 @@ import { useGeologyGeoJSON, useProvincesGeoJSON, useDistrictsGeoJSON } from "@/h
 import type { LayerState } from "./Sidebar";
 import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
 import BasemapSwitcher from "./BasemapSwitcher";
+import QmsBasemapPicker from "./QmsBasemapPicker";
+import type { QmsTileSource } from "@/lib/qms-catalog";
 import MapTools from "./MapTools";
 import MapDraw from "./MapDraw";
 import MapLibre3DView from "./MapLibre3DView";
@@ -28,6 +30,13 @@ import PixelInspectorHUD, {
 import { sampleTerrariumElevation } from "@/lib/dem-terrain";
 import { Globe, Layers, Clock, Columns2 } from "lucide-react";
 import type { AreaOfInterest } from "@/lib/aoi";
+import {
+  workspaceFeatureColor,
+  workspaceNumericRange,
+  type WorkspaceFocusRequest,
+  type WorkspaceLayer,
+  type WorkspaceSelection,
+} from "@/lib/gis-workspace";
 
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -44,6 +53,8 @@ interface MapViewProps {
   aoi: AreaOfInterest;
   drawingEnabled: boolean;
   finishRequest?: number;
+  /** Restrict interactive 3D rendering to the main /mapa route. */
+  enable3d?: boolean;
   initialViewMode?: "2d" | "3d";
   viewMode?: "2d" | "3d";
   onViewModeChange?: (mode: "2d" | "3d") => void;
@@ -52,6 +63,10 @@ interface MapViewProps {
   onProvinceClick?: (name: string) => void;
   onMapState?: (center: [number, number], zoom: number) => void;
   mapRef?: React.RefObject<L.Map | null>;
+  workspaceLayers?: WorkspaceLayer[];
+  workspaceSelection?: WorkspaceSelection | null;
+  workspaceFocusRequest?: WorkspaceFocusRequest | null;
+  onWorkspaceSelect?: (selection: WorkspaceSelection | null) => void;
 }
 
 function FitBounds({ data, deps }: { data: GeoJSON.FeatureCollection | undefined; deps?: unknown[] }) {
@@ -125,6 +140,122 @@ function CoordTracker({
   return null;
 }
 
+function WorkspaceFocusController({
+  layers,
+  request,
+}: {
+  layers: WorkspaceLayer[];
+  request?: WorkspaceFocusRequest | null;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!request) return;
+    const workspaceLayer = layers.find((layer) => layer.id === request.layerId);
+    if (!workspaceLayer?.geojson) return;
+
+    const feature =
+      typeof request.featureIndex === "number"
+        ? workspaceLayer.geojson.features[request.featureIndex]
+        : undefined;
+    const target = feature
+      ? ({ type: "FeatureCollection", features: [feature] } as GeoJSON.FeatureCollection)
+      : workspaceLayer.geojson;
+
+    try {
+      const bounds = L.geoJSON(target).getBounds();
+      if (!bounds.isValid()) return;
+      if (bounds.getSouthWest().equals(bounds.getNorthEast())) {
+        map.setView(bounds.getCenter(), Math.max(map.getZoom(), 15), { animate: true });
+      } else {
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: true });
+      }
+    } catch {}
+  }, [layers, map, request]);
+
+  return null;
+}
+
+function WorkspaceVectorLayer({
+  layer,
+  selection,
+  onSelect,
+}: {
+  layer: WorkspaceLayer;
+  selection?: WorkspaceSelection | null;
+  onSelect?: (selection: WorkspaceSelection | null) => void;
+}) {
+  if (!layer.geojson || !layer.visible) return null;
+
+  const range = workspaceNumericRange(layer, layer.style.field);
+  const selectedIndex = selection?.layerId === layer.id ? selection.featureIndex : -1;
+  const layerKey = [
+    "workspace",
+    layer.id,
+    layer.opacity,
+    layer.style.mode,
+    layer.style.field ?? "",
+    layer.style.color,
+    selectedIndex,
+  ].join("-");
+
+  const styleFeature = (feature: GeoJSON.Feature | undefined): L.PathOptions => {
+    if (!feature) return {};
+    const featureIndex = layer.geojson!.features.indexOf(feature);
+    const selected = featureIndex === selectedIndex;
+    const color = workspaceFeatureColor(layer, feature, range);
+    return {
+      color: selected ? "#f97316" : color,
+      weight: selected ? 4 : 2,
+      opacity: Math.max(0.25, layer.opacity),
+      fillColor: color,
+      fillOpacity: Math.min(0.8, layer.opacity * 0.55),
+    };
+  };
+
+  const pointToLayer = (feature: GeoJSON.Feature, latlng: L.LatLng) => {
+    const featureIndex = layer.geojson!.features.indexOf(feature);
+    const selected = featureIndex === selectedIndex;
+    const color = workspaceFeatureColor(layer, feature, range);
+    return L.circleMarker(latlng, {
+      radius: selected ? 9 : 6,
+      color: selected ? "#f97316" : "#ffffff",
+      weight: selected ? 3 : 1.5,
+      opacity: Math.max(0.35, layer.opacity),
+      fillColor: color,
+      fillOpacity: Math.max(0.25, layer.opacity),
+    });
+  };
+
+  const onEachFeature = (feature: GeoJSON.Feature, leafletLayer: Layer) => {
+    const featureIndex = layer.geojson!.features.indexOf(feature);
+    const entries = Object.entries(feature.properties ?? {}).slice(0, 4);
+    if (entries.length && typeof document !== "undefined") {
+      const tooltip = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = layer.name;
+      tooltip.appendChild(title);
+      entries.forEach(([key, value]) => {
+        const row = document.createElement("div");
+        row.textContent = `${key}: ${String(value ?? "")}`;
+        tooltip.appendChild(row);
+      });
+      leafletLayer.bindTooltip(tooltip, { sticky: true });
+    }
+    leafletLayer.on("click", () => onSelect?.({ layerId: layer.id, featureIndex }));
+  };
+
+  return (
+    <GeoJSON
+      key={layerKey}
+      data={layer.geojson}
+      style={styleFeature}
+      pointToLayer={pointToLayer}
+      onEachFeature={onEachFeature}
+    />
+  );
+}
+
 function NorthArrow() {
   return (
     <div className="absolute z-[500] pointer-events-none" style={{ top: 80, right: 10 }} title="Norte geográfico">
@@ -148,6 +279,7 @@ export default function MapView({
   aoi,
   drawingEnabled,
   finishRequest,
+  enable3d = false,
   initialViewMode,
   viewMode: propViewMode,
   onViewModeChange,
@@ -156,12 +288,24 @@ export default function MapView({
   onProvinceClick,
   onMapState,
   mapRef,
+  workspaceLayers = [],
+  workspaceSelection,
+  workspaceFocusRequest,
+  onWorkspaceSelect,
 }: MapViewProps) {
   const { data: provinceGeoJSON } = useProvincesGeoJSON();
   const { data: districtGeoJSON } = useDistrictsGeoJSON(province);
   const { data: geologyGeoJSON, isFetching: loadingGeology } = useGeologyGeoJSON(province, district, colorBy, layers.geology);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [basemap, setBasemap] = useState<BasemapType>("hybrid");
+  const [qmsBasemap, setQmsBasemap] = useState<QmsTileSource | null>(null);
+  const [qmsPickerOpen, setQmsPickerOpen] = useState(false);
+  const [qmsWarning, setQmsWarning] = useState<string | null>(null);
+  const selectStandardBasemap = (type: BasemapType) => {
+    setBasemap(type);
+    setQmsBasemap(null);
+    setQmsWarning(null);
+  };
 
   const isWebGL = typeof window !== "undefined" && Boolean(
     window.WebGLRenderingContext &&
@@ -179,9 +323,11 @@ export default function MapView({
     }
   });
 
-  const activeViewMode = propViewMode ?? internalViewMode;
+  // Never render the 3D globe outside the explicitly enabled main map.
+  const activeViewMode = enable3d ? (propViewMode ?? internalViewMode) : "2d";
 
   const handleViewModeChange = (mode: "2d" | "3d") => {
+    if (!enable3d) return;
     if (onViewModeChange) {
       onViewModeChange(mode);
     } else {
@@ -386,13 +532,42 @@ export default function MapView({
           {/* Google Maps Bottom-Left Layer Controller */}
           <BasemapSwitcher
             current={basemap}
-            onChange={setBasemap}
+            onChange={selectStandardBasemap}
             viewMode={activeViewMode}
             onViewModeChange={handleViewModeChange}
+            show3dToggle={enable3d}
             className="absolute bottom-6 left-4 z-[600]"
             position="bottom-left"
           />
+          {/* Search public NextGIS QMS basemaps without changing the 3D renderer. */}
+          <div className="pointer-events-auto absolute bottom-6 right-3 z-[650] flex max-w-[calc(100vw-24px)] flex-col items-end gap-2">
+            {qmsWarning && (
+              <div role="alert" className="max-w-xs rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 shadow-lg">
+                {qmsWarning}
+              </div>
+            )}
+            {qmsPickerOpen && (
+              <div className="max-h-[55vh] w-[min(90vw,320px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95">
+                <QmsBasemapPicker selected={qmsBasemap} onChange={(source) => {
+                  setQmsBasemap(source);
+                  setQmsWarning(null);
+                }} />
+              </div>
+            )}
+            <button type="button" aria-expanded={qmsPickerOpen}
+              aria-label="Abrir catálogo de mapas-base NextGIS QMS"
+              onClick={() => setQmsPickerOpen((open) => !open)}
+              className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-bold text-slate-700 shadow-lg hover:border-sky-400 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-100">
+              {qmsPickerOpen ? "Fechar catálogo" : "Mapas-base QMS"}
+            </button>
+          </div>
           <NorthArrow />
+
+          {workspaceLayers.length > 0 && (
+            <div className="absolute top-16 left-4 z-[600] bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border border-slate-200 dark:border-slate-700 shadow-lg rounded-xl px-3 py-2 text-[11px] text-slate-700 dark:text-slate-200 pointer-events-none">
+              <strong>{workspaceLayers.filter((layer) => layer.visible).length}</strong> camada(s) do GIS Workspace
+            </div>
+          )}
 
           <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl>
             {compareActive ? (
@@ -472,12 +647,19 @@ export default function MapView({
               </>
             ) : (
               <TileLayer
-                key={basemap}
-                crossOrigin="anonymous"
-                url={GOOGLE_BASEMAPS[basemap].url}
-                subdomains={GOOGLE_BASEMAPS[basemap].subdomains}
-                attribution={GOOGLE_BASEMAPS[basemap].attribution}
-                maxZoom={GOOGLE_BASEMAPS[basemap].maxZoom}
+                key={qmsBasemap ? "qms-" + qmsBasemap.id : basemap}
+                crossOrigin={qmsBasemap ? false : "anonymous"}
+                url={qmsBasemap?.url ?? GOOGLE_BASEMAPS[basemap].url}
+                subdomains={qmsBasemap ? "abc" : GOOGLE_BASEMAPS[basemap].subdomains}
+                tms={qmsBasemap?.tms ?? false}
+                attribution={qmsBasemap?.attribution ?? GOOGLE_BASEMAPS[basemap].attribution}
+                maxZoom={qmsBasemap?.maxZoom ?? GOOGLE_BASEMAPS[basemap].maxZoom}
+                eventHandlers={{ tileerror: () => {
+                  if (qmsBasemap) {
+                    setQmsBasemap(null);
+                    setQmsWarning("O serviço QMS não respondeu. Foi restaurado o mapa-base anterior.");
+                  }
+                } }}
               />
             )}
 
@@ -499,7 +681,7 @@ export default function MapView({
               }}
             />
 
-            {/* Camada de geologia oculta para protecção de dados (preservada para reactivação futura) */}
+                        {/* Camada de geologia oculta para protecção de dados (preservada para reactivação futura) */}
             {false && layers.geology && province && geologyGeoJSON && (
               <>
                 <FitBounds data={geologyGeoJSON} deps={[province, district]} />
@@ -530,6 +712,19 @@ export default function MapView({
             {aoi?.source !== "global" && aoi?.geometry && (
               <GeoJSON data={aoi.geometry as GeoJSON.FeatureCollection | GeoJSON.Feature} style={{ color: "#f43f5e", weight: 2, dashArray: "6 4", fillOpacity: 0.05 }} />
             )}
+
+            {workspaceLayers.map((workspaceLayer) => (
+              <WorkspaceVectorLayer
+                key={workspaceLayer.id}
+                layer={workspaceLayer}
+                selection={workspaceSelection}
+                onSelect={onWorkspaceSelect}
+              />
+            ))}
+            <WorkspaceFocusController
+              layers={workspaceLayers}
+              request={workspaceFocusRequest}
+            />
             <MapTools />
           </MapContainer>
         </>

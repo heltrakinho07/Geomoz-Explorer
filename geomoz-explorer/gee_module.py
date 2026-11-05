@@ -17,6 +17,29 @@ import os
 import json
 import logging
 import threading
+import time
+from pathlib import Path
+from datetime import date
+
+INDEX_SCIENCE = json.loads(Path(__file__).with_name("index_science.json").read_text())
+
+def require_scientific_index(index):
+    meta = INDEX_SCIENCE.get(index)
+    if not meta or meta["status"] != "available":
+        raise ValueError(f"{index}: em desenvolvimento; implementação não validada.")
+
+def validate_period(start, end):
+    if date.fromisoformat(start) >= date.fromisoformat(end):
+        raise ValueError("A data inicial deve preceder a final (fim exclusivo).")
+
+def _checked_collection(asset, region, start, end):
+    import ee
+    validate_period(start, end)
+    col = ee.ImageCollection(asset).filterBounds(region).filterDate(start, end)
+    if not col.size().getInfo():
+        raise ValueError(f"Sem dados {asset} no período seleccionado.")
+    return col
+
 from typing import Optional, Any
 
 from gee_presets import (
@@ -160,9 +183,24 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
             or "geoprocessamento-426809"
         ).strip()
 
+        # GEE caches contain account-dependent image graphs; never share
+        # cached objects across two users in the same Python worker.
+        if _last_initialized_uid != uid:
+            _cache_clear()
         # If already initialized for this exact user, project and token, reuse session
         if _gee_initialized and _last_initialized_uid == uid and _last_initialized_project == effective_project and _last_initialized_token == effective_token:
             return
+        # Invalid or expired credentials must never leave an older user's
+        # global ee.Initialize session silently usable.
+        _gee_initialized = False
+        _last_initialized_uid = None
+        _last_initialized_project = None
+        _last_initialized_token = None
+        try:
+            import ee
+            ee.Reset()
+        except Exception:
+            pass
 
         # 0. Try user's personal permanent OAuth refresh_token (never expires!)
         if user_refresh_token:
@@ -243,98 +281,9 @@ def _init_gee(uid: str = None, project: str = None, token: str = None) -> None:
             except Exception as e:
                 logger.warning("Failed to initialize GEE with user '%s' service account: %s", uid, e)
 
-        # 3. Try local Earth Engine user credentials (from 'earthengine authenticate')
-        home = os.path.expanduser("~")
-        has_local_creds = os.path.exists(os.path.join(home, ".config", "earthengine", "credentials"))
-        if has_local_creds:
-            try:
-                import ee
-                ee.Initialize(project=effective_project)
-                _gee_initialized = True
-                _gee_error = None
-                _last_initialized_project = effective_project
-                _last_initialized_token = None
-                _last_initialized_uid = uid
-                logger.info("GEE initialized successfully with local Earth Engine user credentials for project: %s", effective_project)
-                return
-            except Exception as e:
-                logger.debug("Local EE user credentials init failed for project '%s': %s", effective_project, e)
-
-        # 4. Fallback to server credentials if allowed and user has not configured custom credentials
-        allow_server = os.environ.get("ALLOW_SERVER_GEE_FALLBACK", "false").strip().lower() == "true"
-        sa_key = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
-        sa_file = os.environ.get("GEE_SERVICE_ACCOUNT_FILE", "").strip() or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
-        if not sa_file:
-            local_sa = os.path.join(os.path.dirname(__file__), "service_account.json")
-            if os.path.exists(local_sa):
-                sa_file = local_sa
-
-        if allow_server and sa_file and os.path.exists(sa_file):
-            try:
-                import ee
-                from google.oauth2 import service_account
-                scopes = getattr(ee.oauth, 'SCOPES', ['https://www.googleapis.com/auth/earthengine'])
-                creds = service_account.Credentials.from_service_account_file(sa_file, scopes=scopes)
-                sa_project = creds.project_id or effective_project
-                ee.Initialize(credentials=creds, project=sa_project)
-                _gee_initialized = True
-                _gee_error = None
-                _last_initialized_project = sa_project
-                _last_initialized_token = None
-                _last_initialized_uid = uid
-                logger.info("GEE initialized successfully with server Service Account file '%s' for project: %s", sa_file, sa_project)
-                return
-            except Exception as e:
-                logger.warning("Failed to initialize GEE with server service account file '%s': %s", sa_file, e)
-
-        if allow_server and sa_key:
-            try:
-                import ee
-                import json
-                from google.oauth2 import service_account
-                key_dict = json.loads(sa_key) if isinstance(sa_key, str) else sa_key
-                scopes = getattr(ee.oauth, 'SCOPES', ['https://www.googleapis.com/auth/earthengine'])
-                creds = service_account.Credentials.from_service_account_info(
-                    key_dict,
-                    scopes=scopes
-                )
-                sa_project = effective_project or key_dict.get("project_id")
-                ee.Initialize(credentials=creds, project=sa_project)
-                _gee_initialized = True
-                _gee_error = None
-                _last_initialized_project = sa_project
-                _last_initialized_token = None
-                _last_initialized_uid = uid
-                logger.info("GEE initialized successfully with server Service Account for project: %s", sa_project)
-                return
-            except Exception as e:
-                logger.warning("Failed to initialize GEE with server service account for project '%s': %s", effective_project, e)
-
-        # 5. Fallback to Google Application Default Credentials (only if explicitly configured in environment)
-        global _adc_checked, _adc_creds, _adc_project
-        if allow_server and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-            if not _adc_checked:
-                _adc_checked = True
-                try:
-                    import google.auth
-                    _adc_creds, _adc_project = google.auth.default(scopes=['https://www.googleapis.com/auth/earthengine'])
-                except Exception as adc_err:
-                    _adc_creds = None
-                    logger.info("Application Default Credentials not available: %s", adc_err)
-
-            if _adc_creds is not None:
-                try:
-                    import ee
-                    ee.Initialize(credentials=_adc_creds, project=effective_project)
-                    _gee_initialized = True
-                    _gee_error = None
-                    _last_initialized_project = effective_project
-                    _last_initialized_token = None
-                    _last_initialized_uid = uid
-                    logger.info("GEE initialized successfully with ADC for project: %s", effective_project)
-                    return
-                except Exception as proj_err:
-                    logger.warning("ADC init attempt for project '%s': %s", effective_project, proj_err)
+        # SECURITY: This application is strictly BYO-GEE. Never fall back to
+        # the container's local credentials, service account, or ADC for a
+        # user. A configured Google Cloud project is NOT authorization.
 
         _gee_error = (
             f"A sua sessão do Google Earth Engine expirou ou não possui credenciais ativas para o projeto '{effective_project}'. "
@@ -363,7 +312,7 @@ def gee_status(uid: str = None, project: str = None, token: str = None) -> dict:
     effective_project = project or (token_data.get("project") if token_data else None)
 
     # If this specific user has no project or credentials, report unconfigured
-    if not effective_token and not user_sa_key and not effective_project:
+    if not effective_token and not user_sa_key and not (token_data and token_data.get("refresh_token")):
         return {
             "connected": False,
             "auth_type": "none",
@@ -421,20 +370,24 @@ def _to_ee_region(region_geojson: Optional[dict]):
         return ee.Geometry.BBox(w, s, e, n)
     return ee.Geometry(region_geojson, opt_proj="EPSG:4326", opt_geodesic=False)
 
+def _scale_from_area_km2(area_km2: float) -> int:
+    """Return an appropriate reduction scale when area is already known."""
+    if area_km2 > 200_000:
+        return 1000
+    if area_km2 > 50_000:
+        return 500
+    if area_km2 > 10_000:
+        return 250
+    if area_km2 > 1_000:
+        return 90
+    return 30
+
+
 def _compute_dynamic_scale(region: 'ee.Geometry') -> int:
     """Return an appropriate scale (meters) based on the geometry area."""
     try:
         area_km2 = region.area(maxError=100).getInfo() / 1e6
-        if area_km2 > 200_000:
-            return 1000
-        elif area_km2 > 50_000:
-            return 500
-        elif area_km2 > 10_000:
-            return 250
-        elif area_km2 > 1_000:
-            return 90
-        else:
-            return 30
+        return _scale_from_area_km2(area_km2)
     except Exception as e:
         logger.warning("Error computing dynamic scale: %s", e)
         return 250
@@ -446,10 +399,9 @@ def _compute_dynamic_scale(region: 'ee.Geometry') -> int:
 
 def _mask_s2_clouds(image):
     import ee
-    qa = image.select("QA60")
-    cloud_bit = 1 << 10
-    cirrus_bit = 1 << 11
-    mask = qa.bitwiseAnd(cloud_bit).eq(0).And(qa.bitwiseAnd(cirrus_bit).eq(0))
+    # QA60 is masked for 2022–February 2024. SCL is available throughout L2A.
+    scl = image.select("SCL")
+    mask = scl.gte(4).And(scl.lte(6))
     return image.updateMask(mask).divide(10000).copyProperties(image, ["system:time_start"])
 
 
@@ -475,9 +427,9 @@ def _build_s2_composite(region, start: str, end: str, cloud_pct: int):
 def _mask_l8_clouds(image):
     import ee
     qa = image.select("QA_PIXEL")
-    mask = (qa.bitwiseAnd(1 << 3).eq(0)
-            .And(qa.bitwiseAnd(1 << 5).eq(0)))
-    return image.updateMask(mask)
+    mask = qa.bitwiseAnd(63).eq(0).And(image.select("QA_RADSAT").eq(0))
+    optical = image.select("SR_B.").multiply(0.0000275).add(-0.2)
+    return image.addBands(optical, None, True).updateMask(mask)
 
 
 def _build_l8_composite(region, start: str, end: str, cloud_pct: int):
@@ -519,8 +471,12 @@ def _build_rivers_raster(region):
 
 # ── Index image builder ────────────────────────────────────────────────────────
 
-def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=None):
+def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=None,
+                       start_date="2023-01-01", end_date="2023-12-31",
+                       pre_start_date=None, pre_end_date=None, cloud_pct=30):
     """Build the raw index image (1 band 'index'). Caller is responsible for clip."""
+    require_scientific_index(index)
+    validate_period(start_date, end_date)
     import ee
 
     if index == "ndvi":
@@ -681,48 +637,45 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
         # NBR = (B8 - B12) / (B8 + B12) — Normalized Burn Ratio
         return s2.normalizedDifference(["B8", "B12"]).rename("index")
 
-    if index == "dnbr":
-        # dNBR = pre_NBR - post_NBR
-        # Uses the same S2 composite for both (since single-date), but dNBR
-        # is really a multi-date operation. We compute a single-date proxy first.
-        nbr_img = s2.normalizedDifference(["B8", "B12"]).rename("index")
-        # For a single composite this just shows NBR; real dNBR requires two API calls
-        return nbr_img
-
-    if index == "burn_severity":
-        # Classify NBR into dNBR severity classes
-        nbr_raw = s2.normalizedDifference(["B8", "B12"])
-        return nbr_raw.expression(
-            "(n < -0.1) ? 1"     # unburned / regrowth
-            ": (n < 0.1) ? 1"     # unburned
-            ": (n < 0.27) ? 2"    # low
-            ": (n < 0.44) ? 3"    # moderate-low
-            ": (n < 0.66) ? 4"    # moderate-high
-            ": 5",                # high
-            {"n": nbr_raw}
-        ).rename("index")
+    if index in ("dnbr", "burn_severity"):
+        if not pre_start_date or not pre_end_date:
+            raise ValueError("dNBR exige períodos explícitos pré e pós-incêndio.")
+        validate_period(pre_start_date, pre_end_date)
+        if pre_end_date > start_date:
+            raise ValueError("Os períodos pré e pós-incêndio não podem sobrepor-se.")
+        pre, _ = _build_s2_composite(region, pre_start_date, pre_end_date, cloud_pct)
+        dnbr = pre.normalizedDifference(["B8", "B12"]).subtract(
+            s2.normalizedDifference(["B8", "B12"])).rename("index")
+        if index == "dnbr":
+            return dnbr
+        return dnbr.expression(
+            "d < -0.1 ? 0 : d < 0.1 ? 1 : d < 0.27 ? 2 : d < 0.44 ? 3 : d < 0.66 ? 4 : 5",
+            {"d": dnbr}).rename("index")
 
     if index == "forest_loss":
-        # Hansen Global Forest Change — loss year (2000–2023)
-        # This is a pre-made dataset, not computed from S2/DEM
-        import ee
+        start, end = date.fromisoformat(start_date), date.fromisoformat(end_date)
+        if start.month != 1 or start.day != 1 or end.month != 1 or end.day != 1:
+            raise ValueError("Hansen tem resolução anual: seleccione 1 de Janeiro a 1 de Janeiro do ano seguinte (fim exclusivo).")
+        if start.year < 2001 or end.year > 2024:
+            raise ValueError("Hansen v1.11 cobre 2001–2023; não há dados posteriores nesta versão.")
         hansen = ee.Image("UMD/hansen/global_forest_change_2023_v1_11")
-        # treecover2000 >= 30% is considered forest
-        treecover = hansen.select("treecover2000")
-        loss_year = hansen.select("lossyear").rename("index")
-        # Mask: only show where treecover >= 30% and loss > 0
-        masked = loss_year.updateMask(treecover.gte(30)).updateMask(loss_year.gt(0))
-        return masked
+        loss = hansen.select("lossyear")
+        mask = hansen.select("treecover2000").gte(30).And(loss.gte(start.year - 2000)).And(loss.lt(end.year - 2000))
+        return loss.add(2000).updateMask(mask).rename("index")
 
     if index == "burned_area":
-        # MODIS MCD64A1 burned area
-        import ee
-        burned = (ee.ImageCollection("MODIS/061/MCD64A1")
-                  .filterBounds(region)
-                  .select("BurnDate"))
-        # Composite: take latest available month
-        composite = burned.sort("system:time_start", False).first()
-        return composite.rename("index").selfMask()
+        # Monthly products contain day-of-year, not an area or a timestamp.
+        first_month = start_date[:8] + "01"
+        col = _checked_collection("MODIS/061/MCD64A1", region, first_month, end_date)
+        start_ms, end_ms = ee.Date(start_date).millis(), ee.Date(end_date).millis()
+        def mask_burn(image):
+            burn = image.select("BurnDate")
+            year_start = ee.Date.fromYMD(ee.Date(image.get("system:time_start")).get("year"), 1, 1).millis()
+            day_ms = burn.subtract(1).multiply(86400000).add(year_start)
+            qa = image.select("QA")
+            valid = qa.bitwiseAnd(1).eq(1).And(qa.bitwiseAnd(2).neq(0))
+            return burn.gt(0).And(day_ms.gte(start_ms)).And(day_ms.lt(end_ms)).updateMask(valid).rename("index")
+        return col.map(mask_burn).max().selfMask().rename("index")
 
     if index == "fire_risk":
         # Composite: high risk = dry + low vegetation + high flammability
@@ -796,21 +749,14 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
     # ── Climate & Disasters indices ─────────────────────────────────────────
 
     if index == "precipitation":
-        # CHIRPS — mean annual precipitation
-        import ee
-        chirps = (ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY")
-                  .filterDate("2022-01-01", "2023-01-01")
-                  .sum())
-        return chirps.rename("index")
+        return _checked_collection("UCSB-CHG/CHIRPS/DAILY", region, start_date, end_date).select("precipitation").sum().rename("index")
 
     if index == "temperature_lst":
-        # MODIS MOD11A2 — land surface temperature
-        import ee
-        lst_coll = (ee.ImageCollection("MODIS/061/MOD11A2")
-                     .filterDate("2022-01-01", "2023-01-01")
-                     .select("LST_Day_1km"))
-        lst_mean = lst_coll.mean().multiply(0.02)
-        return lst_mean.rename("index")
+        col = _checked_collection("MODIS/061/MOD11A2", region, start_date, end_date)
+        def valid_lst(image):
+            qc = image.select("QC_Day")
+            return image.select("LST_Day_1km").updateMask(qc.bitwiseAnd(3).eq(0).And(qc.rightShift(6).bitwiseAnd(3).eq(0)))
+        return col.map(valid_lst).mean().multiply(0.02).subtract(273.15).rename("index")
 
     if index == "cyclone_tracks":
         # IBTrACS — cyclone track density (1980–2024)
@@ -1091,9 +1037,9 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
     # Source: script 00068_landsat_lai
     if index == "lai":
         import ee
-        nir = l8.select("SR_B5").multiply(0.0000275).add(-0.2)
-        red = l8.select("SR_B4").multiply(0.0000275).add(-0.2)
-        blue = l8.select("SR_B2").multiply(0.0000275).add(-0.2)
+        nir = l8.select("SR_B5")
+        red = l8.select("SR_B4")
+        blue = l8.select("SR_B2")
         evi = nir.subtract(red).multiply(2.5).divide(
             nir.add(red.multiply(6)).subtract(blue.multiply(7.5)).add(1)
         )
@@ -1117,41 +1063,18 @@ def _build_index_image(index: str, region, s2=None, l8=None, dem=None, rivers=No
     # Formula: Wind = sqrt(u² + v²)  where u=u_10, v=v_10
     # Source: script 00014_daily_wind_speed
     if index == "wind_speed":
-        import ee
-        era5 = (ee.ImageCollection("ECMWF/ERA5/DAILY")
-                .filterBounds(region)
-                .filterDate("2022-01-01", "2023-01-01")
-                .select(["u_10", "v_10"])
-                .mean())
-        wind = era5.expression(
-            "sqrt(u_10 * u_10 + v_10 * v_10)",
-            {"u_10": era5.select("u_10"), "v_10": era5.select("v_10")}
-        )
-        return wind.clamp(0, 30).rename("index")
+        col = _checked_collection("ECMWF/ERA5_LAND/DAILY_AGGR", region, start_date, end_date)
+        def magnitude(image):
+            return image.select("u_component_of_wind_10m").pow(2).add(image.select("v_component_of_wind_10m").pow(2)).sqrt().rename("index")
+        return col.map(magnitude).mean().rename("index")
 
-    # ── Night Light — VIIRS annual composite ──────────────────────────
-    # Formula: avg_rad from VIIRS DNB monthly composite, annualised
-    # Source: script 00034_night_light
     if index == "night_light":
-        import ee
-        viirs = (ee.ImageCollection("NOAA/VIIRS/DNB/MONTHLY_V1/VCMCFG")
-                 .filterBounds(region)
-                 .filterDate("2022-01-01", "2023-01-01")
-                 .select("avg_rad"))
-        count = viirs.size().getInfo()
-        if count == 0:
-            raise ValueError(
-                "Sem dados VIIRS DNB disponíveis para a região. "
-                "Tente uma área maior."
-            )
-        return viirs.mean().clamp(0, 100).rename("index")
+        col = _checked_collection("NOAA/VIIRS/DNB/MONTHLY_V1/VCMCFG", region, start_date, end_date)
+        return col.map(lambda image: image.select("avg_rad").updateMask(image.select("cf_cvg").gt(0))).mean().rename("index")
 
-    # ── SPEI — Standardized Precipitation-Evapotranspiration Index ────
-    # Source: script 00059_spei_classification
     if index == "spei":
-        import ee
-        spei_img = ee.Image("CSIC/SPEI/SPEI_12_month")
-        return spei_img.clamp(-5, 5).rename("index")
+        col = _checked_collection("CSIC/SPEI/2_11", region, start_date, end_date)
+        return ee.Image(col.sort("system:time_start", False).first()).select("SPEI_12_month").rename("index")
 
     # ── Canopy Height — Meta Forest Monitoring 1m ────────────────────
     # Source: script 00031_canopy_height_1m
@@ -1644,18 +1567,28 @@ def compute_index_tile(
     start_date: str = "2023-01-01",
     end_date: str = "2023-12-31",
     cloud_pct: int = 30,
+    processing_mode: str = "detailed",
+    pre_start_date: Optional[str] = None,
+    pre_end_date: Optional[str] = None,
 ) -> dict:
-    """Compute one spectral / terrain index, return a Leaflet tile URL.
+    """Compute a real GEE tile with a configurable statistics workload.
 
-    region_geojson : GeoJSON geometry dict (Polygon/MultiPolygon) — used both
-                     for filterBounds AND .clip() so output is precisely cut.
-                     If None, falls back to the full Mozambique bbox.
+    fast: obtain the real map tile without server-side statistics reductions.
+    balanced: calculate an approximate mean and min/max at 250 m sampling.
+    detailed: retain the full scientific multi-percentile statistics.
+    Pixel resolution of visualised GEE imagery is unchanged by this mode.
     """
     import ee
+
+    if processing_mode not in ("fast", "balanced", "detailed"):
+        raise ValueError("Modo de processamento inválido. Escolha fast, balanced ou detailed.")
+    started_at = time.perf_counter()
 
     if index not in INDEX_REGISTRY:
         raise ValueError(f"Índice desconhecido '{index}'. Disponíveis: {list(INDEX_REGISTRY)}")
 
+    require_scientific_index(index)
+    validate_period(start_date, end_date)
     cfg = INDEX_REGISTRY[index]
     region = _to_ee_region(region_geojson)
 
@@ -1672,47 +1605,88 @@ def compute_index_tile(
     if "rivers" in needs:
         rivers = _build_rivers_raster(region)
 
-    idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers).clip(region)
+    idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers, start_date=start_date, end_date=end_date, pre_start_date=pre_start_date, pre_end_date=pre_end_date, cloud_pct=cloud_pct).clip(region)
 
     # Store in cache so that compute_index_tile_vis can re-render without
     # rebuilding the heavy satellite composite.
-    ck = _build_cache_key_for_request(index, region_geojson, start_date, end_date, cloud_pct)
+    ck = _build_cache_key_for_request(f"v2:{index}:{pre_start_date}:{pre_end_date}", region_geojson, start_date, end_date, cloud_pct)
     _cache_put(ck, idx_img)
 
-    vis_img = idx_img.visualize(**cfg["vis"])
+    stats: dict = {}
+    statistics_warning = "Modo rápido: estatísticas e cobertura válida não verificadas." if processing_mode == "fast" else None
+    if processing_mode != "fast":
+        try:
+            if processing_mode == "balanced":
+                # Do not ask EE to compute AOI area or expensive percentiles.
+                # 250 m is the statistics sampling scale, not tile resolution.
+                stats_reducer = (
+                    ee.Reducer.mean().combine(ee.Reducer.count(), "", True)
+                    .combine(ee.Reducer.minMax(), "", True)
+                )
+                dyn_scale = 250
+            else:
+                stats_reducer = (
+                    ee.Reducer.mean().combine(ee.Reducer.count(), "", True)
+                    .combine(ee.Reducer.stdDev(), "", True)
+                    .combine(ee.Reducer.percentile([2, 10, 25, 50, 75, 90, 98]), "", True)
+                    .combine(ee.Reducer.minMax(), "", True)
+                )
+                dyn_scale = _compute_dynamic_scale(region)
+            raw_stats = idx_img.reduceRegion(
+                reducer=stats_reducer,
+                geometry=region,
+                scale=dyn_scale,
+                maxPixels=1e9,
+                bestEffort=True,
+                tileScale=4,
+            ).getInfo()
+            for k, v in (raw_stats or {}).items():
+                clean_k = k.split("_")[-1] if "_" in k else k
+                if isinstance(v, (int, float)):
+                    stats[clean_k] = round(float(v), 4)
+            if processing_mode == "detailed":
+                try:
+                    area_m2 = region.area(maxError=1000).getInfo()
+                    if area_m2:
+                        stats["areaKm2"] = round(area_m2 / 1e6, 2)
+                except Exception:
+                    pass
+        except Exception as exc:
+            statistics_warning = "Estatísticas indisponíveis; não interpretar valores ausentes como zero."
+            logger.warning(
+                "Earth Engine %s statistics unavailable for %s: %s",
+                processing_mode, index, type(exc).__name__,
+            )
+
+    if processing_mode != "fast" and not statistics_warning:
+        if stats.get("count", 0) == 0:
+            statistics_warning = "Sem píxeis válidos/detecções no recorte. Verifique a cobertura e qualidade."
+        if index in ("burned_area", "forest_loss"):
+            try:
+                value = idx_img.gt(0).multiply(ee.Image.pixelArea()).reduceRegion(
+                    reducer=ee.Reducer.sum(), geometry=region,
+                    scale=500 if index == "burned_area" else 30,
+                    maxPixels=1e9, tileScale=4).get("index").getInfo()
+                stats["detectedAreaKm2"] = round(float(value or 0) / 1e6, 4)
+            except Exception:
+                statistics_warning = "Área detectada não calculada; reduza a área de estudo."
+    vis_params = dict(cfg["vis"])
+    # Dynamic 2%–98% linear stretch for mineral & spectral ratio indices
+    # to maximize contrast across diverse lithological backgrounds.
+    is_mineral_or_spectral = (
+        cfg.get("group") in ("minerals", "spectral")
+        and not cfg.get("class_names")
+        and index not in ("topo_class", "burn_severity")
+    )
+    p2 = stats.get("p2")
+    p98 = stats.get("p98")
+    if is_mineral_or_spectral and p2 is not None and p98 is not None and (p98 > p2 + 0.005):
+        vis_params["min"] = float(p2)
+        vis_params["max"] = float(p98)
+
+    vis_img = idx_img.visualize(**vis_params)
     map_data = vis_img.getMapId()
     tile_url = map_data["tile_fetcher"].url_format
-
-    stats: dict = {}
-    try:
-        stats_reducer = (
-            ee.Reducer.mean()
-            .combine(ee.Reducer.stdDev(), "", True)
-            .combine(ee.Reducer.percentile([10, 25, 50, 75, 90]), "", True)
-            .combine(ee.Reducer.minMax(), "", True)
-        )
-        raw_stats = idx_img.reduceRegion(
-            reducer=stats_reducer,
-            geometry=region,
-            scale=150,
-            maxPixels=1e9,
-            bestEffort=True,
-            tileScale=4,
-        ).getInfo()
-
-        for k, v in (raw_stats or {}).items():
-            clean_k = k.split("_")[-1] if "_" in k else k
-            if isinstance(v, (int, float)):
-                stats[clean_k] = round(float(v), 4)
-
-        try:
-            area_m2 = region.area(maxError=1000).getInfo()
-            if area_m2:
-                stats["areaKm2"] = round(area_m2 / 1e6, 2)
-        except Exception:
-            pass
-    except Exception as e:
-        logger.warning(f"Failed to compute stats for {index}: {e}")
 
     return {
         "tileUrl":    tile_url,
@@ -1721,9 +1695,19 @@ def compute_index_tile(
         "bands":      cfg["bands"],
         "group":      cfg["group"],
         "sceneCount": scene_count,
+        "processingMode": processing_mode,
+        "statisticsLevel": (
+            "none" if processing_mode == "fast" else
+            "summary" if processing_mode == "balanced" else "detailed"
+        ),
+        "durationMs": round((time.perf_counter() - started_at) * 1000),
         "dateRange":  f"{start_date} → {end_date}" if cfg["group"] != "terrain" else "Estático (DEM)",
         "stats":      stats,
+        "vis":        vis_params,
+        "warning": statistics_warning,
         "classNames": cfg.get("class_names"),
+        "science": INDEX_SCIENCE[index],
+        "preDateRange": f"{pre_start_date} → {pre_end_date}" if pre_start_date else None,
     }
 
 
@@ -1736,6 +1720,8 @@ def compute_index_tile_vis(
     start_date: str = "2023-01-01",
     end_date: str = "2023-12-31",
     cloud_pct: int = 30,
+    pre_start_date: Optional[str] = None,
+    pre_end_date: Optional[str] = None,
 ) -> dict:
     """Same as compute_index_tile but uses an explicit vis_params dict
     instead of the registry default.  Useful for the RasterVisPanel:
@@ -1754,12 +1740,14 @@ def compute_index_tile_vis(
     if index not in INDEX_REGISTRY:
         raise ValueError(f"Índice desconhecido '{index}'. Disponíveis: {list(INDEX_REGISTRY)}")
 
+    require_scientific_index(index)
+    validate_period(start_date, end_date)
     cfg = INDEX_REGISTRY[index]
     region = _to_ee_region(region_geojson)
 
     # ── Check cache FIRST — skip building composites if we already have
     # the index image.  This is the key performance fix vs. GEE Code Editor.
-    ck = _build_cache_key_for_request(index, region_geojson, start_date, end_date, cloud_pct)
+    ck = _build_cache_key_for_request(f"v2:{index}:{pre_start_date}:{pre_end_date}", region_geojson, start_date, end_date, cloud_pct)
     cached = _cache_get(ck)
 
     if cached is not None:
@@ -1782,7 +1770,7 @@ def compute_index_tile_vis(
         if "rivers" in needs:
             rivers = _build_rivers_raster(region)
 
-        idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers).clip(region)
+        idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers, start_date=start_date, end_date=end_date, pre_start_date=pre_start_date, pre_end_date=pre_end_date, cloud_pct=cloud_pct).clip(region)
         _cache_put(ck, idx_img)
 
     # Build the .visualize() kwargs from vis_params, falling back to
@@ -1846,6 +1834,8 @@ def compute_index_tile_vis(
         "visParams":  final_vis,
         "stats":      {},
         "classNames": cfg.get("class_names"),
+        "science": INDEX_SCIENCE[index],
+        "preDateRange": f"{pre_start_date} → {pre_end_date}" if pre_start_date else None,
     }
 
 
@@ -1895,7 +1885,7 @@ def compute_composite_tile(
     composite = None
     for k, w in pos.items():
         cfg = INDEX_REGISTRY[k]
-        img = _build_index_image(k, region, s2=s2, l8=l8, dem=dem, rivers=rivers)
+        img = _build_index_image(k, region, s2=s2, l8=l8, dem=dem, rivers=rivers, start_date=start_date, end_date=end_date, cloud_pct=cloud_pct)
         nmin, nmax = cfg["norm"]
         # normalize to [0,1] using fixed registry range, then weight
         norm = img.subtract(nmin).divide(nmax - nmin).clamp(0, 1)
@@ -1982,6 +1972,7 @@ def compute_lineaments_tile(
       - rose-diagram bins (18 × 10°)
       - approximate mean density inside the region
     """
+    require_scientific_index("lineaments")
     import ee
     region = _to_ee_region(region_geojson)
 
@@ -2067,6 +2058,7 @@ def _build_targeting_score(
     compute_targeting_zones (spatial overlap report).
     Returns (score, scene_count, preset, pos_weights, invert_set).
     """
+    require_scientific_index("targeting")
     import ee
 
     if mineral not in MINERAL_PRESETS:
@@ -2125,7 +2117,7 @@ def _build_targeting_score(
             norm = lin_density.multiply(3).clamp(0, 1)
         else:
             cfg = INDEX_REGISTRY[k]
-            img = _build_index_image(k, region, s2=s2, l8=l8, dem=dem, rivers=rivers)
+            img = _build_index_image(k, region, s2=s2, l8=l8, dem=dem, rivers=rivers, start_date=start_date, end_date=end_date, cloud_pct=cloud_pct)
             nmin, nmax = cfg["norm"]
             norm = img.subtract(nmin).divide(nmax - nmin).clamp(0, 1)
         if k in invert_set:
@@ -2151,6 +2143,7 @@ def compute_targeting_tile(
     """Build a mineral favorability score (0–100) by combining normalized indices
     according to a per-mineral preset. Returns tile URL + favorability stats.
     """
+    require_scientific_index("targeting")
     import ee
 
     region = _to_ee_region(region_geojson)
@@ -2543,32 +2536,35 @@ _HYDROBASINS_CANDIDATES: dict = {
         f"WWF/HydroSHEDS/v1/Basins/hybas_af_lev{lv:02d}_v1c",
         f"WWF/HydroSHEDS/v1/Basins/hybas_af_lev{lv:02d}",
     ]
-    for lv in (5, 6, 7, 8)
+    for lv in range(1, 13)
 }
 
 
 def compute_basins(region_geojson: Optional[dict], level: int = 6) -> dict:
-    """Return HydroBASINS polygons (level 5–8) that intersect the region."""
+    """Return polygons at the explicitly requested HydroBASINS level (1–12)."""
     import ee
     region = _to_ee_region(region_geojson)
 
-    candidates = _HYDROBASINS_CANDIDATES.get(level, _HYDROBASINS_CANDIDATES[6])
+    if level not in _HYDROBASINS_CANDIDATES:
+        raise ValueError("O nível HydroBASINS deve estar entre 1 e 12.")
+    candidates = _HYDROBASINS_CANDIDATES[level]
     last_error = "Collection not found"
 
-    keep_props = ["HYBAS_ID", "UP_AREA", "SUB_AREA", "ORDER_", "MAIN_BAS", "NEXT_DOWN"]
+    keep_props = ["HYBAS_ID", "PFAF_ID", "UP_AREA", "SUB_AREA", "ORDER_", "MAIN_BAS", "NEXT_DOWN"]
 
     for coll_id in candidates:
         try:
             basins_fc = (ee.FeatureCollection(coll_id).filterBounds(region)
                          .select(keep_props, None, True))
             count     = basins_fc.size().getInfo()
-            geojson   = basins_fc.limit(300).getInfo()
+            geojson   = basins_fc.limit(300).getInfo()  # feature preview only; the tile uses all AOI basins
             styled    = basins_fc.style(color="1a73e8", fillColor="1a73e818", width=1.5)
             tile_url  = styled.getMapId()["tile_fetcher"].url_format
             return {
                 "tileUrl":  tile_url,
                 "geojson":  geojson,
                 "count":    count,
+                "previewCount": len(geojson.get("features", [])),
                 "level":    level,
                 "source":   "hydrobasins",
                 "collId":   coll_id,
@@ -2588,28 +2584,32 @@ def compute_basins(region_geojson: Optional[dict], level: int = 6) -> dict:
 
 
 def compute_basin_stats(basin_geometry: dict) -> dict:
-    """Compute elevation, slope, NDVI, NDWI, precipitation and derived
-    risk indices for one basin.
+    """Compute core hydro-environmental basin statistics.
 
-    basin_geometry : GeoJSON geometry dict (Polygon / MultiPolygon).
+    Reductions are intentionally batched into one Earth Engine evaluation so
+    latency is dominated by computation instead of multiple sequential
+    getInfo() round-trips.
     """
     import ee
 
     region = ee.Geometry(basin_geometry)
+    max_px = int(1e9)
 
     dem_proj = ee.ImageCollection("COPERNICUS/DEM/GLO30").select("DEM").first().projection()
-    dem   = _build_dem(region).rename("elev")
+    dem = _build_dem(region).rename("elev")
     slope = ee.Terrain.slope(dem.setDefaultProjection(dem_proj)).rename("slope")
+    relief = dem.addBands(slope)
 
     has_s2 = False
-    ndvi = ndwi = None
+    spectral = None
     try:
         s2, _ = _build_s2_composite(region, "2023-01-01", "2023-12-31", 60)
         ndvi = s2.normalizedDifference(["B8", "B4"]).rename("ndvi")
         ndwi = s2.normalizedDifference(["B3", "B8"]).rename("ndwi")
+        spectral = ndvi.addBands(ndwi)
         has_s2 = True
-    except Exception as e:
-        logger.exception("Erro silencioso capturado: %s", e)
+    except Exception as exc:
+        logger.warning("Basin stats: Sentinel-2 unavailable: %s", exc)
 
     has_precip = False
     chirps = None
@@ -2621,72 +2621,98 @@ def compute_basin_stats(basin_geometry: dict) -> dict:
             .rename("precip")
         )
         has_precip = True
-    except Exception as e:
-        logger.exception("Erro silencioso capturado: %s", e)
+    except Exception as exc:
+        logger.warning("Basin stats: CHIRPS unavailable: %s", exc)
 
-    max_px = int(1e9)
-    reducer_mm = ee.Reducer.min().combine(ee.Reducer.max(), sharedInputs=True).combine(ee.Reducer.mean(), sharedInputs=True)
+    reducer_mm = (
+        ee.Reducer.min()
+        .combine(ee.Reducer.max(), sharedInputs=True)
+        .combine(ee.Reducer.mean(), sharedInputs=True)
+    )
 
-    elev_info  = dem.unmask(0).reduceRegion(reducer=reducer_mm, geometry=region, scale=90, bestEffort=True, maxPixels=max_px).getInfo()
-    slope_info = slope.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=90, bestEffort=True, maxPixels=max_px).getInfo()
+    payload = {
+        "relief": relief.unmask(0).reduceRegion(
+            reducer=reducer_mm,
+            geometry=region,
+            scale=90,
+            bestEffort=True,
+            maxPixels=max_px,
+        ),
+        "areaM2": region.area(maxError=100),
+        "perimeterM": region.perimeter(maxError=100),
+    }
+    if has_s2 and spectral is not None:
+        payload["spectral"] = spectral.unmask(0).reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region,
+            scale=30,
+            bestEffort=True,
+            maxPixels=max_px,
+        )
+    if has_precip and chirps is not None:
+        payload["precip"] = chirps.unmask(0).reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region,
+            scale=5000,
+            bestEffort=True,
+            maxPixels=max_px,
+        )
 
-    ndvi_mean = ndwi_mean = None
-    if has_s2:
-        try:
-            nv = ndvi.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=30, bestEffort=True, maxPixels=max_px).getInfo()
-            nw = ndwi.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=30, bestEffort=True, maxPixels=max_px).getInfo()
-            ndvi_mean = nv.get("ndvi")
-            ndwi_mean = nw.get("ndwi")
-        except Exception as e:
-            logger.exception("Erro silencioso capturado: %s", e)
+    try:
+        summary = ee.Dictionary(payload).getInfo() or {}
+    except Exception as exc:
+        logger.warning("Basin stats batched reduction failed: %s", exc)
+        # Essential fallback: still return morphometry instead of failing the UI.
+        summary = ee.Dictionary({
+            "relief": payload["relief"],
+            "areaM2": payload["areaM2"],
+            "perimeterM": payload["perimeterM"],
+        }).getInfo() or {}
 
-    precip_mm_yr = 800.0
-    if has_precip:
-        try:
-            pr = chirps.unmask(0).reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=5000, bestEffort=True, maxPixels=max_px).getInfo()
-            precip_mm_yr = float(pr.get("precip") or 800)
-        except Exception as e:
-            logger.exception("Erro silencioso capturado: %s", e)
+    relief_info = summary.get("relief") or {}
+    spectral_info = summary.get("spectral") or {}
+    precip_info = summary.get("precip") or {}
 
-    area_km2 = region.area(maxError=100).getInfo() / 1e6
-    perim_km = region.perimeter(maxError=100).getInfo() / 1e3
+    area_km2 = float(summary.get("areaM2") or 0) / 1e6
+    perim_km = float(summary.get("perimeterM") or 0) / 1e3
+    mean_slope = float(relief_info.get("slope_mean") or 0)
+    ndvi_mean = spectral_info.get("ndvi")
+    ndwi_mean = spectral_info.get("ndwi")
+    precip_mm_yr = float(precip_info.get("precip") or 800.0)
 
-    mean_slope = float(slope_info.get("slope") or 0)
-    mean_ndvi  = float(ndvi_mean or 0.3)
-    precip_n   = min(1.0, precip_mm_yr / 2000.0)
-    slope_n    = min(1.0, mean_slope / 45.0)
-    veg_n      = max(0.0, min(1.0, mean_ndvi))
+    mean_ndvi = float(ndvi_mean or 0.3)
+    precip_n = min(1.0, precip_mm_yr / 2000.0)
+    slope_n = min(1.0, mean_slope / 45.0)
+    veg_n = max(0.0, min(1.0, mean_ndvi))
 
     erosion_risk = round(slope_n * 50 + (1 - veg_n) * 30 + precip_n * 20, 1)
-    flat_n       = max(0.0, 1.0 - slope_n)
-    ndwi_n       = max(0.0, min(1.0, float(ndwi_mean or 0) * 2))
-    flood_risk   = round(flat_n * 40 + precip_n * 40 + ndwi_n * 20, 1)
-    slope_hydro  = _math.exp(-((mean_slope - 10) ** 2) / 200.0)
-    hydro_pot    = round(slope_hydro * 30 + precip_n * 40 + veg_n * 30, 1)
+    flat_n = max(0.0, 1.0 - slope_n)
+    ndwi_n = max(0.0, min(1.0, float(ndwi_mean or 0) * 2))
+    flood_risk = round(flat_n * 40 + precip_n * 40 + ndwi_n * 20, 1)
+    slope_hydro = _math.exp(-((mean_slope - 10) ** 2) / 200.0)
+    hydro_pot = round(slope_hydro * 30 + precip_n * 40 + veg_n * 30, 1)
 
     return {
-        "areaKm2":        round(area_km2, 2),
-        "perimeterKm":    round(perim_km, 2),
-        "elevMinM":       round(float(elev_info.get("elev_min")  or 0), 1),
-        "elevMeanM":      round(float(elev_info.get("elev_mean") or 0), 1),
-        "elevMaxM":       round(float(elev_info.get("elev_max")  or 0), 1),
-        "slopeMeanDeg":   round(mean_slope, 2),
-        "ndviMean":       round(float(ndvi_mean), 3) if ndvi_mean is not None else None,
-        "ndwiMean":       round(float(ndwi_mean), 3) if ndwi_mean is not None else None,
-        "precipMmYr":     round(precip_mm_yr, 1),
-        "erosionRisk":    erosion_risk,
-        "floodRisk":      flood_risk,
+        "areaKm2": round(area_km2, 2),
+        "perimeterKm": round(perim_km, 2),
+        "elevMinM": round(float(relief_info.get("elev_min") or 0), 1),
+        "elevMeanM": round(float(relief_info.get("elev_mean") or 0), 1),
+        "elevMaxM": round(float(relief_info.get("elev_max") or 0), 1),
+        "slopeMeanDeg": round(mean_slope, 2),
+        "ndviMean": round(float(ndvi_mean), 3) if ndvi_mean is not None else None,
+        "ndwiMean": round(float(ndwi_mean), 3) if ndwi_mean is not None else None,
+        "precipMmYr": round(precip_mm_yr, 1),
+        "erosionRisk": erosion_risk,
+        "floodRisk": flood_risk,
         "hydroPotential": hydro_pot,
     }
 
-
 def compute_basin_report(basin_geometry: dict, start_year: int = 2019, end_year: int = 2024) -> dict:
-    """Full hydro-environmental basin report: morphometry + land cover + CHIRPS
-    monthly rainfall + SCS-CN runoff potential.
+    """Full hydro-environmental basin report with batched GEE reductions.
 
-    basin_geometry : GeoJSON geometry dict (Polygon / MultiPolygon).
-    start_year     : Initial year for CHIRPS precipitation climatology (default 2019).
-    end_year       : Final year for CHIRPS precipitation climatology (default 2024).
+    The report used to execute several independent getInfo() calls in sequence.
+    Here morphometry is resolved in one request and environmental summaries in
+    a second, while keeping the response contract unchanged.
     """
     import ee
 
@@ -2694,113 +2720,171 @@ def compute_basin_report(basin_geometry: dict, start_year: int = 2019, end_year:
     max_px = int(1e9)
 
     dem_proj = ee.ImageCollection("COPERNICUS/DEM/GLO30").select("DEM").first().projection()
-    dem   = _build_dem(region).rename("elev")
+    dem = _build_dem(region).rename("elev")
     slope = ee.Terrain.slope(dem.setDefaultProjection(dem_proj)).rename("slope")
     relief = dem.addBands(slope)
-    reducer_ms = (ee.Reducer.min().combine(ee.Reducer.max(), sharedInputs=True)
-                  .combine(ee.Reducer.mean(), sharedInputs=True))
-    rinfo = relief.unmask(0).reduceRegion(
-        reducer=reducer_ms, geometry=region, scale=90, bestEffort=True, maxPixels=max_px,
-    ).getInfo()
-
-    area_km2 = region.area(maxError=100).getInfo() / 1e6
-    perim_km = region.perimeter(maxError=100).getInfo() / 1e3
-    area_km2 = max(area_km2, 1e-6)
+    reducer_ms = (
+        ee.Reducer.min()
+        .combine(ee.Reducer.max(), sharedInputs=True)
+        .combine(ee.Reducer.mean(), sharedInputs=True)
+    )
 
     acc = ee.Image("WWF/HydroSHEDS/15ACC").select("b1")
-    stream_cells = (
-        acc.gte(200).selfMask().clip(region)
-        .reduceRegion(reducer=ee.Reducer.count(), geometry=region, scale=500,
-                      bestEffort=True, maxPixels=max_px).getInfo().get("b1") or 0
+    stream_count = (
+        acc.gte(200)
+        .selfMask()
+        .clip(region)
+        .reduceRegion(
+            reducer=ee.Reducer.count(),
+            geometry=region,
+            scale=500,
+            bestEffort=True,
+            maxPixels=max_px,
+        )
     )
-    drainage_density = round((float(stream_cells) * 0.5) / area_km2, 3)
+
+    base = ee.Dictionary({
+        "relief": relief.unmask(0).reduceRegion(
+            reducer=reducer_ms,
+            geometry=region,
+            scale=90,
+            bestEffort=True,
+            maxPixels=max_px,
+        ),
+        "areaM2": region.area(maxError=100),
+        "perimeterM": region.perimeter(maxError=100),
+        "streams": stream_count,
+    }).getInfo() or {}
+
+    rinfo = base.get("relief") or {}
+    area_km2 = max(float(base.get("areaM2") or 0) / 1e6, 1e-6)
+    perim_km = float(base.get("perimeterM") or 0) / 1e3
+    stream_cells = float((base.get("streams") or {}).get("b1") or 0)
+
+    drainage_density = round((stream_cells * 0.5) / area_km2, 3)
     compactness = round(0.2821 * perim_km / (area_km2 ** 0.5), 3)
     basin_len = max(perim_km / 2.0 - (area_km2 ** 0.5), area_km2 ** 0.5)
     form_factor = round(area_km2 / (basin_len ** 2), 3)
 
-    # Land cover
+    # Land cover and visualization.
     lc = ee.ImageCollection("ESA/WorldCover/v200").first().select("Map").clip(region)
-    codes  = [c   for c, _, _ in ESA_WORLDCOVER]
-    colors = [col for _, _, col in ESA_WORLDCOVER]
+    codes = [code for code, _, _ in ESA_WORLDCOVER]
+    colors = [color for _, _, color in ESA_WORLDCOVER]
     lc_vis = lc.remap(codes, list(range(1, len(codes) + 1))).visualize(
-        min=1, max=len(codes), palette=colors)
+        min=1, max=len(codes), palette=colors
+    )
     landcover_tile = lc_vis.getMapId()["tile_fetcher"].url_format
 
-    per_code: dict = {}
-    try:
-        groups = (ee.Image.pixelArea().addBands(lc).reduceRegion(
-            reducer=ee.Reducer.sum().group(groupField=1, groupName="code"),
-            geometry=region, scale=_compute_dynamic_scale(region), bestEffort=True, maxPixels=max_px,
-        ).getInfo() or {}).get("groups", []) or []
-        for g in groups:
-            per_code[int(g["code"])] = float(g.get("sum", 0)) / 1e6
-    except Exception as exc:
-        logger.warning("Failed to compute landcover areas: %s", exc)
-        per_code = {}
-    lc_total = sum(per_code.values()) or 1.0
-    landcover = []
-    for code, label, color in ESA_WORLDCOVER:
-        a = per_code.get(code, 0.0)
-        if a > 0:
-            landcover.append({"code": code, "label": label, "color": f"#{color}",
-                              "areaKm2": round(a, 2), "pct": round(a / lc_total * 100, 2)})
-    landcover.sort(key=lambda c: c["areaKm2"], reverse=True)
-
-    # Monthly precipitation (CHIRPS with custom date range)
+    # Monthly CHIRPS precipitation.
     sy = max(1981, min(2025, int(start_year or 2019)))
     ey = max(sy + 1, min(2025, int(end_year or 2024)))
     years = max(1, ey - sy)
-    chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate(f"{sy}-01-01", f"{ey}-01-01")
+    chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").filterDate(
+        f"{sy}-01-01", f"{ey}-01-01"
+    )
 
     def _monthly(m):
         m = ee.Number(m)
-        return (chirps.filter(ee.Filter.calendarRange(m, m, "month")).sum()
-                .divide(years).rename(ee.String("mon_").cat(m.int().format("%02d"))))
+        return (
+            chirps.filter(ee.Filter.calendarRange(m, m, "month"))
+            .sum()
+            .divide(years)
+            .rename(ee.String("mon_").cat(m.int().format("%02d")))
+        )
 
     monthly_img = ee.ImageCollection(ee.List.sequence(1, 12).map(_monthly)).toBands()
-    mp = monthly_img.reduceRegion(reducer=ee.Reducer.mean(), geometry=region,
-                                  scale=5000, bestEffort=True, maxPixels=max_px).getInfo() or {}
+
+    # SCS Curve Number.
+    cn = lc.remap(list(ESA_CN.keys()), list(ESA_CN.values())).rename("cn")
+    cn_tile = cn.visualize(
+        min=40,
+        max=100,
+        palette=["1a9850", "fee08b", "d73027"],
+    ).getMapId()["tile_fetcher"].url_format
+
+    lc_scale = _scale_from_area_km2(area_km2)
+    environmental = ee.Dictionary({
+        "landcover": ee.Image.pixelArea().addBands(lc).reduceRegion(
+            reducer=ee.Reducer.sum().group(groupField=1, groupName="code"),
+            geometry=region,
+            scale=lc_scale,
+            bestEffort=True,
+            maxPixels=max_px,
+        ),
+        "monthly": monthly_img.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region,
+            scale=5000,
+            bestEffort=True,
+            maxPixels=max_px,
+        ),
+        "curveNumber": cn.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region,
+            scale=100,
+            bestEffort=True,
+            maxPixels=max_px,
+        ),
+    }).getInfo() or {}
+
+    per_code: dict[int, float] = {}
+    groups = (environmental.get("landcover") or {}).get("groups", []) or []
+    for group in groups:
+        per_code[int(group["code"])] = float(group.get("sum", 0)) / 1e6
+
+    lc_total = sum(per_code.values()) or 1.0
+    landcover = []
+    for code, label, color in ESA_WORLDCOVER:
+        area = per_code.get(code, 0.0)
+        if area > 0:
+            landcover.append({
+                "code": code,
+                "label": label,
+                "color": f"#{color}",
+                "areaKm2": round(area, 2),
+                "pct": round(area / lc_total * 100, 2),
+            })
+    landcover.sort(key=lambda item: item["areaKm2"], reverse=True)
+
+    mp = environmental.get("monthly") or {}
     precip_monthly = []
-    for mm in range(1, 13):
-        key = next((k for k in mp if k.endswith(f"mon_{mm:02d}")), None)
+    for month in range(1, 13):
+        key = next((key for key in mp if key.endswith(f"mon_{month:02d}")), None)
         precip_monthly.append(round(float(mp.get(key) or 0), 1))
     precip_annual = round(sum(precip_monthly), 1)
 
-    # SCS Curve Number
-    cn = lc.remap(list(ESA_CN.keys()), list(ESA_CN.values())).rename("cn")
-    cn_tile = cn.visualize(min=40, max=100,
-                           palette=["1a9850", "fee08b", "d73027"]).getMapId()["tile_fetcher"].url_format
-    cn_mean = cn.reduceRegion(reducer=ee.Reducer.mean(), geometry=region, scale=100,
-                              bestEffort=True, maxPixels=max_px).getInfo().get("cn")
+    cn_mean = (environmental.get("curveNumber") or {}).get("cn")
 
     return {
         "morphometry": {
-            "areaKm2":          round(area_km2, 2),
-            "perimeterKm":      round(perim_km, 2),
-            "elevMinM":         round(float(rinfo.get("elev_min")  or 0), 1),
-            "elevMeanM":        round(float(rinfo.get("elev_mean") or 0), 1),
-            "elevMaxM":         round(float(rinfo.get("elev_max")  or 0), 1),
-            "reliefM":          round(float(rinfo.get("elev_max") or 0) - float(rinfo.get("elev_min") or 0), 1),
-            "slopeMeanDeg":     round(float(rinfo.get("slope_mean") or 0), 2),
-            "slopeMaxDeg":      round(float(rinfo.get("slope_max")  or 0), 2),
-            "drainageDensity":  drainage_density,
-            "compactness":      compactness,
-            "formFactor":       form_factor,
+            "areaKm2": round(area_km2, 2),
+            "perimeterKm": round(perim_km, 2),
+            "elevMinM": round(float(rinfo.get("elev_min") or 0), 1),
+            "elevMeanM": round(float(rinfo.get("elev_mean") or 0), 1),
+            "elevMaxM": round(float(rinfo.get("elev_max") or 0), 1),
+            "reliefM": round(
+                float(rinfo.get("elev_max") or 0) - float(rinfo.get("elev_min") or 0),
+                1,
+            ),
+            "slopeMeanDeg": round(float(rinfo.get("slope_mean") or 0), 2),
+            "slopeMaxDeg": round(float(rinfo.get("slope_max") or 0), 2),
+            "drainageDensity": drainage_density,
+            "compactness": compactness,
+            "formFactor": form_factor,
         },
-        "landcover":      landcover,
-        "landcoverTile":  landcover_tile,
-        "precipMonthly":  precip_monthly,
+        "landcover": landcover,
+        "landcoverTile": landcover_tile,
+        "precipMonthly": precip_monthly,
         "precipAnnualMm": precip_annual,
-        "startYear":      sy,
-        "endYear":        ey,
-        "period":         f"{sy}–{ey}",
+        "startYear": sy,
+        "endYear": ey,
+        "period": f"{sy}–{ey}",
         "runoff": {
-            "cnMean":   round(float(cn_mean), 1) if cn_mean is not None else None,
-            "cnTile":   cn_tile,
-            "note":     "CN alto (vermelho) = maior escoamento / menor infiltração.",
+            "cnMean": round(float(cn_mean), 1) if cn_mean is not None else None,
+            "cnTile": cn_tile,
+            "note": "CN alto (vermelho) = maior escoamento / menor infiltração.",
         },
     }
-
 
 def refresh_basin_tiles(region_geojson: Optional[dict]) -> dict:
     """Fast regeneration of active GEE tile URLs for an existing basin polygon.
@@ -2921,6 +3005,9 @@ def compute_watershed_from_point(
     """Delineate the basin at a clicked location with double fallback hierarchy."""
     import ee
 
+    if level not in _HYDROBASINS_CANDIDATES:
+        raise ValueError("O nível HydroBASINS deve estar entre 1 e 12.")
+
     pt = ee.Geometry.Point([lon, lat])
     try:
         hb = _watershed_hydrobasins(pt, lat, lon, level)
@@ -2929,24 +3016,19 @@ def compute_watershed_from_point(
     except Exception as e:
         logger.warning("HydroBASINS lookup failed, falling back to D8: %s", e)
 
-    return _watershed_d8(lat, lon, region_geojson, max_iter)
+    result = _watershed_d8(lat, lon, region_geojson, max_iter)
+    result["source"] = "d8"
+    result["requestedLevel"] = level  # D8 is NOT a HydroBASINS Pfafstetter level
+    return result
 
 
 def _watershed_hydrobasins(pt, lat: float, lon: float, level: int):
     """Containing HydroBASINS / HydroATLAS sub-basin (instant, real boundary). None if absent."""
     import ee
-    keep = ["HYBAS_ID", "SUB_AREA", "UP_AREA", "ORDER_"]
-    seen: list = []
-    order = [level] + [l for l in (10, 8, 6, 12) if l != level]
-    for lvl in order:
-        if lvl in seen or not (1 <= lvl <= 12):
-            continue
-        seen.append(lvl)
-        cids = [
-            f"WWF/HydroATLAS/v1/Basins/level{lvl:02d}",
-            f"WWF/HydroSHEDS/v1/Basins/hybas_af_lev{lvl:02d}_v1c",
-        ]
-        for cid in cids:
+    keep = ["HYBAS_ID", "PFAF_ID", "SUB_AREA", "UP_AREA", "ORDER_"]
+    # Never silently swap the requested hierarchy level for an unrelated one.
+    for lvl in (level,):
+        for cid in _HYDROBASINS_CANDIDATES[lvl]:
             try:
                 fc = (ee.FeatureCollection(cid).filterBounds(pt)
                       .select(keep, None, True).limit(1))
@@ -3085,61 +3167,94 @@ def compute_flood_sar(
 ) -> dict:
     """Flood extent from Sentinel-1 SAR (C-band, VV) — UN-SPIDER change-detection."""
     import ee
+
     region = _to_ee_region(region_geojson)
+    event_start_ee = ee.Date(event_start)
+    # UI dates are inclusive; Earth Engine filterDate uses an exclusive end.
+    event_end_ee = ee.Date(event_end).advance(1, "day")
 
     if not (baseline_start and baseline_end):
-        ev_start = ee.Date(event_start)
-        baseline_end   = ev_start.advance(-1, "day")
-        baseline_start = ev_start.advance(-60, "day")
+        baseline_start_ee = event_start_ee.advance(-60, "day")
+        baseline_end_ee = event_start_ee
     else:
-        baseline_start = ee.Date(baseline_start)
-        baseline_end   = ee.Date(baseline_end)
+        baseline_start_ee = ee.Date(baseline_start)
+        baseline_end_ee = ee.Date(baseline_end).advance(1, "day")
 
     def _s1(d0, d1):
-        return (ee.ImageCollection("COPERNICUS/S1_GRD")
-                .filterBounds(region).filterDate(d0, d1)
-                .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
-                .select("VV"))
+        return (
+            ee.ImageCollection("COPERNICUS/S1_GRD")
+            .filterBounds(region)
+            .filterDate(d0, d1)
+            .filter(ee.Filter.eq("instrumentMode", "IW"))
+            .filter(ee.Filter.eq("resolution_meters", 10))
+            .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
+            .select("VV")
+        )
 
-    after_col  = _s1(event_start, event_end)
-    before_col = _s1(baseline_start, baseline_end)
+    after_col = _s1(event_start_ee, event_end_ee)
+    before_col = _s1(baseline_start_ee, baseline_end_ee)
+
+    # One server round-trip gives real scene counts and prevents opaque failures
+    # later when median() is evaluated on an empty collection.
+    counts = ee.Dictionary({
+        "event": after_col.size(),
+        "baseline": before_col.size(),
+    }).getInfo() or {}
+    scenes_event = int(counts.get("event") or 0)
+    scenes_baseline = int(counts.get("baseline") or 0)
+    if scenes_event == 0:
+        raise RuntimeError(
+            "Sem cenas Sentinel-1 VV/IW de 10 m para o período do evento. "
+            "Aumente o intervalo de datas ou a área de estudo."
+        )
+    if scenes_baseline == 0:
+        raise RuntimeError(
+            "Sem cenas Sentinel-1 VV/IW de 10 m para a linha de base. "
+            "Aumente o período de referência."
+        )
 
     smooth = lambda img: img.focal_median(50, "circle", "meters")
-    after  = smooth(after_col.median())
+    after = smooth(after_col.median())
     before = smooth(before_col.median())
 
-    # UN-SPIDER change detection: backscatter decrease < -2.5 dB, water backscatter < -14 dB
-    diff  = after.subtract(before)
+    # UN-SPIDER-style change detection: backscatter decrease and dark-water threshold.
+    diff = after.subtract(before)
     flood = diff.lt(-2.5).And(after.lt(-14))
 
-    # Permanent water from JRC (occurrence > 35%)
+    # Permanent water from JRC (occurrence > 35%).
     jrc = ee.Image("JRC/GSW1_4/GlobalSurfaceWater").select("occurrence")
     perm_water = jrc.gt(35).unmask(0)
     flood = flood.where(perm_water, 0)
 
-    # Topographic filter: inundations occur only on flat terrain (slope < 6°)
-    # Reproject DEM to metric projection (EPSG:3857) so dz/dx is in meters/meters
+    # Topographic filter: inundation is much more plausible on low slopes.
     dem = _build_dem(region)
     dem_metric = dem.reproject("EPSG:3857", None, 90)
     slope = ee.Terrain.slope(dem_metric)
     flood = flood.updateMask(slope.lt(6.0))
 
-    # Mask and speckle reduction
+    # Speckle/noise reduction.
     flood = flood.selfMask()
-    conn  = flood.connectedPixelCount(15, True)
+    conn = flood.connectedPixelCount(15, True)
     flood = flood.updateMask(conn.gte(4)).rename("flood")
 
-    flood_tile = flood.visualize(palette=["d50000"], opacity=0.85) \
-                      .getMapId()["tile_fetcher"].url_format
-    perm_tile  = perm_water.selfMask().visualize(palette=["1565c0"], opacity=0.6) \
-                      .getMapId()["tile_fetcher"].url_format
+    flood_tile = (
+        flood.visualize(palette=["d50000"], opacity=0.85)
+        .getMapId()["tile_fetcher"].url_format
+    )
+    perm_tile = (
+        perm_water.selfMask().visualize(palette=["1565c0"], opacity=0.6)
+        .getMapId()["tile_fetcher"].url_format
+    )
 
     dyn_scale = max(_compute_dynamic_scale(region), 120)
     area_km2 = 0.0
     try:
         flood_area = flood.multiply(ee.Image.pixelArea()).reduceRegion(
-            reducer=ee.Reducer.sum(), geometry=region, scale=dyn_scale,
-            bestEffort=True, maxPixels=int(1e10),
+            reducer=ee.Reducer.sum(),
+            geometry=region,
+            scale=dyn_scale,
+            bestEffort=True,
+            maxPixels=int(1e10),
         ).get("flood")
         area_val = flood_area.getInfo()
         if area_val:
@@ -3148,16 +3263,17 @@ def compute_flood_sar(
         logger.warning("Could not compute flood area: %s", exc)
 
     return {
-        "floodTile":      flood_tile,
-        "permWaterTile":  perm_tile,
-        "areaKm2":        area_km2,
-        "scenesEvent":    1,
-        "scenesBaseline": 1,
-        "eventStart":     event_start,
-        "eventEnd":       event_end,
-        "source":         "sentinel-1",
+        "floodTile": flood_tile,
+        "permWaterTile": perm_tile,
+        "areaKm2": area_km2,
+        "scenesEvent": scenes_event,
+        "scenesBaseline": scenes_baseline,
+        "eventStart": event_start,
+        "eventEnd": event_end,
+        "baselineStart": baseline_start,
+        "baselineEnd": baseline_end,
+        "source": "COPERNICUS/S1_GRD · VV · IW · 10 m + JRC GSW",
     }
-
 
 def compute_erosion_rusle(region_geojson: Optional[dict], year: int = 2023) -> dict:
     """Soil-loss risk via RUSLE: A = R·K·LS·C·P (t/ha/yr)."""
@@ -3249,35 +3365,85 @@ def compute_wildfire_firms(
     end_date: str,
     min_confidence: int = 50,
 ) -> dict:
-    """Active fire detection and thermal anomalies from NASA FIRMS (MODIS & VIIRS)."""
+    """Active-fire thermal anomalies using GEE FIRMS/VIIRS public products.
+
+    For periods from 2023-09-03 onward, use the 375 m VIIRS NRT collections
+    (S-NPP plus NOAA-20). Older periods fall back to the long MODIS FIRMS
+    record at 1 km. Confidence is always applied as a *pixel-band mask*.
+    """
     import ee
+
     region = _to_ee_region(region_geojson)
+    end_exclusive = ee.Date(end_date).advance(1, "day")
     max_px = int(1e10)
+    viirs_start = "2023-09-03"
+    use_viirs = start_date >= viirs_start
 
-    firms_col = (
-        ee.ImageCollection("FIRMS")
-        .filterBounds(region)
-        .filterDate(start_date, end_date)
-    )
+    if use_viirs:
+        # VIIRS confidence is categorical: 0=low, 1=nominal, 2=high.
+        if min_confidence >= 80:
+            confidence_threshold = 2
+        elif min_confidence >= 50:
+            confidence_threshold = 1
+        else:
+            confidence_threshold = 0
 
-    # Filter by confidence threshold
-    filtered = firms_col.filter(ee.Filter.gte("confidence", min_confidence))
+        snpp = (
+            ee.ImageCollection("NASA/LANCE/SNPP_VIIRS/C2")
+            .filterBounds(region)
+            .filterDate(start_date, end_exclusive)
+        )
+        noaa20 = (
+            ee.ImageCollection("NASA/LANCE/NOAA20_VIIRS/C2")
+            .filterBounds(region)
+            .filterDate(start_date, end_exclusive)
+        )
+        raw = snpp.merge(noaa20)
+        temperature_band = "Bright_ti4"
+        resolution_m = 375
+        confidence_mode = "categorical"
+        sensor = "VIIRS 375 m (S-NPP + NOAA-20)"
+        source = "NASA/LANCE/SNPP_VIIRS/C2 + NASA/LANCE/NOAA20_VIIRS/C2"
 
-    # Mosaic of maximum brightness temperature (band T21, in Kelvin)
-    t21_max = filtered.select("T21").max().clip(region)
+        def _mask_confidence(img):
+            conf = img.select("confidence")
+            return img.updateMask(conf.gte(confidence_threshold))
+    else:
+        raw = (
+            ee.ImageCollection("FIRMS")
+            .filterBounds(region)
+            .filterDate(start_date, end_exclusive)
+        )
+        temperature_band = "T21"
+        resolution_m = 1000
+        confidence_mode = "percent"
+        sensor = "MODIS FIRMS 1 km"
+        source = "FIRMS · MODIS LANCE"
+
+        def _mask_confidence(img):
+            conf = img.select("confidence")
+            return img.updateMask(conf.gte(min_confidence))
+
+    image_count = int(raw.size().getInfo() or 0)
+    if image_count == 0:
+        raise RuntimeError(
+            "Sem dados de fogo activo no Earth Engine para o período selecionado. "
+            "Escolha um período anterior à data mais recente disponível no catálogo."
+        )
+
+    filtered = raw.map(_mask_confidence)
+    temp_max = filtered.select(temperature_band).max().clip(region)
     conf_max = filtered.select("confidence").max().clip(region)
 
-    # Palette for thermal anomalies: Yellow -> Orange -> Red -> Dark Red
     palette = ["fff000", "ff8000", "ff0000", "7a0000"]
-    tile = t21_max.visualize(
-        min=305, max=390,
-        palette=palette,
-        opacity=0.88
-    ).getMapId()["tile_fetcher"].url_format
+    tile = (
+        temp_max.visualize(min=305, max=390, palette=palette, opacity=0.88)
+        .getMapId()["tile_fetcher"].url_format
+    )
 
-    dyn_scale = max(_compute_dynamic_scale(region), 375)
+    dyn_scale = max(_compute_dynamic_scale(region), resolution_m)
     hotspot_count = 0
-    t21_mean_c = None
+    temperature_mean_c = None
     hotspot_points = []
 
     try:
@@ -3295,36 +3461,36 @@ def compute_wildfire_firms(
         logger.warning("Could not compute hotspot count: %s", exc)
 
     try:
-        t_val = t21_max.reduceRegion(
+        t_val = temp_max.reduceRegion(
             reducer=ee.Reducer.mean(),
             geometry=region,
             scale=dyn_scale,
             bestEffort=True,
             maxPixels=max_px,
-        ).get("T21").getInfo()
+        ).get(temperature_band).getInfo()
         if t_val is not None:
-            t21_mean_c = round(float(t_val) - 273.15, 1)
+            temperature_mean_c = round(float(t_val) - 273.15, 1)
     except Exception as exc:
         logger.warning("Could not compute mean fire temperature: %s", exc)
 
     try:
-        fire_mask = t21_max.mask().selfMask()
-        samples = t21_max.addBands(conf_max).sample(
+        samples = temp_max.addBands(conf_max).sample(
             region=region,
             scale=dyn_scale,
             numPixels=60,
-            geometries=True
-        ).getInfo()
+            geometries=True,
+        ).getInfo() or {}
         for feat in samples.get("features", []):
             coords = feat.get("geometry", {}).get("coordinates", [])
             props = feat.get("properties", {})
             if coords and len(coords) >= 2:
-                tk = props.get("T21")
+                tk = props.get(temperature_band)
+                confidence_value = props.get("confidence")
                 hotspot_points.append({
                     "lat": coords[1],
                     "lon": coords[0],
-                    "tempCelsius": round(float(tk) - 273.15, 1) if tk else None,
-                    "confidence": int(props.get("confidence", min_confidence)),
+                    "tempCelsius": round(float(tk) - 273.15, 1) if tk is not None else None,
+                    "confidence": int(confidence_value) if confidence_value is not None else confidence_threshold,
                 })
     except Exception as exc:
         logger.warning("Could not sample hotspot coordinates: %s", exc)
@@ -3332,13 +3498,318 @@ def compute_wildfire_firms(
     return {
         "tile": tile,
         "hotspotCount": hotspot_count,
-        "meanTempCelsius": t21_mean_c,
+        "meanTempCelsius": temperature_mean_c,
         "startDate": start_date,
         "endDate": end_date,
         "minConfidence": min_confidence,
+        "confidenceMode": confidence_mode,
         "hotspotPoints": hotspot_points,
         "palette": palette,
-        "source": "NASA FIRMS (MODIS/VIIRS 375m)",
+        "sensor": sensor,
+        "resolutionMeters": resolution_m,
+        "imageCount": image_count,
+        "source": source,
+    }
+
+
+def compute_burned_area(
+    region_geojson: Optional[dict],
+    start_date: str,
+    end_date: str,
+) -> dict:
+    """Burned-area footprint from MODIS MCD64A1 BurnDate (500 m).
+
+    MCD64A1 is a monthly product. BurnDate stores the Julian day of burn for
+    each pixel, so we reconstruct the actual burn date and keep only pixels
+    falling inside the requested interval.
+    """
+    import ee
+
+    region = _to_ee_region(region_geojson)
+    start = ee.Date(start_date)
+    end_exclusive = ee.Date(end_date).advance(1, "day")
+    max_px = int(1e10)
+
+    # Expand the collection window so partial start/end months are included;
+    # the pixel-level BurnDate mask below enforces the exact requested dates.
+    collection = (
+        ee.ImageCollection("MODIS/061/MCD64A1")
+        .filterDate(start.advance(-32, "day"), end_exclusive.advance(32, "day"))
+        .select("BurnDate")
+    )
+    image_count = int(collection.size().getInfo() or 0)
+    if image_count == 0:
+        raise RuntimeError("Sem dados MODIS MCD64A1 para o período selecionado.")
+
+    start_ms = start.millis()
+    end_ms = end_exclusive.millis()
+    day_ms = 24 * 60 * 60 * 1000
+
+    def _burned_in_window(img):
+        burn_day = img.select("BurnDate")
+        year = ee.Date(img.get("system:time_start")).get("year")
+        year_start_ms = ee.Date.fromYMD(year, 1, 1).millis()
+        burn_ms = (
+            ee.Image.constant(year_start_ms)
+            .add(burn_day.subtract(1).multiply(day_ms))
+        )
+        valid = (
+            burn_day.gt(0)
+            .And(burn_ms.gte(start_ms))
+            .And(burn_ms.lt(end_ms))
+        )
+        return valid.selfMask().rename("burned")
+
+    burned = collection.map(_burned_in_window).max().clip(region).rename("burned")
+    palette = ["ffd166", "f8961e", "e85d04", "9d0208"]
+    tile = burned.visualize(
+        min=0,
+        max=1,
+        palette=[palette[-1]],
+        opacity=0.82,
+    ).getMapId()["tile_fetcher"].url_format
+
+    scale = max(_compute_dynamic_scale(region), 500)
+    stats = (
+        ee.Image.pixelArea()
+        .updateMask(burned)
+        .rename("burnedArea")
+        .addBands(ee.Image.pixelArea().rename("totalArea"))
+        .reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=region,
+            scale=scale,
+            bestEffort=True,
+            maxPixels=max_px,
+        )
+        .getInfo()
+        or {}
+    )
+
+    burned_km2 = float(stats.get("burnedArea") or 0) / 1e6
+    total_km2 = float(stats.get("totalArea") or 0) / 1e6
+    burned_pct = (burned_km2 / total_km2 * 100) if total_km2 else 0.0
+
+    return {
+        "tile": tile,
+        "areaKm2": round(burned_km2, 2),
+        "areaPct": round(burned_pct, 2),
+        "startDate": start_date,
+        "endDate": end_date,
+        "imageCount": image_count,
+        "palette": [f"#{color}" for color in palette],
+        "source": "MODIS/061/MCD64A1 · NASA LP DAAC · 500 m",
+    }
+
+
+# ── Humidade do Solo e Seca Agrícola (NASA SMAP) ──
+
+def compute_soil_moisture_smap(
+    region_geojson: Optional[dict],
+    start_date: str,
+    end_date: str,
+    layer: str = "susm",
+) -> dict:
+    """NASA-USDA Enhanced SMAP 10km soil moisture & root-zone drought analysis.
+
+    Bands:
+      susm: Subsurface soil moisture (0–100 cm root zone, mm)
+      ssm: Surface soil moisture (0–5 cm, mm)
+      smp: Soil moisture profile (% capacity, 0–100%)
+      susma: Subsurface soil moisture anomaly (Z-score)
+    """
+    import ee
+
+    region = _to_ee_region(region_geojson)
+    start = ee.Date(start_date)
+    end_exclusive = ee.Date(end_date).advance(1, "day")
+    max_px = int(1e10)
+
+    valid_layers = {"susm", "ssm", "smp", "susma"}
+    if layer not in valid_layers:
+        layer = "susm"
+
+    # Filter collection
+    collection = (
+        ee.ImageCollection("NASA_USDA/HSL/SMAP10KM_soil_moisture")
+        .filterDate(start, end_exclusive)
+    )
+    image_count = int(collection.size().getInfo() or 0)
+    if image_count == 0:
+        collection = (
+            ee.ImageCollection("NASA_USDA/HSL/SMAP10KM_soil_moisture")
+            .filterDate(start.advance(-15, "day"), end_exclusive.advance(15, "day"))
+        )
+        image_count = int(collection.size().getInfo() or 0)
+        if image_count == 0:
+            raise RuntimeError("Sem observações SMAP disponíveis para o período e região selecionados.")
+
+    mean_img = collection.select(layer).mean().clip(region)
+
+    # Setup visualization based on layer
+    if layer == "susm":
+        palette = ["7f0000", "d73027", "f46d43", "fdae61", "fee08b", "d9ef8b", "66bd63", "1a9850", "006837", "08519c"]
+        vis_min, vis_max = 5.0, 100.0
+        unit = "mm"
+        layer_label = "Humidade na Zona Radicular (0–100 cm)"
+    elif layer == "ssm":
+        palette = ["d73027", "fdae61", "fee08b", "a6d96a", "1a9850", "08519c"]
+        vis_min, vis_max = 1.0, 25.0
+        unit = "mm"
+        layer_label = "Humidade Superficial (0–5 cm)"
+    elif layer == "smp":
+        palette = ["d73027", "fdae61", "fee08b", "d9ef8b", "66bd63", "1a9850", "006837"]
+        vis_min, vis_max = 10.0, 90.0
+        unit = "%"
+        layer_label = "Perfil de Humidade do Solo"
+    else:  # susma
+        palette = ["67001f", "b2182b", "d6604d", "f4a582", "fddbc7", "d1e5f0", "92c5de", "4393c3", "2166ac", "053061"]
+        vis_min, vis_max = -2.5, 2.5
+        unit = "σ (Z-score)"
+        layer_label = "Anomalia da Zona Radicular"
+
+    tile = mean_img.visualize(
+        min=vis_min,
+        max=vis_max,
+        palette=palette,
+        opacity=0.88,
+    ).getMapId()["tile_fetcher"].url_format
+
+    scale = max(_compute_dynamic_scale(region), 10000)
+
+    stats = (
+        mean_img.reduceRegion(
+            reducer=ee.Reducer.mean().combine(
+                reducer2=ee.Reducer.minMax(),
+                sharedInputs=True,
+            ),
+            geometry=region,
+            scale=scale,
+            bestEffort=True,
+            maxPixels=max_px,
+        )
+        .getInfo()
+        or {}
+    )
+
+    mean_val = stats.get(f"{layer}_mean")
+    min_val = stats.get(f"{layer}_min")
+    max_val = stats.get(f"{layer}_max")
+
+    px_area = ee.Image.pixelArea()
+    if layer == "susm":
+        stress_cond = mean_img.lt(20.0)
+        mod_cond = mean_img.gte(20.0).And(mean_img.lt(40.0))
+        opt_cond = mean_img.gte(40.0).And(mean_img.lt(75.0))
+        surp_cond = mean_img.gte(75.0)
+    elif layer == "susma":
+        stress_cond = mean_img.lt(-1.0)
+        mod_cond = mean_img.gte(-1.0).And(mean_img.lt(-0.3))
+        opt_cond = mean_img.gte(-0.3).And(mean_img.lt(0.8))
+        surp_cond = mean_img.gte(0.8)
+    elif layer == "smp":
+        stress_cond = mean_img.lt(25.0)
+        mod_cond = mean_img.gte(25.0).And(mean_img.lt(45.0))
+        opt_cond = mean_img.gte(45.0).And(mean_img.lt(75.0))
+        surp_cond = mean_img.gte(75.0)
+    else:
+        stress_cond = mean_img.lt(5.0)
+        mod_cond = mean_img.gte(5.0).And(mean_img.lt(10.0))
+        opt_cond = mean_img.gte(10.0).And(mean_img.lt(18.0))
+        surp_cond = mean_img.gte(18.0)
+
+    area_stats = (
+        px_area.updateMask(stress_cond).rename("stressArea")
+        .addBands(px_area.updateMask(mod_cond).rename("modArea"))
+        .addBands(px_area.updateMask(opt_cond).rename("optArea"))
+        .addBands(px_area.updateMask(surp_cond).rename("surpArea"))
+        .addBands(px_area.updateMask(mean_img.mask()).rename("totalArea"))
+        .reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=region,
+            scale=scale,
+            bestEffort=True,
+            maxPixels=max_px,
+        )
+        .getInfo()
+        or {}
+    )
+
+    stress_km2 = float(area_stats.get("stressArea") or 0) / 1e6
+    mod_km2 = float(area_stats.get("modArea") or 0) / 1e6
+    opt_km2 = float(area_stats.get("optArea") or 0) / 1e6
+    surp_km2 = float(area_stats.get("surpArea") or 0) / 1e6
+    total_km2 = float(area_stats.get("totalArea") or 0) / 1e6
+
+    stress_pct = round(stress_km2 / total_km2 * 100, 1) if total_km2 else 0.0
+    mod_pct = round(mod_km2 / total_km2 * 100, 1) if total_km2 else 0.0
+    opt_pct = round(opt_km2 / total_km2 * 100, 1) if total_km2 else 0.0
+    surp_pct = round(surp_km2 / total_km2 * 100, 1) if total_km2 else 0.0
+
+    if stress_pct >= 50.0 or (mean_val is not None and ((layer == "susm" and mean_val < 18) or (layer == "susma" and mean_val < -1.2))):
+        risk_level = "Crítico"
+        risk_summary = "Défice hídrico severo generalizado. Risco agudo de perda de culturas de sequeiro (milho e feijão)."
+    elif stress_pct >= 25.0 or (mean_val is not None and ((layer == "susm" and mean_val < 30) or (layer == "susma" and mean_val < -0.5))):
+        risk_level = "Moderado"
+        risk_summary = "Stress hídrico significativo em parcelas agrícolas. Maturação comprometida para culturas exigentes."
+    else:
+        risk_level = "Favorável"
+        risk_summary = "Humidade adequada na zona radicular para o desenvolvimento vegetativo das principais culturas."
+
+    crop_assessments = [
+        {
+            "crop": "Milho (Zea mays)",
+            "sensitivity": "Alta na floração e enchimento de grão",
+            "requiredMoisture": "30 a 60 mm (susm)",
+            "status": "Severo" if stress_pct > 40 else ("Alerta" if stress_pct > 20 else "Favorável"),
+        },
+        {
+            "crop": "Mandioca (Manihot esculenta)",
+            "sensitivity": "Tolerante a seca prolongada",
+            "requiredMoisture": "> 15 mm (susm)",
+            "status": "Alerta" if stress_pct > 60 else "Favorável",
+        },
+        {
+            "crop": "Feijão vulgar e nhemba (Vigna unguiculata)",
+            "sensitivity": "Média-alta na fase reprodutiva",
+            "requiredMoisture": "25 a 45 mm (susm)",
+            "status": "Severo" if stress_pct > 35 else ("Alerta" if stress_pct > 18 else "Favorável"),
+        },
+        {
+            "crop": "Arroz de sequeiro e aluvial (Oryza sativa)",
+            "sensitivity": "Muito alta (necessita solos saturados)",
+            "requiredMoisture": "> 55 mm (susm)",
+            "status": "Crítico" if (opt_pct + surp_pct) < 30 else "Favorável",
+        },
+    ]
+
+    return {
+        "tile": tile,
+        "layer": layer,
+        "layerLabel": layer_label,
+        "unit": unit,
+        "startDate": start_date,
+        "endDate": end_date,
+        "imageCount": image_count,
+        "meanValue": round(float(mean_val), 2) if mean_val is not None else None,
+        "minValue": round(float(min_val), 2) if min_val is not None else None,
+        "maxValue": round(float(max_val), 2) if max_val is not None else None,
+        "totalAreaKm2": round(total_km2, 1),
+        "stressAreaKm2": round(stress_km2, 1),
+        "stressPct": stress_pct,
+        "classes": [
+            {"id": "stress", "label": "Défice Crítico / Stress", "km2": round(stress_km2, 1), "pct": stress_pct, "color": "#d73027"},
+            {"id": "moderate", "label": "Humidade Moderada", "km2": round(mod_km2, 1), "pct": mod_pct, "color": "#fee08b"},
+            {"id": "optimal", "label": "Humidade Adequada / Ótima", "km2": round(opt_km2, 1), "pct": opt_pct, "color": "#66bd63"},
+            {"id": "surplus", "label": "Excedente / Saturação", "km2": round(surp_km2, 1), "pct": surp_pct, "color": "#08519c"},
+        ],
+        "riskLevel": risk_level,
+        "riskSummary": risk_summary,
+        "crops": crop_assessments,
+        "palette": [f"#{c}" for c in palette],
+        "visMin": vis_min,
+        "visMax": vis_max,
+        "source": "NASA-USDA / HSL SMAP10KM · Global Soil Moisture · 10 km",
     }
 
 
@@ -3446,6 +3917,7 @@ def compute_spi_ndvi(
     year: int = 2024,
     clim_start: int = 2001,
     samples: int = 400,
+    include_samples: bool = True,
 ) -> dict:
     """SPI (anomalia temporal de precipitação CHIRPS) × NDVI MODIS + correlação.
 
@@ -3454,6 +3926,7 @@ def compute_spi_ndvi(
     NDVI : média anual MODIS MOD13A2 (×0.0001).
     Amostra N pontos de ambas as bandas para scatter + Pearson r (server-side).
     """
+    require_scientific_index("spi_ndvi")
     import ee
 
     if not (1990 <= clim_start <= year - 5):
@@ -3532,33 +4005,35 @@ def compute_spi_ndvi(
     except Exception as exc:
         logger.warning("SPI×NDVI: drought area failed: %s", exc)
 
-    # Scatter samples (client-side pairs for the chart)
+    # Scatter samples are optional because the Geoperigos summary only needs
+    # raster/statistics. Skipping this extra getInfo() materially reduces latency.
     pairs = []
-    try:
-        fc = both.sample(
-            region=region, scale=5000,
-            numPixels=max(50, min(samples, 2000)),
-            seed=42, geometries=False,
-        ).getInfo() or {}
-        for f in fc.get("features", []):
-            p = f.get("properties", {})
-            s, n = p.get("SPI"), p.get("NDVI")
-            if s is not None and n is not None:
-                pairs.append({"spi": round(float(s), 3), "ndvi": round(float(n), 3)})
-    except Exception as exc:
-        logger.warning("SPI×NDVI: sampling failed: %s", exc)
-
-    # OLS trendline over the sampled pairs (NDVI = a·SPI + b)
     slope = intercept = None
-    if len(pairs) >= 10:
+    if include_samples:
         try:
-            import numpy as np
-            xs = np.array([p["spi"] for p in pairs])
-            ys = np.array([p["ndvi"] for p in pairs])
-            slope_f, intercept_f = np.polyfit(xs, ys, 1)
-            slope, intercept = round(float(slope_f), 4), round(float(intercept_f), 4)
+            fc = both.sample(
+                region=region, scale=5000,
+                numPixels=max(50, min(samples, 2000)),
+                seed=42, geometries=False,
+            ).getInfo() or {}
+            for f in fc.get("features", []):
+                p = f.get("properties", {})
+                s, n = p.get("SPI"), p.get("NDVI")
+                if s is not None and n is not None:
+                    pairs.append({"spi": round(float(s), 3), "ndvi": round(float(n), 3)})
         except Exception as exc:
-            logger.warning("SPI×NDVI: trendline fit failed: %s", exc)
+            logger.warning("SPI×NDVI: sampling failed: %s", exc)
+
+        # OLS trendline over the sampled pairs (NDVI = a·SPI + b)
+        if len(pairs) >= 10:
+            try:
+                import numpy as np
+                xs = np.array([p["spi"] for p in pairs])
+                ys = np.array([p["ndvi"] for p in pairs])
+                slope_f, intercept_f = np.polyfit(xs, ys, 1)
+                slope, intercept = round(float(slope_f), 4), round(float(intercept_f), 4)
+            except Exception as exc:
+                logger.warning("SPI×NDVI: trendline fit failed: %s", exc)
 
     drought_pct = (round(drought_km2 / total_km2 * 100, 1)
                    if drought_km2 is not None and total_km2 else None)
@@ -3650,6 +4125,8 @@ def get_index_download_url(
     end_date: str = "2023-12-31",
     cloud_pct: int = 30,
     scale: int = 30,
+    pre_start_date: Optional[str] = None,
+    pre_end_date: Optional[str] = None,
 ) -> dict:
     """Generate a direct GeoTIFF raster download URL from GEE for a given index and AOI."""
     import ee
@@ -3657,6 +4134,8 @@ def get_index_download_url(
     if index not in INDEX_REGISTRY:
         raise ValueError(f"Índice desconhecido '{index}'. Disponíveis: {list(INDEX_REGISTRY)}")
 
+    require_scientific_index(index)
+    validate_period(start_date, end_date)
     cfg = INDEX_REGISTRY[index]
     region = _to_ee_region(region_geojson)
 
@@ -3671,11 +4150,22 @@ def get_index_download_url(
     if "rivers" in needs:
         rivers = _build_rivers_raster(region)
 
-    idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers).clip(region)
+    idx_img = _build_index_image(index, region, s2=s2, l8=l8, dem=dem, rivers=rivers, start_date=start_date, end_date=end_date, pre_start_date=pre_start_date, pre_end_date=pre_end_date, cloud_pct=cloud_pct).clip(region).toFloat()
+    from gee_download_grid import bounded_download_grid
+    grid_geometry = region_geojson or {
+        "type": "Polygon", "coordinates": [[
+            [MZ_BBOX[0], MZ_BBOX[1]], [MZ_BBOX[2], MZ_BBOX[1]],
+            [MZ_BBOX[2], MZ_BBOX[3]], [MZ_BBOX[0], MZ_BBOX[3]],
+            [MZ_BBOX[0], MZ_BBOX[1]],
+        ]],
+    }
+    grid = bounded_download_grid(grid_geometry, scale, 900_000 if index == "elevation" else 4_000_000)
+
 
     download_params = {
         "name": f"geomoz_{index}_{start_date}_{end_date}",
-        "scale": scale,
+        "dimensions": grid["dimensions"],
+        "crs_transform": grid["crsTransform"],
         "crs": "EPSG:4326",
         "region": region,
         "format": "GEO_TIFF",
@@ -3686,7 +4176,7 @@ def get_index_download_url(
         "downloadUrl": url,
         "index": index,
         "name": cfg["name"],
-        "scale": scale,
+        **grid,
         "format": "GEO_TIFF",
         "dateRange": f"{start_date} → {end_date}",
     }

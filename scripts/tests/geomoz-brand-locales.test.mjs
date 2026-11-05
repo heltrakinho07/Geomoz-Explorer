@@ -1,0 +1,71 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import {brandLocaleCatalog} from "../geomoz-brand-locales.mjs";
+
+test("GeoMoz owns visible UI translations; technical paths and open-source URLs are retained",()=>{
+  const input={
+    about:{title:"Sobre o GeoLibre",description:"GeoLibre é um SIG."},
+    startup:{label:"Abrir GeoLibre",desktopOnly:"Requer GeoLibre Desktop.",technical:"Instale geolibre-server."},
+    links:{legal:"https://github.com/opengeos/GeoLibre",example:"Análise GeoLibre"},
+    nested:["GeoLibre Workbench",{label:"Projecto GeoLibre"}]
+  };
+  const result=brandLocaleCatalog(input,"pt");
+  assert.equal(result.about.title,"Sobre o GeoMoz GIS Workspace");
+  assert.match(result.about.description,/GeoMoz/);
+  assert.equal(result.startup.label,"Abrir GeoMoz");
+  assert.match(result.startup.desktopOnly,/aplicação SIG para computador/);
+  assert.equal(result.startup.technical,"Instale geolibre-server.");
+  assert.equal(result.links.legal,"https://github.com/opengeos/GeoLibre");
+  assert.deepEqual(result.nested,["GeoMoz Workbench",{label:"Projecto GeoMoz"}]);
+  assert.match(input.about.title,/GeoLibre/,"should not mutate original translations");
+});
+test("German/English locale fallback never falsely offers a GeoMoz Desktop product",()=>{
+  const result=brandLocaleCatalog({notice:"Requires GeoLibre Desktop.",about:{title:"About GeoLibre"}},"en");
+  assert.equal(result.about.title,"About GeoMoz GIS Workspace");
+  assert.match(result.notice,/compatible desktop GIS application/);
+  assert.doesNotMatch(result.notice,/GeoMoz Desktop/);
+});
+test("attribution keys remain verbatim when an open-source component is credited",()=>{
+  const result=brandLocaleCatalog({thirdParty:{license:"GeoLibre is MIT licensed"},copyright:"Copyright GeoLibre",normal:"GeoLibre tools"},"pt");
+  assert.equal(result.thirdParty.license,"GeoLibre is MIT licensed");
+  assert.equal(result.copyright,"Copyright GeoLibre");
+  assert.equal(result.normal,"GeoMoz tools");
+});
+test("pinned upstream is adapted at source rather than through client-side DOM rewrites",()=>{
+  const prepare=readFileSync("scripts/prepare-geomoz-workbench.mjs","utf8");
+  const about=readFileSync("scripts/assets/workbench/GeoMozAboutDialog.tsx","utf8");
+  const chrome=readFileSync("scripts/assets/workbench/GeoMozWorkbenchChrome.tsx","utf8");
+  assert.match(prepare,/brandUpstreamLocales/);
+  assert.match(prepare,/components\/layout\/AboutDialog\.tsx/);
+  assert.match(prepare,/GeoMozAboutDialog\.tsx/);
+  assert.match(prepare,/geomoz\.geolithica\.com/);
+  assert.match(about,/third-party-notices\.html/);
+  assert.doesNotMatch(about,/fetchLatestRelease|GeoLibre/);
+  const settings=readFileSync("scripts/assets/workbench/GeoMozSettingsMenu.tsx","utf8");
+  assert.match(settings,/geomoz-about-trigger/);
+  assert.match(chrome,/GeoMozSettingsMenu/);
+  assert.match(chrome,/data-testid="geomoz-workbench-chrome"/);
+});
+
+test("GeoMoz web/PWA update notice uses product identity and the user's language",()=>{
+  const notifications={
+    appUpdateAvailable:"A new version of GeoLibre is available.",
+    appUpdateReload:"Reload"
+  };
+  const en=brandLocaleCatalog({notifications},"en");
+  const pt=brandLocaleCatalog({notifications},"pt");
+  assert.equal(en.notifications.appUpdateAvailable,"A new version of GeoMoz GIS Workspace is available.");
+  assert.equal(en.notifications.appUpdateReload,"Reload now");
+  assert.equal(pt.notifications.appUpdateAvailable,"Está disponível uma nova versão do GeoMoz GIS Workspace.");
+  assert.equal(pt.notifications.appUpdateReload,"Actualizar agora");
+  assert.equal(notifications.appUpdateAvailable,"A new version of GeoLibre is available.");
+});
+test("GIS Workspace offers its PWA update notice only once per browser session",()=>{
+  const source=readFileSync("scripts/prepare-geomoz-workbench.mjs","utf8");
+  assert.match(source,/let geomozUpdateNoticeShown = false/);
+  assert.match(source,/if \(geomozUpdateNoticeShown\) return/);
+  assert.match(source,/geomozUpdateNoticeShown = true/);
+  assert.match(source,/one GeoMoz update notice per tab/);
+  assert.doesNotMatch(source,/window\.location\.reload\(\)/);
+});

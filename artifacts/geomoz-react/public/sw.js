@@ -1,5 +1,5 @@
 // GeoMoz Explorer 3D — Production Progressive Web App (PWA) Service Worker
-const CACHE_VERSION = "geomoz-v1.0.3";
+const CACHE_VERSION = "geomoz-v1.0.2";
 const CACHE_SHELL = `geomoz-shell-${CACHE_VERSION}`;
 const CACHE_STATIC = `geomoz-static-${CACHE_VERSION}`;
 const CACHE_TILES = `geomoz-tiles-${CACHE_VERSION}`;
@@ -15,7 +15,6 @@ const PRECACHE_ASSETS = [
   "/manifest.json",
   "/favicon.svg",
   "/favicon.png",
-  "/favicon.ico",
   "/icon-192.png",
   "/icon-512.png",
   "/apple-touch-icon.png",
@@ -77,6 +76,16 @@ self.addEventListener("fetch", (event) => {
 
   // Ignore non-GET requests and browser extensions
   if (request.method !== "GET" || !url.protocol.startsWith("http")) {
+    return;
+  }
+
+  // The original GeoLibre Web application lives in its own /gis-workspace/
+  // scope and registers its own service worker. GeoMoz's root-scoped PWA
+  // must never cache or rewrite its HTML, JS, tiles or WASM responses.
+  if (
+    url.origin === self.location.origin &&
+    (url.pathname === "/gis-workspace" || url.pathname.startsWith("/gis-workspace/"))
+  ) {
     return;
   }
 

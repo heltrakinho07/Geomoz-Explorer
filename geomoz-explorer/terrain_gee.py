@@ -29,15 +29,14 @@ def preview_scale_m(region_geojson: dict) -> int:
     return min(30_000, max(30, math.ceil(max(lon_span_m, lat_span_m) / 180)))
 
 
-def copernicus_to_preview(region_geojson: dict) -> dict:
-    """Fetch a signed GEE export, enforce size limit and discard all source bytes."""
-    from gee_module import get_index_download_url
 
-    scale = preview_scale_m(region_geojson)
-    result = get_index_download_url("elevation", region_geojson, scale=scale)
-    download_url = result.get("downloadUrl")
-    if not isinstance(download_url, str):
-        raise TerrainInputError("O Earth Engine não devolveu uma ligação GeoTIFF.")
+def fetch_signed_gee_geotiff(download_url: str) -> bytes:
+    """Fetch only a Google-signed GeoTIFF, enforcing redirected hosts and ZIP limits.
+
+    A single shared bounded downloader serves DEM and imagery exports.
+    """
+    if not isinstance(download_url, str) or not download_url:
+        raise TerrainInputError("Ligação de exportação GEE inválida.")
     chunks: list[bytes] = []
     total = 0
     current_url = download_url
@@ -85,6 +84,19 @@ def copernicus_to_preview(region_geojson: dict) -> dict:
                     raise TerrainInputError("O DEM descompactado excede 32 MB.")
         except BadZipFile as exc:
             raise TerrainInputError("A exportação ZIP do GEE está corrompida.") from exc
+    return raw
+
+
+def copernicus_to_preview(region_geojson: dict) -> dict:
+    """Fetch a signed GEE export, enforce size limit and discard all source bytes."""
+    from gee_module import get_index_download_url
+
+    scale = preview_scale_m(region_geojson)
+    result = get_index_download_url("elevation", region_geojson, scale=scale)
+    download_url = result.get("downloadUrl")
+    if not isinstance(download_url, str):
+        raise TerrainInputError("O Earth Engine não devolveu uma ligação GeoTIFF.")
+    raw = fetch_signed_gee_geotiff(download_url)
     preview = dem_to_preview(raw, "Copernicus_GLO30_GEE.tif")
     preview["geeExportScaleMeters"] = scale
     preview["sourceName"] = "Copernicus GLO-30 · Google Earth Engine"

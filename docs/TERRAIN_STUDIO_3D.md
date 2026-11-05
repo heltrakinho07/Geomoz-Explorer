@@ -61,3 +61,61 @@ pnpm run build
 - Para importar uma ortofoto/Sentinel-2 como GeoTIFF RGB, as bandas 1/2/3 devem representar R/G/B. É necessária georreferenciação válida; PNG sem referência só pode ser aplicado com alinhamento manual prévio.
 - O modelo é reamostrado para visualização, não para medições científicas de detalhe.
 - Forge3D-Web permanece numa via experimental separada; ainda não é uma dependência de produção.
+
+
+## Integração nativa GIS Workspace → Terreno 3D (fase 2026-11-04)
+
+- **Sem iframe e sem mensagens entre aplicações:** `GeoMozTerrainWorkspace` é um componente React nativo do GIS Workbench, ligado ao mesmo `useAppStore` do GeoLibre. A sessão, as camadas, a selecção e o mapa 2D permanecem em memória.
+- **DEM existente sem segunda importação:** `terrainRasterLayerOptions` identifica as camadas COG/GeoTIFF com fonte exportável. O navegador descarrega, com limite de 32 MB em streaming, os bytes da mesma origem já associada à camada. `geomoz-native-terrain-dem.ts` lê a banda altimétrica com geotiff.js e calcula a pré-visualização com proj4. Preserva NoData e aceita CRS EPSG:4326, 3857 e UTM WGS84 32601–32660 / 32701–32760. Outros CRS precisam de conversão prévia nas ferramentas Raster.
+- **Um único motor 3D:** os ficheiros `terrain-webgl.ts`, `terrain-analysis.ts` e `terrain-scene.ts` do Explorer são incorporados no build do GeoLibre a partir das mesmas fontes. A vista 3D renderiza directamente num canvas WebGL2.
+- **Picking real de terreno:** quando o utilizador activa A ou B, o renderer intersecta o clique com os triângulos projectados da malha, calcula a cota da superfície e converte as coordenadas métricas em longitude/latitude.
+- **Linha A→B sobreposta ao 3D:** os perfis seleccionados são amostrados na malha e representados em linhas e pontos directamente no WebGL, acima da superfície.
+- **Devolução ao projecto:** o botão «Adicionar perfil ao projecto SIG» cria uma camada GeoJSON MultiLineString com altitudes; «Adicionar curvas ao catálogo SIG» cria a camada GeoJSON de curvas de nível. Ambas usam `useAppStore().addGeoJsonLayer` e permanecem no projecto 2D após fechar a vista 3D.
+- **Exportações:** cena de pré-visualização `.geomoz`, PNG/PDF da vista 3D; perfil CSV/PNG/PDF e curvas GeoJSON.
+
+### Critérios de validade e limites
+
+- A geometria de perfis e curvas resulta de uma **grelha de pré-visualização 193 × 193**, não da resolução original do DEM. Para resultados finais, gerar curvas e declives no módulo Raster sobre o GeoTIFF original.
+- Restrições: ficheiro até 32 MB, fonte até 100 milhões de pixels, número e tamanho de curvas limitados. O raster original não é duplicado em Firestore nem em Cloud Run.
+- Rotação/skew de GeoTIFF, CRS sem identificação EPSG válida e projeções diferentes das explicitadas requerem conversão ou reprojectação prévia.
+- O GEE autenticado continua acessível ao módulo Terreno 3D do GeoMoz Explorer; a nova execução puramente local no GIS Workbench não reutiliza credenciais pessoais Google/GEE.
+- Escalabilidade COG por janelas/tiles e LOD, texturas Sentinel/Landsat automáticas, persistência da cena no projecto completo e GLB/glTF permanecem a desenvolver.
+
+### Testes integrados
+
+O pipeline `GeoMoz Workbench CI` compila o motor GIS upstream e executa `scripts/integration/geomoz-raster-browser.cjs`, que deve verificar o uso de um DEM real do catálogo, a criação do canvas WebGL, a consulta da superfície, o perfil A→B, as curvas de nível e a preservação da camada original. O frontend executa os testes de geometria, precisão, NoData e picking do renderer.
+
+
+## Fase de visualização avançada — Sentinel-2 RGB, GLB e LOD
+
+- **Sentinel-2 SR harmonizado (GeoMoz Explorer):** ao carregar um DEM e autenticar o Earth Engine, use «Aplicar Sentinel-2 RGB ao terreno». O servidor seleciona as imagens dos últimos 12 meses, aplica máscara SCL (nuvens/água/solo) já utilizada pelo módulo de análises espectrais, faz uma composição mediana RGB B4/B3/B2 e exporta uma imagem GeoTIFF de 3 bandas na **mesma grelha UTM/metric** do DEM; a transformação e o CRS são explicitamente fornecidos. O raster RGB é então reprojetado para a malha e convertido em PNG RGBA. NoData permanece transparente. Nenhuma imagem é persistida no servidor.
+- **Segurança GEE:** o endpoint `/geomoz-api/terrain/gee-rgb-texture` exige Firebase e credenciais GEE do utilizador. Downloads seguem o mesmo verificador de hosts Google, streaming e limite de 32 MB do DEM. A composição é serializada com outros pedidos GEE, validando dimensões da grelha, CRS, datas, nuvens e uma AOI até 300 km por lado.
+- **GLB (glTF 2.0):** o botão «GLB 3D» exporta a malha em **metros locais**, com altura relativa à menor elevação e factor de exagero vertical. Omite os triângulos NoData, incorpora atributos de CRS, coordenadas e datum vertical em `extras` e, quando a textura actual é RGB, inclui a imagem no único ficheiro GLB. Sem textura, usa cores hipsométricas por vértice. O modelo não está georreferenciado por um formato glTF universal: os `extras` GeoMoz preservam a georreferenciação para futura reimportação.
+- **LOD de renderização:** «Automático» alterna entre índices de detalhe completo, 2 e 4 consoante o zoom. «Detalhe máximo», «Equilibrado» e «Rápido» permitem escolha manual. Triângulos de baixa resolução não atravessam células NoData. O LOD reduz o **número de triângulos desenhados**, mas não aumenta a resolução da malha de pré-visualização nem permite abrir DEM >32 MB; blocos COG com carregamento progressivo continuam para fase posterior.
+- **Compartilhamento:** o motor WebGL, o exportador GLB e as rotinas de LOD são o mesmo código-fonte nos módulos Explorer e GIS Workspace. A fonte `terrain-glb.ts` é copiada com import ajustado no build do GeoLibre.
+- **Testes:** `terrain-glb.test.ts` verifica cabeçalho GLB, chunks JSON/BIN, máscaras NoData, textura binária, tamanho do DEM 193×193 e níveis de detalhe. `test_terrain_satellite.py` executa verificação de grelha, períodos, filtros e pedido GEE simulado, sem credenciais reais. A autenticação real do GEE exige validação manual.
+
+
+## GeoMoz GIS Workspace — camadas temáticas sobre o relevo (04/11/2026)
+
+O módulo **Terreno 3D** partilha as camadas do projecto GIS e organiza a interface em separadores: **Camadas**, **Simbologia**, **Análise** e **Exportar**. O painel mantém uma área de visualização 3D ampla e os controlos de estilo base/LOD numa secção recolhível.
+
+### Camadas vectoriais
+
+- Adicionar polígonos, linhas e pontos GeoJSON **existentes no projecto**, sem segunda importação, ou importar `.geojson` / `.json` em WGS84.
+- Reprojectar para o mesmo SRC UTM/Web Mercator do DEM com proj4; o canvas de sobreposição só representa a parte situada na extensão do modelo, e o WebGL respeita triângulos NoData. O GeoJSON original **não é recortado fisicamente** nem alterado no projecto — o *recorte visual* é automático.
+- Reutilizar nomes, cores, contornos, opacidade e simbologia *categorizada* do GIS Workspace, incluindo valores e cores de `vectorStyleStops`.
+- Controlo de visibilidade, remoção da vista 3D, transparência por camada, símbolo único ou categorizado por campo; legenda por categoria, com edição de cores.
+- Segurança de dados: limite de 8000 feições / 350 mil vértices e GeoJSON WGS84 até 12 MB; validação de coordenadas. A camada original continua disponível no mapa 2D.
+
+### Rasters temáticos
+
+- Importação de GeoTIFF local ou de uma camada raster **já existente no catálogo do projecto** (até 32 MB). Reamostragem limitada a uma textura de 384 × 384 pixels no navegador, sem carregar o dataset inteiro em memória gráfica.
+- Reprojecção WGS84/UTM e recorte à extensão projectada do DEM; sem interpolar pixels categóricos entre classes e sem preencher NoData.
+- Um GeoTIFF de banda única é visualizado como raster categorizado (com cores oficiais para códigos **ESA WorldCover 2021** ou classes de textura USDA 1–12 quando aplicáveis); com três ou mais bandas, usa RGB. Legenda, visibilidade e transparência independentes das camadas vectoriais.
+- Raster temático fica abaixo da textura vectorial, sobre a hipsometria e o relevo sombreado. A alteração da transparência não modifica as elevações ou o DEM original.
+- A opção de **consulta directa ao GEE a partir do GIS Workspace** exige reutilização segura do estado de autenticação Firebase/GEE do utilizador no motor GeoLibre; não está incluída nesta fase. Pode exportar um GeoTIFF georreferenciado a partir das GeoAnálises/GEE existentes e adicioná-lo aqui. Não confundir um dataset ESA WorldCover de 2021 com cobertura anual de 2026.
+
+### Testes
+
+O teste de navegador `scripts/integration/geomoz-raster-browser.cjs` cobre um DEM autêntico no catálogo, importação de GeoJSON de geologia, classificação por atributo, transparência de 45%, importação de GeoTIFF pedológico classificado georreferenciado, transparência de 35%, selecção A→B, curvas de nível e exportação GLB. A compilação do GeoLibre e a estabilidade dos restantes módulos são verificadas na mesma execução.

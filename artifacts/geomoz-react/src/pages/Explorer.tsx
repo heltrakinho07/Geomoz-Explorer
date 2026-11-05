@@ -1,5 +1,9 @@
+import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
+import {useGeoMozTheme} from "@/hooks/useGeoMozTheme";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import { sharedMapText, type SharedMapKey } from "@/i18n/sharedMap";
 import React, { useRef, useState, useEffect, Suspense } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   Globe,
   Settings,
@@ -18,18 +22,26 @@ import {
   BrainCircuit,
   Menu,
   FileText,
+  BookOpen,
   Layers,
   Cpu,
+  FolderOpen,
+  Save,
+  Mountain,
+  Wrench,
+  DatabaseZap,
+  ArrowLeft,
+  Upload,
+  Printer,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import L from "leaflet";
 import Sidebar, { LayerState } from "@/components/Sidebar";
 import MapView from "@/components/MapView";
-import GISWorkspacePanel from "@/components/GISWorkspacePanel";
-import type { WorkspaceLayer } from "@/lib/gis-workspace";
 import StatsPanel from "@/components/StatsPanel";
 import ExportPanel from "@/components/ExportPanel";
+import GeoMozPrintLayout from "@/components/GeoMozPrintLayout";
 import DashboardPanel from "@/components/DashboardPanel";
 import {
   LazyGeoAnalises,
@@ -38,15 +50,16 @@ import {
   LazyAguaSubterranea,
   LazyGeoMozAI,
   LazyGeoProcessamento,
+  LazyDocumentation,
 } from "@/lib/lazy-pages";
 import { apiFetch } from "@/lib/api";
-import SettingsDialog from "@/components/SettingsDialog";
 import GeeCredentialsDialog from "@/components/GeeCredentialsDialog";
 import AuthModal from "@/components/AuthModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useGeeAuth } from "@/hooks/useGeeAuth";
 import { useProject } from "@/context/ProjectContext";
 import { TerrainSessionProvider } from "@/context/TerrainSessionContext";
+import TerrainStudio from "@/components/TerrainStudio";
 import ProjectWorkspaceModal from "@/components/ProjectWorkspaceModal";
 import type { AreaOfInterest } from "@/lib/aoi";
 import { mozambiqueAOI, GLOBAL_AOI, customAOI, aoiToAPI } from "@/lib/aoi";
@@ -63,17 +76,21 @@ type Tab =
   | "Dashboard"
   | "Mapa"
   | "GIS Workspace"
+  | "Terreno 3D"
   | "Análise"
   | "GeoAnálises"
   | "Bacias Hidrográficas"
   | "Água Subterrânea"
   | "Geoperigos"
-  | "GeoProcessamento"
   | "GeoMoz AI"
-  | "Exportar";
+  | "Exportar"
+  | "Documentação";
 
 function ExplorerContent() {
+  const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { translatedLocale } = usePortalTranslation();
+  const copy = (key: SharedMapKey) => sharedMapText(translatedLocale, key);
   const { user } = useAuth();
   const { geeConnected, geeProject } = useGeeAuth();
   const { activeProject } = useProject();
@@ -81,7 +98,6 @@ function ExplorerContent() {
   const [province, setProvince] = useState<string | null>(null);
   const [district, setDistrict] = useState<string | null>(null);
   const [colorBy, setColorBy] = useState("code2006");
-  const [workspaceLayers, setWorkspaceLayers] = useState<WorkspaceLayer[]>([]);
   const [layers, setLayers] = useState<LayerState>({
     provinces: true,
     districts: false,
@@ -94,6 +110,7 @@ function ExplorerContent() {
     const hash = window.location.hash.toLowerCase();
     const search = new URLSearchParams(window.location.search);
     const tabParam = search.get("tab")?.toLowerCase();
+    if (path.includes("terreno-3d") || hash.includes("terreno-3d") || search.get("terrain3d") === "1" || tabParam === "terreno-3d") return "Terreno 3D";
 
     if (path.includes("analis") || hash.includes("analis") || tabParam?.includes("analis")) {
       return "GeoAnálises";
@@ -107,14 +124,29 @@ function ExplorerContent() {
     if (path.includes("perigo") || hash.includes("perigo") || tabParam?.includes("perigo")) {
       return "Geoperigos";
     }
-    if (path.includes("gis-workspace") || hash.includes("gis-workspace") || tabParam?.includes("gis-workspace")) {
-      return "GIS Workspace";
-    }
     if (path.includes("ai") || hash.includes("ai") || tabParam?.includes("ai")) {
       return "GeoMoz AI";
     }
+    if (
+      path.includes("gis-workspace") ||
+      path.includes("geoprocessamento") ||
+      hash.includes("gis-workspace") ||
+      hash.includes("geoprocessamento") ||
+      tabParam?.includes("gis-workspace") ||
+      tabParam?.includes("geoprocessamento")
+    ) {
+      return "GIS Workspace";
+    }
     if (path.includes("mapa") || hash.includes("mapa") || tabParam?.includes("mapa")) {
       return "Mapa";
+    }
+    if (
+      path.includes("document") ||
+      path.includes("ajuda") ||
+      hash.includes("document") ||
+      tabParam?.includes("document")
+    ) {
+      return "Documentação";
     }
     if (path.includes("export") || hash.includes("export") || tabParam?.includes("export")) {
       return "Exportar";
@@ -125,20 +157,27 @@ function ExplorerContent() {
   const [activeTab, setActiveTabState] = useState<Tab>(getInitialTab);
 
   const setActiveTab = (tab: Tab) => {
+    // Production uses the actual GeoLibre Web application on a separate route.
+    // Local Vite development and /geoprocessamento retain the existing engine.
+    if (tab === "GIS Workspace" && import.meta.env.VITE_GIS_WORKSPACE_ENGINE === "geolibre") {
+      window.location.assign("/gis-workspace/");
+      return;
+    }
     setActiveTabState(tab);
     try {
       const slugMap: Record<Tab, string> = {
         Dashboard: "dashboard",
         Mapa: "mapa",
         "GIS Workspace": "gis-workspace",
+        "Terreno 3D": "terreno-3d",
         Análise: "estatisticas",
         GeoAnálises: "analises",
         "Bacias Hidrográficas": "hidrografia",
         "Água Subterrânea": "agua-subterranea",
         Geoperigos: "geoperigos",
-        GeoProcessamento: "geoprocessamento",
         "GeoMoz AI": "geomoz-ai",
         Exportar: "exportar",
+        Documentação: "documentacao",
       };
       const slug = slugMap[tab];
       const newUrl = slug ? `/${slug}` : "/app";
@@ -147,6 +186,12 @@ function ExplorerContent() {
       }
     } catch {}
   };
+
+  useEffect(() => {
+    const show = () => setActiveTab("Terreno 3D");
+    window.addEventListener("geomoz:terrain-studio:open", show);
+    return () => window.removeEventListener("geomoz:terrain-studio:open", show);
+  }, []);
 
   useEffect(() => {
     const onPopState = () => {
@@ -158,11 +203,11 @@ function ExplorerContent() {
 
   const [mapCenter, setMapCenter] = useState<[number, number]>([-18, 35]);
   const [mapZoom, setMapZoom] = useState(5);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [geeDialogOpen, setGeeDialogOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [printOpen,setPrintOpen] = useState(false);
 
   // Sync AOI and map view when active project changes (keyed on id to prevent circular re-renders)
   const activeProjectId = activeProject?.id;
@@ -200,7 +245,7 @@ function ExplorerContent() {
   const searchRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
 
-  // Global 2D / 3D mode state
+  // Global 2D / 3D mode is consumed ONLY by the dedicated /mapa route.
   const [globalViewMode, setGlobalViewMode] = useState<"2d" | "3d">(() => {
     try {
       return (localStorage.getItem("geomoz_view_mode") as "2d" | "3d") || "3d";
@@ -216,6 +261,7 @@ function ExplorerContent() {
       window.dispatchEvent(new CustomEvent("geomoz_view_mode_changed", { detail: mode }));
     } catch {}
   };
+
 
   useEffect(() => {
     const handleCustom = (e: Event) => {
@@ -370,118 +416,159 @@ function ExplorerContent() {
       case "Dashboard":
         return {
           icon: <LayoutDashboard size={18} className="text-sky-500 shrink-0" />,
-          title: "Dashboard",
-          subtitle: "Centro de Comando & Gestão de Projetos",
+          title: copy("explorer.dashboard.title"),
+          subtitle: copy("explorer.dashboard.subtitle"),
         };
       case "Mapa":
         return {
           icon: <Globe size={18} className="text-sky-500 shrink-0" />,
-          title: "Mapa Geoespacial",
-          subtitle: "2D / 3D Hipsometria & Relevo",
+          title: copy("explorer.map.title"),
+          subtitle: copy("explorer.map.subtitle"),
+        };
+      case "Terreno 3D":
+        return {
+          icon: <Mountain size={18} className="text-sky-500 shrink-0" />,
+          title: copy("explorer.terrain.title"),
+          subtitle: copy("explorer.terrain.subtitle"),
         };
       case "GIS Workspace":
         return {
-          icon: <Layers size={18} className="text-sky-500 shrink-0" />,
-          title: "GIS Workspace",
-          subtitle: "Cartografia, camadas e geoprocessamento num só ambiente",
+          icon: <Cpu size={18} className="text-indigo-500 shrink-0" />,
+          title: copy("explorer.workspace.title"),
+          subtitle: copy("explorer.workspace.subtitle"),
         };
       case "GeoAnálises":
         return {
           icon: <Satellite size={18} className="text-indigo-500 shrink-0" />,
-          title: "Catálogo de GeoAnálises",
-          subtitle: "Sensoriamento Remoto Sentinel-2, Landsat & DEM 30m",
+          title: copy("explorer.analyses.title"),
+          subtitle: copy("explorer.analyses.subtitle"),
         };
       case "Bacias Hidrográficas":
         return {
           icon: <Droplets size={18} className="text-cyan-500 shrink-0" />,
-          title: "Bacias Hidrográficas",
-          subtitle: "Delineação D8 & Rede de Drenagem",
+          title: copy("explorer.hydro.title"),
+          subtitle: copy("explorer.hydro.subtitle"),
         };
       case "Água Subterrânea":
         return {
           icon: <Droplet size={18} className="text-teal-500 shrink-0" />,
-          title: "Água Subterrânea",
-          subtitle: "Potencial Hidrogeológico AHP",
+          title: copy("explorer.ground.title"),
+          subtitle: copy("explorer.ground.subtitle"),
         };
       case "Geoperigos":
         return {
           icon: <AlertTriangle size={18} className="text-amber-500 shrink-0" />,
-          title: "Geoperigos & Riscos",
-          subtitle: "Deteção SAR de Cheias & Erosão",
-        };
-      case "GeoProcessamento":
-        return {
-          icon: <Cpu size={18} className="text-indigo-500 shrink-0" />,
-          title: "GeoProcessamento Avançado",
-          subtitle: "WASM In-Browser, Cortina Temporal & Spatial SQL",
+          title: copy("explorer.hazards.title"),
+          subtitle: copy("explorer.hazards.subtitle"),
         };
       case "GeoMoz AI":
         return {
           icon: <BrainCircuit size={18} className="text-purple-500 shrink-0" />,
-          title: "GeoMoz AI Agent",
-          subtitle: "Planeamento Geoespacial Inteligente",
+          title: copy("explorer.ai.title"),
+          subtitle: copy("explorer.ai.subtitle"),
         };
       case "Exportar":
         return {
           icon: <FileText size={18} className="text-emerald-500 shrink-0" />,
-          title: "Dossiê do Estudo & Exportação",
-          subtitle: "Relatórios Técnicos PDF, HTML & GeoTIFF",
+          title: copy("explorer.export.title"),
+          subtitle: copy("explorer.export.subtitle"),
+        };
+      case "Documentação":
+        return {
+          icon: <BookOpen size={18} className="text-indigo-500 shrink-0" />,
+          title: copy("explorer.docs.title"),
+          subtitle: copy("explorer.docs.subtitle"),
         };
       case "Análise":
       default:
         return {
           icon: <LayoutDashboard size={18} className="text-sky-500 shrink-0" />,
-          title: "GeoMoz",
-          subtitle: "Plataforma de Estudos Geoespaciais",
+          title: copy("explorer.default.title"),
+          subtitle: copy("explorer.default.subtitle"),
         };
     }
   };
 
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    try {
-      return (localStorage.getItem("geomoz_theme") as "light" | "dark") || "light";
-    } catch {
-      return "light";
-    }
-  });
-
-  useEffect(() => {
-    const handleThemeChange = (e: Event) => {
-      const newTheme = (e as CustomEvent).detail as "light" | "dark";
-      if (newTheme) setTheme(newTheme);
-    };
-    window.addEventListener("geomoz_theme_changed", handleThemeChange);
-    return () => window.removeEventListener("geomoz_theme_changed", handleThemeChange);
-  }, []);
+  const {theme} = useGeoMozTheme();
 
   const currentTabMeta = getTabMeta(activeTab);
+  // Render the same module inside the GIS Workbench without a second sidebar.
+  // The original Workbench stays mounted behind its panel, retaining all layers.
+  const embeddedTerrain = typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).get("embedded") === "1";
+  if (embeddedTerrain) {
+    return <TerrainStudio open embedded onClose={() => {
+      if (window.parent !== window) window.parent.postMessage({type: "geomoz:terrain:close"}, window.location.origin);
+    }} geeEnabled={geeConnected} geeRegion={{ province, district, geometry: aoiToAPI(aoi).geometry }} />;
+  }
 
   return (
     <div
-      className={`flex h-screen w-full font-sans overflow-hidden transition-colors duration-200 ${
+      data-geomoz-system="explorer"
+      className={`flex h-[100dvh] min-h-0 w-full min-w-0 font-sans overflow-hidden transition-colors duration-200 ${
         theme === "dark" ? "dark bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900"
       }`}
     >
-      {/* 1. Desktop & Mobile Modern Navigation Sidebar */}
-      <Sidebar
+      {/* A dedicated GIS application shell replaces generic navigation. */}
+      {activeTab !== "GIS Workspace" && <Sidebar
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onOpenProjectModal={() => setProjectModalOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => navigate("/definicoes")}
         mobileOpen={mobileSidebarOpen}
         onMobileClose={() => setMobileSidebarOpen(false)}
-      />
+      />}
 
       {/* 2. Main Workspace (Clean Topbar + Active View) */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-white dark:bg-slate-950">
+        {activeTab === "GIS Workspace" && (
+          <header data-testid="gis-workspace-app-toolbar"
+            className="z-30 flex h-12 shrink-0 min-w-0 items-center gap-2 border-b border-sky-900 bg-slate-950 px-2 text-slate-100 shadow-md sm:px-3">
+            <button type="button" onClick={() => setActiveTab("Mapa")}
+              title={copy("explorer.exitWorkspaceTitle")}
+              aria-label={copy("explorer.exitWorkspace")}
+              className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-bold hover:bg-slate-800">
+              <ArrowLeft size={15} />
+              <GeoMozBrandIcon className="h-6 w-6 rounded-md" width={24} height={24} />
+              <span className="hidden sm:inline text-sky-400">GeoMoz</span>
+              <span className="text-white">GIS</span>
+            </button>
+            <div className="hidden h-6 w-px shrink-0 bg-slate-700 sm:block" />
+            <nav aria-label={copy("explorer.workspaceNav")} className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none]">
+              {([
+                ["explorer.action.openProject", "import-project", FolderOpen],
+                ["explorer.action.exportProject", "export-project", Save],
+                ["explorer.action.saveDevice", "save-device", Save],
+                ["explorer.action.restore", "restore-device", FolderOpen],
+                ["explorer.action.addData", "add-file", Upload],
+                ["explorer.action.dem", "download-dem", Mountain],
+                ["explorer.action.processing", "processing", Wrench],
+                ["explorer.action.ogc", "data", Globe],
+                ["explorer.action.layers", "layers", Layers],
+                ["explorer.action.terrain", "terrain", DatabaseZap],
+              ] as const).map(([labelKey, action, Icon]) => (
+                <button key={action} type="button" title={copy(labelKey)}
+                  onClick={() => window.dispatchEvent(new CustomEvent("geomoz:gis-workspace-action", { detail: action }))}
+                  className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold text-slate-200 hover:bg-slate-800 hover:text-sky-300 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-400">
+                  <Icon size={13} />
+                  <span>{copy(labelKey)}</span>
+                </button>
+              ))}
+            </nav>
+            <button type="button" data-testid="geomoz-gis-print-open" onClick={()=>setPrintOpen(true)} className="gm-system-print-button inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-sky-800 px-2.5 text-[11px] font-semibold text-sky-100 hover:bg-sky-900" title={copy("explorer.printTitle")}><Printer size={15}/> <span className="hidden sm:inline">{copy("explorer.print")}</span></button>
+            <span className="hidden shrink-0 text-[10px] font-semibold text-emerald-400 lg:inline" title={copy("explorer.localCloudHint")}>{copy("explorer.localCloud")}</span>
+          </header>
+        )}
+
         {/* Decluttered Top Header */}
-        <header className="flex-none h-14 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 sm:px-4 flex items-center justify-between shrink-0 z-30 transition-all">
+        {activeTab !== "GIS Workspace" && <header className="flex-none h-14 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 sm:px-4 flex items-center justify-between shrink-0 z-30 transition-all">
           {/* Left: Mobile Toggle & Current Module Title */}
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setMobileSidebarOpen(true)}
-              className="md:hidden p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              title="Abrir Menu de Navegação"
+              className="md:hidden flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title={copy("explorer.openNav")}
+              aria-label={copy("explorer.openNav")}
             >
               <Menu size={18} />
             </button>
@@ -525,6 +612,11 @@ function ExplorerContent() {
             )}
           </div>
 
+          <button type="button" data-testid="geomoz-print-open" onClick={()=>setPrintOpen(true)}
+            className="gm-system-print-button inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 shadow-sm hover:border-sky-400 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            aria-label={copy("explorer.printAria")} title={copy("explorer.printDescription")}>
+            <Printer size={16}/><span className="hidden xl:inline">{copy("explorer.print")}</span>
+          </button>
           {/* Right: Geocoding Search Input (only on Mapa) */}
           {activeTab === "Mapa" && (
             <div className="flex items-center gap-2">
@@ -541,8 +633,8 @@ function ExplorerContent() {
                     }}
                     placeholder={
                       searchWorldwide
-                        ? "Pesquisar localização (mundo)…"
-                        : "Pesquisar localização em MZ…"
+                        ? copy("explorer.searchWorld")
+                         : copy("explorer.searchMoz")
                     }
                     className="pl-8 pr-16 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 w-56 xl:w-64 transition-all"
                   />
@@ -550,8 +642,8 @@ function ExplorerContent() {
                     onClick={() => setSearchWorldwide((w) => !w)}
                     title={
                       searchWorldwide
-                        ? "Pesquisa global ativa — clique para filtrar por Moçambique"
-                        : "Pesquisa em Moçambique ativa — clique para global"
+                        ? copy("explorer.searchWorldTitle")
+                         : copy("explorer.searchMozTitle")
                     }
                     className={`absolute right-7 top-1/2 -translate-y-1/2 text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors ${
                       searchWorldwide
@@ -619,7 +711,7 @@ function ExplorerContent() {
               </button>
             </div>
           )}
-        </header>
+        </header>}
 
         {/* Mobile Search Dropdown Bar on Mapa */}
         {mobileSearchOpen && activeTab === "Mapa" && (
@@ -690,14 +782,14 @@ function ExplorerContent() {
         )}
 
         {/* 3. Main Content Views */}
-        <main className="flex-1 flex overflow-hidden">
+        <main id="geomoz-active-module" data-geomoz-print-source="true" className="flex-1 flex min-w-0 min-h-0 overflow-hidden">
           {activeTab === "Dashboard" && (
             <DashboardPanel
               province={province}
               district={district}
               onTabChange={setActiveTab}
               onOpenProjectModal={() => setProjectModalOpen(true)}
-              onOpenSettings={() => setSettingsOpen(true)}
+              onOpenSettings={() => navigate("/definicoes")}
             />
           )}
 
@@ -721,16 +813,32 @@ function ExplorerContent() {
                 setMapCenter(c);
                 setMapZoom(z);
               }}
+              enable3d={typeof window !== "undefined" && window.location.pathname === "/mapa"}
               viewMode={globalViewMode}
               onViewModeChange={handleGlobalViewModeChange}
             />
           )}
 
-          {activeTab === "GIS Workspace" && <GISWorkspacePanel
-            layers={workspaceLayers} setLayers={setWorkspaceLayers}
-            geeEnabled={geeConnected}
-            geeRegion={{ province, district, geometry: aoiToAPI(aoi).geometry }}
-          />}
+          {activeTab === "Terreno 3D" && (
+            <TerrainStudio open onClose={() => setActiveTab("Mapa")}
+              geeEnabled={geeConnected} geeRegion={{ province, district, geometry: aoiToAPI(aoi).geometry }} />
+          )}
+
+          {activeTab === "GIS Workspace" && (
+            <Suspense fallback={<LoadingSkeleton label="GIS Workspace" />}>
+              <LazyGeoProcessamento
+                aoi={aoi}
+                province={province}
+                district={district}
+                onProvinceChange={(p) => {
+                  setProvince(p);
+                  setDistrict(null);
+                }}
+                onDistrictChange={setDistrict}
+                onAOIChange={handleAOIChange}
+              />
+            </Suspense>
+          )}
 
           {activeTab === "GeoAnálises" && (
             <Suspense fallback={<LoadingSkeleton label="GeoAnálises" />}>
@@ -744,8 +852,6 @@ function ExplorerContent() {
                 }}
                 onDistrictChange={setDistrict}
                 onAOIChange={handleAOIChange}
-                viewMode={globalViewMode}
-                onViewModeChange={handleGlobalViewModeChange}
               />
             </Suspense>
           )}
@@ -762,8 +868,6 @@ function ExplorerContent() {
                 }}
                 onDistrictChange={setDistrict}
                 onAOIChange={handleAOIChange}
-                viewMode={globalViewMode}
-                onViewModeChange={handleGlobalViewModeChange}
               />
             </Suspense>
           )}
@@ -780,8 +884,6 @@ function ExplorerContent() {
                 }}
                 onDistrictChange={setDistrict}
                 onAOIChange={handleAOIChange}
-                viewMode={globalViewMode}
-                onViewModeChange={handleGlobalViewModeChange}
               />
             </Suspense>
           )}
@@ -798,29 +900,10 @@ function ExplorerContent() {
                 }}
                 onDistrictChange={setDistrict}
                 onAOIChange={handleAOIChange}
-                viewMode={globalViewMode}
-                onViewModeChange={handleGlobalViewModeChange}
               />
             </Suspense>
           )}
 
-          {activeTab === "GeoProcessamento" && (
-            <Suspense fallback={<LoadingSkeleton label="GeoProcessamento" />}>
-              <LazyGeoProcessamento
-                aoi={aoi}
-                province={province}
-                district={district}
-                onProvinceChange={(p) => {
-                  setProvince(p);
-                  setDistrict(null);
-                }}
-                onDistrictChange={setDistrict}
-                onAOIChange={handleAOIChange}
-                viewMode={globalViewMode}
-                onViewModeChange={handleGlobalViewModeChange}
-              />
-            </Suspense>
-          )}
 
           {activeTab === "GeoMoz AI" && (
             <Suspense fallback={<LoadingSkeleton label="GeoMoz AI" />}>
@@ -829,14 +912,23 @@ function ExplorerContent() {
           )}
 
           {activeTab === "Exportar" && (
-            <ExportPanel
-              province={province}
-              district={district}
-              colorBy={colorBy}
-              layers={layers}
-              mapCenter={mapCenter}
-              mapZoom={mapZoom}
-            />
+            <section aria-label="Relatório do estudo" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              <button type="button" onClick={() => setActiveTab("Dashboard")} className="shrink-0 self-start rounded-lg px-4 py-3 text-sm font-medium text-sky-700 hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-slate-800">← Voltar ao painel do estudo</button>
+              <ExportPanel
+                province={province}
+                district={district}
+                colorBy={colorBy}
+                layers={layers}
+                mapCenter={mapCenter}
+                mapZoom={mapZoom}
+              />
+            </section>
+          )}
+
+          {activeTab === "Documentação" && (
+            <Suspense fallback={<LoadingSkeleton label="Documentação" />}>
+              <LazyDocumentation />
+            </Suspense>
           )}
 
           {activeTab === "Análise" && (
@@ -851,8 +943,8 @@ function ExplorerContent() {
         </main>
       </div>
 
+      <GeoMozPrintLayout open={printOpen} onClose={()=>setPrintOpen(false)} moduleName={activeTab} projectName={activeProject?.name} printSourceId="geomoz-active-module"/>
       {/* 4. Modals & Dialogs */}
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <GeeCredentialsDialog open={geeDialogOpen} onOpenChange={setGeeDialogOpen} />
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
 
@@ -879,12 +971,7 @@ function ExplorerContent() {
   );
 }
 
-
-/** Sessions are scoped to Explorer, never shared across sign-out/re-entry. */
+/** Shares an in-memory model between the Mapa and GeoAnálises tabs. */
 export default function Explorer() {
-  return (
-    <TerrainSessionProvider>
-      <ExplorerContent />
-    </TerrainSessionProvider>
-  );
+  return <TerrainSessionProvider><ExplorerContent /></TerrainSessionProvider>;
 }

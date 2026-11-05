@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { API_BASE, apiUrl } from "@/lib/api";
+import { API_BASE, apiUrl, resolveApiBase } from "@/lib/api";
 
 /**
  * NOTE: API_BASE is a module-level constant computed at import time.
@@ -27,5 +27,23 @@ describe("apiUrl", () => {
     // Verify concatenation logic
     const result = apiUrl("/geomoz-api/stats");
     expect(result).toContain("/geomoz-api/");
+  });
+});
+
+describe("GeoMoz production API routing", () => {
+  const fallback = "https://geomoz-explorer-api-gay72ifazq-ew.a.run.app/";
+  it.each([
+    "geomoz.geolithica.com",
+    "geoprocessamento-426809.web.app",
+    "geoprocessamento-426809.firebaseapp.com",
+  ])("always uses same-origin Firebase proxy on %s", (hostname) => {
+    expect(resolveApiBase(hostname, fallback)).toBe("");
+    expect(resolveApiBase(hostname, undefined)).toBe("");
+  });
+
+  it("keeps explicit endpoints for desktop and non-Hosting preview environments", () => {
+    expect(resolveApiBase("localhost", fallback)).toBe(fallback.slice(0, -1));
+    expect(resolveApiBase("localhost", undefined, true)).toBe("http://127.0.0.1:5003");
+    expect(resolveApiBase("preview.example.com", undefined)).toBe("");
   });
 });

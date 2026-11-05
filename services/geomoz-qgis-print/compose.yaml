@@ -1,0 +1,26 @@
+# Optional standalone PyQGIS print engine for GeoMoz.
+# No public Internet exposure or credential embedded in the repository.
+services:
+  print:
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      GEOMOZ_PRINT_PORT: "8085"
+      GEOMOZ_PRINT_WORKER_TOKEN: ${GEOMOZ_PRINT_WORKER_TOKEN:?Set a strong service token}
+      QT_QPA_PLATFORM: offscreen
+    ports:
+      - "127.0.0.1:${GEOMOZ_PRINT_BIND_PORT:-18085}:8085"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 2
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

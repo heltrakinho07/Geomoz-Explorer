@@ -1,3 +1,5 @@
+import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
+import {useGeoMozTheme} from "@/hooks/useGeoMozTheme";
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import {
@@ -16,6 +18,7 @@ import {
   ArrowRight,
   ExternalLink,
   Layers,
+  Cloud,
   Sparkles,
   MapPin,
   Activity,
@@ -50,6 +53,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { auth } from "@/lib/firebase";
 import { usePwa } from "@/lib/pwa";
 import AuthModal, { type AuthMode } from "@/components/AuthModal";
 
@@ -63,6 +67,14 @@ type Theme = "light" | "dark";
 export default function LandingPage({ initialAuthMode = null }: LandingPageProps) {
   const [, setLocation] = useLocation();
   const { user, signOut } = useAuth();
+  // Only this explicitly allowed path may be used after authentication.
+  // Never trust arbitrary redirect destinations supplied in the query string.
+  const resumeGisWorkspace =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("next") === "/gis-workspace/";
+  const resumePlans =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("next") === "/planos";
   const [authModalOpen, setAuthModalOpen] = useState(Boolean(initialAuthMode));
   const [authMode, setAuthMode] = useState<AuthMode>(initialAuthMode || "login");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -70,13 +82,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
   const { canInstall, isStandalone, promptInstall, isIos } = usePwa();
 
   // Default theme is LIGHT (primary executive mode), secondary DARK
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("geomoz_theme");
-      if (saved === "dark" || saved === "light") return saved;
-    }
-    return "light";
-  });
+  const {theme,toggleTheme} = useGeoMozTheme();
 
   // Default language is Portuguese (PT), with English (EN) toggle
   const [lang, setLang] = useState<Lang>(() => {
@@ -99,29 +105,10 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
   }, [initialAuthMode]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (theme === "dark") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
+    if (resumeGisWorkspace && user && user.uid !== "guest_user" && auth.currentUser) {
+      window.location.replace("/gis-workspace/");
     }
-  }, [theme]);
-
-  const toggleTheme = () => {
-    const next = theme === "light" ? "dark" : "light";
-    setTheme(next);
-    localStorage.setItem("geomoz_theme", next);
-    if (typeof window !== "undefined") {
-      if (next === "dark") {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-      }
-      window.dispatchEvent(
-        new CustomEvent("geomoz_theme_changed", { detail: next })
-      );
-    }
-  };
+  }, [resumeGisWorkspace, user]);
 
   const toggleLang = () => {
     const next = lang === "pt" ? "en" : "pt";
@@ -137,7 +124,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
 
   const handleLaunchApp = () => {
     if (!user) {
-      openAuth("register");
+      openAuth("login");
       return;
     }
     setLocation("/app");
@@ -156,20 +143,20 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         casosDeUso: "Casos de Uso",
         login: "Iniciar Sessão",
         register: "Criar Conta",
-        launch: "Lançar Plataforma",
+        launch: "Explorar",
         logout: "Terminar Sessão",
         userBadge: "Conta Ativa",
       },
       hero: {
         badge: "Copernicus DEM 30m • Google Earth Engine • GeoMoz AI",
         badgeNew: "AVANÇADO",
-        titlePre: "Inteligência Geoespacial, Deteção Remota e ",
-        titleHighlight: "Morfometria Planetária 3D",
+        titlePre: "Inteligência Geoespacial com Deteção Remota, ",
+        titleHighlight: "Relevo 3D e IA",
         subtitle:
-          "A plataforma analítica definitiva que une o processamento em nuvem do Google Earth Engine, modelos de terreno Copernicus 30m em tempo real, hidrologia multicritério e inteligência artificial preditiva. De Moçambique para qualquer coordenada do globo, 100% no seu navegador.",
-        ctaPrimary: "Lançar Plataforma",
+          "Explore dados de satélite, modelos digitais de terreno e análises territoriais num único ambiente. Combine Google Earth Engine, cartografia, hidrologia e GeoMoz AI para transformar informação geoespacial em decisões fundamentadas.",
+        ctaPrimary: "Explorar plataforma",
         ctaSecondary: "Criar Conta Gratuita",
-        ctaExplore: "Ver Recursos Analíticos",
+        ctaExplore: "Ver como funciona",
         hudBadge: "Motor Digital WebGL 3D • Copernicus GLO-30",
         hudLocation: "Monte Namúli, Zambézia • 15.3667° S, 37.0333° E",
         elevation: "Elevação Real",
@@ -307,7 +294,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
       ctaFinal: {
         title: "Pronto para elevar a sua análise geoespacial a outro nível?",
         subtitle:
-          "Sem necessidade de downloads pesados ou configurações complexas de servidores SIG. Abra o GeoMoz e processe inteligência planetária em segundos.",
+          "Sem necessidade de downloads pesados ou configurações complexas de servidores SIG. Abra o GeoMoz Explorer e processe inteligência planetária em segundos.",
         ctaLaunch: "Entrar na Plataforma",
         ctaRegister: "Criar Conta Gratuita",
         disclaimer: "Aceleração WebGL 3D • Google Earth Engine API • Dados abertos da ESA e NASA",
@@ -348,20 +335,20 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         casosDeUso: "Use Cases",
         login: "Sign In",
         register: "Sign Up",
-        launch: "Launch Platform",
+        launch: "Explore",
         logout: "Sign Out",
         userBadge: "Active Account",
       },
       hero: {
         badge: "Copernicus DEM 30m • Google Earth Engine • GeoMoz AI",
         badgeNew: "ADVANCED",
-        titlePre: "Geospatial Intelligence, Remote Sensing & ",
-        titleHighlight: "3D Planetary Morphometry",
+        titlePre: "Geospatial intelligence with remote sensing, ",
+        titleHighlight: "3D terrain and AI",
         subtitle:
-          "The definitive analytical platform merging Google Earth Engine cloud computation, real-time Copernicus 30m digital terrain models, multi-criteria hydrogeology, and predictive artificial intelligence. From Mozambique to any coordinate on the planet, 100% in your browser.",
-        ctaPrimary: "Launch Platform",
+          "Explore satellite data, digital terrain models and territorial analysis in one workspace. Combine Google Earth Engine, mapping, hydrology and GeoMoz AI to turn geospatial information into informed decisions.",
+        ctaPrimary: "Explore platform",
         ctaSecondary: "Create Free Account",
-        ctaExplore: "View Analytical Features",
+        ctaExplore: "See how it works",
         hudBadge: "3D WebGL Digital Engine • Copernicus GLO-30",
         hudLocation: "Mount Namúli, Zambézia • 15.3667° S, 37.0333° E",
         elevation: "True Elevation",
@@ -499,7 +486,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
       ctaFinal: {
         title: "Ready to elevate your territorial intelligence?",
         subtitle:
-          "No bulky desktop GIS installations, no license hurdles. Open GeoMoz and start processing planetary intelligence in seconds.",
+          "No bulky desktop GIS installations, no license hurdles. Open GeoMoz Explorer and start processing planetary intelligence in seconds.",
         ctaLaunch: "Enter Platform",
         ctaRegister: "Create Free Account",
         disclaimer: "3D WebGL Acceleration • Google Earth Engine API • Open datasets from ESA & NASA",
@@ -722,18 +709,10 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
           {/* Brand Logo & Name */}
           <Link href="/" className="flex items-center gap-3 group cursor-pointer shrink-0">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 p-0.5 shadow-md shadow-sky-500/20 group-hover:shadow-sky-500/35 transition-all">
-              <div
-                className={`w-full h-full rounded-[10px] flex items-center justify-center transition-colors ${
-                  isDark ? "bg-slate-950 text-sky-400" : "bg-white text-sky-600"
-                }`}
-              >
-                <img src="/favicon.svg" alt="" aria-hidden="true" className="w-full h-full object-contain" />
-              </div>
-            </div>
+            <GeoMozBrandIcon className="h-10 w-10 rounded-xl shadow-md shadow-sky-500/20 group-hover:shadow-sky-500/35 transition-shadow" width={40} height={40} />
             <div className="flex flex-col">
               <span className="text-base font-black tracking-tight flex items-center gap-1.5">
-                GeoMoz
+                GeoMoz<span className="text-sky-600 dark:text-sky-400">Explorer</span>
                 <span className="text-[9px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/30">
                   3D
                 </span>
@@ -809,19 +788,6 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
               {isDark ? <Sun size={16} /> : <Moon size={16} />}
             </button>
 
-            {/* PWA Install Button in Desktop Navbar */}
-            {!isStandalone && canInstall && (
-              <button
-                type="button"
-                onClick={promptInstall}
-                title={lang === "pt" ? "Instalar GeoMoz no Computador / Telemóvel" : "Install GeoMoz App"}
-                className="hidden sm:flex h-9 px-2.5 rounded-xl border border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 text-xs font-bold items-center gap-1.5 hover:bg-sky-100 dark:hover:bg-sky-900/60 transition-all shadow-xs cursor-pointer"
-              >
-                <Download size={14} className="text-sky-500" />
-                <span>{lang === "pt" ? "Instalar App" : "Install App"}</span>
-              </button>
-            )}
-
             {/* Auth / Account Buttons */}
             {user ? (
               <div className="flex items-center gap-2">
@@ -869,43 +835,15 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => openAuth("login")}
-                  className={`text-xs font-semibold h-9 px-2.5 sm:px-3 rounded-xl ${
-                    isDark
-                      ? "text-slate-300 hover:text-white hover:bg-slate-900"
-                      : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
-                  }`}
-                >
-                  <LogIn size={14} className="mr-1 sm:mr-1.5 text-sky-500" />
-                  <span className="hidden sm:inline">{t.nav.login}</span>
-                </Button>
-
-                <Button
-                  size="sm"
-                  onClick={() => openAuth("register")}
-                  className={`hidden md:inline-flex text-xs font-semibold px-3 h-9 rounded-xl border shadow-sm transition-all ${
-                    isDark
-                      ? "bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700"
-                      : "bg-white hover:bg-slate-50 text-slate-800 border-slate-200"
-                  }`}
-                >
-                  <UserPlus size={14} className="mr-1.5 text-sky-500" />
-                  <span>{t.nav.register}</span>
-                </Button>
-
-                <Button
-                  size="sm"
-                  onClick={handleLaunchApp}
-                  className="hidden md:inline-flex bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-bold px-3.5 h-9 rounded-xl shadow-md shadow-sky-600/25"
-                >
-                  <span>{lang === "pt" ? "Explorar" : "Explore"}</span>
-                  <ArrowRight size={14} className="ml-1" />
-                </Button>
-              </div>
+              <Button
+                size="sm"
+                onClick={handleLaunchApp}
+                aria-label={lang === "pt" ? "Explorar GeoMoz" : "Explore GeoMoz"}
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-3 text-xs font-bold text-white shadow-md shadow-sky-600/20 transition-all hover:from-sky-500 hover:to-indigo-500"
+              >
+                <span>{lang === "pt" ? "Explorar" : "Explore"}</span>
+                <ArrowRight size={14} aria-hidden="true" />
+              </Button>
             )}
           </div>
         </div>
@@ -955,44 +893,24 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
               </a>
             </nav>
 
-            {!user && (
-              <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openAuth("login")}
-                  className="flex-1 text-xs"
-                >
-                  <LogIn size={14} className="mr-1.5" />
-                  {t.nav.login}
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => openAuth("register")}
-                  className="flex-1 text-xs bg-sky-600 text-white"
-                >
-                  <UserPlus size={14} className="mr-1.5" />
-                  {t.nav.register}
-                </Button>
-              </div>
-            )}
+
           </div>
         )}
       </header>
 
       {/* ── 2. Hero Section: Planetary Intelligence & 3D Morphometry ─────────────── */}
-      <section className="relative pt-12 pb-20 md:pt-20 md:pb-28 overflow-hidden z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center flex flex-col items-center">
+      <section className="gm-soft-hero relative z-10 overflow-hidden pb-16 pt-14 md:pb-24 md:pt-20">
+        <div className="mx-auto flex max-w-7xl flex-col items-center px-4 text-center sm:px-6 lg:px-8">
           {/* Scientific Telemetry Badge */}
           <div
-            className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border shadow-sm mb-6 transition-colors ${
+            className={`inline-flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full border px-3.5 py-2 shadow-sm mb-7 transition-colors ${
               isDark
                 ? "bg-slate-900/90 border-slate-800 text-slate-300"
                 : "bg-white border-slate-200 text-slate-700 shadow-sm"
             }`}
           >
             <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+              
               <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-600"></span>
             </span>
             <span className="text-xs font-semibold">{t.hero.badge}</span>
@@ -1002,7 +920,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
           </div>
 
           {/* Main Headline */}
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight max-w-5xl leading-[1.15] mb-6">
+          <h1 className="mb-6 max-w-5xl text-[clamp(2.15rem,5.3vw,4.15rem)] font-black leading-[1.14] tracking-tight">
             {t.hero.titlePre}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-600 via-indigo-600 to-purple-600 dark:from-sky-400 dark:via-indigo-300 dark:to-purple-400">
               {t.hero.titleHighlight}
@@ -1011,7 +929,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
 
           {/* Subtitle */}
           <p
-            className={`text-sm sm:text-base lg:text-lg max-w-3xl leading-relaxed mb-8 font-normal ${
+            className={`mb-8 max-w-[760px] text-sm font-normal leading-[1.85] sm:text-base lg:text-lg ${
               isDark ? "text-slate-300" : "text-slate-600"
             }`}
           >
@@ -1019,50 +937,43 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
           </p>
 
           {/* Action CTAs */}
-          <div className="flex flex-col sm:flex-row items-center gap-3.5 mb-12 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row items-center gap-3.5 mb-7 w-full sm:w-auto">
             <Button
               size="lg"
               onClick={handleLaunchApp}
-              className="w-full sm:w-auto px-7 py-3.5 h-auto text-sm font-bold bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl shadow-xl shadow-sky-600/30 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
+              className="gm-soft-primary flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-7 py-3.5 text-sm font-bold transition-all sm:w-auto"
             >
               <span>{t.hero.ctaPrimary}</span>
               <ArrowRight size={17} />
             </Button>
 
-            {!user && (
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={() => openAuth("register")}
-                className={`w-full sm:w-auto px-6 py-3.5 h-auto text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 ${
-                  isDark
-                    ? "bg-slate-900/80 hover:bg-slate-800 text-slate-200 border-slate-700 hover:border-slate-500"
-                    : "bg-white hover:bg-slate-50 text-slate-800 border-slate-300 shadow-sm"
-                }`}
-              >
-                <UserPlus size={16} className="text-sky-500" />
-                <span>{t.hero.ctaSecondary}</span>
-              </Button>
-            )}
 
             <Button
               size="lg"
-              variant="ghost"
+              variant="outline"
               onClick={() => {
-                const el = document.getElementById("recursos");
+                const el = document.getElementById("visao-geral");
                 el?.scrollIntoView({ behavior: "smooth" });
               }}
-              className={`w-full sm:w-auto text-sm font-semibold h-auto py-3 px-4 ${
-                isDark ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900"
-              }`}
+              className="gm-soft-surface flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-slate-700 transition-all hover:border-sky-300 hover:text-sky-700 dark:text-slate-100 sm:w-auto"
             >
               <span>{t.hero.ctaExplore}</span>
               <ChevronRight size={16} />
             </Button>
           </div>
 
-          {/* ── Realistic Interactive 3D Terrain & Telemetry Canvas Frame ──────────── */}
+
+          <div aria-label={lang === "pt" ? "Vantagens do GeoMoz" : "GeoMoz benefits"}
+            className="gm-soft-surface mb-9 flex w-full max-w-4xl flex-wrap items-center justify-center gap-x-6 gap-y-3 rounded-2xl px-5 py-3 text-[11px] font-semibold text-slate-700 backdrop-blur dark:text-slate-200 sm:text-xs">
+            <span className="inline-flex items-center gap-2"><Cloud size={16} className="text-sky-600 dark:text-sky-400" />{lang === "pt" ? "Processamento na nuvem" : "Cloud processing"}</span>
+            <span className="inline-flex items-center gap-2"><Layers size={16} className="text-sky-600 dark:text-sky-400" />{lang === "pt" ? "Dados geoespaciais globais" : "Global geospatial data"}</span>
+            <span className="inline-flex items-center gap-2"><ShieldCheck size={16} className="text-sky-600 dark:text-sky-400" />{lang === "pt" ? "Análises reproduzíveis" : "Reproducible analysis"}</span>
+            <span className="inline-flex items-center gap-2"><BrainCircuit size={16} className="text-indigo-600 dark:text-indigo-400" />{lang === "pt" ? "IA aplicada ao território" : "AI for territorial insights"}</span>
+          </div>
+
+          {/* ── Product preview: illustrative metrics, not a live API connection ── */}
           <div
+            id="visao-geral"
             className={`w-full max-w-5xl rounded-2xl p-2 md:p-3 border shadow-2xl relative overflow-hidden group transition-colors ${
               isDark
                 ? "bg-gradient-to-b from-slate-800 via-slate-900 to-slate-950 border-slate-800 shadow-sky-950/40"
@@ -1088,7 +999,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
               <div className="flex items-center gap-2 text-[10px]">
                 <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 font-mono font-bold">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Copernicus GLO-30 Active
+                  {lang === "pt" ? "Pré-visualização ilustrativa" : "Illustrative preview"}
                 </span>
               </div>
             </div>
@@ -1223,6 +1134,22 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                 </button>
               </div>
             </div>
+          </div>
+
+          <div aria-label={lang === "pt" ? "Módulos em destaque" : "Featured modules"} className="mt-5 grid w-full max-w-5xl gap-3 text-left sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { Icon: Mountain, pt: "Relevo 3D", en: "3D terrain", ptDesc: "Modelos de elevação, perfis topográficos e morfometria.", enDesc: "Elevation models, topographic profiles and terrain analysis.", anchor: "#relevo-3d" },
+              { Icon: Satellite, pt: "Deteção Remota", en: "Remote sensing", ptDesc: "Sentinel e Landsat para índices espectrais e monitorização.", enDesc: "Sentinel and Landsat spectral indices and monitoring.", anchor: "#detecao-remota" },
+              { Icon: Droplets, pt: "Hidrologia", en: "Hydrology", ptDesc: "Bacias, drenagem e recursos hídricos com ferramentas SIG.", enDesc: "Catchments, drainage and GIS water-resource tools.", anchor: "#hidrogeologia" },
+              { Icon: BrainCircuit, pt: "GeoMoz AI", en: "GeoMoz AI", ptDesc: "Interpretação de padrões espaciais com apoio de IA.", enDesc: "AI-assisted interpretation of spatial patterns.", anchor: "#recursos" },
+            ].map(({ Icon, pt, en, ptDesc, enDesc, anchor }) => (
+              <a key={pt} href={anchor} className="gm-soft-tile group/card flex min-w-0 flex-col gap-2.5 rounded-2xl p-4 transition dark:text-white">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-sky-100 to-indigo-100 text-sky-700 dark:from-sky-950 dark:to-indigo-950 dark:text-sky-300"><Icon size={21} aria-hidden="true" /></span>
+                <strong className="text-sm text-slate-900 dark:text-white">{lang === "pt" ? pt : en}</strong>
+                <span className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">{lang === "pt" ? ptDesc : enDesc}</span>
+                <span className="mt-auto inline-flex items-center gap-1 text-[11px] font-bold text-sky-700 dark:text-sky-400">{lang === "pt" ? "Saber mais" : "Learn more"} <ArrowRight size={13} /></span>
+              </a>
+            ))}
           </div>
         </div>
       </section>
@@ -2279,9 +2206,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                 : "bg-gradient-to-r from-sky-600 via-indigo-600 to-slate-900 text-white border-sky-400/30"
             }`}
           >
-            <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white mb-4">
-              <Globe size={24} />
-            </div>
+            <GeoMozBrandIcon className="h-12 w-12 rounded-2xl mb-4 shadow-lg shadow-sky-950/30" width={48} height={48} />
 
             <h2 className="text-2xl sm:text-4xl font-black tracking-tight mb-3 text-white">
               {t.ctaFinal.title}
@@ -2300,17 +2225,7 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                 <ArrowRight size={16} />
               </Button>
 
-              {!user && (
-                <Button
-                  size="lg"
-                  variant="outline"
-                  onClick={() => openAuth("register")}
-                  className="w-full sm:w-auto px-6 py-3.5 h-auto text-sm font-semibold bg-white/10 hover:bg-white/20 text-white border-white/30 rounded-xl transition-all"
-                >
-                  <UserPlus size={16} className="mr-2" />
-                  <span>{t.ctaFinal.ctaRegister}</span>
-                </Button>
-              )}
+
             </div>
 
             <p className="text-[11px] text-sky-200/80 mt-5 flex items-center gap-1.5">
@@ -2333,9 +2248,9 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8 text-left">
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <img src="/favicon.svg" alt="" aria-hidden="true" className="w-7 h-7 rounded-lg" />
+                <GeoMozBrandIcon className="h-7 w-7 rounded-lg" width={28} height={28} />
                 <span className="font-bold text-slate-900 dark:text-white text-sm">
-                  GeoMoz
+                  GeoMoz Explorer 3D
                 </span>
               </div>
               <p className="text-[11px] leading-relaxed">{t.footer.desc}</p>
@@ -2415,26 +2330,9 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
                     </li>
                   </>
                 ) : (
-                  <>
-                    <li>
-                      <button
-                        type="button"
-                        onClick={() => openAuth("login")}
-                        className="hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
-                      >
-                        {t.footer.login}
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        onClick={() => openAuth("register")}
-                        className="hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
-                      >
-                        {t.footer.register}
-                      </button>
-                    </li>
-                  </>
+                  <li className="text-slate-500 dark:text-slate-400">
+                    {lang === "pt" ? "Inicie sessão ou crie a sua conta para continuar." : "Sign in or create your account to continue."}
+                  </li>
                 )}
                 <li className="pt-2">
                   <button
@@ -2455,6 +2353,14 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
             }`}
           >
             <p>© {new Date().getFullYear()} {t.footer.rights}</p>
+            <nav aria-label={lang === "pt" ? "Informações legais" : "Legal information"} className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+              <Link href="/privacy" className="font-medium text-sky-700 hover:text-sky-800 hover:underline dark:text-sky-400 dark:hover:text-sky-300">
+                {lang === "pt" ? "Política de Privacidade" : "Privacy Policy"}
+              </Link>
+              <Link href="/terms" className="font-medium text-sky-700 hover:text-sky-800 hover:underline dark:text-sky-400 dark:hover:text-sky-300">
+                {lang === "pt" ? "Termos de Serviço" : "Terms of Service"}
+              </Link>
+            </nav>
             <p>{t.footer.mission}</p>
           </div>
         </div>
@@ -2835,7 +2741,13 @@ export default function LandingPage({ initialAuthMode = null }: LandingPageProps
         onClose={() => setAuthModalOpen(false)}
         initialMode={authMode}
         onSuccess={() => {
-          setLocation("/app");
+          if (resumeGisWorkspace && auth.currentUser) {
+            window.location.replace("/gis-workspace/");
+          } else if (resumePlans && auth.currentUser) {
+            setLocation("/planos");
+          } else {
+            setLocation("/app");
+          }
         }}
       />
       {/* ── 12. High-Resolution Screenshot Lightbox Modal ────────────────────── */}

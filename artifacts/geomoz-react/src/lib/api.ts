@@ -1,25 +1,37 @@
 /**
- * Base URL for the GeoMoz backend API.
+ * GeoMoz API transport.
+ * On Firebase Hosting, requests MUST use the same-origin /geomoz-api rewrite.
+ * A direct Cloud Run URL would bypass the reverse proxy and is susceptible to
+ * CORS, blocked cross-site requests, and stale service URLs.
  */
+export const FIREBASE_HOSTNAMES = new Set([
+  "geomoz.geolithica.com",
+  "geoprocessamento-426809.web.app",
+  "geoprocessamento-426809.firebaseapp.com",
+]);
 
-export const API_BASE: string = (() => {
-  if (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE) {
-    return String(import.meta.env.VITE_API_BASE);
+export function resolveApiBase(
+  hostname: string | undefined,
+  configuredBase: string | undefined,
+  isElectron = false
+): string {
+  if (hostname && FIREBASE_HOSTNAMES.has(hostname.toLowerCase())) {
+    return ""; // Firebase Hosting forwards /geomoz-api/** to Cloud Run.
   }
-  if (
-    typeof window !== "undefined" &&
-    (window as { electronAPI?: unknown }).electronAPI
-  ) {
-    return "http://127.0.0.1:5003";
-  }
-  return "";
-})();
+  if (isElectron) return configuredBase?.trim().replace(/\/$/, "") || "http://127.0.0.1:5003";
+  return configuredBase?.trim().replace(/\/$/, "") || "";
+}
 
-/** Prefix an API path with the environment-appropriate base URL. */
+export const API_BASE: string = resolveApiBase(
+  typeof window === "undefined" ? undefined : window.location.hostname,
+  import.meta.env?.VITE_API_BASE,
+  typeof window !== "undefined" &&
+    Boolean((window as { electronAPI?: unknown }).electronAPI)
+);
+
+/** Prefix a same-origin or absolute endpoint path with the correct API base. */
 export const apiUrl = (path: string): string => {
-  if (path.startsWith("http://") || path.startsWith("https://")) {
-    return path;
-  }
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
   return `${API_BASE}${cleanPath}`;
 };
@@ -33,37 +45,17 @@ export async function apiFetch(inputUrlOrPath: string, options?: RequestInit): P
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }
-  if (typeof window !== "undefined") {
-    try {
-      const uid = auth?.currentUser?.uid;
-      const userProjectKey = uid && uid !== "guest_user" ? `geomoz_gee_user_${uid}_project` : null;
-      const userTokenKey = uid && uid !== "guest_user" ? `geomoz_gee_user_${uid}_token` : null;
-      const userTokenTsKey = uid && uid !== "guest_user" ? `geomoz_gee_user_${uid}_token_ts` : null;
-
-      // Credentials belong to the signed-in Firebase user only.
-      // Never fall back to a previous user's unscoped browser storage.
-      const geeProject = userProjectKey ? localStorage.getItem(userProjectKey) : null;
-      const geeToken = userTokenKey ? localStorage.getItem(userTokenKey) : null;
-      const geeTokenTs = userTokenTsKey ? localStorage.getItem(userTokenTsKey) : null;
-
-      const isExpired = geeTokenTs && (Date.now() - parseInt(geeTokenTs, 10) > 50 * 60 * 1000);
-
-      if (isExpired && geeToken) {
-        try {
-          if (userTokenKey) localStorage.removeItem(userTokenKey);
-          if (userTokenTsKey) localStorage.removeItem(userTokenTsKey);
-          localStorage.removeItem("geomoz_gee_oauth_token");
-          localStorage.removeItem("geomoz_gee_oauth_token_timestamp");
-        } catch {}
-      }
-
-      if (geeProject && !headers.has("X-GEE-Project")) {
-        headers.set("X-GEE-Project", geeProject);
-      }
-      if (geeToken && !isExpired && !headers.has("X-GEE-Token")) {
-        headers.set("X-GEE-Token", geeToken);
-      }
-    } catch {}
+  // Never attach GEE OAuth access tokens from localStorage.
+  try {
+    return await fetch(url, { ...options, headers });
+  } catch (caught) {
+    if (caught instanceof TypeError) {
+      // Never include query parameters or sensitive token values in the message.
+      const path = inputUrlOrPath.split("?")[0];
+      throw new Error(
+        `Não foi possível contactar a API GeoMoz (${path}). Verifique a ligação, o estado do servidor Cloud Run e o encaminhamento /geomoz-api no Firebase Hosting. Se persistir, contacte o suporte.`
+      );
+    }
+    throw caught;
   }
-  return fetch(url, { ...options, headers });
 }

@@ -1,0 +1,33 @@
+name: NextGIS Web CE configuration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/nextgis-web/**"
+      - ".github/workflows/nextgis-web-ce.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "deploy/nextgis-web/**"
+      - ".github/workflows/nextgis-web-ce.yml"
+  workflow_dispatch:
+
+jobs:
+  validate-compose:
+    name: Validate standalone NextGIS Web CE
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Docker Compose version
+        run: docker compose version
+      - name: Validate pinned isolated configuration
+        run: |
+          docker compose --env-file deploy/nextgis-web/example.env \
+            -f deploy/nextgis-web/compose.yaml config --quiet
+          docker compose --env-file deploy/nextgis-web/example.env \
+            -f deploy/nextgis-web/compose.yaml config > /tmp/geomoz-nextgis-config.yaml
+          grep -q '127.0.0.1' /tmp/geomoz-nextgis-config.yaml
+          grep -q 'nextgisweb-ce:26.10.0' /tmp/geomoz-nextgis-config.yaml
+          grep -q 'ngw_data' /tmp/geomoz-nextgis-config.yaml
+          grep -q 'ngw_backup' /tmp/geomoz-nextgis-config.yaml

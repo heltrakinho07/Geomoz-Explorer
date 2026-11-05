@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import { sharedMapText, type SharedMapKey } from "@/i18n/sharedMap";
 import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
 import { Layers, Globe, Mountain, Map as MapIcon, X, Check, Satellite } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -15,8 +17,8 @@ interface BasemapSwitcherProps {
 
 interface MapTypeOption {
   id: BasemapType;
-  label: string;
-  sublabel: string;
+  labelKey: SharedMapKey;
+  sublabelKey: SharedMapKey;
   previewBg: string;
   icon: React.ReactNode;
 }
@@ -24,36 +26,36 @@ interface MapTypeOption {
 const MAP_TYPE_OPTIONS: MapTypeOption[] = [
   {
     id: "roadmap",
-    label: "Padrão",
-    sublabel: "Estradas e cidades",
+    labelKey: "basemap.roadmap",
+    sublabelKey: "basemap.roadmapDescription",
     previewBg: "bg-amber-50 border-amber-200",
     icon: <MapIcon size={20} className="text-amber-600" />,
   },
   {
     id: "satellite",
-    label: "Satélite",
-    sublabel: "Imagens ópticas puras",
+    labelKey: "basemap.satellite",
+    sublabelKey: "basemap.satelliteDescription",
     previewBg: "bg-slate-800 border-slate-700 text-white",
     icon: <Globe size={20} className="text-sky-400" />,
   },
   {
     id: "terrain",
-    label: "Relevo",
-    sublabel: "Curvas e hipsometria",
+    labelKey: "basemap.terrain",
+    sublabelKey: "basemap.terrainDescription",
     previewBg: "bg-emerald-50 border-emerald-200",
     icon: <Mountain size={20} className="text-emerald-700" />,
   },
   {
     id: "hybrid",
-    label: "Híbrido",
-    sublabel: "Satélite com nomes e vias",
+    labelKey: "basemap.hybrid",
+    sublabelKey: "basemap.hybridDescription",
     previewBg: "bg-indigo-950 border-indigo-800 text-white",
     icon: <Satellite size={20} className="text-indigo-400" />,
   },
   {
     id: "cesium",
-    label: "Cesium World",
-    sublabel: "Globo Cesium / Sentinel-2",
+    labelKey: "basemap.cesium",
+    sublabelKey: "basemap.cesiumDescription",
     previewBg: "bg-cyan-950 border-cyan-800 text-white",
     icon: <Globe size={20} className="text-cyan-400" />,
   },
@@ -66,9 +68,12 @@ export default function BasemapSwitcher({
   onViewModeChange,
   className = "",
   position = "bottom-left",
-  show3dToggle = true,
+  // 3D is opt-in: only the main /mapa view explicitly enables it.
+  show3dToggle = false,
 }: BasemapSwitcherProps) {
   const [open, setOpen] = useState(false);
+  const { translatedLocale } = usePortalTranslation();
+  const copy = (key: SharedMapKey) => sharedMapText(translatedLocale, key);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [internalViewMode, setInternalViewMode] = useState<"2d" | "3d">(() => {
@@ -114,7 +119,10 @@ export default function BasemapSwitcher({
   }, [open]);
 
   // Current basemap visual helper
-  const currentOption = MAP_TYPE_OPTIONS.find((o) => o.id === current) || MAP_TYPE_OPTIONS[3];
+  const visibleMapOptions = show3dToggle
+    ? MAP_TYPE_OPTIONS
+    : MAP_TYPE_OPTIONS.filter(option => option.id !== "cesium");
+  const currentOption = visibleMapOptions.find((o) => o.id === current) || visibleMapOptions[3];
 
   return (
     <div
@@ -125,7 +133,7 @@ export default function BasemapSwitcher({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title="Camadas do Google Maps"
+        title={copy("basemap.layersTitle")}
         className="group relative flex flex-col items-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-xl border-2 border-white/80 dark:border-slate-800 hover:border-sky-400 p-1 transition-all active:scale-95 focus:outline-none"
       >
         <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden relative shadow-inner flex items-center justify-center bg-slate-900 text-white border border-slate-300 dark:border-slate-700 group-hover:shadow-md transition-shadow">
@@ -136,7 +144,7 @@ export default function BasemapSwitcher({
           </div>
         </div>
         <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200 mt-1 px-1">
-          Camadas
+          {copy("basemap.layers")}
         </span>
       </button>
 
@@ -147,8 +155,8 @@ export default function BasemapSwitcher({
           onClick={() => handleToggleViewMode(activeViewMode !== "3d")}
           title={
             activeViewMode === "3d"
-              ? "Alternar para 2D Plano"
-              : "Alternar para 3D & Relevo (Copernicus DEM 30m)"
+              ? copy("basemap.switch2d")
+              : copy("basemap.switch3d")
           }
           className={`group relative flex flex-col items-center justify-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-xl border-2 p-1 transition-all active:scale-95 focus:outline-none ${
             activeViewMode === "3d"
@@ -180,7 +188,7 @@ export default function BasemapSwitcher({
               activeViewMode === "3d" ? "text-sky-600 dark:text-sky-400" : "text-slate-700 dark:text-slate-200"
             }`}
           >
-            {activeViewMode === "3d" ? "3D Ativo" : "2D Plano"}
+            {activeViewMode === "3d" ? copy("basemap.active3d") : copy("basemap.flat2d")}
           </span>
         </button>
       )}
@@ -200,7 +208,7 @@ export default function BasemapSwitcher({
           <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-2 font-bold text-xs sm:text-sm">
               <Layers size={16} className="text-sky-600" />
-              <span>Tipo de Mapa (Google Maps / Cesium)</span>
+              <span>{show3dToggle ? copy("basemap.mapType3d") : copy("basemap.mapType")}</span>
             </div>
             <button
               type="button"
@@ -213,7 +221,7 @@ export default function BasemapSwitcher({
 
           {/* Grid of Map Types */}
           <div className="grid grid-cols-2 gap-2 my-3">
-            {MAP_TYPE_OPTIONS.map((opt) => {
+            {visibleMapOptions.map((opt) => {
               const isSelected = current === opt.id;
               return (
                 <button
@@ -237,10 +245,10 @@ export default function BasemapSwitcher({
                     )}
                   </div>
                   <div className="font-bold text-xs mt-0.5 text-slate-900 dark:text-slate-100">
-                    {opt.label}
+                    {copy(opt.labelKey)}
                   </div>
                   <div className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-1">
-                    {opt.sublabel}
+                    {copy(opt.sublabelKey)}
                   </div>
                 </button>
               );
@@ -251,7 +259,7 @@ export default function BasemapSwitcher({
           {show3dToggle && (
             <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-2">
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Detalhes do mapa
+                {copy("basemap.details")}
               </div>
 
               <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
@@ -261,7 +269,7 @@ export default function BasemapSwitcher({
                   </div>
                   <div>
                     <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                      Globo 3D & Relevo
+                      {copy("basemap.globe3d")}
                     </div>
                     <div className="text-[10px] text-slate-500 dark:text-slate-400">
                       Copernicus DEM 30m / SRTM

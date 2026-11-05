@@ -877,3 +877,18 @@ ESA_CN: dict[int, int] = {
 # ── Mozambique bounding box ───────────────────────────────────────────────────
 
 MZ_BBOX: tuple[float, float, float, float] = (30.2, -26.9, 40.8, -10.4)
+
+# Audited display metadata; defaults must describe the quantity actually returned.
+INDEX_REGISTRY["nbr"]["vis"]["palette"] = ["8B0000", "FF4500", "FFA500", "FFFF00", "32CD32", "006400"]
+INDEX_REGISTRY["burn_severity"].update(name="Severidade dNBR — classes exploratórias", formula="dNBR pré − pós; limiares exploratórios, sem calibração local", class_names=["Aumento de verdor", "Sem alteração / baixa", "Baixa", "Moderada-baixa", "Moderada-alta", "Alta"])
+INDEX_REGISTRY["burn_severity"]["vis"] = {"min": 0, "max": 5, "palette": ["006400", "cccccc", "91cf60", "fee08b", "fc8d59", "d73027"]}
+INDEX_REGISTRY["burned_area"].update(formula="União dos píxeis queimados no período (QA válido)", bands="MODIS MCD64A1 BurnDate + QA", vis={"min": 0, "max": 1, "palette": ["ffffff", "b10026"]}, norm=(0, 1))
+INDEX_REGISTRY["forest_loss"].update(name="Perda de cobertura arbórea — Hansen 2001–2023", norm=(2001, 2023))
+INDEX_REGISTRY["forest_loss"]["vis"].update(min=2001, max=2023)
+INDEX_REGISTRY["temperature_lst"].update(formula="MODIS MOD11A2: LST_Day_1km × 0.02 − 273.15; média do período, QC válido", bands="MODIS LST diurno e QC_Day (°C)")
+INDEX_REGISTRY["precipitation"]["formula"] = "Soma CHIRPS no período seleccionado (mm)"
+INDEX_REGISTRY["night_light"].update(formula="Média VIIRS avg_rad no período, cf_cvg > 0", bands="VIIRS DNB mensal — nW/cm²/sr")
+INDEX_REGISTRY["wind_speed"].update(formula="Média da magnitude das componentes médias diárias sqrt(u10² + v10²)", bands="ERA5-Land DAILY_AGGR — u/v a 10 m (m/s)")
+INDEX_REGISTRY["spei"].update(formula="SPEIbase 2.11 — SPEI_12_month do último mês disponível no intervalo", bands="CSIC/SPEI/2_11 · SPEI_12_month")
+INDEX_REGISTRY["impervious_surface"]["name"] = "NDBI — Índice de áreas construídas"
+INDEX_REGISTRY["clay"].update(name="Razão SWIR1/NIR — Sentinel-2", formula="B11 / B8A (razão espectral, não identificação de argilas)")

@@ -11,6 +11,8 @@ import { MapContainer, TileLayer, ScaleControl, ZoomControl } from "react-leafle
 import "leaflet/dist/leaflet.css";
 import { Droplets, Loader2, Play, ChevronDown, Info, Scale, FileDown, SlidersHorizontal, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import { groundwaterText, groundwaterClassLabel, groundwaterFactorLabel, type GroundwaterCopyKey } from "@/i18n/groundwater";
 import { apiUrl, apiFetch } from "@/lib/api";
 import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
@@ -33,15 +35,18 @@ interface Props {
   aoi: AreaOfInterest;
   province: string | null;
   district: string | null;
-  viewMode?: "2d" | "3d";
-  onViewModeChange?: (m: "2d" | "3d") => void;
   onProvinceChange: (p: string | null) => void;
   onDistrictChange: (d: string | null) => void;
   onAOIChange: (a: AreaOfInterest) => void;
 }
 
-export default function AguaSubterranea({ aoi, province, district, viewMode = "2d", onViewModeChange, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
+export default function AguaSubterranea({ aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange }: Props) {
   const { toast } = useToast();
+  const { translatedLocale } = usePortalTranslation();
+  const g = useCallback((key: GroundwaterCopyKey) => groundwaterText(translatedLocale, key), [translatedLocale]);
+  const numberLocale = translatedLocale === "pt" ? "pt-MZ" : translatedLocale;
+  const classLabel = (c: GwpClass) => groundwaterClassLabel(translatedLocale, c.id, c.label);
+  const factorLabel = (w: GwpWeight) => groundwaterFactorLabel(translatedLocale, w.key, w.label);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const [year, setYear] = useState(2023);
   const [result, setResult] = useState<GwpResult | null>(null);
@@ -65,11 +70,12 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
       setResult(await r.json());
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === "AbortError";
-      const msg = aborted ? "O cálculo AHP demorou demasiado. Escolha uma província/distrito em vez de todo o país." : String(e instanceof Error ? e.message : e);
-      setError(msg);
-      toast({ variant: "destructive", title: "Erro no potencial hídrico", description: msg });
+      const detail = aborted ? g("error.timeout") : String(e instanceof Error ? e.message : e);
+      const message = aborted ? detail : `${g("error.failed")}: ${detail}`;
+      setError(message);
+      toast({ variant: "destructive", title: g("error.title"), description: message });
     } finally { clearTimeout(timer); setLoading(false); }
-  }, [aoi, year]);
+  }, [aoi, year, g, toast]);
 
   const total = result ? result.classes.reduce((s, c) => s + c.areaKm2, 0) || 1 : 1;
 
@@ -77,22 +83,22 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
   async function exportGroundwaterPdf() {
     if (!mapContainerRef.current) return;
     const ctx = createPDFContext(
-      `Água Subterrânea — ${aoi.label}`,
+      `${g("title")} — ${aoi.label}`,
     );
-    drawCover(ctx, "Relatório de Potencial Hídrico Subterrâneo (AHP)", [
-      `Ano: ${year}`,
-      `Área: ${aoi.label}`,
+    drawCover(ctx, g("pdf.reportTitle"), [
+      `${g("pdf.year")}: ${year}`,
+      `${g("pdf.area")}: ${aoi.label}`,
       ctx.date,
     ]);
 
     // Map — fetch from backend Cartopy API
     try {
-      const legendItems = result?.classes?.map(c => ({ label: c.label, color: c.color }));
+      const legendItems = result?.classes?.map(c => ({ label: classLabel(c), color: c.color }));
       const imgData = await fetchMapImage(
         aoiToMapBounds(aoi),
         { tileUrl: result?.tile,
           legendItems,
-          title: `Potencial Hídrico — ${aoi.label}`, dpi: 200 },
+          title: `${g("pdf.mapTitle")} — ${aoi.label}`, dpi: 200 },
       );
       addMapImage(ctx, imgData, 100);
     } catch (e) {
@@ -100,14 +106,14 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
     }
 
     if (result) {
-      sectionTitle(ctx, "Classes de Potencial Hídrico");
+      sectionTitle(ctx, g("pdf.classes"));
       drawTable(
         ctx,
-        ["Classe", "Área (km²)", "%"],
+        [g("pdf.class"), g("pdf.areaUnit"), "%"],
         result.classes.map(c => ({
           cells: [
-            c.label,
-            c.areaKm2.toLocaleString("pt-PT", { maximumFractionDigits: 1 }),
+            classLabel(c),
+            c.areaKm2.toLocaleString(numberLocale, { maximumFractionDigits: 1 }),
             ((c.areaKm2 / total) * 100).toFixed(1),
           ],
           color: c.color,
@@ -115,21 +121,21 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
         [CONTENT_W * 0.4, CONTENT_W * 0.3, CONTENT_W * 0.3],
       );
 
-      sectionTitle(ctx, "Pesos AHP");
+      sectionTitle(ctx, g("weights"));
       drawTable(
         ctx,
-        ["Fator", "Peso", "Favorece"],
+        [g("pdf.factor"), g("pdf.weight"), g("pdf.favors")],
         result.weights.map(w => ({
-          cells: [w.label, `${(w.weight * 100).toFixed(0)}%`, w.favours === "alto" ? "Alto potencial" : "Baixo potencial"],
+          cells: [factorLabel(w), `${(w.weight * 100).toFixed(0)}%`, w.favours === "alto" ? g("pdf.highPotential") : g("pdf.lowPotential")],
         })),
         [CONTENT_W * 0.45, CONTENT_W * 0.2, CONTENT_W * 0.35],
       );
 
       drawStatCards(ctx, [
-        { label: "Análise", value: `AHP · ${year}`, color: [8, 145, 178] },
-        { label: "Fatores", value: `${result.weights.length}`, color: [14, 165, 233] },
-        { label: "Resolução", value: "~500 m", color: [100, 116, 139] },
-        { label: "Área total", value: `${total.toLocaleString("pt-PT", { maximumFractionDigits: 0 })} km²`, color: [16, 185, 129] },
+        { label: g("pdf.analysis"), value: `AHP · ${year}`, color: [8, 145, 178] },
+        { label: g("pdf.factors"), value: `${result.weights.length}`, color: [14, 165, 233] },
+        { label: g("pdf.resolution"), value: "~500 m", color: [100, 116, 139] },
+        { label: g("pdf.totalArea"), value: `${total.toLocaleString(numberLocale, { maximumFractionDigits: 0 })} km²`, color: [16, 185, 129] },
       ]);
     }
 
@@ -161,8 +167,8 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
               <Droplets size={15} className="text-white" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Água Subterrânea</h2>
-              <p className="text-[10px] text-slate-400">Potencial hídrico · AHP · GEE</p>
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{g("title")}</h2>
+              <p className="text-[10px] text-slate-400">{g("subtitle")}</p>
             </div>
           </div>
           <button
@@ -176,7 +182,7 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
 
         {/* Área de estudo — AOI global */}
         <div className="p-3 border-b border-slate-100 dark:border-slate-800">
-          <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Área de Estudo</h4>
+          <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">{g("studyArea")}</h4>
           <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
         </div>
 
@@ -184,27 +190,27 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
         <div className="p-3 space-y-3 border-b border-slate-100 dark:border-slate-800">
           <div className="bg-cyan-50 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-800/50 rounded-xl p-2.5 text-[11px] text-cyan-800 dark:text-cyan-300 flex items-start gap-2">
             <Info size={12} className="mt-0.5 shrink-0 text-cyan-500" />
-            <span>Combina 6 fatores hidrogeológicos por pesos AHP. Zonas verdes = maior potencial de água subterrânea.</span>
+            <span>{g("description")}</span>
           </div>
           <div>
-            <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Ano (chuva) — <strong className="text-slate-700 dark:text-slate-200">{year}</strong></label>
+            <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">{g("rainYear")} — <strong className="text-slate-700 dark:text-slate-200">{year}</strong></label>
             <input type="range" min={2018} max={2024} step={1} value={year} onChange={e => setYear(+e.target.value)} className="w-full accent-cyan-500" />
             <div className="flex justify-between text-[10px] text-slate-400"><span>2018</span><span>2024</span></div>
           </div>
           <button onClick={run} disabled={loading}
             className="w-full flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors">
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Calcular potencial
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} {g("calculate")}
           </button>
         </div>
 
         {/* Weights */}
         {result && (
           <div className="p-3 border-b border-slate-100 dark:border-slate-800">
-            <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1"><Scale size={10} /> Pesos AHP</h4>
+            <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1"><Scale size={10} /> {g("weights")}</h4>
             <div className="space-y-1">
               {result.weights.map(w => (
                 <div key={w.key} className="flex items-center justify-between text-[11px]">
-                  <span className="text-slate-600 dark:text-slate-300">{w.label}</span>
+                  <span className="text-slate-600 dark:text-slate-300">{factorLabel(w)}</span>
                   <span className="font-mono text-slate-800 dark:text-slate-200">{(w.weight * 100).toFixed(0)}%</span>
                 </div>
               ))}
@@ -220,7 +226,7 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
         type="button"
         onClick={() => setDesktopSidebarOpen(v => !v)}
         style={{ left: desktopSidebarOpen ? "18rem" : "0px" }}
-        title={desktopSidebarOpen ? "Recolher painel" : "Expandir painel"}
+        title={desktopSidebarOpen ? g("collapsePanel") : g("expandPanel")}
         className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-l-0 border-slate-200 dark:border-slate-700 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
       >
         {desktopSidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
@@ -235,7 +241,7 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
           className="md:hidden absolute top-3 left-3 z-[600] flex items-center gap-1.5 px-3 py-1.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl shadow-md border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
         >
           <SlidersHorizontal size={13} className="text-cyan-600 dark:text-cyan-400" />
-          Filtros
+          {g("filters")}
         </button>
 
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} zoomControl={false}>
@@ -277,18 +283,18 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
           <div className="absolute inset-0 z-[600] bg-white/55 dark:bg-slate-950/70 backdrop-blur-sm flex items-center justify-center">
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 px-7 py-5 flex items-center gap-3 max-w-xs">
               <Loader2 size={20} className="text-cyan-500 animate-spin shrink-0" />
-              <span className="text-sm text-slate-700 dark:text-slate-200 font-medium">A calcular potencial hídrico (AHP, 6 fatores)… pode levar ~1 min.</span>
+              <span className="text-sm text-slate-700 dark:text-slate-200 font-medium">{g("processing")}</span>
             </div>
           </div>
         )}
 
         {result && (
           <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-cyan-100 dark:border-cyan-900/40 p-3 text-[11px] min-w-[150px]">
-            <div className="font-semibold text-cyan-800 dark:text-cyan-300 mb-2 flex items-center gap-1"><Droplets size={11} /> Potencial hídrico</div>
+            <div className="font-semibold text-cyan-800 dark:text-cyan-300 mb-2 flex items-center gap-1"><Droplets size={11} /> {g("potential")}</div>
             {result.classes.map(c => (
               <div key={c.id} className="flex items-center gap-1.5 mb-1">
                 <span className="inline-block w-4 h-3 rounded" style={{ background: c.color }} />
-                <span className="text-slate-600 dark:text-slate-300">{c.label}</span>
+                <span className="text-slate-600 dark:text-slate-300">{classLabel(c)}</span>
               </div>
             ))}
           </div>
@@ -299,15 +305,15 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
       {result && (
         <div className="w-80 flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 overflow-y-auto shrink-0">
           <div className="p-4 space-y-4">
-            <div className="flex items-center gap-2"><Droplets size={15} className="text-cyan-600 dark:text-cyan-400" /><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Potencial de Água Subterrânea</span></div>
+            <div className="flex items-center gap-2"><Droplets size={15} className="text-cyan-600 dark:text-cyan-400" /><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{g("potentialFull")}</span></div>
             <div className="space-y-1.5">
               {result.classes.map(c => {
                 const pct = (c.areaKm2 / total) * 100;
                 return (
                   <div key={c.id}>
                     <div className="flex justify-between text-[11px] text-slate-600 dark:text-slate-300 mb-0.5">
-                      <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded" style={{ background: c.color }} />{c.label}</span>
-                      <span className="font-medium text-slate-800 dark:text-slate-200">{c.areaKm2.toLocaleString("pt-PT")} km² · {pct.toFixed(0)}%</span>
+                      <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded" style={{ background: c.color }} />{classLabel(c)}</span>
+                      <span className="font-medium text-slate-800 dark:text-slate-200">{c.areaKm2.toLocaleString(numberLocale)} km² · {pct.toFixed(0)}%</span>
                     </div>
                     <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                       <div className="h-full rounded-full" style={{ width: `${pct}%`, background: c.color }} />
@@ -317,11 +323,11 @@ export default function AguaSubterranea({ aoi, province, district, viewMode = "2
               })}
             </div>
             <div className="bg-cyan-50 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-800/50 rounded-xl p-3 text-[11px] text-cyan-800 dark:text-cyan-300 flex items-start gap-2">
-              <Info size={12} className="mt-0.5 shrink-0" /> Modelo AHP de favorabilidade (indicativo). A litologia pode ser adicionada como 7º fator. Confirmar com furos de teste.
+              <Info size={12} className="mt-0.5 shrink-0" /> {g("modelNotice")}
             </div>
             <button onClick={exportGroundwaterPdf}
               className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm">
-              <FileDown size={13} /> Exportar Relatório PDF
+              <FileDown size={13} /> {g("exportPdf")}
             </button>
           </div>
         </div>

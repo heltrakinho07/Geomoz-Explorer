@@ -1,0 +1,226 @@
+/* Real browser regression: guest workspace, visible drawing, HGT import, WASM slope. */
+const {createServer} = require("node:http");
+const {readFile, stat, mkdir} = require("node:fs/promises");
+const path = require("node:path");
+const {chromium} = require(path.join(process.env.GIS_PLAYWRIGHT_ROOT, "node_modules/playwright"));
+const root = path.resolve("artifacts/geomoz-react/dist/public");
+const mime = {".html":"text/html",".js":"text/javascript",".css":"text/css",".json":"application/json",".wasm":"application/wasm",".svg":"image/svg+xml",".png":"image/png",".jpg":"image/jpeg"};
+const {deflateSync}=require("node:zlib");
+function pngChunk(type,data){
+  const name=Buffer.from(type),body=Buffer.concat([name,data]),out=Buffer.alloc(data.length+12);
+  out.writeUInt32BE(data.length,0);body.copy(out,4);let crc=0xffffffff;
+  for(const byte of body){crc^=byte;for(let i=0;i<8;i++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}
+  out.writeUInt32BE((crc^0xffffffff)>>>0,out.length-4);return out;
+}
+const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(1,0);ihdr.writeUInt32BE(1,4);ihdr[8]=8;ihdr[9]=6;
+const testTile=Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),pngChunk("IHDR",ihdr),pngChunk("IDAT",deflateSync(Buffer.from([0,37,99,235,80]))),pngChunk("IEND",Buffer.alloc(0))]);
+const tileRequests=[],wmsRequests=[];
+async function waitForServer(predicate){
+  const end=Date.now()+20000;
+  while(!predicate()&&Date.now()<end)await new Promise(resolve=>setTimeout(resolve,200));
+}
+const server = createServer(async (req, res) => {
+  try {
+    const parsed = new URL(req.url, "http://localhost");
+    if(parsed.pathname.startsWith("/test-tiles/")){tileRequests.push(parsed.pathname);res.writeHead(200,{"Content-Type":"image/png"});res.end(testTile);return;}
+    if(parsed.pathname==="/test-wms"){
+      if((parsed.searchParams.get("REQUEST")||"").toLowerCase()==="getcapabilities"){
+        res.writeHead(200,{"Content-Type":"application/xml"});
+        res.end('<?xml version="1.0"?><WMS_Capabilities version="1.3.0"><Service><Title>Cesium test WMS</Title></Service><Capability><Layer><Title>Fixtures</Title><CRS>EPSG:3857</CRS><Layer><Name>fixture</Name><Title>Test imagery</Title></Layer></Layer></Capability></WMS_Capabilities>');
+      }else{wmsRequests.push(Object.fromEntries(parsed.searchParams));res.writeHead(200,{"Content-Type":"image/png"});res.end(testTile);}
+      return;
+    }
+    let file = path.resolve(root, "." + decodeURIComponent(parsed.pathname));
+    if (!file.startsWith(root + path.sep) && file !== root) {res.writeHead(403);res.end();return;}
+    try {if (!(await stat(file)).isFile()) file = path.join(root,"index.html");}
+    catch {file = path.join(root,"index.html");}
+    const data = await readFile(file);
+    res.writeHead(200, {"Content-Type":mime[path.extname(file)] || "application/octet-stream"});
+    res.end(data);
+  } catch {res.writeHead(500);res.end();}
+});
+(async () => {
+  await mkdir("workspace-browser-artifacts",{recursive:true});
+  await new Promise(resolve=>server.listen(4178,"127.0.0.1",resolve));
+  const browser = await chromium.launch({headless:true,args:["--use-angle=swiftshader","--enable-webgl","--ignore-gpu-blocklist"]});
+  const page = await browser.newPage({viewport:{width:1440,height:1000}});
+  page.setDefaultTimeout(120000);
+  page.on("pageerror",error=>console.error("Browser runtime error:",error.message));
+  try {
+    await page.goto("http://127.0.0.1:4178/");
+    await page.getByTitle("Ativar Modo Noturno",{exact:true}).first().click();
+    await page.waitForFunction(()=>document.documentElement.dataset.geomozTheme==="dark");
+    // Landing primary entry now exposes the descriptive accessible name.
+    await page.getByRole("button",{name:"Explorar GeoMoz",exact:true}).click();
+    await page.getByRole("button",{name:"Continuar como Convidado (Explorar sem conta)",exact:true}).click();
+    // Theme action now has a descriptive accessible name and compact icon/label layout.
+    const themeAction=page.getByTestId("sidebar-theme-action");
+    await themeAction.waitFor();
+    if(await themeAction.getAttribute("aria-label")!=="Ativar modo claro") throw Error("Theme toggle did not retain dark-mode state.");
+    await page.waitForFunction(()=>document.documentElement.classList.contains("dark"));
+    const settingsAction=page.getByTestId("sidebar-settings-action");
+    await settingsAction.waitFor();
+    // The resizable left rail must contain all available actions even at its 260px minimum.
+    const sidebar=page.locator("aside").first();
+    await sidebar.evaluate(element=>element.style.setProperty("--gm-sidebar-width","260px"));
+    const withinSidebar=await page.getByTestId("sidebar-action-dock").evaluate(dock=>{
+      const container=dock.closest(".gm-sidebar")?.getBoundingClientRect();
+      const area=dock.getBoundingClientRect();
+      return Boolean(container) && [...dock.querySelectorAll("button")].every(button=>{
+        const box=button.getBoundingClientRect();
+        return box.left>=container.left-1 && box.right<=container.right+1 &&
+          box.left>=area.left-1 && box.right<=area.right+1;
+      });
+    });
+    if(!withinSidebar) throw Error("Sidebar actions overflow at the 260px minimum width.");
+    await page.screenshot({path:"workspace-browser-artifacts/sidebar-action-dock.png"});
+    await sidebar.evaluate(element=>element.style.removeProperty("--gm-sidebar-width"));
+    // Settings is now a first-class embedded page, not a Radix modal.
+    // Exercise the real persisted selector before returning to the dashboard.
+    await settingsAction.click();
+    await page.getByTestId("geomoz-settings-page").waitFor({state:"visible"});
+    await page.getByTestId("settings-section-preferences").click();
+    const portalLocale=page.getByTestId("geomoz-portal-language");
+    await portalLocale.waitFor();
+    if(await portalLocale.locator("option").count()!==21) throw Error("Portal selector lost upstream GeoLibre locales.");
+    for(const copy of [
+      {code:"en",actual:"en",navigation:"Watersheds",banner:"Geospatial command centre",settings:"Interface language"},
+      {code:"es",actual:"es",navigation:"Cuencas hidrográficas",banner:"Centro de mando geoespacial",settings:"Idioma de la interfaz"},
+      {code:"fr",actual:"fr",navigation:"Bassins versants",banner:"Centre de pilotage géospatial",settings:"Langue de l'interface"},
+      {code:"de",actual:"en",navigation:"Watersheds",banner:"Geospatial command centre",settings:"Interface language"},
+      {code:"it",actual:"en",navigation:"Watersheds",banner:"Geospatial command centre",settings:"Interface language"},
+      {code:"pt",actual:"pt",navigation:"Bacias hidrográficas",banner:"Centro de Comando Geoespacial",settings:"Idioma da interface"},
+    ]){
+      await portalLocale.selectOption(copy.code);
+      await page.waitForFunction(copy=>{
+        const api=window.GeoMozPreferences;
+        const persisted=JSON.parse(localStorage.getItem("geolibre.desktopSettings")||"{}").language;
+        return api?.getLanguage()===copy.code && persisted===copy.code &&
+          document.documentElement.lang===copy.actual &&
+          document.querySelector('[data-testid="geomoz-portal-language"]')?.getAttribute("aria-label")===copy.settings;
+      },copy,{timeout:18000});
+      if (copy.code === "it" || copy.code === "de") {
+        const notice = page.getByTestId("geomoz-language-fallback");
+        await notice.waitFor({state:"visible"});
+        if (!(await notice.innerText()).includes(copy.code === "it" ? "Italiano" : "Deutsch"))
+          throw Error("GIS-only language fallback notice does not identify the selected language.");
+        if (!(await page.getByTestId("geomoz-settings-page").innerText()).includes("GeoMoz account preferences"))
+          throw Error("Settings chrome has not switched to English fallback.");
+      } else await page.getByTestId("geomoz-language-reviewed-info").waitFor({state:"visible"});
+    }
+    await page.getByRole("link",{name:"Voltar à plataforma",exact:true}).click();
+    await page.getByTestId("geomoz-settings-page").waitFor({state:"hidden"});
+    // Shared preferences update live navigation and dashboard without a reload.
+    for(const copy of [
+      {code:"en",navigation:"Watersheds",banner:"Geospatial command centre"},
+      {code:"es",navigation:"Cuencas hidrográficas",banner:"Centro de mando geoespacial"},
+      {code:"fr",navigation:"Bassins versants",banner:"Centre de pilotage géospatial"},
+      {code:"pt",navigation:"Bacias hidrográficas",banner:"Centro de Comando Geoespacial"},
+    ]){
+      await page.evaluate(code=>window.GeoMozPreferences.setLanguage(code),copy.code);
+      await page.waitForFunction(copy=>
+        document.querySelector(".gm-sidebar")?.textContent?.includes(copy.navigation) &&
+        document.querySelector(".gm-dashboard-hero")?.textContent?.includes(copy.banner),
+        copy,{timeout:18000});
+    }
+    console.log("Settings page and GeoLibre preferences synchronize 21 locales; dashboard labels switch without reload.");
+    // The Geoperigos module remains mounted when its locale changes.
+    await page.getByRole("button",{name:"Geoperigos",exact:true}).click();
+    await page.getByRole("heading",{name:"Geoperigos",exact:true}).waitFor();
+    await page.getByRole("button",{name:"Mapear cheia",exact:true}).waitFor();
+    for(const copy of [
+      {code:"en",heading:"Geohazards",action:"Map flooding"},
+      {code:"fr",heading:"Géorisques",action:"Cartographier l'inondation"},
+      {code:"es",heading:"Geopeligros",action:"Cartografiar inundación"},
+      {code:"pt",heading:"Geoperigos",action:"Mapear cheia"},
+    ]){
+      await page.evaluate(code=>window.GeoMozPreferences.setLanguage(code),copy.code);
+      await page.getByRole("heading",{name:copy.heading,exact:true}).waitFor({state:"visible"});
+      await page.getByRole("button",{name:copy.action,exact:true}).waitFor({state:"visible"});
+    }
+    console.log("Geoperigos form and flood controls translated in PT/EN/ES/FR without reloading.");
+    await page.getByRole("button",{name:"GIS Workspace",exact:true}).click();
+    await page.getByRole("heading",{name:"Da área de estudo ao resultado.",exact:true}).waitFor();
+    await page.locator('[data-testid="cesium-workspace"] .cesium-widget canvas').waitFor();
+    await page.getByText("CesiumJS · 2D",{exact:true}).waitFor();
+    if(await page.locator("canvas.maplibregl-canvas").count()) throw Error("Legacy renderer still mounted.");
+    await page.screenshot({path:"workspace-browser-artifacts/01-workspace.png",fullPage:true});
+    await page.getByRole("button",{name:/01 · ÁREA/}).click();
+    const map = page.locator('[data-testid="cesium-workspace"] .cesium-widget canvas');
+    const box = await map.boundingBox();
+    if (!box) throw Error("Map canvas has no visible bounds.");
+    for (const [x,y] of [[0.40,0.42],[0.60,0.42],[0.60,0.62]])
+      await map.click({position:{x:box.width*x,y:box.height*y}});
+    await page.getByRole("button",{name:"Concluir área",exact:true}).waitFor({state:"visible"});
+    if (!(await page.getByTestId("gis-aoi-drawing-path").isVisible())) throw Error("AOI line is not visible.");
+    await page.screenshot({path:"workspace-browser-artifacts/02-drawing.png",fullPage:true});
+    await page.getByRole("button",{name:"Concluir área",exact:true}).click();
+    // Synthetic SRTM sample; it is not the user's original DEM.
+    const side=1201, hgt=Buffer.alloc(side*side*2);
+    for(let y=0;y<side;y++) for(let x=0;x<side;x++) hgt.writeInt16BE(1500-Math.floor(x/4)-Math.floor(y/8),(y*side+x)*2);
+    await page.locator('.geomoz-workspace input[type="file"][multiple][accept*=".hgt"]').setInputFiles({name:"S20E035.hgt",mimeType:"application/octet-stream",buffer:hgt});
+    await page.waitForFunction(()=>Number(document.querySelector('[data-testid="cesium-workspace"]')?.dataset.rasterCount)>0);
+    await page.waitForFunction(()=>Number(document.querySelector('[data-testid="cesium-workspace"]')?.dataset.rasterTiles)>0);
+    console.log("HGT imported and rendered as Cesium imagery; opening processing");
+    await page.getByRole("button",{name:"Processamento",exact:true}).click();
+    await page.getByText("Declive (Slope)",{exact:true}).first().click();
+    console.log("Slope selected; starting WASM");
+    await page.getByRole("button",{name:"Executar no browser",exact:true}).click();
+    await page.getByText("Whitebox Raster concluído",{exact:true}).waitFor();
+    await page.getByRole("button",{name:/1 resultado\(s\)/}).waitFor();
+    await page.waitForFunction(()=>Number(document.querySelector('[data-testid="cesium-workspace"]')?.dataset.rasterCount)>=2);
+    await page.waitForFunction(()=>window.Cesium?.VERSION==="1.127");
+    await page.waitForFunction(()=>document.querySelector('[data-testid="cesium-workspace"]')?.dataset.sceneMode===String(window.Cesium.SceneMode.SCENE2D));
+    await page.waitForFunction(()=>Number(document.querySelector('[data-testid="cesium-workspace"]')?.dataset.resultTiles)>0);
+    await page.waitForFunction(()=>document.querySelector('[data-testid="cesium-workspace"]')?.dataset.activeRasterOnTop==="true");
+    await page.screenshot({path:"workspace-browser-artifacts/03-result.png",fullPage:true});
+    await page.waitForFunction(()=>[...document.querySelectorAll("button")].some(button=>button.textContent.includes("Fixar range atual")&&!button.disabled));
+    const selected = await page.locator(".gw-input-card strong").innerText();
+    if (!selected.includes("Declive")) throw Error("The output raster was not automatically selected: "+selected);
+    // Real GeoJSON loading and feature identification in the Cesium map.
+    const polygon={type:"FeatureCollection",features:[{type:"Feature",properties:{fixture:"Cesium vector"},geometry:{type:"Polygon",coordinates:[[[35,-20],[36,-20],[36,-19],[35,-19],[35,-20]]]}}]};
+    await page.locator('.geomoz-workspace input[type="file"][multiple][accept*=".hgt"]').setInputFiles({name:"cesium-fixture.geojson",mimeType:"application/geo+json",buffer:Buffer.from(JSON.stringify(polygon))});
+    await page.waitForFunction(()=>Number(document.querySelector('[data-testid="cesium-workspace"]')?.dataset.vectorReady)>=2);
+    const vectorBox=await map.boundingBox();
+    await map.click({position:{x:vectorBox.width/2,y:vectorBox.height/2}});
+    await page.getByRole("button",{name:"Fechar atributos",exact:true}).waitFor();
+    await page.getByText("Cesium vector",{exact:true}).waitFor();
+    await page.getByRole("button",{name:"Fechar atributos",exact:true}).click();
+    // Deterministic local services verify real Cesium requests without an external provider.
+    await page.getByRole("button",{name:"Dados",exact:true}).click();
+    await page.getByPlaceholder("https://.../{z}/{x}/{y}.png",{exact:true}).fill("http://127.0.0.1:4178/test-tiles/{z}/{x}/{y}.png");
+    await page.getByRole("button",{name:"Adicionar serviço de tiles à sessão",exact:true}).click();
+    await page.waitForFunction(()=>Number(document.querySelector('[data-testid="cesium-workspace"]')?.dataset.serviceCount)>0);
+    await waitForServer(()=>tileRequests.length>0);
+    if(!tileRequests.length)throw Error("Cesium did not request XYZ imagery.");
+    const wmsEndpoint=page.getByPlaceholder("https://.../wms",{exact:true});
+    await wmsEndpoint.fill("http://127.0.0.1:4178/test-wms");
+    await wmsEndpoint.locator("..").getByRole("button",{name:"Listar",exact:true}).click();
+    await page.getByRole("button",{name:"Adicionar WMS ao mapa",exact:true}).click();
+    await page.waitForFunction(()=>Number(document.querySelector('[data-testid="cesium-workspace"]')?.dataset.serviceCount)>=2);
+    await waitForServer(()=>wmsRequests.length>0);
+    const wms=wmsRequests.find(r=>r.REQUEST==="GetMap"),coords=(wms?.BBOX??"").split(",").map(Number);
+    if(!wms||coords.length!==4||!coords.every(Number.isFinite)||coords[0]>=coords[2]||coords[1]>=coords[3]||wms.CRS!=="EPSG:3857")throw Error("Invalid projected WMS request: "+JSON.stringify(wmsRequests));
+    await page.screenshot({path:"workspace-browser-artifacts/04-vectors-services.png",fullPage:true});
+    console.log("Cesium vector picking, XYZ and WMS passed",JSON.stringify({xyz:tileRequests.length,wms:wmsRequests.length,bbox:wms.BBOX}));
+    // Global theme survives module navigation and the crawlable legal documents.
+    for(const route of ["/privacy","/terms","/privacy.html","/terms.html"]){
+      await page.goto("http://127.0.0.1:4178"+route);
+      await page.waitForFunction(()=>document.documentElement.dataset.geomozTheme==="dark");
+      const surface=page.locator(route.endsWith(".html")?"article":"main section[id]").first();
+      await surface.waitFor();
+      const color=await surface.evaluate(node=>getComputedStyle(node).backgroundColor);
+      if(color==="rgb(255, 255, 255)")throw Error("White legal surface in global dark mode: "+route);
+    }
+    await page.goto("http://127.0.0.1:4178/");
+    await page.getByTitle("Ativar Modo Claro",{exact:true}).first().waitFor();
+    console.log("Global dark mode persisted across landing, portal, GIS and all legal routes.");
+    console.log(JSON.stringify({engine:"CesiumJS 1.127 in 2D",drawing:"visible",hgt:"imported and rendered",slope:"completed",selected}));
+  } catch (error) {
+    console.error("Rendered workspace state:", (await page.locator("body").innerText()).slice(-14000));
+    throw error;
+  } finally {
+    await page.screenshot({path:"workspace-browser-artifacts/final-state.png",fullPage:true}).catch(()=>{});
+    await browser.close(); await new Promise(resolve=>server.close(resolve));
+  }
+})().catch(error=>{console.error(error);server.close();process.exitCode=1;});

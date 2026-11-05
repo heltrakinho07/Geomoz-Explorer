@@ -1,0 +1,702 @@
+:root {
+  --geomoz-navy: #020617;
+  --geomoz-deep-blue: #082f49;
+  --geomoz-blue: #0284c7;
+  --geomoz-sky: #38bdf8;
+  --geomoz-blue-soft: #e0f2fe;
+
+  --background: 210 40% 98%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 199 96% 39%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 199 96% 39%;
+  --secondary: 210 38% 95%;
+  --secondary-foreground: 222 47% 16%;
+  --muted: 210 35% 95%;
+  --muted-foreground: 215 19% 36%;
+  --accent: 204 94% 93%;
+  --accent-foreground: 201 93% 24%;
+  --border: 210 24% 85%;
+  --input: 210 19% 72%;
+  --radius: 0.5rem;
+  --elev-penumbra: hsl(212 65% 22% / 0.06);
+  --elev-umbra: hsl(212 65% 22% / 0.11);
+}
+html.dark {
+  --background: 222 47% 7%;
+  --foreground: 210 40% 98%;
+  --card: 213 44% 11%;
+  --card-foreground: 210 40% 98%;
+  --popover: 211 40% 15%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 199 95% 63%;
+  --primary-foreground: 222 47% 11%;
+  --ring: 199 95% 63%;
+  --secondary: 211 32% 18%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 213 29% 19%;
+  --muted-foreground: 213 21% 76%;
+  --accent: 207 38% 25%;
+  --accent-foreground: 204 95% 95%;
+  --border: 211 26% 29%;
+  --input: 211 22% 42%;
+  --elev-penumbra: hsl(0 0% 0% / 0.36);
+  --elev-umbra: hsl(0 0% 0% / 0.53);
+}
+/*
+ * As variáveis definidas pelo GeoLibre estão no @layer base. Esta camada,
+ * não estratificada e carregada depois, prevalece mesmo que o utilizador
+ * tenha escolhido outro data-theme. O branding fica azul em qualquer tema,
+ * mas a preferência claro/escuro continua a ser respeitada.
+ */
+:root[data-theme], html.dark[data-theme] {
+  --primary: 199 96% 39%;
+  --ring: 199 96% 39%;
+}
+html.dark[data-theme] {
+  --primary: 199 95% 63%;
+  --ring: 199 95% 63%;
+}
+
+
+/* GeoMoz Workbench: owned React layout, shared surfaces for every engine dialog. */
+html, body, #root { width:100%;height:100%;overflow:hidden; }
+body { margin:0;background:hsl(var(--background));color:hsl(var(--foreground));font-family:Inter,"IBM Plex Sans Variable",system-ui,sans-serif; }
+.gm-workbench { --gm-surface:hsl(var(--card));--gm-muted:hsl(var(--muted));--gm-line:hsl(var(--border));--gm-text:hsl(var(--foreground));--gm-subtle:hsl(var(--muted-foreground));--gm-accent:hsl(var(--primary)); }
+.gm-workbench button, .gm-workbench a { -webkit-tap-highlight-color:transparent; }
+.gm-workbench button { cursor:pointer; }
+.gm-workbench button:disabled { cursor:not-allowed;opacity:.42; }
+.gm-workbench :is(button,a,input):focus-visible { outline:2px solid var(--gm-accent);outline-offset:2px; }
+.gm-workbench-chrome { position:relative;z-index:40;flex:none;min-width:0;box-shadow:0 3px 14px #0206170b;background:var(--gm-surface);color:var(--gm-text); }
+.gm-titlebar { height:62px;display:flex;align-items:center;gap:24px;padding:0 20px;background:#071525;color:#eaf3ff;border-bottom:1px solid #ffffff12; }
+.gm-brand { display:flex;align-items:center;gap:9px;flex:none;text-decoration:none;color:#f5faff;font-size:22px;line-height:1.05;font-weight:780;letter-spacing:-.7px; }
+.gm-brand>img { width:32px;height:32px; }
+.gm-brand>span>span { color:#38bdf8; }
+.gm-brand small { display:block;margin-top:4px;color:#8fa9bd;font-size:8px;font-weight:600;letter-spacing:2.1px; }
+.gm-project-title { display:flex;align-items:center;gap:9px;min-width:100px;padding-left:22px;border-left:1px solid #ffffff24; }
+.gm-project-symbol { display:grid;place-items:center;width:31px;height:31px;border:1px solid #ffffff26;border-radius:8px;color:#7dd3fc; }
+.gm-project-field { display:block;min-width:0; }
+.gm-project-field>span { display:block;color:#8fa9bd;font-size:8px;letter-spacing:1.4px;line-height:1.8; }
+.gm-project-field>input { width:clamp(120px,15vw,250px);display:block;border:0;background:transparent;color:#f8fafc;font-family:inherit;font-weight:550;font-size:12px;line-height:1.6;padding:0;outline-offset:1px; }
+.gm-title-actions { display:flex;align-items:center;gap:14px;min-width:0;margin-left:auto; }
+.gm-command-search { height:33px;display:flex;align-items:center;gap:9px;min-width:185px;padding:0 10px;border:1px solid #c6e8ff23;border-radius:6px;color:#c6d9e9;background:#ffffff08;font-size:11px; }
+.gm-command-search kbd { margin-left:17px;color:#93abc0;font:9px/1 system-ui; }
+.gm-module-nav { display:flex;gap:13px; }
+.gm-module-nav>a { display:flex;align-items:center;gap:4px;color:#b9cfdf;text-decoration:none;font-size:10px;white-space:nowrap; }
+.gm-module-nav>a:hover { color:#7dd3fc; }
+.gm-icon-button { display:grid;place-items:center;flex:none;width:29px;height:29px;border:0;border-radius:5px;color:inherit;background:transparent; }
+
+/* Restore the existing engine/i18next language switcher in the GeoMoz topbar.
+   It is a compact native select; changing languages never adds a second ribbon. */
+.gm-title-actions .gm-language-picker {
+  display:flex;align-items:center;gap:6px;flex:none;min-width:0;
+  height:33px;padding:0 8px;border:1px solid #c6e8ff23;border-radius:6px;
+  background:#ffffff08;color:#d7ebfa;
+}
+.gm-title-actions .gm-language-picker svg{flex:none;color:#7dd3fc}
+.gm-title-actions .gm-language-picker select{
+  width:102px;max-width:19vw;min-width:0;height:100%;border:0;
+  padding:0 16px 0 0;background:transparent;color:inherit;
+  font:600 11px/1.4 Inter,system-ui,sans-serif;
+  text-overflow:ellipsis;cursor:pointer;outline-offset:2px;
+}
+.gm-title-actions .gm-language-picker option{color:#0f172a;background:#fff}
+.gm-title-actions .gm-language-picker:focus-within{outline:2px solid #7dd3fc;outline-offset:2px}
+@media(max-width:880px){
+  .gm-title-actions .gm-language-picker{padding:0 5px;gap:3px}
+  .gm-title-actions .gm-language-picker select{width:64px;max-width:14vw;font-size:10px}
+}
+
+.gm-icon-button:hover { background:color-mix(in srgb,currentColor 10%,transparent); }
+.gm-taskbar { display:flex;align-items:center;justify-content:space-between;min-width:0;padding:0 18px;border-bottom:1px solid var(--gm-line);gap:12px;background:var(--gm-surface); }
+.gm-task-tabs { display:flex;align-items:stretch;overflow:auto;scrollbar-width:none;gap:5px; }
+/* GeoMoz compact GIS header: one category row, no redundant full ribbon. */
+.gm-compact-taskbar{min-height:52px;max-height:56px;gap:9px;padding:0 12px;align-items:center;overflow:visible}
+.gm-compact-tool-list{flex:1;min-width:0;display:flex;align-items:center;gap:5px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;overscroll-behavior-x:contain}
+.gm-compact-tool-list>.gm-ribbon-accordion{flex:none;min-width:auto}
+.gm-compact-tool-list .gm-ribbon-trigger,.gm-compact-tool-list>.gm-compact-seismic{display:flex;flex-direction:row;align-items:center;gap:6px;justify-content:center;min-height:37px;min-width:0;max-width:none;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--gm-text);padding:7px 9px;font-size:11px;font-weight:650;white-space:nowrap;line-height:1.3}
+.gm-compact-tool-list .gm-ribbon-trigger svg,.gm-compact-tool-list>.gm-compact-seismic svg{color:var(--gm-accent);flex:none}
+.gm-compact-tool-list .gm-ribbon-trigger svg:last-child{margin-left:0}
+.gm-compact-tool-list .gm-ribbon-trigger:hover,.gm-compact-tool-list>.gm-compact-seismic:hover{background:var(--gm-muted);border-color:var(--gm-line)}
+.gm-compact-tool-list .gm-ribbon-trigger[aria-expanded="true"],.gm-compact-tool-list>.gm-compact-seismic[aria-expanded="true"]{background:var(--gm-muted);border-color:var(--gm-accent);color:var(--gm-accent)}
+.gm-compact-taskbar>.gm-session-badge{flex:none}
+@media(max-width:1100px){.gm-compact-taskbar>.gm-session-badge{display:none}}
+@media(max-width:767px){.gm-compact-taskbar{padding:2px 8px;min-height:46px;max-height:52px}.gm-compact-tool-list .gm-ribbon-trigger,.gm-compact-tool-list>.gm-compact-seismic{font-size:10px;min-height:34px;padding:5px 7px}}
+
+.gm-task-tabs>button { position:relative;padding:10px 14px;border:0;background:transparent;color:var(--gm-subtle);font-size:11px;font-weight:600;white-space:nowrap; }
+.gm-task-tabs>button[aria-current] { color:var(--gm-accent); }
+.gm-task-tabs>button[aria-current]::after { content:"";position:absolute;bottom:0;left:13px;right:13px;height:3px;border-radius:3px 3px 0 0;background:var(--gm-accent); }
+.gm-task-tabs>button:hover { background:var(--gm-muted); }
+.gm-session-badge { display:flex;align-items:center;gap:6px;flex:none;font-size:10px;color:var(--gm-subtle); }
+.gm-session-badge i,.gm-catalog-footer i { display:inline-block;width:5px;height:5px;background:#14b8a6;border-radius:100%; }
+.gm-session-detail { margin-left:-4px; }
+.gm-command-ribbon { min-height:85px;display:flex;align-items:stretch;gap:10px;padding:7px 18px 5px;border-bottom:1px solid var(--gm-line); }
+.gm-ribbon-groups { min-width:0;display:flex;align-items:stretch;overflow-x:auto;scrollbar-width:thin; }
+.gm-ribbon-group { flex:none;display:flex;flex-direction:column;justify-content:space-between;margin-right:14px;padding-right:14px;border-right:1px solid var(--gm-line); }
+.gm-ribbon-group:last-child { border:0;margin-right:0; }
+.gm-ribbon-group>div { display:flex;align-items:stretch;gap:3px; }
+.gm-ribbon-group button { display:flex;align-items:center;flex-direction:column;justify-content:center;gap:5px;min-width:64px;max-width:122px;min-height:48px;padding:4px 9px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--gm-text);font-size:10px;line-height:1.2; }
+.gm-ribbon-group button svg { color:var(--gm-accent);stroke-width:1.6; }
+.gm-ribbon-group button:hover:not(:disabled) { background:var(--gm-muted);border-color:var(--gm-line); }
+.gm-ribbon-group>small { text-align:center;font-size:8px;letter-spacing:.4px;color:var(--gm-subtle);margin-top:5px; }
+.gm-ribbon-empty { display:flex;align-items:center;gap:10px;color:var(--gm-subtle);font-size:11px;margin:10px; }
+.gm-more-tools { display:flex;align-self:center;align-items:center;justify-content:center;gap:5px;flex:none;margin-left:auto;padding:7px 9px;border:1px solid var(--gm-line);border-radius:5px;background:transparent;color:var(--gm-subtle);font-size:10px; }
+.gm-more-tools[aria-expanded=true] { color:var(--gm-accent);background:var(--gm-muted); }
+.gm-engine-menus { display:flex;align-items:center;flex-wrap:wrap;gap:5px;padding:7px 18px;border-bottom:1px solid var(--gm-line);background:var(--gm-muted); }
+.gm-engine-menus[hidden],.gm-menu-slot[hidden],.gm-engine-panel[hidden] { display:none !important; }
+.gm-menu-slot { display:contents; }
+.gm-engine-menus button { font-size:11px; }
+.gm-catalog { position:relative;display:flex;flex-direction:column;flex:none;width:var(--layer-panel-width,290px);min-width:230px;min-height:0;max-width:40vw;border-right:1px solid var(--gm-line);background:var(--gm-surface);color:var(--gm-text); }
+.gm-catalog-heading { display:flex;align-items:center;justify-content:space-between;padding:18px 16px 14px; }
+.gm-catalog-heading small { display:block;font-size:8px;letter-spacing:1.5px;color:var(--gm-subtle);margin-bottom:5px; }
+.gm-catalog-heading h2 { display:flex;align-items:center;gap:8px;margin:0;font-size:16px;font-weight:650;letter-spacing:-.3px; }
+.gm-catalog-heading h2 svg { color:var(--gm-accent); }
+.gm-catalog-nav { display:flex;margin:0 14px 14px;padding:3px;border:1px solid var(--gm-line);border-radius:6px;background:var(--gm-muted);gap:3px; }
+.gm-catalog-nav button { display:flex;align-items:center;justify-content:center;gap:5px;flex:1;padding:7px 4px;border:0;border-radius:4px;color:var(--gm-subtle);background:transparent;font-size:10px;font-weight:550; }
+.gm-catalog-nav button[aria-pressed=true] { color:var(--gm-text);background:var(--gm-surface);box-shadow:0 1px 3px #02061714; }
+.gm-catalog-nav b { background:var(--gm-muted);border-radius:3px;padding:0 4px;font-size:9px; }
+.gm-catalog-search { display:flex;align-items:center;gap:7px;margin:0 14px 12px;padding:8px 9px;border:1px solid var(--gm-line);border-radius:5px;color:var(--gm-subtle); }
+.gm-catalog-search input { min-width:0;width:100%;border:0;background:transparent;color:var(--gm-text);font-family:inherit;font-size:11px;line-height:1.3;outline:0; }
+.gm-catalog-filter { display:flex;align-items:center;gap:3px;padding:0 14px 10px;border-bottom:1px solid var(--gm-line); }
+.gm-catalog-filter>button { padding:4px 7px;border:0;border-radius:4px;background:transparent;color:var(--gm-subtle);font-size:9px; }
+.gm-catalog-filter>button[aria-pressed=true] { background:var(--gm-muted);color:var(--gm-accent);font-weight:650; }
+.gm-catalog-filter b { font-weight:500; }
+.gm-catalog-filter>span { margin-left:auto;font-size:7px;letter-spacing:.7px;color:var(--gm-subtle); }
+.gm-layer-list { flex:1;min-height:90px;overflow:auto;padding:8px;scrollbar-width:thin; }
+.gm-layer-row { display:flex;align-items:center;gap:2px;padding:5px 3px;border:1px solid transparent;border-radius:5px;min-width:0;margin-bottom:3px; }
+.gm-layer-row[data-selected=true] { background:hsl(var(--accent));border-color:hsl(var(--primary)/.25); }
+.gm-layer-row:hover { background:var(--gm-muted); }
+.gm-layer-row[data-selected=true]:hover { background:hsl(var(--accent)); }
+.gm-layer-visibility { display:grid;place-items:center;flex:none;width:25px;height:29px;border:0;background:transparent;color:var(--gm-subtle); }
+.gm-layer-row[data-visible=false] .gm-layer-select { opacity:.55; }
+.gm-layer-select { display:flex;align-items:center;gap:8px;flex:1;min-width:0;border:0;background:transparent;color:var(--gm-text);text-align:left;padding:4px 1px; }
+.gm-layer-select>span:last-child { min-width:0; }
+.gm-layer-select strong { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:550; }
+.gm-layer-select small { display:block;margin-top:3px;color:var(--gm-subtle);font-size:9px; }
+.gm-layer-symbol { display:grid;place-items:center;flex:none;width:28px;height:30px;background:hsl(var(--primary)/.08);border:1px solid hsl(var(--primary)/.13);border-radius:5px;color:var(--gm-accent); }
+.gm-layer-symbol-raster,.gm-layer-symbol-cog { color:#b45309;background:#f59e0b10;border-color:#f59e0b30; }
+.dark .gm-layer-symbol-raster,.dark .gm-layer-symbol-cog { color:#fbbf24; }
+.gm-layer-fit { width:25px; }
+.gm-catalog-empty { display:flex;align-items:center;flex-direction:column;text-align:center;padding:42px 16px; }
+.gm-catalog-empty>svg { color:var(--gm-accent);stroke-width:1.2;margin-bottom:16px; }
+.gm-catalog-empty strong { font-size:13px;font-weight:600; }
+.gm-catalog-empty p { max-width:220px;color:var(--gm-subtle);font-size:11px;line-height:1.7;margin:8px 0 18px; }
+.gm-catalog-empty>span { padding:5px 9px;border:1px dashed var(--gm-line);border-radius:5px;color:var(--gm-subtle);font-size:8px; }
+.gm-layer-inspector { padding:14px 16px;border-top:1px solid var(--gm-line);background:hsl(var(--muted)/.35); }
+.gm-layer-inspector>small { color:var(--gm-subtle);font-size:8px;letter-spacing:1px; }
+.gm-layer-inspector h3 { font-size:12px;font-weight:650;margin:6px 0 14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.gm-opacity { display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;color:var(--gm-subtle);font-size:10px;gap:8px; }
+.gm-opacity input { width:100%;accent-color:var(--gm-accent);height:13px; }
+.gm-inspector-actions { display:flex;gap:5px;flex-wrap:wrap;margin-top:13px; }
+.gm-inspector-actions button { display:flex;align-items:center;gap:4px;padding:5px 7px;border:1px solid var(--gm-line);border-radius:4px;background:var(--gm-surface);color:var(--gm-text);font-size:9px; }
+.gm-catalog-footer { display:flex;justify-content:space-between;gap:8px;padding:10px 15px;border-top:1px solid var(--gm-line);color:var(--gm-subtle);font-size:9px; }
+.gm-catalog-footer span:last-child { font-size:7px;letter-spacing:1px; }
+.gm-catalog-footer i { margin-right:5px; }
+.gm-catalog-notice { padding:0 15px;font-size:10px;color:var(--gm-subtle); }
+.gm-catalog-notice:empty { display:none; }
+.gm-catalog-resize { position:absolute;right:0;top:0;width:8px;height:100%;z-index:30;cursor:col-resize;touch-action:none; }
+.gm-catalog-resize::after { content:"";position:absolute;right:2px;top:calc(50% - 24px);width:3px;height:48px;border-radius:3px;background:var(--gm-subtle); }
+.gm-catalog-resize:hover { background:color-mix(in srgb,var(--gm-accent) 20%,transparent); }
+.gm-layer-rail { display:flex;align-items:center;flex-direction:column;gap:16px;width:42px;flex:none;padding:10px 5px;border-right:1px solid var(--gm-line);background:var(--gm-surface);color:var(--gm-subtle); }
+.gm-layer-rail>span { writing-mode:vertical-rl;letter-spacing:1.8px;font-size:8px; }
+.gm-engine-panel { min-height:0;flex:1;display:flex;overflow:hidden; }
+.gm-engine-panel>aside { width:100%!important;max-height:none!important;min-height:0;border:0!important; }
+.gm-workbench [data-workspace-row]>main { background:#dae4ec; }
+.dark .gm-workbench [data-workspace-row]>main { background:#071525; }
+.gm-workbench footer { background:var(--gm-surface);border-top:1px solid var(--gm-line);font-size:10px; }
+[role=dialog], [role=menu], [role=alertdialog], [data-radix-popper-content-wrapper] { --gm-popover:hsl(var(--popover));color:hsl(var(--popover-foreground)); }
+[role=dialog], [role=alertdialog] { border-color:hsl(var(--border));box-shadow:0 18px 64px #02061735; }
+html.dark [role=dialog],html.dark [role=alertdialog] { box-shadow:0 22px 68px #0008; }
+@media(max-width:1199px) { .gm-module-nav { display:none; }.gm-titlebar { gap:18px;padding:0 15px; }.gm-command-search kbd { display:none; }.gm-ribbon-group { margin-right:8px;padding-right:8px; }.gm-ribbon-group button { padding:4px 6px;min-width:56px;font-size:9px; } }
+@media(max-width:900px) { .gm-command-search { min-width:0; }.gm-command-search span { display:none; }.gm-taskbar { padding:0 8px; }.gm-task-tabs>button { padding:10px; }.gm-session-detail { display:none; }.gm-more-tools { width:67px;flex-wrap:wrap;font-size:9px; }.gm-command-ribbon { padding-left:8px;padding-right:8px; }.gm-catalog { max-width:42vw; } }
+@media(max-width:767px) { .gm-titlebar { height:55px;gap:12px;padding:0 12px; }.gm-brand { font-size:20px; }.gm-brand img { width:27px;height:27px; }.gm-brand small { font-size:6px;letter-spacing:1.6px; }.gm-project-title { padding-left:10px; }.gm-project-symbol { display:none; }.gm-project-field input { width:100px;font-size:10px; }.gm-title-actions { gap:7px; }.gm-taskbar { padding:0 5px; }.gm-task-tabs { gap:0; }.gm-task-tabs>button { font-size:10px;padding:9px; }.gm-session-badge { display:none; }.gm-command-ribbon { min-height:78px; }.gm-ribbon-group button { min-width:52px;font-size:9px; }.gm-catalog { position:absolute;top:0;left:0;bottom:0;max-width:min(320px,86vw);width:var(--layer-panel-width,290px);z-index:30;box-shadow:12px 0 30px #02061735; }.gm-layer-rail { position:absolute;top:12px;left:12px;z-index:29;width:36px;height:36px;padding:3px;border:1px solid var(--gm-line);border-radius:7px;box-shadow:0 2px 8px #02061725; }.gm-layer-rail>span { display:none; }.gm-catalog-resize { display:none; }.gm-project-field>span { letter-spacing:.7px;font-size:7px; } }
+@media(max-width:390px) { .gm-project-title { display:none; } }
+@media(prefers-reduced-motion:reduce) { .gm-workbench *, .gm-workbench *::before, .gm-workbench *::after { transition:none!important;animation:none!important; } }
+
+.gm-results { flex:1;min-height:0;overflow:auto;padding:12px; }
+.gm-results-title { display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;color:var(--gm-subtle);font-size:10px; }
+.gm-results-title button { color:var(--gm-accent);border:0;background:transparent;font-size:9px; }
+.gm-result-card { padding:11px;margin-bottom:8px;border:1px solid var(--gm-line);border-radius:6px;background:var(--gm-surface); }
+.gm-result-card>div { display:flex;align-items:center;gap:6px;font-size:10px;color:var(--gm-accent); }
+.gm-result-card strong { min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--gm-text); }
+.gm-result-card>div>span { font-size:8px;color:var(--gm-subtle); }
+.gm-result-card p { font-size:9px;line-height:1.6;color:var(--gm-subtle);margin:7px 0;overflow-wrap:anywhere; }
+.gm-result-card>button { display:flex;align-items:center;gap:6px;width:100%;padding:7px 0;border:0;border-top:1px solid var(--gm-line);color:var(--gm-accent);background:transparent;text-align:left;font-size:10px; }
+.gm-result-card>button>svg:last-child { margin-left:auto; }
+
+.gm-layer-row[data-rendered=false] .gm-layer-select { opacity:.55; }
+
+.gm-module-switch { position:relative; }
+.gm-module-switch>summary { display:flex;align-items:center;gap:6px;cursor:pointer;list-style:none;color:#c6d9e9;font-size:10px;padding:8px;white-space:nowrap; }
+.gm-module-switch>summary::-webkit-details-marker { display:none; }
+.gm-module-switch>nav { position:absolute;right:0;top:42px;z-index:90;width:228px;padding:12px;border:1px solid var(--gm-line);border-radius:8px;background:var(--gm-surface);color:var(--gm-text);box-shadow:0 15px 45px #02061735; }
+.gm-module-switch nav small { display:block;padding:3px 8px 9px;color:var(--gm-subtle);font-size:8px;letter-spacing:1px; }
+.gm-module-switch nav a { display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 8px;color:var(--gm-text);text-decoration:none;font-size:11px;border-radius:4px; }
+.gm-module-switch nav a:hover { background:var(--gm-muted);color:var(--gm-accent); }
+@media(max-width:767px) { .gm-module-switch>summary>span { display:none; }.gm-title-actions { gap:1px; } }
+
+.gm-shared-rail { background:var(--gm-surface);border-color:var(--gm-line);gap:6px;padding-top:12px; }
+.gm-shared-rail button { justify-content:center;min-width:32px;min-height:34px;border-radius:6px;border:1px solid transparent; }
+.gm-shared-rail button[aria-pressed=true] { border-color:hsl(var(--primary)/.25);background:hsl(var(--accent));color:var(--gm-accent); }
+.gm-shared-rail button>span { display:none; }
+.gm-workbench summary:focus-visible { outline:2px solid var(--gm-accent);outline-offset:2px; }
+@media(max-width:767px){.gm-shared-rail{padding-top:3px;padding-bottom:3px;}}
+
+
+/* Seismic events: GeoMoz-owned FDSN catalog panel. The renderer and layer tree
+   remain GeoLibre's actual React store, not a parallel map overlay. */
+.gm-seismic-panel {
+  position: absolute;
+  z-index: 62;
+  top: 100%;
+  left: 18px;
+  width: min(780px, calc(100vw - 36px));
+  max-height: min(72vh, 710px);
+  overflow-y: auto;
+  border: 1px solid var(--gm-line);
+  border-radius: 0 0 12px 12px;
+  background: var(--gm-surface);
+  color: var(--gm-text);
+  box-shadow: 0 18px 38px #02061750;
+  padding: 15px 19px 18px;
+}
+.gm-seismic-header { display:flex;align-items:flex-start;justify-content:space-between;gap:14px;border-bottom:1px solid var(--gm-line);padding-bottom:10px;margin-bottom:12px; }
+.gm-seismic-header small { display:block;color:var(--gm-subtle);font-size:9px;letter-spacing:1.3px;font-weight:750; }
+.gm-seismic-header h2 { display:flex;align-items:center;gap:8px;font-size:17px;font-weight:760;line-height:1.5; }
+.gm-seismic-header h2 svg {color:var(--gm-accent);}
+.gm-seismic-header p {font-size:11px;color:var(--gm-subtle);line-height:1.55;}
+.gm-seismic-header>button {display:grid;place-items:center;min-width:29px;min-height:29px;border:1px solid var(--gm-line);border-radius:6px;color:var(--gm-subtle);}
+.gm-seismic-filters {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px 12px;}
+.gm-seismic-filters>label {min-width:0;display:flex;flex-direction:column;gap:4px;font-size:10px;color:var(--gm-subtle);font-weight:650;}
+.gm-seismic-filters>label:nth-child(1),.gm-seismic-filters>label:nth-child(2){grid-column:span 2;}
+.gm-seismic-filters .gm-seismic-span {grid-column:1/-1;}
+.gm-seismic-filters :is(input,select) {
+  display:block;width:100%;min-width:0;min-height:33px;padding:6px 8px;
+  background:var(--gm-surface);border:1px solid var(--gm-line);
+  border-radius:5px;color:var(--gm-text);font:500 11px/1.35 inherit;
+}
+.gm-seismic-filters :is(input,select):focus-visible {outline:2px solid var(--gm-accent);outline-offset:1px;}
+.gm-seismic-actions {display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;}
+.gm-seismic-actions>button {
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-height:32px;padding:6px 12px;background:var(--gm-accent);color:#fff;
+  border:1px solid transparent;border-radius:6px;font-size:11px;font-weight:700;
+}
+.gm-seismic-actions>button:hover:not(:disabled) {filter:brightness(1.07);}
+.gm-seismic-actions>button:not(:first-child) {background:var(--gm-muted);border-color:var(--gm-line);color:var(--gm-text);}
+.gm-seismic-actions>a {display:inline-flex;align-items:center;gap:4px;color:var(--gm-accent);font-size:11px;font-weight:600;margin-left:auto;}
+.gm-seismic-notice,.gm-seismic-error {display:flex;align-items:flex-start;gap:7px;padding:9px 11px;margin-top:10px;border-radius:7px;font-size:11px;line-height:1.5;}
+.gm-seismic-notice {background:color-mix(in srgb,var(--gm-accent) 8%,transparent);color:var(--gm-text);}
+.gm-seismic-error {background:#fee2e2;color:#991b1b;border:1px solid #fecaca;}
+.gm-seismic-results {margin-top:12px;border-top:1px solid var(--gm-line);padding-top:10px;}
+.gm-seismic-count {display:flex;align-items:baseline;flex-wrap:wrap;gap:6px;font-size:12px;}
+.gm-seismic-count strong {font-size:22px;color:var(--gm-accent);}
+.gm-seismic-count em {display:block;flex-basis:100%;font-size:10px;color:#b45309;font-style:normal;}
+.gm-seismic-results p {font-size:10px;color:var(--gm-subtle);margin:8px 0;}
+.gm-seismic-events {margin-top:10px;max-height:170px;overflow:auto;border:1px solid var(--gm-line);border-radius:7px;}
+.gm-seismic-event {display:flex;align-items:flex-start;gap:10px;border-bottom:1px solid var(--gm-line);padding:8px 10px;font-size:11px;}
+.gm-seismic-event i {width:9px;height:9px;flex:none;border-radius:50%;margin-top:4px;}
+.gm-seismic-event strong {font-weight:760;}
+.gm-seismic-event small {display:block;color:var(--gm-subtle);font-size:10px;margin-top:3px;}
+.gm-seismic-panel>footer {margin-top:13px;color:var(--gm-subtle);font-size:10px;line-height:1.5;}
+.gm-seismic-spin {animation:gm-seismic-spin 1s linear infinite;}
+@keyframes gm-seismic-spin {to{transform:rotate(360deg);}}
+@media(max-width:640px){
+  .gm-seismic-panel {left:6px;width:calc(100vw - 12px);max-height:65vh;padding:12px;}
+  .gm-seismic-filters {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .gm-seismic-filters>label:nth-child(1),.gm-seismic-filters>label:nth-child(2){grid-column:1/-1;}
+  .gm-seismic-actions>a {margin-left:0;}
+}
+@media(prefers-reduced-motion:reduce){.gm-seismic-spin{animation:none;}}
+
+/* GeoMoz essential workflow. Original engine surfaces are controlled in React. */
+.gm-project-menu{display:flex;align-items:center;flex:none;}
+.gm-project-menu .gm-menu-slot>button{color:#c6d9e9;font-size:11px;}
+.gm-titlebar .gm-project-menu .gm-menu-slot[hidden]{display:none!important;}
+.gm-task-guidance{padding:6px 20px 8px;border-top:1px solid var(--gm-line);background:var(--gm-surface);color:var(--gm-subtle);font-size:10px;margin:0;}
+.gm-layer-properties{margin-top:12px;border-top:1px solid var(--gm-line);padding-top:10px;}
+.gm-layer-properties summary{font-size:10px;cursor:pointer;color:var(--gm-accent);}
+.gm-layer-properties label{display:flex;flex-direction:column;gap:5px;margin-top:10px;font-size:9px;color:var(--gm-subtle);}
+.gm-layer-properties input,.gm-layer-properties select{min-width:0;width:100%;padding:6px;border:1px solid var(--gm-line);border-radius:4px;background:var(--gm-surface);color:var(--gm-text);font-size:10px;}
+.gm-layer-properties form{display:flex;gap:5px;margin-top:8px;}
+.gm-layer-properties form>input{flex:1;width:50%;}
+.gm-layer-properties form>button{font-size:9px;color:var(--gm-accent);}
+.gm-layer-properties p{font-size:9px;color:var(--gm-subtle);overflow-wrap:anywhere;margin-top:8px;}
+.gm-help-menu nav button{display:block;width:100%;padding:9px 8px;border:0;border-radius:4px;background:transparent;text-align:left;color:var(--gm-text);font-size:11px;}
+.gm-help-menu nav button:hover{background:var(--gm-muted);}
+@media(max-width:767px){.gm-titlebar{gap:5px;}.gm-project-menu .gm-menu-slot>button{width:30px;padding:5px;}.gm-project-menu .gm-menu-slot>button>span{display:none;}.gm-task-guidance{padding:5px 12px;font-size:9px;}.gm-task-tabs>button{padding:9px 10px;}}
+
+@media(max-width:640px){.gm-project-title{display:none;}}
+
+.gm-layer-properties .gm-group-visibility{flex-direction:row;align-items:center;}.gm-layer-properties .gm-group-visibility input{width:12px;accent-color:var(--gm-accent);}
+
+.gm-ribbon-group button[aria-pressed=true]{border-color:var(--gm-accent);background:var(--gm-muted);color:var(--gm-accent);}
+
+
+/* GeoMoz Seismic Workbench: data-driven native symbology and scientific plots. */
+.gm-seismic-tabs{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:0 0 14px;border-bottom:1px solid var(--gm-line);padding-bottom:8px;}
+.gm-seismic-tabs>button{border:1px solid var(--gm-line);border-radius:6px;padding:7px 12px;background:var(--gm-muted);font-size:11px;color:var(--gm-text);font-weight:650;}
+.gm-seismic-tabs>button[aria-pressed="true"]{background:var(--gm-accent);border-color:var(--gm-accent);color:#fff;}
+.gm-seismic-analytics{display:grid;gap:11px;font-size:11px;}
+.gm-seismic-analytics>h3{font-size:15px;font-weight:750;}
+.gm-seismic-analytics>h3 small{color:var(--gm-subtle);font-weight:400;font-size:10px;}
+.gm-seismic-analytics article{background:var(--gm-surface);border:1px solid var(--gm-line);border-radius:8px;padding:10px;min-width:0;overflow:hidden;}
+.gm-seismic-analytics article h4,.gm-seismic-gr h4{font-size:12px;font-weight:700;margin-bottom:6px;}
+.gm-seismic-analytics article p{font-size:10px;color:var(--gm-subtle);line-height:1.5;margin-top:5px;}
+.gm-seismic-plot-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.gm-seismic-plot-grid svg,.gm-seismic-analytics article>svg{display:block;width:100%;max-height:205px;overflow:visible;color:var(--gm-text);}
+.gm-seismic-analysis-inputs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;}
+.gm-seismic-analysis-inputs label,.gm-seismic-gr>label,.gm-seismic-stations label{font-size:10px;color:var(--gm-subtle);display:flex;flex-direction:column;gap:4px;}
+.gm-seismic-analysis-inputs input,.gm-seismic-gr input,.gm-seismic-stations input{min-width:0;width:100%;border:1px solid var(--gm-line);border-radius:5px;padding:7px;background:var(--gm-surface);color:var(--gm-text);font-size:11px;}
+.gm-seismic-gr{display:grid;grid-template-columns:170px 1fr;gap:14px;border:1px solid var(--gm-line);border-radius:8px;padding:12px;}
+.gm-seismic-gr strong{font-size:15px;font-weight:750;color:var(--gm-accent);}
+.gm-seismic-gr p{margin-top:4px;font-size:10px;line-height:1.5;}
+.gm-seismic-science-warning{color:#b45309!important;font-size:10px;line-height:1.5;}
+.dark .gm-seismic-science-warning{color:#fbbf24!important;}
+.gm-seismic-stations{font-size:11px;}
+.gm-seismic-stations>h3{font-size:14px;font-weight:750;}
+.gm-seismic-stations>p{font-size:10px;color:var(--gm-subtle);margin:7px 0;}
+.gm-seismic-stations>.gm-seismic-actions label{flex:1 1 100px;}
+.gm-quick-style{border-top:1px solid var(--gm-line);padding:9px 0;display:grid;gap:8px;}
+.gm-quick-style label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10px;color:var(--gm-text);}
+.gm-quick-style input[type=color]{height:27px;width:47px;border:1px solid var(--gm-line);background:transparent;cursor:pointer;}
+.gm-quick-style input[type=range]{max-width:125px;accent-color:var(--gm-accent);}
+.gm-quick-style p{font-size:9px;color:var(--gm-subtle);line-height:1.45;}
+@media(max-width:640px){
+  .gm-seismic-plot-grid{grid-template-columns:1fr;}
+  .gm-seismic-analysis-inputs{grid-template-columns:1fr 1fr;}
+  .gm-seismic-gr{grid-template-columns:1fr;}
+}
+
+/* Cartografia GeoMoz: assistente de digitalização integrado no ribbon. */
+.gm-cartography-wizard{position:absolute;top:calc(100% + 6px);left:clamp(12px,14vw,280px);z-index:1400;width:min(430px,calc(100vw - 24px));max-height:calc(100dvh - 190px);overflow:auto;border-radius:12px;border:1px solid var(--gm-line);background:var(--gm-surface);box-shadow:0 18px 50px #02061750;padding:15px;display:grid;gap:11px;font-size:11px;color:var(--gm-text)}
+.gm-cartography-wizard>header{display:flex;align-items:center;justify-content:space-between;gap:9px}
+.gm-cartography-wizard h3{display:flex;gap:8px;align-items:center;font-weight:800;font-size:14px}
+.gm-cartography-wizard>p{line-height:1.6;color:var(--gm-subtle)}
+.gm-cartography-wizard>header button{display:inline-flex;align-items:center;justify-content:center;border-radius:7px;border:1px solid var(--gm-line);min-height:32px;min-width:32px}
+.gm-cartography-wizard>label{display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:650}
+.gm-cartography-wizard :is(input,select){border:1px solid var(--gm-line);background:var(--gm-muted);color:var(--gm-text);min-width:0;width:100%;padding:9px;border-radius:7px;font-size:12px;min-height:36px}
+.gm-cartography-fields{padding:11px;border:1px solid var(--gm-line);border-radius:8px}
+.gm-cartography-fields strong{display:block;margin-bottom:8px;font-weight:700}
+.gm-cartography-fields>div{display:flex;gap:5px;flex-wrap:wrap}
+.gm-cartography-fields span{display:flex;gap:5px;align-items:center;padding:4px 6px;background:var(--gm-muted);border:1px solid var(--gm-line);border-radius:5px;font-size:10px}
+.gm-cartography-fields small{color:var(--gm-subtle);font-size:9px}
+.gm-cartography-wizard .gm-cartography-note{display:flex;align-items:flex-start;gap:7px;padding:9px;background:var(--gm-muted);border-radius:7px}
+.gm-cartography-wizard .gm-cartography-note svg{flex:none;margin-top:1px}
+.gm-cartography-wizard .gm-cartography-created{color:#16a34a}
+.gm-cartography-wizard .gm-cartography-error{color:#ef4444}
+.gm-cartography-wizard button.gm-cartography-create{display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid #0369a1;border-radius:7px;background:#0284c7;color:white;font-weight:750;padding:10px;min-height:38px}
+.gm-cartography-wizard button:focus-visible{outline:2px solid #0284c7;outline-offset:2px}
+@media(max-width:720px){.gm-cartography-wizard{left:12px;top:100%;width:calc(100vw - 24px);max-height:55dvh}}
+
+
+/* GeoMoz guided digitizing · native Geoman, one workflow, no duplicate canvas. */
+.gm-digitizing-tools{display:grid;gap:10px;border:1px solid var(--gm-line);border-radius:9px;padding:12px;background:var(--gm-surface);color:var(--gm-text);margin:8px 0}
+.gm-digitizing-tools h4{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:750}
+.gm-digitizing-tools p{font-size:10px;line-height:1.65;color:var(--gm-subtle)}
+.gm-digitizing-tools p strong{color:var(--gm-text)}
+.gm-digitizing-controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:7px}
+.gm-digitizing-controls button{display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 8px;border:1px solid var(--gm-line);border-radius:7px;background:var(--gm-muted);font-size:10px;font-weight:700;text-align:center;min-height:38px}
+.gm-digitizing-controls button[aria-pressed=true]{color:#075985;background:#e0f2fe;border-color:#38bdf8}
+.gm-digitizing-controls button:hover:not(:disabled){border-color:#0284c7}
+.gm-digitizing-controls button:disabled{opacity:.45;cursor:not-allowed}
+.gm-digitizing-snap{display:grid;gap:8px;padding:10px;border-radius:8px;border:1px solid var(--gm-line);background:var(--gm-muted)}
+.gm-digitizing-snap label{display:flex;align-items:center;gap:7px;font-size:11px;min-width:0}
+.gm-digitizing-snap input[type=number]{margin-left:auto;max-width:66px;padding:5px 6px;border:1px solid var(--gm-line);border-radius:6px;background:var(--gm-surface);color:var(--gm-text)}
+.gm-digitizing-snap input[type=checkbox]{accent-color:#0284c7}
+.gm-digitizing-hint{display:flex;gap:8px;align-items:flex-start}
+.gm-digitizing-hint svg{flex-shrink:0;margin-top:2px}
+.gm-digitizing-notice{border-radius:6px;padding:8px;background:var(--gm-muted)}
+.gm-cartography-field-list{display:grid!important;gap:5px!important}
+.gm-cartography-field-list>span{width:100%;display:flex;justify-content:space-between;padding:6px 8px}
+.gm-cartography-field-list>span>span{display:inline-flex;align-items:center;gap:8px}
+.gm-cartography-field-list button{margin-left:auto;display:inline-flex;padding:4px;border:1px solid var(--gm-line);border-radius:5px}
+.gm-cartography-add-field{display:grid!important;grid-template-columns:minmax(0,1fr) 85px auto;gap:5px!important;margin-top:10px;align-items:center}
+.gm-cartography-add-field button{display:flex;align-items:center;justify-content:center;gap:3px;border:1px solid var(--gm-line);border-radius:7px;padding:8px;font-size:10px;min-height:36px}
+.gm-cartography-add-field input,.gm-cartography-add-field select{min-height:36px}
+.gm-digitizing-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:#02061778;z-index:11000;overflow-y:auto}
+.gm-digitizing-attribute-form{display:grid;gap:11px;width:min(450px,100%);max-height:min(80dvh,750px);overflow-y:auto;border:1px solid var(--gm-line);background:var(--gm-surface);color:var(--gm-text);border-radius:13px;padding:19px;box-shadow:0 20px 65px #02061775}
+.gm-digitizing-attribute-form header{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.gm-digitizing-attribute-form h3{display:flex;gap:8px;align-items:center;font-size:15px;font-weight:800}
+.gm-digitizing-attribute-form header button{display:inline-flex;padding:6px;border:1px solid var(--gm-line);border-radius:7px}
+.gm-digitizing-attribute-form>p{font-size:12px;line-height:1.6;color:var(--gm-subtle)}
+.gm-digitizing-attribute-form label{display:grid;gap:5px;font-size:12px;font-weight:700}
+.gm-digitizing-attribute-form label small{font-size:10px;font-weight:400;color:var(--gm-subtle)}
+.gm-digitizing-attribute-form input{padding:9px;border:1px solid var(--gm-line);background:var(--gm-muted);color:var(--gm-text);border-radius:7px;min-height:36px}
+.gm-digitizing-attribute-form footer{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.gm-digitizing-attribute-form footer button{display:flex;align-items:center;gap:6px;border:1px solid var(--gm-line);border-radius:7px;padding:9px 12px;font-size:12px}
+.gm-digitizing-attribute-form footer button[type=submit]{background:#0284c7;border-color:#0284c7;color:white;font-weight:750}
+@media(max-width:767px){.gm-cartography-add-field{grid-template-columns:minmax(0,1fr) 78px}.gm-cartography-add-field button{grid-column:1/-1}.gm-digitizing-controls{grid-template-columns:1fr}.gm-digitizing-attribute-form{padding:13px}}
+
+
+/* Digitalizar: compact by default, detailed guidance on demand. */
+.gm-digitizing-tools{gap:8px;padding:10px}
+.gm-digitizing-mode{margin-left:auto;padding:3px 7px;border-radius:6px;font-size:10px;font-weight:650;background:var(--gm-muted);color:var(--gm-subtle);border:1px solid var(--gm-line)}
+.gm-digitizing-layer-name{display:block;color:var(--gm-subtle);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gm-digitizing-help{border-top:1px solid var(--gm-line);padding-top:7px}
+.gm-digitizing-help summary{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;cursor:pointer;color:var(--gm-subtle);list-style:none}
+.gm-digitizing-help summary::-webkit-details-marker{display:none}
+.gm-digitizing-help[open] summary{color:var(--gm-text)}
+.gm-digitizing-help ol{list-style:decimal;padding:8px 0 0 18px;margin:0;display:grid;gap:6px;font-size:10px;line-height:1.5;color:var(--gm-subtle)}
+.gm-digitizing-tools:has(.gm-digitizing-controls button[aria-pressed=false]){min-width:0}
+
+
+/* QGIS-inspired, map-first task contextual ribbon. Raster tools and external
+   services are disclosed only on demand rather than occupying toolbar space. */
+.gm-ribbon-optional{justify-content:center;padding-right:8px;margin-right:8px}
+.gm-ribbon-accordion{min-width:118px;align-self:center}
+.gm-ribbon-group .gm-ribbon-trigger{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:7px;min-width:118px;max-width:none;min-height:42px;cursor:pointer;white-space:nowrap;padding:6px 9px;border:1px solid var(--gm-line);background:var(--gm-muted);border-radius:7px;color:var(--gm-text);font-size:11px;font-weight:650}
+.gm-ribbon-group .gm-ribbon-trigger svg:last-child{margin-left:auto;transition:transform .18s}
+.gm-ribbon-group .gm-ribbon-trigger[aria-expanded="true"]{border-color:var(--gm-accent);background:color-mix(in srgb,var(--gm-accent) 9%,var(--gm-muted))}
+.gm-ribbon-group .gm-ribbon-trigger[aria-expanded="true"] svg:last-child{transform:rotate(180deg)}
+/* The flyout is portaled into body. Horizontal ribbon overflow can never clip it. */
+.gm-workbench-chrome .gm-tool-flyout{box-sizing:border-box;isolation:isolate;z-index:10050;display:flex;flex-direction:column;gap:12px;overflow-y:auto;overscroll-behavior:contain;padding:15px 17px;border:1px solid var(--gm-line);border-radius:12px;background-color:var(--gm-surface);color:var(--gm-text);font-family:Inter,"IBM Plex Sans Variable",system-ui,sans-serif;font-size:12px;line-height:1.45;opacity:1;visibility:visible;box-shadow:0 18px 48px #02061760}
+.gm-workbench-chrome .gm-tool-flyout-header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:10px;border-bottom:1px solid var(--gm-line)}
+.gm-tool-flyout-header>div{min-width:0}
+.gm-tool-flyout-header small{display:block;color:var(--gm-subtle);font-size:9px;letter-spacing:1.1px;font-weight:750}
+.gm-tool-flyout-header h2{display:flex;align-items:center;gap:8px;margin-top:5px;font-size:17px;line-height:1.3;font-weight:760}
+.gm-tool-flyout-header h2 svg{color:var(--gm-accent)}
+.gm-tool-flyout-header p{margin-top:5px;font-size:11px;line-height:1.5;color:var(--gm-subtle)}
+.gm-tool-flyout-header>button{display:grid;place-items:center;flex:none;width:30px;height:30px;border-radius:7px;border:1px solid var(--gm-line);background:var(--gm-muted);color:var(--gm-text)}
+.gm-workbench-chrome .gm-tool-flyout-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:100%;align-items:stretch}
+.gm-workbench-chrome .gm-tool-flyout-grid>button,.gm-workbench-chrome .gm-tool-flyout-grid>a{display:flex;align-items:center;justify-content:flex-start;gap:9px;min-width:0;min-height:48px;padding:10px;border:1px solid var(--gm-line);border-radius:8px;background:var(--gm-muted);color:var(--gm-text);text-align:left;font-size:11px;font-weight:600;line-height:1.35;text-decoration:none;cursor:pointer}
+.gm-workbench-chrome .gm-tool-flyout-grid>button:hover:not(:disabled),.gm-workbench-chrome .gm-tool-flyout-grid>a:hover{border-color:var(--gm-accent);background:color-mix(in srgb,var(--gm-accent) 9%,var(--gm-muted))}
+.gm-workbench-chrome .gm-tool-flyout-grid>button:disabled{opacity:.45;cursor:not-allowed}
+.gm-workbench-chrome .gm-tool-flyout-grid :is(button,a)>svg{flex:none;color:var(--gm-accent)}
+.gm-workbench-chrome .gm-tool-flyout-grid :is(button,a)>span{overflow-wrap:anywhere}
+.gm-tool-flyout :is(button,a):focus-visible{outline:2px solid var(--gm-accent);outline-offset:2px}
+@media(max-width:767px){.gm-ribbon-accordion{min-width:95px}.gm-ribbon-group .gm-ribbon-trigger{min-width:95px;font-size:10px;padding:5px 7px}.gm-workbench-chrome .gm-tool-flyout-grid{grid-template-columns:1fr}.gm-workbench-chrome .gm-tool-flyout{padding:12px}}
+.gm-digitizing-ribbon-tip{display:flex;align-items:center;gap:7px;max-width:300px;margin:auto 6px;padding:5px 6px;font-size:10px;line-height:1.35;color:var(--gm-subtle)}
+.gm-digitizing-ribbon-tip svg{flex:none;color:var(--gm-accent)}
+@media(max-width:767px){.gm-digitizing-ribbon-tip{max-width:155px;font-size:9px}}
+
+
+/* GeoMoz GIS Workbench — NextGIS QMS (native GIS raster-layer catalogue) */
+.gm-qms-panel{position:absolute;z-index:64;top:100%;right:16px;width:min(450px,calc(100vw - 32px));max-height:min(68vh,640px);overflow:auto;border:1px solid var(--gm-line);border-radius:0 0 14px 14px;background:var(--gm-surface);color:var(--gm-text);box-shadow:0 18px 40px #02061744;padding:15px;display:flex;flex-direction:column;gap:11px}
+.gm-qms-panel>header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.gm-qms-panel>header strong{display:flex;align-items:center;gap:7px;font-size:14px}
+.gm-qms-panel>header small{display:block;color:var(--gm-subtle);font-size:10px;margin-top:4px}
+.gm-qms-panel>header button{padding:5px;border-radius:7px;border:1px solid var(--gm-line);flex:none}
+.gm-qms-panel .gm-qms-search{display:flex;align-items:center;gap:7px;padding:9px;border:1px solid var(--gm-line);border-radius:8px;background:var(--gm-muted)}
+.gm-qms-panel .gm-qms-search input{flex:1;min-width:0;border:0;background:transparent;color:var(--gm-text);outline:none;font-size:12px}
+.gm-qms-panel .gm-qms-region{flex-direction:column;align-items:stretch}
+.gm-qms-panel .gm-qms-region select{min-width:0;max-width:100%;background:var(--gm-surface);color:var(--gm-text);border:1px solid var(--gm-line);border-radius:6px;padding:7px;font-size:12px}
+.gm-qms-panel>p{font-size:11px;color:var(--gm-subtle);display:flex;align-items:center;gap:6px}
+.gm-qms-panel>p.gm-qms-error{color:#b91c1c}
+.gm-qms-panel>p.gm-qms-success{color:#15803d}
+.gm-qms-results{display:flex;flex-direction:column;gap:6px;overflow:auto;min-height:0}
+.gm-qms-results>button{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;text-align:left;border:1px solid var(--gm-line);border-radius:9px;background:var(--gm-surface);color:var(--gm-text)}
+.gm-qms-results>button:hover:enabled{border-color:var(--gm-accent);background:var(--gm-muted)}
+.gm-qms-results>button:disabled{opacity:.55;cursor:not-allowed}
+.gm-qms-results>button>span:first-child{display:block;min-width:0;flex:1}
+.gm-qms-results strong{display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gm-qms-results small{display:block;font-size:10px;color:var(--gm-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+.gm-qms-service-row{display:flex;align-items:center;justify-content:space-between;gap:9px;padding:10px;border:1px solid var(--gm-line);border-radius:9px;background:var(--gm-surface);color:var(--gm-text)}
+.gm-qms-service-row>span{display:block;min-width:0;flex:1}
+.gm-qms-service-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.gm-qms-service-actions button{border:1px solid var(--gm-line);border-radius:7px;padding:6px 8px;font-size:11px;color:var(--gm-accent);font-weight:700;background:var(--gm-muted)}
+.gm-qms-service-actions button:hover:enabled{border-color:var(--gm-accent)}
+.gm-qms-service-actions button:disabled{opacity:.5;cursor:not-allowed}
+.gm-qms-preview{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:10px;border:1px solid var(--gm-line);border-radius:9px;background:var(--gm-muted)}
+.gm-qms-preview>strong{font-size:12px}
+.gm-qms-preview>img{width:256px;height:256px;max-width:100%;object-fit:contain;border:1px solid var(--gm-line);border-radius:6px;background:#e2e8f0}
+.gm-qms-preview>p,.gm-qms-preview>small{font-size:11px;line-height:1.5;color:var(--gm-subtle)}
+.gm-qms-preview>p[role="alert"]{color:#b91c1c}
+@media(max-width:420px){.gm-qms-service-row{align-items:flex-start;flex-direction:column}.gm-qms-service-actions{width:100%;justify-content:flex-start}}
+.gm-qms-add{font-size:10px;color:var(--gm-accent);font-weight:700}
+.gm-qms-panel>footer{font-size:10px;line-height:1.6;color:var(--gm-subtle)}
+.gm-qms-panel>footer a{color:var(--gm-accent);text-decoration:underline}
+.gm-qms-spinner{animation:gm-qms-spin .8s linear infinite}
+@keyframes gm-qms-spin{to{transform:rotate(360deg)}}
+@media(max-width:640px){.gm-qms-panel{right:8px;width:calc(100vw - 16px);max-height:55vh;padding:11px}}
+
+
+/* GeoMoz GIS Workspace — NextGIS Web public resource browser */
+.gm-ngw-panel{position:absolute;z-index:65;top:100%;right:16px;width:min(520px,calc(100vw - 32px));max-height:min(72vh,740px);overflow:auto;border:1px solid var(--gm-line);border-radius:0 0 14px 14px;background:var(--gm-surface);color:var(--gm-text);box-shadow:0 18px 40px #02061744;padding:15px;display:flex;flex-direction:column;gap:12px}
+.gm-ngw-panel>header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.gm-ngw-panel>header strong{display:flex;align-items:center;gap:8px;font-size:14px}
+.gm-ngw-panel>header small{display:block;color:var(--gm-subtle);font-size:10px;margin-top:4px}
+.gm-ngw-panel>header button{border:1px solid var(--gm-line);border-radius:8px;padding:5px;flex:none}
+.gm-ngw-panel input{min-width:0;background:var(--gm-surface);color:var(--gm-text);border:1px solid var(--gm-line);border-radius:8px;padding:9px;font-size:12px;width:100%}
+.gm-ngw-connect{display:flex;flex-direction:column;gap:6px}
+.gm-ngw-connect>label,.gm-ngw-filter>span{color:var(--gm-subtle);font-size:11px}
+.gm-ngw-connect>div{display:flex;gap:8px;align-items:stretch}
+.gm-ngw-connect>div>button{background:var(--gm-accent);color:white;padding:0 13px;border-radius:8px;font-size:12px;font-weight:700}
+.gm-ngw-connect button:disabled{opacity:.5}
+.gm-ngw-path{display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--gm-line);padding:6px 0;color:var(--gm-subtle);font-size:11px}
+.gm-ngw-path span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gm-ngw-path button{border:1px solid var(--gm-line);border-radius:8px;padding:5px;flex:none}
+.gm-ngw-filter{display:flex;flex-direction:column;gap:5px}
+.gm-ngw-panel>p{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gm-subtle)}
+.gm-ngw-panel>p.gm-ngw-error{color:#b91c1c}
+.gm-ngw-panel>p.gm-ngw-success{color:#15803d}
+.gm-ngw-results{display:flex;flex-direction:column;gap:6px;min-height:0;overflow-y:auto}
+.gm-ngw-results>button{display:flex;align-items:center;gap:10px;border:1px solid var(--gm-line);border-radius:9px;padding:10px;background:var(--gm-surface);color:var(--gm-text);text-align:left}
+.gm-ngw-results>button:enabled:hover{border-color:var(--gm-accent);background:var(--gm-muted)}
+.gm-ngw-results>button:disabled{opacity:.55}
+.gm-ngw-results>button>span:nth-child(2){flex:1;min-width:0}
+.gm-ngw-results strong{display:block;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gm-ngw-results small{display:block;font-size:10px;color:var(--gm-subtle);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gm-ngw-action{font-size:10px;font-weight:700;color:var(--gm-accent)}
+.gm-ngw-source{display:inline-flex;align-items:center;gap:4px;color:var(--gm-accent);font-size:11px;text-decoration:underline}
+.gm-ngw-panel>footer{font-size:10px;line-height:1.6;color:var(--gm-subtle)}
+.gm-ngw-spinner{animation:gm-ngw-spin 0.85s linear infinite}
+@keyframes gm-ngw-spin{to{transform:rotate(360deg)}}
+@media(max-width:640px){.gm-ngw-panel{right:8px;width:calc(100vw - 16px);max-height:56vh;padding:11px}}
+
+
+/* GeoMoz QGIS vector-print package — matches the native Workspace identity. */
+.gm-qgis-print-panel{position:absolute;top:100%;right:16px;z-index:66;width:min(505px,calc(100vw - 32px));max-height:min(72vh,750px);overflow:auto;display:flex;flex-direction:column;gap:13px;padding:17px;background:var(--gm-surface);color:var(--gm-text);border:1px solid var(--gm-line);border-radius:0 0 14px 14px;box-shadow:0 20px 42px #02061750}
+.gm-qgis-print-panel>header{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.gm-qgis-print-panel>header strong{display:flex;gap:8px;align-items:center;font-size:14px}
+.gm-qgis-print-panel>header small{display:block;font-size:10px;color:var(--gm-subtle);margin-top:4px}
+.gm-qgis-print-panel>header button{border:1px solid var(--gm-line);padding:6px;border-radius:8px}
+.gm-qgis-print-panel label{display:flex;flex-direction:column;gap:5px;font-size:11px;color:var(--gm-subtle)}
+.gm-qgis-print-panel input:not([type="checkbox"]),.gm-qgis-print-panel select{width:100%;border:1px solid var(--gm-line);border-radius:8px;color:var(--gm-text);background:var(--gm-surface);padding:8px;font-size:12px}
+.gm-qgis-print-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.gm-qgis-print-panel fieldset{border:1px solid var(--gm-line);border-radius:9px;padding:9px;max-height:220px;overflow:auto}
+.gm-qgis-print-panel legend{font-size:11px;font-weight:700;padding:0 5px}
+.gm-qgis-print-panel fieldset>.gm-qgis-print-check{display:flex;align-items:center;flex-direction:row;gap:8px;padding:8px 3px;color:var(--gm-text)}
+.gm-qgis-print-check input{flex:none}
+.gm-qgis-print-check span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gm-qgis-print-check small{color:var(--gm-subtle)}
+.gm-qgis-print-panel .gm-qgis-print-tip{display:flex;gap:7px;line-height:1.55;font-size:11px;color:var(--gm-subtle)}
+.gm-qgis-print-tip svg{flex:none}
+.gm-qgis-print-error{font-size:11px;color:#b91c1c}
+.gm-qgis-print-done{font-size:11px;color:#15803d}
+.gm-qgis-print-submit{border-radius:8px;background:var(--gm-accent);color:white;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px;font-weight:700;font-size:12px}
+.gm-qgis-print-submit:disabled{opacity:.45}
+@media(max-width:640px){.gm-qgis-print-panel{right:8px;width:calc(100vw - 16px);padding:12px;max-height:57vh}.gm-qgis-print-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Module links preserve the current GIS project in its original window. */
+.gm-ribbon-accordion>div>a{display:flex;align-items:center;gap:8px;min-height:40px;padding:7px 9px;border-radius:6px;color:var(--gm-text);font-size:11px;text-decoration:none}
+.gm-ribbon-accordion>div>a:hover,.gm-ribbon-accordion>div>a:focus-visible{background:var(--gm-muted);outline:2px solid var(--gm-line)}
+
+
+/* Topographic profile overlay: same branded, opaque scientific panel as FDSN.
+ * Remains outside the compact tool-category ribbon to preserve map area. */
+.gm-workbench-chrome .gm-topo-panel {
+  position:absolute;z-index:10040;top:100%;left:12px;
+  width:min(620px,calc(100vw - 24px));max-height:min(76vh,760px);
+  overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;
+  background:var(--gm-surface);color:var(--gm-text);
+  border:1px solid var(--gm-line);border-radius:0 0 12px 12px;
+  box-shadow:0 20px 44px #02061755;
+  font:400 12px/1.5 Inter,"IBM Plex Sans Variable",system-ui,sans-serif;
+}
+.gm-workbench-chrome .gm-topo-heading {
+  display:flex;justify-content:space-between;gap:12px;align-items:flex-start;
+  padding:14px 18px 11px;border-bottom:1px solid var(--gm-line);
+}
+.gm-workbench-chrome .gm-topo-heading>div{min-width:0}
+.gm-workbench-chrome .gm-topo-heading small{display:block;color:var(--gm-subtle);font-size:9px;letter-spacing:1px;font-weight:750}
+.gm-workbench-chrome .gm-topo-heading h2{display:flex;align-items:center;gap:8px;font-size:17px;line-height:1.5;font-weight:760}
+.gm-workbench-chrome .gm-topo-heading h2 svg{color:var(--gm-accent)}
+.gm-workbench-chrome .gm-topo-heading p{font-size:11px;color:var(--gm-subtle)}
+.gm-workbench-chrome .gm-topo-heading>button{display:grid;place-items:center;flex:none;width:30px;height:30px;border:1px solid var(--gm-line);border-radius:7px;background:var(--gm-muted)}
+.gm-workbench-chrome .gm-topo-body{display:flex;flex-direction:column;gap:11px;padding:14px 18px 16px;min-height:0}
+.gm-workbench-chrome .gm-topo-body>label{display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:650}
+.gm-workbench-chrome .gm-topo-body :is(input,select){
+  width:100%;min-height:35px;padding:7px 9px;border-radius:7px;
+  border:1px solid var(--gm-line);background:var(--gm-surface);
+  color:var(--gm-text);font-size:12px;
+}
+.gm-workbench-chrome .gm-topo-actions{display:flex;gap:8px;flex-wrap:wrap}
+.gm-workbench-chrome .gm-topo-actions>button,.gm-workbench-chrome .gm-topo-export{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  padding:8px 11px;border:1px solid var(--gm-line);border-radius:7px;
+  background:var(--gm-muted);color:var(--gm-text);font-size:11px;font-weight:650;
+}
+.gm-workbench-chrome .gm-topo-actions>button[aria-pressed="true"]{background:var(--gm-accent);color:#fff}
+.gm-workbench-chrome .gm-topo-body button:disabled{opacity:.5;cursor:not-allowed}
+.gm-workbench-chrome .gm-topo-run{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:10px 12px;border:1px solid var(--gm-accent);border-radius:8px;
+  background:var(--gm-accent);color:#fff;font-weight:750;font-size:12px;
+}
+.gm-workbench-chrome .gm-topo-note{font-size:11px;color:var(--gm-subtle);line-height:1.6}
+.gm-workbench-chrome .gm-topo-error{font-size:11px;padding:8px 10px;background:#fef2f2;color:#991b1b;border-radius:7px}
+.gm-workbench-chrome .gm-topo-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.gm-workbench-chrome .gm-topo-stats span{display:flex;flex-direction:column;gap:2px;border:1px solid var(--gm-line);border-radius:7px;padding:9px;background:var(--gm-muted)}
+.gm-workbench-chrome .gm-topo-stats small{color:var(--gm-subtle);font-size:10px}
+.gm-workbench-chrome .gm-topo-stats b{font-size:14px;font-variant-numeric:tabular-nums}
+.gm-workbench-chrome .gm-topo-graph{position:relative;padding:7px 8px 22px;border:1px solid var(--gm-line);border-radius:9px;color:var(--gm-text)}
+.gm-workbench-chrome .gm-topo-graph svg{display:block;width:100%;height:auto}
+.gm-workbench-chrome .gm-topo-export-list{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap}
+.gm-workbench-chrome .gm-topo-export-list .gm-topo-export{flex:1 1 142px;white-space:nowrap}
+@media(max-width:680px){.gm-workbench-chrome .gm-topo-export-list .gm-topo-export{flex:1 1 105px}}
+
+.gm-workbench-chrome .gm-topo-tooltip{position:absolute;bottom:2px;left:10px;right:8px;color:#b45309;font-size:10px;line-height:1.4;font-variant-numeric:tabular-nums}
+.gm-workbench-chrome .gm-topo-graph svg{touch-action:pan-y;cursor:crosshair}
+.gm-workbench-chrome .gm-topo-graph svg:focus-visible{outline:2px solid var(--gm-accent);outline-offset:2px;border-radius:5px}
+.gm-workbench-chrome .gm-topo-navigation{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.gm-workbench-chrome .gm-topo-navigation p{flex:1 1 210px}
+.gm-workbench-chrome .gm-topo-navigation>button{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 10px;border:1px solid var(--gm-accent);border-radius:7px;background:var(--gm-muted);color:var(--gm-accent);font-size:11px;font-weight:700}
+.gm-workbench-chrome .gm-topo-navigation>button[aria-pressed="true"]{background:var(--gm-accent);color:#fff}
+.gm-workbench-chrome .gm-topo-body>footer{font-size:10px;color:var(--gm-subtle);line-height:1.6;border-top:1px solid var(--gm-line);padding-top:9px}
+.gm-workbench-chrome .gm-topo-body button:focus-visible,.gm-workbench-chrome .gm-topo-body select:focus-visible{outline:2px solid var(--gm-accent);outline-offset:2px}
+@media(max-width:680px){
+  .gm-workbench-chrome .gm-topo-panel{left:6px;width:calc(100vw - 12px);max-height:min(70vh,640px)}
+  .gm-workbench-chrome .gm-topo-body{padding:11px}
+  .gm-workbench-chrome .gm-topo-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+/* GeoMoz unified settings · 2026
+ * Secondary controls belong to a single accessible popover, preserving map area.
+ */
+.gm-title-actions .gm-settings {flex:none;}
+.gm-title-actions .gm-settings>summary {
+  min-height:36px;padding:8px 10px;display:flex;gap:7px;align-items:center;
+  border:1px solid #ffffff24;border-radius:8px;color:#e2f1fb;
+  background:#ffffff09;font-size:11px;font-weight:650;
+}
+.gm-title-actions .gm-settings[open]>summary,
+.gm-title-actions .gm-settings>summary:hover {background:#ffffff1b;border-color:#60c6f288;}
+.gm-title-actions .gm-settings .gm-settings-popover {
+  position:absolute;top:calc(100% + 11px);right:0;left:auto;
+  width:min(352px,calc(100vw - 20px));max-width:calc(100vw - 20px);
+  max-height:min(660px,calc(100dvh - 84px));overflow-y:auto;
+  z-index:200;background:var(--gm-surface);color:var(--gm-text);
+  border:1px solid var(--gm-line);border-radius:14px;
+  padding:15px;box-shadow:0 20px 65px #02061765;
+}
+.gm-settings-popover small {letter-spacing:.13em;font-weight:700;}
+.gm-settings-popover .gm-settings-field {display:grid;gap:8px;padding:9px 7px;}
+.gm-settings-popover .gm-settings-field>span {display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;}
+.gm-settings-popover .gm-settings-field select {
+  display:block;width:100%;min-height:38px;padding:8px 30px 8px 10px;
+  border:1px solid var(--gm-line);border-radius:8px;
+  background:var(--gm-surface);color:var(--gm-text);font-size:12px;
+}
+.gm-settings-popover .gm-settings-field option {color:#0f172a;background:white;}
+.gm-settings-popover :is(.gm-settings-action,.gm-settings-motion,a) {
+  display:flex;align-items:center;gap:10px;min-height:39px;width:100%;
+  padding:9px 8px;border:0;border-radius:7px;
+  background:transparent;color:var(--gm-text);text-decoration:none;
+  text-align:left;font-size:12px;font-weight:500;
+}
+.gm-settings-popover :is(.gm-settings-action,a):hover {background:var(--gm-muted);color:var(--gm-accent);}
+.gm-settings-popover .gm-settings-action:disabled {opacity:.45;cursor:not-allowed;}
+.gm-settings-popover .gm-settings-action svg {flex:none;}
+.gm-settings-popover .gm-settings-action strong {margin-left:auto;color:var(--gm-subtle);}
+.gm-settings-popover .gm-settings-motion {justify-content:space-between;cursor:pointer;}
+.gm-settings-popover .gm-settings-motion>span {display:flex;align-items:center;gap:10px;}
+.gm-settings-popover .gm-settings-motion>span>span {display:grid;gap:3px;}
+.gm-settings-popover .gm-settings-motion em {max-width:245px;font-size:10px;font-weight:400;font-style:normal;color:var(--gm-subtle);}
+.gm-settings-popover .gm-settings-motion input {height:16px;width:16px;flex:none;accent-color:var(--gm-accent);}
+.gm-settings-popover .gm-settings-divider {height:1px;background:var(--gm-line);margin:9px 0;}
+.gm-settings-popover .gm-settings-note {font-size:10px;line-height:1.5;color:var(--gm-subtle);margin:8px 4px 1px;}
+@media(max-width:767px) {
+  .gm-title-actions .gm-settings>summary {width:37px;min-height:37px;justify-content:center;padding:7px;}
+  .gm-title-actions .gm-settings>summary>span {display:none;}
+  .gm-title-actions .gm-settings .gm-settings-popover {right:-4px;top:calc(100% + 9px);}
+}
+html[data-geomoz-reduced-motion="true"] .gm-workbench *,
+html[data-geomoz-reduced-motion="true"] .gm-workbench *::before,
+html[data-geomoz-reduced-motion="true"] .gm-workbench *::after {
+  animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important;
+}

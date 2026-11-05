@@ -1,6 +1,5 @@
 /**
- * Cloud-Native & Spatial SQL Data Utilities for GeoMoz
- * Inspired by GeoLibre's cloud-native GIS architecture.
+ * Cloud-native and spatial SQL data utilities for GeoMoz.
  */
 
 export interface QueryResult {

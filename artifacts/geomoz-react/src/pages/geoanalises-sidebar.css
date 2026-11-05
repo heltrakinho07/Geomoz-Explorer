@@ -1,0 +1,6 @@
+.geomoz-analysis-sidebar { container-type: inline-size; overflow-x: hidden; scrollbar-gutter: stable; }
+.geomoz-analysis-sidebar > * { flex-shrink: 0; min-width: 0; }
+.geomoz-analysis-sidebar button, .geomoz-analysis-sidebar p, .geomoz-analysis-sidebar label { overflow-wrap: anywhere; }
+.geomoz-analysis-sidebar input, .geomoz-analysis-sidebar select { min-width: 0; max-width: 100%; }
+.geomoz-analysis-sidebar input[type="date"] { width: 100%; box-sizing: border-box; }
+@container (max-width: 300px) { .geomoz-analysis-sidebar .period-grid { grid-template-columns: minmax(0, 1fr); } }

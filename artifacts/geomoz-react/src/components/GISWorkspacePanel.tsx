@@ -1,321 +1,223 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import L from "leaflet";
-import { GeoJSON as VectorLayer, MapContainer, ScaleControl, TileLayer, useMap } from "react-leaflet";
-import { Database, Download, Eye, EyeOff, FileUp, Layers, Map as MapIcon, Play, Search, Table2, Trash2, Clock3 } from "lucide-react";
 import {
-  WORKSPACE_OPERATIONS, getWorkspaceOperation,
-  type WorkspaceOperationId, type WorkspaceParameters,
-} from "@/lib/gis-workspace-engine";
-import { runWorkspaceOperationAsync } from "@/lib/gis-workspace-runner";
-import { parseWorkspaceFile, workspaceColumns, type WorkspaceLayer } from "@/lib/gis-workspace";
-import GeoReferencer from "@/components/GeoReferencer";
-import TerrainStudio from "@/components/TerrainStudio";
-import QmsBasemapPicker from "@/components/QmsBasemapPicker";
-import type { QmsTileSource } from "@/lib/qms-catalog";
+  Crosshair,
+  Database,
+  Eye,
+  EyeOff,
+  FileUp,
+  Layers,
+  MapPin,
+  Palette,
+  Search,
+  Table2,
+  Trash2,
+} from "lucide-react";
+import {
+  DEFAULT_WORKSPACE_STYLE,
+  parseWorkspaceFile,
+  workspaceColumns,
+  workspaceNumericColumns,
+  type WorkspaceLayer,
+  type WorkspaceSelection,
+  type WorkspaceStyleMode,
+} from "@/lib/gis-workspace";
 
 interface Props {
   layers: WorkspaceLayer[];
-  setLayers: React.Dispatch<React.SetStateAction<WorkspaceLayer[]>>;
-  geeEnabled?: boolean;
-  geeRegion?: { province: string | null; district: string | null; geometry?: unknown };
+  onLayersChange: (layers: WorkspaceLayer[]) => void;
+  selection: WorkspaceSelection | null;
+  onSelectionChange: (selection: WorkspaceSelection | null) => void;
+  onOpenMap: (layerId: string, featureIndex?: number) => void;
 }
 
-function FitSelectedLayer({ layer }: { layer: WorkspaceLayer | null }) {
-  const map = useMap();
-  const lastId = useRef<string | null>(null);
-  useEffect(() => {
-    if (!layer || lastId.current === layer.id) return;
-    lastId.current = layer.id;
-    try {
-      const bounds = L.geoJSON(layer.geojson).getBounds();
-      if (bounds.isValid()) map.fitBounds(bounds, { padding: [28, 28], maxZoom: 14 });
-    } catch {
-      // Invalid geometries have already been rejected at import time.
-    }
-  }, [map, layer]);
-  return null;
-}
-
-export default function GISWorkspacePanel({ layers, setLayers, geeEnabled, geeRegion }: Props) {
+export default function GISWorkspacePanel({
+  layers,
+  onLayersChange,
+  selection,
+  onSelectionChange,
+  onOpenMap,
+}: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [workspaceMode, setWorkspaceMode] = useState<"layers" | "georeference">("layers");
-  const [terrainStudioOpen, setTerrainStudioOpen] = useState(false);
-  const [qmsBasemap, setQmsBasemap] = useState<QmsTileSource | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeLayerId, setActiveLayerId] = useState<string | null>(selection?.layerId ?? null);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [operationId, setOperationId] = useState<WorkspaceOperationId>("vector_buffer");
-  const [operationParams, setOperationParams] = useState<WorkspaceParameters>({ distance: 1000, units: "meters", dissolve: false });
-  const [overlayId, setOverlayId] = useState<string>("");
-  const [running, setRunning] = useState(false);
-  const [history, setHistory] = useState<Array<{ id: string; command: string; message: string; status: "success" | "error"; durationMs?: number }>>([]);
-  const operation = getWorkspaceOperation(operationId)!;
-  const activeLayer = layers.find((layer) => layer.id === activeId) ?? layers[0] ?? null;
-  const visibleLayers = layers.filter((layer) => layer.visible);
-  const columns = useMemo(() => activeLayer ? workspaceColumns(activeLayer) : [], [activeLayer]);
-  const filteredRows = useMemo(() => {
-    if (!activeLayer) return [];
+
+  useEffect(() => {
+    if (selection?.layerId) setActiveLayerId(selection.layerId);
+  }, [selection?.layerId]);
+
+  const activeLayer = layers.find((layer) => layer.id === activeLayerId) ?? layers[0] ?? null;
+  const columns = useMemo(() => (activeLayer ? workspaceColumns(activeLayer) : []), [activeLayer]);
+  const numericColumns = useMemo(
+    () => (activeLayer ? workspaceNumericColumns(activeLayer) : []),
+    [activeLayer]
+  );
+
+  const rows = useMemo(() => {
+    if (!activeLayer?.geojson) return [];
     const needle = query.trim().toLowerCase();
-    if (!needle) return activeLayer.geojson.features;
-    return activeLayer.geojson.features.filter((feature) =>
-      Object.values(feature.properties ?? {}).some((value) =>
-        String(value ?? "").toLowerCase().includes(needle)
-      )
-    );
+    return activeLayer.geojson.features
+      .map((feature, featureIndex) => ({ feature, featureIndex }))
+      .filter(({ feature }) => {
+        if (!needle) return true;
+        return Object.values(feature.properties ?? {}).some((value) =>
+          String(value ?? "").toLowerCase().includes(needle)
+        );
+      });
   }, [activeLayer, query]);
 
-  const importFiles = async (fileList: FileList | null) => {
-    if (!fileList?.length) return;
+  const handleFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
     setError(null);
     try {
-      const parsed = await Promise.all(Array.from(fileList).map(parseWorkspaceFile));
-      const incoming: WorkspaceLayer[] = parsed.map((item) => ({
+      const parsed = await Promise.all(Array.from(files).map(parseWorkspaceFile));
+      const created = parsed.map<WorkspaceLayer>((item) => ({
         id: crypto.randomUUID(),
         name: item.name,
+        kind: "vector",
         visible: true,
-        opacity: 0.8,
+        opacity: 1,
+        source: "file",
         format: item.format,
         featureCount: item.geojson.features.length,
         geojson: item.geojson,
+        style: { ...DEFAULT_WORKSPACE_STYLE },
         createdAt: new Date().toISOString(),
       }));
-      setLayers((previous) => [...incoming, ...previous]);
-      setActiveId(incoming[0]?.id ?? null);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível importar o ficheiro.");
+      onLayersChange([...created, ...layers]);
+      setActiveLayerId(created[0]?.id ?? null);
+      onSelectionChange(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível adicionar os dados.");
     } finally {
       if (inputRef.current) inputRef.current.value = "";
     }
   };
 
-  const changeLayer = (id: string, patch: Partial<WorkspaceLayer>) => {
-    setLayers((previous) => previous.map((layer) => layer.id === id ? { ...layer, ...patch } : layer));
+  const patchLayer = (id: string, patch: Partial<WorkspaceLayer>) => {
+    onLayersChange(layers.map((layer) => (layer.id === id ? { ...layer, ...patch } : layer)));
+  };
+
+  const patchStyle = (layer: WorkspaceLayer, mode: WorkspaceStyleMode, field?: string) => {
+    patchLayer(layer.id, {
+      style: {
+        ...layer.style,
+        mode,
+        field,
+      },
+    });
   };
 
   const removeLayer = (id: string) => {
-    setLayers((previous) => previous.filter((layer) => layer.id !== id));
-    if (activeId === id) setActiveId(layers.find((layer) => layer.id !== id)?.id ?? null);
-  };
-
-  const runOperation = async () => {
-    if (running) return;
-    setError(null);
-    if (!activeLayer) {
-      setError("Importe ou seleccione primeiro uma camada de entrada.");
-      return;
-    }
-    setRunning(true);
-    try {
-      const secondary = layers.find((layer) => layer.id === overlayId && layer.id !== activeLayer.id);
-      const execution = await runWorkspaceOperationAsync(
-        operationId, activeLayer.geojson,
-        operation.requiresOverlay ? secondary?.geojson : undefined,
-        operationParams,
-      );
-      const layer: WorkspaceLayer = {
-        id: crypto.randomUUID(),
-        name: `${operation.label} — ${activeLayer.name}`,
-        visible: true, opacity: 0.8, format: "GeoJSON",
-        featureCount: execution.result.features.length,
-        geojson: execution.result,
-        createdAt: execution.provenance.completedAt,
-        provenance: {
-          command: operationId,
-          engine: execution.provenance.engine,
-          inputLayerName: activeLayer.name,
-          overlayLayerName: secondary?.name,
-          durationMs: execution.provenance.durationMs,
-          parameters: execution.provenance.parameters,
-        },
-      };
-      setLayers((current) => [layer, ...current]);
-      setActiveId(layer.id);
-      setQuery("");
-      setHistory((current) => [{
-        id: crypto.randomUUID(), command: operation.label,
-        message: execution.result.features.length === 0
-          ? "Operação válida, sem feições na área de sobreposição."
-          : execution.stats.summary,
-        status: "success" as const, durationMs: execution.provenance.durationMs,
-      }, ...current].slice(0, 30));
-    } catch (cause) {
-      const detail = cause instanceof Error ? cause.message : "Operação espacial falhou.";
-      setError(detail);
-      setHistory((current) => [{
-        id: crypto.randomUUID(), command: operation.label,
-        message: detail, status: "error" as const,
-      }, ...current].slice(0, 30));
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  const downloadLayer = (layer: WorkspaceLayer) => {
-    const geojson = JSON.stringify(layer.geojson);
-    const url = URL.createObjectURL(new Blob([geojson], { type: "application/geo+json" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${layer.name.replace(/[^a-z0-9_-]/gi, "_").slice(0, 70) || "camada"}.geojson`;
-    link.click();
-    URL.revokeObjectURL(url);
+    const next = layers.filter((layer) => layer.id !== id);
+    onLayersChange(next);
+    if (activeLayerId === id) setActiveLayerId(next[0]?.id ?? null);
+    if (selection?.layerId === id) onSelectionChange(null);
   };
 
   return (
-    <div className="h-full min-h-0 w-full overflow-hidden flex flex-col bg-slate-50 dark:bg-slate-950">
-      <TerrainStudio open={terrainStudioOpen} onClose={() => setTerrainStudioOpen(false)}
-        geeEnabled={geeEnabled} geeRegion={geeRegion} />
-      <div className="flex flex-wrap items-center gap-2 px-3 md:px-4 pt-3" role="tablist" aria-label="Ferramentas do GIS Workspace">
-        <button type="button" role="tab" aria-selected={workspaceMode === "layers"} onClick={() => setWorkspaceMode("layers")}
-          className={workspaceMode === "layers" ? "rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white" : "rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-xs font-bold"}>
-          Camadas e geoprocessamento
-        </button>
-        <button type="button" role="tab" aria-selected={workspaceMode === "georeference"} onClick={() => setWorkspaceMode("georeference")}
-          className={workspaceMode === "georeference" ? "rounded-xl bg-sky-600 px-4 py-2 text-xs font-bold text-white" : "rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-xs font-bold"}>
-          Georreferenciar raster (GCPs)
-        </button>
-      </div>
-      <div className="px-3 md:px-4 pt-2 shrink-0">
-        <button type="button" onClick={() => setTerrainStudioOpen(true)}
-          className="inline-flex items-center gap-2 rounded-lg border border-amber-400/60 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100 dark:bg-amber-950/30 dark:text-amber-200">
-          <MapIcon size={14}/> Raster · Gerar terreno 3D a partir de DEM
-        </button>
-      </div>
-      <div className={workspaceMode === "georeference" ? "flex-1 min-h-0" : "hidden"}>
-        <GeoReferencer />
-      </div>
-      <div className={workspaceMode === "layers" ? "flex-1 min-h-0 w-full overflow-auto bg-slate-50 dark:bg-slate-950 p-3 md:p-4" : "hidden"}>
-      <div className="h-full min-h-[600px] grid grid-cols-1 xl:grid-cols-[300px_minmax(0,1fr)] gap-3">
-        <aside className="min-h-[240px] rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden">
+    <div className="flex-1 min-w-0 h-full bg-slate-50 dark:bg-slate-950 p-3 md:p-4 overflow-hidden">
+      <div className="h-full grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-3">
+        <aside className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
           <div className="p-4 border-b border-slate-200 dark:border-slate-800">
             <div className="flex items-center gap-2">
               <Database size={18} className="text-sky-500" />
               <div>
-                <h2 className="text-sm font-extrabold">GIS Workspace</h2>
-                <p className="text-[11px] text-slate-500">Geoprocessamento real, camadas e resultados</p>
+                <h2 className="font-extrabold text-sm">Browser & Dados</h2>
+                <p className="text-[11px] text-slate-500">Workspace GIS partilhado com o mapa</p>
               </div>
             </div>
-            <button type="button" onClick={() => inputRef.current?.click()}
-              className="mt-3 w-full flex items-center justify-center gap-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold py-2.5">
-              <FileUp size={15} /> Adicionar dados geoespaciais
+            <button
+              onClick={() => inputRef.current?.click()}
+              className="mt-3 w-full flex items-center justify-center gap-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold py-2.5"
+            >
+              <FileUp size={15} /> Adicionar dados
             </button>
-            <input ref={inputRef} type="file" multiple
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
               accept=".geojson,.json,.csv,application/geo+json,application/json,text/csv"
-              className="hidden" onChange={(e) => void importFiles(e.target.files)} />
-            <p className="mt-2 text-[10px] text-slate-500">GeoJSON/CSV · WGS84 · Até 8 MB e 5 000 feições por ficheiro. Dados permanecem ao navegar entre módulos; não são enviados ao servidor.</p>
-            {error && <p role="alert" className="mt-2 rounded-lg bg-rose-50 dark:bg-rose-950/30 p-2 text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
+              className="hidden"
+              onChange={(e) => void handleFiles(e.target.files)}
+            />
+            {error && <p className="mt-2 text-[11px] text-rose-600 dark:text-rose-400">{error}</p>}
           </div>
-          <QmsBasemapPicker selected={qmsBasemap} onChange={setQmsBasemap} />
-          <div className="p-3 border-b border-slate-200 dark:border-slate-800 space-y-2.5" aria-label="Ferramentas GIS">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-extrabold">Ferramentas GIS</h3>
-              <span className="text-[10px] text-slate-500">Motor Turf.js · local</span>
-            </div>
-            <label className="text-[11px] text-slate-500 block">
-              Operação
-              <select aria-label="Operação espacial" value={operationId}
-                onChange={(event) => {
-                  const id = event.target.value as WorkspaceOperationId;
-                  setOperationId(id);
-                  const next = getWorkspaceOperation(id);
-                  const defaults: WorkspaceParameters = {};
-                  next?.parameters?.forEach((parameter) => { defaults[parameter.id] = parameter.defaultValue; });
-                  setOperationParams(defaults);
-                  setError(null);
-                }}
-                className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs px-2 py-2">
-                {WORKSPACE_OPERATIONS.map((tool) => (
-                  <option key={tool.id} value={tool.id}>{tool.group} · {tool.label}</option>
-                ))}
-              </select>
-            </label>
-            <p className="text-[11px] text-slate-500">{operation.description}</p>
-            {operation.requiresOverlay && (
-              <label className="text-[11px] text-slate-500 block">
-                Camada secundária
-                <select aria-label="Camada secundária" value={overlayId}
-                  onChange={(e) => setOverlayId(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs px-2 py-2">
-                  <option value="">Seleccione a máscara/camada B</option>
-                  {layers.filter((layer) => layer.id !== activeLayer?.id).map((layer) =>
-                    <option key={layer.id} value={layer.id}>{layer.name}</option>)}
-                </select>
-              </label>
-            )}
-            {operation.parameters?.map((parameter) => (
-              <label key={parameter.id} className="text-[11px] text-slate-500 flex items-center justify-between gap-2">
-                <span>{parameter.label}</span>
-                {parameter.kind === "boolean" ? (
-                  <input type="checkbox" checked={operationParams[parameter.id] === true}
-                    onChange={(e) => setOperationParams((current) => ({ ...current, [parameter.id]: e.target.checked }))}/>
-                ) : parameter.kind === "select" ? (
-                  <select value={String(operationParams[parameter.id] ?? parameter.defaultValue)}
-                    onChange={(e) => setOperationParams((current) => ({ ...current, [parameter.id]: e.target.value }))}
-                    className="w-32 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 p-1.5 text-xs">
-                    {parameter.options?.map((opt) => <option value={opt.value} key={opt.value}>{opt.label}</option>)}
-                  </select>
-                ) : (
-                  <input type={parameter.kind} value={String(operationParams[parameter.id] ?? parameter.defaultValue)}
-                    min={parameter.min} max={parameter.max}
-                    onChange={(e) => setOperationParams((current) => ({
-                      ...current, [parameter.id]: parameter.kind === "number" ? Number(e.target.value) : e.target.value,
-                    }))}
-                    className="w-32 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 p-1.5 text-xs"/>
-                )}
-              </label>
-            ))}
-            <button type="button" onClick={runOperation}
-              disabled={running || !activeLayer || (operation.requiresOverlay && (!overlayId || overlayId === activeLayer.id))}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold py-2.5">
-              <Play size={14}/>{running ? "A executar…" : "Executar análise real"}
-            </button>
-            {history.length > 0 && (
-              <div className="space-y-1" aria-label="Histórico de processamento">
-                <h4 className="flex items-center gap-1 text-[11px] font-semibold"><Clock3 size={12}/> Histórico verificável</h4>
-                {history.slice(0, 3).map((item) => (
-                  <p key={item.id} className={`text-[10px] leading-relaxed ${item.status === "error" ? "text-rose-600" : "text-slate-500"}`}>
-                    <b>{item.command}</b> · {item.message}
-                    {typeof item.durationMs === "number" ? ` (${item.durationMs} ms)` : ""}
-                  </p>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="p-3 flex-1 overflow-y-auto">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] uppercase tracking-wider text-slate-500 font-extrabold">Camadas</span>
-              <span className="text-[10px] text-slate-400">{layers.length} importadas</span>
+
+          <div className="p-3 overflow-y-auto flex-1">
+            <div className="text-[10px] uppercase tracking-wider text-slate-400 font-extrabold mb-2">
+              Camadas
             </div>
             {layers.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 p-5 text-center">
-                <Layers size={24} className="mx-auto text-slate-400 mb-2" />
-                <p className="text-xs font-semibold">Nenhuma camada importada</p>
-                <p className="text-[11px] text-slate-500 mt-1">Adicione pontos CSV ou geometrias GeoJSON para explorar o mapa e os atributos.</p>
+              <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 p-4 text-center">
+                <Layers size={22} className="mx-auto text-slate-400 mb-2" />
+                <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  Nenhuma camada importada
+                </p>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  GeoJSON e CSV podem ser enviados diretamente ao mapa 2D.
+                </p>
               </div>
             ) : (
               <div className="space-y-2">
                 {layers.map((layer) => (
-                  <div key={layer.id}
-                    className={`rounded-xl border p-2.5 cursor-pointer ${activeLayer?.id === layer.id ? "border-sky-400 bg-sky-50 dark:bg-sky-950/30" : "border-slate-200 dark:border-slate-800"}`}
-                    onClick={() => { setActiveId(layer.id); setQuery(""); }}>
+                  <div
+                    key={layer.id}
+                    className={`rounded-xl border p-2.5 cursor-pointer transition-colors ${
+                      activeLayer?.id === layer.id
+                        ? "border-sky-400 bg-sky-50/70 dark:bg-sky-950/20"
+                        : "border-slate-200 dark:border-slate-800"
+                    }`}
+                    onClick={() => setActiveLayerId(layer.id)}
+                  >
                     <div className="flex items-start gap-2">
-                      <button type="button" aria-label={layer.visible ? "Ocultar camada" : "Mostrar camada"}
-                        onClick={(e) => { e.stopPropagation(); changeLayer(layer.id, { visible: !layer.visible }); }}
-                        className="mt-0.5 text-slate-500">{layer.visible ? <Eye size={15} /> : <EyeOff size={15} />}</button>
+                      <button
+                        className="mt-0.5 text-slate-500"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          patchLayer(layer.id, { visible: !layer.visible });
+                        }}
+                        title={layer.visible ? "Ocultar camada" : "Mostrar camada"}
+                      >
+                        {layer.visible ? <Eye size={15} /> : <EyeOff size={15} />}
+                      </button>
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold truncate">{layer.name}</p>
-                        <p className="text-[10px] text-slate-500">{layer.format} · {layer.featureCount} feições</p>
-                        {layer.provenance && <p className="text-[10px] text-emerald-700 dark:text-emerald-400">Resultado calculado · {layer.provenance.engine}</p>}
-                        <input aria-label={`Opacidade: ${layer.name}`} type="range" min={0.1} max={1} step={0.05}
-                          value={layer.opacity} onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => changeLayer(layer.id, { opacity: Number(e.target.value) })}
-                          className="mt-2 w-full" />
+                        <div className="text-xs font-bold truncate">{layer.name}</div>
+                        <div className="text-[10px] text-slate-400">
+                          {layer.format} · {layer.featureCount ?? 0} feições
+                        </div>
+                        <input
+                          aria-label={`Opacidade de ${layer.name}`}
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={layer.opacity}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => patchLayer(layer.id, { opacity: Number(e.target.value) })}
+                          className="w-full mt-2"
+                        />
                       </div>
-                      <button type="button" title="Exportar camada em GeoJSON" aria-label={`Exportar ${layer.name}`}
-                        onClick={(e) => { e.stopPropagation(); downloadLayer(layer); }}
-                        className="text-slate-400 hover:text-sky-500"><Download size={15}/></button>
-                      <button type="button" aria-label={`Remover ${layer.name}`}
-                        onClick={(e) => { e.stopPropagation(); removeLayer(layer.id); }}
-                        className="text-slate-400 hover:text-rose-500"><Trash2 size={15} /></button>
+                      <button
+                        className="text-sky-500 hover:text-sky-700"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenMap(layer.id);
+                        }}
+                        title="Abrir e enquadrar no mapa"
+                      >
+                        <Crosshair size={14} />
+                      </button>
+                      <button
+                        className="text-slate-400 hover:text-rose-500"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeLayer(layer.id);
+                        }}
+                        title="Remover camada"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -324,80 +226,165 @@ export default function GISWorkspacePanel({ layers, setLayers, geeEnabled, geeRe
           </div>
         </aside>
 
-        <section className="min-h-[550px] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden min-w-0">
-          <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800">
-            <span className="flex items-center gap-1.5 text-xs font-bold"><MapIcon size={15} className="text-sky-500" /> Mapa GIS</span>
-            <span className="text-[10px] text-slate-500">{visibleLayers.length} visíveis · EPSG:4326</span>
-          </div>
-          <div className="h-[290px] md:h-[44%] min-h-[260px] relative">
-            <MapContainer center={[-18.6, 35.5]} zoom={5} scrollWheelZoom zoomControl
-              className="h-full w-full z-0" style={{ height: "100%", width: "100%" }}>
-              <TileLayer key={qmsBasemap ? "qms-" + qmsBasemap.id : "osm"}
-                attribution={qmsBasemap?.attribution ?? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}
-                url={qmsBasemap?.url ?? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"}
-                tms={qmsBasemap?.tms ?? false}
-                maxZoom={qmsBasemap?.maxZoom ?? 19}
-                eventHandlers={{ tileerror: () => {
-                  if (qmsBasemap) {
-                    setQmsBasemap(null);
-                    setError("O serviço QMS falhou ao carregar mosaicos. Foi restaurado o OpenStreetMap.");
-                  }
-                } }} />
-              {visibleLayers.map((layer) => (
-                <VectorLayer key={`${layer.id}-${layer.opacity}`} data={layer.geojson}
-                  style={{ color: "#0284c7", opacity: layer.opacity, fillOpacity: layer.opacity * 0.27, weight: 2 }}
-                  pointToLayer={(_, latlng) => L.circleMarker(latlng, {
-                    radius: 5, color: "#0369a1", weight: 1.5,
-                    fillColor: "#0ea5e9", fillOpacity: layer.opacity,
-                  })} />
-              ))}
-              <FitSelectedLayer layer={activeLayer} />
-              <ScaleControl position="bottomleft" />
-            </MapContainer>
-          </div>
-          <div className="flex flex-1 min-h-[220px] flex-col border-t border-slate-200 dark:border-slate-800">
-            <div className="p-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800">
-              <div className="min-w-0">
-                <h3 className="flex items-center gap-1.5 text-sm font-extrabold"><Table2 size={15} className="text-sky-500" /> Tabela de atributos</h3>
-                <p className="text-[11px] text-slate-500 truncate">{activeLayer?.name ?? "Seleccione uma camada"}</p>
+        <section className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col min-w-0">
+          <div className="p-3 border-b border-slate-200 dark:border-slate-800 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <Table2 size={17} className="text-indigo-500 shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="text-sm font-extrabold truncate">Tabela de Atributos</h3>
+                  <p className="text-[10px] text-slate-400 truncate">
+                    {activeLayer ? activeLayer.name : "Selecione uma camada vetorial"}
+                  </p>
+                </div>
               </div>
-              <label className="relative">
-                <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Pesquisar atributos…"
-                  className="pl-7 pr-2 py-1.5 rounded-lg text-xs w-52 max-w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900" />
-              </label>
+              <div className="flex items-center gap-2">
+                {activeLayer && (
+                  <button
+                    onClick={() => onOpenMap(activeLayer.id)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 text-[11px] font-bold"
+                  >
+                    <MapPin size={13} /> Ver no mapa
+                  </button>
+                )}
+                <label className="relative">
+                  <Search
+                    size={13}
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Filtrar registos…"
+                    className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs w-48 max-w-full"
+                  />
+                </label>
+              </div>
             </div>
-            <div className="flex-1 overflow-auto">
-              {!activeLayer ? (
-                <div className="grid place-items-center p-8 text-xs text-slate-500">Importe uma camada para consultar os seus atributos.</div>
-              ) : (
-                <table className="min-w-full text-xs">
-                  <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 z-10">
-                    <tr>
-                      <th className="px-3 py-2 text-left">#</th>
-                      {columns.map((column) => <th key={column} className="px-3 py-2 text-left whitespace-nowrap">{column}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredRows.slice(0, 300).map((feature, i) => (
-                      <tr key={String(feature.id ?? i)} className="border-t border-slate-100 dark:border-slate-800">
-                        <td className="px-3 py-2 text-slate-500">{i + 1}</td>
-                        {columns.map((column) => <td key={column} className="px-3 py-2 whitespace-nowrap max-w-[280px] truncate">{String(feature.properties?.[column] ?? "")}</td>)}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
+
             {activeLayer && (
-              <div className="border-t border-slate-200 dark:border-slate-800 px-3 py-2 flex justify-between text-[10px] text-slate-500">
-                <span>{filteredRows.length} / {activeLayer.featureCount} registos</span>
-                <span>Mostrando até 300 linhas · Local no navegador</span>
+              <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-2.5">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 dark:text-slate-300 mr-1">
+                  <Palette size={13} className="text-violet-500" /> Estilo
+                </div>
+                <select
+                  value={activeLayer.style.mode}
+                  onChange={(e) => {
+                    const mode = e.target.value as WorkspaceStyleMode;
+                    const fallbackField =
+                      mode === "graduated"
+                        ? numericColumns[0]
+                        : mode === "categorized"
+                          ? columns[0]
+                          : undefined;
+                    patchStyle(activeLayer, mode, fallbackField);
+                  }}
+                  className="text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5"
+                >
+                  <option value="single">Símbolo único</option>
+                  <option value="categorized">Categorizado</option>
+                  <option value="graduated">Graduado</option>
+                </select>
+
+                {activeLayer.style.mode !== "single" && (
+                  <select
+                    value={activeLayer.style.field ?? ""}
+                    onChange={(e) =>
+                      patchStyle(activeLayer, activeLayer.style.mode, e.target.value || undefined)
+                    }
+                    className="text-[11px] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5"
+                  >
+                    {(activeLayer.style.mode === "graduated" ? numericColumns : columns).map(
+                      (column) => (
+                        <option key={column} value={column}>
+                          {column}
+                        </option>
+                      )
+                    )}
+                  </select>
+                )}
+
+                <span className="text-[10px] text-slate-400">
+                  {activeLayer.style.mode === "single"
+                    ? "cor uniforme"
+                    : activeLayer.style.mode === "categorized"
+                      ? "cores automáticas por categoria"
+                      : "5 classes graduadas"}
+                </span>
               </div>
             )}
           </div>
+
+          <div className="flex-1 overflow-auto">
+            {!activeLayer ? (
+              <div className="h-full grid place-items-center text-center p-8 text-slate-400">
+                <div>
+                  <Table2 size={34} className="mx-auto mb-3" />
+                  <p className="text-sm font-semibold">
+                    Adicione uma camada para explorar os atributos.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <table className="min-w-full text-xs">
+                <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 z-10">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-extrabold text-slate-500">#</th>
+                    {columns.map((column) => (
+                      <th
+                        key={column}
+                        className="px-3 py-2 text-left font-extrabold whitespace-nowrap"
+                      >
+                        {column}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.slice(0, 1000).map(({ feature, featureIndex }, rowIndex) => {
+                    const selected =
+                      selection?.layerId === activeLayer.id &&
+                      selection.featureIndex === featureIndex;
+                    return (
+                      <tr
+                        key={String(feature.id ?? featureIndex)}
+                        onClick={() =>
+                          onSelectionChange({ layerId: activeLayer.id, featureIndex })
+                        }
+                        onDoubleClick={() => onOpenMap(activeLayer.id, featureIndex)}
+                        className={`border-t border-slate-100 dark:border-slate-800 cursor-pointer ${
+                          selected
+                            ? "bg-amber-50 dark:bg-amber-950/30 ring-1 ring-inset ring-amber-300 dark:ring-amber-800"
+                            : "hover:bg-sky-50/50 dark:hover:bg-slate-800/50"
+                        }`}
+                        title="Clique para selecionar; duplo clique para focar no mapa"
+                      >
+                        <td className="px-3 py-2 text-slate-400">{rowIndex + 1}</td>
+                        {columns.map((column) => (
+                          <td
+                            key={column}
+                            className="px-3 py-2 whitespace-nowrap max-w-[280px] truncate"
+                          >
+                            {String(feature.properties?.[column] ?? "")}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {activeLayer && (
+            <div className="px-3 py-2 border-t border-slate-200 dark:border-slate-800 text-[10px] text-slate-500 flex justify-between">
+              <span>
+                {rows.length} / {activeLayer.featureCount ?? 0} registos
+              </span>
+              <span>{selection?.layerId === activeLayer.id ? "Seleção sincronizada" : "Mapa ↔ tabela"}</span>
+            </div>
+          )}
         </section>
-      </div>
       </div>
     </div>
   );

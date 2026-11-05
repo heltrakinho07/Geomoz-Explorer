@@ -1,0 +1,246 @@
+#!/usr/bin/env node
+/**
+ * Package the GeoMoz-owned Workbench UI compiled against pinned GeoLibre (MIT).
+ * Source integration runs before compilation; this step adds shared theme,
+ * deployment policy, identity assets and license attribution.
+ *
+ * Usage: node scripts/brand-geolibre-web.mjs <geolibre-dist> <geomoz-output> <geolibre-license>
+ */
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
+
+const [sourceArg, destinationArg, licenseArg] = process.argv.slice(2);
+if (!sourceArg || !destinationArg || !licenseArg) {
+  console.error("Usage: node scripts/brand-geolibre-web.mjs <upstream-dist> <target/gis-workspace> <upstream-LICENSE>");
+  process.exit(2);
+}
+const source = resolve(sourceArg);
+const destination = resolve(destinationArg);
+const license = resolve(licenseArg);
+if (
+  basename(destination) !== "gis-workspace" ||
+  basename(dirname(destination)) !== "public" ||
+  basename(dirname(dirname(destination))) !== "dist" ||
+  destination === source ||
+  destination.startsWith(source + "/")
+) {
+  throw new Error("Refusing to replace a directory outside dist/public/gis-workspace");
+}
+if (!existsSync(resolve(source, "index.html")) || !existsSync(license)) {
+  throw new Error("GeoLibre build and upstream MIT LICENSE are required");
+}
+const html = readFileSync(resolve(source, "index.html"), "utf8");
+if (!html.includes("/gis-workspace/") || !html.includes('id="root"')) {
+  throw new Error("GeoLibre was not built with GEOLIBRE_APP_BASE=/gis-workspace/");
+}
+// Split executable application entrypoints out of the public HTML. The
+// first-party auth gate will inject them only after a valid Firebase session is
+// confirmed by the main GeoMoz portal. Deny unexpected/inline executable
+// scripts instead of accidentally starting GIS before authentication.
+const appEntrypoints = [];
+const guardedHtml = html.replace(
+  /<script\b[^>]*\bsrc\s*=\s*(["'])(.*?)\1[^>]*>\s*<\/script>/gi,
+  (tag, _quote, src) => {
+    if (!(src.startsWith("/gis-workspace/assets/") || src === "/gis-workspace/geolibre-runtime-config.js")) {
+      throw new Error("Unexpected GeoMoz Workspace startup script: " + src);
+    }
+    appEntrypoints.push({
+      src,
+      module: /\btype\s*=\s*["']module["']/i.test(tag),
+      crossorigin: /\bcrossorigin\b/i.test(tag),
+    });
+    return "";
+  }
+);
+if (!appEntrypoints.some(entry => entry.src.startsWith("/gis-workspace/assets/")) || /<script\b/i.test(guardedHtml)) {
+  throw new Error("GIS Workspace entrypoints must be gated before publication");
+}
+// Refuse to publish the original visual shell if source preparation was omitted.
+const required = new Set(["geomoz-workbench-chrome", "geomoz-layer-catalog"]);
+const assetsDir = resolve(source, "assets");
+if (existsSync(assetsDir)) {
+  for (const file of readdirSync(assetsDir).filter(name => name.endsWith(".js"))) {
+    const code = readFileSync(resolve(assetsDir, file), "utf8");
+    for (const marker of required) if (code.includes(marker)) required.delete(marker);
+    if (!required.size) break;
+  }
+}
+if (required.size) throw new Error("Build the GeoMoz-owned React interface before packaging: missing " + [...required].join(", "));
+rmSync(destination, { recursive: true, force: true });
+mkdirSync(destination, { recursive: true });
+cpSync(source, destination, { recursive: true, dereference: false });
+const brandingCss = readFileSync(new URL("./assets/geolibre-geomoz-theme.css", import.meta.url), "utf8");
+const cssVersion = createHash("sha256").update(brandingCss).digest("hex").slice(0, 12);
+const themeHref = `<link rel="stylesheet" href="/gis-workspace/geomoz-brand.css?v=${cssVersion}" />`;
+const themeJs = readFileSync(new URL("../artifacts/geomoz-react/public/geomoz-theme.js", import.meta.url), "utf8");
+const themeVersion = createHash("sha256").update(themeJs).digest("hex").slice(0, 12);
+const themeScript = `<script src="/gis-workspace/geomoz-theme.js?v=${themeVersion}"></script>`;
+const preferencesJs = readFileSync(new URL("../artifacts/geomoz-react/public/geomoz-preferences.js", import.meta.url), "utf8");
+const preferencesVersion = createHash("sha256").update(preferencesJs).digest("hex").slice(0, 12);
+const preferencesScript = `<script src="/gis-workspace/geomoz-preferences.js?v=${preferencesVersion}"></script>`;
+const gateTemplate = readFileSync(new URL("./assets/geomoz-workspace-auth-gate.js", import.meta.url), "utf8");
+if (gateTemplate.split("__GEOMOZ_ENTRYPOINTS__").length !== 2) {
+  throw new Error("GeoMoz Workspace authentication gate source changed");
+}
+const gateSource = gateTemplate.replace("__GEOMOZ_ENTRYPOINTS__", JSON.stringify(appEntrypoints));
+const gateVersion = createHash("sha256").update(gateSource).digest("hex").slice(0, 12);
+const gateScript = `<script defer src="/gis-workspace/geomoz-auth-gate.js?v=${gateVersion}"></script>`;
+const authStyles = `<style>
+body[data-geomoz-auth="pending"] #root{display:none!important}
+#geomoz-auth-splash{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#020617;color:#e2e8f0;font:14px system-ui,sans-serif;text-align:center}
+#geomoz-auth-splash section{max-width:440px}
+#geomoz-auth-login{display:inline-block;margin-top:18px;border:1px solid #0284c7;border-radius:10px;background:#0369a1;color:white;padding:10px 18px;cursor:pointer}
+#geomoz-auth-login[hidden]{display:none}
+</style>`;
+const authSplash = `<div id="geomoz-auth-splash" role="status" aria-live="polite"><section><h1>GeoMoz GIS Workspace</h1><p id="geomoz-auth-status">A verificar sessão e permissões de acesso…</p><button id="geomoz-auth-login" type="button" hidden>Iniciar sessão</button></section></div>`;
+// Point every browser/PWA identity at the same top-level files as the GeoMoz portal.
+// The official GIS Workspace favicon is shared across both URLs.
+const publicAssets = fileURLToPath(new URL("../artifacts/geomoz-react/public/", import.meta.url));
+// /gis-workspace/favicon.svg is the official public icon for both experiences.
+// Keep the same hashed cache key across the portal and Workbench.
+const faviconVersion = createHash("sha256").update(readFileSync(resolve(publicAssets, "favicon.svg"))).digest("hex").slice(0, 12);
+const identityHead = [
+  `<link rel="icon" type="image/svg+xml" sizes="any" href="/gis-workspace/favicon.svg?v=${faviconVersion}" />`,
+  `<link rel="apple-touch-icon" sizes="180x180" href="/gis-workspace/apple-touch-icon.png?v=${faviconVersion}" />`,
+  '<meta name="theme-color" content="#082f49" />',
+  themeHref,
+  '<meta name="geomoz-interface" content="workbench-v1" />',
+  authStyles,
+  gateScript,
+  themeScript,
+  preferencesScript,
+].join("\n  ");
+let branded = guardedHtml
+  // Replace GeoLibre favicons; the GIS scripts are auth-gated separately.
+  // Discard every upstream icon variant, including shortcut and mask icons.
+  .replace(/<link\b(?=[^>]*\brel\s*=\s*["'][^"']*\b(?:icon|apple-touch-icon|mask-icon)\b[^"']*["'])[^>]*>/gi, "")
+  .replace(/<meta\b[^>]*\bname=["']theme-color["'][^>]*>/gi, "")
+  .replace(/<title>[^<]*<\/title>/i, "<title>GeoMoz GIS Workspace</title>")
+  .replace(/<html\s+lang=["'][^"']*["']/i, '<html lang="pt"')
+  .replace(/<meta\s+name=["']apple-mobile-web-app-title["']\s+content=["'][^"']*["']\s*\/>/i,
+    '<meta name="apple-mobile-web-app-title" content="GeoMoz GIS Workspace" />')
+  .replace(/<meta\s+name=["']description["']\s+content=["'][^"']*["']\s*\/>/i,
+    '<meta name="description" content="GeoMoz GIS Workspace: explore dados geoespaciais, faça análises vectoriais e raster e construa mapas no navegador." />')
+  .replace("</head>", "  " + identityHead + "\n  </head>")
+  .replace("<body>", '<body data-geomoz-app="workbench" data-geomoz-auth="pending">' + authSplash);
+if (
+  branded === html ||
+  !branded.includes('data-geomoz-app="workbench"') ||
+  !branded.includes(themeHref) ||
+  !branded.includes(themeScript) ||
+  !branded.includes(preferencesScript) ||
+  !branded.includes(gateScript) ||
+  !branded.includes('data-geomoz-auth="pending"')
+) {
+  throw new Error("Unable to brand the built GeoLibre HTML");
+}
+writeFileSync(resolve(destination, "index.html"), branded);
+writeFileSync(resolve(destination, "geomoz-auth-gate.js"), gateSource);
+
+/*
+ * VitePWA/Workbox generated sw.js before GeoMoz added its auth gate.
+ * Refresh the revisioned index.html precache entry to the *guarded* HTML.
+ * Otherwise the SW could continue to serve an unguarded legacy index.
+ */
+const swPath = resolve(destination, "sw.js");
+if (!existsSync(swPath)) throw new Error("Missing GeoMoz GIS service worker; cannot ensure auth-safe offline shell");
+let swSource = readFileSync(swPath, "utf8");
+const guardedIndexMd5 = createHash("md5").update(branded).digest("hex");
+let revisionCount = 0;
+swSource = swSource.replace(/\{[^{}]{0,250}\}/g, (entry) => {
+  if (!/(?:url|"url")\s*:\s*["'](?:\/gis-workspace\/)?index\.html["']/.test(entry)) return entry;
+  const updated = entry.replace(/((?:"revision"|revision)\s*:\s*["'])[a-f0-9]{32}(["'])/, "$1" + guardedIndexMd5 + "$2");
+  if (updated !== entry) revisionCount++;
+  return updated;
+});
+if (revisionCount !== 1) {
+  throw new Error("Cannot secure Workbox index.html precache (expected exactly one revision)");
+}
+writeFileSync(swPath, swSource);
+
+writeFileSync(
+  resolve(destination, "deployment.json"),
+  JSON.stringify(
+    {
+      version: 1,
+      branding: { appName: "GeoMoz GIS Workspace", welcome: false },
+      interface: { name: "geomoz-workbench", version: 1, revision: process.env.GITHUB_SHA || "local" },
+      // Sharing requires its own hosted backend; do not send free GIS projects
+      // to another platform. The original local file workflow stays available.
+      sharing: { shareUrl: "off" },
+      ai: { enabled: false }
+    },
+    null,
+    2
+  ) + "\n"
+);
+writeFileSync(resolve(destination, "geomoz-brand.css"), brandingCss);
+writeFileSync(resolve(destination, "geomoz-theme.js"), themeJs);
+writeFileSync(resolve(destination, "geomoz-preferences.js"), preferencesJs);
+
+const iconMappings = [
+  ["favicon.svg", "favicon.svg"],
+  ["favicon.png", "favicon.png"],
+  ["favicon.ico", "favicon.ico"],
+  ["apple-touch-icon.png", "apple-touch-icon.png"],
+  ["icon-192.png", "pwa-192x192.png"],
+  ["icon-512.png", "pwa-512x512.png"],
+  ["icon-maskable.png", "maskable-icon-512x512.png"],
+];
+for (const [sourceName, destinationName] of iconMappings) {
+  const logoFile = resolve(publicAssets, sourceName);
+  if (!existsSync(logoFile)) throw new Error("Missing GeoMoz branding asset: " + sourceName);
+  cpSync(logoFile, resolve(destination, destinationName));
+}
+
+// The app is installed as GeoMoz GIS Workspace; retain GeoLibre PWA runtime.
+const manifestFile = resolve(destination, "manifest.webmanifest");
+if (existsSync(manifestFile)) {
+  const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
+  Object.assign(manifest, {
+    name: "GeoMoz GIS Workspace",
+    short_name: "GeoMoz GIS",
+    description: "Ambiente SIG profissional GeoMoz para explorar dados, analisar e publicar mapas.",
+    start_url: "/gis-workspace/",
+    scope: "/gis-workspace/",
+    theme_color: "#0284c7",
+    background_color: "#020617",
+    icons: [
+      { src: `/gis-workspace/favicon.svg?v=${faviconVersion}`, sizes: "any", type: "image/svg+xml", purpose: "any" },
+      { src: `/gis-workspace/favicon.png?v=${faviconVersion}`, sizes: "32x32", type: "image/png", purpose: "any" },
+      { src: `/gis-workspace/pwa-192x192.png?v=${faviconVersion}`, sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: `/gis-workspace/pwa-512x512.png?v=${faviconVersion}`, sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: `/gis-workspace/maskable-icon-512x512.png?v=${faviconVersion}`, sizes: "512x512", type: "image/png", purpose: "maskable" },
+    ],
+  });
+  writeFileSync(manifestFile, JSON.stringify(manifest, null, 2) + "\n");
+}
+
+// Keep upstream attribution and copyright text accessible in the product,
+ // rather than presenting the open-source engine as an unlicensed proprietary component.
+writeFileSync(resolve(destination, "third-party-notices.html"), `<!doctype html>
+<html lang="pt"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#082f49"/><title>GeoMoz · Licenças de terceiros</title>
+<link rel="icon" href="/gis-workspace/favicon.svg?v=${faviconVersion}" type="image/svg+xml"/>
+<style>body{font:15px/1.65 system-ui,sans-serif;max-width:850px;padding:30px 20px;margin:auto;background:#f8fafc;color:#0f172a}
+a{color:#0369a1}h1{font-size:1.75rem}h2{margin-top:2rem}article{border:1px solid #cbd5e1;border-radius:10px;padding:20px;background:#fff}
+small{color:#475569}nav{display:flex;gap:16px;flex-wrap:wrap}</style></head><body>
+<nav><a href="/gis-workspace/">← GIS Workspace</a><a href="/mapa">GeoMoz Explorer</a><a href="/terms">Termos</a></nav>
+<h1>Créditos e licenças de terceiros</h1>
+<p>O GeoMoz GIS Workspace possui interface, navegação e integração de dados desenvolvidas para o GeoMoz. Alguns motores SIG e bibliotecas derivam de software de código aberto e continuam sujeitos às respectivas licenças.</p>
+<article><h2>GeoLibre — motor GIS de código aberto</h2><p>Copyright © 2026 Qiusheng Wu. Licença MIT.</p>
+<p>Parte da infraestrutura geoespacial é baseada no projecto <a href="https://github.com/opengeos/GeoLibre" rel="noopener noreferrer">GeoLibre</a>, adaptado e integrado no GeoMoz.</p>
+<p><a href="/gis-workspace/GEOLIBRE-LICENSE.txt">Ler a licença MIT original</a> ·
+<a href="/gis-workspace/GEOLIBRE-NOTICE.txt">Aviso de atribuição do motor</a></p></article>
+<h2>Outras bibliotecas e provedores de dados</h2>
+<p>MapLibre, ferramentas WebAssembly, dados públicos e serviços de mapas podem utilizar licenças e atribuições próprias. As atribuições cartográficas dos mapas e serviços utilizados devem continuar visíveis.</p>
+<small>Esta página documenta dependências abertas. Não altera os termos GeoMoz nem concede direitos sobre marcas de terceiros.</small>
+</body></html>`);
+cpSync(license, resolve(destination, "GEOLIBRE-LICENSE.txt"));
+writeFileSync(
+  resolve(destination, "GEOLIBRE-NOTICE.txt"),
+  "GeoLibre (c) 2026 Qiusheng Wu. MIT licensed.\nUpstream: https://github.com/opengeos/GeoLibre\nGeoMoz Workbench provides its own React interface on a pinned GeoLibre GIS engine.\nInterface source: scripts/assets/workbench in the GeoMoz repository.\nSee GEOLIBRE-LICENSE.txt for the license terms.\n"
+);
+console.log("GeoMoz Workbench prepared at " + destination);

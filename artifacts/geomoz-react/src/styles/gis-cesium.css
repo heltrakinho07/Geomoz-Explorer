@@ -1,0 +1,5 @@
+.geomoz-cesium-map .cesium-viewer,.geomoz-cesium-map .cesium-viewer-cesiumWidgetContainer,.geomoz-cesium-map .cesium-widget,.geomoz-cesium-map canvas{width:100%;height:100%}
+.geomoz-cesium-map .cesium-viewer-bottom{left:auto;right:8px;bottom:2px;max-width:calc(100% - 110px)}
+.geomoz-cesium-map .cesium-credit-textContainer{font-size:10px;background:rgba(255,255,255,.9);color:#334155;border-radius:5px;padding:2px 5px}
+.geomoz-cesium-map .cesium-credit-textContainer a{color:#334155}
+.geomoz-cesium-map canvas{outline:none;touch-action:none}

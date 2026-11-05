@@ -1,0 +1,45 @@
+name: GeoMoz UI Print and Responsive CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "artifacts/geomoz-react/src/components/GeoMozPrintLayout.tsx"
+      - "artifacts/geomoz-react/src/components/geomoz-print-layout.css"
+      - "artifacts/geomoz-react/src/components/__tests__/GeoMozPrintLayout.test.tsx"
+      - "artifacts/geomoz-react/src/styles/geomoz-system.css"
+      - "artifacts/geomoz-react/src/styles/gis-workspace.css"
+      - "artifacts/geomoz-react/src/pages/Explorer.tsx"
+      - "artifacts/geomoz-react/src/App.tsx"
+      - ".github/workflows/geomoz-ui-print-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  ui-print:
+    runs-on: ubuntu-latest
+    name: Print layout and responsive build
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - name: Install repository dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Test print composition
+        run: pnpm --filter @workspace/geomoz-react exec vitest run src/components/__tests__/GeoMozPrintLayout.test.tsx
+      - name: Build GeoMoz modules
+        run: pnpm --filter @workspace/geomoz-react run build
+        env:
+          NODE_ENV: production
+          VITE_API_BASE: ""
+      - name: Verify branded modules are bundled
+        run: |
+          test -s artifacts/geomoz-react/dist/public/index.html
+          grep -R -q 'geomoz-print-portal' artifacts/geomoz-react/dist/public/assets/
+          grep -R -q 'geomoz-active-module' artifacts/geomoz-react/dist/public/assets/
+          grep -R -q 'geomoz-system' artifacts/geomoz-react/dist/public/assets/

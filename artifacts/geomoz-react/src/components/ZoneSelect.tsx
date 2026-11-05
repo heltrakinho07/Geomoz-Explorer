@@ -1,4 +1,6 @@
 import { useState, useMemo } from "react";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import { sharedMapText, type SharedMapKey } from "@/i18n/sharedMap";
 import {
   Globe, Upload, Pen, X, FileText, CheckCircle2,
   Paintbrush, Trash2, Sparkles, Crosshair, ArrowRight,
@@ -23,7 +25,7 @@ type ActiveTab = "upload" | "draw" | null;
  * ZoneSelect — Enterprise-grade Area of Interest (AOI) Selector.
  *
  * Professional GIS workflow:
- *   1. Globo 3D (Mundo) — Initial planetary globe view
+ *   1. Vista global — Initial planetary globe view
  *   2. Upload de Geometria — GeoJSON, KML, GPX with instant auto-centering
  *   3. Desenhar Poligono — Interactive polygon drawing directly on the globe/map
  */
@@ -34,6 +36,9 @@ export default function ZoneSelect({
   compact,
 }: ZoneSelectProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>(null);
+  const { translatedLocale } = usePortalTranslation();
+  const copy = (key: SharedMapKey) => sharedMapText(translatedLocale, key);
+  const numberLocale = translatedLocale === "pt" ? "pt-MZ" : translatedLocale;
 
   // Compute quantitative geometric metrics for the active AOI
   const metrics = useMemo(() => {
@@ -73,17 +78,17 @@ export default function ZoneSelect({
               ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"
               : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200"
           }`}
-          title={isCustom ? "Recentralizar na Área de Estudo" : "Globo 3D (Visão Global)"}
+          title={isCustom ? copy("zone.recenterTitle") : copy("zone.global")}
         >
           {isCustom ? <Crosshair size={13} className="text-emerald-500" /> : <Globe size={13} className="text-sky-500" />}
-          <span className="max-w-[130px] truncate">{aoi.label}</span>
+          <span className="min-w-0 whitespace-normal break-words text-left">{aoi.source === "global" ? copy("zone.global") : aoi.label}</span>
         </button>
 
         {isCustom && (
           <button
             onClick={handleSelectGlobal}
             className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-            title="Repor visão global do globo"
+            title={copy("zone.globalResetTitle")}
           >
             <RotateCcw size={12} />
           </button>
@@ -109,10 +114,10 @@ export default function ZoneSelect({
               }`}
             >
               {aoi.source === "upload"
-                ? "Vetor Carregado"
+                ? copy("zone.uploaded")
                 : aoi.source === "draw"
-                ? "Área Desenhada"
-                : "Globo 3D (Mundo)"}
+                ? copy("zone.drawn")
+                 : copy("zone.global")}
             </span>
           </div>
 
@@ -124,20 +129,20 @@ export default function ZoneSelect({
                   type="button"
                   onClick={handleFlyToAOI}
                   className="flex items-center gap-1 text-[10px] font-semibold text-sky-700 dark:text-sky-300 bg-white dark:bg-slate-800 hover:bg-sky-50 dark:hover:bg-sky-950/40 border border-slate-200 dark:border-slate-700 hover:border-sky-300 dark:hover:border-sky-700 px-2 py-0.5 rounded-lg transition-all cursor-pointer shadow-2xs"
-                  title="Aproximar e centralizar a câmera na área"
+                  title={copy("zone.centerTitle")}
                 >
                   <Crosshair size={10} />
-                  <span>Centralizar</span>
+                  <span>{copy("zone.center")}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handleSelectGlobal}
                   className="flex items-center gap-1 text-[10px] font-medium text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 bg-white dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-950/30 border border-slate-200 dark:border-slate-700 hover:border-red-200 dark:hover:border-red-800 px-2 py-0.5 rounded-lg transition-all cursor-pointer shadow-2xs"
-                  title="Redefinir para visão global do globo terrestre"
+                  title={copy("zone.resetTitle")}
                 >
                   <RotateCcw size={10} />
-                  <span>Resetar</span>
+                  <span>{copy("zone.reset")}</span>
                 </button>
               </>
             )}
@@ -155,13 +160,13 @@ export default function ZoneSelect({
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate leading-tight">
-              {isCustom ? aoi.label : "Cobertura Planetária (Globo 3D)"}
+            <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 whitespace-normal break-words leading-tight">
+              {isCustom ? aoi.label : aoi.source === "global" ? copy("zone.define") : aoi.label}
             </h3>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-normal break-words mt-0.5">
               {isCustom
-                ? "Recorte Zonal Ativo · Google Earth Engine"
-                : "Navegue pelo globo, faça o traçado ou carregue um arquivo vetorial."}
+                ? copy("zone.activeClip")
+                 : copy("zone.help")}
             </p>
           </div>
         </div>
@@ -170,27 +175,27 @@ export default function ZoneSelect({
         {isCustom && metrics && (
           <div className="grid grid-cols-2 gap-1.5 mt-3 pt-2.5 border-t border-slate-200/70 dark:border-slate-800 text-[10px]">
             <div className="bg-white/80 dark:bg-slate-900/60 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-              <span className="text-slate-400 block text-[9px] uppercase font-semibold">Área Recortada</span>
+              <span className="text-slate-400 block text-[9px] uppercase font-semibold">{copy("zone.clippedArea")}</span>
               <span className="font-bold text-slate-700 dark:text-slate-200">
-                {metrics.areaKm2.toLocaleString()} km²
-                <span className="text-slate-400 font-normal ml-1">({metrics.areaHa.toLocaleString()} ha)</span>
+                {metrics.areaKm2.toLocaleString(numberLocale)} km²
+                <span className="text-slate-400 font-normal ml-1">({metrics.areaHa.toLocaleString(numberLocale)} ha)</span>
               </span>
             </div>
             <div className="bg-white/80 dark:bg-slate-900/60 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-              <span className="text-slate-400 block text-[9px] uppercase font-semibold">Perímetro</span>
+              <span className="text-slate-400 block text-[9px] uppercase font-semibold">{copy("zone.perimeter")}</span>
               <span className="font-bold text-slate-700 dark:text-slate-200">
-                {metrics.perimeterKm.toLocaleString()} km
+                {metrics.perimeterKm.toLocaleString(numberLocale)} km
               </span>
             </div>
             <div className="bg-white/80 dark:bg-slate-900/60 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-              <span className="text-slate-400 block text-[9px] uppercase font-semibold">Vértices</span>
+              <span className="text-slate-400 block text-[9px] uppercase font-semibold">{copy("zone.vertices")}</span>
               <span className="font-bold text-slate-700 dark:text-slate-200">
-                {metrics.vertexCount} pontos
+                {metrics.vertexCount} {copy("zone.points")}
               </span>
             </div>
-            <div className="bg-white/80 dark:bg-slate-900/60 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800 truncate">
-              <span className="text-slate-400 block text-[9px] uppercase font-semibold">Centroide</span>
-              <span className="font-bold text-slate-700 dark:text-slate-200 truncate block">
+            <div className="bg-white/80 dark:bg-slate-900/60 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800 whitespace-normal break-words">
+              <span className="text-slate-400 block text-[9px] uppercase font-semibold">{copy("zone.centroid")}</span>
+              <span className="font-bold text-slate-700 dark:text-slate-200 whitespace-normal break-words block">
                 {metrics.centroid[0]}°, {metrics.centroid[1]}°
               </span>
             </div>
@@ -208,10 +213,10 @@ export default function ZoneSelect({
               ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
               : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 dark:hover:border-emerald-800"
           }`}
-          title="Carregar ficheiro GeoJSON, KML ou GPX"
+          title={copy("zone.uploadTitle")}
         >
           <Upload size={13} className={activeTab === "upload" ? "text-white" : "text-emerald-500"} />
-          <span>Carregar GeoJSON</span>
+          <span>{copy("zone.upload")}</span>
         </button>
 
         <button
@@ -225,10 +230,10 @@ export default function ZoneSelect({
               ? "bg-fuchsia-600 text-white border-fuchsia-700 shadow-sm"
               : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-950/30 hover:border-fuchsia-300 dark:hover:border-fuchsia-800"
           }`}
-          title="Desenhar polígono livre diretamente no mapa / globo"
+          title={copy("zone.drawTitle")}
         >
           <Pen size={13} className={aoi.source === "draw" ? "text-white" : "text-fuchsia-500"} />
-          <span>Desenhar Polígono</span>
+          <span>{copy("zone.draw")}</span>
         </button>
       </div>
 
@@ -238,7 +243,7 @@ export default function ZoneSelect({
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold text-emerald-900 dark:text-emerald-200 uppercase tracking-wider flex items-center gap-1.5">
               <Upload size={12} className="text-emerald-600" />
-              <span>Importar Área Vetorial (GeoJSON, KML, GPX)</span>
+              <span>{copy("zone.importTitle")}</span>
             </span>
             <button
               type="button"
@@ -250,7 +255,7 @@ export default function ZoneSelect({
           </div>
 
           <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-            Arraste ou selecione o arquivo com os limites da sua área de interesse. O sistema centralizará a câmera 3D automaticamente sobre ela.
+            {copy("zone.importHelp")}
           </p>
 
           <AreaUpload onGeometryLoaded={handleGeometryLoaded} />

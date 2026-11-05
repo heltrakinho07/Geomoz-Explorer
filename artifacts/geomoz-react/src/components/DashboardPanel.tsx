@@ -10,6 +10,9 @@
  */
 
 import React from "react";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import type { PortalCopyKey } from "@/i18n/portal";
+import "./dashboard-glass.css";
 import {
   Globe,
   Satellite,
@@ -52,92 +55,81 @@ interface DashboardPanelProps {
 interface ModuleLauncher {
   id: string;
   tab: string;
-  title: string;
-  description: string;
+  titleKey: PortalCopyKey;
+  descriptionKey: PortalCopyKey;
   icon: React.ReactNode;
   colorClass: string;
   badgeBgClass: string;
   accentBorder: string;
-  tag: string;
+  tagKey: PortalCopyKey;
 }
 
 const MODULE_LAUNCHERS: ModuleLauncher[] = [
   {
     id: "mapa",
     tab: "Mapa",
-    title: "Mapa Geoespacial 2D / 3D",
-    description: "Navegação cartográfica contínua com DEM Copernicus 30m, desenho vetorial de AOI e inspeção de terreno.",
+    titleKey: "dashboard.module.map.title",
+    descriptionKey: "dashboard.module.map.description",
     icon: <Globe size={22} />,
     colorClass: "text-sky-500",
     badgeBgClass: "bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400",
     accentBorder: "hover:border-sky-500/40",
-    tag: "Copernicus 30m",
+    tagKey: "dashboard.tag.copernicus",
   },
   {
     id: "geoanalises",
     tab: "GeoAnálises",
-    title: "GeoAnálises Espectrais",
-    description: "Mais de 40 índices biofísicos Sentinel-2 e Landsat (NDVI, NDMI, NDRE, EVI, BSI) sem nuvens.",
+    titleKey: "dashboard.module.analyses.title",
+    descriptionKey: "dashboard.module.analyses.description",
     icon: <Satellite size={22} />,
     colorClass: "text-indigo-500",
     badgeBgClass: "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400",
     accentBorder: "hover:border-indigo-500/40",
-    tag: "Sentinel-2 & Landsat",
+    tagKey: "dashboard.tag.sensors",
   },
   {
     id: "bacias",
     tab: "Bacias Hidrográficas",
-    title: "Bacias & Rede Hidrográfica",
-    description: "Delineação hidrológica automática, direção D8, acumulação de fluxo e morfometria fluvial contínua.",
+    titleKey: "dashboard.module.watersheds.title",
+    descriptionKey: "dashboard.module.watersheds.description",
     icon: <Droplets size={22} />,
     colorClass: "text-cyan-500",
     badgeBgClass: "bg-cyan-50 dark:bg-cyan-950/60 text-cyan-600 dark:text-cyan-400",
     accentBorder: "hover:border-cyan-500/40",
-    tag: "Modelação D8",
+    tagKey: "dashboard.tag.d8",
   },
   {
     id: "agua_subterranea",
     tab: "Água Subterrânea",
-    title: "Potencial Hidrogeológico",
-    description: "Modelação multicritério AHP para potencial hidrogeológico e vulnerabilidade aquífera DRASTIC.",
+    titleKey: "dashboard.module.groundwater.title",
+    descriptionKey: "dashboard.module.groundwater.description",
     icon: <Droplet size={22} />,
     colorClass: "text-teal-500",
     badgeBgClass: "bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400",
     accentBorder: "hover:border-teal-500/40",
-    tag: "AHP & Aquíferos",
+    tagKey: "dashboard.tag.aquifers",
   },
   {
     id: "geoperigos",
     tab: "Geoperigos",
-    title: "Geoperigos & Riscos Naturais",
-    description: "Deteção de cheias via radar SAR Sentinel-1, suscetibilidade a deslizamentos e anomalias de relevo.",
+    titleKey: "dashboard.module.hazards.title",
+    descriptionKey: "dashboard.module.hazards.description",
     icon: <AlertTriangle size={22} />,
     colorClass: "text-amber-500",
     badgeBgClass: "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400",
     accentBorder: "hover:border-amber-500/40",
-    tag: "Sentinel-1 SAR",
+    tagKey: "dashboard.tag.sar",
   },
   {
     id: "geomoz_ai",
     tab: "GeoMoz AI",
-    title: "GeoMoz AI Agent",
-    description: "Agente geoespacial autónomo para transformar pedidos analíticos em sequências GIS/GEE completas.",
+    titleKey: "dashboard.module.ai.title",
+    descriptionKey: "dashboard.module.ai.description",
     icon: <BrainCircuit size={22} />,
     colorClass: "text-purple-500",
     badgeBgClass: "bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400",
     accentBorder: "hover:border-purple-500/40",
-    tag: "Agente Inteligente",
-  },
-  {
-    id: "exportar",
-    tab: "Exportar",
-    title: "Dossiê do Estudo & Exportar",
-    description: "Geração de dossiê técnico estruturado em PDF institucional, HTML executivo e GeoTIFFs raster.",
-    icon: <FileText size={22} />,
-    colorClass: "text-emerald-500",
-    badgeBgClass: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400",
-    accentBorder: "hover:border-emerald-500/40",
-    tag: "PDF, HTML & TIFF",
+    tagKey: "dashboard.tag.ai",
   },
 ];
 
@@ -149,6 +141,8 @@ export default function DashboardPanel({
   const { user } = useAuth();
   const { geeConnected, geeProject } = useGeeAuth();
   const { projects, activeProject, activeRuns, setActiveProject, runsLoading } = useProject();
+  const { t, translatedLocale } = usePortalTranslation();
+  const dateLocale = ({pt:"pt-MZ",en:"en-GB",es:"es-ES",fr:"fr-FR"} as const)[translatedLocale];
 
   const getCategoryIcon = (category?: ProjectCategory) => {
     switch (category) {
@@ -171,39 +165,39 @@ export default function DashboardPanel({
   const getCategoryLabel = (category?: ProjectCategory) => {
     switch (category) {
       case "agricultura":
-        return "Agricultura & Segurança Alimentar";
+        return t("dashboard.category.agriculture");
       case "recursos_hidricos":
-        return "Recursos Hídricos & Aquíferos";
+        return t("dashboard.category.water");
       case "ordenamento_territorial":
-        return "Ordenamento Territorial";
+        return t("dashboard.category.planning");
       case "geoperigos":
-        return "Geoperigos & Riscos";
+        return t("dashboard.category.hazards");
       case "conservacao_ambiental":
-        return "Conservação Ambiental";
+        return t("dashboard.category.conservation");
       case "estudo_geral":
       default:
-        return "Estudo Geral";
+        return t("dashboard.category.general");
     }
   };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 sm:p-6 md:p-8">
-      <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8">
+    <div className="gm-dashboard flex-1 overflow-y-auto p-4 text-slate-900 dark:text-slate-100 sm:p-6 md:p-8">
+      <div className="gm-dashboard-content mx-auto max-w-6xl space-y-6 sm:space-y-8">
         {/* 1. Header Banner & Quick Actions */}
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden border border-slate-800">
-          <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-radial from-sky-500/10 to-transparent pointer-events-none" />
+        <div className="gm-dashboard-hero relative overflow-hidden p-6 text-white sm:p-8">
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-1/3 bg-radial from-sky-500/10 to-transparent" />
           
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="space-y-2 max-w-2xl">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/20 border border-sky-400/30 text-sky-300 text-xs font-semibold">
                 <ShieldCheck size={14} />
-                <span>Centro de Comando Geoespacial</span>
+                <span>{t("dashboard.heroEyebrow")}</span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-                GeoMoz
+                GeoMoz <span className="text-sky-400">Explorer</span>
               </h1>
               <p className="text-sm text-slate-300 leading-relaxed">
-                Plataforma profissional de estudos geoespaciais integrados. Conduza projetos desde a delimitação da área de estudo, processamento de satélite, modelação hidrológica até à emissão de dossiês técnicos.
+                {t("dashboard.heroDescription")}
               </p>
             </div>
 
@@ -213,31 +207,31 @@ export default function DashboardPanel({
                 className="bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-lg shadow-sky-500/20 flex items-center gap-2 transition-all cursor-pointer"
               >
                 <Plus size={16} />
-                <span>Novo Projeto de Estudo</span>
+                <span>{t("dashboard.newStudy")}</span>
               </Button>
 
               <Button
                 onClick={onOpenSettings}
                 variant="outline"
-                className="bg-slate-800/80 hover:bg-slate-750 text-slate-200 border-slate-700 font-semibold text-xs sm:text-sm px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all cursor-pointer"
+                className="gm-dashboard-hero__action flex cursor-pointer items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all sm:text-sm"
               >
                 <Settings size={15} />
-                <span>Definições</span>
+                <span>{t("sidebar.settings")}</span>
               </Button>
             </div>
           </div>
 
           {/* Quick Info Strip */}
-          <div className="mt-6 pt-5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-4 text-xs">
+          <div className="gm-dashboard-hero__divider mt-6 flex flex-wrap items-center justify-between gap-4 border-t pt-5 text-xs">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1.5 text-slate-300">
                 <FolderKanban size={14} className="text-sky-400" />
-                <span>Total de Projetos: <strong className="text-white font-bold">{projects.length}</strong></span>
+                <span>{t("dashboard.totalProjects")} <strong className="text-white font-bold">{projects.length}</strong></span>
               </div>
               <div className="h-3.5 w-px bg-slate-800" />
               <div className="flex items-center gap-1.5 text-slate-300">
                 <BarChart3 size={14} className="text-emerald-400" />
-                <span>Análises no Estudo Ativo: <strong className="text-white font-bold">{activeRuns.length}</strong></span>
+                <span>{t("dashboard.activeAnalyses")} <strong className="text-white font-bold">{activeRuns.length}</strong></span>
               </div>
             </div>
 
@@ -252,12 +246,12 @@ export default function DashboardPanel({
               {geeConnected ? (
                 <>
                   <CheckCircle2 size={13} className="text-emerald-400" />
-                  <span>Quota GEE Ativa ({geeProject || "Projeto Google Cloud"})</span>
+                  <span>{t("dashboard.geeActive")} ({geeProject || t("dashboard.googleProject")})</span>
                 </>
               ) : (
                 <>
                   <AlertCircle size={13} className="text-amber-400" />
-                  <span>Conectar Quota Earth Engine</span>
+                  <span>{t("dashboard.connectQuota")}</span>
                 </>
               )}
             </button>
@@ -270,20 +264,20 @@ export default function DashboardPanel({
             <div className="flex items-center gap-2">
               <FolderKanban size={18} className="text-sky-500" />
               <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
-                Estudo Geoespacial em Curso
+                {t("dashboard.currentStudy")}
               </h2>
             </div>
             <button
               onClick={onOpenProjectModal}
               className="text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 cursor-pointer"
             >
-              <span>Gerir Projetos & Histórico</span>
+              <span>{t("dashboard.manageStudies")}</span>
               <ArrowRight size={13} />
             </button>
           </div>
 
           {activeProject ? (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xs hover:border-sky-500/40 transition-all">
+            <div className="gm-dashboard-panel gm-dashboard-panel--active p-5 transition-all sm:p-6">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
@@ -292,7 +286,7 @@ export default function DashboardPanel({
                       {getCategoryLabel(activeProject.category)}
                     </span>
                     <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                      <CheckCircle2 size={11} /> Estudo Ativo
+                      <CheckCircle2 size={11} /> {t("dashboard.activeStudy")}
                     </span>
                   </div>
 
@@ -309,11 +303,11 @@ export default function DashboardPanel({
                   <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 dark:text-slate-400 pt-1">
                     <div className="flex items-center gap-1.5">
                       <MapPin size={13} className="text-sky-500 shrink-0" />
-                      <span>Área de Estudo: <strong className="text-slate-700 dark:text-slate-200">{activeProject.aoi.label}</strong></span>
+                      <span>{t("dashboard.aoiLabel")} <strong className="text-slate-700 dark:text-slate-200">{activeProject.aoi.label}</strong></span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <Calendar size={13} className="text-indigo-500 shrink-0" />
-                      <span>Criado em: {new Date(activeProject.createdAt).toLocaleDateString("pt-MZ")}</span>
+                      <span>{t("dashboard.createdAt")} {new Date(activeProject.createdAt).toLocaleDateString(dateLocale)}</span>
                     </div>
                   </div>
                 </div>
@@ -324,7 +318,7 @@ export default function DashboardPanel({
                     className="bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs px-3.5 py-2 rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                   >
                     <Globe size={14} />
-                    <span>Ver no Mapa 3D</span>
+                    <span>{t("dashboard.viewMap")}</span>
                   </Button>
 
                   <Button
@@ -333,7 +327,7 @@ export default function DashboardPanel({
                     className="border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs px-3.5 py-2 rounded-xl flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Satellite size={14} className="text-indigo-500" />
-                    <span>Calcular Índices</span>
+                    <span>{t("dashboard.calculateIndices")}</span>
                   </Button>
 
                   <Button
@@ -342,22 +336,22 @@ export default function DashboardPanel({
                     className="border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-xs px-3.5 py-2 rounded-xl flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <FileText size={14} className="text-emerald-500" />
-                    <span>Dossiê & Relatório</span>
+                    <span>{t("dashboard.reportAction")}</span>
                   </Button>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-6 sm:p-8 text-center space-y-4">
+            <div className="gm-dashboard-panel gm-dashboard-panel--empty space-y-4 p-6 text-center sm:p-8">
               <div className="w-12 h-12 rounded-2xl bg-sky-50 dark:bg-sky-950/60 text-sky-500 flex items-center justify-center mx-auto">
                 <FolderKanban size={24} />
               </div>
               <div className="space-y-1">
                 <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
-                  Nenhum Estudo Selecionado
+                  {t("dashboard.noStudyTitle")}
                 </h3>
                 <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                  Crie ou ative um projeto de estudo para vincular automaticamente as suas análises de satélite, dados de drenagem e relatórios exportáveis.
+                  {t("dashboard.noStudy")}
                 </p>
               </div>
               <Button
@@ -365,17 +359,17 @@ export default function DashboardPanel({
                 className="bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs px-4 py-2 rounded-xl inline-flex items-center gap-2 cursor-pointer shadow-md"
               >
                 <Plus size={14} />
-                <span>Criar Primeiro Estudo</span>
+                <span>{t("dashboard.createFirstStudy")}</span>
               </Button>
             </div>
           )}
 
           {/* Quick Project Switcher (if user has multiple projects) */}
           {projects.length > 1 && (
-            <div className="bg-slate-100/70 dark:bg-slate-900/50 rounded-xl p-3 border border-slate-200/80 dark:border-slate-800">
+            <div className="gm-dashboard-switcher p-3">
               <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                 <FolderKanban size={12} />
-                <span>Outros Estudos Disponíveis</span>
+                <span>{t("dashboard.otherStudies")}</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                 {projects
@@ -385,7 +379,7 @@ export default function DashboardPanel({
                     <button
                       key={p.id}
                       onClick={() => setActiveProject(p)}
-                      className="flex items-center justify-between p-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-sky-400 transition-all text-left cursor-pointer group"
+                      className="gm-dashboard-project-switch group flex cursor-pointer items-center justify-between p-2.5 text-left"
                     >
                       <div className="min-w-0 pr-2">
                         <div className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate group-hover:text-sky-500">
@@ -396,7 +390,7 @@ export default function DashboardPanel({
                         </div>
                       </div>
                       <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 shrink-0">
-                        Ativar →
+                        {t("dashboard.activate")} →
                       </span>
                     </button>
                   ))}
@@ -410,43 +404,46 @@ export default function DashboardPanel({
           <div>
             <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Layers size={18} className="text-indigo-500" />
-              <span>Módulos de Investigação & Análise</span>
+              <span>{t("dashboard.modulesHeading")}</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Selecione o módulo para iniciar processamento de satélite ou modelação territorial.
+              {t("dashboard.modulesDescription")}
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 sm:gap-5">
             {MODULE_LAUNCHERS.map((mod) => (
-              <div
+              <button
+                type="button"
                 key={mod.id}
+                data-module={mod.id}
+                aria-label={`${t("dashboard.openModule")}: ${t(mod.titleKey)}`}
                 onClick={() => onTabChange?.(mod.tab)}
-                className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col justify-between hover:shadow-md transition-all cursor-pointer group ${mod.accentBorder}`}
+                className="gm-dashboard-module group flex flex-col justify-between gap-4 p-4 sm:p-5"
               >
                 <div>
                   <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className={`w-10 h-10 rounded-xl ${mod.badgeBgClass} flex items-center justify-center shrink-0 transition-transform group-hover:scale-105`}>
+                    <div className={`gm-dashboard-module__icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition-transform group-hover:scale-105 ${mod.badgeBgClass}`}>
                       <span className={mod.colorClass}>{mod.icon}</span>
                     </div>
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                      {mod.tag}
+                    <span className="gm-dashboard-module__tag px-2.5 py-1 text-[10px] font-semibold">
+                      {t(mod.tagKey)}
                     </span>
                   </div>
 
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-sky-500 transition-colors">
-                    {mod.title}
+                    {t(mod.titleKey)}
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">
-                    {mod.description}
+                  <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                    {t(mod.descriptionKey)}
                   </p>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs font-semibold text-slate-500 group-hover:text-sky-500">
-                  <span>Abrir Módulo</span>
-                  <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
+                <div className="gm-dashboard-module__footer flex items-center justify-between gap-3 border-t pt-3 text-xs font-bold">
+                  <span>{t("dashboard.openModule")}</span>
+                  <span className="gm-dashboard-module__arrow" aria-hidden="true"><ArrowRight size={14} /></span>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -456,30 +453,30 @@ export default function DashboardPanel({
           <div className="flex items-center justify-between">
             <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <BarChart3 size={18} className="text-emerald-500" />
-              <span>Resultados & Análises do Estudo Ativo</span>
+              <span>{t("dashboard.resultsHeading")}</span>
             </h2>
             {activeRuns.length > 0 && (
               <button
                 onClick={() => onTabChange?.("Exportar")}
                 className="text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 cursor-pointer"
               >
-                <span>Exportar Dossiê Completo</span>
+                <span>{t("dashboard.exportReport")}</span>
                 <ArrowRight size={13} />
               </button>
             )}
           </div>
 
           {runsLoading ? (
-            <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <div className="gm-dashboard-panel p-8 text-center">
               <Loader2 size={24} className="animate-spin text-sky-500 mx-auto mb-2" />
-              <p className="text-xs text-slate-400">A carregar registos de análise…</p>
+              <p className="text-xs text-slate-400">{t("dashboard.loadingRuns")}</p>
             </div>
           ) : activeRuns.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {activeRuns.slice(0, 4).map((run) => (
                 <div
                   key={run.id}
-                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 hover:border-slate-300 dark:hover:border-slate-700 transition-all space-y-2.5"
+                  className="gm-dashboard-run space-y-2.5 p-4"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -487,36 +484,36 @@ export default function DashboardPanel({
                         {run.name}
                       </div>
                       <div className="text-[10px] text-slate-400 truncate mt-0.5">
-                        Sensor: {run.sensor} · Código: {run.code}
+                        {t("dashboard.sensor")} {run.sensor} · {t("dashboard.code")} {run.code}
                       </div>
                     </div>
                     <span className="text-[9px] px-2 py-0.5 rounded-full bg-sky-50 dark:bg-sky-950 text-sky-600 dark:text-sky-400 font-semibold border border-sky-200 dark:border-sky-800 shrink-0">
-                      {new Date(run.createdAt).toLocaleDateString("pt-MZ")}
+                      {new Date(run.createdAt).toLocaleDateString(dateLocale)}
                     </span>
                   </div>
 
                   {run.metrics && (
-                    <div className="grid grid-cols-4 gap-1.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 text-center">
+                    <div className="gm-dashboard-metrics grid grid-cols-4 gap-1.5 rounded-lg p-2 text-center">
                       <div>
-                        <div className="text-[9px] text-slate-400 uppercase font-medium">Média</div>
+                        <div className="text-[9px] text-slate-400 uppercase font-medium">{t("dashboard.mean")}</div>
                         <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
                           {run.metrics.mean !== undefined ? run.metrics.mean.toFixed(3) : "—"}
                         </div>
                       </div>
                       <div>
-                        <div className="text-[9px] text-slate-400 uppercase font-medium">Mín</div>
+                        <div className="text-[9px] text-slate-400 uppercase font-medium">{t("dashboard.min")}</div>
                         <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
                           {run.metrics.min !== undefined ? run.metrics.min.toFixed(3) : "—"}
                         </div>
                       </div>
                       <div>
-                        <div className="text-[9px] text-slate-400 uppercase font-medium">Máx</div>
+                        <div className="text-[9px] text-slate-400 uppercase font-medium">{t("dashboard.max")}</div>
                         <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
                           {run.metrics.max !== undefined ? run.metrics.max.toFixed(3) : "—"}
                         </div>
                       </div>
                       <div>
-                        <div className="text-[9px] text-slate-400 uppercase font-medium">Desvio</div>
+                        <div className="text-[9px] text-slate-400 uppercase font-medium">{t("dashboard.stdDev")}</div>
                         <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
                           {run.metrics.stdDev !== undefined ? run.metrics.stdDev.toFixed(3) : "—"}
                         </div>
@@ -526,33 +523,33 @@ export default function DashboardPanel({
 
                   <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
                     <span className="truncate">
-                      Janela: {run.dateRange.start} a {run.dateRange.end}
+                      {t("dashboard.window")} {run.dateRange.start} — {run.dateRange.end}
                     </span>
                     <button
                       onClick={() => onTabChange?.("Exportar")}
                       className="text-sky-600 dark:text-sky-400 hover:underline font-semibold shrink-0 cursor-pointer"
                     >
-                      Dossiê →
+                      {t("dashboard.shortReport")} →
                     </button>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center text-slate-500 space-y-2">
+            <div className="gm-dashboard-panel space-y-2 p-6 text-center text-slate-500">
               <BarChart3 size={28} className="mx-auto text-slate-400" />
               <p className="text-xs font-medium">
-                Ainda não foram guardadas análises para este projeto de estudo.
+                {t("dashboard.noRuns")}
               </p>
               <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
-                Calcule um índice biofísico no módulo <strong>GeoAnálises</strong> ou use o <strong>GeoMoz AI</strong> para gerar os primeiros resultados.
+                {t("dashboard.noRunsHint")}
               </p>
             </div>
           )}
         </div>
 
         {/* 5. Cloud Infrastructure & BYO-GEE Quota Card */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 space-y-4">
+        <div className="gm-dashboard-panel space-y-4 p-5 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-500 flex items-center justify-center shrink-0">
@@ -560,10 +557,10 @@ export default function DashboardPanel({
               </div>
               <div>
                 <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-                  Infraestrutura de Processamento (BYO-GEE)
+                  {t("dashboard.geeInfrastructure")}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Modelo Bring-Your-Own-GEE com autenticação OAuth 2.0 Google Cloud.
+                  {t("dashboard.geeInfo")}
                 </p>
               </div>
             </div>
@@ -574,23 +571,23 @@ export default function DashboardPanel({
               className="text-xs font-semibold px-3 py-1.5 rounded-xl border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0 cursor-pointer flex items-center gap-1.5"
             >
               <Settings size={13} />
-              <span>Gerir Credenciais</span>
+              <span>{t("dashboard.manageCredentials")}</span>
             </Button>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 text-xs text-slate-600 dark:text-slate-300 space-y-1 leading-relaxed">
+          <div className="gm-dashboard-infra-note space-y-1 rounded-xl p-3.5 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
             <p>
-              <strong>Isolamento Total de Quota:</strong> Cada utilizador autentica-se com a sua conta Google e define o seu próprio <em>Google Cloud Earth Engine Project ID</em>. O processamento de imagens de satélite e computação em nuvem é faturado diretamente à quota do seu projeto GCP, garantindo total privacidade e independência.
+              <strong>{t("dashboard.quotaIsolationLabel")}</strong> {t("dashboard.quotaIsolationDescription")}
             </p>
             <div className="pt-2 flex flex-wrap items-center gap-3 text-[11px] font-medium">
-              <span className="text-slate-500">Estado:</span>
+              <span className="text-slate-500">{t("dashboard.status")}</span>
               {geeConnected ? (
                 <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-bold">
-                  <CheckCircle2 size={12} /> Conectado ({geeProject || "Quota Ativa"})
+                  <CheckCircle2 size={12} /> {t("dashboard.connected")} ({geeProject || t("sidebar.quotaActive")})
                 </span>
               ) : (
                 <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1 font-bold">
-                  <AlertCircle size={12} /> Pendente de Configuração
+                  <AlertCircle size={12} /> {t("dashboard.pending")}
                 </span>
               )}
             </div>
@@ -599,7 +596,7 @@ export default function DashboardPanel({
 
         {/* 6. Footer */}
         <div className="text-center text-xs text-slate-400 dark:text-slate-600 pb-4">
-          GeoMoz · Infraestrutura Geoespacial de Moçambique · {new Date().getFullYear()}
+          GeoMoz Explorer · {t("dashboard.footer")} · {new Date().getFullYear()}
         </div>
       </div>
     </div>

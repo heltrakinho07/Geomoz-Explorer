@@ -38,9 +38,27 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # ── Application code ────────────────────────────────────────────────────────
 COPY api.py .
+COPY billing.py .
+COPY billing_plan_requests.py .
+COPY admin.py .
+COPY platform_config.py .
+COPY project_quota.py .
+COPY processing_jobs.py .
 COPY gee_module.py .
+COPY gee_download_grid.py .
+RUN python3 -c "from gee_download_grid import bounded_download_grid; print('Bounded GEE download runtime available')"
 COPY gee_session_store.py .
 COPY gee_presets.py .
+# 3D terrain runtime: loaded lazily by /geomoz-api/terrain/*
+COPY terrain_dem.py .
+COPY terrain_gee.py .
+COPY terrain_texture.py .
+COPY terrain_satellite.py .
+RUN python3 -c "import rasterio,PIL,terrain_dem,terrain_texture; print('3D terrain runtime imports OK')"
+# GeoMoz Agent is lazily imported by /geomoz-api/ai/agent-chat.
+# Omission passes the /health check but breaks every GEOAGENTE chat with HTTP 500.
+COPY agent/ agent/
+COPY index_science.json .
 COPY utils/ utils/
 
 # ── Health check ─────────────────────────────────────────────────────────────

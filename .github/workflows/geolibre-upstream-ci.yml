@@ -1,0 +1,130 @@
+name: GeoMoz Workbench CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - "artifacts/geomoz-react/public/geomoz-theme.js"
+      - "scripts/brand-geolibre-web.mjs"
+      - "scripts/assets/geolibre-geomoz-theme.css"
+      - "scripts/geomoz-brand-locales.mjs"
+      - "scripts/assets/workbench/GeoMozAboutDialog.tsx"
+      - "scripts/tests/geomoz-brand-locales.test.mjs"
+      - "scripts/assets/geomoz-gis-shell.html"
+      - "scripts/assets/geomoz-gis-shell.js"
+      - "scripts/tests/geomoz-gis-shell.test.mjs"
+      - "scripts/tests/brand-geolibre-web.test.mjs"
+      - ".github/workflows/geolibre-upstream-ci.yml"
+      - ".github/workflows/firebase-deploy.yml"
+      - "firebase.json"
+      - "artifacts/geomoz-react/src/pages/Explorer.tsx"
+      - "artifacts/geomoz-react/src/components/GeoMozBrandIcon.tsx"
+      - "artifacts/geomoz-react/src/components/Sidebar.tsx"
+      - "artifacts/geomoz-react/src/pages/LandingPage.tsx"
+      - "artifacts/geomoz-react/src/pages/LegalPages.tsx"
+      - "artifacts/geomoz-react/src/components/PwaInstallPrompt.tsx"
+  workflow_dispatch:
+
+jobs:
+  upstream-build:
+    name: GeoMoz Workbench build and browser validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm for GeoMoz Explorer build
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js for GeoMoz Explorer
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install GeoMoz Explorer dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Verify GeoMoz Explorer build with shared icon
+        run: pnpm --filter @workspace/geomoz-react run build
+        env:
+          NODE_ENV: "production"
+          BASE_PATH: "/"
+
+      - name: Checkout GeoLibre source at reviewed SHA
+        uses: actions/checkout@v4
+        with:
+          repository: opengeos/GeoLibre
+          ref: f69688ed5be750c496b51b865cee513d910a433f
+          path: .geolibre-upstream
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: .geolibre-upstream/package-lock.json
+
+      - name: Test GeoMoz build integration
+        run: node --test scripts/tests/geomoz-raster-warp.test.mjs scripts/tests/brand-geolibre-web.test.mjs scripts/tests/geomoz-gis-shell.test.mjs scripts/tests/geomoz-theme.test.mjs scripts/tests/geomoz-preferences.test.mjs scripts/tests/geomoz-unified-brand-icon.test.mjs scripts/tests/geomoz-brand-locales.test.mjs scripts/tests/seismic-data.test.mjs scripts/tests/seismic-analytics.test.mjs scripts/tests/geomoz-workbench-profile.test.mjs scripts/tests/geomoz-cartography.test.mjs scripts/tests/geomoz-qms-catalog.test.mjs scripts/tests/geomoz-nextgis-web.test.mjs scripts/tests/geomoz-qgis-print-job.test.mjs scripts/tests/geomoz-georeference.test.mjs scripts/tests/geomoz-digitizing.test.mjs scripts/tests/geomoz-project-format.test.mjs scripts/tests/geomoz-print-quality.test.mjs scripts/tests/geomoz-layout-items.test.mjs scripts/tests/geomoz-map-placement.test.mjs
+
+      - name: Install upstream with pinned package-lock
+        run: npm ci --no-audit --no-fund
+        working-directory: .geolibre-upstream
+
+      - name: Prepare GeoMoz-owned React interface
+        run: node scripts/prepare-geomoz-workbench.mjs .geolibre-upstream
+
+      - name: Build GeoMoz Workbench with pinned GIS engine
+        working-directory: .geolibre-upstream
+        env:
+          GEOLIBRE_APP_BASE: "/gis-workspace/"
+          VITE_GEOLIBRE_APP_NAME: "GeoMoz GIS Workspace"
+          GEOLIBRE_STRIP_CREDENTIALS: "1"
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: npm run build
+
+      - name: Package, brand, verify retained upstream license
+        run: |
+          node scripts/brand-geolibre-web.mjs \
+            .geolibre-upstream/apps/geolibre-desktop/dist \
+            artifacts/geomoz-react/dist/public/gis-workspace \
+            .geolibre-upstream/LICENSE
+          cp artifacts/geomoz-react/public/favicon.svg artifacts/geomoz-react/dist/public/favicon.svg
+          test -s artifacts/geomoz-react/dist/public/gis-workspace/index.html
+          test -s artifacts/geomoz-react/dist/public/gis-workspace/GEOLIBRE-LICENSE.txt
+          grep -q 'data-geomoz-app="workbench"' artifacts/geomoz-react/dist/public/gis-workspace/index.html
+          test -s artifacts/geomoz-react/dist/public/gis-workspace/geomoz-theme.js
+          grep -q '/gis-workspace/' artifacts/geomoz-react/dist/public/gis-workspace/index.html
+          grep -q '"GeoMoz GIS Workspace"' artifacts/geomoz-react/dist/public/gis-workspace/deployment.json
+
+      - name: Validate no old GeoMoz cloud storage is coupled to GeoLibre bundle
+        run: |
+          test -s artifacts/geomoz-react/dist/public/gis-workspace/geomoz-brand.css
+          ! grep -q 'geoprocessamento-426809.firebasestorage.app' artifacts/geomoz-react/dist/public/gis-workspace/index.html
+
+      - name: Install browser test runtime
+        run: |
+          npm install --prefix "$RUNNER_TEMP/gis-browser" playwright@1.51.1
+          node "$RUNNER_TEMP/gis-browser/node_modules/playwright/cli.js" install --with-deps chromium
+
+      - name: Validate the built GeoMoz interface in Chromium
+        run: node scripts/integration/geomoz-workbench-browser.cjs
+        env:
+          GIS_PLAYWRIGHT_ROOT: ${{ runner.temp }}/gis-browser
+
+      - name: Upload GeoMoz browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: geomoz-workbench-browser-checks
+          path: |
+            workbench-browser-artifacts/
+            artifacts/geomoz-react/dist/public/gis-workspace/index.html
+            artifacts/geomoz-react/dist/public/gis-workspace/deployment.json
+            artifacts/geomoz-react/dist/public/gis-workspace/GEOLIBRE-LICENSE.txt
+          if-no-files-found: warn
+          retention-days: 5

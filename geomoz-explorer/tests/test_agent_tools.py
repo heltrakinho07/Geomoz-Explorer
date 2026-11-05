@@ -62,33 +62,89 @@ class TestGeoMozAgent(unittest.TestCase):
 
             with patch.dict("sys.modules", {"gee_module": mock_gee, "api": mock_api}):
                 # 1. Geology tool
-                geo_res = await ToolDispatcher.execute("get_geology_units", {"province": "Tete"}, {})
-                self.assertEqual(geo_res["status"], "success")
-                self.assertIn("map_action", geo_res)
+                geo_res = await ToolDispatcher.execute("get_geology_units", {"province": "Tete"}, {"_gee_uid": "user-test"})
+                # No real geological dataset in this mock: never return fake units.
+                self.assertEqual(geo_res["status"], "error")
+                self.assertNotIn("map_action", geo_res)
 
                 # 2. Flood susceptibility
-                flood_res = await ToolDispatcher.execute("get_flood_susceptibility", {"province": "Zambezia"}, {})
+                flood_res = await ToolDispatcher.execute("get_flood_susceptibility", {"province": "Zambezia"}, {"_gee_uid": "user-test"})
                 self.assertEqual(flood_res["status"], "success")
                 self.assertEqual(flood_res["map_action"]["id"], "agent_flood_susceptibility")
 
                 # 3. Precipitation CHIRPS
-                precip_res = await ToolDispatcher.execute("get_precipitation_chirps", {"year": 2023}, {})
+                precip_res = await ToolDispatcher.execute("get_precipitation_chirps", {"year": 2023}, {"_gee_uid": "user-test"})
                 self.assertEqual(precip_res["status"], "success")
                 self.assertEqual(precip_res["map_action"]["id"], "agent_precipitation_chirps")
 
                 # 4. AHP
-                ahp_res = await ToolDispatcher.execute("run_multicriteria_ahp", {"theme": "groundwater"}, {})
+                mock_gee.compute_groundwater_ahp.return_value = {"tile": "https://example.org/{z}/{x}/{y}", "classes": [], "weights": []}
+                ahp_res = await ToolDispatcher.execute("run_multicriteria_ahp", {"theme": "groundwater"}, {"_gee_uid": "user-test"})
                 self.assertEqual(ahp_res["status"], "success")
                 self.assertIn("agent_ahp_groundwater", ahp_res["map_action"]["id"])
 
                 # 5. Temporal change
-                change_res = await ToolDispatcher.execute("detect_temporal_change", {"index": "ndvi"}, {})
-                self.assertEqual(change_res["status"], "success")
-                self.assertIn("agent_change_ndvi", change_res["map_action"]["id"])
+                change_res = await ToolDispatcher.execute("detect_temporal_change", {"index": "ndvi"}, {"_gee_uid": "user-test"})
+                self.assertEqual(change_res["status"], "error")
+                self.assertNotIn("map_action", change_res)
 
+                # 6. SMAP Soil Moisture
+                mock_gee.compute_soil_moisture_smap.return_value = {
+                    "tileUrl": "https://earthengine.googleapis.com/v1/projects/mock/smap",
+                    "stats": {"mean": 0.284, "p50": 0.280}
+                }
+                smap_res = await ToolDispatcher.execute("get_soil_moisture_smap", {"depth": "rootzone"}, {"_gee_uid": "user-test"})
+                self.assertEqual(smap_res["status"], "success")
+                self.assertIn("agent_smap_rootzone", smap_res["map_action"]["id"])
+                self.assertEqual(smap_res["depth"], "rootzone")
+
+                # 7. RUSLE Water Erosion
+                mock_gee.compute_erosion_rusle.return_value = {
+                    "tileUrl": "https://earthengine.googleapis.com/v1/projects/mock/rusle",
+                    "stats": {"meanSoilLossTha": 14.8}
+                }
+                rusle_res = await ToolDispatcher.execute("get_water_erosion_rusle", {"year": 2023}, {"_gee_uid": "user-test"})
+                self.assertEqual(rusle_res["status"], "success")
+                self.assertIn("agent_erosion_rusle_2023", rusle_res["map_action"]["id"])
+
+                # 8. Wildfire Activity
+                mock_gee.compute_wildfire.return_value = {
+                    "tileUrl": "https://earthengine.googleapis.com/v1/projects/mock/fire",
+                    "stats": {"firePixels": 42}
+                }
+                fire_res = await ToolDispatcher.execute("get_wildfire_activity", {"start_date": "2024-01-01", "end_date": "2024-12-31"}, {"_gee_uid": "user-test"})
+                self.assertEqual(fire_res["status"], "success")
+                self.assertEqual(fire_res["firePixelsCount"], 42)
+
+        asyncio.run(_test())
+
+    def test_agent_openai_routing(self):
+        """Test agent routes to OpenAI when sk- key is provided."""
+        async def _test():
+            map_state = {"aoi": {"label": "Tete"}}
+            mock_res = {
+                "status": "completed",
+                "provider": "openai",
+                "model": "gpt-4o",
+                "plan": ["Delimitar AOI", "Calcular SMAP"],
+                "steps": [],
+                "map_actions": [],
+                "runs": [],
+                "synthesis": "Análise gerada pelo GPT-4o."
+            }
+            with patch.object(GeoMozAgent, "_run_openai_react_loop", return_value=mock_res) as mock_loop:
+                res = await GeoMozAgent.process_user_request(
+                    "Avalia o stress hídrico",
+                    map_state,
+                    openai_api_key="sk-test-key-12345"
+                )
+                self.assertEqual(res["provider"], "openai")
+                self.assertEqual(res["model"], "gpt-4o")
+                mock_loop.assert_called_once()
         asyncio.run(_test())
 
 
 if __name__ == "__main__":
     unittest.main()
+
 

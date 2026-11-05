@@ -1,10 +1,18 @@
+import { SidebarResize, useSidebarWidth } from "@/components/SidebarResize";
+import { validateFirePeriods, precedingFirePeriod } from "@/lib/fire-periods";
+import "./geoanalises-sidebar.css";
+import "./geoanalises-catalog.css";
+import scienceCatalog from "@/lib/index-science.json";
+type ScienceEntry = { status: string; kind: string; source: string; note: string; name?: string; formula?: string; bands?: string };
+const SCIENCE: Record<string, ScienceEntry> = scienceCatalog;
 import { useProject } from "@/context/ProjectContext";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import { scienceUiText, type ScienceUiKey } from "@/i18n/scienceUi";
 /**
  * GeoAnálises — Sentinel-2 spectral analysis module.
  *
- * Two modes:
- *  GEE Mode  — real Sentinel-2 imagery from Google Earth Engine (requires credentials)
- *  Proxy Mode — synthetic spectral maps derived from geological attributes (always available)
+ * Real satellite products from Google Earth Engine (requires credentials).
+ * Unvalidated analyses are blocked by the scientific catalogue.
  *
  * GEE tile URLs returned by the Python API are valid for ~24 h and served
  * directly by Google's infrastructure — Leaflet fetches them with no additional auth.
@@ -30,7 +38,6 @@ import {
 } from "lucide-react";
 import SplitScreenCompare, { type CompareMode } from "@/components/SplitScreenCompare";
 import PixelInspectorHUD, { type AnalysisContext } from "@/components/PixelInspectorHUD";
-import TerrainStudio from "@/components/TerrainStudio";
 import { sampleTerrariumElevation } from "@/lib/dem-terrain";
 
 import {
@@ -51,7 +58,7 @@ import ZoneSelect from "@/components/ZoneSelect";
 import DraggablePanel from "@/components/DraggablePanel";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
-import { aoiToAPI, aoiToMapBounds, customAOI, GLOBAL_AOI } from "@/lib/aoi";
+import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
 import RasterVisPanel, { DEFAULT_VIS_PARAMS } from "@/components/RasterVisPanel";
 import type { RasterVisParams } from "@/components/RasterVisPanel";
 import StoryMapModal, { type DynamicAnalysisContext } from "@/components/StoryMapModal";
@@ -235,6 +242,9 @@ interface GeeStatus {
 }
 
 interface GeeResult {
+  science?: ScienceEntry;
+  preDateRange?: string | null;
+  warning?: string | null;
   tileUrl: string;
   name: string;
   formula: string;
@@ -243,6 +253,7 @@ interface GeeResult {
   dateRange: string;
   stats: Record<string, number>;
   province?: string | null;
+  vis?: { min?: number; max?: number; palette?: string[] };
 }
 
 interface IndexDef {
@@ -346,7 +357,7 @@ const INDEX_DEFS: IndexDef[] = [
     interpretation: "Normalized Burn Ratio — detecta áreas queimadas e severidade. Contrasta NIR (vegetação saudável) com SWIR (solo queimado, carvão).",
     lowLabel: "Vegetação", highLabel: "Área queimada" },
   { id: "dnbr", label: "dNBR", short: "dNBR", icon: <Activity size={13} />, group: "fire",
-    formula: "dNBR = NBR_pós-fogo − NBR_pré-fogo",
+    formula: "dNBR = NBR_pré-fogo − NBR_pós-fogo",
     bands: "Duas composições NBR no tempo",
     interpretation: "Differenced NBR — diferença entre NBR pré e pós-fogo. Quanto maior o valor, mais severa a queimada. Método USGS padrão.",
     lowLabel: "Não queimado", highLabel: "Severo" },
@@ -354,7 +365,7 @@ const INDEX_DEFS: IndexDef[] = [
     formula: "dNBR reclassificado → 5 classes USGS",
     bands: "dNBR com thresholds USGS",
     interpretation: "Classificação USGS de severidade de queimadas: não queimado (<0.1), baixo (0.1–0.27), moderado-baixo (0.27–0.44), moderado-alto (0.44–0.66), alto (>0.66).",
-    lowLabel: "Não queimado", highLabel: "Alta severidade" },
+    lowLabel: "Aumento de verdor", highLabel: "Alta severidade" },
   { id: "burned_area", label: "Área Queimada", short: "MODIS BA", icon: <BarChart2 size={13} />, group: "fire",
     formula: "MODIS MCD64A1 — BurnDate mensal",
     bands: "MODIS Aqua/Terra — 500 m",
@@ -541,6 +552,70 @@ const INDEX_DEFS: IndexDef[] = [
     interpretation: "Detecção de zonas de intensa silicificação, veios de quartzo e brechas hidrotermalizadas, frequentemente associadas a mineralizações de ouro e metais base.",
     lowLabel: "Sem sílica", highLabel: "Alta silicificação" },
 ];
+for (const def of INDEX_DEFS) {
+  const meta = SCIENCE[def.id];
+  if (!meta) continue;
+  def.label = meta.name ?? def.label;
+  def.formula = meta.formula ?? def.formula;
+  def.bands = meta.bands ?? def.bands;
+  def.interpretation = meta.note;
+  if (meta.status === "experimental") def.short += " · Em revisão";
+}
+
+
+// Descriptive PT labels alongside stable scientific abbreviations.
+// Avoid showing cryptic codes such as SAVI/EVI alone in the tab selectors.
+const INDEX_FULL_NAMES: Record<string, string> = {
+  ndvi: "Índice de Vegetação por Diferença Normalizada",
+  ndvi_l8: "NDVI Landsat 8 — Vegetação",
+  evi: "Índice de Vegetação Melhorado",
+  savi: "Índice de Vegetação Ajustado ao Solo",
+  ndmi: "Índice de Humidade por Diferença Normalizada",
+  ndwi: "Índice de Água por Diferença Normalizada",
+  mndwi: "Índice de Água Modificado",
+  nddi: "Índice de Seca por Diferença Normalizada",
+  nbr: "Razão de Queimada Normalizada",
+  dnbr: "Diferença do Índice de Área Queimada",
+  bsi: "Índice de Solo Exposto",
+  bare_soil: "Índice de Solo Exposto",
+  vci: "Índice de Condição da Vegetação",
+  tci: "Índice de Condição Térmica",
+  vhi: "Índice de Saúde da Vegetação",
+  lai: "Índice de Área Foliar",
+  cwsi: "Índice de Stress Hídrico das Culturas",
+  ndti: "Índice de Turbidez por Diferença Normalizada",
+  awei_nsh: "Índice Automático de Extração de Água (sem sombra)",
+  awei_sh: "Índice Automático de Extração de Água (com sombra)",
+  urban_heat_island: "Ilha de Calor Urbana",
+  impervious_surface: "Superfícies Impermeáveis",
+  urban_expansion: "Expansão Urbana",
+  precipitation: "Precipitação Acumulada",
+  temperature_lst: "Temperatura da Superfície Terrestre",
+  wind_speed: "Velocidade do Vento",
+};
+
+function descriptiveIndexName(id: string): string {
+  const def = INDEX_DEFS.find(item => item.id === id);
+  if (!def) {
+    const names: Record<string, string> = {
+      s2: "Mosaicos ópticos Sentinel-2",
+      lineaments: "Lineamentos Estruturais",
+      targeting: "Prospectividade Mineral",
+      profile: "Perfil Topográfico",
+      contours: "Curvas de Nível",
+      topo_custom: "Classes Topográficas",
+      landcover: "Cobertura e Uso do Solo",
+      spi_ndvi: "Seca e Vegetação (SPI × NDVI)",
+    };
+    return names[id] || id.replaceAll("_", " ");
+  }
+  const full = INDEX_FULL_NAMES[id];
+  if (!full) return SCIENCE[id]?.name || def.label;
+  const code = def.short.toUpperCase() === id.toUpperCase()
+    ? def.short.toUpperCase()
+    : (id === "ndvi_l8" ? "NDVI L8" : id.toUpperCase());
+  return `${code} — ${full}`;
+}
 
 const TERRAIN_CLASS_NAMES = [
   "Planície / < 5 m",
@@ -554,6 +629,7 @@ const TERRAIN_CLASS_NAMES = [
 // ── Colormap legend ────────────────────────────────────────────────────────────
 
 function ColormapLegend({ index }: { index: SpectralIndex }) {
+  if (index === "burn_severity") return <IndexLegendView activeTab="burn_severity" />;
   const def = INDEX_DEFS.find(d => d.id === index)!;
   const stops = Array.from({ length: 10 }, (_, i) =>
     applyColormap(i / 9, index)
@@ -592,6 +668,13 @@ function IndexLegendView({
   spiLayerMode?: "spi" | "ndvi";
   geeReady?: boolean;
 }) {
+  if (activeTab === "burn_severity") {
+    return <div className="space-y-1 text-xs">{[
+      ["#006400", "Aumento de verdor (< −0,10)"], ["#cccccc", "Sem alteração / baixa (−0,10 a < 0,10)"],
+      ["#91cf60", "Baixa (0,10 a < 0,27)"], ["#fee08b", "Moderada-baixa (0,27 a < 0,44)"],
+      ["#fc8d59", "Moderada-alta (0,44 a < 0,66)"], ["#d73027", "Alta (≥ 0,66)"]
+    ].map(([color, label]) => <div key={color} className="flex items-start gap-2"><span className="mt-0.5 h-3 w-3 shrink-0 rounded-sm" style={{backgroundColor:color}} /><span className="leading-relaxed">{label}</span></div>)}<p className="pt-1 text-slate-500">Classes exploratórias; não calibradas localmente.</p></div>;
+  }
   if (activeTab === "topo_class" || activeTab === "topo_custom") {
     const classes = [
       { name: "Planície (< 5 m)", color: "#1a9850" },
@@ -874,7 +957,7 @@ function GeeSetupGuide({ onRetry }: { onRetry: () => void }) {
 
       <div className="border-t border-slate-100 pt-4">
         <p className="text-xs text-slate-400 text-center">
-          Sem credenciais GEE, o módulo usa o <strong>Modo Proxy</strong> (índices sintéticos derivados de dados geológicos).
+          Sem credenciais GEE, o módulo usa o <strong>Sem dados observados</strong> (índices sintéticos derivados de dados geológicos).
         </p>
       </div>
     </div>
@@ -1001,9 +1084,9 @@ function GeospatialAnalyticsPanel({
       await saveRunToActiveProject({
         name: `${def.short} (${def.label})`,
         type: "remote_sensing",
-        sensor: "Sentinel-2 (Copernicus)",
+        sensor: SCIENCE[activeIndex]?.source ?? "Fonte não identificada",
         code: activeIndex,
-        formula: def.formula || "",
+        formula: result.formula || def.formula || "",
         dateRange: {
           start: startDate,
           end: endDate,
@@ -1015,7 +1098,7 @@ function GeospatialAnalyticsPanel({
           cloudCoverPercentage: cloudPct,
         },
         tileUrl: result.tileUrl,
-        notes: `Clipping: ${district ? `${district}, ${province}` : province || "Moçambique"} | Cenas: ${result.sceneCount}`,
+        notes: `${result.science?.note ?? ""} | Pré: ${result.preDateRange ?? "não aplicável"} | Clipping: ${district ? `${district}, ${province}` : province || "Moçambique"} | Cenas: ${result.sceneCount}`,
       });
       setRunSaved(true);
       toast({
@@ -1037,17 +1120,23 @@ function GeospatialAnalyticsPanel({
   const hasStats = Object.keys(stats).length > 0;
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {/* Header with Title and Sensor Resolution */}
       <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex flex-wrap items-center gap-2 mb-1">
           <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
             {def.short}
           </span>
-          <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">{def.label}</span>
+          <span className="min-w-0 break-words text-xs font-semibold text-slate-800 dark:text-slate-100">{INDEX_FULL_NAMES[activeIndex] || def.label}</span>
         </div>
         <p className="text-[11px] text-slate-500 dark:text-slate-400">
-          {def.group === "spectral" ? "Sentinel-2 · 10–20 m" : def.group === "landsat" ? "Landsat 8 · 30 m" : def.group === "terrain" ? "Copernicus DEM · 30 m" : "Multi-sensor"}
+          {def.group === "landsat" || def.group === "minerals" || def.id.endsWith("_l8")
+            ? "Landsat 8 · 30 m"
+            : def.group === "spectral"
+            ? "Sentinel-2 · 10–20 m"
+            : def.group === "terrain"
+            ? "Copernicus DEM · 30 m"
+            : "Multi-sensor"}
         </p>
       </div>
 
@@ -1055,14 +1144,14 @@ function GeospatialAnalyticsPanel({
       {isCalculating && (
         <div className="bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 rounded-xl p-3 text-xs text-sky-700 dark:text-sky-300 leading-relaxed flex items-center gap-2">
           <Loader2 size={16} className="animate-spin text-sky-600 shrink-0" />
-          <span>O GEE está a processar a composição multitemporal e a extrair as estatísticas zonais (5–20 s)…</span>
+          <span>O Google Earth Engine está a processar dados reais. A duração depende da área, das datas e do modo de processamento seleccionado.</span>
         </div>
       )}
 
       {/* Status banner when result is available */}
       {result && !isCalculating && (
         <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3">
-          <div className="flex items-center justify-between mb-1">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
             <div className="flex items-center gap-1.5 font-semibold text-emerald-800 dark:text-emerald-300 text-xs">
               <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" />
               <span>Processamento GEE Concluído</span>
@@ -1072,7 +1161,10 @@ function GeospatialAnalyticsPanel({
             </span>
           </div>
           <div className="text-[11px] text-emerald-700 dark:text-emerald-400 space-y-0.5">
-            <div><strong>{result.sceneCount}</strong> cenas Sentinel-2 calibradas</div>
+            {result.sceneCount > 0 && <div><strong>{result.sceneCount}</strong> cenas ópticas no período principal</div>}
+            {result.preDateRange && <div>Pré-incêndio: <strong>{result.preDateRange}</strong></div>}
+            {result.warning && <p role="status">{result.warning}</p>}
+            {result.stats.detectedAreaKm2 != null && <div>Área com detecção: <strong>{result.stats.detectedAreaKm2.toLocaleString()} km²</strong></div>}
             <div>Período: <strong>{result.dateRange}</strong></div>
           </div>
         </div>
@@ -1086,8 +1178,8 @@ function GeospatialAnalyticsPanel({
         </h4>
 
         {hasStats ? (
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
+          <div className="grid min-w-0 grid-cols-2 gap-2">
+            <div className="min-w-0 bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
               <div className="text-[10px] text-slate-400 uppercase font-semibold">Área Recortada</div>
               <div className="text-sm font-bold text-slate-800 dark:text-slate-100 font-mono mt-0.5 truncate">
                 {stats.areaKm2 ? `${stats.areaKm2.toLocaleString()} km²` : district ? `${district}` : province ? `${province}` : "Moçambique"}
@@ -1129,7 +1221,7 @@ function GeospatialAnalyticsPanel({
                   style={{ left: "10%", right: "10%" }}
                 />
               </div>
-              <div className="flex justify-between text-[9px] text-slate-400 mt-1 font-mono">
+              <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] text-slate-400 font-mono sm:grid-cols-4">
                 <span>P10: {stats.p10 != null ? stats.p10.toFixed(2) : "—"}</span>
                 <span>P25: {stats.p25 != null ? stats.p25.toFixed(2) : "—"}</span>
                 <span>P75: {stats.p75 != null ? stats.p75.toFixed(2) : "—"}</span>
@@ -1142,7 +1234,7 @@ function GeospatialAnalyticsPanel({
             <BarChart2 size={24} className="mx-auto text-slate-400 mb-1.5" />
             <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">Aguardando cálculo zonal</p>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Clique em <strong>Calcular {def.short}</strong> na barra lateral esquerda para gerar as métricas geoestatísticas.
+              Clique em <strong>Calcular {def.short}</strong> nos filtros para gerar as métricas geoestatísticas. O modo Rápido mostra primeiro o mapa e dispensa as estatísticas extensas.
             </p>
           </div>
         )}
@@ -2451,8 +2543,6 @@ interface GeoAnalisesProps {
   onProvinceChange: (p: string | null) => void;
   onDistrictChange?: (d: string | null) => void;
   onAOIChange: (aoi: AreaOfInterest) => void;
-  viewMode?: "2d" | "3d";
-  onViewModeChange?: (mode: "2d" | "3d") => void;
 }
 
 // Defaults for custom topographic classes (user can edit)
@@ -2663,14 +2753,14 @@ export interface GeoAnaliseCategory {
 export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
   {
     id: "terrain",
-    title: "Relevo, Topografia & Morfologia 3D",
+    title: "Relevo, Topografia & Morfologia",
     subtitle: "DEM Copernicus GLO-30 · 30 m",
     badge: "DEM Copernicus 30m",
     badgeColor: "bg-amber-100 text-amber-800 border-amber-200",
     icon: Mountain,
     gradient: "from-amber-500 to-orange-600",
-    description: "Altimetria digital de alta resolução, cortes topográficos tridimensionais (A→B), curvas de nível automáticas e divisão em classes morfológicas.",
-    highlights: ["Perfil Topográfico 3D (A→B)", "Curvas de Nível GEE", "Classes Morfológicas", "Hipsometria Relativa"],
+    description: "Altimetria digital de alta resolução, perfis topográficos (A→B), curvas de nível automáticas e divisão em classes morfológicas.",
+    highlights: ["Perfil Topográfico (A→B)", "Curvas de Nível GEE", "Classes Morfológicas", "Hipsometria Relativa"],
     defaultTab: "elevation",
     tabIds: ["elevation", "hipsometry", "topo_class", "topo_custom", "profile", "contours"],
   },
@@ -2684,7 +2774,7 @@ export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
     gradient: "from-amber-600 via-orange-600 to-yellow-600",
     description: "Mapeamento espectral de alteração hidrotermal (Sabins & Crosta), óxidos e hidróxidos de ferro (gossans), argilominerais (caulinite/alunite), zonas de cisalhamento/lineamentos e modelo de favorabilidade mineral multi-critério.",
     highlights: ["Alteração Hidrotermal (Sabins)", "Óxidos de Ferro (B4/B2)", "Argilas & Hidroxilos (B6/B7)", "Minerais Ferrosos", "Lineamentos Estruturais", "Targeting Mineral AI"],
-    defaultTab: "targeting",
+    defaultTab: "fe_oxide_l8",
     tabIds: ["targeting", "lineaments", "fe_oxide_l8", "clay_l8", "ferrous_l8", "hydrothermal_l8", "gossan_l8", "carbonate_chlorite_l8", "silica_l8"],
   },
   {
@@ -2695,7 +2785,7 @@ export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
     badgeColor: "bg-emerald-100 text-emerald-800 border-emerald-200",
     icon: Sprout,
     gradient: "from-emerald-500 to-green-600",
-    description: "Monitoramento contínuo de vigor vegetal, densidade foliar, estimativa de biomassa e clorofila com índices multiespectrais calibrados.",
+    description: "Monitorização contínua do vigor vegetal, densidade foliar, estimativa de biomassa e clorofila com índices multiespectrais calibrados.",
     highlights: ["NDVI (Vigor 10m)", "EVI (Alta Biomassa)", "SAVI (Ajuste Solo)", "GCI (Clorofila)", "Saúde Culturas"],
     defaultTab: "ndvi",
     tabIds: ["ndvi", "evi", "savi", "msavi", "gci", "crop_health", "ndvi_l8"],
@@ -2715,14 +2805,13 @@ export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
   },
   {
     id: "fire",
-    status: "development",
     title: "Incêndios, Queimadas & Uso do Solo",
     subtitle: "Sentinel-2, MODIS & ESA WorldCover",
-    badge: "Em desenvolvimento",
+    badge: "Índices e produtos observados",
     badgeColor: "bg-rose-100 text-rose-800 border-rose-200",
     icon: Flame,
     gradient: "from-rose-500 to-red-600",
-    description: "Módulo em revisão. A comparação pré/pós-incêndio, os períodos dos dados e a interpretação dos resultados estão em validação. Análises temporariamente indisponíveis.",
+    description: "NBR, dNBR pré/pós-incêndio, áreas queimadas MODIS, perda de cobertura arbórea Hansen e cobertura terrestre ESA. Fontes e limitações explícitas por produto.",
     highlights: ["dNBR Severidade Fogo", "Cicatrizes NBR", "Área Queimada MODIS", "Perda Florestal Hansen", "Uso do Solo ESA 10m"],
     defaultTab: "nbr",
     tabIds: ["nbr", "dnbr", "burn_severity", "burned_area", "forest_loss", "fire_risk", "landcover"],
@@ -2735,7 +2824,7 @@ export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
     badgeColor: "bg-amber-600 text-amber-900 border-amber-300",
     icon: CloudSun,
     gradient: "from-amber-600 to-amber-700",
-    description: "Análise quantitativa de secas meteorológicas e agronômicas através da correlação cruzada SPI × NDVI, precipitação CHIRPS, temperatura LST e rotas de ciclones.",
+    description: "Análise quantitativa de secas meteorológicas e agronómicas através da correlação cruzada SPI × NDVI, precipitação CHIRPS, temperatura LST e rotas de ciclones.",
     highlights: ["Dispersão SPI × NDVI", "Precipitação Anual CHIRPS", "Temperatura Solo LST", "Rotas de Ciclones", "VHI Saúde Vegetal"],
     defaultTab: "spi_ndvi",
     tabIds: ["spi_ndvi", "precipitation", "temperature_lst", "cyclone_tracks", "cyclone_risk", "vci", "tci", "vhi", "spei"],
@@ -2770,24 +2859,27 @@ export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
 
 export default function GeoAnalises({
   aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange,
-  viewMode: propViewMode, onViewModeChange,
 }: GeoAnalisesProps) {
-  const [internalViewMode, setInternalViewMode] = useState<"2d" | "3d">("3d");
-  const viewMode = propViewMode ?? internalViewMode;
-  const handleViewModeChange = onViewModeChange ?? setInternalViewMode;
+  const { language } = usePortalTranslation();
+  const scienceT = (key: ScienceUiKey) => scienceUiText(language, key);
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const categoryInDevelopment = GEO_CATEGORIES.some(cat => cat.id === selectedCategory && cat.status === "development");
+  const sidebarSize = useSidebarWidth("geomoz-GeoAnalises-sidebar", 360);
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState("");
 
   const [geeCredsOpen, setGeeCredsOpen] = useState(false);
   const [storyMapOpen, setStoryMapOpen] = useState(false);
-  const [terrainStudioOpen, setTerrainStudioOpen] = useState(false);
   const [basemap, setBasemap] = useState<BasemapType>("hybrid");
   const { geeConnected, geeProject } = useGeeAuth();
   const { toast } = useToast();
   const [activeTab, setActiveTab]     = useState<SpectralTab>("s2");
+  const indexScience = SCIENCE[activeTab];
+  const indexBlocked = indexScience?.status === "experimental";
+  const needsPrePeriod = activeTab === "dnbr" || activeTab === "burn_severity";
+  const [preStartDate, setPreStartDate] = useState("");
+  const [preEndDate, setPreEndDate] = useState("");
   const [showS2, setShowS2]           = useState(false);
   const [selectedYear, setSelectedYear] = useState("2024");
   const [compareActive, setCompareActive] = useState(false);
@@ -2815,6 +2907,10 @@ export default function GeoAnalises({
   const [geeStartDate, setGeeStartDate] = useState("2023-01-01");
   const [geeEndDate, setGeeEndDate]     = useState(() => new Date().toISOString().split("T")[0]);
   const [geeCloudPct, setGeeCloudPct]   = useState(30);
+  const periodError = needsPrePeriod ? validateFirePeriods(geeStartDate, geeEndDate, preStartDate, preEndDate) : null;
+  const studyAreaError = INDEX_DEFS.some(d => d.id === activeTab) && !aoi.geometry && !province
+    ? "Defina a área de estudo: desenhe um polígono ou carregue um GeoJSON. A vista do globo não delimita a análise." : null;
+
 
   // Sanitize activeTab against removed coastal indices
   useEffect(() => {
@@ -2822,7 +2918,7 @@ export default function GeoAnalises({
     if (invalidTabs.includes(activeTab as string)) {
       setActiveTab("ndwi");
     }
-  }, [activeTab]);
+  }, [activeTab, geeStartDate, geeEndDate, geeCloudPct, preStartDate, preEndDate, aoi]);
   const [lineamentsTile, setLineamentsTile] = useState<LineamentsResult | null>(null);
   const [targetingTile, setTargetingTile]   = useState<TargetingResult | null>(null);
   const [contoursTile, setContoursTile]     = useState<ContoursResult | null>(null);
@@ -2833,7 +2929,8 @@ export default function GeoAnalises({
   const [showSpiChart, setShowSpiChart]     = useState(true);
   const [overlapResult, setOverlapResult]   = useState<OverlapResult | null>(null);
   const [rightPanelDocked, setRightPanelDocked] = useState(false);
-  const [sidebarOpen, setSidebarOpen]       = useState(true);
+  const [sidebarOpen, setSidebarOpen]       = useState(false);
+  const [resultsPanelOpen, setResultsPanelOpen] = useState(false);
   const [openGroup, setOpenGroup]           = useState<string | null>(null);
   const [profilePoints, setProfilePoints]   = useState<LonLat[]>([]);
   const [profileSamples, setProfileSamples] = useState(200);
@@ -2875,11 +2972,11 @@ export default function GeoAnalises({
   // Fetch GEE status on mount
   // ── PDF Export (universal for all analysis types) ────────────────
   async function exportGeoAnalisesPdf() {
-    if (categoryInDevelopment || !mapContainerRef.current) return;
+    if (categoryInDevelopment || indexBlocked || !mapContainerRef.current) return;
     const ctx = createPDFContext(`${activeTab} — ${aoi.label}`);
     drawCover(ctx, `Relatório de Análise — ${activeTab}`, [
       `Análise: ${activeTab}`,
-      `Área: ${aoi.label}`,
+      `${province ? `Província: ${province}` : "Área: Moçambique"}`,
       ctx.date,
     ]);
     try {
@@ -2903,10 +3000,10 @@ export default function GeoAnalises({
               }))
             : undefined;
       const imgData = await fetchMapImage(
-        aoiToMapBounds(aoi),
+        { south: -26.9, north: -10.4, west: 30.2, east: 41 },
         { tileUrl: analysisTile,
           legendItems: analysisLegendItems,
-          title: `Análise ${activeTab} — ${aoi.label}`, dpi: 200 },
+          title: `Análise ${activeTab} — ${province ?? "Moçambique"}`, dpi: 200 },
       );
       addMapImage(ctx, imgData, 100);
     } catch (e) {
@@ -2954,6 +3051,7 @@ export default function GeoAnalises({
   // Clear GEE tiles when switching index
   useEffect(() => {
     setGeeTile(null);
+    setActiveIndexError(null);
     setLineamentsTile(null);
     setTargetingTile(null);
     if (activeTab !== "contours") setContoursTile(null);
@@ -2965,10 +3063,10 @@ export default function GeoAnalises({
       setProfileError(null);
       setProfileCursorIdx(null);
     }
-  }, [activeTab]);
+  }, [activeTab, geeStartDate, geeEndDate, geeCloudPct, preStartDate, preEndDate, aoi]);
 
   const runCompareGee = useCallback(async () => {
-    if (categoryInDevelopment) return;
+    if (categoryInDevelopment || indexBlocked || needsPrePeriod) return;
     if (!geeReady) {
       setCompareGeeError("Google Earth Engine não conectado. Ligue a sua conta Google no topo.");
       toast({
@@ -3060,7 +3158,7 @@ export default function GeoAnalises({
       clearTimeout(timeoutId);
       setIsProcessingCompareGee(false);
     }
-  }, [categoryInDevelopment, geeReady, activeTab, province, district, aoi, compareStartDateLeft, compareEndDateLeft, compareStartDateRight, compareEndDateRight, toast]);
+  }, [categoryInDevelopment, indexBlocked, needsPrePeriod, geeReady, activeTab, province, district, aoi, compareStartDateLeft, compareEndDateLeft, compareStartDateRight, compareEndDateRight, toast]);
 
   // Trigger comparison without infinite loop
   useEffect(() => {
@@ -3131,7 +3229,8 @@ export default function GeoAnalises({
   // Synthetic spectral overlay disabled for data security
   const spectralGeoJSON = null;
 
-  const activeDef = INDEX_DEFS.find(d => d.id === activeTab);
+  const rawActiveDef = INDEX_DEFS.find(d => d.id === activeTab);
+  const activeDef = useMemo(() => rawActiveDef ? { ...rawActiveDef, label: indexScience?.name ?? rawActiveDef.label, formula: indexScience?.formula ?? rawActiveDef.formula, bands: indexScience?.bands ?? rawActiveDef.bands, interpretation: indexScience?.note ?? rawActiveDef.interpretation } : undefined, [rawActiveDef, indexScience]);
   // Parse available bands from the active index definition
   const activeDefBands = activeDef?.bands ? activeDef.bands.split(/[·,]/).map(b => b.trim()).filter(Boolean) : [];
   const isComposite   = false;
@@ -3145,7 +3244,7 @@ export default function GeoAnalises({
   const isSpiNdvi     = activeTab === "spi_ndvi";
 
   const isTerrain     = activeDef?.group === "terrain";
-  const isGeeOnly     = (activeDef && GEE_ONLY_INDICES.includes(activeDef.id))
+  const isGeeOnly     = Boolean(activeDef)
                         || isProfile || isContours || isLandCover
                         || isSpiNdvi;
   const isTopoClass   = activeTab === "topo_class";
@@ -3154,6 +3253,31 @@ export default function GeoAnalises({
 
   const [isCalculatingActiveIndex, setIsCalculatingActiveIndex] = useState(false);
   const [activeIndexError, setActiveIndexError] = useState<string | null>(null);
+  const [processingMode, setProcessingMode] = useState<"fast" | "balanced" | "detailed">("fast");
+  const [processingTimeLimit, setProcessingTimeLimit] = useState(150);
+  const [processingElapsed, setProcessingElapsed] = useState(0);
+  const [lastProcessingDuration, setLastProcessingDuration] = useState<number | null>(null);
+  const analysisAbortRef = useRef<AbortController | null>(null);
+  const abortReasonRef = useRef<"manual" | "timeout" | null>(null);
+
+  useEffect(() => {
+    if (!isCalculatingActiveIndex) return;
+    const start = Date.now();
+    setProcessingElapsed(0);
+    const interval = window.setInterval(() => {
+      setProcessingElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [isCalculatingActiveIndex]);
+
+  useEffect(() => () => { analysisAbortRef.current?.abort(); }, [activeTab, geeStartDate, geeEndDate, preStartDate, preEndDate, geeCloudPct, aoi]);
+
+  const cancelActiveProcessing = () => {
+    if (analysisAbortRef.current) {
+      abortReasonRef.current = "manual";
+      analysisAbortRef.current.abort();
+    }
+  };
 
   const activeIndexLabel = activeDef?.short || activeDef?.label || (
     activeTab === "s2" ? "S-2 Cloudless" :
@@ -3161,14 +3285,14 @@ export default function GeoAnalises({
     activeTab === "targeting" ? "Targeting" :
     activeTab === "profile" ? "Perfil A→B" :
     activeTab === "contours" ? "Curvas Nível" :
-    activeTab === "topo_custom" ? "Classes Custom" :
+    activeTab === "topo_custom" ? "Classes personalizadas" :
     activeTab === "landcover" ? "Cobertura Solo" :
     activeTab === "spi_ndvi" ? "SPI × NDVI" :
     activeTab
   );
 
   const hasActiveResult = !isLineaments && Boolean(
-    (geeTile && activeDef && !isLineaments && !isProfile && !isContours && !isTopoCustom && !isLandCover && !isTargeting && !isSpiNdvi) ||
+    (!indexBlocked && geeTile && activeDef && !isLineaments && !isProfile && !isContours && !isTopoCustom && !isLandCover && !isTargeting && !isSpiNdvi) ||
     (isLineaments && lineamentsTile) ||
     (isContours && contoursTile) ||
     (isTopoCustom && topoClassesTile) ||
@@ -3179,24 +3303,44 @@ export default function GeoAnalises({
     (activeTab === "s2" && showS2)
   );
 
+  useEffect(() => {
+    setResultsPanelOpen(isProfile || isContours || isTopoCustom || isLandCover || isTargeting || isSpiNdvi || activeTab === "s2");
+  }, [activeTab, isProfile, isContours, isTopoCustom, isLandCover, isTargeting, isSpiNdvi]);
+
   const handleCalculateActiveIndex = async () => {
-    if (categoryInDevelopment || isLineaments) return;
+    if (isCalculatingActiveIndex || isLineaments || categoryInDevelopment || indexBlocked) return;
+    if (activeTab !== "s2" && !geeReady) { setGeeCredsOpen(true); return; }
+    if (periodError || studyAreaError) { setActiveIndexError(periodError || studyAreaError); return; }
+    const controller = new AbortController();
+    analysisAbortRef.current = controller;
+    abortReasonRef.current = null;
+    const beganAt = Date.now();
+    const timeout = window.setTimeout(() => {
+      abortReasonRef.current = "timeout";
+      controller.abort();
+    }, processingTimeLimit * 1000);
     setIsCalculatingActiveIndex(true);
+    setProcessingElapsed(0);
+    setLastProcessingDuration(null);
     setActiveIndexError(null);
     try {
       if (activeDef && !isLineaments && !isProfile && !isContours && !isTopoCustom && !isLandCover && !isTargeting && !isSpiNdvi && activeTab !== "s2") {
         setGeeTile(null);
         const res = await apiFetch("/geomoz-api/gee/index", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             index: activeTab,
             province: province || null,
             district: district || null,
             geometry: apiParams.geometry ?? null,
+            pre_start_date: needsPrePeriod ? preStartDate : undefined,
+            pre_end_date: needsPrePeriod ? preEndDate : undefined,
             start_date: geeStartDate,
             end_date: geeEndDate,
             cloud_pct: geeCloudPct,
+            processing_mode: processingMode,
           }),
         });
         if (!res.ok) {
@@ -3206,10 +3350,31 @@ export default function GeoAnalises({
         const data: GeeResult = await res.json();
         setGeeTile(data);
         setUseGEE(true);
+        if (data.vis?.min !== undefined && data.vis?.max !== undefined) {
+          setVisParams(prev => ({
+            ...prev,
+            min: data.vis!.min!,
+            max: data.vis!.max!,
+            palette: data.vis!.palette ?? prev.palette,
+          }));
+        } else if (data.stats?.p2 !== undefined && data.stats?.p98 !== undefined && data.stats.p98 > data.stats.p2) {
+          setVisParams(prev => ({
+            ...prev,
+            min: data.stats.p2,
+            max: data.stats.p98,
+          }));
+        } else if (data.stats?.min !== undefined && data.stats?.max !== undefined && data.stats.max > data.stats.min) {
+          setVisParams(prev => ({
+            ...prev,
+            min: data.stats.min,
+            max: data.stats.max,
+          }));
+        }
       } else if (isLineaments) {
         setLineamentsTile(null);
         const res = await apiFetch("/geomoz-api/gee/lineaments", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             province: province || null,
@@ -3226,6 +3391,7 @@ export default function GeoAnalises({
         setContoursTile(null);
         const res = await apiFetch("/geomoz-api/gee/contours", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             province: province || null,
@@ -3241,6 +3407,7 @@ export default function GeoAnalises({
         setTopoClassesTile(null);
         const res = await apiFetch("/geomoz-api/gee/topo-classes", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             province: province || null,
@@ -3254,6 +3421,7 @@ export default function GeoAnalises({
         setLandCoverTile(null);
         const res = await apiFetch("/geomoz-api/gee/landcover", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             province: province || null,
@@ -3268,6 +3436,7 @@ export default function GeoAnalises({
         setTargetingTile(null);
         const res = await apiFetch("/geomoz-api/gee/targeting", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             province: province || null,
@@ -3291,6 +3460,7 @@ export default function GeoAnalises({
         setSpiNdviResult(null);
         const res = await apiFetch("/geomoz-api/gee/spi-ndvi", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             province: province || null,
@@ -3304,10 +3474,23 @@ export default function GeoAnalises({
       } else if (activeTab === "s2") {
         setShowS2(true);
       }
+      if (!controller.signal.aborted) {
+        setLastProcessingDuration(Math.round((Date.now() - beganAt) / 1000));
+        setResultsPanelOpen(true);
+        setSidebarOpen(false);
+      }
     } catch (err: any) {
+      const aborted = controller.signal.aborted || err?.name === "AbortError";
+      const message = aborted
+        ? abortReasonRef.current === "timeout"
+          ? `Tempo limite de ${processingTimeLimit}s atingido. Experimente o modo Rápido ou uma área/período menores. O cálculo pode continuar no servidor.`
+          : "Espera cancelada. A computação já iniciada no Earth Engine pode continuar no servidor."
+        : err?.message || "Erro ao calcular índice.";
       console.error("Calculate index error:", err);
-      setActiveIndexError(err?.message || "Erro ao calcular índice.");
+      setActiveIndexError(message);
     } finally {
+      window.clearTimeout(timeout);
+      if (analysisAbortRef.current === controller) analysisAbortRef.current = null;
       setIsCalculatingActiveIndex(false);
     }
   };
@@ -3336,7 +3519,7 @@ export default function GeoAnalises({
     }
     if (isProfile) {
       return {
-        label: "Perfil Topográfico 3D (A→B)",
+        label: "Perfil Topográfico (A→B)",
         category: "Morfologia",
         classLabel: "Corte Altimétrico",
       };
@@ -3392,7 +3575,7 @@ export default function GeoAnalises({
     { name: "Relevo & Morfologia",    badge: "DEM GLO-30 · 30 m",   badgeColor: "bg-amber-100 text-amber-700",
       tabs: [
         ...INDEX_DEFS.filter(d => d.group === "terrain").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
-        { id: "topo_custom", label: "Classes Custom", icon: <Sliders size={13} /> },
+        { id: "topo_custom", label: "Classes personalizadas", icon: <Sliders size={13} /> },
         { id: "profile",     label: "Perfil A→B",     icon: <Route size={13} /> },
         { id: "contours",    label: "Curvas Nível",   icon: <Waves size={13} /> },
       ]},
@@ -3433,7 +3616,7 @@ export default function GeoAnalises({
     const g = tabGroups.find(grp => grp.tabs.some(t => t.id === activeTab));
     if (g) setOpenGroup(g.name);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+  }, [activeTab, geeStartDate, geeEndDate, geeCloudPct, preStartDate, preEndDate, aoi]);
 
   const activeCategory = useMemo(() => {
     if (selectedCategory) {
@@ -3505,6 +3688,9 @@ export default function GeoAnalises({
           index: activeTab,
           province, district,
           geometry: apiParams?.geometry ?? null,
+          start_date: geeStartDate, end_date: geeEndDate, cloud_pct: geeCloudPct,
+          pre_start_date: needsPrePeriod ? preStartDate : undefined,
+          pre_end_date: needsPrePeriod ? preEndDate : undefined,
           vis_params: {
             bands: newParams.bands.filter(Boolean),
             min: newParams.min,
@@ -3523,7 +3709,7 @@ export default function GeoAnalises({
       }
     } catch (_e) { /* silent */ }
     finally { setVisApplying(false); }
-  }, [geeTile, activeTab, province, district, apiParams]);
+  }, [geeTile, activeTab, province, district, apiParams, geeStartDate, geeEndDate, geeCloudPct, needsPrePeriod, preStartDate, preEndDate]);
 
   /** Import current visParams into the panel. */
   const handleImportVis = useCallback((newParams: RasterVisParams) => {
@@ -3542,10 +3728,8 @@ export default function GeoAnalises({
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
       <GeeCredentialsDialog open={geeCredsOpen} onOpenChange={setGeeCredsOpen} />
-      <TerrainStudio open={terrainStudioOpen} onClose={() => setTerrainStudioOpen(false)}
-        geeEnabled={geeReady} geeRegion={{ province, district, geometry: apiParams.geometry }} />
       <StoryMapModal
-        open={storyMapOpen && !categoryInDevelopment}
+        open={storyMapOpen && !categoryInDevelopment && !indexBlocked}
         onOpenChange={setStoryMapOpen}
         context={dynamicStoryMapContext}
       />
@@ -3553,82 +3737,40 @@ export default function GeoAnalises({
         /* ════════════════════════════════════════════════════════════════════
            CATALOG VIEW (Cards Persuasivos e Modernos)
            ════════════════════════════════════════════════════════════════════ */
-        <div className="flex-1 flex flex-col overflow-y-auto bg-slate-50 dark:bg-slate-950">
+        <div className="geo-catalog-shell flex min-h-0 flex-1 flex-col overflow-y-auto bg-slate-50 dark:bg-slate-950">
 
           {/* Catalog Content */}
-          <div className="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-gradient-to-r from-sky-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-md relative overflow-hidden">
-              <div className="relative z-10 max-w-xl">
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 text-[11px] font-semibold mb-2 border border-sky-400/30">
-                  <Sparkles size={11} /> Módulos Analíticos Dedicados
-                </div>
-                <h2 className="text-lg font-bold text-white mb-1">
-                  Selecione uma especialidade analítica
-                </h2>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  Cada ambiente de trabalho é isolado e focado: camadas espectrais dedicadas, controles sob medida e projeção tridimensional DEM 30m em tempo real.
-                </p>
-
-                {/* Multitemporal Quick Access Banner Buttons */}
-                <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-white/15">
-                  <span className="text-[11px] text-sky-200 font-semibold flex items-center gap-1 mr-1">
-                    <Satellite size={12} className="text-sky-300" /> Acesso Rápido:
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedCategory("satellite");
-                      setActiveTab("s2");
-                      setShowS2(true);
-                      setCompareActive(false);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold shadow-md transition-all active:scale-95"
-                  >
-                    <Satellite size={12} />
-                    <span>Mosaicos Sentinel-2 (2016–2024)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedCategory("satellite");
-                      setActiveTab("s2");
-                      setCompareActive(true);
-                      setShowS2(true);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md transition-all active:scale-95"
-                  >
-                    <Columns2 size={12} />
-                    <span>Comparador Split-Screen (Antes / Depois)</span>
-                  </button>
-                </div>
+          <div className="geo-catalog-content mx-auto w-full max-w-7xl flex-1 space-y-4 p-3 sm:space-y-6 sm:p-6 md:p-8">
+            <header className="space-y-4">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">{scienceT("catalog.title")}</h2>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{scienceT("catalog.description")}</p>
               </div>
-
-              <div className="relative z-10 w-full sm:w-72">
-                <div className="relative">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={categoryFilter}
-                    onChange={e => setCategoryFilter(e.target.value)}
-                    placeholder="Filtrar especialidade ou índice…"
-                    className="w-full pl-9 pr-3 py-2 bg-white/10 hover:bg-white/15 focus:bg-white/20 border border-white/20 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 transition-all"
-                  />
-                  {categoryFilter && (
-                    <button onClick={() => setCategoryFilter("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white">
-                      <X size={13} />
-                    </button>
-                  )}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative min-w-0 flex-1 basis-72">
+                  <Search size={18} className="absolute left-3 top-3 text-slate-500" />
+                  <input type="search" aria-label={scienceT("catalog.search")} value={categoryFilter}
+                    onChange={e => setCategoryFilter(e.target.value)} placeholder={scienceT("catalog.searchHint")}
+                    className="geo-catalog-search min-h-11 w-full rounded-xl border border-slate-300 pl-10 pr-3 text-sm text-slate-900 focus:ring-2 focus:ring-sky-500 dark:border-slate-700 dark:text-white" />
                 </div>
+                <button type="button" onClick={() => { setSelectedCategory("satellite"); setActiveTab("s2"); setShowS2(true); setCompareActive(false); }}
+                  className="geo-catalog-quick-action min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-medium dark:border-slate-700">{scienceT("catalog.mosaics")}</button>
+                <button type="button" onClick={() => { setSelectedCategory("satellite"); setActiveTab("s2"); setShowS2(true); setCompareActive(true); }}
+                  className="geo-catalog-quick-action min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-medium dark:border-slate-700">{scienceT("catalog.compare")}</button>
               </div>
-              <div className="absolute right-0 bottom-0 translate-x-12 translate-y-12 w-64 h-64 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
-            </div>
+              <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{filteredCategories.length} {scienceT("catalog.topics")} · {scienceT("catalog.geeNote")}</p>
+            </header>
+            {filteredCategories.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center"><p>{scienceT("catalog.empty")}</p><button type="button" onClick={() => setCategoryFilter("")} className="mt-2 text-sky-700 underline">{scienceT("catalog.clear")}</button></div>}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            <div className="geo-catalog-grid grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-4 sm:gap-5">
               {filteredCategories.map(cat => {
                 const IconComponent = cat.icon;
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={cat.id}
+                    data-category={cat.id}
+                    aria-label={`${cat.status === "development" ? scienceT("catalog.moduleStatus") : scienceT("catalog.open")}: ${cat.title}`}
                     onClick={() => {
                       setCompareActive(false);
                       setStoryMapOpen(false);
@@ -3639,43 +3781,44 @@ export default function GeoAnalises({
                         setShowS2(true);
                       }
                     }}
-                    className="group bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-sky-400 dark:hover:border-sky-500 hover:shadow-xl transition-all duration-200 p-5 flex flex-col justify-between cursor-pointer hover:-translate-y-0.5"
+                    className="geo-catalog-card group flex cursor-pointer flex-col justify-between p-5 text-left sm:p-6"
                   >
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-3.5">
-                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${cat.gradient} flex items-center justify-center text-white shadow-xs group-hover:scale-105 transition-transform`}>
+                        <div className={`geo-catalog-card__icon w-11 h-11 rounded-2xl bg-gradient-to-br ${cat.gradient} flex items-center justify-center text-white transition-transform duration-200 group-hover:scale-105`}>
                           <IconComponent size={20} />
                         </div>
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cat.badgeColor}`}>
-                          {cat.badge}
+                        <span className="geo-catalog-card__badge">
+                          {cat.status === "development" ? scienceT("catalog.development") : cat.badge}
                         </span>
                       </div>
 
                       <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
                         {cat.title}
                       </h3>
-                      <p className="text-[11px] text-slate-400 font-medium mb-2.5">
+                      <p className="geo-catalog-card__subtitle mb-3 mt-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
                         {cat.subtitle}
+                        {cat.tabIds.some(id => SCIENCE[id]?.status === "experimental") && <span className="geo-catalog-card__review">{scienceT("catalog.review")}</span>}
                       </p>
 
-                      <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-4 line-clamp-3">
+                      <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-3">
                         {cat.description}
                       </p>
 
-                      <div className="flex flex-wrap gap-1.5 mb-4">
-                        {cat.highlights.map((h, i) => (
-                          <span key={i} className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-md font-medium">
+                      <div className="geo-catalog-card__chips mb-5">
+                        {cat.highlights.slice(0, 3).map((h, i) => (
+                          <span key={i} className="geo-catalog-card__chip">
                             {h}
                           </span>
                         ))}
                       </div>
                     </div>
 
-                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold text-sky-600 dark:text-sky-400 group-hover:text-sky-700 dark:group-hover:text-sky-300">
-                      <span>{cat.status === "development" ? "Ver estado do módulo" : "Abrir Análise Especializada"}</span>
-                      <span className="group-hover:translate-x-1 transition-transform">→</span>
+                    <div className="geo-catalog-card__footer flex items-center justify-between gap-2 border-t pt-3 text-xs font-bold">
+                      <span>{cat.status === "development" ? scienceT("catalog.moduleStatus") : scienceT("catalog.open")}</span>
+                      <span className="geo-catalog-card__arrow" aria-hidden="true">→</span>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -3685,16 +3828,16 @@ export default function GeoAnalises({
         <div className="flex-1 overflow-y-auto bg-slate-50 p-6 dark:bg-slate-950 md:p-8">
           <button type="button" onClick={() => setSelectedCategory(null)}
             className="mb-6 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-            <ArrowLeft size={16} /> Voltar ao catálogo
+            <ArrowLeft size={16} /> {scienceT("catalog.back")}
           </button>
           <section aria-labelledby="module-development-title" className="mx-auto max-w-2xl rounded-2xl border border-amber-200 bg-white p-6 dark:border-amber-900 dark:bg-slate-900">
             <span role="status" className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-              <Clock size={14} /> Em desenvolvimento
+              <Clock size={14} /> {scienceT("catalog.development")}
             </span>
             <h2 id="module-development-title" className="mt-4 text-xl font-bold text-slate-900 dark:text-slate-100">{activeCategory.title}</h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{activeCategory.description}</p>
             <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-              O cálculo, os mapas de resultados e a exportação deste módulo estão temporariamente desactivados.
+              {scienceT("catalog.unavailable")}
             </p>
           </section>
         </div>
@@ -3702,17 +3845,17 @@ export default function GeoAnalises({
         /* ════════════════════════════════════════════════════════════════════
            DEDICATED CATEGORY WORKSPACE (Ambiente Especializado)
            ════════════════════════════════════════════════════════════════════ */
-        <div className="flex-1 flex flex-col overflow-hidden relative">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {/* Workspace Top Header Bar */}
-          <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-2 flex items-center justify-between gap-2 shrink-0 z-[550]">
+          <div className="z-[550] flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-2 py-2 dark:border-slate-800 dark:bg-slate-900 sm:flex-nowrap sm:px-4">
             <div className="flex items-center gap-3 min-w-0">
               <button
                 onClick={() => setSelectedCategory(null)}
                 className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-sky-700 dark:hover:text-sky-400 bg-slate-100 dark:bg-slate-800 hover:bg-sky-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 hover:border-sky-200 dark:hover:border-sky-600 px-3 py-1.5 rounded-xl transition-all shrink-0 shadow-2xs cursor-pointer"
-                title="Voltar ao catálogo de especialidades"
+                title={scienceT("catalog.backSpecialties")}
               >
                 <ArrowLeft size={13} />
-                <span>Voltar ao Catálogo</span>
+                <span>{scienceT("catalog.back")}</span>
               </button>
 
               <div className="h-5 w-px bg-slate-200 dark:bg-slate-700 shrink-0" />
@@ -3728,66 +3871,57 @@ export default function GeoAnalises({
               </div>
             </div>
 
-            {/* Subtabs for only this category */}
-            <div className="flex-1 flex items-center gap-1.5 overflow-x-auto px-2 py-0.5 no-scrollbar">
-              {activeCategory.tabIds.map(tabId => {
-                const def = INDEX_DEFS.find(d => d.id === tabId);
-                const label = def?.short || (tabId === "s2" ? "S-2 Cloudless" : tabId === "lineaments" ? "Lineamentos" : tabId === "targeting" ? "Targeting" : tabId === "profile" ? "Perfil A→B" : tabId === "contours" ? "Curvas Nível" : tabId === "topo_custom" ? "Classes Custom" : tabId === "landcover" ? "Cobertura Solo" : tabId === "spi_ndvi" ? "SPI × NDVI" : tabId);
-                const icon = def?.icon || (tabId === "s2" ? <Satellite size={12} /> : tabId === "lineaments" ? <Activity size={12} /> : tabId === "targeting" ? <Target size={12} /> : tabId === "profile" ? <Route size={12} /> : tabId === "contours" ? <Waves size={12} /> : tabId === "topo_custom" ? <Sliders size={12} /> : tabId === "landcover" ? <Sprout size={12} /> : <Droplets size={12} />);
-                const isActive = activeTab === tabId;
-
-                return (
-                  <button
-                    key={tabId}
-                    onClick={() => setActiveTab(tabId)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all shrink-0 cursor-pointer ${
-                      isActive
-                        ? "bg-sky-500 text-white shadow-xs font-semibold"
-                        : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium"
-                    }`}
-                  >
-                    {icon}
-                    <span>{label}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {/* Mobile category selector prevents clipped tabs and narrow touch targets. */}
+            <label className="order-3 w-full min-w-0 sm:order-none sm:flex-1">
+              <span className="sr-only">{scienceT("catalog.choose")}</span>
+              <select
+                value={activeTab}
+                onChange={event => {
+                  setActiveTab(event.target.value as SpectralTab);
+                  setSidebarOpen(false);
+                }}
+                aria-label={scienceT("catalog.choose")}
+                className="min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              >
+                {activeCategory.tabIds.map(tabId => (
+                  <option key={tabId} value={tabId}>{descriptiveIndexName(tabId)}{SCIENCE[tabId]?.status === "experimental" ? ` · ${scienceT("catalog.inReview")}` : ""}</option>
+                ))}
+              </select>
+            </label>
 
             {/* Right Header Actions */}
-            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              {selectedCategory === "terrain" && (
-                <button type="button"
-                  onClick={() => setTerrainStudioOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-3 py-1.5 text-xs font-bold text-slate-950 shadow-sm transition-colors hover:bg-amber-400"
-                  title="Abrir visualizador 3D de DEM GeoTIFF / COG">
-                  <Mountain size={14}/> <span>Gerar mapa 3D</span>
-                </button>
-              )}
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
               <button
-                disabled={isLineaments}
-                onClick={() => setStoryMapOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 text-xs font-semibold shadow-2xs cursor-pointer transition-all"
-                title="Apresentação Executiva (StoryMap)"
+                type="button"
+                onClick={() => {
+                  setResultsPanelOpen(value => !value);
+                  setSidebarOpen(false);
+                }}
+                aria-expanded={resultsPanelOpen}
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-2.5 text-xs font-semibold text-sky-700 hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300"
+                title={resultsPanelOpen ? scienceT("catalog.hideTitle") : hasActiveResult ? scienceT("catalog.showTitle") : scienceT("catalog.aboutTitle")}
               >
-                <Sparkles size={13} className="text-sky-500" />
-                <span className="hidden sm:inline">Apresentação Executiva</span>
-                <span className="sm:hidden">StoryMap</span>
+                <BarChart2 size={15} />
+                <span className="hidden lg:inline">{resultsPanelOpen ? scienceT("catalog.hide") : hasActiveResult ? scienceT("catalog.results") : scienceT("catalog.about")}</span>
+                <span className="lg:hidden">{scienceT("catalog.results")}</span>
+                {resultsPanelOpen ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
               </button>
-
-              <button
-                disabled={isLineaments}
-                onClick={exportGeoAnalisesPdf}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-medium shadow-2xs cursor-pointer"
-                title="Exportar Relatório PDF"
-              >
-                <FileDown size={13} />
-                <span className="hidden sm:inline">PDF</span>
-              </button>
+              <details className="relative">
+                <summary className="cursor-pointer rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-700">{scienceT("catalog.export")}</summary>
+                <div className="absolute right-0 top-full z-[800] mt-2 flex w-56 flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                  <button type="button" disabled={isLineaments || indexBlocked || !hasActiveResult}
+                    onClick={exportGeoAnalisesPdf} className="rounded-lg p-2 text-left text-sm hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">{scienceT("catalog.pdf")}</button>
+                  <button type="button" disabled={isLineaments || indexBlocked || !hasActiveResult}
+                    onClick={() => setStoryMapOpen(true)} className="rounded-lg p-2 text-left text-sm hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">{scienceT("catalog.story")}</button>
+                  {!hasActiveResult && <p className="text-xs text-slate-600 dark:text-slate-300">{scienceT("catalog.runFirst")}</p>}
+                  <p className="text-xs text-slate-600 dark:text-slate-300">{scienceT("catalog.printHint")}</p>
+                </div>
+              </details>
             </div>
           </div>
 
           {/* Main workspace content */}
-          <div className="flex flex-1 overflow-hidden relative">
+          <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
             {/* Mobile backdrop */}
             {sidebarOpen && (
               <div
@@ -3800,7 +3934,7 @@ export default function GeoAnalises({
             <button
               type="button"
               onClick={() => setDesktopSidebarOpen(v => !v)}
-              style={{ left: desktopSidebarOpen ? "18rem" : "0px" }}
+              style={{ left: desktopSidebarOpen ? sidebarSize.width : 0 }}
               title={desktopSidebarOpen ? "Recolher painel lateral" : "Expandir painel lateral"}
               className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-l-0 border-slate-200 dark:border-slate-800 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 cursor-pointer"
             >
@@ -3808,11 +3942,15 @@ export default function GeoAnalises({
             </button>
 
             {/* Controls sidebar */}
-            <div
-              className={`fixed md:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-xl md:shadow-none ${
+            {desktopSidebarOpen && <SidebarResize panel={sidebarSize} breakpoint="md" />}
+      <div
+              ref={sidebarSize.ref}
+        style={sidebarSize.style}
+        aria-label="Parâmetros da análise"
+              className={`geomoz-analysis-sidebar fixed md:relative inset-y-0 left-0 z-[700] flex w-[min(94vw,26rem)] min-h-0 flex-col overflow-y-auto overscroll-contain bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 shadow-xl md:shadow-none ${
                 sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
               } ${
-                desktopSidebarOpen ? "md:w-72 overflow-y-auto" : "md:w-0 overflow-hidden md:border-r-0"
+                desktopSidebarOpen ? "md:w-[var(--gm-sidebar-width)]" : "md:w-0 md:overflow-hidden md:border-r-0"
               }`}
             >
               {/* Mobile Header with Close Button */}
@@ -3824,7 +3962,8 @@ export default function GeoAnalises({
                 <button
                   type="button"
                   onClick={() => setSidebarOpen(false)}
-                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
+                  aria-label="Fechar filtros"
+                  className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                 >
                   <X size={18} />
                 </button>
@@ -3848,9 +3987,9 @@ export default function GeoAnalises({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="period-grid grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">Data início</label>
+                      <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">{needsPrePeriod ? "Pós-incêndio: início" : "Data início"}</label>
                       <input
                         type="date"
                         value={geeStartDate}
@@ -3859,7 +3998,7 @@ export default function GeoAnalises({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">Data fim</label>
+                      <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">{needsPrePeriod ? "Pós-incêndio: fim exclusivo" : "Data fim (exclusiva)"}</label>
                       <input
                         type="date"
                         value={geeEndDate}
@@ -3884,92 +4023,90 @@ export default function GeoAnalises({
                     />
                   </div>
 
-                  {/* Botão Recalcular Análise com o período selecionado */}
-                  <button
-                    type="button"
-                    onClick={handleCalculateActiveIndex}
-                    disabled={isCalculatingActiveIndex || isLineaments}
-                    className="w-full mt-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 dark:hover:bg-sky-900/80 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
-                    title={`Recalcular análise para o período ${geeStartDate} a ${geeEndDate}`}
-                  >
-                    {isCalculatingActiveIndex ? (
-                      <>
-                        <Loader2 size={13} className="animate-spin" />
-                        <span>A recalcular período...</span>
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw size={13} />
-                        <span>{isLineaments ? "Em desenvolvimento" : `Recalcular Análise (${geeStartDate} a ${geeEndDate})`}</span>
-                      </>
-                    )}
-                  </button>
+                  <details className="space-y-2.5 rounded-xl border border-slate-200 bg-white/70 p-2.5 dark:border-slate-700 dark:bg-slate-900/40">
+                    <summary className="cursor-pointer text-sm font-semibold">Opções avançadas de processamento</summary>
+                    <label htmlFor="gee-processing-mode" className="flex items-center justify-between gap-2 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                      <span>Profundidade da análise</span>
+                      <Clock size={13} className="text-sky-500" />
+                    </label>
+                    <div id="gee-processing-mode" role="radiogroup" aria-label="Profundidade da análise" className="space-y-1">
+                      {([['fast', 'Rápido — mapa primeiro'], ['balanced', 'Equilibrado — estatísticas básicas'], ['detailed', 'Detalhado — percentis e análise completa']] as const).map(([mode, label]) => (
+                        <label key={mode} className="flex items-start gap-2 rounded-lg border border-slate-200 p-2 text-xs leading-relaxed dark:border-slate-700 cursor-pointer">
+                          <input type="radio" name="gee-processing-mode" value={mode} checked={processingMode === mode} onChange={() => setProcessingMode(mode)} disabled={isCalculatingActiveIndex} className="mt-0.5 shrink-0" />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+                      {processingMode === "fast"
+                        ? "Reduz consultas de estatísticas; os píxeis e as cenas continuam reais."
+                        : processingMode === "balanced"
+                          ? "Calcula média e extremos numa amostragem de 250 m; não altera a resolução do mapa."
+                          : "Calcula percentis, dispersão e área. Pode demorar mais em regiões extensas."}
+                      {" "}Aplica-se a índices espectrais, não a ferramentas especializadas.
+                    </p>
+                    <div className="flex items-center justify-between text-[10px] text-slate-600 dark:text-slate-300">
+                      <label htmlFor="gee-wait-limit">Limite de espera</label>
+                      <strong>{processingTimeLimit} s</strong>
+                    </div>
+                    <input
+                      id="gee-wait-limit"
+                      type="range"
+                      min={60}
+                      max={240}
+                      step={30}
+                      value={processingTimeLimit}
+                      onChange={e => setProcessingTimeLimit(Number(e.target.value))}
+                      disabled={isCalculatingActiveIndex}
+                      className="w-full accent-sky-600"
+                    />
+                    <p className="text-[10px] text-slate-400">
+                      Este limite interrompe a espera no navegador, não garante cancelar o processamento no servidor.
+                    </p>
+                  </details>
+
+                  {needsPrePeriod && (
+                    <fieldset className="space-y-2 rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+                      <legend className="text-xs font-semibold">Período pré-incêndio</legend>
+                      <label className="block text-xs">Início<input aria-label="Início pré-incêndio" type="date" value={preStartDate} onChange={e => setPreStartDate(e.target.value)} className="block w-full rounded border p-1 text-slate-900" /></label>
+                      <label className="block text-xs">Fim exclusivo<input aria-label="Fim pré-incêndio" type="date" max={geeStartDate || undefined} value={preEndDate} onChange={e => setPreEndDate(e.target.value)} className="block w-full rounded border p-1 text-slate-900" /></label>
+                      <button type="button" className="w-full rounded-lg border border-sky-200 p-2 text-left text-xs font-semibold text-sky-700 dark:text-sky-300" onClick={() => {
+                        const previous = precedingFirePeriod(geeStartDate, geeEndDate);
+                        if (previous) { setPreStartDate(previous.start); setPreEndDate(previous.end); setActiveIndexError(null); }
+                      }}>Preencher período anterior com igual duração</button>
+                      <p className="text-xs text-slate-500">Reveja a época e a data do incêndio: esta sugestão apenas evita sobreposição e não garante comparabilidade sazonal.</p>
+                      <p className="text-xs text-slate-500">As datas principais acima definem o período pós-incêndio. Use períodos comparáveis, sem sobreposição; todas as datas finais são exclusivas.</p>
+                    </fieldset>
+                  )}
+                  {(periodError || studyAreaError) && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs leading-relaxed text-amber-900 dark:bg-amber-950 dark:text-amber-200">{periodError || studyAreaError}</p>}
                 </div>
               </div>
 
-              {/* Category subtabs list */}
-              <div className="p-3 border-b border-slate-100 dark:border-slate-800">
-                <h4 className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider mb-2">
-                  Índices da Categoria
-                </h4>
-                <div className="space-y-1">
-                  {activeCategory.tabIds.map(tabId => {
-                    const def = INDEX_DEFS.find(d => d.id === tabId);
-                    const label = def?.short || (tabId === "s2" ? "S-2 Cloudless" : tabId === "lineaments" ? "Lineamentos" : tabId === "targeting" ? "Targeting" : tabId === "profile" ? "Perfil A→B" : tabId === "contours" ? "Curvas Nível" : tabId === "topo_custom" ? "Classes Custom" : tabId === "landcover" ? "Cobertura Solo" : tabId === "spi_ndvi" ? "SPI × NDVI" : tabId);
-                    const icon = def?.icon || (tabId === "s2" ? <Satellite size={13} /> : tabId === "lineaments" ? <Activity size={13} /> : tabId === "targeting" ? <Target size={13} /> : tabId === "profile" ? <Route size={13} /> : tabId === "contours" ? <Waves size={13} /> : tabId === "topo_custom" ? <Sliders size={13} /> : tabId === "landcover" ? <Sprout size={13} /> : <Droplets size={13} />);
-                    const isActive = activeTab === tabId;
-                    return (
-                      <button
-                        key={tabId}
-                        onClick={() => setActiveTab(tabId)}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs text-left transition-colors cursor-pointer ${
-                          isActive
-                            ? "bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 font-semibold border border-sky-200 dark:border-sky-800"
-                            : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          {icon}
-                          <span className="truncate">{label}</span>
-                        </div>
-                        {isActive && <span className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />}
-                      </button>
-                    );
-                  })}
-                </div>
+              <div className="flex items-center justify-between gap-2 border-b border-slate-200 p-3 text-sm dark:border-slate-700">
+                <span role="status">{geeReady ? "Earth Engine ligado" : "Earth Engine desligado"}</span>
+                {!geeReady && <button type="button" onClick={() => {
+                  if (geeConnected || geeStatus?.connected) setUseGEE(true);
+                  else setGeeCredsOpen(true);
+                }} className="rounded-lg bg-sky-700 px-3 py-2 font-semibold text-white">Ligar GEE</button>}
               </div>
 
-              {/* GEE status / real vs proxy switch */}
-              <div className="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-slate-700 dark:text-slate-300 font-semibold">Modo GEE</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                    geeReady ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-                  }`}>
-                    {geeReady ? "Ativo" : "Proxy"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-slate-400 text-[11px]">{useGEE ? "Real" : "Proxy"}</span>
-                  <button
-                    onClick={() => { setUseGEE(v => !v); setGeeTile(null); }}
-                    className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors cursor-pointer ${useGEE ? "bg-sky-500" : "bg-slate-300 dark:bg-slate-700"}`}
-                    title={useGEE ? "Mudar para modo proxy" : "Mudar para modo GEE real"}
-                  >
-                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${useGEE ? "translate-x-4" : "translate-x-0.5"}`} />
-                  </button>
-                </div>
-              </div>
+        {indexScience && (
+          <div role="status" className="mx-3 my-2 rounded-xl border border-sky-200 bg-white p-3 text-xs text-slate-700 shadow dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+            <strong>{indexBlocked ? "Em desenvolvimento" : indexScience.kind}</strong>
+            <p className="mt-1">{indexScience.note}</p>
+            {indexScience.source && <a className="mt-1 block text-sky-600 underline" href={indexScience.source} target="_blank" rel="noreferrer">Fonte e documentação</a>}
+          </div>
+        )}
 
               {/* Botão Calcular Índice no Sidebar */}
-              <div className="p-3 border-b border-slate-100 dark:border-slate-800 space-y-2 bg-slate-50/50 dark:bg-slate-800/30">
+              <div className="sticky bottom-0 z-10 p-3 border-t border-slate-200 dark:border-slate-700 space-y-2 bg-white dark:bg-slate-900">
                 <button
                   type="button"
                   onClick={handleCalculateActiveIndex}
-                  disabled={isCalculatingActiveIndex || isLineaments}
+                  disabled={isCalculatingActiveIndex || isLineaments || indexBlocked || Boolean(periodError || studyAreaError) || (activeTab !== "s2" && !geeReady)}
                   className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 disabled:from-slate-300 dark:disabled:from-slate-700 disabled:to-slate-400 dark:disabled:to-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-sky-500/20 active:scale-[0.98] cursor-pointer"
                 >
-                  {isLineaments ? (
+                  {(isLineaments || indexBlocked) ? (
                     <><Clock size={14} /><span>Em desenvolvimento</span></>
                   ) : isCalculatingActiveIndex ? (
                     <>
@@ -3979,15 +4116,43 @@ export default function GeoAnalises({
                   ) : hasActiveResult ? (
                     <>
                       <RefreshCw size={14} />
-                      <span>Recalcular {activeIndexLabel} com Sentinel-2</span>
+                      <span>Actualizar análise</span>
                     </>
                   ) : (
                     <>
                       <Play size={14} className="fill-white" />
-                      <span>Calcular {activeIndexLabel} com Sentinel-2</span>
+                      <span>Executar análise</span>
                     </>
                   )}
                 </button>
+
+                {isCalculatingActiveIndex && (
+                  <div role="status" aria-live="polite" className="rounded-xl border border-sky-200 bg-sky-50 p-2.5 text-xs text-sky-900 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-200">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5 font-semibold">
+                        <Loader2 size={13} className="animate-spin" /> A aguardar processamento GEE
+                      </span>
+                      <span className="tabular-nums">{processingElapsed} / {processingTimeLimit} s</span>
+                    </div>
+                    <p className="mt-1 text-[10px] leading-relaxed text-sky-700 dark:text-sky-300">
+                      Tempo decorrido real; o Earth Engine não fornece percentagem de progresso para esta operação.
+                    </p>
+                    {!isProfile && (
+                      <button
+                        type="button"
+                        onClick={cancelActiveProcessing}
+                        className="mt-2 inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-sky-300 bg-white px-3 text-[11px] font-semibold text-sky-800 hover:bg-sky-100 dark:bg-slate-900 dark:text-sky-200"
+                      >
+                        <X size={12} /> Cancelar espera
+                      </button>
+                    )}
+                  </div>
+                )}
+                {lastProcessingDuration !== null && !isCalculatingActiveIndex && (
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Último processamento: {lastProcessingDuration} s.
+                  </p>
+                )}
 
                 {hasActiveResult && (
                   <div className="flex items-center justify-between text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
@@ -4012,7 +4177,7 @@ export default function GeoAnalises({
                   <h4 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Legenda
                   </h4>
-                  <span className="text-[9px] text-slate-400 truncate max-w-[120px]">
+                  <span className="text-[9px] text-slate-400 whitespace-normal break-words text-right max-w-[65%]">
                     {activeIndexLabel}
                   </span>
                 </div>
@@ -4031,16 +4196,16 @@ export default function GeoAnalises({
             </div>
 
         {/* Draggable Results Panel */}
-        {((activeDef || isComposite || isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || activeTab === "s2")) && (
+        {!indexBlocked && resultsPanelOpen && (activeDef || isComposite || isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || activeTab === "s2") && (
           <DraggablePanel
-            title={`Análise: ${activeDef?.label || (isLineaments ? "Lineamentos" : isProfile ? "Perfil Topográfico" : isTargeting ? "Alvo Mineral" : isSpiNdvi ? "SPI×NDVI" : isContours ? "Curvas de Nível" : isTopoCustom ? "Classes Topo" : isLandCover ? "Cobertura do Solo" : "Resultados")}`}
-            icon={<Activity size={16} className="text-sky-500" />}
+            title={`Análise: ${descriptiveIndexName(activeTab)}`}
+            icon={<Activity size={16} className="shrink-0 text-sky-500" />}
             isDocked={rightPanelDocked}
             onDockToggle={() => setRightPanelDocked(d => !d)}
-            defaultWidth={360}
-            className="right-4"
+            onClose={() => setResultsPanelOpen(false)}
+            defaultWidth={390}
           >
-            <div className="flex flex-col w-full bg-white/50 dark:bg-slate-900/50 space-y-4 pb-4">
+            <div className="flex min-w-0 w-full flex-col space-y-4 bg-white/50 pb-4 dark:bg-slate-900/50">
           {/* Lineaments Panel */}
           {isLineaments && (
             <div className="p-4 border-b border-slate-100 dark:border-slate-800">
@@ -4163,7 +4328,7 @@ export default function GeoAnalises({
           {/* GEE Analysis Panel (real mode, single index) */}
           {/* GEE Geospatial Analytics Dashboard Panel (real mode, single index) */}
           {!isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !isTopoCustom && geeReady && activeTab !== "s2" && activeDef && (
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="min-w-0 p-3 sm:p-4 border-b border-slate-100 dark:border-slate-800">
               <GeospatialAnalyticsPanel
                 activeIndex={activeTab as SpectralIndex}
                 province={province}
@@ -4188,7 +4353,7 @@ export default function GeoAnalises({
           {!isComposite && !isLineaments && !isTargeting && !isProfile && !isContours && !isTopoCustom && !geeReady && isGeeOnly && activeDef && (
             <div className="p-4 border-b border-slate-100 dark:border-slate-800">
               <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
-                <strong>Índice apenas GEE.</strong> {activeDef.short} requer dados raster reais (DEM / Landsat). Active GEE no topo para calcular.
+                <strong>Ligação necessária.</strong> Ligue o Google Earth Engine no painel de parâmetros para executar esta análise com os dados indicados na documentação.
               </div>
             </div>
           )}
@@ -4257,7 +4422,7 @@ export default function GeoAnalises({
                 {!isGeeOnly && !isTopoClass && (
                   <div>
                     <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                      Escala {geeReady ? "(GEE)" : "(proxy)"}
+                      Escala do índice
                     </h4>
                     <ColormapLegend index={activeTab as SpectralIndex} />
                   </div>
@@ -4299,8 +4464,8 @@ export default function GeoAnalises({
                 )}
                 {!geeReady && !isGeeOnly && (
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                    <div className="flex items-center gap-1.5 mb-1"><Info size={12} className="text-slate-500" /><span className="text-xs font-semibold text-slate-600">Modo Proxy</span></div>
-                    <p className="text-xs text-slate-500 leading-relaxed">Estimativa baseada em atributos geológicos. Active GEE no topo para dados raster reais.</p>
+                    <div className="flex items-center gap-1.5 mb-1"><Info size={12} className="text-slate-500" /><span className="text-xs font-semibold text-slate-600">Sem dados observados</span></div>
+                    <p className="text-xs text-slate-500 leading-relaxed">Ligue o Earth Engine para calcular com dados observados.</p>
                   </div>
                 )}
               </div>
@@ -4389,23 +4554,13 @@ export default function GeoAnalises({
         )}
 
         {/* Map */}
-        <div className="flex-1 relative overflow-hidden" ref={mapContainerRef}>
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden" ref={mapContainerRef}>
           {/* Loading indicators */}
           {isFetching && activeTab !== "s2" && !geeReady && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[600] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-md rounded-full px-4 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 flex items-center gap-2 pointer-events-none">
               <Cpu size={13} className="text-sky-500 animate-spin" /> A computar índice proxy…
             </div>
           )}
-          {!province && activeTab !== "s2" && !geeReady && (
-            <div className="absolute inset-0 z-[300] flex items-center justify-center pointer-events-none">
-              <div className="bg-white/95 dark:bg-slate-900/95 border border-sky-200 dark:border-sky-800/60 rounded-2xl px-6 py-4 shadow-lg text-center max-w-xs">
-                <Layers size={22} className="text-sky-300 mx-auto mb-2" />
-                <p className="text-sm text-slate-600 dark:text-slate-300">Selecione uma <strong>província</strong> para calcular o índice espectral proxy.</p>
-              </div>
-            </div>
-          )}
-
-
           {/* Floating HUD status indicator during GEE computation (ocultado temporariamente a pedido do utilizador) */}
           {false && compareActive && isProcessingCompareGee && (
             <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[660] bg-slate-900/90 text-white px-4 py-2.5 rounded-2xl shadow-2xl border border-sky-500/40 backdrop-blur-md flex items-center gap-3 animate-in fade-in zoom-in-95 pointer-events-none">
@@ -4469,24 +4624,43 @@ export default function GeoAnalises({
             />
           )}
 
-          {/* Mobile floating sidebar toggle */}
-          <button
-            type="button"
-            onClick={() => setSidebarOpen(v => !v)}
-            className="md:hidden absolute top-3 left-3 z-[600] flex items-center gap-1.5 px-3 py-1.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl shadow-md border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
-          >
-            <SlidersHorizontal size={13} className="text-sky-600 dark:text-sky-400" />
-            Filtros
-          </button>
+          {/* Mobile map controls remain reachable if the inspector is hidden. */}
+          <div className="absolute left-3 top-3 z-[600] flex max-w-[calc(100%-24px)] flex-wrap gap-2 md:hidden">
+            <button
+              type="button"
+              onClick={() => {
+                setResultsPanelOpen(false);
+                setSidebarOpen(true);
+              }}
+              className="flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/95 px-3 text-xs font-semibold text-slate-700 shadow-md backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200"
+              aria-label="Abrir filtros e parâmetros"
+            >
+              <SlidersHorizontal size={15} className="text-sky-600 dark:text-sky-400" />
+              Filtros
+            </button>
+            {!resultsPanelOpen && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSidebarOpen(false);
+                  setResultsPanelOpen(true);
+                }}
+                className="flex min-h-11 items-center gap-1.5 rounded-xl border border-sky-200 bg-white/95 px-3 text-xs font-semibold text-sky-700 shadow-md backdrop-blur-md dark:border-sky-800 dark:bg-slate-900/95 dark:text-sky-300"
+                aria-label="Mostrar painel de resultados"
+              >
+                <BarChart2 size={15} />
+                Resultados
+              </button>
+            )}
+          </div>
 
-          {/* Basemap Switcher (Google Maps / Cesium) */}
+          {/* Tipos de mapa 2D */}
           <BasemapSwitcher
             current={basemap}
             onChange={setBasemap}
             className="absolute bottom-16 sm:bottom-6 right-4 z-[600]"
             position="bottom-right"
-            show3dToggle={false}
-          />
+            />
 
           <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }}>
             {/* Base tiles */}
@@ -4764,7 +4938,7 @@ export default function GeoAnalises({
             )}
 
             {/* Proxy spectral overlay */}
-            {!geeReady && activeTab !== "s2" && spectralGeoJSON && (
+            {!geeReady && !isGeeOnly && activeTab !== "s2" && spectralGeoJSON && (
               <GeoJSON key={spectralKey} data={spectralGeoJSON as GeoJSON.FeatureCollection}
                 style={(f) => ({
                   color: "rgba(255,255,255,0.2)", weight: 0.3,
@@ -4825,6 +4999,7 @@ export default function GeoAnalises({
                 onClose={() => setVisPanelOpen(false)}
                 availableBands={activeDefBands}
                 currentParams={visParams}
+                stats={geeTile.stats}
                 onApply={handleApplyVis}
                 onLiveCssChange={handleLiveCssChange}
                 onImport={handleImportVis}
@@ -4842,8 +5017,8 @@ export default function GeoAnalises({
                 background: `linear-gradient(to right, ${Array.from({ length: 8 }, (_, i) => applyColormap(i / 7, activeDef.id as SpectralIndex)).join(", ")})`,
               }} />
               <div className="flex justify-between text-xs text-slate-400 mt-1">
-                <span>{activeDef.lowLabel.split("/")[0]}</span>
-                <span>{activeDef.highLabel.split("/")[0]}</span>
+                <span>{(activeTab === "nbr" ? "NBR baixo" : activeDef.lowLabel.split("/")[0])}</span>
+                <span>{(activeTab === "nbr" ? "NBR alto" : activeDef.highLabel.split("/")[0])}</span>
               </div>
             </div>
           )}
@@ -4904,8 +5079,8 @@ export default function GeoAnalises({
 
           {/* SPI × NDVI scatter overlay */}
           {isSpiNdvi && spiNdviResult && showSpiChart && spiNdviResult.pairs.length > 0 && (
-            <div className="absolute bottom-8 left-4 z-[500] bg-white/97 dark:bg-slate-900/97 backdrop-blur rounded-xl shadow-lg border border-orange-200 dark:border-orange-900/50 px-4 pt-3 pb-1"
-                 style={{ height: 230, width: 380 }}>
+            <div className="absolute bottom-8 left-4 z-[500] w-[calc(100%-2rem)] max-w-[380px] bg-white/97 dark:bg-slate-900/97 backdrop-blur rounded-xl shadow-lg border border-orange-200 dark:border-orange-900/50 px-4 pt-3 pb-1"
+                 style={{ height: 230 }}>
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1.5">
                   <Droplets size={12} className="text-orange-600 dark:text-orange-400" />
@@ -5024,8 +5199,8 @@ export default function GeoAnalises({
                     }}
                   />
                   <div className="flex justify-between text-[9px] text-slate-400 mt-0.5 font-medium">
-                    <span>{activeDef.lowLabel.split("/")[0]}</span>
-                    <span>{activeDef.highLabel.split("/")[0]}</span>
+                    <span>{(activeTab === "nbr" ? "NBR baixo" : activeDef.lowLabel.split("/")[0])}</span>
+                    <span>{(activeTab === "nbr" ? "NBR alto" : activeDef.highLabel.split("/")[0])}</span>
                   </div>
                 </div>
               )}
@@ -5035,7 +5210,7 @@ export default function GeoAnalises({
       </div>
 
       {/* Status bar */}
-      <div className="shrink-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-4 py-2 flex items-center gap-4 text-xs text-slate-400">
+      <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-1 border-t border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-400 dark:border-slate-800 dark:bg-slate-900 sm:gap-4 sm:px-4 sm:text-xs">
         <span>
           {activeTab === "s2"
             ? `Sentinel-2 cloudless ${selectedYear} — EOX IT Services (CC BY 4.0)`

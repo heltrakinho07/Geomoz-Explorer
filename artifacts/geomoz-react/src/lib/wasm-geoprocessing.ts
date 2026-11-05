@@ -1,10 +1,10 @@
 /**
- * Client-Side Geospatial Processing Engine for GEOLITHICA / GeoMoz
- * Directly inspired by GeoLibre's @geolibre/processing architecture.
- * Executes genuine vector and raster geoprocessing operations in the browser on user data.
+ * Client-side geospatial processing engine for GEOLITHICA / GeoMoz.
+ * Executes verified vector geoprocessing operations in the browser on user data.
  */
 
 import * as turf from "@turf/turf";
+import { planarCentroid } from "./gis-planar-centroid";
 import type { Feature, FeatureCollection, Geometry, Polygon, MultiPolygon, Point, LineString } from "geojson";
 
 export interface RasterGrid {
@@ -38,6 +38,8 @@ export interface ToolDefinition {
   categoryLabel: string;
   description: string;
   requiresSecondLayer?: boolean;
+  /** False when the tool is catalogued but needs a raster engine not yet wired to this vector workspace. */
+  implemented?: boolean;
   parameters: {
     name: string;
     label: string;
@@ -167,6 +169,7 @@ export const GEOPROCESSING_TOOLS_CATALOG: ToolDefinition[] = [
   // ── Terreno & Relevo ───────────────────────────────────────────────────────
   {
     id: "terrain_slope",
+    implemented: false,
     name: "Declive Topográfico (Slope)",
     category: "terrain",
     categoryLabel: "Terreno & Relevo",
@@ -186,6 +189,7 @@ export const GEOPROCESSING_TOOLS_CATALOG: ToolDefinition[] = [
   },
   {
     id: "terrain_aspect",
+    implemented: false,
     name: "Orientação de Encostas (Aspect)",
     category: "terrain",
     categoryLabel: "Terreno & Relevo",
@@ -194,6 +198,7 @@ export const GEOPROCESSING_TOOLS_CATALOG: ToolDefinition[] = [
   },
   {
     id: "terrain_hillshade",
+    implemented: false,
     name: "Sombreamento Analítico (Hillshade)",
     category: "terrain",
     categoryLabel: "Terreno & Relevo",
@@ -207,6 +212,7 @@ export const GEOPROCESSING_TOOLS_CATALOG: ToolDefinition[] = [
   // ── Hidrologia ─────────────────────────────────────────────────────────────
   {
     id: "hydro_d8",
+    implemented: false,
     name: "Acumulação de Fluxo & Talvegue (D8)",
     category: "hydrology",
     categoryLabel: "Hidrologia & Drenagem",
@@ -217,6 +223,7 @@ export const GEOPROCESSING_TOOLS_CATALOG: ToolDefinition[] = [
   },
   {
     id: "hydro_twi",
+    implemented: false,
     name: "Índice Topográfico de Humidade (TWI)",
     category: "hydrology",
     categoryLabel: "Hidrologia & Drenagem",
@@ -227,6 +234,7 @@ export const GEOPROCESSING_TOOLS_CATALOG: ToolDefinition[] = [
   // ── Sensoriamento Remoto & Radar ───────────────────────────────────────────
   {
     id: "spectral_sar",
+    implemented: false,
     name: "Limiarização de Cheia por Radar SAR",
     category: "spectral",
     categoryLabel: "Sensoriamento Remoto",
@@ -248,7 +256,7 @@ export function runVectorBuffer(
   dissolve = false
 ): { result: FeatureCollection; stats: GeoprocessingStats } {
   const t0 = performance.now();
-  const bufferedFeatures: Feature[] = [];
+  const bufferedFeatures: Feature<Polygon | MultiPolygon>[] = [];
 
   for (const feature of fc.features) {
     try {
@@ -262,23 +270,21 @@ export function runVectorBuffer(
         bufferedFeatures.push(b);
       }
     } catch (e) {
-      console.warn("Buffer failed for feature:", e);
+      throw new Error("Buffer falhou para uma feição. Verifique a topologia dos dados de entrada.", { cause: e });
     }
   }
 
-  let finalFc: FeatureCollection = turf.featureCollection(bufferedFeatures);
+  let finalFc: FeatureCollection<Polygon | MultiPolygon> = turf.featureCollection(bufferedFeatures);
 
   if (dissolve && bufferedFeatures.length > 1) {
     try {
-      const polygonFeatures = turf.flatten(finalFc).features.filter(
-        (feature): feature is Feature<Polygon> => feature.geometry?.type === "Polygon"
-      );
-      const dissolved = turf.dissolve(turf.featureCollection(polygonFeatures));
+      const flatPolygons = turf.flatten(finalFc) as FeatureCollection<Polygon>;
+      const dissolved = turf.dissolve(flatPolygons);
       if (dissolved && dissolved.features.length > 0) {
         finalFc = dissolved;
       }
     } catch (e) {
-      console.warn("Dissolve failed, returning separate buffers:", e);
+      throw new Error("Dissolve dos buffers falhou; o resultado não foi publicado.", { cause: e });
     }
   }
 
@@ -309,10 +315,10 @@ export function runVectorCentroids(fc: FeatureCollection): { result: FeatureColl
 
   for (const feature of fc.features) {
     try {
-      const c = turf.centroid(feature, { properties: { ...feature.properties, _is_centroid: true } });
+      const c = turf.point(planarCentroid(feature.geometry), { ...feature.properties, _is_centroid: true });
       centroidFeatures.push(c);
     } catch (e) {
-      console.warn("Centroid failed for feature:", e);
+      throw new Error("Cálculo de centróide falhou para uma feição.", { cause: e });
     }
   }
 
@@ -393,29 +399,20 @@ export function runVectorDissolve(
   propertyName?: string
 ): { result: FeatureCollection; stats: GeoprocessingStats } {
   const t0 = performance.now();
-  let dissolved: FeatureCollection;
+  let dissolved: FeatureCollection = fc;
 
   try {
-    // Turf dissolve accepts polygons only. Flatten MultiPolygons and preserve
-    // any non-polygon geometries without treating them as polygon features.
-    const flattened = turf.flatten(fc);
-    const polygons = flattened.features.filter(
-      (feature): feature is Feature<Polygon> => feature.geometry?.type === "Polygon"
+    const polygonFeatures = fc.features.filter(
+      (feature): feature is Feature<Polygon | MultiPolygon> =>
+        feature.geometry?.type === "Polygon" || feature.geometry?.type === "MultiPolygon"
     );
-    const otherFeatures = flattened.features.filter(
-      (feature) => feature.geometry?.type !== "Polygon"
-    );
-    if (polygons.length === 0) {
-      dissolved = fc;
-    } else {
-      const polygonResult = turf.dissolve(turf.featureCollection(polygons), {
-        propertyName: propertyName || undefined,
-      });
-      dissolved = turf.featureCollection([...polygonResult.features, ...otherFeatures]);
+    if (polygonFeatures.length > 0) {
+      const polygonCollection = turf.featureCollection(polygonFeatures);
+      const flatPolygons = turf.flatten(polygonCollection) as FeatureCollection<Polygon>;
+      dissolved = turf.dissolve(flatPolygons, { propertyName: propertyName || undefined });
     }
   } catch (err) {
-    console.warn("Turf dissolve error:", err);
-    dissolved = fc;
+    throw new Error("Dissolução falhou; corrija as geometrias de entrada.", { cause: err });
   }
 
   const duration = Math.round(performance.now() - t0);
@@ -551,7 +548,9 @@ export function runVectorIntersect(
           };
           intersectedFeatures.push(inter);
         }
-      } catch {}
+      } catch (error) {
+        throw new Error("Intersecção espacial falhou para um par de polígonos; corrija a geometria.", { cause: error });
+      }
     }
   }
 
@@ -566,6 +565,72 @@ export function runVectorIntersect(
       outputFeatureCount: finalFc.features.length,
       geometryType: "Polygon",
       summary: `Interseção espacial concluída: ${finalFc.features.length} feições de sobreposição geradas em ${duration}ms.`,
+    },
+  };
+}
+
+export function runVectorDifference(
+  fcA: FeatureCollection,
+  fcB: FeatureCollection
+): { result: FeatureCollection; stats: GeoprocessingStats } {
+  const t0 = performance.now();
+  const masks = fcB.features.filter(
+    (feature): feature is Feature<Polygon | MultiPolygon> =>
+      feature.geometry?.type === "Polygon" || feature.geometry?.type === "MultiPolygon"
+  );
+
+  if (masks.length === 0) {
+    throw new Error("A camada de máscara deve conter pelo menos um polígono.");
+  }
+
+  const output: Feature<Polygon | MultiPolygon>[] = [];
+
+  for (const source of fcA.features) {
+    if (source.geometry?.type !== "Polygon" && source.geometry?.type !== "MultiPolygon") {
+      continue;
+    }
+
+    let current: Feature<Polygon | MultiPolygon> | null =
+      source as Feature<Polygon | MultiPolygon>;
+
+    for (const mask of masks) {
+      if (!current) break;
+      try {
+        current = turf.difference(
+          turf.featureCollection([current, mask])
+        ) as Feature<Polygon | MultiPolygon> | null;
+      } catch (err) {
+        throw new Error("Diferença espacial falhou ao aplicar máscara; resultado não é fiável.", { cause: err });
+      }
+    }
+
+    if (current) {
+      current.properties = {
+        ...source.properties,
+        _difference: true,
+      };
+      output.push(current);
+    }
+  }
+
+  const finalFc = turf.featureCollection(output);
+  const duration = Math.round(performance.now() - t0);
+  let totalArea = 0;
+  for (const feature of output) {
+    try {
+      totalArea += turf.area(feature) / 1_000_000;
+    } catch {}
+  }
+
+  return {
+    result: finalFc,
+    stats: {
+      executionTimeMs: duration,
+      inputFeatureCount: fcA.features.length + fcB.features.length,
+      outputFeatureCount: finalFc.features.length,
+      geometryType: "Polygon",
+      totalAreaKm2: Math.round(totalArea * 100) / 100,
+      summary: `Diferença espacial concluída: ${finalFc.features.length} feições remanescentes (${Math.round(totalArea * 100) / 100} km²) em ${duration}ms.`,
     },
   };
 }

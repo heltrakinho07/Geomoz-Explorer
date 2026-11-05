@@ -1,3 +1,4 @@
+import { SidebarResize, useSidebarWidth } from "@/components/SidebarResize";
 /**
  * HidroGeoMoz — Módulo de Análise de Bacias Hidrográficas
  *
@@ -30,6 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useStats } from "@/hooks/useGeoMoz";
 import { apiUrl, apiFetch } from "@/lib/api";
+import { HydroRequestGuard } from "@/lib/hydro-request-guard";
 import MapTools from "@/components/MapTools";
 import AreaSelect from "@/components/AreaSelect";
 import { GOOGLE_BASEMAPS, BasemapType } from "@/lib/basemaps";
@@ -60,6 +62,7 @@ interface BasinsResult {
   tileUrl:  string | null;
   geojson:  GeoJSON.FeatureCollection | null;
   count:    number;
+  previewCount?: number;
   level:    number;
   source:   "hydrobasins" | "unavailable";
   error?:   string;
@@ -82,7 +85,7 @@ interface BasinStats {
 
 interface DrainageResult   { tileUrl: string; threshold: number }
 interface RiverNetResult   { tileUrl: string; majorTileUrl: string; orders: Record<string, number>; palette: string[] }
-interface WatershedResult  { tileUrl: string; geojson: GeoJSON.FeatureCollection; pourPoint: [number, number]; areaKm2: number; maxIter?: number; level?: number; source?: string }
+interface WatershedResult  { tileUrl: string; geojson: GeoJSON.FeatureCollection; pourPoint: [number, number]; areaKm2: number; maxIter?: number; level?: number; requestedLevel?: number; source?: "hydrobasins" | "d8" | "polygon" | string }
 interface LandCoverClass   { code: number; label: string; color: string; areaKm2: number; pct: number }
 interface BasinReport {
   morphometry: {
@@ -227,22 +230,17 @@ interface Props {
   onProvinceChange: (p: string | null) => void;
   onDistrictChange: (d: string | null) => void;
   onAOIChange: (aoi: AreaOfInterest) => void;
-  viewMode?: "2d" | "3d";
-  onViewModeChange?: (mode: "2d" | "3d") => void;
 }
 
 export default function HidroGeoMoz({
   aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange,
-  viewMode: propViewMode, onViewModeChange,
 }: Props) {
   const { toast } = useToast();
   const mapRef = useRef<LMap | null>(null);
 
-  const [internalViewMode, setInternalViewMode] = useState<"2d" | "3d">("3d");
-  const viewMode = propViewMode ?? internalViewMode;
-  const handleViewModeChange = onViewModeChange ?? setInternalViewMode;
 
   // Layout
+  const sidebarSize = useSidebarWidth("geomoz-HidroGeoMoz-sidebar", 272);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileRightPanelOpen, setMobileRightPanelOpen] = useState(false);
@@ -289,6 +287,31 @@ export default function HidroGeoMoz({
   const [showRiverNet,  setShowRiverNet]  = useState(false);
   const [loadingRN,     setLoadingRN]     = useState(false);
   const [showAllOrders, setShowAllOrders] = useState(false);
+
+  // Cancel GEE HTTP requests without allowing late responses to overwrite newer results.
+  const riverRequestRef = useRef(new HydroRequestGuard());
+  const watershedDrainageRequestRef = useRef(new HydroRequestGuard());
+
+  const cancelRiverNetwork = useCallback((notify = false) => {
+    const cancelled = riverRequestRef.current.cancel();
+    if (cancelled) {
+      setLoadingRN(false);
+      if (notify) toast({ title: "Análise cancelada", description: "A geração de linhas de água foi interrompida nesta sessão." });
+    }
+  }, [toast]);
+
+  const cancelWatershedDrainage = useCallback((notify = false) => {
+    const cancelled = watershedDrainageRequestRef.current.cancel();
+    if (cancelled) {
+      setLoadingWatershedDrainage(false);
+      if (notify) toast({ title: "Análise cancelada", description: "O cálculo da drenagem desta bacia foi interrompido nesta sessão." });
+    }
+  }, [toast]);
+
+  useEffect(() => () => {
+    riverRequestRef.current.cancel();
+    watershedDrainageRequestRef.current.cancel();
+  }, []);
 
   // Shared
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -462,6 +485,7 @@ export default function HidroGeoMoz({
     }
     if (fullData.province) onProvinceChange(fullData.province);
     if (fullData.district) onDistrictChange(fullData.district);
+    if (fullData.aoi) onAOIChange(fullData.aoi);
     setSavedModalOpen(false);
     setMobileRightPanelOpen(true);
     setReportLayer("lulc");
@@ -733,18 +757,25 @@ export default function HidroGeoMoz({
     finally { setLoadingStats(false); }
   }
 
-  // River network
+  // River network: the latest request wins. Cancellation hides the spinner
+  // without deleting any previously completed layer.
   async function loadRiverNetwork() {
+    const controller = riverRequestRef.current.start();
     setLoadingRN(true); setError(null);
-    const ok = await checkGEE();
-    if (!ok) { setLoadingRN(false); return; }
     try {
+      const ok = await checkGEE();
+      if (!riverRequestRef.current.isCurrent(controller) || !ok) return;
       const r = await apiFetch("/geomoz-api/gee/river-network", { method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ ...aoiToAPI(aoi) }) });
+      if (!riverRequestRef.current.isCurrent(controller)) return;
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
-      setRiverNet(await r.json()); setShowRiverNet(true);
+      const result: RiverNetResult = await r.json();
+      if (!riverRequestRef.current.isCurrent(controller)) return;
+      setRiverNet(result); setShowRiverNet(true);
     } catch (e) {
+      if (!riverRequestRef.current.isCurrent(controller)) return;
       const errorMsg = String(e instanceof Error ? e.message : e);
       setError(errorMsg);
       toast({
@@ -752,34 +783,45 @@ export default function HidroGeoMoz({
         title: "Erro ao carregar rede fluvial",
         description: errorMsg,
       });
+    } finally {
+      if (riverRequestRef.current.finish(controller)) setLoadingRN(false);
     }
-    finally { setLoadingRN(false); }
   }
 
-  // Watershed drainage network calculation
+  // Watershed drainage also supports cancellation and ignores superseded AOIs.
   const loadWatershedDrainage = useCallback(async (geom: any, thresh = watershedDrainThresh) => {
     if (!geom) return;
+    const controller = watershedDrainageRequestRef.current.start();
     setLoadingWatershedDrainage(true);
     try {
       const r = await apiFetch("/geomoz-api/gee/drainage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ geometry: geom, threshold: thresh }),
       });
+      if (!watershedDrainageRequestRef.current.isCurrent(controller)) return;
       if (r.ok) {
         const data = await r.json();
-        setWatershedDrainageTile(data.tileUrl);
+        if (watershedDrainageRequestRef.current.isCurrent(controller)) {
+          setWatershedDrainageTile(data.tileUrl);
+        }
       }
     } catch (err) {
-      console.error("Erro ao gerar linhas de água da bacia:", err);
+      if (watershedDrainageRequestRef.current.isCurrent(controller)) {
+        console.error("Erro ao gerar linhas de água da bacia:", err);
+      }
     } finally {
-      setLoadingWatershedDrainage(false);
+      if (watershedDrainageRequestRef.current.finish(controller)) {
+        setLoadingWatershedDrainage(false);
+      }
     }
   }, [watershedDrainThresh]);
 
   // Watershed delineation by point (Pour Point)
   async function onMapClick(lat: number, lng: number) {
     if (mode !== "delineate" || drawingEnabled || delineateMethod !== "point") return;
+    cancelWatershedDrainage();
     setError(null); setPourPoint([lat, lng]); setWatershedData(null); setWsStats(null);
     setWatershedDrainageTile(null);
     setBasinReport(null); setReportLayer("none"); setLoadingWS(true);
@@ -830,6 +872,7 @@ export default function HidroGeoMoz({
   // Delineate by Polygon / AOI (Recorte exato pela área de estudo)
   const delineateByPolygon = useCallback(async (geometry: any, label?: string) => {
     if (!geometry) return;
+    cancelWatershedDrainage();
     setError(null);
     setLoadingWS(true);
     setWatershedData(null);
@@ -903,17 +946,18 @@ export default function HidroGeoMoz({
     } finally {
       setLoadingWsSt(false);
     }
-  }, [aoi.label, basinLevel, checkGEE, loadWatershedDrainage, watershedDrainThresh]);
+  }, [aoi.label, basinLevel, cancelWatershedDrainage, checkGEE, loadWatershedDrainage, watershedDrainThresh]);
 
   // Generate the full hydro-environmental report for the delineated basin
   async function runBasinReport(customStartYear?: number, customEndYear?: number) {
-    const basinGeojson = watershedData?.geojson;
-    let geom: any = basinGeojson?.features?.[0]?.geometry;
-    if (!geom) {
-      if ((basinGeojson as any)?.type === "Polygon" || (basinGeojson as any)?.type === "MultiPolygon") {
-        geom = basinGeojson;
-      } else if ((basinGeojson as any)?.geometry) {
-        geom = (basinGeojson as any).geometry;
+    const watershedGeojson = watershedData?.geojson;
+    let geom: any = watershedGeojson?.features?.[0]?.geometry;
+    if (!geom && watershedGeojson) {
+      const rawGeojson = watershedGeojson as any;
+      if (rawGeojson.type === "Polygon" || rawGeojson.type === "MultiPolygon") {
+        geom = rawGeojson;
+      } else if (rawGeojson.geometry) {
+        geom = rawGeojson.geometry;
       }
     }
     if (!geom) {
@@ -1504,18 +1548,21 @@ export default function HidroGeoMoz({
       <button
         onClick={() => setSidebarOpen(o => !o)}
         className="hidden lg:flex z-[550] absolute top-1/2 -translate-y-1/2 w-5 h-16 bg-white dark:bg-slate-900 border border-l-0 border-slate-200 dark:border-slate-700 rounded-r-lg items-center justify-center shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
-        style={{ left: sidebarOpen ? "272px" : 0 }}
+        style={{ left: sidebarOpen ? sidebarSize.width : 0 }}
         title={sidebarOpen ? "Recolher" : "Expandir"}
       >
         {sidebarOpen ? <ChevronLeft size={12} className="text-slate-400" /> : <ChevronRight size={12} className="text-slate-400" />}
       </button>
 
       {/* ── Left Sidebar ─────────────────────────────────────────────────── */}
+      {sidebarOpen && <SidebarResize panel={sidebarSize} breakpoint="lg" />}
       <div
-        className={`fixed lg:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 transition-all duration-300 shadow-2xl lg:shadow-none w-72 max-w-[85vw] ${
+        ref={sidebarSize.ref}
+        style={sidebarSize.style}
+        className={`fixed lg:relative inset-y-0 left-0 z-[700] flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 shadow-2xl lg:shadow-none w-72 max-w-[85vw] ${
           mobileSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         } ${
-          sidebarOpen ? "lg:w-[272px] overflow-y-auto" : "lg:w-0 overflow-hidden lg:border-r-0"
+          sidebarOpen ? "lg:w-[var(--gm-sidebar-width)] overflow-y-auto" : "lg:w-0 overflow-hidden lg:border-r-0"
         }`}
       >
 
@@ -1589,9 +1636,19 @@ export default function HidroGeoMoz({
               <span>As bacias pré-definidas (HydroBASINS) podem não estar disponíveis neste projeto. Se nada aparecer, use <strong>Delimitar</strong> para delinear por DEM.</span>
             </div>
             <div>
-              <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">HydroBASINS — <strong className="text-slate-700 dark:text-slate-200">Nível {basinLevel}</strong></label>
-              <input type="range" min={5} max={8} step={1} value={basinLevel} onChange={e => setBasinLevel(+e.target.value)} className="w-full accent-blue-500" />
-              <div className="flex justify-between text-[10px] text-slate-400"><span>Grandes (5)</span><span>Detalhe (8)</span></div>
+              <label htmlFor="hydrobasins-explore-level" className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Nível de bacias HydroBASINS (Pfafstetter)</label>
+              <select
+                id="hydrobasins-explore-level"
+                value={basinLevel}
+                onChange={e => { setBasinLevel(Number(e.target.value)); setBasinsData(null); setSelectedFeat(null); setBasinStats(null); }}
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-800 dark:text-slate-100"
+              >
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
+                  <option key={n} value={n}>Nível {n} — {n <= 4 ? "bacias principais" : n <= 8 ? "sub-bacias intermédias" : "sub-bacias detalhadas"}</option>
+                ))}
+              </select>
+              <div className="flex justify-between text-[10px] text-slate-400"><span>1 · Macro-bacias</span><span>12 · Maior detalhe</span></div>
+              {basinLevel >= 9 && <p className="text-[10px] text-amber-600 dark:text-amber-400">Nos níveis 9–12, escolha uma área de estudo menor para reduzir o tempo de processamento e a quantidade de polígonos.</p>}
             </div>
             <div className="flex items-center justify-between">
               <label className="text-[10px] text-slate-500 dark:text-slate-400">Rede de Drenagem</label>
@@ -1652,9 +1709,19 @@ export default function HidroGeoMoz({
                   <span>Clique num rio ou ponto no mapa para traçar a sub-bacia a montante (HydroBASINS/D8).</span>
                 </div>
                 <div>
-                  <label className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Detalhe — <strong className="text-slate-700 dark:text-slate-200">nível {level}</strong></label>
-                  <input type="range" min={6} max={12} step={1} value={level} onChange={e => setLevel(+e.target.value)} className="w-full accent-blue-500" />
-                  <div className="flex justify-between text-[10px] text-slate-400"><span>Grande (6)</span><span>Pequena (12)</span></div>
+                  <label htmlFor="hydrobasins-point-level" className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 block">Nível da bacia no ponto (Pfafstetter)</label>
+                  <select
+                    id="hydrobasins-point-level"
+                    value={level}
+                    onChange={e => { setLevel(Number(e.target.value)); setPourPoint(null); setWatershedData(null); setWsStats(null); setBasinReport(null); }}
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-800 dark:text-slate-100"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
+                      <option key={n} value={n}>Nível {n} — {n <= 4 ? "bacia principal" : n <= 8 ? "sub-bacia intermédia" : "sub-bacia detalhada"}</option>
+                    ))}
+                  </select>
+                  <div className="flex justify-between text-[10px] text-slate-400"><span>1 · Macro-bacia</span><span>12 · Maior detalhe</span></div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Ao alterar o nível, clique novamente no mapa. Se o nível escolhido não estiver disponível, o GeoMoz identifica a alternativa D8.</p>
                 </div>
                 {pourPoint && (
                   <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 text-[11px] font-mono text-slate-600 dark:text-slate-300 space-y-0.5">
@@ -1716,10 +1783,18 @@ export default function HidroGeoMoz({
               <span className="text-[10px] text-slate-600 dark:text-slate-300">Todas as ordens</span>
             </div>
           )}
-          <button onClick={loadRiverNetwork} disabled={loadingRN}
-            className="w-full flex items-center justify-center gap-1.5 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-300 dark:disabled:bg-slate-800 text-white text-xs font-semibold rounded-xl transition-colors">
-            {loadingRN ? <><Loader2 size={11} className="animate-spin" /> A gerar…</> : <><RefreshCw size={11} /> {riverNet ? "Atualizar" : "Gerar Linhas de Água"}</>}
-          </button>
+          {loadingRN ? (
+            <button type="button" onClick={() => cancelRiverNetwork(true)}
+              className="w-full flex items-center justify-center gap-1.5 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-900/40 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-semibold rounded-xl transition-colors"
+              aria-label="Cancelar geração de linhas de água">
+              <X size={13} /> Cancelar análise
+            </button>
+          ) : (
+            <button type="button" onClick={loadRiverNetwork}
+              className="w-full flex items-center justify-center gap-1.5 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-semibold rounded-xl transition-colors">
+              <RefreshCw size={11} /> {riverNet ? "Atualizar" : "Gerar Linhas de Água"}
+            </button>
+          )}
         </div>
 
         {/* Error */}
@@ -1766,7 +1841,6 @@ export default function HidroGeoMoz({
           onChange={setBasemap}
           className="absolute bottom-16 sm:bottom-6 left-4 z-[600]"
           position="bottom-left"
-          show3dToggle={false}
         />
         <MapContainer center={[-18, 35]} zoom={5} style={{ height: "100%", width: "100%" }} ref={mapRef} zoomControl={false}>
               <ZoomControl position="topright" />
@@ -1935,20 +2009,29 @@ export default function HidroGeoMoz({
         )}
         {mode === "explore" && basinsData?.source === "hydrobasins" && (
           <div className="absolute top-4 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-sm border border-blue-100 dark:border-blue-900/40 px-3 py-1.5 text-[11px] text-blue-700 dark:text-blue-300 flex items-center gap-1.5 pointer-events-none">
-            <Layers size={11} />{basinsData.count} bacias · Nível {basinsData.level}
+            <Layers size={11} />{basinsData.count} bacias · Nível {basinsData.level}{basinsData.previewCount !== undefined && basinsData.previewCount < basinsData.count ? ` · ${basinsData.previewCount} seleccionáveis` : ""}
           </div>
         )}
 
         {/* Loading overlay */}
         {(loadingBasins || loadingWS || loadingRN) && (
           <div className="absolute inset-0 z-[600] bg-white/55 dark:bg-slate-950/70 backdrop-blur-sm flex items-center justify-center">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 px-7 py-5 flex items-center gap-3">
-              <Loader2 size={20} className="text-blue-500 animate-spin" />
-              <span className="text-sm text-slate-700 dark:text-slate-200 font-medium">
-                {loadingBasins ? "A carregar bacias HydroBASINS…"
-                  : loadingWS ? "A delinear sub-bacia (HydroBASINS)…"
-                  : "A gerar rede de linhas de água…"}
-              </span>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 px-7 py-5 flex flex-col sm:flex-row items-center gap-3">
+              <div className="flex items-center gap-3">
+                <Loader2 size={20} className="text-blue-500 animate-spin" />
+                <span role="status" className="text-sm text-slate-700 dark:text-slate-200 font-medium">
+                  {loadingBasins ? "A carregar bacias HydroBASINS…"
+                    : loadingWS ? "A delinear sub-bacia (HydroBASINS)…"
+                    : "A gerar rede de linhas de água…"}
+                </span>
+              </div>
+              {loadingRN && !loadingBasins && !loadingWS && (
+                <button type="button" onClick={() => cancelRiverNetwork(true)}
+                  className="min-h-9 rounded-lg border border-rose-300 dark:border-rose-800 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950"
+                  aria-label="Cancelar geração de linhas de água">
+                  <X size={13} className="inline mr-1" /> Cancelar análise
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -2018,7 +2101,7 @@ export default function HidroGeoMoz({
                         ? `HydroBASINS · nível ${watershedData.level ?? level}`
                         : watershedData.source === "polygon"
                         ? "Delimitação por Polígono / Área de Estudo"
-                        : "D8 · HydroSHEDS"}
+                        : `D8 · HydroSHEDS (nível ${watershedData.requestedLevel ?? level} não aplicado)`}
                     </div>
                   </div>
 
@@ -2095,9 +2178,16 @@ export default function HidroGeoMoz({
                         </div>
 
                         {loadingWatershedDrainage ? (
-                          <div className="flex items-center gap-2 text-[11px] text-slate-400 py-1.5">
-                            <Loader2 size={12} className="animate-spin text-cyan-500" />
-                            <span>A traçar canais e afluentes no GEE…</span>
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400 py-1.5">
+                            <div role="status" className="flex items-center gap-2">
+                              <Loader2 size={12} className="animate-spin text-cyan-500" />
+                              <span>A traçar canais e afluentes no GEE…</span>
+                            </div>
+                            <button type="button" onClick={() => cancelWatershedDrainage(true)}
+                              className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-800 px-2 py-1 text-[11px] font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                              aria-label="Cancelar cálculo das linhas de água da bacia">
+                              <X size={12} /> Cancelar
+                            </button>
                           </div>
                         ) : watershedDrainageTile ? (
                           <div className="space-y-2">

@@ -58,3 +58,5 @@ export const LazyAguaSubterranea = lazyWithRetry(() => import("@/pages/AguaSubte
 export const LazyGeoMozAI = lazyWithRetry(() => import("@/pages/GeoMozAI"));
 
 export const LazyGeoProcessamento = lazyWithRetry(() => import("@/pages/GeoProcessamento"));
+
+export const LazyDocumentation = lazyWithRetry(() => import("@/pages/Documentation"));

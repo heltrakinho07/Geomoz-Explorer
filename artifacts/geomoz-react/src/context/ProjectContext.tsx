@@ -44,7 +44,7 @@ interface ProjectContextType {
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
-const ACTIVE_PROJECT_KEY = "geomoz_active_project_id";
+const activeProjectKey = (uid: string) => "geomoz_active_project_id_" + uid;
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -59,6 +59,11 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   // Subscribe to user projects with local cache fallback
   useEffect(() => {
+    // A Firebase principal switch immediately invalidates all in-memory
+    // project/run state from the previous user.
+    setProjects([]);
+    setActiveProjectState(null);
+    setActiveRuns([]);
     setLoading(true);
     const unsubscribe = subscribeUserProjects(
       effectiveUid,
@@ -67,7 +72,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         setLoading(false);
 
         // Auto-select or restore active project safely (preserve reference if unchanged)
-        const savedId = localStorage.getItem(ACTIVE_PROJECT_KEY);
+        const savedId = localStorage.getItem(activeProjectKey(effectiveUid));
         if (savedId) {
           const match = updatedProjects.find((p) => p.id === savedId);
           if (match) {
@@ -118,11 +123,11 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const setActiveProject = useCallback((project: GeoMozProject | null) => {
     setActiveProjectState((prev) => (prev?.id === project?.id ? prev : project));
     if (project) {
-      localStorage.setItem(ACTIVE_PROJECT_KEY, project.id);
+      localStorage.setItem(activeProjectKey(effectiveUid), project.id);
     } else {
-      localStorage.removeItem(ACTIVE_PROJECT_KEY);
+      localStorage.removeItem(activeProjectKey(effectiveUid));
     }
-  }, []);
+  }, [effectiveUid]);
 
   const setActiveProjectId = useCallback(
     (projectId: string | null) => {

@@ -368,10 +368,11 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
     } catch {}
   }, [sharedData]);
 
-  const report: BasinReport | null = sharedData?.basinReport || (sharedData as { data?: { basinReport?: BasinReport } } | null)?.data?.basinReport || null;
-  const wsData = sharedData?.watershedData || (sharedData as any)?.data?.watershedData;
-  const wsStats = sharedData?.wsStats || (sharedData as any)?.data?.wsStats;
-  const PP = sharedData?.pourPoint || (sharedData as any)?.data?.pourPoint;
+  const nestedData = (sharedData as (SharedData & { data?: SharedData }) | null)?.data;
+  const report: BasinReport | undefined = sharedData?.basinReport ?? nestedData?.basinReport;
+  const wsData: WatershedResult | null | undefined = sharedData?.watershedData ?? nestedData?.watershedData;
+  const wsStats: BasinStats | null | undefined = sharedData?.wsStats ?? nestedData?.wsStats;
+  const PP: [number, number] | null | undefined = sharedData?.pourPoint ?? nestedData?.pourPoint;
 
   // Auto-refresh active GEE tile URLs in background so shared rasters render without expiration
   useEffect(() => {

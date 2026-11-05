@@ -1,0 +1,28 @@
+# GeoMoz geospatial publishing backend (standalone NextGIS Web CE).
+# Adapted from https://github.com/nextgis/nextgisweb_ce (original GPL-3.0 software).
+# No public port: configure TLS reverse proxy only after rotating admin credentials.
+services:
+  nextgis-web:
+    image: nextgis/nextgisweb-ce:${NGW_IMAGE_VERSION:-26.10.0}
+    command: server
+    environment:
+      NEXTGISWEB__CORE__LOCALE__DEFAULT: en
+    ports:
+      - "127.0.0.1:${NGW_BIND_PORT:-18080}:8080"
+    volumes:
+      - ngw_data:/opt/crater/data
+      - ngw_backup:/opt/crater/backup
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 90s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  ngw_data:
+  ngw_backup:
