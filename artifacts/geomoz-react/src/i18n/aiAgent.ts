@@ -247,6 +247,15 @@ export const AI_AGENT_MESSAGES = {
     "Calcular la precipitación acumulada ERA5-Land en 2025",
     "Calculer les précipitations cumulées ERA5-Land en 2025"
   ],
+  "map.significant": ["Mudanças ≥ limiar", "Threshold changes", "Cambios ≥ umbral", "Changements ≥ seuil"],
+  "map.continuous": ["Diferença contínua", "Continuous difference", "Diferencia continua", "Différence continue"],
+  "map.swipe": ["Comparar A/B", "Swipe A/B", "Comparar A/B", "Comparer A/B"],
+  "map.swipePosition": ["Separador da comparação A/B", "A/B comparison divider", "Divisor de comparación A/B", "Séparateur de comparaison A/B"],
+  "map.before": ["Período A", "Period A", "Periodo A", "Période A"],
+  "map.after": ["Período B", "Period B", "Periodo B", "Période B"],
+  "map.swipeNote": ["Mova o separador para comparar os dois mosaicos de satélite com a mesma escala e pixels válidos comuns.", "Move the divider to compare both satellite mosaics on the same scale and common valid pixels.", "Mueva el divisor para comparar ambos mosaicos con la misma escala y píxeles válidos comunes.", "Déplacez le séparateur pour comparer les deux mosaïques à la même échelle et aux pixels valides communs."],
+  "map.noLayer": ["A análise terminou, mas não foi devolvida uma camada cartográfica válida. Repita a comparação.", "The analysis finished, but no valid map layer was returned. Run the comparison again.", "El análisis terminó, pero no se devolvió una capa cartográfica válida. Repita la comparación.", "L'analyse est terminée, mais aucune couche valide n'a été renvoyée. Relancez la comparaison."],
+  "map.tileError": ["O mosaico não pôde ser carregado no mapa. Verifique a sessão Earth Engine e volte a executar a análise.", "The raster tile could not load. Check your Earth Engine session and rerun the analysis.", "No se pudo cargar el mosaico. Compruebe su sesión de Earth Engine y repita el análisis.", "La tuile raster n'a pas pu être chargée. Vérifiez votre session Earth Engine et relancez l'analyse."],
   "chat.exampleGeology": [
     "Quais são as principais litologias de Manica?",
     "What are the main lithologies in Manica?",
