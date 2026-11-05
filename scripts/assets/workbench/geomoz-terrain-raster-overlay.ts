@@ -61,8 +61,13 @@ export async function createTerrainRasterDrape(
     const image=await tiff.getImage();
     const w=image.getWidth(),h=image.getHeight();
     if(w<2||h<2||w*h>100_000_000)throw Error("Raster demasiado grande.");
+    // A GeoTIFF may use ModelTransformation rather than ModelPixelScale +
+    // ModelTiepoint. The latter must not be a mandatory metadata pair.
+    // Rotated/skewed transformations cannot be sampled with a simple bbox.
     const geoTags=image.fileDirectory as unknown as Record<string,unknown>;
-    if(!geoTags.ModelPixelScale||!geoTags.ModelTiepoint)
+    const transform=geoTags.ModelTransformation as ArrayLike<number>|undefined;
+    if(transform && (Math.abs(Number(transform[1]))>1e-9 ||
+      Math.abs(Number(transform[4]))>1e-9))
       throw Error("Reprojecte rasters inclinados para um GeoTIFF norte-acima.");
     const sourceCrs=crsFromKeys(image.getGeoKeys() as Record<string,unknown>);
     const bounds=image.getBoundingBox() as number[];
