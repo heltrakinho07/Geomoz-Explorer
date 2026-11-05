@@ -120,7 +120,7 @@ export default function TerrainBasemap({
     try {
       const [west, south, east, north] = terrain.bounds4326;
       map = new maplibregl.Map({
-        container: container.current, style: makeStyle("satellite"),
+        container: container.current, style: makeStyle(appliedBasemapRef.current),
         canvasContextAttributes: { preserveDrawingBuffer: true },
         center: [(west + east) / 2, (south + north) / 2],
         zoom: 9, pitch: flat ? 0 : 55, bearing: flat ? 0 : -15,
