@@ -75,6 +75,8 @@ import {
   PAGE_H,
 } from "@/lib/pdf-export";
 import { apiUrl } from "@/lib/api";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import { hydrologyResultText, type HydrologyResultKey } from "@/i18n/hydrologyResults";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -180,6 +182,9 @@ function computeGeoJsonBounds(geojson: any): { south: number; north: number; wes
 }
 
 export default function HidroWebGisViewer({ id: propId }: Props) {
+  const { translatedLocale } = usePortalTranslation();
+  const ht = (key: HydrologyResultKey) => hydrologyResultText(translatedLocale, key);
+  const numberLocale = translatedLocale === "pt" ? "pt-MZ" : translatedLocale;
   const [shareId, setShareId] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -440,7 +445,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const W = PAGE_W;
       const H = PAGE_H;
-      const date = new Date().toLocaleDateString("pt-PT", { day: "2-digit", month: "long", year: "numeric" });
+      const date = new Date().toLocaleDateString(numberLocale, { day: "2-digit", month: "long", year: "numeric" });
       let pageNum = 1;
 
       const newPage = (pageTitle: string) => {
@@ -503,7 +508,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       // Area + Date right
       doc.setFontSize(13);
       doc.setFont("helvetica", "bold");
-      doc.text(`Área: ${totalArea.toLocaleString("pt-PT")} km²`, W - MARGIN, 14, { align: "right" });
+      doc.text(`Área: ${totalArea.toLocaleString(numberLocale)} km²`, W - MARGIN, 14, { align: "right" });
       doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
       doc.text(date, W - MARGIN, 22, { align: "right" });
@@ -527,7 +532,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       y = sectionLabel("Morfometria da Bacia", y);
       const m = report.morphometry;
       const cards = [
-        { label: "Área", val: `${totalArea.toLocaleString("pt-PT")}`, unit: "km²" },
+        { label: "Área", val: `${totalArea.toLocaleString(numberLocale)}`, unit: "km²" },
         { label: "Perímetro", val: `${m.perimeterKm.toFixed(0)}`, unit: "km" },
         { label: "Elev. mín.", val: `${m.elevMinM.toFixed(0)}`, unit: "m" },
         { label: "Elev. média", val: `${m.elevMeanM.toFixed(0)}`, unit: "m" },
@@ -604,7 +609,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
         doc.text(name, MARGIN + 12, y + 4.2);
         doc.setTextColor(100, 116, 139);
         doc.setFontSize(7);
-        doc.text(lc.areaKm2.toLocaleString("pt-PT", { maximumFractionDigits: 1 }), W - MARGIN - 34, y + 4.2, { align: "right" });
+        doc.text(lc.areaKm2.toLocaleString(numberLocale, { maximumFractionDigits: 1 }), W - MARGIN - 34, y + 4.2, { align: "right" });
 
         const barW = Math.max((lc.pct / maxPct) * 14, 0.5);
         doc.setFillColor(2, 132, 199);
@@ -618,7 +623,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       y += 3;
 
       // Chuva mensal
-      y = sectionLabel(`Precipitação Mensal · ${report.precipAnnualMm.toLocaleString("pt-PT")} mm/ano`, y);
+      y = sectionLabel(`Precipitação Mensal · ${report.precipAnnualMm.toLocaleString(numberLocale)} mm/ano`, y);
       const months = "JanFevMarAbrMaiJunJulAgoSetOutNovDez".match(/.{3}/g) || [];
       const barH = 30;
       const barArea = CONTENT_W - 4;
@@ -910,7 +915,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           <Loader2 size={36} className="text-cyan-400 animate-spin" />
           <div className="text-center">
             <h3 className="text-base font-bold text-slate-100">GeoMoz WebGIS</h3>
-            <p className="text-xs text-slate-400 mt-1">A carregar análise de bacia hidrográfica…</p>
+            <p className="text-xs text-slate-400 mt-1">{ht("viewer.loading")}</p>
           </div>
         </div>
       </div>
@@ -925,15 +930,15 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           <div className="w-12 h-12 rounded-2xl bg-red-500/10 text-red-400 flex items-center justify-center mx-auto mb-4 border border-red-500/20">
             <Info size={24} />
           </div>
-          <h2 className="text-lg font-bold text-slate-100">Análise Não Encontrada</h2>
+          <h2 className="text-lg font-bold text-slate-100">{ht("viewer.notFound")}</h2>
           <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-            {error || "O link de visualização pode ter expirado ou o identificador é inválido."}
+            {error || ht("viewer.invalid")}
           </p>
           <a
             href="/app"
             className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20"
           >
-            <ArrowLeft size={14} /> Ir para o GeoMoz Explorer
+            <ArrowLeft size={14} /> {ht("viewer.home")}
           </a>
         </div>
       </div>
@@ -949,16 +954,16 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
           <div className="bg-gradient-to-tr from-blue-700 via-blue-600 to-cyan-600 rounded-2xl p-4 text-white shadow-lg shadow-blue-900/20">
             <div className="flex items-center justify-between text-xs opacity-80 mb-1">
-              <span>Área da Bacia</span>
+              <span>{ht("result.basinArea")}</span>
               <span className="bg-white/20 px-2 py-0.5 rounded-full text-[10px] font-mono">EPSG:4326</span>
             </div>
             <div className="text-3xl font-extrabold tracking-tight">
-              {totalArea.toLocaleString("pt-PT")} <span className="text-lg font-medium opacity-80">km²</span>
+              {totalArea.toLocaleString(numberLocale)} <span className="text-lg font-medium opacity-80">km²</span>
             </div>
             <div className="mt-2 text-xs opacity-80 flex items-center gap-1.5">
               <MapPin size={11} />
               <span>
-                {PP ? `Exutório: ${PP[0].toFixed(4)}°, ${PP[1].toFixed(4)}°` : "Bacia hidrográfica selecionada"}
+                {PP ? `${ht("viewer.outlet")} ${PP[0].toFixed(4)}°, ${PP[1].toFixed(4)}°` : ht("viewer.selectedBasin")}
               </span>
             </div>
           </div>
@@ -976,7 +981,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               }`}
             >
-              Geral
+              {ht("viewer.tabGeneral")}
             </button>
             <button
               type="button"
@@ -987,7 +992,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               }`}
             >
-              Morfometria
+              {ht("result.tabs.morphometry")}
             </button>
             <button
               type="button"
@@ -998,7 +1003,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               }`}
             >
-              Uso Solo
+              {ht("result.tabs.landcover")}
             </button>
             <button
               type="button"
@@ -1009,7 +1014,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               }`}
             >
-              Chuva & CN
+              {ht("result.tabs.rain")}
             </button>
           </div>
         </div>
@@ -1023,13 +1028,13 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                 <div>
                   <div className="flex items-center gap-1.5 mb-2">
                     <Gauge size={13} className="text-red-500 dark:text-red-400" />
-                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Índices de Risco & Potencial</span>
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{ht("result.riskPotential")}</span>
                   </div>
                   <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3 space-y-2.5">
                     {[
-                      { label: "Risco de Erosão", val: wsStats.erosionRisk, icon: Wind, color: "#f59e0b" },
-                      { label: "Risco de Cheia", val: wsStats.floodRisk, icon: Waves, color: "#ef4444" },
-                      { label: "Pot. Hidrogeológico", val: wsStats.hydroPotential, icon: Zap, color: "#10b981" },
+                      { label: ht("viewer.riskErosion"), val: wsStats.erosionRisk, icon: Wind, color: "#f59e0b" },
+                      { label: ht("viewer.riskFlood"), val: wsStats.floodRisk, icon: Waves, color: "#ef4444" },
+                      { label: ht("result.hydroPotential"), val: wsStats.hydroPotential, icon: Zap, color: "#10b981" },
                     ].map(r => (
                       <div key={r.label} className="space-y-1">
                         <div className="flex justify-between text-xs">
@@ -1053,20 +1058,20 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                   onClick={() => setExportModalOpen(true)}
                   className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-semibold rounded-2xl transition-all shadow-lg shadow-blue-600/25"
                 >
-                  <FileDown size={14} /> Descarregar Relatório PDF (Estilo QGIS)
+                  <FileDown size={14} /> {ht("viewer.downloadPdf")}
                 </button>
                 <button
                   onClick={() => downloadStandaloneBasinHtml({
-                    title: `Bacia Hidrográfica — ${totalArea.toLocaleString("pt-PT")} km²`,
+                    title: `Bacia Hidrográfica — ${totalArea.toLocaleString(numberLocale)} km²`,
                     basinReport: report,
                     watershedData: wsData,
                     wsStats,
                     pourPoint: PP,
                   })}
                   className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-cyan-700 dark:text-cyan-300 border border-slate-200 dark:border-slate-700 text-xs font-semibold rounded-2xl transition-all shadow-sm"
-                  title="Descarregar ficheiro HTML autónomo que abre em qualquer computador offline"
+                  title={ht("result.exportHtmlHint")}
                 >
-                  <FileCode size={14} /> Exportar WebGIS em HTML (Offline)
+                  <FileCode size={14} /> {ht("viewer.downloadHtml")}
                 </button>
               </div>
             </div>
@@ -1077,19 +1082,19 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
             <div className="space-y-3">
               <div className="flex items-center gap-1.5 mb-1">
                 <Mountain size={13} className="text-blue-500 dark:text-blue-400" />
-                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Parâmetros Morfométricos</span>
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{ht("viewer.morphometryParameters")}</span>
               </div>
               <div className="grid grid-cols-3 gap-1.5">
                 {[
-                  ["Perímetro", `${report.morphometry.perimeterKm.toFixed(0)} km`],
-                  ["Relevo", `${report.morphometry.reliefM.toFixed(0)} m`],
-                  ["Declive méd.", `${report.morphometry.slopeMeanDeg.toFixed(1)}°`],
-                  ["Elev. mín.", `${report.morphometry.elevMinM.toFixed(0)} m`],
-                  ["Elev. média", `${report.morphometry.elevMeanM.toFixed(0)} m`],
-                  ["Elev. máx.", `${report.morphometry.elevMaxM.toFixed(0)} m`],
-                  ["Dens. dren.", `${report.morphometry.drainageDensity} km/km²`],
-                  ["Compacidade", `${report.morphometry.compactness}`],
-                  ["Fator forma", `${report.morphometry.formFactor}`],
+                  [ht("result.perimeter"), `${report.morphometry.perimeterKm.toFixed(0)} km`],
+                  [ht("result.relief"), `${report.morphometry.reliefM.toFixed(0)} m`],
+                  [ht("result.meanSlopeShort"), `${report.morphometry.slopeMeanDeg.toFixed(1)}°`],
+                  [ht("result.minElevation"), `${report.morphometry.elevMinM.toFixed(0)} m`],
+                  [ht("result.meanElevation"), `${report.morphometry.elevMeanM.toFixed(0)} m`],
+                  [ht("result.maxElevation"), `${report.morphometry.elevMaxM.toFixed(0)} m`],
+                  [ht("result.drainageDensityShort"), `${report.morphometry.drainageDensity} km/km²`],
+                  [ht("result.compactness"), `${report.morphometry.compactness}`],
+                  [ht("result.formFactor"), `${report.morphometry.formFactor}`],
                 ].map(([k, v]) => (
                   <div key={k} className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-2 text-center">
                     <div className="text-[9px] text-slate-500 dark:text-slate-400 uppercase tracking-wide leading-tight mb-0.5">{k}</div>
@@ -1106,13 +1111,13 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <Activity size={13} className="text-lime-500 dark:text-lime-400" />
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Uso do Solo (ESA 10m)</span>
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{ht("viewer.landcover")}</span>
                 </div>
                 <button
                   onClick={() => setActiveLayer(l => l === "lulc" ? "none" : "lulc")}
                   className="text-[10px] text-sky-600 dark:text-cyan-400 hover:underline font-bold"
                 >
-                  {activeLayer === "lulc" ? "Ocultar" : "Ver no mapa"}
+                  {activeLayer === "lulc" ? ht("viewer.hide") : ht("viewer.showMap")}
                 </button>
               </div>
               <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3 space-y-2">
@@ -1143,24 +1148,24 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
                     <Waves size={13} className="text-amber-500 dark:text-amber-400" />
-                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Escoamento (Curve Number)</span>
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{ht("viewer.runoff")}</span>
                   </div>
                   <button
                     onClick={() => setActiveLayer(l => l === "cn" ? "none" : "cn")}
                     className="text-[10px] text-sky-600 dark:text-cyan-400 hover:underline font-bold"
                   >
-                    {activeLayer === "cn" ? "Ocultar" : "Ver no mapa"}
+                    {activeLayer === "cn" ? ht("viewer.hide") : ht("viewer.showMap")}
                   </button>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-700 dark:text-slate-300">CN Médio da Bacia</span>
+                    <span className="text-xs text-slate-700 dark:text-slate-300">{ht("viewer.meanCN")}</span>
                     <span className="text-base font-bold text-slate-900 dark:text-white font-mono">{report.runoff.cnMean ?? "—"}</span>
                   </div>
                   <div className="h-2 rounded-full mt-2" style={{ background: "linear-gradient(to right,#1a9850,#fee08b,#d73027)" }} />
                   <div className="flex justify-between text-[9px] text-slate-500 dark:text-slate-400 mt-1">
-                    <span>40 · Alta infiltração</span>
-                    <span>Escoamento rápido · 100</span>
+                    <span>40 · {ht("viewer.highInfiltration")}</span>
+                    <span>{ht("viewer.fastRunoff")} · 100</span>
                   </div>
                 </div>
               </div>
@@ -1170,7 +1175,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                 <div className="flex items-center gap-1.5 mb-2">
                   <Droplets size={13} className="text-blue-500 dark:text-blue-400" />
                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Chuva Mensal · {report.precipAnnualMm.toLocaleString("pt-PT")} mm/ano
+                    {ht("viewer.monthlyRain")} · {report.precipAnnualMm.toLocaleString(numberLocale)} {ht("result.mmYear")}
                   </span>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-2.5">
@@ -1189,7 +1194,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                           borderRadius: "8px",
                           fontSize: "11px",
                         }}
-                        formatter={(v: number) => [`${v} mm`, "Precipitação"]}
+                        formatter={(v: number) => [`${v} mm`, ht("result.precipitation")]}
                       />
                       <Bar dataKey="mm" fill="#0284c7" radius={[2, 2, 0, 0]} />
                     </BarChart>
@@ -1260,7 +1265,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           {/* Export HTML Button */}
           <button
             onClick={() => downloadStandaloneBasinHtml({
-              title: `Bacia Hidrográfica — ${totalArea.toLocaleString("pt-PT")} km²`,
+              title: `Bacia Hidrográfica — ${totalArea.toLocaleString(numberLocale)} km²`,
               basinReport: report,
               watershedData: wsData,
               wsStats,
@@ -1531,7 +1536,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
             <FileText size={15} className="text-cyan-400" />
             <span>Ver Relatório & Métricas</span>
             <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-mono">
-              {totalArea.toLocaleString("pt-PT")} km²
+              {totalArea.toLocaleString(numberLocale)} km²
             </span>
             <ChevronUp size={14} className="text-slate-400" />
           </button>
@@ -1553,7 +1558,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                   <div>
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white">Relatório da Bacia</h3>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                      Área: {totalArea.toLocaleString("pt-PT")} km² · {report.morphometry?.reliefM?.toFixed(1) ?? "—"} m relevo
+                      Área: {totalArea.toLocaleString(numberLocale)} km² · {report.morphometry?.reliefM?.toFixed(1) ?? "—"} m relevo
                     </p>
                   </div>
                 </div>
