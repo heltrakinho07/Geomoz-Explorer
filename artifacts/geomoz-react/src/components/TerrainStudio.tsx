@@ -6,6 +6,7 @@ import { validTerrainGeography } from "@/lib/terrain-map-geo";
 import { apiFetch } from "@/lib/api";
 import { useTerrainSession } from "@/context/TerrainSessionContext";
 import { useProject } from "@/context/ProjectContext";
+import { computeGeoJSONBounds } from "@/lib/aoi";
 import TerrainSciencePanel, {type TerrainPickedPoint} from "@/components/TerrainSciencePanel";
 import { encodeTerrainGLB, imageToGLBTexture } from "@/lib/terrain-glb";
 import {terrainToGeographic} from "@/lib/terrain-analysis";
@@ -397,7 +398,8 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   if (!open) return null;
   const mapReady = !!terrain && validTerrainGeography(terrain);
   const localCanvasReady = viewMode === "model" || !mapReady;
-  const projectBounds=activeProject?.aoi.bounds;
+  const projectBounds=activeProject?.aoi.bounds ??
+    (activeProject?.aoi.geometry?computeGeoJSONBounds(activeProject.aoi.geometry):null);
   const outOfProjectArea=!!(terrain && projectBounds &&
     (projectBounds[0][1]>terrain.bounds4326[2] ||
      projectBounds[1][1]<terrain.bounds4326[0] ||
