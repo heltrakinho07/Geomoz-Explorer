@@ -5,6 +5,7 @@ import { GeoIntelligenceDossier, type IntelligenceDossier } from "./GeoIntellige
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useProject } from "../context/ProjectContext";
 import { apiFetch } from "@/lib/api";
+import { useGeeAuth } from "@/hooks/useGeeAuth";
 import { aoiToAPI, mozambiqueAOI, countryAOI, GLOBAL_AOI, type AreaOfInterest } from "@/lib/aoi";
 import { useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
 import AreaSelect from "./AreaSelect";
@@ -123,6 +124,7 @@ interface ChatMessage {
 
 export default function GeoMozAIAgentTab() {
   const { activeProject, updateProject, saveRunToActiveProject } = useProject();
+  const { refreshStatus } = useGeeAuth();
 
   const loadGAULUnits = useCallback<LoadGAULUnits>(async (countryCode, level, parentCode, signal) => {
     const response = await apiFetch("/geomoz-api/ai/agent-chat", {
@@ -483,6 +485,9 @@ export default function GeoMozAIAgentTab() {
       }
 
       const data = await res.json();
+      if (Array.isArray(data.runs) && data.runs.some((run: { output?: { code?: string } }) => run.output?.code === "gee_reconnect_required")) {
+        void refreshStatus();
+      }
       if (data.agent_context?.domain === "geology") {
         setAgentContext(data.agent_context as AgentScope);
       } else if (data.status === "completed") {
