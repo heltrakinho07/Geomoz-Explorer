@@ -30,7 +30,8 @@ import GeoMozTerrainLayers from "./GeoMozTerrainLayers";
 import GeoMozTerrainGeoMap from "./GeoMozTerrainGeoMap";
 import {validTerrainGeography} from "./geomoz-terrain-tiles";
 import { terrainOverlayTexture, type GeoMozTerrainOverlay } from "./geomoz-terrain-overlays";
-import { createTerrainRasterDrape, type GeoMozRasterDrape } from "./geomoz-terrain-raster-overlay";
+import { createTerrainRasterDrape, type TerrainRasterDrapeOptions } from "./geomoz-terrain-raster-overlay";
+import {composeTerrainDrapes,type TerrainDrapeLayer} from "./geomoz-terrain-drape-stack";
 import "./geomoz-terrain-workspace.css";
 
 const LIMIT=32*1024*1024;
@@ -173,7 +174,18 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
   const [workspaceTab,setWorkspaceTab]=useState<"layers"|"style"|"analysis"|"export">("layers");
   const [viewMode,setViewMode]=useState<"model"|"map"|"split">("map");
   const [overlays,setOverlays]=useState<GeoMozTerrainOverlay[]>([]);
-  const [rasterDrape,setRasterDrape]=useState<(GeoMozRasterDrape & {opacity:number;visible:boolean})|null>(null);
+  const [rasterDrapes,setRasterDrapes]=useState<TerrainDrapeLayer[]>([]);
+  const [drapeTexture,setDrapeTexture]=useState<string|null>(null);
+  useEffect(()=>{
+    if(!terrain){setDrapeTexture(null);return;}
+    const controller=new AbortController();
+    void composeTerrainDrapes(rasterDrapes,1024,controller.signal).then(texture=>{
+      if(!controller.signal.aborted)setDrapeTexture(texture);
+    }).catch(cause=>{
+      if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:"Falha na composição raster.");
+    });
+    return ()=>controller.abort();
+  },[terrain,rasterDrapes]);
   const [rasterBusy,setRasterBusy]=useState(false);
   const [rasterProgress,setRasterProgress]=useState<{label:string;percent:number|null}|null>(null);
   const overlayTexture=useMemo(()=>terrain?terrainOverlayTexture(terrain,overlays):null,[terrain,overlays]);
@@ -220,8 +232,8 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     try {
       return createTerrainRenderer(canvasRef.current,terrain,{
         exaggeration,style,detailLevel,overlayTextureUrl:overlayTexture,
-        rasterTextureUrl:rasterDrape?.visible?rasterDrape.imageDataUrl:null,
-        rasterOpacity:rasterDrape?.visible?rasterDrape.opacity:0,
+        rasterTextureUrl:drapeTexture,
+        rasterOpacity:drapeTexture?1:0,
         pickEnabled:!!pickTarget,onPick:selectPoint,
         profileOverlay:picked.A&&picked.B?
           {start:[picked.A.xMeters,picked.A.yMeters],
@@ -230,7 +242,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     }catch(cause){
       setRendererError(cause instanceof Error?cause.message:"O WebGL2 não pôde carregar o modelo.");
     }
-  },[open,terrain,exaggeration,style,detailLevel,pickTarget,picked,overlayTexture,rasterDrape,viewMode]);
+  },[open,terrain,exaggeration,style,detailLevel,pickTarget,picked,overlayTexture,drapeTexture,viewMode]);
 
   async function openSelectedDEM(){
     const layer=options.find(o=>o.id===selected);
@@ -245,7 +257,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
       const preview=await geomozNativeTerrainPreview(bytes,layer.name);
       if(controller.signal.aborted)return;
       setTerrain(preview);setPicked({});setLastPick(null);setPickTarget(null);
-      setOverlays([]);setRasterDrape(null);setWorkspaceTab("layers");
+      setOverlays([]);setRasterDrapes([]);setWorkspaceTab("layers");
       setViewMode(validTerrainGeography(preview)?"map":"model");
       setNotice("Modelo 3D do projecto: "+layer.name+
         " · "+preview.crs+" · "+preview.validFraction.toLocaleString("pt-PT",{style:"percent",maximumFractionDigits:1})+" válido");
@@ -266,7 +278,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     setRasterBusy(false);setRasterProgress(null);
     setNotice("Importação do raster cancelada. O modelo e as camadas existentes foram preservados.");
   }
-  async function applyRasterOverlay(input:File|{source:string;name:string}){
+  async function applyRasterOverlay(input:File|{source:string;name:string}, renderer:TerrainRasterDrapeOptions["renderer"]="auto", palette:TerrainRasterDrapeOptions["palette"]="ndvi"){
     if(!terrain||rasterAbortRef.current)return;
     const controller=new AbortController();
     rasterAbortRef.current=controller;
@@ -283,14 +295,17 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
       if(controller.signal.aborted)return;
       setRasterProgress({label:"A alinhar e recortar "+name,percent:0});
       const prepared=await createTerrainRasterDrape(buffer,name,terrain,{
-        signal:controller.signal,
+        renderer,palette,signal:controller.signal,
         onProgress:fraction=>{
           if(!controller.signal.aborted)
             setRasterProgress({label:"A alinhar e recortar "+name,percent:Math.round(fraction*100)});
         }
       });
       if(controller.signal.aborted)return;
-      setRasterDrape({...prepared,opacity:0.82,visible:true});
+      setRasterDrapes(previous=>[...previous,{
+        ...prepared,id:"raster-"+crypto.randomUUID(),imageDataUrl:prepared.imageDataUrl,
+        kind:prepared.mode,opacity:0.82,visible:true,blend:"normal"
+      }]);
       setNotice("Raster temático sobreposto e recortado à extensão do DEM ("+
         Math.round(prepared.coverage*100)+"% de cobertura).");
     }catch(cause){
@@ -329,7 +344,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
       const scene=decodeTerrainScene(await file.text());
       setTerrain(scene.terrain);setStyle(scene.style);setExaggeration(scene.exaggeration);
       setPicked({});setPickTarget(null);setLastPick(null);
-      setOverlays([]);setRasterDrape(null);
+      setOverlays([]);setRasterDrapes([]);
       setViewMode(validTerrainGeography(scene.terrain)?"map":"model");
       setNotice("Cena 3D reaberta. A camada raster original permanece no projecto SIG.");
     }catch(cause){setError(cause instanceof Error?cause.message:"Cena .geomoz inválida.");}
@@ -415,9 +430,9 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
           {(workspaceTab==="layers"||workspaceTab==="style")&&
             <GeoMozTerrainLayers layers={layers} overlays={overlays} onChange={setOverlays}
               activePanel={workspaceTab} terrainReady={!!terrain}
-              rasterOptions={options.filter(o=>o.id!==selected)} raster={rasterDrape}
+              rasterOptions={options.filter(o=>o.id!==selected)} rasters={rasterDrapes}
               rasterBusy={rasterBusy} rasterProgress={rasterProgress}
-              onCancelRaster={cancelRasterOverlay} onRasterChange={setRasterDrape}
+              onCancelRaster={cancelRasterOverlay} onRastersChange={setRasterDrapes}
               onImportRaster={applyRasterOverlay}
               onNotice={setNotice}/>}
           {workspaceTab==="analysis"&&<>
@@ -518,8 +533,8 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
             <GeoMozTerrainGeoMap terrain={terrain} overlays={overlays}
               exaggeration={exaggeration} style={style}
               vectorTexture={overlayTexture}
-              rasterTexture={rasterDrape?.visible?rasterDrape.imageDataUrl:null}
-              rasterOpacity={rasterDrape?.visible?rasterDrape.opacity:0}
+              rasterTexture={drapeTexture}
+              rasterOpacity={drapeTexture?1:0}
               flat={viewMode==="split"} translate={ui}/>
           </div>}
         </div>:
