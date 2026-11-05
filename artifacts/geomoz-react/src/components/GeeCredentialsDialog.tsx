@@ -60,25 +60,25 @@ export default function GeeCredentialsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md p-0 overflow-hidden bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800">
-        <DialogHeader className="px-6 py-5 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white">
+      <DialogContent data-testid="geomoz-gee-credentials-dialog" className="gm-soft-dialog flex max-h-[92dvh] w-[calc(100vw-1.5rem)] max-w-[500px] flex-col overflow-hidden rounded-[26px] p-0">
+        <DialogHeader className="gm-soft-header shrink-0 px-5 py-5 text-slate-900 dark:text-white sm:px-7">
           <div className="flex items-center gap-2.5 mb-1.5">
-            <div className="w-8 h-8 rounded-lg bg-sky-500/20 border border-sky-400/30 flex items-center justify-center text-sky-400">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-600 to-indigo-600 text-white shadow-md">
               <Globe2 size={18} />
             </div>
-            <DialogTitle className="text-base font-semibold text-white">
+            <DialogTitle className="text-lg font-black tracking-tight text-slate-950 dark:text-white">
               Google Earth Engine OAuth
             </DialogTitle>
           </div>
-          <DialogDescription className="text-xs text-slate-300">
+          <DialogDescription className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
             Execute análises geoespaciais com a sua própria conta Google do GEE
           </DialogDescription>
         </DialogHeader>
 
-        <div className="p-6 space-y-5">
+        <div className="gm-soft-body min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7">
           {/* Error Message */}
           {error && (
-            <div className="flex items-start gap-2.5 p-3.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl text-xs text-red-700 dark:text-red-300">
+            <div role="alert" className="flex items-start gap-2.5 p-3.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl text-xs text-red-700 dark:text-red-300">
               <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <strong className="block font-semibold">Falha na ligação:</strong>
@@ -102,7 +102,7 @@ export default function GeeCredentialsDialog({
                 </div>
               </div>
 
-              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 text-xs text-slate-600 dark:text-slate-300 space-y-1.5">
+              <div className="gm-soft-surface space-y-2 rounded-2xl p-4 text-xs text-slate-600 dark:text-slate-300">
                 <div className="flex items-center gap-2 font-medium text-slate-700 dark:text-slate-200">
                   <Layers size={14} className="text-indigo-600 dark:text-indigo-400" />
                   <span>Capacidades desbloqueadas:</span>
@@ -125,7 +125,7 @@ export default function GeeCredentialsDialog({
           ) : (
             /* Not Connected State */
             <div className="space-y-4">
-              <div className="bg-sky-50/70 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/50 rounded-xl p-4 text-xs text-sky-900 dark:text-sky-200 space-y-2">
+              <div className="gm-soft-surface space-y-2 rounded-2xl p-4 text-xs leading-relaxed text-sky-900 dark:text-sky-200">
                 <p className="leading-relaxed">
                   Para aceder a análises completas, inicie sessão com a sua <strong>conta Google que tenha acesso ao Google Earth Engine</strong>.
                 </p>
@@ -141,15 +141,18 @@ export default function GeeCredentialsDialog({
 
               {/* Optional Project ID Input */}
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                <label htmlFor="geomoz-gee-project-id" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   GCP Project ID (opcional):
                 </label>
                 <input
+                  id="geomoz-gee-project-id"
                   type="text"
+                  autoComplete="off"
+                  spellCheck={false}
                   placeholder="ex: ee-meu-projeto ou deixe em branco"
                   value={projectInput}
                   onChange={(e) => setProjectInput(e.target.value)}
-                  className="w-full text-xs px-3 py-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                  className="gm-soft-input w-full px-3 py-2.5 font-mono text-sm"
                 />
               </div>
 
@@ -186,7 +189,7 @@ export default function GeeCredentialsDialog({
               <Button
                 onClick={handleConnect}
                 disabled={loading}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 h-auto shadow-md shadow-indigo-100 transition-all flex items-center justify-center gap-2 text-sm"
+                className="gm-soft-primary flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold transition-all"
               >
                 {loading ? (
                   <>
