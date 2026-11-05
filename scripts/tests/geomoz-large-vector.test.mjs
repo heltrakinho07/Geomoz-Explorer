@@ -40,8 +40,9 @@ test("pinned GeoLibre is patched at the Add Vector Layer source", () => {
     assert.match(worker, /readAsArrayBuffer\(file\)/);
     assert.match(panel, /DUCKDB_VECTOR_ROUTE_BYTES/);
     assert.match(panel, /controller.abort\(\)/);
+    assert.match(panel, /renderMode: "tiles"/);
     assert.match(panel, /role", "alert"/);
-    assert.throws(() => prepareGeoMozLargeVector(temp), /anchor changed/);
+    assert.throws(() => prepareGeoMozLargeVector(temp), /already exists/);
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
