@@ -147,6 +147,17 @@ async def execute_tool(name, args, context, declarations, implementation):
     return output
 
 
+# Standardized user-facing warnings only. Raw tool outputs and provenance are never translated.
+_STANDARD_NOTICES = {"incomplete":["Há ferramentas sem resultado; a síntese não valida os indicadores em falta.","Some tools returned no results; the synthesis does not validate missing indicators.","Algunas herramientas no devolvieron resultados; la síntesis no valida los indicadores ausentes.","Certains outils n'ont produit aucun résultat ; la synthèse ne valide pas les indicateurs manquants."],"prefix":["Análise incompleta. ","Incomplete analysis. ","Análisis incompleto. ","Analyse incomplète. "],"unverified":["Resposta sem execução de ferramentas analíticas; não constitui um resultado calculado.","No analytical tools were executed; this is not a calculated result.","No se ejecutaron herramientas analíticas; no es un resultado calculado.","Aucun outil analytique n'a été exécuté ; ce n'est pas un résultat calculé."],"no_source":["Algumas ferramentas não comunicam a fonte no resultado. Consulte a metodologia antes de reutilizar os valores.","Some tools did not report sources. Check the methodology before reusing their values.","Algunas herramientas no informaron de las fuentes. Revise la metodología antes de reutilizar los valores.","Certains outils n'ont pas indiqué leurs sources. Consultez la méthode avant de réutiliser les valeurs."],"ahp":["Favorabilidade é um modelo exploratório. A designação AHP exige matriz de comparação e razão de consistência verificadas.","Favourability is exploratory; AHP requires a verified comparison matrix and consistency ratio.","La favorabilidad es exploratoria; AHP requiere una matriz de comparación y una razón de consistencia verificadas.","La favorabilité est exploratoire ; AHP nécessite une matrice de comparaison et un ratio de cohérence vérifiés."],"no_result":["Sem resultado verificável.","No verifiable result.","Sin resultado verificable.","Aucun résultat vérifiable."]}
+
+
+def _notice(context, key):
+    raw = context.get("uiLocale") if isinstance(context, dict) else None
+    locale = raw.split("-", 1)[0].lower() if isinstance(raw, str) else "pt"
+    index = {"pt": 0, "en": 1, "es": 2, "fr": 3}.get(locale, 1)
+    return _STANDARD_NOTICES[key][index]
+
+
 def build_dossier(result, context):
     """Attach verifiable evidence and normalise completion across providers."""
     records = context.get("_execution_evidence", [])
@@ -165,23 +176,23 @@ def build_dossier(result, context):
     warnings = []
     if failed:
         result["status"] = "partial" if successful else "error"
-        warnings.append("Há ferramentas sem resultado; a síntese não valida os indicadores em falta.")
-        result["synthesis"] = "Análise incompleta. " + str(result.get("synthesis") or "")
+        warnings.append(_notice(context, "incomplete"))
+        result["synthesis"] = _notice(context, "prefix") + str(result.get("synthesis") or "")
     elif not analytical and result.get("status") == "completed":
         result["status"] = "unverified"
-        warnings.append("Resposta sem execução de ferramentas analíticas; não constitui um resultado calculado.")
+        warnings.append(_notice(context, "unverified"))
     for record in records:
         warning = record.get("result", {}).get("warning")
         if warning and str(warning) not in warnings:
             warnings.append(str(warning))
     if any(not r.get("source") for r in successful):
-        warnings.append("Algumas ferramentas não comunicam a fonte no resultado. Consulte a metodologia antes de reutilizar os valores.")
+        warnings.append(_notice(context, "no_source"))
     if any(r["tool"] == "run_multicriteria_ahp" for r in analytical):
-        warnings.append("Favorabilidade é um modelo exploratório. A designação AHP exige matriz de comparação e razão de consistência verificadas.")
+        warnings.append(_notice(context, "ahp"))
     for step, record in zip(result.get("steps", []), records):
         step["status"] = "completed" if record["status"] == "success" else "error"
         if record["status"] != "success":
-            step["resultSummary"] = record["result"].get("message", "Sem resultado verificável.")
+            step["resultSummary"] = record["result"].get("message", _notice(context, "no_result"))
     # For a single temporal comparison, the actual A/B dates take precedence
     # over the project's default analysis window in the exported dossier.
     dossier_period = context.get("temporalWindow") or {}

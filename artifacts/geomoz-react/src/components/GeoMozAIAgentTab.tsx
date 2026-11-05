@@ -8,6 +8,7 @@ import { apiFetch } from "@/lib/api";
 import { useGeeAuth } from "@/hooks/useGeeAuth";
 import { usePortalTranslation } from "@/i18n/usePortalTranslation";
 import { aiAgentText, type AiAgentCopyKey } from "@/i18n/aiAgent";
+import { aiDiagnosticText, agentHttpError, type AiDiagnosticKey } from "@/i18n/aiDiagnostics";
 import { aoiToAPI, mozambiqueAOI, countryAOI, GLOBAL_AOI, type AreaOfInterest } from "@/lib/aoi";
 import { useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
 import AreaSelect from "./AreaSelect";
@@ -138,6 +139,8 @@ export default function GeoMozAIAgentTab() {
   const { refreshStatus } = useGeeAuth();
   const { translatedLocale } = usePortalTranslation();
   const copy = useCallback((key: AiAgentCopyKey) => aiAgentText(translatedLocale, key), [translatedLocale]);
+  const diag = useCallback((key: AiDiagnosticKey) => aiDiagnosticText(translatedLocale, key), [translatedLocale]);
+  const numberLocale = translatedLocale === "pt" ? "pt-MZ" : translatedLocale;
 
   const loadGAULUnits = useCallback<LoadGAULUnits>(async (countryCode, level, parentCode, signal) => {
     const response = await apiFetch("/geomoz-api/ai/agent-chat", {
@@ -150,14 +153,14 @@ export default function GeoMozAIAgentTab() {
         },
       }),
     });
-    if (!response.ok) throw new Error(`Não foi possível consultar FAO GAUL (HTTP ${response.status}).`);
+    if (!response.ok) throw new Error(agentHttpError(translatedLocale, response.status, await response.json().catch(() => null), response.headers.get("X-Request-ID")));
     const data = await response.json();
     const output = data.runs?.[0]?.output;
     if (output?.status !== "success" || !Array.isArray(output.units)) {
-      throw new Error(output?.message || data.synthesis || "Sem unidades FAO GAUL disponíveis.");
+      throw new Error(diag("error.gaulEmpty"));
     }
     return output.units;
-  }, []);
+  }, [diag, translatedLocale]);
 
   // Area of Interest (AOI) state
   const [selectedProvince, setSelectedProvince] = useState<string | null>(() => {
@@ -276,7 +279,7 @@ export default function GeoMozAIAgentTab() {
     }
     setIsRunning(false);
     setSteps((prev) =>
-      prev.map((s) => (s.status === "running" ? { ...s, status: "error", resultSummary: "Interrompido pelo utilizador" } : s))
+      prev.map((s) => (s.status === "running" ? { ...s, status: "error", resultSummary: diag("agent.stopped") } : s))
     );
   };
 
@@ -334,7 +337,7 @@ export default function GeoMozAIAgentTab() {
   const refreshModels = async () => {
     const apiKey = (tempProvider === "openai" ? tempOpenaiKey : tempGeminiKey).trim();
     if (tempProvider === "auto" || !apiKey) {
-      setModelsMessage("Seleccione OpenAI ou Gemini e forneça a respectiva chave API.");
+      setModelsMessage(diag("error.modelsKey"));
       return;
     }
     setModelsBusy(true);
@@ -345,16 +348,16 @@ export default function GeoMozAIAgentTab() {
         body: JSON.stringify({ provider: tempProvider, api_key: apiKey }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || "Falha na consulta de modelos.");
+      if (!response.ok) throw new Error(agentHttpError(translatedLocale, response.status, data.detail, response.headers.get("X-Request-ID")));
       const entries = (data.models || []).map((entry: { id: string; label: string }) => ({
         value: entry.id, label: entry.label,
       }));
-      if (!entries.length) throw new Error("A chave não devolveu modelos compatíveis com consultas de texto e ferramentas.");
+      if (!entries.length) throw new Error(diag("error.modelsEmpty"));
       setVerifiedModels({ provider: tempProvider, entries });
       setTempModel(entries[0].value);
-      setModelsMessage(`${entries.length} modelos visíveis nesta conta. O suporte a ferramentas será confirmado durante a execução.`);
+      setModelsMessage(`${entries.length} ${diag("error.modelsCount")}`);
     } catch (e) {
-      setModelsMessage(e instanceof Error ? e.message : "Não foi possível consultar os modelos.");
+      setModelsMessage(e instanceof Error ? e.message : diag("error.models"));
     } finally {
       setModelsBusy(false);
     }
@@ -391,12 +394,12 @@ export default function GeoMozAIAgentTab() {
 
   const activeProviderLabel = (() => {
     if (provider === "openai" || (provider === "auto" && openaiApiKey.trim())) {
-      return `OpenAI (${model || "automático"})`;
+      return `OpenAI (${model || diag("agent.modelAuto")})`;
     }
     if (provider === "gemini" || (provider === "auto" && geminiApiKey.trim())) {
-      return `Google Gemini (${model || "automático"})`;
+      return `Google Gemini (${model || diag("agent.modelAuto")})`;
     }
-    return "Heurístico Spatial (Offline)";
+    return diag("agent.offline");
   })();
 
   const isAIActive = Boolean(openaiApiKey.trim() || geminiApiKey.trim());
@@ -420,14 +423,14 @@ export default function GeoMozAIAgentTab() {
       id: `usr_${Date.now()}`,
       sender: "user",
       text: textToSend,
-      timestamp: new Date().toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }),
+      timestamp: new Date().toLocaleTimeString(numberLocale, { hour: "2-digit", minute: "2-digit" }),
     };
 
     setMessages((prev) => [...prev, userMsg]);
 
     const initialRunningStep: WorkflowStep = {
       id: "planner",
-      name: `Formulação do Plano Geoespacial (${activeProviderLabel})...`,
+      name: `${diag("agent.plan")} (${activeProviderLabel})…`,
       status: "running",
     };
     setSteps([initialRunningStep]);
@@ -449,6 +452,7 @@ export default function GeoMozAIAgentTab() {
           geometry: aoiPayload.geometry || null,
         },
         temporalWindow: analysisPeriod,
+        uiLocale: translatedLocale,
         agentContext,
         publicAnalysis: publicRequest ? {
           ...publicRequest,
@@ -489,16 +493,7 @@ export default function GeoMozAIAgentTab() {
           ? payload as Record<string, unknown>
           : null;
         const detail = response?.detail;
-        const message = typeof detail === "string"
-          ? detail
-          : detail && typeof detail === "object" && "message" in detail
-            ? String((detail as Record<string, unknown>).message)
-            : "Não foi possível processar a consulta.";
-        const requestId = detail && typeof detail === "object" && "request_id" in detail
-          ? String((detail as Record<string, unknown>).request_id)
-          : res.headers.get("X-Request-ID");
-        const safeMessage = message.slice(0, 350);
-        throw new Error(`HTTP ${res.status}: ${safeMessage}${requestId ? ` (código: ${requestId})` : ""}`);
+        throw new Error(agentHttpError(translatedLocale, res.status, detail, res.headers.get("X-Request-ID")));
       }
 
       const data = await res.json();
@@ -512,7 +507,7 @@ export default function GeoMozAIAgentTab() {
       }
 
       const finalSteps: WorkflowStep[] = data.steps && data.steps.length > 0 ? data.steps : [
-        { id: "exec", name: "Resposta do agente", status: data.status === "completed" ? "completed" : "error", resultSummary: data.status === "completed" ? "Concluído" : "Ver dossiê" },
+        { id: "exec", name: diag("agent.response"), status: data.status === "completed" ? "completed" : "error", resultSummary: data.status === "completed" ? diag("agent.completed") : diag("agent.dossier") },
       ];
       setSteps(finalSteps);
 
@@ -530,7 +525,7 @@ export default function GeoMozAIAgentTab() {
         }
         if (act.type === "ADD_LAYER" && act.tileUrl) {
           computedLayers.push({
-            name: act.name || "Camada Calculada",
+            name: act.name || diag("agent.viewLayer"),
             type: "remote_sensing",
             sensor: "GeoMoz AI",
             code: act.id,
@@ -555,11 +550,11 @@ export default function GeoMozAIAgentTab() {
             });
             if (!geoResponse.ok) {
               const problem = await geoResponse.json().catch(() => ({}));
-              throw new Error(problem.detail || "Não foi possível obter os polígonos.");
+              throw new Error(agentHttpError(translatedLocale, geoResponse.status, problem.detail, geoResponse.headers.get("X-Request-ID")));
             }
             const geojson = (await geoResponse.json()) as AgentGeologyGeoJSON;
             if (geojson.type !== "FeatureCollection" || !Array.isArray(geojson.features)) {
-              throw new Error("A camada geológica devolveu dados inválidos.");
+              throw new Error(diag("error.geologyInvalid"));
             }
             computedLayers.push({
               name: act.name || "Geologia de Moçambique",
@@ -570,7 +565,7 @@ export default function GeoMozAIAgentTab() {
             });
           } catch (error) {
             if (controller.signal.aborted) throw error;
-            const message = error instanceof Error ? error.message : "Erro de visualização.";
+            const message = error instanceof Error ? error.message : diag("error.visualization");
             vectorWarnings.push(message);
           }
         }
@@ -593,12 +588,12 @@ export default function GeoMozAIAgentTab() {
       }
       const generalized = computedLayers.some((layer) => layer.geojson?.generalized);
       setGeologyNotice(vectorWarnings.join(" ") || (generalized
-        ? "Camada geológica generalizada; estatísticas calculadas nos polígonos originais."
+        ? diag("error.geologyGeneralized")
         : null));
 
-      const answer = data.synthesis || "Não foi devolvida uma síntese. Consulte o dossiê de execução.";
+      const answer = data.synthesis || diag("agent.noSummary");
       const finalSynthesis = vectorWarnings.length
-        ? answer + "\n\n**Mapa geológico:** " + vectorWarnings.join("; ")
+        ? answer + `\n\n**${diag("agent.mapWarning")}** ` + vectorWarnings.join("; ")
         : answer;
       setSynthesis(finalSynthesis);
 
@@ -607,7 +602,7 @@ export default function GeoMozAIAgentTab() {
         id: `agent_${Date.now()}`,
         sender: "agent",
         text: finalSynthesis,
-        timestamp: new Date().toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }),
+        timestamp: new Date().toLocaleTimeString(numberLocale, { hour: "2-digit", minute: "2-digit" }),
         steps: finalSteps,
         runs: computedLayers,
         intelligence: data.intelligence,
@@ -619,14 +614,14 @@ export default function GeoMozAIAgentTab() {
     } catch (err: any) {
       const isAborted = controller.signal.aborted;
       const errorText = isAborted
-        ? "A operação foi interrompida ou atingiu o tempo limite (75 s). Dica: selecione uma província ou distrito específico na Área de Estudo para acelerar o processamento das cenas de satélite."
-        : `Falha na execução do agente: ${err.message}`;
+        ? diag("error.aborted")
+        : `${diag("error.runPrefix")} ${err instanceof Error ? err.message : diag("error.generic")}`;
 
       const errMsg: ChatMessage = {
         id: `err_${Date.now()}`,
         sender: "agent",
         text: errorText,
-        timestamp: new Date().toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }),
+        timestamp: new Date().toLocaleTimeString(numberLocale, { hour: "2-digit", minute: "2-digit" }),
       };
       setMessages((prev) => [...prev, errMsg]);
     } finally {
@@ -657,12 +652,12 @@ export default function GeoMozAIAgentTab() {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(14);
       doc.setTextColor(255, 255, 255);
-      doc.text("GEOMOZ EXPLORER — RELATÓRIO DO AGENTE AI", margin + 6, y + 9);
+      doc.text(diag("agent.pdfTitle"), margin + 6, y + 9);
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8.5);
       doc.setTextColor(148, 163, 184);
-      doc.text(`Motor IA: ${activeProviderLabel} | Data: ${new Date().toLocaleDateString("pt-PT")}`, margin + 6, y + 15);
+      doc.text(`${diag("agent.pdfEngine")} ${activeProviderLabel} | ${diag("agent.pdfDate")} ${new Date().toLocaleDateString(numberLocale)}`, margin + 6, y + 15);
 
       y += 26;
 
@@ -674,11 +669,11 @@ export default function GeoMozAIAgentTab() {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
       doc.setTextColor(30, 41, 59);
-      doc.text(`Área de Estudo: ${reportArea}`, margin + 5, y + 6);
+      doc.text(`${diag("agent.pdfArea")} ${reportArea}`, margin + 5, y + 6);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
       doc.setTextColor(100, 116, 139);
-      doc.text(`Projeto: ${activeProject?.name || "Estudo Avulso"} | Camadas Geradas: ${completedRuns.length}`, margin + 5, y + 11);
+      doc.text(`${diag("agent.pdfProject")} ${activeProject?.name || diag("agent.pdfUnassigned")} | ${diag("agent.pdfLayers")} ${completedRuns.length}`, margin + 5, y + 11);
 
       y += 22;
 
@@ -700,7 +695,7 @@ export default function GeoMozAIAgentTab() {
         doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
         doc.setTextColor(15, 23, 42);
-        doc.text("Rastreio de Execução ReAct / Ferramentas GIS:", margin, y);
+        doc.text(diag("agent.pdfTrace"), margin, y);
         y += 5;
 
         doc.setFont("helvetica", "normal");
@@ -719,7 +714,7 @@ export default function GeoMozAIAgentTab() {
         doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
         doc.setTextColor(15, 23, 42);
-        doc.text("Parecer Técnico & Diagnóstico Geocientífico:", margin, y);
+        doc.text(diag("agent.pdfSynthesis"), margin, y);
         y += 6;
 
         doc.setFont("helvetica", "normal");
@@ -732,11 +727,11 @@ export default function GeoMozAIAgentTab() {
       // Footer
       doc.setFontSize(7.5);
       doc.setTextColor(148, 163, 184);
-      doc.text("GeoMoz AI Agent — Documento gerado automaticamente para suporte à decisão técnica.", margin, 290);
+      doc.text(diag("agent.pdfFooter"), margin, 290);
 
       doc.save(`GeoMoz_Missao_${reportArea.replace(/\s+/g, "_")}.pdf`);
     } catch (e: any) {
-      alert(`Falha ao gerar PDF: ${e.message}`);
+      alert(diag("agent.pdfError"));
     } finally {
       setIsExportingPdf(false);
     }
@@ -1185,7 +1180,7 @@ export default function GeoMozAIAgentTab() {
                             className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-700 hover:bg-violet-100 hover:text-violet-700 text-slate-700 dark:text-slate-300 transition-colors flex items-center gap-1 cursor-pointer"
                           >
                             <Layers size={10} />
-                            <span>Ver {r.name.split("(")[0].trim()}</span>
+                            <span>{diag("agent.viewLayer")} · {r.name.split("(")[0].trim()}</span>
                           </button>
                         ))}
                       </div>

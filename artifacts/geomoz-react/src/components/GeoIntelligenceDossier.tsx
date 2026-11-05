@@ -1,5 +1,8 @@
 import { GeoAgentCharts } from "./GeoAgentCharts";
 
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import { aiDiagnosticText, localizedAgentWarning, type AiDiagnosticKey } from "@/i18n/aiDiagnostics";
+
 export interface IntelligenceDossier {
   version: string;
   id: string;
@@ -22,15 +25,17 @@ export interface IntelligenceDossier {
   }>;
 }
 
-const labels: Record<string, string> = {
-  completed: "Execução concluída", partial: "Resultados parciais", error: "Execução com falhas",
-  unverified: "Resposta sem cálculo", needs_input: "Faltam dados para analisar", reference: "Consulta de fontes",
+const statusKeys: Record<string, AiDiagnosticKey> = {
+  completed: "dossier.status.completed", partial: "dossier.status.partial", error: "dossier.status.error",
+  unverified: "dossier.status.unverified", needs_input: "dossier.status.needs_input", reference: "dossier.status.reference",
 };
 
 export function GeoIntelligenceDossier({ dossier }: { dossier: IntelligenceDossier }) {
   const comparison = dossier.evidence.find((entry) => entry.status === "success" && entry.tool === "detect_temporal_change")?.period;
   const periodA = dossier.period.A || comparison?.A;
   const periodB = dossier.period.B || comparison?.B;
+  const { translatedLocale } = usePortalTranslation();
+  const t = (key: AiDiagnosticKey) => aiDiagnosticText(translatedLocale, key);
   const download = () => {
     const url = URL.createObjectURL(new Blob([JSON.stringify(dossier, null, 2)], { type: "application/json" }));
     const anchor = document.createElement("a");
@@ -44,17 +49,17 @@ export function GeoIntelligenceDossier({ dossier }: { dossier: IntelligenceDossi
     <GeoAgentCharts evidence={dossier.evidence} />
     <details className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-900/60">
       <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-200">
-        Dossiê de geointeligência · {labels[dossier.status] || dossier.status}
+        {t("dossier.title")} · {statusKeys[dossier.status] ? t(statusKeys[dossier.status]) : dossier.status}
       </summary>
       <div className="mt-3 space-y-3 text-slate-600 dark:text-slate-300">
-        <p>{dossier.scope.label || [dossier.scope.district, dossier.scope.province].filter(Boolean).join(", ") || "Área não especificada"}
+        <p>{dossier.scope.label || [dossier.scope.district, dossier.scope.province].filter(Boolean).join(", ") || t("dossier.noArea")}
           {periodA && periodB
             ? ` · A: ${periodA.startDate} → ${periodA.endDate} · B: ${periodB.startDate} → ${periodB.endDate} (fins exclusivos)`
             : dossier.period.startDate && ` · ${dossier.period.startDate} → ${dossier.period.endDate || "—"}`}</p>
-        <p>{dossier.successfulTools} ferramentas analíticas concluídas · {dossier.failedTools} falhas</p>
+        <p>{dossier.successfulTools} {t("dossier.completedTools")} · {dossier.failedTools} {t("dossier.failedTools")}</p>
         {dossier.limitations.length > 0 && (
           <ul className="list-disc space-y-1 pl-4 text-amber-800 dark:text-amber-300">
-            {dossier.limitations.map((text, i) => <li key={i}>{text}</li>)}
+            {dossier.limitations.map((text, i) => <li key={i}>{localizedAgentWarning(translatedLocale, text)}</li>)}
           </ul>
         )}
         {dossier.evidence.map((record) => (
@@ -63,11 +68,11 @@ export function GeoIntelligenceDossier({ dossier }: { dossier: IntelligenceDossi
               {record.status === "success" ? "✓" : "!"} {record.tool.replaceAll("_", " ")}
               {record.durationMs !== undefined && ` · ${(record.durationMs / 1000).toFixed(1)} s`}
             </summary>
-            <p className="mt-2 break-words">Fonte: {record.source ? (typeof record.source === "string" ? record.source : JSON.stringify(record.source)) : "Não comunicada pela ferramenta"}</p>
+            <p className="mt-2 break-words">{t("dossier.source")} {record.source ? (typeof record.source === "string" ? record.source : JSON.stringify(record.source)) : t("dossier.noSource")}</p>
             <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[10px]">{JSON.stringify({ parametros: record.parameters, resultado: record.result }, null, 2)}</pre>
           </details>
         ))}
-        <button type="button" onClick={download} className="rounded-lg bg-violet-600 px-3 py-2 font-semibold text-white hover:bg-violet-700">Exportar dossiê JSON</button>
+        <button type="button" onClick={download} className="rounded-lg bg-violet-600 px-3 py-2 font-semibold text-white hover:bg-violet-700">{t("dossier.export")}</button>
         <p className="break-all text-[10px] text-slate-400">{dossier.id} · {dossier.generatedAt}</p>
       </div>
     </details>
