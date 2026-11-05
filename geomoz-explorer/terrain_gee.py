@@ -110,7 +110,13 @@ def copernicus_to_preview(region_geojson: dict, quality: str = "standard") -> di
         raise TerrainInputError("O Earth Engine não devolveu uma ligação GeoTIFF.")
     raw = fetch_signed_gee_geotiff(download_url)
     preview = dem_to_preview(raw, "Copernicus_GLO30_GEE.tif")
-    preview["geeExportScaleMeters"] = scale
+    # The general GEE exporter may further increase scale under its own
+    # pixel-limit guard. Report the actual value rather than the request.
+    effective = result.get("scale")
+    preview["geeExportScaleMeters"] = (
+        effective if isinstance(effective, (int, float)) and
+        math.isfinite(effective) and effective >= scale else scale
+    )
     preview["geePreviewQuality"] = quality
     preview["geeNativeResolutionMeters"] = 30
     preview["geeScientificNote"] = "Pré-visualização simplificada. Para medições finais utilize o DEM original."
