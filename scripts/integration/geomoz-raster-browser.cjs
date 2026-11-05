@@ -260,8 +260,8 @@ module.exports=async function validateRasterProcessing(page){
  });
  assert.match(await terrain.innerText(),/Raster categorizado/);
  await terrain.getByText("Classes identificadas (2)").waitFor();
- await terrain.getByText("Textura 1",{exact:true}).waitFor();
- await terrain.getByText("Textura 2",{exact:true}).waitFor();
+ await terrain.getByText("Textura 1 (1)",{exact:true}).waitFor();
+ await terrain.getByText("Textura 2 (2)",{exact:true}).waitFor();
  assert.equal(await terrain.locator(".gm-terrain-layer-error:visible").count(),0,
    "A valid georeferenced thematic raster must not leave an import error");
  await terrain.getByLabel("Transparência do raster").evaluate((el)=>{
