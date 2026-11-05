@@ -61,10 +61,11 @@ export function prepareGeoMozLargeVector(rootDir) {
     "host worker exposure",
   ]]);
   edit(plugins, "plugins/maplibre-vector.ts", [[
-    'import {',
+    'import {\n  DUCKDB_VECTOR_FEATURE_WARN_COUNT,',
     [
       'import { wireGeoMozLargeVector } from "./geomoz-large-vector-ui";',
       'import {',
+      '  DUCKDB_VECTOR_FEATURE_WARN_COUNT,',
     ].join("\n"),
     "vector panel worker import",
   ], [
