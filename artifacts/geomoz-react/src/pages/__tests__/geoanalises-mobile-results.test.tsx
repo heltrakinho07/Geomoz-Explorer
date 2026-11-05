@@ -92,7 +92,7 @@ describe("GeoAnálises: translucent category cards", () => {
     expect(analytics).toContain('className="geo-catalog-card__review"');
     expect(analytics).toContain('scienceT("catalog.review")');
     expect(analytics).toContain('cat.highlights.slice(0, 3)');
-    expect(analytics).toContain('cat.status === "development" ? "Ver estado do módulo"');
+    expect(analytics).toContain('cat.status === "development" ? scienceT("catalog.moduleStatus")');
     expect(analytics).toContain("geo-catalog-grid grid");
   });
 });
