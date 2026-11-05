@@ -120,8 +120,8 @@ export function prepareGeoMozCategorizedStyles(rootDir) {
       "switch attribute without retaining old categorical cap",
     ],
     [
-      '    setDraftVectorStyleProperty(property);\n    setDraftVectorStyleClassCount(classCount);',
-      '    setDraftVectorStyleProperty(property);\n    if (draftVectorStyleMode === "categorized") setDraftVectorStyleAllCategories(true);\n    setDraftVectorStyleClassCount(classCount);',
+      '    setDraftVectorStyleProperty(property);\n    setDraftVectorStyleClassCount(classCount);\n    regenerateDraftVectorStyleStops(\n      draftVectorStyleMode,',
+      '    setDraftVectorStyleProperty(property);\n    if (draftVectorStyleMode === "categorized") setDraftVectorStyleAllCategories(true);\n    setDraftVectorStyleClassCount(classCount);\n    regenerateDraftVectorStyleStops(\n      draftVectorStyleMode,',
       "attribute change remains all-categories",
     ],
     [
