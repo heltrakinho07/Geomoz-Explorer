@@ -672,14 +672,18 @@ async function settleRecovery(page){
     if(!e)throw Error("Target geological layer was removed after save");
     if(!layerId)throw Error("Missing selected layer id");
   },digitizingLayerId);
-  await activeInspector.locator(".gm-layer-properties summary").first().click();
+  await activeInspector.getByTestId("geomoz-open-layer-properties").click();
+  const digitizedProps=page.getByTestId("geomoz-layer-properties-dialog");
+  await digitizedProps.getByRole("button",{name:"Organização",exact:true}).click();
   const digitizedDownload=page.waitForEvent("download",{timeout:15000});
-  await activeInspector.getByRole("button",{name:"Exportar GeoJSON",exact:true}).first().click();
+  await digitizedProps.getByRole("button",{name:"Exportar GeoJSON",exact:true}).click();
   await (await digitizedDownload).saveAs("workbench-browser-artifacts/digitized-geological-fault.geojson");
   const created=JSON.parse(await readFile("workbench-browser-artifacts/digitized-geological-fault.geojson","utf8"));
   assert.ok(created.features.some(f=>f.geometry?.type==="LineString"&&f.properties?.nome==="Falha de controlo"&&f.properties?.densidade===2.7),
     "Real native map drawing must persist geometry and typed attributes in selected layer");
   console.log("Native geological line digitized, attributed, committed and exported.");
+  await digitizedProps.getByRole("button",{name:"Fechar propriedades"}).click();
+  await digitizedProps.waitFor({state:"hidden"});
   await require("./geomoz-raster-browser.cjs")(page);
 
 
