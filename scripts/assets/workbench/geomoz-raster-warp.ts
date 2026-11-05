@@ -19,7 +19,28 @@ export function rasterWarpArgs(id:string, params:Record<string,unknown>, maskPat
     args.push("-t_srs",crs,"-r",resampling==="nearest"?"near":resampling);
   }else if(id==="clip-mask"){
     if(!maskPath)throw Error("Seleccione uma camada poligonal como máscara.");
-    args.push("-cutline",maskPath,"-dstalpha");
+    args.push("-cutline",maskPath);
+    const dstCrs=String(params.dst_crs??"").trim().toUpperCase();
+    if(dstCrs){
+      if(!/^EPSG:[1-9]\\d{2,5}$/.test(dstCrs))throw Error("Indique um SRC de destino válido, por exemplo EPSG:32736.");
+      args.push("-t_srs",dstCrs);
+    }
+    const resampling=String(params.resampling??"nearest");
+    if(!["nearest","bilinear","cubic"].includes(resampling))throw Error("Método de reamostragem inválido.");
+    args.push("-r",resampling==="nearest"?"near":resampling);
+    const x=params.x_resolution, y=params.y_resolution;
+    if(x!==undefined||y!==undefined){
+      const rx=Number(x),ry=Number(y);
+      if(x===undefined||y===undefined||!Number.isFinite(rx)||!Number.isFinite(ry)||rx<=0||ry<=0)
+        throw Error("Indique resoluções X e Y positivas e finitas.");
+      args.push("-tr",String(rx),String(ry));
+    }
+    if(params.nodata!==undefined&&String(params.nodata).trim()!==""){
+      const nodata=Number(params.nodata);
+      if(!Number.isFinite(nodata))throw Error("O valor NoData deve ser numérico e finito.");
+      args.push("-dstnodata",String(nodata));
+    }
+    if(params.alpha!==false)args.push("-dstalpha");
     if(params.crop!==false)args.push("-crop_to_cutline");
     if(params.all_touched===true)args.push("-wo","CUTLINE_ALL_TOUCHED=TRUE");
   }else throw Error("Operação GDAL não suportada.");
@@ -32,6 +53,7 @@ export async function warpRaster<D extends Dataset>(
   if(!bytes.byteLength || bytes.byteLength>GEOMOZ_WARP_LIMIT)throw Error("O processamento local aceita rasters até 64 MB.");
   // Validate parameters before opening datasets or allocating GDAL resources.
   if(id==="reproject")rasterWarpArgs(id,params);
+  if(id==="clip-mask")rasterWarpArgs(id,params,"/input/validation.geojson");
   if(id==="clip-mask"&&(!mask||mask.type!=="FeatureCollection"||!mask.features.length||
     mask.features.some(f=>!f.geometry||!["Polygon","MultiPolygon"].includes(f.geometry.type)))){
     throw Error("A máscara deve conter apenas polígonos.");
