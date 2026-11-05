@@ -371,7 +371,7 @@ export default function HidroGeoMoz({
       return;
     }
     const area = basinReport?.morphometry?.areaKm2 || watershedData?.areaKm2 || 0;
-    const defaultTitle = `Bacia Hidrográfica — ${province ?? "Moçambique"}${district ? ` / ${district}` : ""} (${area.toLocaleString("pt-PT")} km²)`;
+    const defaultTitle = `Bacia Hidrográfica — ${province ?? "Moçambique"}${district ? ` / ${district}` : ""} (${area.toLocaleString(numberLocale)} km²)`;
     const title = window.prompt("Nome para guardar esta análise no arquivo permanente:", defaultTitle);
     if (title === null) return;
     const chosenTitle = title.trim() || defaultTitle;
@@ -568,7 +568,7 @@ export default function HidroGeoMoz({
     }
     const area = basinReport?.morphometry?.areaKm2 || watershedData?.areaKm2 || 0;
     downloadStandaloneBasinHtml({
-      title: `Bacia Hidrográfica — ${province ?? "Moçambique"}${district ? ` / ${district}` : ""} (${area.toLocaleString("pt-PT")} km²)`,
+      title: `Bacia Hidrográfica — ${province ?? "Moçambique"}${district ? ` / ${district}` : ""} (${area.toLocaleString(numberLocale)} km²)`,
       basinReport,
       watershedData,
       wsStats,
@@ -1039,7 +1039,7 @@ export default function HidroGeoMoz({
         doc.setFontSize(8);
         doc.setFont("helvetica", "bold");
         doc.text("GeoMoz Explorer — " + pageTitle, MARGIN, 6.5);
-        doc.text(`Área: ${totalArea.toLocaleString("pt-PT")} km²`, W - MARGIN, 6.5, { align: "right" });
+        doc.text(`Área: ${totalArea.toLocaleString(numberLocale)} km²`, W - MARGIN, 6.5, { align: "right" });
         return 18;
       };
 
@@ -1082,7 +1082,7 @@ export default function HidroGeoMoz({
       // Area + date right (Fixed 0 km² bug)
       doc.setFontSize(13);
       doc.setFont("helvetica", "bold");
-      doc.text(`Área: ${totalArea.toLocaleString("pt-PT")} km²`, W - MARGIN, 14, { align: "right" });
+      doc.text(`Área: ${totalArea.toLocaleString(numberLocale)} km²`, W - MARGIN, 14, { align: "right" });
       doc.setFontSize(8.5);
       doc.setFont("helvetica", "normal");
       doc.text(date, W - MARGIN, 22, { align: "right" });
@@ -1106,7 +1106,7 @@ export default function HidroGeoMoz({
       y = sectionLabel("Morfometria da Bacia", y);
       const m = report.morphometry;
       const cards = [
-        { label: "Área", val: `${totalArea.toLocaleString("pt-PT")}`, unit: "km²" },
+        { label: "Área", val: `${totalArea.toLocaleString(numberLocale)}`, unit: "km²" },
         { label: "Perímetro", val: `${m.perimeterKm.toFixed(0)}`, unit: "km" },
         { label: "Elev. mín.", val: `${m.elevMinM.toFixed(0)}`, unit: "m" },
         { label: "Elev. média", val: `${m.elevMeanM.toFixed(0)}`, unit: "m" },
@@ -1198,7 +1198,7 @@ export default function HidroGeoMoz({
       y += 4;
 
       // ── MONTHLY PRECIPITATION ──
-      y = sectionLabel(`Precipitação Mensal · ${report.precipAnnualMm.toLocaleString("pt-PT")} mm/ano`, y);
+      y = sectionLabel(`Precipitação Mensal · ${report.precipAnnualMm.toLocaleString(numberLocale)} mm/ano`, y);
       const months = "JanFevMarAbrMaiJunJulAgoSetOutNovDez".match(/.{3}/g) || [];
       const barH = 32;
       const barArea = CONTENT_W - 4;
@@ -1732,7 +1732,7 @@ export default function HidroGeoMoz({
                   <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 text-[11px] font-mono text-slate-600 dark:text-slate-300 space-y-0.5">
                     <div className="text-[10px] font-semibold text-slate-400 not-italic mb-1">{h("delineate.selectedPoint")}</div>
                     <div>Lat {pourPoint[0].toFixed(5)} · Lon {pourPoint[1].toFixed(5)}</div>
-                    {watershedData && <div className="text-blue-700 dark:text-blue-400 font-bold not-italic">{watershedData.areaKm2.toLocaleString("pt-PT")} km²</div>}
+                    {watershedData && <div className="text-blue-700 dark:text-blue-400 font-bold not-italic">{watershedData.areaKm2.toLocaleString(numberLocale)} km²</div>}
                   </div>
                 )}
               </>
@@ -2099,7 +2099,7 @@ export default function HidroGeoMoz({
                   {/* Area highlight */}
                   <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-4 text-white">
                     <div className="text-xs opacity-75 mb-1">{h("basin.total")}</div>
-                    <div className="text-3xl font-bold">{watershedData.areaKm2.toLocaleString("pt-PT")}</div>
+                    <div className="text-3xl font-bold">{watershedData.areaKm2.toLocaleString(numberLocale)}</div>
                     <div className="text-xs opacity-75">km²</div>
                     <div className="mt-2 text-xs opacity-70">
                       {watershedData.source === "hydrobasins"
@@ -2423,7 +2423,7 @@ export default function HidroGeoMoz({
                       {basinReport?.precipMonthly && (
                         <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-3 border border-slate-100 dark:border-slate-800">
                           <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                            Chuva mensal · {basinReport.precipAnnualMm.toLocaleString("pt-PT")} mm/ano ({basinReport.startYear ?? basinStartYear}–{basinReport.endYear ?? basinEndYear})
+                            Chuva mensal · {basinReport.precipAnnualMm.toLocaleString(numberLocale)} mm/ano ({basinReport.startYear ?? basinStartYear}–{basinReport.endYear ?? basinEndYear})
                           </div>
                           <ResponsiveContainer width="100%" height={110}>
                             <BarChart data={basinReport.precipMonthly.map((v, i) => ({ m: "JFMAMJJASOND"[i], mm: v }))}
@@ -2637,7 +2637,7 @@ export default function HidroGeoMoz({
                         {/* Area highlight */}
                         <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-4 text-white mb-3">
                           <div className="text-xs opacity-75 mb-1">Área da Bacia</div>
-                          <div className="text-2xl font-bold">{basinStats.areaKm2.toLocaleString("pt-PT")}</div>
+                          <div className="text-2xl font-bold">{basinStats.areaKm2.toLocaleString(numberLocale)}</div>
                           <div className="text-xs opacity-75">km²  ·  Perím. {basinStats.perimeterKm.toFixed(0)} km</div>
                         </div>
                         <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-0 mb-3">
@@ -3010,7 +3010,7 @@ export default function HidroGeoMoz({
                         <div>
                           <h4 className="font-bold text-slate-900 dark:text-white text-xs">{item.title}</h4>
                           <p className="text-[10px] text-slate-400 mt-0.5">
-                            Guardada em {date} · {area > 0 ? `${area.toLocaleString("pt-PT")} km²` : "Área Delimitada"}
+                            Guardada em {date} · {area > 0 ? `${area.toLocaleString(numberLocale)} km²` : "Área Delimitada"}
                           </p>
                         </div>
                         <button
