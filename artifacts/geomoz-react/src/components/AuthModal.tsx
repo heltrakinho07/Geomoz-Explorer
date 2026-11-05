@@ -170,20 +170,20 @@ export default function AuthModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md p-0 overflow-hidden bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 rounded-2xl">
+      <DialogContent data-testid="geomoz-auth-dialog" className="gm-soft-dialog w-[calc(100vw-1.5rem)] max-w-[470px] max-h-[92dvh] overflow-hidden rounded-[26px] p-0">
         {/* Header with gradient branding */}
-        <DialogHeader className="px-6 pt-6 pb-4 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/10 rounded-full blur-2xl pointer-events-none" />
+        <DialogHeader className="gm-soft-header px-5 pt-6 pb-5 text-slate-900 dark:text-white sm:px-7">
+          <div className="pointer-events-none absolute right-8 top-2 h-24 w-24 rounded-full bg-sky-400/10 blur-2xl" />
           
           <div className="flex items-center gap-2.5 mb-2 relative z-10">
-            <div className="w-9 h-9 rounded-xl bg-sky-500/20 border border-sky-400/30 flex items-center justify-center text-sky-400">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-600 to-indigo-600 text-white shadow-lg shadow-sky-500/20">
               <Globe size={20} />
             </div>
             <div>
-              <span className="text-[10px] font-bold tracking-wider uppercase text-sky-400 block">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300">
                 GeoMoz Explorer
               </span>
-              <DialogTitle className="text-lg font-bold text-white leading-tight">
+              <DialogTitle className="text-xl font-black tracking-tight text-slate-950 dark:text-white">
                 {mode === "login" && "Iniciar Sessão"}
                 {mode === "register" && "Criar Conta Gratuita"}
                 {mode === "forgot" && "Recuperar Palavra-passe"}
@@ -191,7 +191,7 @@ export default function AuthModal({
             </div>
           </div>
 
-          <DialogDescription className="text-xs text-slate-300 relative z-10">
+          <DialogDescription className="relative z-10 mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
             {mode === "login" && "Aceda à sua área de análise de satélite, dados 3D e projetos."}
             {mode === "register" && "Junte-se à plataforma de inteligência geoespacial e modelação 3D."}
             {mode === "forgot" && "Introduza o seu e-mail para receber as instruções de recuperação."}
@@ -199,7 +199,7 @@ export default function AuthModal({
 
           {/* Mode Switcher Tabs */}
           {mode !== "forgot" && (
-            <div className="flex gap-1 p-1 bg-white/10 rounded-xl mt-3 relative z-10">
+            <div role="tablist" aria-label="Acesso ao GeoMoz" className="gm-soft-tabs relative z-10 mt-4 flex gap-1 rounded-2xl p-1">
               <button
                 type="button"
                 onClick={() => {
@@ -207,11 +207,7 @@ export default function AuthModal({
                   setLocalError(null);
                   clearError();
                 }}
-                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                  mode === "login"
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-300 hover:text-white"
-                }`}
+                role="tab" aria-selected={mode === "login"} className={`gm-soft-tab flex-1 px-2 py-2 text-xs font-bold ${mode === "login" ? "gm-soft-tab-active" : ""}`}
               >
                 Iniciar Sessão
               </button>
@@ -222,11 +218,7 @@ export default function AuthModal({
                   setLocalError(null);
                   clearError();
                 }}
-                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                  mode === "register"
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-300 hover:text-white"
-                }`}
+                role="tab" aria-selected={mode === "register"} className={`gm-soft-tab flex-1 px-2 py-2 text-xs font-bold ${mode === "register" ? "gm-soft-tab-active" : ""}`}
               >
                 Criar Nova Conta
               </button>
@@ -234,7 +226,7 @@ export default function AuthModal({
           )}
         </DialogHeader>
 
-        <div className="p-6 space-y-4">
+        <div className="gm-soft-body max-h-[calc(92dvh-170px)] space-y-4 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7">
           {/* Error Message */}
           {displayError && (
             <div className="flex flex-col gap-2.5 p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl text-xs text-rose-800 dark:text-rose-200 animate-in fade-in duration-150">
@@ -319,7 +311,7 @@ export default function AuthModal({
                 variant="outline"
                 onClick={handleGoogleSignIn}
                 disabled={submitting}
-                className="w-full py-2.5 h-auto flex items-center justify-center gap-2.5 text-xs font-semibold border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl shadow-sm transition-all"
+                className="gm-soft-surface flex min-h-11 w-full items-center justify-center gap-2.5 rounded-xl px-3 text-xs font-semibold text-slate-700 transition-all hover:border-sky-300 hover:text-sky-700 dark:text-slate-100"
               >
                 {/* Official Google Icon */}
                 <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
@@ -340,7 +332,7 @@ export default function AuthModal({
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                   />
                 </svg>
-                <span>Continuar com Google (Google Earth Engine)</span>
+                <span>Continuar com Google</span>
               </Button>
 
               <div className="flex items-center gap-2 text-[10px] text-slate-400">
@@ -357,33 +349,37 @@ export default function AuthModal({
               {/* Full Name for Registration */}
               {mode === "register" && (
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                  <label htmlFor="geomoz-auth-name" className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
                     <UserIcon size={12} className="text-slate-400" />
                     <span>Nome Completo</span>
                   </label>
                   <input
+                    id="geomoz-auth-name"
                     type="text"
+                    autoComplete="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Ex: Engenheiro(a) João Silva"
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+                    className="w-full px-3 py-2 gm-soft-input text-sm"
                   />
                 </div>
               )}
 
               {/* Email */}
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                <label htmlFor="geomoz-auth-email" className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
                   <Mail size={12} className="text-slate-400" />
                   <span>Endereço de E-mail</span>
                 </label>
                 <input
+                  id="geomoz-auth-email"
                   type="email"
+                  autoComplete="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="exemplo@instituicao.org ou gmail.com"
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+                  className="w-full px-3 py-2 gm-soft-input text-sm"
                 />
               </div>
 
@@ -391,7 +387,7 @@ export default function AuthModal({
               {mode !== "forgot" && (
                 <div className="space-y-1">
                   <div className="flex justify-between items-center">
-                    <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                    <label htmlFor="geomoz-auth-password" className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
                       <Lock size={12} className="text-slate-400" />
                       <span>Palavra-passe</span>
                     </label>
@@ -410,16 +406,20 @@ export default function AuthModal({
                   </div>
                   <div className="relative">
                     <input
+                      id="geomoz-auth-password"
                       type={showPassword ? "text" : "password"}
+                      autoComplete={mode === "register" ? "new-password" : "current-password"}
+                      minLength={mode === "register" ? 6 : undefined}
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder={mode === "register" ? "Mínimo de 6 caracteres" : "••••••••"}
-                      className="w-full pl-3 pr-9 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+                      className="w-full pl-3 pr-9 py-2 gm-soft-input text-sm"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? "Ocultar palavra-passe" : "Mostrar palavra-passe"}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                     >
                       {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -431,17 +431,20 @@ export default function AuthModal({
               {/* Confirm Password for Registration */}
               {mode === "register" && (
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                  <label htmlFor="geomoz-auth-confirm" className="text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
                     <Lock size={12} className="text-slate-400" />
                     <span>Confirmar Palavra-passe</span>
                   </label>
                   <input
+                    id="geomoz-auth-confirm"
                     type={showPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    minLength={6}
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Repita a palavra-passe"
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+                    className="w-full px-3 py-2 gm-soft-input text-sm"
                   />
                 </div>
               )}
@@ -450,7 +453,7 @@ export default function AuthModal({
               <Button
                 type="submit"
                 disabled={submitting}
-                className="w-full mt-2 py-2.5 h-auto bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-semibold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                className="gm-soft-primary mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold transition-all"
               >
                 {submitting ? (
                   <>
@@ -472,7 +475,7 @@ export default function AuthModal({
           )}
 
           {/* Quick Guest Access & Back to Login */}
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-2 text-center text-xs">
+          <div className="flex flex-col gap-2 border-t border-slate-200/80 pt-3 text-center text-xs dark:border-slate-700">
             {mode === "forgot" ? (
               <button
                 type="button"
@@ -496,7 +499,7 @@ export default function AuthModal({
               </button>
             )}
 
-            <div className="text-[10px] text-slate-400 flex items-center justify-center gap-1 mt-1">
+            <div className="mt-1 flex items-center justify-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
               <ShieldCheck size={12} className="text-emerald-500" />
               <span>Autenticação encriptada com Firebase Security & OAuth 2.0</span>
             </div>

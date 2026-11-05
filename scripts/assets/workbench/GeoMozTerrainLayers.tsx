@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { FileUp, Layers3, Eye, EyeOff, Palette, Trash2 } from "lucide-react";
 import type { FeatureCollection } from "geojson";
 import type { GeoMozTerrainOverlay } from "./geomoz-terrain-overlays";
+import type { GeoMozRasterDrape } from "./geomoz-terrain-raster-overlay";
 import {
   defaultTerrainOverlay, overlayCategoryValues, overlayFields,
   validateOverlayGeoJSON
@@ -11,7 +12,7 @@ import "./geomoz-terrain-workspace.css";
 interface SourceLayer {
   id:string;name:string;type:string;visible:boolean;opacity:number;
   geojson?:FeatureCollection;
-  style?:{fillColor?:string;strokeColor?:string};
+  style?:{fillColor?:string;strokeColor?:string;vectorStyleMode?:string;vectorStyleProperty?:string;vectorStyleStops?:{value:string|number;color:string}[]};
 }
 interface Props {
   layers:readonly SourceLayer[];
@@ -20,11 +21,19 @@ interface Props {
   activePanel:"layers"|"style";
   terrainReady:boolean;
   onNotice:(message:string)=>void;
+  rasterOptions:readonly {id:string;name:string;source:string}[];
+  raster:(GeoMozRasterDrape & {opacity:number;visible:boolean})|null;
+  rasterBusy:boolean;
+  onRasterChange:(next:(GeoMozRasterDrape & {opacity:number;visible:boolean})|null)=>void;
+  onImportRaster:(input:File|{source:string;name:string})=>Promise<void>;
 }
 export default function GeoMozTerrainLayers({
-  layers,overlays,onChange,activePanel,terrainReady,onNotice
+  layers,overlays,onChange,activePanel,terrainReady,onNotice,
+  rasterOptions,raster,rasterBusy,onRasterChange,onImportRaster
 }:Props) {
   const upload=useRef<HTMLInputElement>(null);
+  const rasterInput=useRef<HTMLInputElement>(null);
+  const [rasterSource,setRasterSource]=useState("");
   const [selectedId,setSelectedId]=useState("");
   const [projectId,setProjectId]=useState("");
   const [loadError,setLoadError]=useState("");
@@ -45,6 +54,16 @@ export default function GeoMozTerrainLayers({
     try {
       const item=defaultTerrainOverlay("project-"+layer.id,layer.name,layer.geojson,
         layer.opacity,layer.style?.fillColor,layer.style?.strokeColor);
+      // Honour a categorized renderer already authored in the 2D GIS Workspace.
+      const original=layer.style;
+      if(original?.vectorStyleMode==="categorized"&&original.vectorStyleProperty){
+        item.mode="categorized";
+        item.field=original.vectorStyleProperty;
+        const legend=Object.fromEntries((original.vectorStyleStops??[])
+          .filter(stop=>/^#[a-f\\d]{6}$/i.test(stop.color))
+          .map(stop=>[String(stop.value),stop.color]));
+        item.categories={...item.categories,...legend};
+      }
       onChange([...overlays,item]);setSelectedId(item.id);
       setLoadError("");onNotice("Camada do catálogo adicionada ao terreno 3D.");
     }catch(e){setLoadError(e instanceof Error?e.message:"Não foi possível ler a camada.");}
@@ -97,6 +116,48 @@ export default function GeoMozTerrainLayers({
     <button type="button" className="gm-terrain-layer-secondary" disabled={!terrainReady}
       onClick={()=>upload.current?.click()}><FileUp size={14}/> Importar GeoJSON WGS84</button>
     {loadError&&<p role="alert" className="gm-terrain-layer-error">{loadError}</p>}
+    <div className="gm-terrain-panel-heading"><strong>Rasters temáticos georreferenciados</strong></div>
+    <p>GeoTIFF de uso do solo, classes pedológicas ou imagem RGB: a grelha é reprojetada e limitada automaticamente ao DEM.</p>
+    <label className="gm-terrain-native-label">Raster do catálogo SIG
+      <select value={rasterSource} aria-label="Escolher raster temático"
+        onChange={e=>setRasterSource(e.target.value)}>
+        <option value="">Seleccionar GeoTIFF existente…</option>
+        {rasterOptions.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
+      </select>
+    </label>
+    <button type="button" className="gm-terrain-layer-secondary" disabled={!terrainReady||rasterBusy||!rasterSource}
+      onClick={()=>{const o=rasterOptions.find(o=>o.id===rasterSource);if(o)void onImportRaster({source:o.source,name:o.name});}}>
+      {rasterBusy?"A alinhar raster…":"Sobrepor raster do projecto"}
+    </button>
+    <input ref={rasterInput} type="file" className="sr-only" accept=".tif,.tiff,image/tiff"
+      aria-label="Importar GeoTIFF temático" onChange={e=>{
+        const file=e.target.files?.[0];if(file)void onImportRaster(file);
+        e.target.value="";
+      }}/>
+    <button type="button" disabled={!terrainReady||rasterBusy} className="gm-terrain-layer-secondary"
+      onClick={()=>rasterInput.current?.click()}><FileUp size={14}/> Importar GeoTIFF temático</button>
+    {raster&&<div className="gm-terrain-layer-raster">
+      <div className="gm-terrain-panel-heading">
+        <button type="button" aria-label={raster.visible?"Ocultar raster":"Mostrar raster"}
+          onClick={()=>onRasterChange({...raster,visible:!raster.visible})}>
+          {raster.visible?<Eye size={15}/>:<EyeOff size={15}/>}
+        </button>
+        <strong title={raster.name}>{raster.name}</strong>
+        <button type="button" aria-label="Remover raster temático" onClick={()=>onRasterChange(null)}><Trash2 size={14}/></button>
+      </div>
+      <small>{raster.mode==="classified"?"Raster categorizado":"Imagem RGB"} · {Math.round(raster.coverage*100)}% do DEM</small>
+      <label className="gm-terrain-native-label">Transparência do raster · {Math.round((1-raster.opacity)*100)}%
+        <input type="range" aria-label="Transparência do raster" min="0" max="100"
+          value={Math.round((1-raster.opacity)*100)}
+          onChange={e=>onRasterChange({...raster,opacity:1-Number(e.target.value)/100})}/>
+      </label>
+      {raster.categories.length>0&&<div className="gm-terrain-categories">
+        <strong>Classes identificadas ({raster.categories.length})</strong>
+        {raster.categories.map(c=><div key={c.value} className="gm-terrain-raster-legend">
+          <span style={{background:c.color}}/><small>{c.label} ({c.value})</small>
+        </div>)}
+      </div>}
+    </div>}
     <div className="gm-terrain-panel-heading"><strong>Camadas aplicadas ({overlays.length})</strong></div>
     {overlays.length===0&&<p className="gm-terrain-layer-empty">Sem sobreposições. Adicione uma camada e ajuste a respectiva simbologia no separador «Simbologia».</p>}
     {overlays.map(layer=><div className={"gm-terrain-layer-item "+(selected?.id===layer.id?"gm-terrain-layer-selected":"")} key={layer.id}>

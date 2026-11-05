@@ -169,46 +169,38 @@ export default function ProjectWorkspaceModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl p-0 overflow-hidden bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 rounded-2xl">
+      <DialogContent data-testid="geomoz-project-workspace-dialog" className="gm-soft-dialog w-[calc(100vw-1.5rem)] max-w-4xl max-h-[92dvh] overflow-hidden rounded-[26px] p-0">
         {/* Header */}
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 border-b border-slate-800">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-lg">
+        <div className="gm-soft-header px-5 py-5 text-slate-900 dark:text-white sm:px-7">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-600 to-indigo-600 text-white shadow-lg shadow-sky-600/20">
                 <FolderKanban size={20} />
               </div>
               <div>
-                <DialogTitle className="text-base sm:text-lg font-bold tracking-tight text-white flex items-center gap-2">
-                  Project Workspace
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                <DialogTitle className="flex flex-wrap items-center gap-2 text-lg font-black tracking-tight text-slate-950 dark:text-white">
+                  Projectos de Estudo
+                  <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-300">
                     Estudos Persistentes
                   </span>
                 </DialogTitle>
-                <DialogDescription className="text-xs text-slate-300 mt-0.5">
+                <DialogDescription className="mt-1 max-w-lg text-xs leading-relaxed text-slate-600 dark:text-slate-300">
                   Organize investigações geoespaciais completas: AOI delimitada, dados, execuções e dossiê técnico.
                 </DialogDescription>
               </div>
             </div>
 
             {/* Tab switch buttons */}
-            <div className="flex items-center bg-slate-800/80 p-1 rounded-xl border border-slate-700/60">
+            <div role="tablist" aria-label="Gestão de projectos" className="gm-soft-tabs flex w-full shrink-0 items-center rounded-xl p-1 sm:w-auto">
               <button
                 onClick={() => { setActiveTab("list"); }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === "list"
-                    ? "bg-sky-500 text-white shadow-sm"
-                    : "text-slate-400 hover:text-white"
-                }`}
+                role="tab" aria-selected={activeTab === "list"} data-testid="geomoz-projects-list-tab" className={`gm-soft-tab flex-1 px-3 py-1.5 text-xs font-bold sm:flex-none ${activeTab === "list" ? "gm-soft-tab-active" : ""}`}
               >
                 Meus Projetos ({projects.length})
               </button>
               <button
                 onClick={() => { setActiveTab("create"); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === "create"
-                    ? "bg-sky-500 text-white shadow-sm"
-                    : "text-slate-400 hover:text-white"
-                }`}
+                role="tab" aria-selected={activeTab === "create"} data-testid="geomoz-project-create-tab" className={`gm-soft-tab flex flex-1 items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold sm:flex-none ${activeTab === "create" ? "gm-soft-tab-active" : ""}`}
               >
                 <Plus size={13} />
                 Novo Projeto
@@ -218,7 +210,7 @@ export default function ProjectWorkspaceModal({
         </div>
 
         {/* Content Body */}
-        <div className="max-h-[70vh] overflow-y-auto p-5 space-y-4">
+        <div className="gm-soft-body max-h-[calc(92dvh-175px)] space-y-5 overflow-y-auto overscroll-contain p-4 sm:p-6">
           {!user ? (
             <div className="p-8 text-center space-y-3">
               <Info size={32} className="mx-auto text-amber-500" />
@@ -258,7 +250,7 @@ export default function ProjectWorkspaceModal({
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   {projects.map((p) => {
                     const isActive = activeProject?.id === p.id;
                     const catMeta = PROJECT_CATEGORIES.find((c) => c.id === p.category);
@@ -267,7 +259,12 @@ export default function ProjectWorkspaceModal({
                       <div
                         key={p.id}
                         onClick={() => handleSelectProject(p)}
-                        className={`group relative rounded-2xl border p-4 transition-all cursor-pointer flex flex-col justify-between ${
+                        onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); handleSelectProject(p); } }}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Abrir projecto ${p.name}`}
+                        data-testid="geomoz-project-tile"
+                        className={`gm-soft-tile group relative flex min-h-44 cursor-pointer flex-col justify-between rounded-2xl border p-4 ${
                           isActive
                             ? "bg-sky-50/50 dark:bg-sky-950/20 border-sky-400 ring-2 ring-sky-400/20 shadow-sm"
                             : "bg-white dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-sky-200 dark:hover:border-slate-600 hover:shadow-md"
@@ -293,7 +290,7 @@ export default function ProjectWorkspaceModal({
                               <button
                                 onClick={(e) => handleDelete(p.id, e)}
                                 disabled={deletingId === p.id}
-                                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/30"
+                                className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-500 dark:text-slate-400 dark:hover:bg-red-950/30 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
                                 title="Eliminar Projeto"
                               >
                                 {deletingId === p.id ? (
@@ -357,8 +354,8 @@ export default function ProjectWorkspaceModal({
 
               {/* Active Project Analysis History Drawer */}
               {activeProject && (
-                <div className="mt-6 pt-5 border-t border-slate-200 dark:border-slate-800">
-                  <div className="flex items-center justify-between mb-3">
+                <div className="gm-soft-surface mt-6 space-y-3 p-4 sm:p-5">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <BarChart2 size={16} className="text-sky-500" />
                       <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
@@ -384,11 +381,11 @@ export default function ProjectWorkspaceModal({
                       <strong>"Guardar no Projeto"</strong>.
                     </div>
                   ) : (
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
                       {activeRuns.map((run) => (
                         <div
                           key={run.id}
-                          className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 text-xs hover:border-slate-300 transition-colors"
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/85 p-3 text-xs transition-colors hover:border-sky-200 dark:border-slate-700 dark:bg-slate-800/70"
                         >
                           <div className="flex items-center gap-3">
                             <div className="w-7 h-7 rounded-lg bg-sky-100 dark:bg-sky-950 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
@@ -438,16 +435,18 @@ export default function ProjectWorkspaceModal({
 
               {/* Name */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                <label htmlFor="geomoz-project-name" className="text-xs font-bold text-slate-700 dark:text-slate-300">
                   Nome do Projeto de Estudo <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id="geomoz-project-name"
+                  autoComplete="off"
                   type="text"
                   required
                   placeholder="ex: Monitorização de Culturas no Regadio de Chókwè"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
+                  className="gm-soft-input w-full px-3.5 py-2 text-sm"
                 />
               </div>
 
@@ -463,6 +462,7 @@ export default function ProjectWorkspaceModal({
                       <button
                         type="button"
                         key={cat.id}
+                        aria-pressed={isSelected}
                         onClick={() => setCategory(cat.id)}
                         className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
                           isSelected
@@ -494,6 +494,7 @@ export default function ProjectWorkspaceModal({
                   <button
                     type="button"
                     onClick={() => setAoiOption("current")}
+                    aria-pressed={aoiOption === "current"}
                     className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
                       aoiOption === "current"
                         ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40 font-semibold text-sky-800 dark:text-sky-300 ring-1 ring-sky-500"
@@ -512,6 +513,7 @@ export default function ProjectWorkspaceModal({
                   <button
                     type="button"
                     onClick={() => setAoiOption("mozambique")}
+                    aria-pressed={aoiOption === "mozambique"}
                     className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
                       aoiOption === "mozambique"
                         ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40 font-semibold text-sky-800 dark:text-sky-300 ring-1 ring-sky-500"
@@ -530,6 +532,7 @@ export default function ProjectWorkspaceModal({
                   <button
                     type="button"
                     onClick={() => setAoiOption("global")}
+                    aria-pressed={aoiOption === "global"}
                     className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
                       aoiOption === "global"
                         ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40 font-semibold text-sky-800 dark:text-sky-300 ring-1 ring-sky-500"
@@ -550,40 +553,43 @@ export default function ProjectWorkspaceModal({
               {/* Temporal Range */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="geomoz-project-date-start" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                     Data de Início do Estudo
                   </label>
                   <input
+                    id="geomoz-project-date-start"
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    className="gm-soft-input w-full px-3 py-1.5 text-xs"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="geomoz-project-date-end" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                     Data de Término do Estudo
                   </label>
                   <input
+                    id="geomoz-project-date-end"
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    className="gm-soft-input w-full px-3 py-1.5 text-xs"
                   />
                 </div>
               </div>
 
               {/* Description / Notes */}
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="geomoz-project-description" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   Notas Metodológicas ou Objetivos (Opcional)
                 </label>
                 <textarea
-                  rows={2}
+                  id="geomoz-project-description"
+                  rows={3}
                   placeholder="Descreva o enquadramento, objetivos específicos ou metodologias aplicadas..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500 resize-none"
+                  className="gm-soft-input w-full resize-y px-3.5 py-2 text-xs"
                 />
               </div>
 
@@ -599,7 +605,7 @@ export default function ProjectWorkspaceModal({
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white text-xs font-semibold shadow-md transition-all disabled:opacity-50"
+                  className="gm-soft-primary flex min-h-11 items-center gap-2 rounded-xl px-5 py-2 text-xs font-bold transition-all disabled:opacity-50"
                 >
                   {isSubmitting ? (
                     <>

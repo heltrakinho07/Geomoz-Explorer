@@ -204,6 +204,16 @@
   .gm-terrain-native-viewport{height:58%;min-height:205px}
 }
 
+.gm-terrain-layer-raster{border:1px solid #bae6fd;background:#f0f9ff;border-radius:12px;padding:10px;
+  display:flex;flex-direction:column;gap:9px}
+.gm-terrain-layer-raster>.gm-terrain-panel-heading>strong{flex:1;min-width:0;text-overflow:ellipsis;
+  white-space:nowrap;overflow:hidden;font-size:11px}
+.gm-terrain-layer-raster>.gm-terrain-panel-heading>button{border:0;background:transparent;cursor:pointer;color:#0369a1;padding:4px}
+.gm-terrain-layer-raster>small{font-size:10px;color:#475569}
+.gm-terrain-raster-legend{display:flex;align-items:center;gap:9px}
+.gm-terrain-raster-legend span{display:block;width:16px;height:13px;border:1px solid #cbd5e1;border-radius:3px}
+.gm-terrain-raster-legend small{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dark .gm-terrain-layer-raster{background:#122b46;border-color:#24547e}
 
 /* Real-world DEM basemap and synchronized local mesh — one GeoMoz workspace. */
 .gm-terrain-view-switch{
