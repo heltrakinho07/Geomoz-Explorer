@@ -4,6 +4,7 @@ import type { Map as MapLibreMap, MapMouseEvent, StyleSpecification } from "mapl
 import "maplibre-gl/dist/maplibre-gl.css";
 import { createFeatureInspector } from "@/lib/gis-feature-inspector";
 import { gisWidgetRegistry } from "@/lib/gis-widget-registry";
+import GISWidgetManager, { initialDisabled } from "./GISWidgetManager";
 import { bbox } from "@turf/turf";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
 import { GOOGLE_BASEMAPS, type BasemapType } from "@/lib/basemaps";
@@ -172,6 +173,9 @@ export default function GISWorkspaceMapLibre({
   onRasterMetadata,
   onRasterError,
 }: Props) {
+  const [disabledWidgets, setDisabledWidgets] = useState<string[]>(initialDisabled);
+  const disabledWidgetsRef = useRef(disabledWidgets);
+  disabledWidgetsRef.current = disabledWidgets;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const layersRef = useRef(layers);
@@ -476,6 +480,7 @@ export default function GISWorkspaceMapLibre({
       const owner = layersRef.current.find((layer) => layer.id === ownerId);
 
       // The inspector is a lazily registered GIS widget. Avoid truncating attributes.
+      if (disabledWidgetsRef.current.includes("feature-inspector")) return;
       if (!gisWidgetRegistry.list({ mapId: "workspace", layerId: ownerId }, "vector")
         .some(widget => widget.id === "feature-inspector")) return;
       const popup = createFeatureInspector(owner?.name ?? "Camada", (hit.properties ?? {}) as Record<string, unknown>, {
@@ -606,6 +611,8 @@ export default function GISWorkspaceMapLibre({
   return (
     <div className="absolute inset-0">
       <div ref={containerRef} className="h-full w-full" />
+      <GISWidgetManager context={{mapId:"workspace",layerId:layers.find(layer=>layer.visible)?.id}}
+        disabled={disabledWidgets} onDisabledChange={setDisabledWidgets} />
       {(visualPreview.draftPath || visualPreview.completedPaths.length > 0) && (
         <svg
           data-testid="gis-aoi-visible-overlay"
