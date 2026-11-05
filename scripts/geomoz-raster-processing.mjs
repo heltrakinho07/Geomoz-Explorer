@@ -23,7 +23,7 @@ export function prepareGeoMozRasterProcessing(root){
  s=once(s,'const cogBytes = await convertRasterDataToCog(result);','const cogBytes = warped ? new Uint8Array(warped) : await convertRasterDataToCog(result);');
  s=once(s,'  }, [tool, params, clientInput, validateParams, mapControllerRef, t]);','  }, [tool, params, clientInput, validateParams, mapControllerRef, t, layers, geomozWarp]);');
 
- s=once(s,'            <div>\\n              <Button\\n                onClick={() => void handleRun()}',
+ s=once(s,'            <div>\n              <Button\n                onClick={() => void handleRun()}',
  `            {engine === "client" && tool.id === "clip-mask" && (
               <fieldset className="grid gap-3 rounded-lg border p-3" aria-label="Parâmetros avançados do recorte">
                 <legend className="px-1 font-medium">Parâmetros avançados do recorte</legend>
