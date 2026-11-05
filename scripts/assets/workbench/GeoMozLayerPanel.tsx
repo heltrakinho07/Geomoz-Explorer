@@ -2,7 +2,7 @@ import {useLayoutOptions} from "../../hooks/useLayoutOptions";
 import {useLanguage} from "../../hooks/useLanguage";
 import {geoMozSpecialistText} from "./geomoz-specialist-locale";
 import { GEOMOZ_ROLLOUT } from "../../lib/geomoz-workbench-profile";
-import {GeoMozLayerProperties} from "./GeoMozLayerProperties";
+import {GeoMozLayerPropertiesDialog} from "./GeoMozLayerPropertiesDialog";
 import {GeoMozDigitizingTools} from "./GeoMozDigitizingTools";
 import { rasterExportUrl } from "../../lib/raster-export";
 import { useEffect, useRef, useState, type ComponentProps } from "react";
@@ -27,6 +27,7 @@ export function GeoMozLayerPanel(props:Props) {
   const opacity=useAppStore(s=>s.setLayerOpacity);
   const setLayerStyle=useAppStore(s=>s.setLayerStyle);
   const [quickStyle,setQuickStyle]=useState(false);
+  const [propertiesOpen,setPropertiesOpen]=useState(false);
   const openTable=useAppStore(s=>s.setAttributeTableOpen);
   const runs=useAppStore(s=>s.processingHistory);
   const openHistory=useAppStore(s=>s.setProcessingHistoryOpen);
@@ -67,7 +68,7 @@ export function GeoMozLayerPanel(props:Props) {
       <div className="gm-layer-list">
         {filtered.map(layer=><div key={layer.id} className="gm-layer-row" data-layer-name={layer.name} data-visible={layer.visible} data-rendered={rendered(layer)} data-selected={selectedId===layer.id}>
           <button type="button" className="gm-layer-visibility" aria-label={(layer.visible?ui("Ocultar "):ui("Mostrar "))+layer.name} aria-pressed={layer.visible} onClick={()=>visibility(layer.id,!layer.visible)}>{layer.visible?<Eye size={15}/>:<EyeOff size={15}/>}</button>
-          <button type="button" className="gm-layer-select" aria-pressed={selectedId===layer.id} onClick={()=>{select(layer.id);setNotice("");}}><span className={"gm-layer-symbol gm-layer-symbol-"+layer.type}>{layer.type==="raster"?<MapIcon size={17}/>:<Layers3 size={17}/>}</span><span><strong>{layer.name}</strong><small>{layer.type} · {layer.visible&&!rendered(layer)?ui("Oculta pelo grupo"):Math.round(layer.opacity*100)+"%"+ui(" opacidade")}</small></span></button>
+          <button type="button" className="gm-layer-select" aria-pressed={selectedId===layer.id} onDoubleClick={()=>{select(layer.id);setPropertiesOpen(true);}} onClick={()=>{select(layer.id);setNotice("");}}><span className={"gm-layer-symbol gm-layer-symbol-"+layer.type}>{layer.type==="raster"?<MapIcon size={17}/>:<Layers3 size={17}/>}</span><span><strong>{layer.name}</strong><small>{layer.type} · {layer.visible&&!rendered(layer)?ui("Oculta pelo grupo"):Math.round(layer.opacity*100)+"%"+ui(" opacidade")}</small></span></button>
           <button type="button" className="gm-icon-button gm-layer-fit" aria-label={ui("Enquadrar ")+layer.name} title={ui("Enquadrar camada")} onClick={()=>{const ok=props.mapControllerRef.current?.fitLayer(layer);setNotice(ok?"":ui("A extensão desta camada ainda não está disponível."));}}><Crosshair size={15}/></button>
         </div>)}
         {!filtered.length&&<div className="gm-catalog-empty"><FolderOpen size={32}/><strong>{layers.length?ui("Nenhuma correspondência"):ui("O seu mapa começa aqui")}</strong><p>{layers.length?ui("Experimente outro nome ou mostre todas as camadas."):ui("Adicione dados na faixa superior. As camadas e os resultados ficam organizados neste catálogo.")}</p><span>Vector · Raster · DEM · Serviços</span></div>}
@@ -79,7 +80,7 @@ export function GeoMozLayerPanel(props:Props) {
           disabled={!rasterExportUrl(selected)}
           title={rasterExportUrl(selected)?"Visualizar DEM do projecto em 3D":"Este raster não tem ficheiro GeoTIFF acessível"}
           onClick={()=>window.dispatchEvent(new CustomEvent("geomoz:terrain:open",{detail:{layerId:selected.id}}))}>
-          <Mountain size={14}/> Abrir DEM em 3D</button>}{!viewer&&props.onOpenStylePanel&&<button type="button" onClick={()=>{select(selected.id);props.onOpenStylePanel?.();}}><Palette size={14}/> {ui("Estilos avançados")}</button>}{GEOMOZ_ROLLOUT.fullLayerManager&&<button type="button" onClick={()=>setAdvanced(true)}><SlidersHorizontal size={14}/> {ui("Propriedades")}</button>}</div>
+          <Mountain size={14}/> Abrir DEM em 3D</button>}{!viewer&&props.onOpenStylePanel&&<button type="button" onClick={()=>{select(selected.id);props.onOpenStylePanel?.();}}><Palette size={14}/> {ui("Estilos avançados")}</button>}<button type="button" data-testid="geomoz-open-layer-properties" onClick={()=>setPropertiesOpen(true)}><SlidersHorizontal size={14}/> {ui("Propriedades")}</button></div>
         {quickStyle&&!viewer&&selected.type==="geojson"&&<div className="gm-quick-style" role="group" aria-label={ui("Estilo rápido da camada")}>
           <label>{ui("Cor do símbolo")}<input aria-label={ui("Cor do símbolo")} type="color" value={selected.style.fillColor||"#0284c7"} onChange={e=>setLayerStyle(selected.id,{fillColor:e.target.value,vectorStyleMode:"single",proportionalSizeEnabled:false})}/></label>
           <label>{ui("Cor do contorno")}<input aria-label={ui("Cor do contorno")} type="color" value={selected.style.strokeColor||"#0f172a"} onChange={e=>setLayerStyle(selected.id,{strokeColor:e.target.value})}/></label>
@@ -88,7 +89,7 @@ export function GeoMozLayerPanel(props:Props) {
         </div>}
         {!viewer&&selected.type==="geojson"&&(activeTask==="vector"||activeTask==="map")&&<GeoMozDigitizingTools key={"digitizing:"+selected.id} layer={selected} editLayerId={props.geometryEditLayerId} onToggleEdit={props.onToggleGeometryEdit} onCancelEdit={props.onCancelGeometryEdit}/>}
         {!viewer&&activeTask!=="vector"&&activeTask!=="map"&&selected.id===props.geometryEditLayerId&&<p className="gm-digitizing-notice" role="status">{ui("A edição da camada continua activa. Abra «Vector» para guardar ou descartar as alterações.")}</p>}
-        <GeoMozLayerProperties key={"properties:"+selected.id} layer={selected} props={props}/>
+
       </section>}
       <div className="gm-catalog-footer"><span><i/>{layers.filter(rendered).length}{ui(" visíveis de ")}{layers.length}</span><span title={ui("Altere a ordem e os grupos nas propriedades da camada")}>SIG LOCAL</span></div>
     </>}
@@ -103,6 +104,7 @@ export function GeoMozLayerPanel(props:Props) {
       </article>)}
     </section>}
     <div className="gm-engine-panel" hidden={!GEOMOZ_ROLLOUT.fullLayerManager||!advanced}><EngineLayerPanel {...props} autoCollapse={false} collapsed={false} onCollapsedChange={()=>changeCollapsed(true)} hideOwnRail /></div>
+    {selected&&propertiesOpen&&<GeoMozLayerPropertiesDialog key={selected.id} layer={selected} props={props} onClose={()=>setPropertiesOpen(false)}/>}
     <p className="gm-catalog-notice" role="status">{notice}</p>
     <div className="gm-catalog-resize" role="separator" aria-label={ui("Redimensionar catálogo")} title="Arraste para alargar ou reduzir o catálogo" aria-orientation="vertical" onPointerDown={props.onResizeStart}/>
   </aside>;

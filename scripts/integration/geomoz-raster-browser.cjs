@@ -191,6 +191,20 @@ module.exports=async function validateRasterProcessing(page){
  // from the existing local COG's layer metadata and are reprojected in-browser.
  const layerCountBefore=await page.locator(".gm-layer-row").count();
  await realDem.locator(".gm-layer-select").click();
+ // Raster properties must show native band/pixel symbology, never the
+ // GeoJSON attribute-category editor.
+ await page.getByTestId("geomoz-open-layer-properties").click();
+ const rasterProps=page.getByTestId("geomoz-layer-properties-dialog");
+ await rasterProps.waitFor({state:"visible"});
+ assert.equal(await rasterProps.getAttribute("data-layer-kind"),"raster");
+ await rasterProps.getByRole("button",{name:"Simbologia",exact:true}).click();
+ assert.equal(await rasterProps.getByTestId("geomoz-vector-symbology").count(),0,
+   "Raster properties must not expose vector attribute categorization");
+ await rasterProps.getByRole("button",{name:"Bandas e histograma"}).click();
+ await rasterProps.getByText("Bandas utilizadas").first().waitFor();
+ await rasterProps.getByRole("button",{name:"Fechar propriedades"}).click();
+ await rasterProps.waitFor({state:"hidden"});
+ console.log("Raster layer properties open their own pixel/band editor, distinct from vectors.");
  await page.getByTestId("geomoz-layer-open-terrain").click();
  const terrain=page.getByTestId("geomoz-workbench-terrain");
  await terrain.waitFor({state:"visible"});

@@ -464,6 +464,27 @@ async function settleRecovery(page){
   await row.waitFor();
   console.log("GeoJSON imported through the real GIS drop handler.");
   await row.locator(".gm-layer-select").click();
+  // Layer Properties follows a QGIS workflow while keeping vector attribute
+  // categorization separate from pixel/band classification for rasters.
+  await page.getByTestId("geomoz-open-layer-properties").click();
+  const vectorProps=page.getByTestId("geomoz-layer-properties-dialog");
+  await vectorProps.waitFor({state:"visible"});
+  assert.equal(await vectorProps.getAttribute("data-layer-kind"),"vector");
+  await vectorProps.getByRole("button",{name:"Simbologia",exact:true}).click();
+  await vectorProps.getByLabel("Tipo de renderização vectorial").selectOption("categorized");
+  await vectorProps.getByLabel("Coluna de categorização").selectOption("name");
+  assert.equal(await vectorProps.getByLabel("Coluna de categorização").inputValue(),"name");
+  await vectorProps.getByRole("button",{name:"Classificar todos os valores distintos"}).click();
+  await vectorProps.locator(".gm-prop-category-row").first().waitFor();
+  assert.equal(await vectorProps.locator(".gm-prop-category-row").count(),2,
+    "Vector category count must follow all distinct values of NAME, not raster class presets");
+  assert.ok((await vectorProps.locator(".gm-prop-category-list").innerText()).includes("Beira"));
+  assert.ok((await vectorProps.locator(".gm-prop-category-list").innerText()).includes("Chimoio"));
+  await vectorProps.getByRole("button",{name:"Aplicar simbologia"}).click();
+  await vectorProps.getByText(/Simbologia categorizada aplicada: 2 categorias/).waitFor();
+  await vectorProps.getByRole("button",{name:"Fechar propriedades"}).click();
+  await vectorProps.waitFor({state:"hidden"});
+  console.log("QGIS-style properties: vector categories derived from complete feature attributes and applied.");
   // Fix regression: layer style must be editable without the hidden specialist panel.
   await page.getByRole("button",{name:"Editar simbologia"}).click();
   await page.getByLabel("Cor do símbolo",{exact:true}).fill("#a855f7");
@@ -478,25 +499,27 @@ async function settleRecovery(page){
   assert.equal(await row.getAttribute("data-visible"),"false");
   await row.locator(".gm-layer-visibility").click();
   await row.locator(".gm-layer-fit").click();
-  await page.locator(".gm-layer-properties summary").click();
-  const rename=page.getByRole("textbox",{name:"Renomear camada",exact:true});
+  await page.getByTestId("geomoz-open-layer-properties").click();
+  await vectorProps.getByRole("button",{name:"Organização",exact:true}).click();
+  const rename=vectorProps.getByRole("textbox",{name:"Renomear camada",exact:true});
   await rename.fill("Pontos renomeados");await rename.press("Enter");
   await page.locator('.gm-layer-row[data-layer-name="Pontos renomeados"]').waitFor();
   await rename.fill("Pontos de estudo");await rename.press("Enter");
   await row.waitFor();
-  await page.getByRole("textbox",{name:"Nome do novo grupo",exact:true}).fill("Estudo local");
-  await page.locator(".gm-layer-properties").getByRole("button",{name:"Criar",exact:true}).click();
-  assert.notEqual(await page.getByRole("combobox",{name:"Grupo da camada"}).inputValue(),"");
-  await page.getByRole("checkbox",{name:"Mostrar grupo Estudo local",exact:true}).uncheck();
+  await vectorProps.getByRole("textbox",{name:"Nome do novo grupo",exact:true}).fill("Estudo local");
+  await vectorProps.locator(".gm-layer-properties").getByRole("button",{name:"Criar",exact:true}).click();
+  assert.notEqual(await vectorProps.getByRole("combobox",{name:"Grupo da camada"}).inputValue(),"");
+  await vectorProps.getByRole("checkbox",{name:"Mostrar grupo Estudo local",exact:true}).uncheck();
   assert.equal(await row.getAttribute("data-rendered"),"false");
-  await page.getByRole("checkbox",{name:"Mostrar grupo Estudo local",exact:true}).check();
+  await vectorProps.getByRole("checkbox",{name:"Mostrar grupo Estudo local",exact:true}).check();
   assert.equal(await row.getAttribute("data-rendered"),"true");
   const downloadPromise=page.waitForEvent("download",{timeout:15000});
-  await page.getByRole("button",{name:"Exportar GeoJSON",exact:true}).click();
+  await vectorProps.getByRole("button",{name:"Exportar GeoJSON",exact:true}).click();
   const download=await downloadPromise;
   await download.saveAs("workbench-browser-artifacts/exported-points.geojson");
   assert.equal(JSON.parse(await readFile("workbench-browser-artifacts/exported-points.geojson","utf8")).features.length,2);
-  await page.locator(".gm-layer-properties summary").click();
+  await vectorProps.getByRole("button",{name:"Fechar propriedades"}).click();
+  await vectorProps.waitFor({state:"hidden"});
 
   await page.getByRole("textbox",{name:"Pesquisar camadas"}).fill("inexistente");
   await page.getByText("Nenhuma correspondência",{exact:true}).waitFor();
@@ -649,14 +672,18 @@ async function settleRecovery(page){
     if(!e)throw Error("Target geological layer was removed after save");
     if(!layerId)throw Error("Missing selected layer id");
   },digitizingLayerId);
-  await activeInspector.locator(".gm-layer-properties summary").first().click();
+  await activeInspector.getByTestId("geomoz-open-layer-properties").click();
+  const digitizedProps=page.getByTestId("geomoz-layer-properties-dialog");
+  await digitizedProps.getByRole("button",{name:"Organização",exact:true}).click();
   const digitizedDownload=page.waitForEvent("download",{timeout:15000});
-  await activeInspector.getByRole("button",{name:"Exportar GeoJSON",exact:true}).first().click();
+  await digitizedProps.getByRole("button",{name:"Exportar GeoJSON",exact:true}).click();
   await (await digitizedDownload).saveAs("workbench-browser-artifacts/digitized-geological-fault.geojson");
   const created=JSON.parse(await readFile("workbench-browser-artifacts/digitized-geological-fault.geojson","utf8"));
   assert.ok(created.features.some(f=>f.geometry?.type==="LineString"&&f.properties?.nome==="Falha de controlo"&&f.properties?.densidade===2.7),
     "Real native map drawing must persist geometry and typed attributes in selected layer");
   console.log("Native geological line digitized, attributed, committed and exported.");
+  await digitizedProps.getByRole("button",{name:"Fechar propriedades"}).click();
+  await digitizedProps.waitFor({state:"hidden"});
   await require("./geomoz-raster-browser.cjs")(page);
 
 
