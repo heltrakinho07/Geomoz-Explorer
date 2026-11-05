@@ -46,11 +46,26 @@ function crsFromKeys(keys:Record<string,unknown>):string{
   }
   return code;
 }
-function categoryColor(value:number,values:number[]):[string,string]{
-  if(WORLD_COVER[value] && values.every(v=>WORLD_COVER[v]))return WORLD_COVER[value];
-  if(values.every(v=>v>=1&&v<=12&&Number.isInteger(v)))
-    return ["Textura "+value,SOIL_PALETTE[value-1]];
-  return ["Classe "+value,COLORS[values.indexOf(value)%COLORS.length]];
+/** Every classified value has a legend entry; no implicit upper category limit. */
+export function buildCategoricalRasterLegend(values:readonly number[]){
+  const world=values.every(value=>Boolean(WORLD_COVER[value]));
+  const soil=values.every(value=>Number.isInteger(value)&&value>=1&&value<=12);
+  const hueColour=(index:number)=>{
+    const hue=(index*137.50776405)%360,s=.72,l=.5;
+    const a=s*Math.min(l,1-l);
+    const channel=(n:number)=>{
+      const k=(n+hue/30)%12;
+      return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,Math.min(9-k,1)))))
+        .toString(16).padStart(2,"0");
+    };
+    return "#"+channel(0)+channel(8)+channel(4);
+  };
+  return values.map((value,index)=>{
+    const [label,color]=world?WORLD_COVER[value]:
+      soil?["Textura "+value,SOIL_PALETTE[value-1]] as [string,string]:
+      ["Classe "+value,index<COLORS.length?COLORS[index]:hueColour(index)] as [string,string];
+    return {value,label,color};
+  });
 }
 
 
@@ -200,7 +215,10 @@ export async function createTerrainRasterDrape(
         continuousSamples.push({pos:out,value});
         if(options.renderer==="classified"||autoContinuous){
           const category=Math.round(value);
-          if(classifiedValues.size<4096)classifiedValues.add(category);
+          // In automatic mode, 129 distinct values suffice to detect a
+          // continuous raster. Explicit classification preserves every class.
+          if(options.renderer==="classified"||classifiedValues.size<=128)
+            classifiedValues.add(category);
           pixels.push({pos:out,value:category});
         }
       }
@@ -216,6 +234,8 @@ export async function createTerrainRasterDrape(
     // NDVI/NDWI in float form keep their entire numeric range, including negative values.
     // Values scaled as integers require the explicit "continuous" renderer in the UI.
     const values=continuous?[]:[...classifiedValues].sort((a,b)=>a-b);
+    const legend=buildCategoricalRasterLegend(values);
+    const categoryPaint=new Map(legend.map(c=>[c.value,c.color]));
     if(continuous){
       const min=Number.isFinite(minSample)?minSample:0;
       const max=Number.isFinite(maxSample)?maxSample:1;
@@ -227,7 +247,7 @@ export async function createTerrainRasterDrape(
       }
     }else{
       for(const item of pixels){
-        const color=categoryColor(item.value,values)[1];
+        const color=categoryPaint.get(item.value)??"#64748b";
         frame.data[item.pos]=parseInt(color.slice(1,3),16);
         frame.data[item.pos+1]=parseInt(color.slice(3,5),16);
         frame.data[item.pos+2]=parseInt(color.slice(5,7),16);
@@ -240,6 +260,6 @@ export async function createTerrainRasterDrape(
       coverage:covered/(SIZE*SIZE),
       range:continuous?{min:minSample,max:maxSample}:undefined,
       palette:continuous?options.palette??"ndvi":undefined,
-      categories:values.map(value=>{const [label,color]=categoryColor(value,values);return {value,label,color};})};
+      categories:legend};
   }finally {await tiff.close();}
 }
