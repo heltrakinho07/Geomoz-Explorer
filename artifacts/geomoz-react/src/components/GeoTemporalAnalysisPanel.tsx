@@ -12,6 +12,7 @@ export interface TemporalQuality {
   commonValidCoveragePercent: number;
   status: string;
   warnings: string[];
+  warningCodes?: string[];
   note: string;
 }
 type Bin = { min: number; count: number };
@@ -139,8 +140,12 @@ export function GeoTemporalAnalysisPanel({ replay, quality, disabled, onExportPd
           <div className="font-semibold">{t("temporal.quality")} · {quality.calendarAligned ? t("temporal.aligned") : t("temporal.review")}</div>
           <p>{t("temporal.scenes")}: A {quality.sceneCounts.A} / B {quality.sceneCounts.B} · {t("temporal.coverage")}: {quality.commonValidCoveragePercent.toFixed(1)}%</p>
           <p>{t("temporal.days")}: A {quality.durationDays.A} / B {quality.durationDays.B}</p>
-          {quality.warnings.map((warning, i) => <p key={i} className="font-medium text-amber-800 dark:text-amber-300">{warning}</p>)}
-          <p className="text-[10px] text-slate-500">{quality.note}</p>
+          {(quality.warningCodes || []).map((code, i) => {
+            const key = code === "season" ? "temporal.seasonWarning" : code === "scenes"
+              ? "temporal.sceneWarning" : "temporal.coverageWarning";
+            return <p key={i} className="font-medium text-amber-800 dark:text-amber-300">{t(key)}</p>;
+          })}
+          <p className="text-[10px] text-slate-500">{t("temporal.qualityNote")}</p>
         </div>
       )}
       <div className="flex flex-wrap gap-1.5">
@@ -161,14 +166,14 @@ export function GeoTemporalAnalysisPanel({ replay, quality, disabled, onExportPd
             className={`rounded px-3 py-1 text-[11px] font-semibold ${series === key ? "bg-teal-700 text-white" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"}`}>{key === "Delta" ? "Δ" : key}</button>)}
         </div>
         {seriesBins.length > 0 ? <HistogramPlot key={series} bins={seriesBins} label={series} unit={t("temporal.histograms")} /> : <p>{t("temporal.noPixels")}</p>}
-        <p className="text-[10px] text-slate-500 dark:text-slate-400">{hist.note} · {hist.analysisScaleM} m</p>
+        <p className="text-[10px] text-slate-500 dark:text-slate-400">{t("temporal.pixelCount")} · {hist.analysisScaleM} m</p>
       </div>}
       {tiff && <div className="space-y-1 rounded-lg bg-white p-2 dark:bg-slate-900">
         <a href={tiff.downloadUrl} target="_blank" rel="noopener noreferrer"
           className="font-semibold text-violet-700 underline dark:text-violet-300">{t("temporal.downloadReady")}</a>
         <p>{tiff.bands.join(" / ")} · {tiff.dimensions.join(" × ")} px</p>
         {tiff.resolutionAdjusted && <p className="font-semibold text-amber-800 dark:text-amber-300">{t("temporal.adjusted")}: {tiff.requestedScaleM} m → {tiff.estimatedGridScaleM} m</p>}
-        <p className="text-[10px] text-slate-500">{tiff.note}</p>
+        <p className="text-[10px] text-slate-500">{t("temporal.geotiffNote")}</p>
       </div>}
     </section>
   );
