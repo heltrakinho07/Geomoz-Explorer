@@ -32,6 +32,7 @@ import {validTerrainGeography} from "./geomoz-terrain-tiles";
 import { terrainOverlayTexture, type GeoMozTerrainOverlay } from "./geomoz-terrain-overlays";
 import { createTerrainRasterDrape, type TerrainRasterDrapeOptions } from "./geomoz-terrain-raster-overlay";
 import {composeTerrainDrapes,type TerrainDrapeLayer} from "./geomoz-terrain-drape-stack";
+import {createTerrainXYZDrape,validateTerrainXYZTemplate} from "./geomoz-terrain-xyz-drape";
 import "./geomoz-terrain-workspace.css";
 
 const LIMIT=32*1024*1024;
@@ -278,6 +279,32 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     setRasterBusy(false);setRasterProgress(null);
     setNotice("Importação do raster cancelada. O modelo e as camadas existentes foram preservados.");
   }
+  async function applyXYZOverlay(url:string,attribution:string){
+    if(!terrain||rasterAbortRef.current)return;
+    if(!attribution.trim()){setError("Indique a atribuição exigida pelo fornecedor XYZ.");return;}
+    try{validateTerrainXYZTemplate(url);}catch(cause){
+      setError(cause instanceof Error?cause.message:"Origem XYZ inválida.");return;
+    }
+    const controller=new AbortController();rasterAbortRef.current=controller;
+    setRasterBusy(true);setError(null);setNotice("");
+    setRasterProgress({label:"A carregar mosaico XYZ autorizado…",percent:null});
+    try{
+      const prepared=await createTerrainXYZDrape(terrain,url,controller.signal);
+      if(controller.signal.aborted)return;
+      setRasterDrapes(previous=>[...previous,{
+        id:"xyz-"+crypto.randomUUID(),name:"Mapa-base XYZ · "+attribution,
+        imageDataUrl:prepared.imageDataUrl,visible:true,opacity:1,blend:"normal",
+        kind:"xyz",coverage:prepared.coverage,attribution
+      }]);
+      setNotice("Mapa-base XYZ aplicado ao modelo ("+prepared.tileCount+" tiles a zoom "+
+        prepared.zoom+"). A licença e a atribuição são da responsabilidade da origem.");
+    }catch(cause){
+      if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:"Falha ao carregar tiles XYZ.");
+    }finally{
+      if(rasterAbortRef.current===controller){rasterAbortRef.current=null;
+        setRasterBusy(false);setRasterProgress(null);}
+    }
+  }
   async function applyRasterOverlay(input:File|{source:string;name:string}, renderer:TerrainRasterDrapeOptions["renderer"]="auto", palette:TerrainRasterDrapeOptions["palette"]="ndvi"){
     if(!terrain||rasterAbortRef.current)return;
     const controller=new AbortController();
@@ -433,7 +460,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
               rasterOptions={options.filter(o=>o.id!==selected)} rasters={rasterDrapes}
               rasterBusy={rasterBusy} rasterProgress={rasterProgress}
               onCancelRaster={cancelRasterOverlay} onRastersChange={setRasterDrapes}
-              onImportRaster={applyRasterOverlay}
+              onImportRaster={applyRasterOverlay} onAddXYZ={applyXYZOverlay}
               onNotice={setNotice}/>}
           {workspaceTab==="analysis"&&<>
             <h3>{ui("Análise científica do DEM")}</h3>
