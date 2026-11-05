@@ -6,6 +6,8 @@ import scienceCatalog from "@/lib/index-science.json";
 type ScienceEntry = { status: string; kind: string; source: string; note: string; name?: string; formula?: string; bands?: string };
 const SCIENCE: Record<string, ScienceEntry> = scienceCatalog;
 import { useProject } from "@/context/ProjectContext";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import { scienceUiText, type ScienceUiKey } from "@/i18n/scienceUi";
 /**
  * GeoAnálises — Sentinel-2 spectral analysis module.
  *
@@ -2858,6 +2860,8 @@ export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
 export default function GeoAnalises({
   aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange,
 }: GeoAnalisesProps) {
+  const { language } = usePortalTranslation();
+  const scienceT = (key: ScienceUiKey) => scienceUiText(language, key);
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const categoryInDevelopment = GEO_CATEGORIES.some(cat => cat.id === selectedCategory && cat.status === "development");
@@ -3739,24 +3743,24 @@ export default function GeoAnalises({
           <div className="geo-catalog-content mx-auto w-full max-w-7xl flex-1 space-y-4 p-3 sm:space-y-6 sm:p-6 md:p-8">
             <header className="space-y-4">
               <div>
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">O que pretende analisar?</h2>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Escolha uma área temática. Defina a área de estudo, configure os dados e consulte os resultados no mapa.</p>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">{scienceT("catalog.title")}</h2>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{scienceT("catalog.description")}</p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <div className="relative min-w-0 flex-1 basis-72">
                   <Search size={18} className="absolute left-3 top-3 text-slate-500" />
-                  <input type="search" aria-label="Pesquisar análises" value={categoryFilter}
-                    onChange={e => setCategoryFilter(e.target.value)} placeholder="Pesquisar tema ou índice: NDVI, água, relevo…"
+                  <input type="search" aria-label={scienceT("catalog.search")} value={categoryFilter}
+                    onChange={e => setCategoryFilter(e.target.value)} placeholder={scienceT("catalog.searchHint")}
                     className="geo-catalog-search min-h-11 w-full rounded-xl border border-slate-300 pl-10 pr-3 text-sm text-slate-900 focus:ring-2 focus:ring-sky-500 dark:border-slate-700 dark:text-white" />
                 </div>
                 <button type="button" onClick={() => { setSelectedCategory("satellite"); setActiveTab("s2"); setShowS2(true); setCompareActive(false); }}
-                  className="geo-catalog-quick-action min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-medium dark:border-slate-700">Mosaicos EOX · 2016–2024</button>
+                  className="geo-catalog-quick-action min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-medium dark:border-slate-700">{scienceT("catalog.mosaics")}</button>
                 <button type="button" onClick={() => { setSelectedCategory("satellite"); setActiveTab("s2"); setShowS2(true); setCompareActive(true); }}
-                  className="geo-catalog-quick-action min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-medium dark:border-slate-700">Comparar períodos</button>
+                  className="geo-catalog-quick-action min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-medium dark:border-slate-700">{scienceT("catalog.compare")}</button>
               </div>
-              <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{filteredCategories.length} áreas temáticas · Os cálculos requerem ligação ao Google Earth Engine; os mosaicos EOX podem ser explorados directamente.</p>
+              <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{filteredCategories.length} {scienceT("catalog.topics")} · {scienceT("catalog.geeNote")}</p>
             </header>
-            {filteredCategories.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center"><p>Nenhuma análise encontrada.</p><button type="button" onClick={() => setCategoryFilter("")} className="mt-2 text-sky-700 underline">Limpar pesquisa</button></div>}
+            {filteredCategories.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center"><p>{scienceT("catalog.empty")}</p><button type="button" onClick={() => setCategoryFilter("")} className="mt-2 text-sky-700 underline">{scienceT("catalog.clear")}</button></div>}
 
             <div className="geo-catalog-grid grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-4 sm:gap-5">
               {filteredCategories.map(cat => {
@@ -3766,7 +3770,7 @@ export default function GeoAnalises({
                     type="button"
                     key={cat.id}
                     data-category={cat.id}
-                    aria-label={`${cat.status === "development" ? "Ver estado do módulo" : "Abrir análise especializada"}: ${cat.title}`}
+                    aria-label={`${cat.status === "development" ? scienceT("catalog.moduleStatus") : scienceT("catalog.open")}: ${cat.title}`}
                     onClick={() => {
                       setCompareActive(false);
                       setStoryMapOpen(false);
@@ -3785,7 +3789,7 @@ export default function GeoAnalises({
                           <IconComponent size={20} />
                         </div>
                         <span className="geo-catalog-card__badge">
-                          {cat.status === "development" ? "Em desenvolvimento" : cat.badge}
+                          {cat.status === "development" ? scienceT("catalog.development") : cat.badge}
                         </span>
                       </div>
 
@@ -3794,7 +3798,7 @@ export default function GeoAnalises({
                       </h3>
                       <p className="geo-catalog-card__subtitle mb-3 mt-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
                         {cat.subtitle}
-                        {cat.tabIds.some(id => SCIENCE[id]?.status === "experimental") && <span className="geo-catalog-card__review">Inclui ferramentas em revisão</span>}
+                        {cat.tabIds.some(id => SCIENCE[id]?.status === "experimental") && <span className="geo-catalog-card__review">{scienceT("catalog.review")}</span>}
                       </p>
 
                       <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-3">
@@ -3811,7 +3815,7 @@ export default function GeoAnalises({
                     </div>
 
                     <div className="geo-catalog-card__footer flex items-center justify-between gap-2 border-t pt-3 text-xs font-bold">
-                      <span>{cat.status === "development" ? "Ver estado do módulo" : "Abrir Análise Especializada"}</span>
+                      <span>{cat.status === "development" ? scienceT("catalog.moduleStatus") : scienceT("catalog.open")}</span>
                       <span className="geo-catalog-card__arrow" aria-hidden="true">→</span>
                     </div>
                   </button>
@@ -3824,16 +3828,16 @@ export default function GeoAnalises({
         <div className="flex-1 overflow-y-auto bg-slate-50 p-6 dark:bg-slate-950 md:p-8">
           <button type="button" onClick={() => setSelectedCategory(null)}
             className="mb-6 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-            <ArrowLeft size={16} /> Voltar ao catálogo
+            <ArrowLeft size={16} /> {scienceT("catalog.back")}
           </button>
           <section aria-labelledby="module-development-title" className="mx-auto max-w-2xl rounded-2xl border border-amber-200 bg-white p-6 dark:border-amber-900 dark:bg-slate-900">
             <span role="status" className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-              <Clock size={14} /> Em desenvolvimento
+              <Clock size={14} /> {scienceT("catalog.development")}
             </span>
             <h2 id="module-development-title" className="mt-4 text-xl font-bold text-slate-900 dark:text-slate-100">{activeCategory.title}</h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{activeCategory.description}</p>
             <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-              O cálculo, os mapas de resultados e a exportação deste módulo estão temporariamente desactivados.
+              {scienceT("catalog.unavailable")}
             </p>
           </section>
         </div>
@@ -3848,10 +3852,10 @@ export default function GeoAnalises({
               <button
                 onClick={() => setSelectedCategory(null)}
                 className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-sky-700 dark:hover:text-sky-400 bg-slate-100 dark:bg-slate-800 hover:bg-sky-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 hover:border-sky-200 dark:hover:border-sky-600 px-3 py-1.5 rounded-xl transition-all shrink-0 shadow-2xs cursor-pointer"
-                title="Voltar ao catálogo de especialidades"
+                title={scienceT("catalog.backSpecialties")}
               >
                 <ArrowLeft size={13} />
-                <span>Voltar ao Catálogo</span>
+                <span>{scienceT("catalog.back")}</span>
               </button>
 
               <div className="h-5 w-px bg-slate-200 dark:bg-slate-700 shrink-0" />
@@ -3869,18 +3873,18 @@ export default function GeoAnalises({
 
             {/* Mobile category selector prevents clipped tabs and narrow touch targets. */}
             <label className="order-3 w-full min-w-0 sm:order-none sm:flex-1">
-              <span className="sr-only">Escolher índice ou análise</span>
+              <span className="sr-only">{scienceT("catalog.choose")}</span>
               <select
                 value={activeTab}
                 onChange={event => {
                   setActiveTab(event.target.value as SpectralTab);
                   setSidebarOpen(false);
                 }}
-                aria-label="Escolher índice ou análise"
+                aria-label={scienceT("catalog.choose")}
                 className="min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
               >
                 {activeCategory.tabIds.map(tabId => (
-                  <option key={tabId} value={tabId}>{descriptiveIndexName(tabId)}{SCIENCE[tabId]?.status === "experimental" ? " · Em revisão" : ""}</option>
+                  <option key={tabId} value={tabId}>{descriptiveIndexName(tabId)}{SCIENCE[tabId]?.status === "experimental" ? ` · ${scienceT("catalog.inReview")}` : ""}</option>
                 ))}
               </select>
             </label>
@@ -3895,22 +3899,22 @@ export default function GeoAnalises({
                 }}
                 aria-expanded={resultsPanelOpen}
                 className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-2.5 text-xs font-semibold text-sky-700 hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300"
-                title={resultsPanelOpen ? "Ocultar painel sem perder os dados" : hasActiveResult ? "Mostrar resultados" : "Sobre a análise e opções específicas"}
+                title={resultsPanelOpen ? scienceT("catalog.hideTitle") : hasActiveResult ? scienceT("catalog.showTitle") : scienceT("catalog.aboutTitle")}
               >
                 <BarChart2 size={15} />
-                <span className="hidden lg:inline">{resultsPanelOpen ? "Ocultar painel" : hasActiveResult ? "Resultados" : "Sobre e opções"}</span>
-                <span className="lg:hidden">Resultados</span>
+                <span className="hidden lg:inline">{resultsPanelOpen ? scienceT("catalog.hide") : hasActiveResult ? scienceT("catalog.results") : scienceT("catalog.about")}</span>
+                <span className="lg:hidden">{scienceT("catalog.results")}</span>
                 {resultsPanelOpen ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
               </button>
               <details className="relative">
-                <summary className="cursor-pointer rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-700">Exportar</summary>
+                <summary className="cursor-pointer rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-700">{scienceT("catalog.export")}</summary>
                 <div className="absolute right-0 top-full z-[800] mt-2 flex w-56 flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900">
                   <button type="button" disabled={isLineaments || indexBlocked || !hasActiveResult}
-                    onClick={exportGeoAnalisesPdf} className="rounded-lg p-2 text-left text-sm hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">Relatório PDF</button>
+                    onClick={exportGeoAnalisesPdf} className="rounded-lg p-2 text-left text-sm hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">{scienceT("catalog.pdf")}</button>
                   <button type="button" disabled={isLineaments || indexBlocked || !hasActiveResult}
-                    onClick={() => setStoryMapOpen(true)} className="rounded-lg p-2 text-left text-sm hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">Apresentação executiva</button>
-                  {!hasActiveResult && <p className="text-xs text-slate-600 dark:text-slate-300">Execute uma análise para exportar os resultados.</p>}
-                  <p className="text-xs text-slate-600 dark:text-slate-300">Para compor uma folha cartográfica, use o Layout de impressão no cabeçalho.</p>
+                    onClick={() => setStoryMapOpen(true)} className="rounded-lg p-2 text-left text-sm hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">{scienceT("catalog.story")}</button>
+                  {!hasActiveResult && <p className="text-xs text-slate-600 dark:text-slate-300">{scienceT("catalog.runFirst")}</p>}
+                  <p className="text-xs text-slate-600 dark:text-slate-300">{scienceT("catalog.printHint")}</p>
                 </div>
               </details>
             </div>
