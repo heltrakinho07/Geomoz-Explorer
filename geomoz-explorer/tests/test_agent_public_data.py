@@ -105,6 +105,20 @@ class PublicDataTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Sem pixels válidos"):
                 engine.zonal_statistics(GEOMETRY, "ndvi", "2025-01-01", "2026-01-01")
 
+    def test_grid_accepts_district_geometry_from_shapely_mapping(self):
+        district = {"type": "MultiPolygon",
+                    "coordinates": ((((38, -14), (39, -14), (39, -13), (38, -14)),),)}
+        ee = MagicMock()
+        region = ee.Geometry.return_value
+        region.area.return_value.getInfo.return_value = 1_000_000
+        with patch.dict("sys.modules", {"ee": ee}):
+            result, _, _ = engine._grid(district)
+        self.assertIs(result, region)
+        ee.Geometry.assert_called_once_with(
+            {"type": "MultiPolygon", "coordinates": [[[[38, -14], [39, -14], [39, -13], [38, -14]]]]},
+            "EPSG:4326", False,
+        )
+
     def test_invalid_geometry_periods_and_scale_fail_before_ee_rpc(self):
         for geometry in (None, {}, {"type": "Point", "coordinates": [32, -20]},
                          {"type": "Polygon", "coordinates": [[[999, 0], [0, 1], [0, 2], [999, 0]]]}):

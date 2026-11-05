@@ -70,8 +70,7 @@ export function overlayCategoryValues(geojson:FeatureCollection,field:string):st
     const value=feature.properties?.[field];
     if(value!==null&&value!==undefined)unique.add(String(value));
   }
-  // All distinct attribute values are eligible for categorization, not just
-  // the most frequent 64. Layer complexity is bounded by the feature limits.
+  // The layer is already bounded by the GeoJSON feature/vertex validation.
   return [...unique].sort((a,b)=>a.localeCompare(b));
 }
 export function defaultTerrainOverlay(

@@ -48,6 +48,7 @@ COPY gee_module.py .
 COPY gee_download_grid.py .
 RUN python3 -c "from gee_download_grid import bounded_download_grid; print('Bounded GEE download runtime available')"
 COPY gee_session_store.py .
+COPY gee_auth_errors.py .
 COPY gee_presets.py .
 # 3D terrain runtime: loaded lazily by /geomoz-api/terrain/*
 COPY terrain_dem.py .

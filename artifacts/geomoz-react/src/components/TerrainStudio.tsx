@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { jsPDF } from "jspdf";
 import { Download, FileUp, Image as ImageIcon, Loader2, Mountain, RotateCcw, Map as MapIcon, Box, X } from "lucide-react";
 import TerrainBasemap from "@/components/terrain/TerrainBasemap";
+import TerrainDrapePanel from "@/components/terrain/TerrainDrapePanel";
+import {composeTerrainDrapes,type TerrainDrapeLayer} from "@/lib/terrain-drape-stack";
 import { validTerrainGeography } from "@/lib/terrain-map-geo";
 import { apiFetch } from "@/lib/api";
 import { useTerrainSession } from "@/context/TerrainSessionContext";
@@ -10,8 +12,6 @@ import TerrainSciencePanel, {type TerrainPickedPoint} from "@/components/Terrain
 import { encodeTerrainGLB, imageToGLBTexture } from "@/lib/terrain-glb";
 import {terrainToGeographic} from "@/lib/terrain-analysis";
 import { decodeTerrainScene, encodeTerrainScene, MAX_TERRAIN_SCENE_BYTES } from "@/lib/terrain-scene";
-import { createTerrainRasterDrape, type GeoMozRasterDrape } from "@/lib/terrain-raster-drape";
-import { composeTerrainTexture } from "@/lib/terrain-texture-stack";
 import {
   createTerrainRenderer,
   type TerrainMeshData,
@@ -48,50 +48,22 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   const [style, setStyle] = useState<TerrainVisualStyle>("hypsometric");
   const [detailLevel, setDetailLevel] = useState<"auto"|"full"|"medium"|"low">("auto");
   const [textureUrl, setTextureUrl] = useState<string | null>(null);
-  type DrapeEntry=GeoMozRasterDrape & {id:string;opacity:number;visible:boolean};
-  const [drapeLayers,setDrapeLayers] = useState<DrapeEntry[]>([]);
-  const [drapeKind,setDrapeKind] = useState<"auto"|"classified"|"ndvi"|"ndwi"|"rgb">("auto");
-  const [drapeProgress,setDrapeProgress] = useState("");
-  const [drapeBusy,setDrapeBusy] = useState(false);
-  const [composedTexture,setComposedTexture] = useState<string|null>(null);
-  const drapeAbort=useRef<AbortController|null>(null);
+  const [drapes,setDrapes]=useState<TerrainDrapeLayer[]>([]);
+  const [composedTexture,setComposedTexture]=useState<string|null>(null);
   useEffect(()=>{
-    const controller=new AbortController();
-    composeTerrainTexture([
-      ...(textureUrl?[{id:"base-texture",imageDataUrl:textureUrl,visible:true,opacity:1}]:[]),
-      ...drapeLayers.map(layer=>({id:layer.id,imageDataUrl:layer.imageDataUrl,
-        visible:layer.visible,opacity:layer.opacity})),
-    ],controller.signal).then(setComposedTexture).catch(cause=>{
-      if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:"Falha na combinação de texturas.");
+    if(!terrain){setComposedTexture(null);return;}
+    const abort=new AbortController();
+    const layers=[...(textureUrl?[{
+      id:"base-rgb",name:"Imagem RGB alinhada",imageDataUrl:textureUrl,
+      kind:"rgb" as const,opacity:1,visible:true,blend:"normal" as const,coverage:1
+    }]:[]),...drapes];
+    void composeTerrainDrapes(layers,1024,abort.signal).then(result=>{
+      if(!abort.signal.aborted)setComposedTexture(result);
+    }).catch(cause=>{
+      if(!abort.signal.aborted)setError(cause instanceof Error?cause.message:"Falha a compor texturas.");
     });
-    return ()=>controller.abort();
-  },[textureUrl,drapeLayers]);
-  const activeTexture=composedTexture??textureUrl;
-  async function addThematicDrape(file:File|undefined){
-    if(!file||!terrain)return;
-    if(file.size<1||file.size>32*1024*1024||!/\.tiff?$/i.test(file.name)){
-      setError("Seleccione GeoTIFF georreferenciado de até 32 MB.");return;
-    }
-    drapeAbort.current?.abort();
-    const controller=new AbortController();drapeAbort.current=controller;
-    setDrapeBusy(true);setDrapeProgress("A ler "+file.name);setError(null);
-    try{
-      const aligned=await createTerrainRasterDrape(await file.arrayBuffer(),file.name,terrain,{
-        signal:controller.signal,kind:drapeKind,
-        onProgress:f=>setDrapeProgress("A reprojetar e recortar: "+Math.round(f*100)+"%"),
-      });
-      if(controller.signal.aborted)return;
-      setDrapeLayers(previous=>[...previous.slice(-15),{
-        ...aligned,id:crypto.randomUUID(),opacity:0.8,visible:true
-      }]);
-      setStyle("imagery");
-      setDrapeProgress("Camada "+file.name+" adicionada à malha 3D.");
-    }catch(e){
-      if(!controller.signal.aborted)setError(e instanceof Error?e.message:"Erro ao alinhar o GeoTIFF.");
-    }finally{
-      if(drapeAbort.current===controller){drapeAbort.current=null;setDrapeBusy(false);}
-    }
-  }
+    return ()=>abort.abort();
+  },[terrain,textureUrl,drapes]);
   const [pickTarget,setPickTarget]=useState<"A"|"B"|null>(null);
   const [picked,setPicked]=useState<Partial<Record<"A"|"B",TerrainPick>>>({});
   const [lastPick,setLastPick]=useState<TerrainPickedPoint|null>(null);
@@ -125,7 +97,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
     setTextureBusy(false);
     setTextureUrl(null);
     setTextureDescription(null);
-    drapeAbort.current?.abort();setDrapeLayers([]);setDrapeProgress("");
+    setDrapes([]);
   },[terrain]);
 
   const selectTerrainPoint=(point:TerrainPick)=>{
@@ -147,7 +119,8 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
     setRendererError(null);
     try {
       return createTerrainRenderer(canvasRef.current, terrain, {
-        exaggeration, style, textureUrl:activeTexture, detailLevel,
+        exaggeration, style, textureUrl, detailLevel,
+        rasterTextureUrl:composedTexture, rasterOpacity:composedTexture?1:0,
         pickEnabled:!!pickTarget,onPick:selectTerrainPoint,
         profileOverlay:picked.A&&picked.B?{
           start:[picked.A.xMeters,picked.A.yMeters],
@@ -158,7 +131,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
       setRendererError(cause instanceof Error ? cause.message : String(cause));
       return undefined;
     }
-  }, [open, terrain, exaggeration, style, activeTexture, pickTarget, picked, detailLevel, viewMode]);
+  }, [open, terrain, exaggeration, style, textureUrl, composedTexture, pickTarget, picked, detailLevel, viewMode]);
 
   async function loadGeoTiff(file: File | undefined) {
     if (!file) return;
@@ -359,8 +332,8 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
     setGlbBusy(true);
     setError(null);
     try {
-      const texture = activeTexture && style === "imagery"
-        ? await imageToGLBTexture(activeTexture) : undefined;
+      const texture = textureUrl && style === "imagery"
+        ? await imageToGLBTexture(textureUrl) : undefined;
       const bytes = encodeTerrainGLB(terrain, exaggeration, style, texture);
       const blob = new Blob([new Uint8Array(bytes)], { type: "model/gltf-binary" });
       const url = URL.createObjectURL(blob);
@@ -536,7 +509,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 p-2 text-xs">
               <option value="hypsometric">Hipsometria e relevo sombreado</option>
               <option value="grayscale">Relevo em escala de cinzentos</option>
-              <option value="imagery" disabled={!activeTexture}>Imagem de satélite / ortofoto</option>
+              <option value="imagery" disabled={!textureUrl}>Imagem de satélite / ortofoto</option>
             </select>
             <div className="space-y-2 rounded-xl border border-sky-200 bg-sky-50 p-2.5 dark:border-sky-800 dark:bg-slate-800/60">
               <label className="block text-xs font-semibold text-sky-900 dark:text-sky-200">
@@ -601,68 +574,6 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               A textura deve ter a mesma extensão e orientação geográfica do DEM.
             </p>
           </div>
-          <section className="space-y-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3 dark:border-sky-900 dark:bg-slate-800/40"
-            aria-label="Camadas temáticas sobre modelo 3D" data-testid="terrain-studio-drapes">
-            <div className="flex items-center justify-between gap-2">
-              <strong className="text-xs">Camadas sobre o modelo 3D</strong>
-              <span className="text-[10px] text-slate-500">{drapeLayers.length} camadas</span>
-            </div>
-            <p className="text-[11px] text-slate-600 dark:text-slate-300">Carregue uso do solo, geologia raster, NDVI ou NDWI. São reprojetados e recortados automaticamente ao DEM.</p>
-            <label className="block text-xs">Simbologia
-              <select value={drapeKind} onChange={e=>setDrapeKind(e.target.value as typeof drapeKind)}
-                aria-label="Simbologia do raster 3D"
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-xs dark:bg-slate-900">
-                <option value="auto">Detecção automática</option>
-                <option value="classified">Categorizado · uso do solo</option>
-                <option value="ndvi">NDVI · índice contínuo</option>
-                <option value="ndwi">NDWI · índice contínuo</option>
-                <option value="rgb">RGB · imagem natural</option>
-              </select>
-            </label>
-            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-sky-600 p-2.5 text-xs font-semibold text-white hover:bg-sky-700">
-              <FileUp size={14}/> {drapeBusy?"A processar raster…":"Adicionar GeoTIFF temático"}
-              <input type="file" accept=".tif,.tiff,image/tiff" disabled={!terrain||drapeBusy}
-                className="sr-only" aria-label="Adicionar GeoTIFF ao modelo 3D"
-                onChange={e=>{void addThematicDrape(e.target.files?.[0]);e.target.value="";}}/>
-            </label>
-            {drapeBusy&&<button type="button" className="text-xs text-rose-600"
-              onClick={()=>drapeAbort.current?.abort()}>Cancelar importação</button>}
-            {drapeProgress&&<p role="status" className="text-[11px] text-sky-800 dark:text-sky-200">{drapeProgress}</p>}
-            {drapeLayers.map((layer,index)=><div key={layer.id}
-              className="space-y-2 rounded-lg border border-slate-200 bg-white p-2.5 dark:border-slate-700 dark:bg-slate-900">
-              <div className="flex items-center gap-2">
-                <input type="checkbox" checked={layer.visible}
-                  aria-label={"Mostrar "+layer.name}
-                  onChange={e=>setDrapeLayers(ls=>ls.map(x=>x.id===layer.id?{...x,visible:e.target.checked}:x))}/>
-                <strong className="min-w-0 flex-1 truncate text-[11px]" title={layer.name}>{index+1}. {layer.name}</strong>
-                <button type="button" disabled={index===0} aria-label={"Descer "+layer.name}
-                  onClick={()=>setDrapeLayers(ls=>{const next=[...ls];[next[index],next[index-1]]=[next[index-1],next[index]];return next;})}>↓</button>
-                <button type="button" disabled={index===drapeLayers.length-1} aria-label={"Subir "+layer.name}
-                  onClick={()=>setDrapeLayers(ls=>{const next=[...ls];[next[index],next[index+1]]=[next[index+1],next[index]];return next;})}>↑</button>
-                <button type="button" aria-label={"Remover "+layer.name}
-                  onClick={()=>setDrapeLayers(ls=>ls.filter(x=>x.id!==layer.id))}><X size={13}/></button>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-[11px]">Opacidade {Math.round(layer.opacity*100)}%</label>
-                <input type="range" min="0" max="100" value={Math.round(layer.opacity*100)}
-                  aria-label={"Opacidade "+layer.name} disabled={!layer.visible}
-                  className="min-w-0 flex-1 accent-sky-600"
-                  onChange={e=>setDrapeLayers(ls=>ls.map(x=>x.id===layer.id?{
-                    ...x,opacity:Number(e.target.value)/100
-                  }:x))}/>
-              </div>
-              <small className="text-[10px] text-slate-500">{layer.mode==="continuous"?"Índice contínuo":layer.mode==="classified"?"Categorizado":"RGB"} · {Math.round(layer.coverage*100)}% do DEM</small>
-              {layer.categories.length>0&&<details className="text-[10px]">
-                <summary>Legenda ({layer.categories.length})</summary>
-                <div className="max-h-40 space-y-1 overflow-y-auto">
-                  {layer.categories.map(cat=><div key={cat.value} className="flex items-center gap-1.5">
-                    <span className="h-3 w-3 rounded-sm" style={{background:cat.color}}/>
-                    <span>{cat.label}</span>
-                  </div>)}
-                </div>
-              </details>}
-            </div>)}
-          </section>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs font-semibold">
               <label htmlFor="terrain-studio-exaggeration">3. Exagero vertical</label>
@@ -677,6 +588,8 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               <RotateCcw size={12}/> Restaurar estilo
             </button>
           </div>
+          {terrain&&<TerrainDrapePanel terrain={terrain} layers={drapes}
+            onChange={setDrapes} onAdd={item=>setDrapes(previous=>[...previous,item])}/>}
           {terrain && (
             <section aria-label="Metadados de elevação" className="space-y-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-xs">
               <p className="truncate font-semibold" title={terrain.name}>{terrain.name}</p>
@@ -718,7 +631,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               ? <canvas ref={canvasRef} aria-label="Modelo tridimensional de elevação"
                   className="block h-full w-full cursor-grab touch-none active:cursor-grabbing"/>
               : <TerrainBasemap terrain={terrain} exaggeration={exaggeration}
-                  style={style} rasterTexture={activeTexture}/>
+                  style={style} rasterTexture={composedTexture??textureUrl}/>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
               <Mountain size={56} className="text-sky-500/60"/>
