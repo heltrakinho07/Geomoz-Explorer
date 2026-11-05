@@ -4,6 +4,7 @@ import { PublicDataTools, type PublicAnalysisRequest } from "./PublicDataTools";
 import { GeoIntelligenceDossier, type IntelligenceDossier } from "./GeoIntelligenceDossier";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useProject } from "../context/ProjectContext";
+import { collectGeoAiMapActions, type GeoAiTemporalChange } from "@/lib/geoai-map-actions";
 import { apiFetch } from "@/lib/api";
 import { useGeeAuth } from "@/hooks/useGeeAuth";
 import { usePortalTranslation } from "@/i18n/usePortalTranslation";
@@ -40,7 +41,7 @@ import {
   Globe,
   RefreshCw,
 } from "lucide-react";
-import { GeoJSON, MapContainer, TileLayer, ScaleControl, useMap } from "react-leaflet";
+import { GeoJSON, MapContainer, Pane, TileLayer, ScaleControl, useMap } from "react-leaflet";
 import { GeoAgentMarkdown } from "./GeoAgentMarkdown";
 import "leaflet/dist/leaflet.css";
 import { GOOGLE_BASEMAPS } from "@/lib/basemaps";
@@ -111,15 +112,6 @@ interface WorkflowStep {
   name: string;
   status: "pending" | "running" | "completed" | "error";
   resultSummary?: string;
-}
-
-interface TemporalChangeStyle {
-  index: string;
-  threshold: number;
-  periodA: { startDate: string; endDate: string };
-  periodB: { startDate: string; endDate: string };
-  continuousTileUrl: string;
-  continuousRange: [number, number];
 }
 
 interface ChatMessage {
@@ -264,8 +256,12 @@ export default function GeoMozAIAgentTab() {
   const [completedRuns, setCompletedRuns] = useState<any[]>([]);
   const [selectedLayerIndex, setSelectedLayerIndex] = useState<number>(0);
   const [layerOpacity, setLayerOpacity] = useState<number>(0.85);
-  const [changeMode, setChangeMode] = useState<"significant" | "continuous">("significant");
-  const selectedTemporal = completedRuns[selectedLayerIndex]?.temporalChange as TemporalChangeStyle | undefined;
+  const [changeMode, setChangeMode] = useState<"significant" | "continuous" | "comparison">("significant");
+  const [swipePosition, setSwipePosition] = useState(50);
+  const [mapLayerNotice, setMapLayerNotice] = useState<string | null>(null);
+  const selectedTemporal = completedRuns[selectedLayerIndex]?.temporalChange as GeoAiTemporalChange | undefined;
+  const comparisonReady = Boolean(selectedTemporal?.periodATileUrl && selectedTemporal?.periodBTileUrl);
+  const showComparison = Boolean(comparisonReady && changeMode === "comparison" && activeTileUrl);
   const renderedTileUrl = selectedTemporal && changeMode === "continuous"
     ? selectedTemporal.continuousTileUrl : activeTileUrl;
 
@@ -517,7 +513,9 @@ export default function GeoMozAIAgentTab() {
         : analysisPeriod;
       const computedLayers: any[] = [];
       const vectorWarnings: string[] = [];
-      for (const act of data.map_actions || []) {
+      // Some agent planners return verified map actions only inside successful runs.
+      // Recover those actions rather than leaving a completed comparison invisible.
+      for (const act of collectGeoAiMapActions(data)) {
         if (act.type === "SET_AOI" && act.province) {
           setSelectedProvince(act.province);
           setSelectedDistrict(act.district || null);
@@ -572,19 +570,31 @@ export default function GeoMozAIAgentTab() {
       }
 
       if (computedLayers.length > 0) {
-        setSelectedLayerIndex(completedRuns.length);
-        setChangeMode("significant");
+        // Prefer a new temporal raster; never keep an older active layer after
+        // a new comparison has finished. The swipe opens automatically.
+        const temporalIndex = computedLayers.findIndex((layer) =>
+          Boolean(layer.temporalChange?.periodATileUrl && layer.temporalChange?.periodBTileUrl));
+        const rasterIndex = computedLayers.findIndex((layer) => Boolean(layer.tileUrl));
+        const preferredIndex = temporalIndex >= 0 ? temporalIndex : rasterIndex >= 0 ? rasterIndex : 0;
+        const preferredLayer = computedLayers[preferredIndex];
+        setSelectedLayerIndex(completedRuns.length + preferredIndex);
+        setChangeMode(temporalIndex >= 0 ? "comparison" : "significant");
+        setSwipePosition(50);
+        setMapLayerNotice(null);
         setCompletedRuns((prev) => [...prev, ...computedLayers]);
-        const firstLayer = computedLayers[0];
-        setActiveTileUrl(firstLayer.tileUrl || null);
-        setActiveGeology(firstLayer.geojson || null);
-        setActiveTileName(firstLayer.name);
+        setActiveTileUrl(preferredLayer.tileUrl || null);
+        setActiveGeology(preferredLayer.geojson || null);
+        setActiveTileName(preferredLayer.name);
         if (activeProject) {
           for (const resultLayer of computedLayers) {
             // Do not persist large inline GeoJSON as a project run.
             if (resultLayer.tileUrl) await saveRunToActiveProject(resultLayer);
           }
         }
+      }
+      if (!computedLayers.length && Array.isArray(data.runs) && data.runs.some(
+        (run: { tool?: string; output?: { status?: string } }) => run.tool === "detect_temporal_change" && run.output?.status === "success")) {
+        setMapLayerNotice(copy("map.noLayer"));
       }
       const generalized = computedLayers.some((layer) => layer.geojson?.generalized);
       setGeologyNotice(vectorWarnings.join(" ") || (generalized
@@ -1172,7 +1182,9 @@ export default function GeoMozAIAgentTab() {
                             onClick={() => {
                               const layerIndex = completedRuns.findIndex((layer) => layer === r);
                               if (layerIndex >= 0) setSelectedLayerIndex(layerIndex);
-                              setChangeMode("significant");
+                              setChangeMode(r.temporalChange?.periodATileUrl && r.temporalChange?.periodBTileUrl ? "comparison" : "significant");
+                              setSwipePosition(50);
+                              setMapLayerNotice(null);
                               setActiveTileUrl(r.tileUrl || null);
                               setActiveGeology(r.geojson || null);
                               setActiveTileName(r.name);
@@ -1297,7 +1309,9 @@ export default function GeoMozAIAgentTab() {
                     type="button"
                     onClick={() => {
                       setSelectedLayerIndex(i);
-                      setChangeMode("significant");
+                      setChangeMode(run.temporalChange?.periodATileUrl && run.temporalChange?.periodBTileUrl ? "comparison" : "significant");
+                      setSwipePosition(50);
+                      setMapLayerNotice(null);
                       setActiveTileUrl(run.tileUrl || null);
                       setActiveGeology(run.geojson || null);
                       setActiveTileName(run.name);
