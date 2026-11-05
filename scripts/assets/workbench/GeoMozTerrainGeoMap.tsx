@@ -143,6 +143,7 @@ export default function GeoMozTerrainGeoMap({
   const [verticalOffset,setVerticalOffset] = useState(3);
   const [coordinates, setCoordinates] = useState<[number, number] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [meshMounted,setMeshMounted] = useState(false);
   const isValid = validTerrainGeography(terrain);
   overlaysRef.current = overlays;
   const appearance: ModelAppearance = {
@@ -154,6 +155,7 @@ export default function GeoMozTerrainGeoMap({
 
   useEffect(() => {
     if (!container.current || !isValid) return;
+    setMeshMounted(false);
     let map: maplibregl.Map | null = null;
     let resize: ResizeObserver | null = null;
     try {
@@ -194,9 +196,10 @@ export default function GeoMozTerrainGeoMap({
         if (!flat && !instance.getLayer(LOCAL_MODEL_ID)) {
           const layer = createTerrainMapMesh(terrain, appearanceRef.current);
           modelRef.current = layer;
-          try { instance.addLayer(layer); }
+          try { instance.addLayer(layer); setMeshMounted(true); }
           catch (cause) {
             modelRef.current = null;
+            setMeshMounted(false);
             setError(cause instanceof Error ? cause.message : "Não foi possível mostrar a malha 3D.");
           }
         }
@@ -255,7 +258,8 @@ export default function GeoMozTerrainGeoMap({
   </div>;
 
   const [west, south, east, north] = terrain.bounds4326;
-  return <div className="gm-terrain-geographic">
+  return <div className="gm-terrain-geographic"
+    data-testid={meshMounted && !flat ? "geomoz-georeferenced-model-map" : undefined}>
     <div className="gm-terrain-geographic-map" ref={container}
       role="region" aria-label={translate("DEM georreferenciado sobre mapa de base")}/>
     <div className="gm-terrain-geographic-tools">
