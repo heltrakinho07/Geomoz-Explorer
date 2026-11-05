@@ -2752,8 +2752,8 @@ export default function HidroGeoMoz({
                   <Share2 size={16} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold">Partilhar Análise (WebGIS)</h3>
-                  <p className="text-[11px] text-slate-400">Link público interativo de visualização (Apenas Leitura)</p>
+                  <h3 className="text-sm font-bold">{ht("share.title")}</h3>
+                  <p className="text-[11px] text-slate-400">{ht("share.subtitle")}</p>
                 </div>
               </div>
               <button
@@ -2769,21 +2769,21 @@ export default function HidroGeoMoz({
               <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 rounded-2xl p-3 text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
                 <ShieldCheck size={14} className="mt-0.5 shrink-0 text-blue-500" />
                 <span>
-                  Este link permite que qualquer utilizador visualize o mapa interativo da bacia, consulte métricas e faça o download do PDF.
-                  <strong> Não permite processamentos adicionais nem consome quota do seu GEE.</strong>
+                  {ht("share.permission")}
+                  <strong> {ht("share.noProcessing")}</strong>
                 </span>
               </div>
 
               {shareLoading ? (
                 <div className="flex flex-col items-center justify-center py-6 gap-2 text-slate-400">
                   <Loader2 size={24} className="animate-spin text-cyan-500" />
-                  <span className="text-xs">A gerar link WebGIS...</span>
+                  <span className="text-xs">{ht("share.generating")}</span>
                 </div>
               ) : (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                      Link de Partilha:
+                      {ht("share.label")}
                     </label>
                     <div className="flex p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-[10px] font-semibold">
                       <button
@@ -2795,7 +2795,7 @@ export default function HidroGeoMoz({
                             : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                         }`}
                       >
-                        Curto (~45 carateres)
+                        {ht("share.short")}
                       </button>
                       <button
                         type="button"
@@ -2805,9 +2805,9 @@ export default function HidroGeoMoz({
                             ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-cyan-400 shadow-xs font-bold"
                             : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                         }`}
-                        title="Link com dados embutidos para abrir offline / sem servidor"
+                        title={ht("share.offlineHint")}
                       >
-                        Autónomo (Offline)
+                        {ht("share.offline")}
                       </button>
                     </div>
                   </div>
@@ -2828,13 +2828,13 @@ export default function HidroGeoMoz({
                       className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-all shadow-sm shrink-0"
                     >
                       {shareCopied ? <Check size={13} className="text-emerald-300" /> : <Copy size={13} />}
-                      <span>{shareCopied ? "Copiado!" : "Copiar"}</span>
+                      <span>{shareCopied ? ht("share.copied") : ht("share.copy")}</span>
                     </button>
                   </div>
                   <p className="text-[10px] text-slate-400">
                     {shareLinkType === "short"
-                      ? "Link curto ideal para enviar por WhatsApp, email ou redes sociais."
-                      : "Link autónomo com dados compactados (#d=...) que abre mesmo se o servidor estiver offline."}
+                      ? ht("share.shortHint")
+                       : ht("share.offlineExplanation")}
                   </p>
                 </div>
               )}
@@ -2846,7 +2846,7 @@ export default function HidroGeoMoz({
                 onClick={() => setShareModalOpen(false)}
                 className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-all"
               >
-                Fechar
+                {ht("dialog.close")}
               </button>
               {shareUrl && (
                 <a
@@ -2855,7 +2855,7 @@ export default function HidroGeoMoz({
                   rel="noreferrer"
                   className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-md shadow-blue-600/20"
                 >
-                  <ExternalLink size={13} /> Abrir Visualizador
+                  <ExternalLink size={13} /> {ht("share.openViewer")}
                 </a>
               )}
             </div>
@@ -2873,8 +2873,8 @@ export default function HidroGeoMoz({
                   <FileDown size={16} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold">Exportação Cartográfica (Estilo QGIS)</h3>
-                  <p className="text-[11px] text-slate-400">Selecione os mapas e elementos a incluir no PDF</p>
+                  <h3 className="text-sm font-bold">{ht("pdf.title")}</h3>
+                  <p className="text-[11px] text-slate-400">{ht("pdf.subtitle")}</p>
                 </div>
               </div>
               <button
@@ -2888,24 +2888,24 @@ export default function HidroGeoMoz({
 
             <div className="my-4 space-y-2.5 text-xs">
               <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-                Composição do Relatório PDF:
+                {ht("pdf.composition")}
               </label>
 
               {[
                 {
                   id: "both",
-                  title: "Relatório Completo (Ambos os Mapas)",
-                  desc: "Pág 1: Métricas & Clima · Pág 2: Uso do Solo (10m) · Pág 3: Escoamento (CN)",
+                  title: ht("pdf.bothTitle"),
+                  desc: ht("pdf.bothDescription"),
                 },
                 {
                   id: "lulc",
-                  title: "Mapa de Uso e Cobertura do Solo",
-                  desc: "Layout cartográfico com ESA WorldCover 10m, rede hidrográfica e legenda de classes.",
+                  title: ht("pdf.lulcTitle"),
+                  desc: ht("pdf.lulcDescription"),
                 },
                 {
                   id: "cn",
-                  title: "Mapa de Escoamento Superficial (CN)",
-                  desc: "Layout cartográfico com Curve Number SCS, rede hidrográfica e zonas de infiltração.",
+                  title: ht("pdf.cnTitle"),
+                  desc: ht("pdf.cnDescription"),
                 },
               ].map(opt => (
                 <div
@@ -2926,12 +2926,12 @@ export default function HidroGeoMoz({
               ))}
 
               <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3 text-[11px] text-slate-600 dark:text-slate-400 space-y-1 mt-3">
-                <div className="font-semibold text-slate-700 dark:text-slate-300">Elementos Cartográficos Incluídos:</div>
+                <div className="font-semibold text-slate-700 dark:text-slate-300">{ht("pdf.elements")}</div>
                 <div className="flex flex-wrap gap-2 text-[10px] text-cyan-600 dark:text-cyan-300 pt-1">
-                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Compass size={11} /> Rosa dos Ventos</span>
-                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Ruler size={11} /> Barra de Escala Gráfica</span>
-                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Globe size={11} /> Graticule Lat/Lon</span>
-                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><FileText size={11} /> Legenda Temática</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Compass size={11} /> {ht("pdf.north")}</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Ruler size={11} /> {ht("pdf.scale")}</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Globe size={11} /> {ht("pdf.grid")}</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><FileText size={11} /> {ht("pdf.legend")}</span>
                 </div>
               </div>
             </div>
@@ -2942,7 +2942,7 @@ export default function HidroGeoMoz({
                 onClick={() => setPdfExportModalOpen(false)}
                 className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-all"
               >
-                Cancelar
+                {ht("dialog.cancel")}
               </button>
               <button
                 type="button"
@@ -2952,11 +2952,11 @@ export default function HidroGeoMoz({
               >
                 {exportingPdf ? (
                   <>
-                    <Loader2 size={13} className="animate-spin" /> A gerar PDF QGIS…
+                    <Loader2 size={13} className="animate-spin" /> {ht("pdf.generating")}
                   </>
                 ) : (
                   <>
-                    <FileDown size={14} /> Gerar PDF A4
+                    <FileDown size={14} /> {ht("pdf.generate")}
                   </>
                 )}
               </button>
@@ -2975,8 +2975,8 @@ export default function HidroGeoMoz({
                   <FolderOpen size={16} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold">Arquivo Permanente de Análises</h3>
-                  <p className="text-[11px] text-slate-400">Bacias guardadas para consulta instantânea sem recorrer ao GEE</p>
+                  <h3 className="text-sm font-bold">{ht("archive.title")}</h3>
+                  <p className="text-[11px] text-slate-400">{ht("archive.subtitle")}</p>
                 </div>
               </div>
               <button
@@ -2992,16 +2992,16 @@ export default function HidroGeoMoz({
               {savedAnalyses.length === 0 ? (
                 <div className="py-12 text-center text-slate-400 space-y-2">
                   <Bookmark size={32} className="mx-auto text-slate-300 dark:text-slate-700 opacity-60" />
-                  <p className="font-semibold text-slate-600 dark:text-slate-300">Nenhuma análise guardada ainda</p>
+                  <p className="font-semibold text-slate-600 dark:text-slate-300">{ht("archive.empty")}</p>
                   <p className="text-[11px] max-w-xs mx-auto text-slate-400">
-                    Delimite uma bacia e clique em <strong>"Guardar no Arquivo Permanente"</strong> para preservá-la aqui para sempre.
+                    {ht("archive.emptyHint")}
                   </p>
                 </div>
               ) : (
                 savedAnalyses.map((item) => {
                   const area = item.metadata?.areaKm2 || item.data?.basinReport?.morphometry?.areaKm2 || 0;
                   const date = item.saved_at
-                    ? new Date(item.saved_at).toLocaleDateString("pt-PT", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+                    ? new Date(item.saved_at).toLocaleDateString(numberLocale, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
                     : "—";
                   return (
                     <div
@@ -3012,14 +3012,14 @@ export default function HidroGeoMoz({
                         <div>
                           <h4 className="font-bold text-slate-900 dark:text-white text-xs">{item.title}</h4>
                           <p className="text-[10px] text-slate-400 mt-0.5">
-                            Guardada em {date} · {area > 0 ? `${area.toLocaleString(numberLocale)} km²` : "Área Delimitada"}
+                            {ht("archive.savedAt")} {date} · {area > 0 ? `${area.toLocaleString(numberLocale)} km²` : ht("archive.area")}
                           </p>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleDeleteSavedAnalysis(item.id)}
                           className="text-slate-400 hover:text-red-500 p-1 rounded-lg transition-colors"
-                          title="Eliminar do arquivo"
+                          title={ht("archive.delete")}
                         >
                           <Trash2 size={13} />
                         </button>
@@ -3032,7 +3032,7 @@ export default function HidroGeoMoz({
                           disabled={loadingSaved}
                           className="flex-1 py-1.5 px-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-[11px] flex items-center justify-center gap-1 transition-all shadow-sm"
                         >
-                          <Crosshair size={11} /> Carregar no Mapa
+                          <Crosshair size={11} /> {ht("archive.load")}
                         </button>
                         <button
                           type="button"
@@ -3050,7 +3050,7 @@ export default function HidroGeoMoz({
                             }
                           }}
                           className="py-1.5 px-2.5 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-medium text-[11px] flex items-center gap-1 transition-all"
-                          title="Descarregar ficheiro HTML autónomo offline"
+                          title={ht("archive.download")}
                         >
                           <FileCode size={11} /> HTML
                         </button>
@@ -3067,7 +3067,7 @@ export default function HidroGeoMoz({
                 onClick={() => setSavedModalOpen(false)}
                 className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-all"
               >
-                Fechar
+                {ht("dialog.close")}
               </button>
             </div>
           </div>
