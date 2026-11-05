@@ -182,11 +182,18 @@ def build_dossier(result, context):
         step["status"] = "completed" if record["status"] == "success" else "error"
         if record["status"] != "success":
             step["resultSummary"] = record["result"].get("message", "Sem resultado verificável.")
+    # For a single temporal comparison, the actual A/B dates take precedence
+    # over the project's default analysis window in the exported dossier.
+    dossier_period = context.get("temporalWindow") or {}
+    if len(successful) == 1 and successful[0].get("tool") == "detect_temporal_change":
+        measured_period = successful[0].get("period") or {}
+        if isinstance(measured_period, dict) and measured_period.get("A") and measured_period.get("B"):
+            dossier_period = measured_period
     result["intelligence"] = {"version": "1.0", "id": str(uuid4()),
                               "generatedAt": datetime.now(timezone.utc).isoformat(),
                               "status": result.get("status"),
                               "scope": safe(context.get("aoi") or {}),
-                              "period": safe(context.get("temporalWindow") or {}),
+                              "period": safe(dossier_period),
                               "successfulTools": len(successful), "failedTools": len(failed),
                               "evidence": records, "limitations": warnings}
     return result

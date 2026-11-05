@@ -4,7 +4,7 @@ export interface IntelligenceDossier {
   generatedAt: string;
   status: string;
   scope: { label?: string; province?: string; district?: string };
-  period: { startDate?: string; endDate?: string };
+  period: { startDate?: string; endDate?: string; A?: { startDate: string; endDate: string }; B?: { startDate: string; endDate: string } };
   successfulTools: number;
   failedTools: number;
   limitations: string[];
@@ -13,6 +13,7 @@ export interface IntelligenceDossier {
     tool: string;
     status: string;
     parameters: Record<string, unknown>;
+    period?: { A?: { startDate: string; endDate: string }; B?: { startDate: string; endDate: string } };
     source?: unknown;
     durationMs?: number;
     result: Record<string, unknown>;
@@ -25,6 +26,9 @@ const labels: Record<string, string> = {
 };
 
 export function GeoIntelligenceDossier({ dossier }: { dossier: IntelligenceDossier }) {
+  const comparison = dossier.evidence.find((entry) => entry.status === "success" && entry.tool === "detect_temporal_change")?.period;
+  const periodA = dossier.period.A || comparison?.A;
+  const periodB = dossier.period.B || comparison?.B;
   const download = () => {
     const url = URL.createObjectURL(new Blob([JSON.stringify(dossier, null, 2)], { type: "application/json" }));
     const anchor = document.createElement("a");
@@ -40,7 +44,9 @@ export function GeoIntelligenceDossier({ dossier }: { dossier: IntelligenceDossi
       </summary>
       <div className="mt-3 space-y-3 text-slate-600 dark:text-slate-300">
         <p>{dossier.scope.label || [dossier.scope.district, dossier.scope.province].filter(Boolean).join(", ") || "Área não especificada"}
-          {dossier.period.startDate && ` · ${dossier.period.startDate} → ${dossier.period.endDate || "—"}`}</p>
+          {periodA && periodB
+            ? ` · A: ${periodA.startDate} → ${periodA.endDate} · B: ${periodB.startDate} → ${periodB.endDate} (fins exclusivos)`
+            : dossier.period.startDate && ` · ${dossier.period.startDate} → ${dossier.period.endDate || "—"}`}</p>
         <p>{dossier.successfulTools} ferramentas analíticas concluídas · {dossier.failedTools} falhas</p>
         {dossier.limitations.length > 0 && (
           <ul className="list-disc space-y-1 pl-4 text-amber-800 dark:text-amber-300">

@@ -38,6 +38,7 @@ class Raster:
     def lt(self, other): return self._binary(other, lambda a, b: a < b)
     def lte(self, other): return self._binary(other, lambda a, b: a <= b)
     def And(self, other): return self._binary(other, lambda a, b: bool(a and b))
+    def Or(self, other): return self._binary(other, lambda a, b: bool(a or b))
     def updateMask(self, mask): return Raster(self.values, [a and b and bool(v) for a, b, v in zip(self.valid, mask.valid, mask.values)])
     def clip(self, region): return self
     def reduceRegion(self, reducer, **grid):
@@ -87,6 +88,41 @@ class PublicDataTests(unittest.TestCase):
         self.assertEqual(result["decreaseAreaKm2"], 1)
         self.assertEqual(result["coveragePercent"], 50)
         self.assertIn("B - A".replace("-", "−"), result["summary"])
+
+    def test_temporal_visualization_masks_neutral_pixels_and_preserves_valid_deltas(self):
+        before = Raster([.20, .80, .40, .50], [True, True, True, False])
+        after = Raster([.50, .40, .45, .90], [True, True, True, True])
+        with patch.dict("sys.modules", {"ee": FAKE_EE}), patch.object(engine, "_grid", return_value=("region", GRID, 4_000_000)), \
+             patch.object(engine, "_s2_image", side_effect=[(before, 3), (after, 4)]), \
+             patch.object(engine, "_tile", side_effect=["significant-tiles", "continuous-tiles"]) as tiles:
+            result = engine.temporal_change(GEOMETRY, "ndvi", "2020-01-01", "2021-01-01", "2025-01-01", "2026-01-01")
+        classified = tiles.call_args_list[0].args[0]
+        assert classified.values[:3] == [1, -1, 0]
+        assert classified.valid == [True, True, False, False]
+        self.assertEqual(tiles.call_args_list[0].args[1:3], (-1, 1))
+        self.assertEqual(tiles.call_args_list[1].args[1:3], (-0.4, 0.4))
+        action = result["map_action"]
+        self.assertEqual(action["tileUrl"], "significant-tiles")
+        self.assertEqual(action["temporalChange"]["continuousTileUrl"], "continuous-tiles")
+        self.assertEqual(action["temporalChange"]["threshold"], 0.2)
+        self.assertEqual(action["temporalChange"]["periodA"]["startDate"], "2020-01-01")
+        self.assertEqual(action["temporalChange"]["periodB"]["startDate"], "2025-01-01")
+        self.assertAlmostEqual(result["increaseAreaKm2"], 1)
+        self.assertAlmostEqual(result["decreaseAreaKm2"], 1)
+        self.assertAlmostEqual(result["commonValidAreaKm2"], 3)
+
+    def test_dossier_uses_actual_comparison_periods_not_project_window(self):
+        from agent.intelligence import build_dossier
+        comparison = {"A": {"startDate": "2020-01-01", "endDate": "2021-01-01"},
+                      "B": {"startDate": "2025-01-01", "endDate": "2026-01-01"}}
+        context = {"temporalWindow": {"startDate": "2024-01-01", "endDate": "2026-09-20"},
+                   "_execution_evidence": [{
+                       "tool": "detect_temporal_change", "status": "success",
+                       "period": comparison, "source": "Sentinel-2", "result": {"mean": 0.02},
+                   }]}
+        dossier = build_dossier({"status": "completed", "runs": [], "steps": []}, context)["intelligence"]
+        self.assertEqual(dossier["period"], comparison)
+        self.assertEqual(dossier["successfulTools"], 1)
 
     def test_zonal_percentage_denominator_excludes_clouds_and_preserves_zero(self):
         image = Raster([0, .5, .9, .8], [True, True, False, False])

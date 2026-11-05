@@ -112,6 +112,15 @@ interface WorkflowStep {
   resultSummary?: string;
 }
 
+interface TemporalChangeStyle {
+  index: string;
+  threshold: number;
+  periodA: { startDate: string; endDate: string };
+  periodB: { startDate: string; endDate: string };
+  continuousTileUrl: string;
+  continuousRange: [number, number];
+}
+
 interface ChatMessage {
   intelligence?: IntelligenceDossier;
   id: string;
@@ -252,6 +261,10 @@ export default function GeoMozAIAgentTab() {
   const [completedRuns, setCompletedRuns] = useState<any[]>([]);
   const [selectedLayerIndex, setSelectedLayerIndex] = useState<number>(0);
   const [layerOpacity, setLayerOpacity] = useState<number>(0.85);
+  const [changeMode, setChangeMode] = useState<"significant" | "continuous">("significant");
+  const selectedTemporal = completedRuns[selectedLayerIndex]?.temporalChange as TemporalChangeStyle | undefined;
+  const renderedTileUrl = selectedTemporal && changeMode === "continuous"
+    ? selectedTemporal.continuousTileUrl : activeTileUrl;
 
   // Abort controller reference for cancelling runs
   const abortRef = useRef<AbortController | null>(null);
@@ -521,9 +534,10 @@ export default function GeoMozAIAgentTab() {
             type: "remote_sensing",
             sensor: "GeoMoz AI",
             code: act.id,
-            dateRange: layerPeriod,
+            dateRange: act.temporalChange?.periodB || layerPeriod,
             metrics: {},
             tileUrl: act.tileUrl,
+            temporalChange: act.temporalChange || null,
           });
         }
         if (act.type === "ADD_GEOJSON_LAYER" && act.id === "agent_geology") {
@@ -564,6 +578,7 @@ export default function GeoMozAIAgentTab() {
 
       if (computedLayers.length > 0) {
         setSelectedLayerIndex(completedRuns.length);
+        setChangeMode("significant");
         setCompletedRuns((prev) => [...prev, ...computedLayers]);
         const firstLayer = computedLayers[0];
         setActiveTileUrl(firstLayer.tileUrl || null);
@@ -1160,6 +1175,9 @@ export default function GeoMozAIAgentTab() {
                             key={i}
                             type="button"
                             onClick={() => {
+                              const layerIndex = completedRuns.findIndex((layer) => layer === r);
+                              if (layerIndex >= 0) setSelectedLayerIndex(layerIndex);
+                              setChangeMode("significant");
                               setActiveTileUrl(r.tileUrl || null);
                               setActiveGeology(r.geojson || null);
                               setActiveTileName(r.name);
@@ -1271,7 +1289,7 @@ export default function GeoMozAIAgentTab() {
       <div className="flex-1 flex flex-col relative overflow-hidden" ref={mapRef}>
         {/* Floating Layer Switcher & Opacity Controls */}
         {completedRuns.length > 0 && (
-          <div className="absolute top-3 left-3 right-3 z-[400] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-md flex items-center justify-between gap-3 overflow-x-auto">
+          <div className="absolute top-3 left-3 right-3 z-[1001] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-md flex items-center justify-between gap-3 overflow-x-auto">
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1">
                 <Layers size={13} className="text-violet-500" />
@@ -1284,6 +1302,7 @@ export default function GeoMozAIAgentTab() {
                     type="button"
                     onClick={() => {
                       setSelectedLayerIndex(i);
+                      setChangeMode("significant");
                       setActiveTileUrl(run.tileUrl || null);
                       setActiveGeology(run.geojson || null);
                       setActiveTileName(run.name);
@@ -1348,11 +1367,11 @@ export default function GeoMozAIAgentTab() {
             />}
             <ZoomToPublicAOI aoi={currentAoi} />
 
-            {activeTileUrl && (
+            {renderedTileUrl && (
               <TileLayer
                 crossOrigin="anonymous"
-                key={activeTileUrl}
-                url={activeTileUrl}
+                key={renderedTileUrl}
+                url={renderedTileUrl}
                 opacity={layerOpacity}
               />
             )}
@@ -1374,6 +1393,43 @@ export default function GeoMozAIAgentTab() {
             )}
             <ScaleControl position="bottomleft" />
           </MapContainer>
+          {selectedTemporal && activeTileUrl && (
+            <div role="region" aria-label={`Legenda de alteração de ${selectedTemporal.index}`}
+              className="absolute bottom-4 right-4 z-[1001] w-[min(285px,calc(100%-2rem))] rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+              <div className="text-xs font-bold text-slate-800 dark:text-slate-100">Δ{selectedTemporal.index} · Período B − A</div>
+              <div className="mt-1 text-[10px] leading-relaxed text-slate-600 dark:text-slate-300">
+                A: {selectedTemporal.periodA.startDate} → {selectedTemporal.periodA.endDate}
+                <br />B: {selectedTemporal.periodB.startDate} → {selectedTemporal.periodB.endDate}
+                <div className="text-[9px]">Fim dos períodos exclusivo.</div>
+              </div>
+              <div className="mt-2 flex gap-1" role="group" aria-label="Visualização de alterações">
+                <button type="button" onClick={() => setChangeMode("significant")}
+                  aria-pressed={changeMode === "significant"}
+                  className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${changeMode === "significant" ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"}`}>
+                  Mudanças ≥ limiar
+                </button>
+                <button type="button" onClick={() => setChangeMode("continuous")}
+                  aria-pressed={changeMode === "continuous"}
+                  className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${changeMode === "continuous" ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"}`}>
+                  Contínuo
+                </button>
+              </div>
+              {changeMode === "significant" ? (
+                <div className="mt-2 space-y-1 text-[11px] text-slate-700 dark:text-slate-200">
+                  <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#d73027]" /> Diminuição ≤ −{selectedTemporal.threshold}</div>
+                  <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#1a9850]" /> Aumento ≥ +{selectedTemporal.threshold}</div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Sem cor: alteração inferior ao limiar ou pixel sem dados comparáveis.</p>
+                </div>
+              ) : (
+                <div className="mt-2 text-[10px] text-slate-700 dark:text-slate-200">
+                  <div className="h-3 rounded-sm" style={{ background: "linear-gradient(90deg,#b2182b 0%,#f7f7f7 50%,#1a9850 100%)" }} />
+                  <div className="mt-1 flex justify-between"><span>{selectedTemporal.continuousRange[0]}</span><span>0</span><span>+{selectedTemporal.continuousRange[1]}</span></div>
+                  <p className="mt-1 text-slate-500 dark:text-slate-400">Valores extremos saturados na escala de cores; estatísticas calculadas sobre os valores originais.</p>
+                </div>
+              )}
+              <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400">Mudanças de índice não comprovam desflorestação. Compare épocas sazonais equivalentes.</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
