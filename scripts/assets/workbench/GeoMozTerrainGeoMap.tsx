@@ -9,7 +9,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import proj4 from "proj4";
 import type { TerrainMeshData, TerrainVisualStyle } from "../../lib/geomoz-terrain-webgl";
 import type { GeoMozTerrainOverlay } from "./geomoz-terrain-overlays";
-import { validTerrainGeography } from "./geomoz-terrain-tiles";
+import { terrainProjection, validTerrainGeography } from "./geomoz-terrain-tiles";
 import { createTerrainMapMesh, type TerrainMapMesh, type ModelAppearance, LOCAL_MODEL_ID } from "./geomoz-terrain-map-mesh";
 
 type Basemap = "satellite" | "topographic" | "streets";
@@ -156,6 +156,8 @@ export default function GeoMozTerrainGeoMap({
   useEffect(() => {
     if (!container.current || !isValid) return;
     setMeshMounted(false);
+    // Register UTM definitions for the densified footprint as well as the mesh.
+    terrainProjection(terrain);
     let map: maplibregl.Map | null = null;
     let resize: ResizeObserver | null = null;
     try {
