@@ -20,7 +20,7 @@ export function makeTemporalReplay(run: unknown, temporalChange: unknown): Tempo
   }
   if (!aoi.geometry && !aoi.province && !aoi.countryCode) return null;
   const dates = [t.periodA?.startDate, t.periodA?.endDate, t.periodB?.startDate, t.periodB?.endDate];
-  if (!dates.every((v) => typeof v === "string" && /^\\d{4}-\\d{2}-\\d{2}$/.test(v))) return null;
+  if (!dates.every((v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v))) return null;
   if (!["ndvi", "ndwi", "mndwi", "ndbi", "nbr"].includes(String(t.index).toLowerCase())) return null;
   const sourceParams = source.output?.provenance?.parameters || {};
   const threshold = Number(t.threshold);
