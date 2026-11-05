@@ -14,7 +14,9 @@ export interface GeoMozRasterDrape {
   imageDataUrl:string;
   categories:{value:number;label:string;color:string}[];
   coverage:number;
-  mode:"classified"|"rgb";
+  mode:"classified"|"continuous"|"rgb";
+  range?:{min:number;max:number};
+  palette?:"ndvi"|"ndwi"|"terrain";
 }
 const SIZE=384;
 const LIMIT=32*1024*1024;
@@ -51,6 +53,22 @@ function categoryColor(value:number,values:number[]):[string,string]{
   return ["Classe "+value,COLORS[values.indexOf(value)%COLORS.length]];
 }
 
+
+const lerp=(a:number,b:number,t:number)=>a+(b-a)*t;
+const clamp=(v:number)=>Math.max(0,Math.min(1,v));
+/** Colour ramps work on the original numeric value; the scientific grid is untouched. */
+export function continuousRasterColor(value:number,min:number,max:number,palette:"ndvi"|"ndwi"|"terrain"="ndvi"):[number,number,number]{
+  const t=clamp((value-min)/Math.max(max-min,1e-10));
+  const ramps:Record<typeof palette,number[][]>={
+    ndvi:[[143,68,40],[224,182,85],[247,246,174],[104,181,97],[5,97,51]],
+    ndwi:[[150,92,45],[229,207,143],[243,243,235],[112,188,216],[19,86,155]],
+    terrain:[[55,109,68],[159,195,104],[227,204,139],[177,136,102],[242,239,223]],
+  };
+  const stops=ramps[palette],part=t*(stops.length-1);
+  const i=Math.min(stops.length-2,Math.floor(part)),f=part-i;
+  return [0,1,2].map(k=>Math.round(lerp(stops[i][k],stops[i+1][k],f))) as [number,number,number];
+}
+
 /**
  * GeoTIFF.js v3 exposes TIFF metadata through ImageFileDirectory.getValue().
  * Older readers expose properties directly. Both forms must work: a missing
@@ -84,6 +102,8 @@ async function getTiffTag(directory:unknown,key:string):Promise<unknown>{
 export interface TerrainRasterDrapeOptions {
   signal?:AbortSignal;
   onProgress?:(fraction:number)=>void;
+  renderer?:"auto"|"classified"|"continuous"|"rgb";
+  palette?:"ndvi"|"ndwi"|"terrain";
 }
 function verifyActive(signal?:AbortSignal){
   if(signal?.aborted)throw new DOMException("Importação do raster cancelada.","AbortError");
@@ -129,7 +149,9 @@ export async function createTerrainRasterDrape(
       bounds[2]<=bounds[0]||bounds[3]<=bounds[1])
       throw Error("Extensão geográfica do raster inválida.");
     const n=Math.min(1024,w),m=Math.min(1024,h);
-    const rgb=image.getSamplesPerPixel()>=3;
+    const rgb=options.renderer==="rgb" || (options.renderer!=="classified"&&
+      options.renderer!=="continuous"&&image.getSamplesPerPixel()>=3);
+    if(rgb&&image.getSamplesPerPixel()<3)throw Error("Esta imagem não possui três bandas RGB.");
     const bands=rgb?[0,1,2]:[0];
     const samples=await image.readRasters({samples:bands,width:n,height:m,resampleMethod:"nearest"});
     verifyActive(options.signal);
@@ -141,6 +163,10 @@ export async function createTerrainRasterDrape(
     const ctx=canvas.getContext("2d");if(!ctx)throw Error("Canvas raster indisponível.");
     const frame=ctx.createImageData(SIZE,SIZE);
     const classifiedValues=new Set<number>();
+    const continuousSamples:{pos:number;value:number}[]=[];
+    let minSample=Infinity,maxSample=-Infinity;
+    const autoContinuous=options.renderer==="auto"||options.renderer===undefined;
+    let observedFraction=false;
     let covered=0;
     const pixels:{pos:number;value:number}[]=[];
     const convert=(terrain.crs===sourceCrs)?([x,y]:[number,number])=>[x,y]:
@@ -168,10 +194,15 @@ export async function createTerrainRasterDrape(
       if(rgb){
         for(let i=0;i<3;i++)frame.data[out+i]=Math.max(0,Math.min(255,values[i]));
       }else{
-        const v=Math.round(values[0]);
-        if(classifiedValues.size>128)throw Error("O raster apresenta mais de 128 classes; utilize classificação no módulo Raster.");
-        classifiedValues.add(v);
-        pixels.push({pos:out,value:v});
+        const value=values[0];
+        if(!Number.isInteger(value))observedFraction=true;
+        minSample=Math.min(minSample,value);maxSample=Math.max(maxSample,value);
+        continuousSamples.push({pos:out,value});
+        if(options.renderer==="classified"||autoContinuous){
+          const category=Math.round(value);
+          if(classifiedValues.size<4096)classifiedValues.add(category);
+          pixels.push({pos:out,value:category});
+        }
       }
       frame.data[out+3]=255;
       covered++;
@@ -180,18 +211,35 @@ export async function createTerrainRasterDrape(
     verifyActive(options.signal);
     options.onProgress?.(1);
     if(covered===0)throw Error("O GeoTIFF não se sobrepõe à extensão do DEM.");
-    const values=[...classifiedValues].sort((a,b)=>a-b);
-    for(const item of pixels){
-      const color=categoryColor(item.value,values)[1];
-      frame.data[item.pos]=parseInt(color.slice(1,3),16);
-      frame.data[item.pos+1]=parseInt(color.slice(3,5),16);
-      frame.data[item.pos+2]=parseInt(color.slice(5,7),16);
+    const continuous=!rgb&&(options.renderer==="continuous"||
+      (autoContinuous&&(observedFraction||classifiedValues.size>128)));
+    // NDVI/NDWI in float form keep their entire numeric range, including negative values.
+    // Values scaled as integers require the explicit "continuous" renderer in the UI.
+    const values=continuous?[]:[...classifiedValues].sort((a,b)=>a-b);
+    if(continuous){
+      const min=Number.isFinite(minSample)?minSample:0;
+      const max=Number.isFinite(maxSample)?maxSample:1;
+      const palette=options.palette??"ndvi";
+      for(const item of continuousSamples){
+        const colour=continuousRasterColor(item.value,min,max,palette);
+        frame.data[item.pos]=colour[0];frame.data[item.pos+1]=colour[1];
+        frame.data[item.pos+2]=colour[2];
+      }
+    }else{
+      for(const item of pixels){
+        const color=categoryColor(item.value,values)[1];
+        frame.data[item.pos]=parseInt(color.slice(1,3),16);
+        frame.data[item.pos+1]=parseInt(color.slice(3,5),16);
+        frame.data[item.pos+2]=parseInt(color.slice(5,7),16);
+      }
     }
     verifyActive(options.signal);
     ctx.putImageData(frame,0,0);
     verifyActive(options.signal);
-    return {name,imageDataUrl:canvas.toDataURL("image/png"),mode:rgb?"rgb":"classified",
+    return {name,imageDataUrl:canvas.toDataURL("image/png"),mode:rgb?"rgb":continuous?"continuous":"classified",
       coverage:covered/(SIZE*SIZE),
+      range:continuous?{min:minSample,max:maxSample}:undefined,
+      palette:continuous?options.palette??"ndvi":undefined,
       categories:values.map(value=>{const [label,color]=categoryColor(value,values);return {value,label,color};})};
   }finally {await tiff.close();}
 }
