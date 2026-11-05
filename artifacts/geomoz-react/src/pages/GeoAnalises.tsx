@@ -1077,8 +1077,8 @@ function GeospatialAnalyticsPanel({
     if (!activeProject) {
       toast({
         variant: "destructive",
-        title: "Nenhum projeto selecionado",
-        description: "Selecione ou crie um projeto no menu superior para guardar esta análise.",
+        title: rT("project.none"),
+        description: rT("project.choose"),
       });
       return;
     }
@@ -1107,14 +1107,14 @@ function GeospatialAnalyticsPanel({
       });
       setRunSaved(true);
       toast({
-        title: "Análise guardada com sucesso!",
-        description: `Adicionada ao projeto "${activeProject.name}".`,
+        title: rT("project.saved"),
+        description: `${rT("project.added")} "${activeProject.name}".`,
       });
     } catch (e: any) {
       toast({
         variant: "destructive",
-        title: "Erro ao guardar análise",
-        description: e.message || "Tente novamente.",
+        title: rT("project.error"),
+        description: e.message || rT("project.retry"),
       });
     } finally {
       setSavingRun(false);
@@ -1141,7 +1141,7 @@ function GeospatialAnalyticsPanel({
             ? "Sentinel-2 · 10–20 m"
             : def.group === "terrain"
             ? "Copernicus DEM · 30 m"
-            : "Multi-sensor"}
+            : rT("analysis.multiSensor")}
         </p>
       </div>
 
@@ -1149,7 +1149,7 @@ function GeospatialAnalyticsPanel({
       {isCalculating && (
         <div className="bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 rounded-xl p-3 text-xs text-sky-700 dark:text-sky-300 leading-relaxed flex items-center gap-2">
           <Loader2 size={16} className="animate-spin text-sky-600 shrink-0" />
-          <span>O Google Earth Engine está a processar dados reais. A duração depende da área, das datas e do modo de processamento seleccionado.</span>
+          <span>{rT("analysis.running")}</span>
         </div>
       )}
 
@@ -1159,18 +1159,18 @@ function GeospatialAnalyticsPanel({
           <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
             <div className="flex items-center gap-1.5 font-semibold text-emerald-800 dark:text-emerald-300 text-xs">
               <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" />
-              <span>Processamento GEE Concluído</span>
+              <span>{rT("analysis.completed")}</span>
             </div>
             <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 px-1.5 py-0.5 rounded font-mono">
-              24h Ativo
+              {rT("analysis.active24h")}
             </span>
           </div>
           <div className="text-[11px] text-emerald-700 dark:text-emerald-400 space-y-0.5">
-            {result.sceneCount > 0 && <div><strong>{result.sceneCount}</strong> cenas ópticas no período principal</div>}
-            {result.preDateRange && <div>Pré-incêndio: <strong>{result.preDateRange}</strong></div>}
+            {result.sceneCount > 0 && <div><strong>{result.sceneCount}</strong> {rT("analysis.scenes")}</div>}
+            {result.preDateRange && <div>{rT("analysis.preFire")} <strong>{result.preDateRange}</strong></div>}
             {result.warning && <p role="status">{result.warning}</p>}
-            {result.stats.detectedAreaKm2 != null && <div>Área com detecção: <strong>{result.stats.detectedAreaKm2.toLocaleString()} km²</strong></div>}
-            <div>Período: <strong>{result.dateRange}</strong></div>
+            {result.stats.detectedAreaKm2 != null && <div>{rT("analysis.detected")} <strong>{result.stats.detectedAreaKm2.toLocaleString(numberLocale)} km²</strong></div>}
+            <div>{rT("analysis.period")} <strong>{result.dateRange}</strong></div>
           </div>
         </div>
       )}
@@ -1178,35 +1178,35 @@ function GeospatialAnalyticsPanel({
       {/* Quantitative Analytics Dashboard Cards */}
       <div>
         <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
-          <span>Métricas Geoestatísticas</span>
-          {result && <span className="text-[10px] text-sky-600 dark:text-sky-400 font-normal">Recorte Zonal</span>}
+          <span>{rT("analysis.statsTitle")}</span>
+          {result && <span className="text-[10px] text-sky-600 dark:text-sky-400 font-normal">{rT("analysis.zonalClip")}</span>}
         </h4>
 
         {hasStats ? (
           <div className="grid min-w-0 grid-cols-2 gap-2">
             <div className="min-w-0 bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
-              <div className="text-[10px] text-slate-400 uppercase font-semibold">Área Recortada</div>
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">{rT("analysis.clippedArea")}</div>
               <div className="text-sm font-bold text-slate-800 dark:text-slate-100 font-mono mt-0.5 truncate">
-                {stats.areaKm2 ? `${stats.areaKm2.toLocaleString()} km²` : district ? `${district}` : province ? `${province}` : "Moçambique"}
+                {stats.areaKm2 ? `${stats.areaKm2.toLocaleString(numberLocale)} km²` : district ? `${district}` : province ? `${province}` : rT("area.mozambique")}
               </div>
             </div>
 
             <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
-              <div className="text-[10px] text-slate-400 uppercase font-semibold">Média (μ)</div>
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">{rT("analysis.mean")}</div>
               <div className="text-sm font-bold text-slate-800 dark:text-slate-100 font-mono mt-0.5">
                 {stats.mean != null ? stats.mean.toFixed(3) : "—"}
               </div>
             </div>
 
             <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
-              <div className="text-[10px] text-slate-400 uppercase font-semibold">Mediana (P50)</div>
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">{rT("analysis.median")}</div>
               <div className="text-sm font-bold text-slate-800 dark:text-slate-100 font-mono mt-0.5">
                 {stats.p50 != null ? stats.p50.toFixed(3) : "—"}
               </div>
             </div>
 
             <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
-              <div className="text-[10px] text-slate-400 uppercase font-semibold">Desvio Padrão (σ)</div>
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">{rT("analysis.stdDev")}</div>
               <div className="text-sm font-bold text-slate-800 dark:text-slate-100 font-mono mt-0.5">
                 {stats.stdDev != null ? stats.stdDev.toFixed(3) : "—"}
               </div>
@@ -1214,7 +1214,7 @@ function GeospatialAnalyticsPanel({
 
             <div className="col-span-2 bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
               <div className="flex justify-between items-center text-[10px] text-slate-400 font-semibold mb-1">
-                <span>Distribuição Percentil (P10 → P90)</span>
+                <span>{rT("analysis.percentiles")}</span>
                 <span className="font-mono text-slate-600 dark:text-slate-300">
                   {stats.p10 != null && stats.p90 != null ? `[${stats.p10.toFixed(2)}, ${stats.p90.toFixed(2)}]` : "—"}
                 </span>
@@ -1237,9 +1237,9 @@ function GeospatialAnalyticsPanel({
         ) : (
           <div className="bg-slate-50 dark:bg-slate-800/50 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-3 text-center">
             <BarChart2 size={24} className="mx-auto text-slate-400 mb-1.5" />
-            <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">Aguardando cálculo zonal</p>
+            <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">{rT("analysis.awaiting")}</p>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Clique em <strong>Calcular {def.short}</strong> nos filtros para gerar as métricas geoestatísticas. O modo Rápido mostra primeiro o mapa e dispensa as estatísticas extensas.
+              {rT("analysis.clickCalculate")} <strong>{def.short}</strong> {rT("analysis.statsHint")}
             </p>
           </div>
         )}
@@ -1252,10 +1252,10 @@ function GeospatialAnalyticsPanel({
             type="button"
             onClick={onOpenCompare}
             className="w-full flex items-center justify-center gap-2 py-2 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
-            title="Comparar este índice entre o período padrão 2023 e o período recente"
+            title={rT("analysis.compareTitle")}
           >
             <Columns2 size={13} />
-            <span>Comparar {def.short} (2023 ⟷ Recente)</span>
+            <span>{rT("analysis.compare")} {def.short} (2023 ⟷ {rT("analysis.recent")})</span>
           </button>
         )}
 
@@ -1266,9 +1266,9 @@ function GeospatialAnalyticsPanel({
                 <FolderKanban size={14} className="text-sky-600 shrink-0" />
                 <span className="truncate">
                   {activeProject ? (
-                    <>Projeto: <span className="text-sky-700 dark:text-sky-300 font-bold">{activeProject.name}</span></>
+                    <>{rT("project.label")} <span className="text-sky-700 dark:text-sky-300 font-bold">{activeProject.name}</span></>
                   ) : (
-                    <span className="text-slate-500 font-normal">Nenhum projeto ativo</span>
+                    <span className="text-slate-500 font-normal">{rT("project.inactive")}</span>
                   )}
                 </span>
               </div>
@@ -1289,17 +1289,17 @@ function GeospatialAnalyticsPanel({
               {savingRun ? (
                 <>
                   <Loader2 size={13} className="animate-spin" />
-                  <span>A guardar no estudo…</span>
+                  <span>{rT("project.saving")}</span>
                 </>
               ) : runSaved ? (
                 <>
                   <CheckCircle2 size={13} />
-                  <span>Guardado no Estudo</span>
+                  <span>{rT("project.savedButton")}</span>
                 </>
               ) : (
                 <>
                   <FolderPlus size={13} />
-                  <span>{activeProject ? "Guardar Análise no Projeto Ativo" : "Selecione um Estudo no Menu Superior"}</span>
+                  <span>{activeProject ? rT("project.save") : rT("project.select")}</span>
                 </>
               )}
             </button>
@@ -1311,7 +1311,7 @@ function GeospatialAnalyticsPanel({
                 className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white shadow-xs transition-all cursor-pointer"
               >
                 <Sparkles size={13} />
-                <span>Apresentação Executiva (StoryMap)</span>
+                <span>{rT("analysis.storymap")}</span>
               </button>
             )}
           </div>
@@ -1321,7 +1321,7 @@ function GeospatialAnalyticsPanel({
       {/* Escala / Legenda do Índice */}
       <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
         <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-          Escala Espectral
+          {rT("analysis.spectralScale")}
         </h4>
         <ColormapLegend index={activeIndex} />
       </div>
@@ -1335,7 +1335,7 @@ function GeospatialAnalyticsPanel({
         >
           <div className="flex items-center gap-1.5">
             <Info size={13} className="text-sky-500" />
-            <span>Interpretação Geocientífica & Fórmula</span>
+            <span>{rT("analysis.methodology")}</span>
           </div>
           {methodologyOpen ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
         </button>
@@ -1344,7 +1344,7 @@ function GeospatialAnalyticsPanel({
           <div className="p-3 space-y-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 text-xs">
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Interpretação Geocientífica
+                {rT("analysis.interpretation")}
               </span>
               <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                 {def.interpretation}
@@ -1353,13 +1353,13 @@ function GeospatialAnalyticsPanel({
 
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Fórmula Matemática
+                {rT("analysis.formula")}
               </span>
               <code className="block bg-slate-900 text-emerald-300 text-xs rounded-lg p-2.5 font-mono leading-relaxed overflow-x-auto">
                 {def.formula}
               </code>
               <p className="text-[11px] text-slate-400 mt-1.5">
-                <span className="font-semibold text-slate-500 dark:text-slate-400">Bandas: </span>{def.bands}
+                <span className="font-semibold text-slate-500 dark:text-slate-400">{rT("analysis.bands")} </span>{def.bands}
               </p>
             </div>
           </div>
