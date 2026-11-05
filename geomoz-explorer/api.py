@@ -628,6 +628,14 @@ def get_province_names():
     return {"names": names, "column": col}
 
 
+@app.get("/geomoz-api/maputo-municipal-districts")
+def get_maputo_municipal_districts():
+    from agent.municipal_boundaries import municipal_districts
+
+    return {"units": [{key: value for key, value in unit.items() if key != "geometry"}
+                      for unit in municipal_districts().values()]}
+
+
 @app.get("/geomoz-api/districts")
 def get_districts(province: Optional[str] = Query(None)):
     gdf = _clip_geo(_districts(), province)

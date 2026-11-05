@@ -154,6 +154,8 @@ jobs:
           fi
           echo 'Checking lazily imported GEOAGENTE Python modules inside production container'
           docker exec geomoz-api-smoke python -c 'import gee_module; from agent.planner import GeoMozAgent; from agent.registry import ToolDispatcher; from agent.geology_data import summarize_geology; print("GEOAGENTE modules import OK")'
+          echo 'Checking real municipal polygons packaged by GeoMoz'
+          docker exec geomoz-api-smoke python -c 'from agent.municipal_boundaries import DISTRICTS, municipal_districts; from agent.earth_engine_tools import validate_geometry; units = municipal_districts(); assert units.keys() == DISTRICTS.keys(), f"Missing Maputo districts: {DISTRICTS.keys() - units.keys()}"; [validate_geometry(unit["geometry"]) for unit in units.values()]'
           echo 'Running end-to-end Manica geology chat against production Docker image'
           python - <<'PY'
           import json

@@ -14,6 +14,7 @@ import urllib.request
 import urllib.error
 from typing import Dict, Any, List, Optional
 from agent.registry import TOOL_DECLARATIONS, ToolDispatcher
+from agent.municipal_boundaries import municipal_district_code
 from agent.geology_intent import is_catalogue_request, is_geology_followup, resolve_geology_scope
 
 logger = logging.getLogger(__name__)
@@ -169,7 +170,7 @@ class GeoMozAgent:
                 # An explicit location overrides the map for this analysis only.
                 place = re.search(
                     r"\b(?:(?:em|para|n[ao])\s+(?:(?:a|o)\s+)?"
-                    r"(cidade|distrito|provincia|municipio)\s+d[aeo]\s+|"
+                    r"(cidade|distrito|provincia|municipio)(?:\s+municipal)?\s+d[aeo]\s+|"
                     r"em\s+|para\s+(?!(?:comparar|calcular|ver|mapear|analisar|obter)\b))"
                     r"([a-z][a-z -]*?)"
                     r"(?=\s+(?:entre|durante|d[eo]\s+\d|em\s+\d|com|para)\b|[,.?!]|$)",
@@ -185,14 +186,19 @@ class GeoMozAgent:
                         unresolved = {"status": "needs_input", "steps": [], "runs": [], "map_actions": []}
                         if not country_code:
                             return {**unresolved, "synthesis": "Seleccione no mapa o país da área indicada e volte a executar a análise."}
-                        try:
-                            current_map_state["aoi"] = await ToolDispatcher.resolve_named_area(
-                                country_code, name, kind, current_map_state)
-                        except ValueError as exc:
-                            return {**unresolved, "synthesis": str(exc)}
-                        except Exception:
-                            logger.exception("FAO GAUL chat lookup failed")
-                            return {**unresolved, "synthesis": "Não foi possível consultar os limites FAO GAUL. Confirme a ligação ao Earth Engine ou seleccione a área no mapa."}
+                        municipal_code = municipal_district_code(name) if country_code == "MOZ" and kind in (None, "distrito") else None
+                        if municipal_code:
+                            current_map_state["aoi"] = {"source": "country", "countryCode": "MOZ",
+                                                        "municipalDistrict": municipal_code, "label": name}
+                        else:
+                            try:
+                                current_map_state["aoi"] = await ToolDispatcher.resolve_named_area(
+                                    country_code, name, kind, current_map_state)
+                            except ValueError as exc:
+                                return {**unresolved, "synthesis": str(exc)}
+                            except Exception:
+                                logger.exception("FAO GAUL chat lookup failed")
+                                return {**unresolved, "synthesis": "Não foi possível consultar os limites FAO GAUL. Confirme a ligação ao Earth Engine ou seleccione a área no mapa."}
             elif catalogue_requested:
                 public_request = {"tool": "list_public_datasets", "args": {}}
         if public_request is not None:

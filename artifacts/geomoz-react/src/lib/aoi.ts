@@ -35,6 +35,7 @@ export interface AreaOfInterest {
   admin1Name?: string | null;
   admin2Code?: number | null;
   admin2Name?: string | null;
+  municipalDistrict?: string | null;
 
   /** Custom GeoJSON geometry (source === "upload" | "draw" | "country") */
   geometry: GeoJSON.GeoJSON | null;

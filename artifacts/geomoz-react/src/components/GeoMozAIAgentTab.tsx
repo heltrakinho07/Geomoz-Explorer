@@ -1,4 +1,5 @@
 import { GAULAreaSelect, type LoadGAULUnits } from "./GAULAreaSelect";
+import { MaputoMunicipalSelect, isMaputoCity } from "./MaputoMunicipalSelect";
 import { WORLD_COUNTRIES } from "@/lib/world-countries";
 import { PublicDataTools, type PublicAnalysisRequest } from "./PublicDataTools";
 import { GeoIntelligenceDossier, type IntelligenceDossier } from "./GeoIntelligenceDossier";
@@ -446,6 +447,7 @@ export default function GeoMozAIAgentTab() {
           adminLevel: currentAoi.adminLevel,
           admin1Code: currentAoi.admin1Code,
           admin2Code: currentAoi.admin2Code,
+          municipalDistrict: currentAoi.municipalDistrict,
           label: currentAoi.label || "Moçambique",
           province: aoiPayload.province || null,
           district: aoiPayload.district || null,
@@ -898,8 +900,8 @@ export default function GeoMozAIAgentTab() {
                     <select aria-label={copy("studyArea.bounds")} disabled={isRunning} value={currentAoi.boundarySource || "geoboundaries"}
                       onChange={(event) => {
                         const next: AreaOfInterest = { ...currentAoi, boundarySource: event.target.value as "gaul2025" | "geoboundaries",
-                          adminLevel: 0, admin1Code: null, admin1Name: null, admin2Code: null, admin2Name: null,
-                          label: currentAoi.countryName || currentAoi.label };
+                          adminLevel: 0, admin1Code: null, admin1Name: null, admin2Code: null, admin2Name: null, municipalDistrict: null,
+                          bounds: null, label: currentAoi.countryName || currentAoi.label };
                         setCurrentAoi(next);
                         if (activeProject) void updateProject(activeProject.id, { aoi: next });
                       }} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 p-1.5 text-xs text-slate-200">
@@ -911,11 +913,26 @@ export default function GeoMozAIAgentTab() {
                     selection={{ adminLevel: currentAoi.adminLevel ?? 0, admin1Code: currentAoi.admin1Code ?? null,
                       admin1Name: currentAoi.admin1Name ?? null, admin2Code: currentAoi.admin2Code ?? null, admin2Name: currentAoi.admin2Name ?? null }}
                     onChange={(selection) => {
-                      const next: AreaOfInterest = { ...currentAoi, ...selection,
+                      const next: AreaOfInterest = { ...currentAoi, ...selection, municipalDistrict: null,
+                        bounds: currentAoi.municipalDistrict ? null : currentAoi.bounds,
                         label: [selection.admin2Name, selection.admin1Name, currentAoi.countryName].filter(Boolean).join(", ") };
                       setCurrentAoi(next); setAgentContext(null);
                       if (activeProject) void updateProject(activeProject.id, { aoi: next });
                     }} />}
+                  {currentAoi.countryCode === "MOZ" && currentAoi.boundarySource === "gaul2025"
+                    && isMaputoCity(currentAoi.admin1Name) && (
+                    <MaputoMunicipalSelect value={currentAoi.municipalDistrict ?? ""} disabled={isRunning}
+                      onChange={(district) => {
+                        const [west, south, east, north] = district?.bbox ?? [];
+                        const next: AreaOfInterest = {
+                          ...currentAoi, municipalDistrict: district?.code ?? null,
+                          label: [district?.name, "Cidade de Maputo", currentAoi.countryName].filter(Boolean).join(", "),
+                          bounds: district ? [[south, west], [north, east]] : null,
+                        };
+                        setCurrentAoi(next); setAgentContext(null);
+                        if (activeProject) void updateProject(activeProject.id, { aoi: next });
+                      }} />
+                  )}
                 </>}
                 <p className="text-[10px] text-slate-400">Os novos motores públicos usam a geometria da fonte seleccionada. Países grandes podem exigir uma unidade ADM1/ADM2 menor.</p>
                 <div className="grid grid-cols-2 gap-2">
