@@ -75,6 +75,8 @@ import {
   PAGE_H,
 } from "@/lib/pdf-export";
 import { apiUrl } from "@/lib/api";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import { hydrologyResultText, type HydrologyResultKey } from "@/i18n/hydrologyResults";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -180,6 +182,9 @@ function computeGeoJsonBounds(geojson: any): { south: number; north: number; wes
 }
 
 export default function HidroWebGisViewer({ id: propId }: Props) {
+  const { translatedLocale } = usePortalTranslation();
+  const ht = (key: HydrologyResultKey) => hydrologyResultText(translatedLocale, key);
+  const numberLocale = translatedLocale === "pt" ? "pt-MZ" : translatedLocale;
   const [shareId, setShareId] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -440,7 +445,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const W = PAGE_W;
       const H = PAGE_H;
-      const date = new Date().toLocaleDateString("pt-PT", { day: "2-digit", month: "long", year: "numeric" });
+      const date = new Date().toLocaleDateString(numberLocale, { day: "2-digit", month: "long", year: "numeric" });
       let pageNum = 1;
 
       const newPage = (pageTitle: string) => {
@@ -498,12 +503,12 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       doc.text("GeoMoz Explorer", MARGIN + 20, 15);
       doc.setFontSize(9.5);
       doc.setFont("helvetica", "normal");
-      doc.text("Relatório Hidro-Ambiental de Bacia · WebGIS", MARGIN + 20, 23);
+      doc.text(ht("pdfContent.reportTitle"), MARGIN + 20, 23);
 
       // Area + Date right
       doc.setFontSize(13);
       doc.setFont("helvetica", "bold");
-      doc.text(`Área: ${totalArea.toLocaleString("pt-PT")} km²`, W - MARGIN, 14, { align: "right" });
+      doc.text(`${ht("result.area")}: ${totalArea.toLocaleString(numberLocale)} km²`, W - MARGIN, 14, { align: "right" });
       doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
       doc.text(date, W - MARGIN, 22, { align: "right" });
@@ -515,8 +520,8 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
       const infoParts = [
-        PP ? `Exutório: ${PP[0].toFixed(4)}°, ${PP[1].toFixed(4)}°` : "Área Delimitada",
-        `Fonte: ${wsData?.source === "polygon" ? "Recorte por Polígono / AOI" : "HydroSHEDS / D8"}`,
+        PP ? `${ht("viewer.outlet")} ${PP[0].toFixed(4)}°, ${PP[1].toFixed(4)}°` : ht("pdfContent.delimited"),
+        `${ht("pdfContent.source")} ${wsData?.source === "polygon" ? ht("pdfContent.clipPolygon") : "HydroSHEDS / D8"}`,
         `Datum: WGS 84 (EPSG:4326)`,
       ];
       doc.text(infoParts.join("   ·   "), MARGIN, 42);
@@ -524,20 +529,20 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       let y = 52;
 
       // Morfometria
-      y = sectionLabel("Morfometria da Bacia", y);
+      y = sectionLabel(ht("result.basinMorphometry"), y);
       const m = report.morphometry;
       const cards = [
-        { label: "Área", val: `${totalArea.toLocaleString("pt-PT")}`, unit: "km²" },
-        { label: "Perímetro", val: `${m.perimeterKm.toFixed(0)}`, unit: "km" },
-        { label: "Elev. mín.", val: `${m.elevMinM.toFixed(0)}`, unit: "m" },
-        { label: "Elev. média", val: `${m.elevMeanM.toFixed(0)}`, unit: "m" },
-        { label: "Elev. máx.", val: `${m.elevMaxM.toFixed(0)}`, unit: "m" },
-        { label: "Relevo", val: `${m.reliefM.toFixed(0)}`, unit: "m" },
-        { label: "Declive méd.", val: `${m.slopeMeanDeg.toFixed(1)}`, unit: "°" },
-        { label: "Declive máx.", val: `${m.slopeMaxDeg.toFixed(1)}`, unit: "°" },
-        { label: "Dens. dren.", val: `${m.drainageDensity}`, unit: "km/km²" },
-        { label: "Compacidade", val: `${m.compactness}`, unit: "" },
-        { label: "Fator forma", val: `${m.formFactor}`, unit: "" },
+        { label: ht("result.area"), val: `${totalArea.toLocaleString(numberLocale)}`, unit: "km²" },
+        { label: ht("result.perimeter"), val: `${m.perimeterKm.toFixed(0)}`, unit: "km" },
+        { label: ht("result.minElevation"), val: `${m.elevMinM.toFixed(0)}`, unit: "m" },
+        { label: ht("result.meanElevation"), val: `${m.elevMeanM.toFixed(0)}`, unit: "m" },
+        { label: ht("result.maxElevation"), val: `${m.elevMaxM.toFixed(0)}`, unit: "m" },
+        { label: ht("result.relief"), val: `${m.reliefM.toFixed(0)}`, unit: "m" },
+        { label: ht("result.meanSlopeShort"), val: `${m.slopeMeanDeg.toFixed(1)}`, unit: "°" },
+        { label: ht("result.meanSlope"), val: `${m.slopeMaxDeg.toFixed(1)}`, unit: "°" },
+        { label: ht("result.drainageDensityShort"), val: `${m.drainageDensity}`, unit: "km/km²" },
+        { label: ht("result.compactness"), val: `${m.compactness}`, unit: "" },
+        { label: ht("result.formFactor"), val: `${m.formFactor}`, unit: "" },
       ];
       const cCols = 4;
       const cW = (CONTENT_W - (cCols - 1) * 2.5) / cCols;
@@ -567,7 +572,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       y += Math.ceil(cards.length / cCols) * (cH + 2.5) + 4;
 
       // Uso e Cobertura do Solo
-      y = sectionLabel("Uso e Cobertura do Solo (ESA WorldCover 2021)", y);
+      y = sectionLabel(ht("pdfContent.lulc"), y);
       const lcItems = report.landcover.filter(lc => lc.areaKm2 > 0).slice(0, 8);
       const maxPct = lcItems[0]?.pct ?? 1;
 
@@ -576,9 +581,9 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       doc.setTextColor(71, 85, 105);
       doc.setFontSize(7.5);
       doc.setFont("helvetica", "bold");
-      doc.text("Classe", MARGIN + 4, y + 4.5);
-      doc.text("Área (km²)", W - MARGIN - 34, y + 4.5, { align: "right" });
-      doc.text("Proporção", W - MARGIN, y + 4.5, { align: "right" });
+      doc.text(ht("pdfContent.class"), MARGIN + 4, y + 4.5);
+      doc.text(ht("pdfContent.areaKm2"), W - MARGIN - 34, y + 4.5, { align: "right" });
+      doc.text(ht("pdfContent.proportion"), W - MARGIN, y + 4.5, { align: "right" });
       y += 6.5;
 
       lcItems.forEach((lc, i) => {
@@ -604,7 +609,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
         doc.text(name, MARGIN + 12, y + 4.2);
         doc.setTextColor(100, 116, 139);
         doc.setFontSize(7);
-        doc.text(lc.areaKm2.toLocaleString("pt-PT", { maximumFractionDigits: 1 }), W - MARGIN - 34, y + 4.2, { align: "right" });
+        doc.text(lc.areaKm2.toLocaleString(numberLocale, { maximumFractionDigits: 1 }), W - MARGIN - 34, y + 4.2, { align: "right" });
 
         const barW = Math.max((lc.pct / maxPct) * 14, 0.5);
         doc.setFillColor(2, 132, 199);
@@ -618,8 +623,8 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       y += 3;
 
       // Chuva mensal
-      y = sectionLabel(`Precipitação Mensal · ${report.precipAnnualMm.toLocaleString("pt-PT")} mm/ano`, y);
-      const months = "JanFevMarAbrMaiJunJulAgoSetOutNovDez".match(/.{3}/g) || [];
+      y = sectionLabel(`${ht("viewer.monthlyRain")} · ${report.precipAnnualMm.toLocaleString(numberLocale)} ${ht("result.mmYear")}`, y);
+      const months = Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat(numberLocale, { month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(2024, i, 1))).replace(/\.$/, "").slice(0, 3));
       const barH = 30;
       const barArea = CONTENT_W - 4;
       const barGap = 1.5;
@@ -653,7 +658,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       y += barH + 8;
 
       // Escoamento e CN
-      y = sectionLabel("Escoamento Superficial (SCS Curve Number)", y);
+      y = sectionLabel(ht("pdfContent.runoff"), y);
       const cn = report.runoff.cnMean;
       doc.setFillColor(26, 152, 80);
       doc.rect(MARGIN, y, CONTENT_W * 0.33, 5, "F");
@@ -666,11 +671,11 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
       const cnStr = cn != null ? `${cn.toFixed(1)}` : "—";
-      doc.text(`CN Médio da Bacia: ${cnStr}`, MARGIN, y + 9.5);
+      doc.text(`${ht("viewer.meanCN")}: ${cnStr}`, MARGIN, y + 9.5);
       doc.setFontSize(6.5);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(100, 116, 139);
-      doc.text("Classificação SCS: menor = infiltração favorável · maior = escoamento superficial rápido", MARGIN, y + 14);
+      doc.text(ht("pdfContent.scsNote"), MARGIN, y + 14);
       y += 18;
 
       addPDFFooter({ doc, pageNum, date, y: 0, title: "" });
@@ -702,7 +707,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
         doc.setTextColor(100, 116, 139);
         doc.setFontSize(7.5);
         doc.setFont("helvetica", "normal");
-        doc.text(`Escala 1:Bacia · Coordenadas WGS 84`, mapX + mapW - 4, startY + 5.5, { align: "right" });
+        doc.text(ht("pdfContent.scale"), mapX + mapW - 4, startY + 5.5, { align: "right" });
 
         // Map Image: Client-side Canvas rendering (CORS-safe, 100% reliable)
         let imgRendered = false;
@@ -724,15 +729,15 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
             const legendPayload = legendType === "lulc"
               ? report.landcover.slice(0, 8).map(c => ({ label: c.label, color: c.color }))
               : [
-                  { label: "CN < 50 (Infiltração Alta)", color: "#1a9850" },
-                  { label: "CN 50-75 (Moderado)", color: "#fee08b" },
-                  { label: "CN > 75 (Escoamento Alto)", color: "#d73027" },
+                  { label: ht("pdfContent.cnLow"), color: "#1a9850" },
+                  { label: ht("pdfContent.cnMedium"), color: "#fee08b" },
+                  { label: ht("pdfContent.cnHigh"), color: "#d73027" },
                 ];
 
             const imgData = await fetchMapImage(b, {
               tileUrl,
               overlayGeojson: wsData?.geojson as any,
-              overlayLabel: "Bacia Delimitada",
+              overlayLabel: ht("result.basin"),
               legendItems: legendPayload,
               title: mapSubtitle,
               dpi: 200,
@@ -785,7 +790,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(6.5);
         doc.setFont("helvetica", "bold");
-        doc.text(legendType === "lulc" ? "LEGENDA — USO DO SOLO" : "LEGENDA — ESCOAMENTO (CN)", legX + 4, legY + 4.2);
+        doc.text(legendType === "lulc" ? ht("pdfContent.legendLulc") : ht("pdfContent.legendCN"), legX + 4, legY + 4.2);
 
         let ly = legY + 9;
 
@@ -810,9 +815,9 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           });
         } else {
           const cnLegend = [
-            { label: "CN < 50 · Alta Infiltração", color: [26, 152, 80] },
-            { label: "CN 50–75 · Escoamento Médio", color: [254, 224, 139] },
-            { label: "CN > 75 · Alto Escoamento", color: [215, 48, 39] },
+            { label: ht("pdfContent.cnLow"), color: [26, 152, 80] },
+            { label: ht("pdfContent.cnMedium"), color: [254, 224, 139] },
+            { label: ht("pdfContent.cnHigh"), color: [215, 48, 39] },
           ];
           cnLegend.forEach(ci => {
             doc.setFillColor(ci.color[0], ci.color[1], ci.color[2]);
@@ -828,7 +833,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           doc.setTextColor(15, 23, 42);
           doc.setFontSize(6.5);
           doc.setFont("helvetica", "bold");
-          doc.text(`CN Médio da Bacia: ${report.runoff.cnMean ?? "—"}`, legX + 4, ly + 2);
+          doc.text(`${ht("viewer.meanCN")}: ${report.runoff.cnMean ?? "—"}`, legX + 4, ly + 2);
           ly += 5.2;
         }
 
@@ -839,14 +844,14 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
         doc.setTextColor(51, 65, 85);
         doc.setFontSize(6);
         doc.setFont("helvetica", "normal");
-        doc.text("Rede de Drenagem / Linhas de Água", legX + 11, ly + 2);
+        doc.text(ht("pdfContent.drainageNetwork"), legX + 11, ly + 2);
         ly += 4.8;
 
         doc.setDrawColor(13, 71, 161);
         doc.setLineWidth(0.6);
         doc.setFillColor(21, 101, 192, 0.2);
         doc.rect(legX + 4, ly, 4, 3, "FD");
-        doc.text("Limite da Bacia Hidrográfica", legX + 11, ly + 2.2);
+        doc.text(ht("pdfContent.basinBoundary"), legX + 11, ly + 2.2);
 
         // Cartographic Metadata strip under map
         const metaY = mapY + mapH + 8;
@@ -858,12 +863,10 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
         doc.setTextColor(71, 85, 105);
         doc.setFontSize(6.5);
         doc.setFont("helvetica", "bold");
-        doc.text("METADADOS CARTOGRÁFICOS:", mapX + 3, metaY + 4.5);
+        doc.text(ht("pdfContent.metadata"), mapX + 3, metaY + 4.5);
         doc.setFont("helvetica", "normal");
         doc.text(
-          "Sistema de Coordenadas: WGS 84 (EPSG:4326) · Projeção Geográfica Decimal\n" +
-          "Fontes de Dados: ESA WorldCover (10m), HydroSHEDS / WWF, Copernicus DEM (GLO-30), CHIRPS Climatology\n" +
-          "Elaborado por: GeoMoz Explorer · Plataforma WebGIS de Recursos Hídricos e Geologia de Moçambique",
+          `${ht("pdfContent.crs")}\n${ht("pdfContent.sources")}\n${ht("pdfContent.author")}`,
           mapX + 3,
           metaY + 8,
         );
@@ -874,8 +877,8 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       // ── CONDITIONAL MAP PAGES ──────────────────────────────────────────
       if (exportType === "lulc" || exportType === "both") {
         await drawQgisMapPage(
-          "Mapa 1: Uso do Solo & Linhas de Água",
-          "Uso e Cobertura do Solo (ESA WorldCover 10m) & Rede Hidrográfica",
+          ht("pdfContent.mapLulc"),
+          ht("pdfContent.subtitleLulc"),
           report.landcoverTile,
           "lulc",
         );
@@ -883,8 +886,8 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
 
       if (exportType === "cn" || exportType === "both") {
         await drawQgisMapPage(
-          "Mapa 2: Escoamento Superficial (CN)",
-          "Escoamento Superficial (SCS Curve Number) & Rede Hidrográfica",
+          ht("pdfContent.mapCN"),
+          ht("pdfContent.subtitleCN"),
           report.runoff.cnTile,
           "cn",
         );
@@ -896,7 +899,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       setExportModalOpen(false);
     } catch (err) {
       console.error("Erro ao gerar PDF QGIS:", err);
-      alert("Falha ao exportar PDF: " + (err instanceof Error ? err.message : String(err)));
+      alert(ht("pdfContent.exportFailed") + " " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setExportingPdf(false);
     }
@@ -910,7 +913,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           <Loader2 size={36} className="text-cyan-400 animate-spin" />
           <div className="text-center">
             <h3 className="text-base font-bold text-slate-100">GeoMoz WebGIS</h3>
-            <p className="text-xs text-slate-400 mt-1">A carregar análise de bacia hidrográfica…</p>
+            <p className="text-xs text-slate-400 mt-1">{ht("viewer.loading")}</p>
           </div>
         </div>
       </div>
@@ -925,15 +928,15 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           <div className="w-12 h-12 rounded-2xl bg-red-500/10 text-red-400 flex items-center justify-center mx-auto mb-4 border border-red-500/20">
             <Info size={24} />
           </div>
-          <h2 className="text-lg font-bold text-slate-100">Análise Não Encontrada</h2>
+          <h2 className="text-lg font-bold text-slate-100">{ht("viewer.notFound")}</h2>
           <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-            {error || "O link de visualização pode ter expirado ou o identificador é inválido."}
+            {error || ht("viewer.invalid")}
           </p>
           <a
             href="/app"
             className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20"
           >
-            <ArrowLeft size={14} /> Ir para o GeoMoz Explorer
+            <ArrowLeft size={14} /> {ht("viewer.home")}
           </a>
         </div>
       </div>
@@ -949,16 +952,16 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
           <div className="bg-gradient-to-tr from-blue-700 via-blue-600 to-cyan-600 rounded-2xl p-4 text-white shadow-lg shadow-blue-900/20">
             <div className="flex items-center justify-between text-xs opacity-80 mb-1">
-              <span>Área da Bacia</span>
+              <span>{ht("result.basinArea")}</span>
               <span className="bg-white/20 px-2 py-0.5 rounded-full text-[10px] font-mono">EPSG:4326</span>
             </div>
             <div className="text-3xl font-extrabold tracking-tight">
-              {totalArea.toLocaleString("pt-PT")} <span className="text-lg font-medium opacity-80">km²</span>
+              {totalArea.toLocaleString(numberLocale)} <span className="text-lg font-medium opacity-80">km²</span>
             </div>
             <div className="mt-2 text-xs opacity-80 flex items-center gap-1.5">
               <MapPin size={11} />
               <span>
-                {PP ? `Exutório: ${PP[0].toFixed(4)}°, ${PP[1].toFixed(4)}°` : "Bacia hidrográfica selecionada"}
+                {PP ? `${ht("viewer.outlet")} ${PP[0].toFixed(4)}°, ${PP[1].toFixed(4)}°` : ht("viewer.selectedBasin")}
               </span>
             </div>
           </div>
@@ -976,7 +979,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               }`}
             >
-              Geral
+              {ht("viewer.tabGeneral")}
             </button>
             <button
               type="button"
@@ -987,7 +990,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               }`}
             >
-              Morfometria
+              {ht("result.tabs.morphometry")}
             </button>
             <button
               type="button"
@@ -998,7 +1001,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               }`}
             >
-              Uso Solo
+              {ht("result.tabs.landcover")}
             </button>
             <button
               type="button"
@@ -1009,7 +1012,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               }`}
             >
-              Chuva & CN
+              {ht("result.tabs.rain")}
             </button>
           </div>
         </div>
@@ -1023,13 +1026,13 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                 <div>
                   <div className="flex items-center gap-1.5 mb-2">
                     <Gauge size={13} className="text-red-500 dark:text-red-400" />
-                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Índices de Risco & Potencial</span>
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{ht("result.riskPotential")}</span>
                   </div>
                   <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3 space-y-2.5">
                     {[
-                      { label: "Risco de Erosão", val: wsStats.erosionRisk, icon: Wind, color: "#f59e0b" },
-                      { label: "Risco de Cheia", val: wsStats.floodRisk, icon: Waves, color: "#ef4444" },
-                      { label: "Pot. Hidrogeológico", val: wsStats.hydroPotential, icon: Zap, color: "#10b981" },
+                      { label: ht("viewer.riskErosion"), val: wsStats.erosionRisk, icon: Wind, color: "#f59e0b" },
+                      { label: ht("viewer.riskFlood"), val: wsStats.floodRisk, icon: Waves, color: "#ef4444" },
+                      { label: ht("result.hydroPotential"), val: wsStats.hydroPotential, icon: Zap, color: "#10b981" },
                     ].map(r => (
                       <div key={r.label} className="space-y-1">
                         <div className="flex justify-between text-xs">
@@ -1053,20 +1056,20 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                   onClick={() => setExportModalOpen(true)}
                   className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-semibold rounded-2xl transition-all shadow-lg shadow-blue-600/25"
                 >
-                  <FileDown size={14} /> Descarregar Relatório PDF (Estilo QGIS)
+                  <FileDown size={14} /> {ht("viewer.downloadPdf")}
                 </button>
                 <button
                   onClick={() => downloadStandaloneBasinHtml({
-                    title: `Bacia Hidrográfica — ${totalArea.toLocaleString("pt-PT")} km²`,
+                    title: `${ht("result.basin")} — ${totalArea.toLocaleString(numberLocale)} km²`,
                     basinReport: report,
                     watershedData: wsData,
                     wsStats,
                     pourPoint: PP,
                   })}
                   className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-cyan-700 dark:text-cyan-300 border border-slate-200 dark:border-slate-700 text-xs font-semibold rounded-2xl transition-all shadow-sm"
-                  title="Descarregar ficheiro HTML autónomo que abre em qualquer computador offline"
+                  title={ht("result.exportHtmlHint")}
                 >
-                  <FileCode size={14} /> Exportar WebGIS em HTML (Offline)
+                  <FileCode size={14} /> {ht("viewer.downloadHtml")}
                 </button>
               </div>
             </div>
@@ -1077,19 +1080,19 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
             <div className="space-y-3">
               <div className="flex items-center gap-1.5 mb-1">
                 <Mountain size={13} className="text-blue-500 dark:text-blue-400" />
-                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Parâmetros Morfométricos</span>
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{ht("viewer.morphometryParameters")}</span>
               </div>
               <div className="grid grid-cols-3 gap-1.5">
                 {[
-                  ["Perímetro", `${report.morphometry.perimeterKm.toFixed(0)} km`],
-                  ["Relevo", `${report.morphometry.reliefM.toFixed(0)} m`],
-                  ["Declive méd.", `${report.morphometry.slopeMeanDeg.toFixed(1)}°`],
-                  ["Elev. mín.", `${report.morphometry.elevMinM.toFixed(0)} m`],
-                  ["Elev. média", `${report.morphometry.elevMeanM.toFixed(0)} m`],
-                  ["Elev. máx.", `${report.morphometry.elevMaxM.toFixed(0)} m`],
-                  ["Dens. dren.", `${report.morphometry.drainageDensity} km/km²`],
-                  ["Compacidade", `${report.morphometry.compactness}`],
-                  ["Fator forma", `${report.morphometry.formFactor}`],
+                  [ht("result.perimeter"), `${report.morphometry.perimeterKm.toFixed(0)} km`],
+                  [ht("result.relief"), `${report.morphometry.reliefM.toFixed(0)} m`],
+                  [ht("result.meanSlopeShort"), `${report.morphometry.slopeMeanDeg.toFixed(1)}°`],
+                  [ht("result.minElevation"), `${report.morphometry.elevMinM.toFixed(0)} m`],
+                  [ht("result.meanElevation"), `${report.morphometry.elevMeanM.toFixed(0)} m`],
+                  [ht("result.maxElevation"), `${report.morphometry.elevMaxM.toFixed(0)} m`],
+                  [ht("result.drainageDensityShort"), `${report.morphometry.drainageDensity} km/km²`],
+                  [ht("result.compactness"), `${report.morphometry.compactness}`],
+                  [ht("result.formFactor"), `${report.morphometry.formFactor}`],
                 ].map(([k, v]) => (
                   <div key={k} className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-2 text-center">
                     <div className="text-[9px] text-slate-500 dark:text-slate-400 uppercase tracking-wide leading-tight mb-0.5">{k}</div>
@@ -1106,13 +1109,13 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <Activity size={13} className="text-lime-500 dark:text-lime-400" />
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Uso do Solo (ESA 10m)</span>
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{ht("viewer.landcover")}</span>
                 </div>
                 <button
                   onClick={() => setActiveLayer(l => l === "lulc" ? "none" : "lulc")}
                   className="text-[10px] text-sky-600 dark:text-cyan-400 hover:underline font-bold"
                 >
-                  {activeLayer === "lulc" ? "Ocultar" : "Ver no mapa"}
+                  {activeLayer === "lulc" ? ht("viewer.hide") : ht("viewer.showMap")}
                 </button>
               </div>
               <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3 space-y-2">
@@ -1143,24 +1146,24 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
                     <Waves size={13} className="text-amber-500 dark:text-amber-400" />
-                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Escoamento (Curve Number)</span>
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{ht("viewer.runoff")}</span>
                   </div>
                   <button
                     onClick={() => setActiveLayer(l => l === "cn" ? "none" : "cn")}
                     className="text-[10px] text-sky-600 dark:text-cyan-400 hover:underline font-bold"
                   >
-                    {activeLayer === "cn" ? "Ocultar" : "Ver no mapa"}
+                    {activeLayer === "cn" ? ht("viewer.hide") : ht("viewer.showMap")}
                   </button>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-700 dark:text-slate-300">CN Médio da Bacia</span>
+                    <span className="text-xs text-slate-700 dark:text-slate-300">{ht("viewer.meanCN")}</span>
                     <span className="text-base font-bold text-slate-900 dark:text-white font-mono">{report.runoff.cnMean ?? "—"}</span>
                   </div>
                   <div className="h-2 rounded-full mt-2" style={{ background: "linear-gradient(to right,#1a9850,#fee08b,#d73027)" }} />
                   <div className="flex justify-between text-[9px] text-slate-500 dark:text-slate-400 mt-1">
-                    <span>40 · Alta infiltração</span>
-                    <span>Escoamento rápido · 100</span>
+                    <span>40 · {ht("viewer.highInfiltration")}</span>
+                    <span>{ht("viewer.fastRunoff")} · 100</span>
                   </div>
                 </div>
               </div>
@@ -1170,7 +1173,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                 <div className="flex items-center gap-1.5 mb-2">
                   <Droplets size={13} className="text-blue-500 dark:text-blue-400" />
                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Chuva Mensal · {report.precipAnnualMm.toLocaleString("pt-PT")} mm/ano
+                    {ht("viewer.monthlyRain")} · {report.precipAnnualMm.toLocaleString(numberLocale)} {ht("result.mmYear")}
                   </span>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-2.5">
@@ -1189,7 +1192,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                           borderRadius: "8px",
                           fontSize: "11px",
                         }}
-                        formatter={(v: number) => [`${v} mm`, "Precipitação"]}
+                        formatter={(v: number) => [`${v} mm`, ht("result.precipitation")]}
                       />
                       <Bar dataKey="mm" fill="#0284c7" radius={[2, 2, 0, 0]} />
                     </BarChart>
@@ -1226,11 +1229,11 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                   WebGIS
                 </span>
                 <span className="hidden sm:inline-flex text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 items-center gap-1 font-medium">
-                  <Eye size={10} /> Apenas Leitura
+                  <Eye size={10} /> {ht("viewer.readOnly")}
                 </span>
               </div>
               <p className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-tight truncate hidden sm:block">
-                Inteligência Geoespacial Planetária
+                {ht("viewer.tagline")}
               </p>
             </div>
           </div>
@@ -1241,43 +1244,43 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           <button
             onClick={toggleTheme}
             className="flex items-center justify-center w-8 h-8 sm:w-auto sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-medium transition-all shadow-sm"
-            title={theme === "dark" ? "Alternar para Modo Claro" : "Alternar para Modo Escuro"}
+            title={theme === "dark" ? ht("viewer.themeLight") : ht("viewer.themeDark")}
           >
             {theme === "dark" ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} className="text-slate-600" />}
-            <span className="hidden md:inline ml-1.5">{theme === "dark" ? "Modo Claro" : "Modo Escuro"}</span>
+            <span className="hidden md:inline ml-1.5">{theme === "dark" ? ht("viewer.lightMode") : ht("viewer.darkMode")}</span>
           </button>
 
           {/* Share Button / Copy Link */}
           <button
             onClick={handleCopyLink}
             className="flex items-center justify-center w-8 h-8 sm:w-auto sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-medium transition-all shadow-sm"
-            title="Copiar link permanente de visualização"
+            title={ht("viewer.copyLink")}
           >
             {copied ? <Check size={14} className="text-emerald-500 dark:text-emerald-400" /> : <Copy size={14} />}
-            <span className="hidden md:inline ml-1.5">{copied ? "Copiado!" : "Copiar Link"}</span>
+            <span className="hidden md:inline ml-1.5">{copied ? ht("share.copied") : ht("viewer.copyButton")}</span>
           </button>
 
           {/* Export HTML Button */}
           <button
             onClick={() => downloadStandaloneBasinHtml({
-              title: `Bacia Hidrográfica — ${totalArea.toLocaleString("pt-PT")} km²`,
+              title: `${ht("result.basin")} — ${totalArea.toLocaleString(numberLocale)} km²`,
               basinReport: report,
               watershedData: wsData,
               wsStats,
               pourPoint: PP,
             })}
             className="flex items-center justify-center w-8 h-8 sm:w-auto sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-cyan-600 dark:text-cyan-300 border border-slate-200 dark:border-slate-700 text-xs font-medium transition-all shadow-sm"
-            title="Descarregar ficheiro HTML autónomo"
+            title={ht("viewer.htmlHint")}
           >
             <FileCode size={14} />
-            <span className="hidden lg:inline ml-1.5">Exportar HTML</span>
+            <span className="hidden lg:inline ml-1.5">{ht("result.exportHtml")}</span>
           </button>
 
           {/* Export PDF Button */}
           <button
             onClick={() => setExportModalOpen(true)}
             className="flex items-center justify-center h-8 px-2.5 sm:px-3.5 sm:h-auto sm:py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-semibold transition-all shadow-md shadow-blue-600/20"
-            title="Exportar PDF Cartográfico (QGIS)"
+            title={ht("viewer.pdfHint")}
           >
             <FileDown size={14} />
             <span className="hidden sm:inline ml-1.5">PDF (QGIS)</span>
@@ -1288,7 +1291,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
             className="hidden sm:flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium transition-all border border-slate-200 dark:border-slate-700/50"
           >
             <ExternalLink size={12} />
-            <span className="hidden md:inline">Explorador</span>
+            <span className="hidden md:inline">{ht("viewer.explorer")}</span>
           </a>
         </div>
       </header>
@@ -1308,7 +1311,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
 
           {/* Floating Layers Quick Bar */}
           <div className="absolute top-3 sm:top-4 left-3 sm:left-4 z-[500] bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-1.5 sm:p-2 flex items-center gap-1 text-xs max-w-[calc(100vw-1.5rem)] overflow-x-auto transition-colors duration-200">
-            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider px-1.5 sm:px-2 hidden xs:inline">Camadas:</span>
+            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider px-1.5 sm:px-2 hidden xs:inline">{ht("viewer.layers")}</span>
 
             <button
               onClick={() => setActiveLayer(l => l === "lulc" ? "none" : "lulc")}
@@ -1319,7 +1322,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
               }`}
             >
               <span className="w-2 h-2 rounded-full bg-lime-500 shrink-0" />
-              <span>Uso do Solo</span>
+              <span>{ht("result.tabs.landcover")}</span>
             </button>
 
             <button
@@ -1331,7 +1334,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
               }`}
             >
               <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-              <span>Escoamento (CN)</span>
+              <span>{ht("viewer.runoffShort")} (CN)</span>
             </button>
 
             <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-800 mx-0.5 sm:mx-1 shrink-0" />
@@ -1345,8 +1348,8 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
               }`}
             >
               <GitBranch size={11} className="shrink-0" />
-              <span className="hidden sm:inline">Linhas de Água</span>
-              <span className="sm:hidden">Rios</span>
+              <span className="hidden sm:inline">{ht("viewer.streams")}</span>
+              <span className="sm:hidden">{ht("viewer.riversShort")}</span>
             </button>
 
             <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-800 mx-0.5 sm:mx-1 shrink-0" />
@@ -1357,11 +1360,11 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                   mapRef.current.locate({ setView: true, maxZoom: 14, enableHighAccuracy: true });
                 }
               }}
-              title="A minha localização atual (GPS / Onde Estou)"
+              title={ht("viewer.whereHint")}
               className="flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-xl font-medium transition-all text-slate-600 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] sm:text-xs shrink-0"
             >
               <LocateFixed size={11} className="text-sky-500 shrink-0" />
-              <span className="hidden xs:inline">Onde Estou</span>
+              <span className="hidden xs:inline">{ht("viewer.where")}</span>
             </button>
           </div>
 
@@ -1468,21 +1471,21 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
           {/* Floating Cartographic Legend on Map */}
           <div className="hidden sm:block absolute bottom-8 left-20 z-[500] bg-white/95 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-3 pointer-events-none text-[11px] min-w-[170px] text-slate-700 dark:text-slate-200 transition-colors duration-200">
             <div className="font-bold text-sky-600 dark:text-cyan-400 mb-1.5 flex items-center gap-1.5 text-xs">
-              <Compass size={12} /> Legenda do Mapa
+              <Compass size={12} /> {ht("viewer.mapLegend")}
             </div>
             <div className="flex items-center gap-2 mb-1">
               <span className="w-4 h-1.5 rounded border border-cyan-500 bg-cyan-500/20" />
-              <span className="text-slate-700 dark:text-slate-300">Limite da Bacia</span>
+              <span className="text-slate-700 dark:text-slate-300">{ht("viewer.boundary")}</span>
             </div>
             {showDrainage && (
               <div className="flex items-center gap-2 mb-1">
                 <span className="w-4 h-1 rounded bg-[#0284c7]" />
-                <span className="text-slate-700 dark:text-slate-300">Linhas de Água</span>
+                <span className="text-slate-700 dark:text-slate-300">{ht("viewer.streams")}</span>
               </div>
             )}
             {activeLayer === "lulc" && (
               <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800 space-y-1">
-                <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">Uso do Solo (10m)</div>
+                <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">{ht("viewer.landcover")}</div>
                 {report.landcover.slice(0, 5).map(c => (
                   <div key={c.code} className="flex items-center gap-1.5 text-[10px]">
                     <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: c.color }} />
@@ -1497,8 +1500,8 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                 <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase">Curve Number (CN)</div>
                 <div className="h-1.5 rounded-full" style={{ background: "linear-gradient(to right,#1a9850,#fee08b,#d73027)" }} />
                 <div className="flex justify-between text-[9px] text-slate-500 dark:text-slate-400">
-                  <span>Infiltração</span>
-                  <span>Escoamento</span>
+                  <span>{ht("viewer.infiltration")}</span>
+                  <span>{ht("viewer.runoffShort")}</span>
                 </div>
               </div>
             )}
@@ -1509,7 +1512,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
         <button
           onClick={() => setSidebarOpen(v => !v)}
           className="hidden md:flex absolute top-20 right-0 z-[600] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 p-2 rounded-l-xl shadow-xl hover:text-slate-900 dark:hover:text-white transition-all"
-          title={sidebarOpen ? "Ocultar painel" : "Mostrar painel"}
+          title={sidebarOpen ? ht("viewer.hideSidebar") : ht("viewer.showSidebar")}
         >
           {sidebarOpen ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
@@ -1529,9 +1532,9 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
             className="pointer-events-auto flex items-center gap-2 px-4 py-2.5 bg-slate-900/95 dark:bg-slate-800/95 text-white rounded-2xl shadow-2xl border border-slate-700/80 backdrop-blur-md text-xs font-bold transition-transform active:scale-95"
           >
             <FileText size={15} className="text-cyan-400" />
-            <span>Ver Relatório & Métricas</span>
+            <span>{ht("viewer.reportMetrics")}</span>
             <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-mono">
-              {totalArea.toLocaleString("pt-PT")} km²
+              {totalArea.toLocaleString(numberLocale)} km²
             </span>
             <ChevronUp size={14} className="text-slate-400" />
           </button>
@@ -1551,9 +1554,9 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                     <FileText size={16} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">Relatório da Bacia</h3>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">{ht("viewer.reportTitle")}</h3>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                      Área: {totalArea.toLocaleString("pt-PT")} km² · {report.morphometry?.reliefM?.toFixed(1) ?? "—"} m relevo
+                      {ht("result.area")}: {totalArea.toLocaleString(numberLocale)} km² · {report.morphometry?.reliefM?.toFixed(1) ?? "—"} m {ht("viewer.relief")}
                     </p>
                   </div>
                 </div>
@@ -1583,8 +1586,8 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                   <FileDown size={16} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold">Exportação Cartográfica (Estilo QGIS)</h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Selecione os mapas e elementos a incluir no PDF</p>
+                  <h3 className="text-sm font-bold">{ht("pdf.title")}</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">{ht("pdf.subtitle")}</p>
                 </div>
               </div>
               <button
@@ -1597,24 +1600,24 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
 
             <div className="my-4 space-y-2.5 text-xs">
               <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                Composição do Relatório PDF:
+                {ht("pdf.composition")}
               </label>
 
               {[
                 {
                   id: "both",
-                  title: "Relatório Completo (Ambos os Mapas)",
-                  desc: "Pág 1: Métricas & Clima · Pág 2: Uso do Solo (10m) · Pág 3: Escoamento (CN)",
+                  title: ht("pdf.bothTitle"),
+                  desc: ht("pdf.bothDescription"),
                 },
                 {
                   id: "lulc",
-                  title: "Mapa de Uso e Cobertura do Solo",
-                  desc: "Layout cartográfico com ESA WorldCover 10m, rede hidrográfica e legenda de classes.",
+                  title: ht("pdf.lulcTitle"),
+                  desc: ht("pdf.lulcDescription"),
                 },
                 {
                   id: "cn",
-                  title: "Mapa de Escoamento Superficial (CN)",
-                  desc: "Layout cartográfico com Curve Number SCS, rede hidrográfica e zonas de infiltração.",
+                  title: ht("pdf.cnTitle"),
+                  desc: ht("pdf.cnDescription"),
                 },
               ].map(opt => (
                 <div
@@ -1635,12 +1638,12 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
               ))}
 
               <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3 text-[11px] text-slate-600 dark:text-slate-400 space-y-1 mt-3">
-                <div className="font-semibold text-slate-700 dark:text-slate-300">Elementos Cartográficos Incluídos:</div>
+                <div className="font-semibold text-slate-700 dark:text-slate-300">{ht("pdf.elements")}</div>
                 <div className="flex flex-wrap gap-2 text-[10px] text-cyan-600 dark:text-cyan-300 pt-1">
-                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Compass size={11} /> Rosa dos Ventos</span>
-                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Ruler size={11} /> Barra de Escala Gráfica</span>
-                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Globe size={11} /> Graticule Lat/Lon</span>
-                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><FileText size={11} /> Legenda Temática</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Compass size={11} /> {ht("pdf.north")}</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Ruler size={11} /> {ht("pdf.scale")}</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><Globe size={11} /> {ht("pdf.grid")}</span>
+                  <span className="bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800/60 flex items-center gap-1"><FileText size={11} /> {ht("pdf.legend")}</span>
                 </div>
               </div>
             </div>
@@ -1650,7 +1653,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
                 onClick={() => setExportModalOpen(false)}
                 className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-all"
               >
-                Cancelar
+                {ht("dialog.cancel")}
               </button>
               <button
                 onClick={generateQgisPdf}
@@ -1659,11 +1662,11 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
               >
                 {exportingPdf ? (
                   <>
-                    <Loader2 size={13} className="animate-spin" /> A gerar PDF QGIS…
+                    <Loader2 size={13} className="animate-spin" /> {ht("pdf.generating")}
                   </>
                 ) : (
                   <>
-                    <FileDown size={14} /> Gerar PDF A4
+                    <FileDown size={14} /> {ht("pdf.generate")}
                   </>
                 )}
               </button>
