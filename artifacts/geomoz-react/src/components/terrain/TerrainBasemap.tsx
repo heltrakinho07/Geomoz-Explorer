@@ -60,7 +60,7 @@ export default function TerrainBasemap({
   const basemapRef = useRef(basemap);
   basemapRef.current = basemap;
   const [showMesh,setShowMesh] = useState(true);
-  const [modelOpacity,setModelOpacity] = useState(0.91);
+  const [modelOpacity,setModelOpacity] = useState(0.9);
   const [verticalOffset,setVerticalOffset] = useState(3);
   const [coordinates, setCoordinates] = useState<[number, number, boolean] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -225,10 +225,13 @@ export default function TerrainBasemap({
           if (!map) return;
           const details = [
             terrain.crs + " · " + exaggeration + "× · " + verticalOffset + " m · " + translate(BASEMAPS[basemap].label),
-            translate("Perspectiva 3D · escala variável · relevo exterior: Mapzen"),
+            translate("Perspectiva 3D · escala variável · relevo exterior: Mapzen") + " · N " + Math.round((360 - map.getBearing()) % 360) + "°",
           ];
           setError(null);
-          void exportTerrainMap(map, format, terrain.name, details, [BASEMAPS[basemap].attribution, satellite.image && basemap !== "satellite" ? BASEMAPS.satellite.attribution : ""].filter(Boolean).join(" · "))
+          const attribution = satellite.image && basemap !== "satellite"
+            ? BASEMAPS[basemap].attribution + " · " + BASEMAPS.satellite.attribution
+            : BASEMAPS[basemap].attribution;
+          void exportTerrainMap(map, format, terrain.name, details, attribution)
             .catch(() => setError(translate("Falha ao exportar o mapa 3D.")));
         }}>{format === "pdf" ? translate("Layout PDF") : "PNG"}</button>)}
     </div>

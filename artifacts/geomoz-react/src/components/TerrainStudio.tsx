@@ -420,16 +420,18 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
             {glbBusy ? <Loader2 size={13} className="mr-1 inline animate-spin"/> : <Download size={13} className="mr-1 inline"/>}
             GLB 3D
           </button>
-          <button type="button" disabled={!terrain || !!rendererError || !localCanvasReady}
+          {localCanvasReady && <>
+          <button type="button" disabled={!terrain || !!rendererError}
             onClick={downloadCanvas}
             className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
             <Download size={13} className="mr-1 inline"/> PNG
           </button>
-          <button type="button" disabled={!terrain || !!rendererError || !localCanvasReady}
+          <button type="button" disabled={!terrain || !!rendererError}
             onClick={exportPdf}
             className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
             <Download size={13} className="mr-1 inline"/> PDF
           </button>
+          </>}
           <button type="button" onClick={onClose} aria-label="Fechar Terrain Studio"
             className="rounded-lg border border-slate-300 dark:border-slate-600 p-2 hover:bg-slate-100 dark:hover:bg-slate-700">
             <X size={17}/>
@@ -557,13 +559,13 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs font-semibold">
-          <div className="gm-terrain-presets" role="group" aria-label="Exagero vertical">
-            {TERRAIN_EXAGGERATION_PRESETS.map(preset => <button key={preset}
-              type="button" aria-pressed={exaggeration === preset} disabled={!terrain}
-              onClick={() => setExaggeration(preset)}>{preset}×</button>)}
-          </div>
               <label htmlFor="terrain-studio-exaggeration">3. Exagero vertical</label>
               <span className="text-sky-600 dark:text-sky-400">{exaggeration.toFixed(1)}×</span>
+            </div>
+            <div className="gm-terrain-presets" role="group" aria-label="Exagero vertical">
+              {TERRAIN_EXAGGERATION_PRESETS.map(preset => <button key={preset}
+                type="button" aria-pressed={exaggeration === preset} disabled={!terrain}
+                onClick={() => setExaggeration(preset)}>{preset}×</button>)}
             </div>
             <input id="terrain-studio-exaggeration" type="range" min="1" max="15"
               step="0.5" value={exaggeration}

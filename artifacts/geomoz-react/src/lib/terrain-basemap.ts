@@ -6,7 +6,7 @@ export const BASEMAPS: Record<Basemap, { label: string; url: string; attribution
   satellite: {
     label: "Satélite",
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
+    attribution: "Imagery © Esri, Vantor, Earthstar Geographics, GIS User Community",
   },
   topographic: {
     label: "Topográfico",
@@ -111,7 +111,9 @@ export function useTerrainSatelliteTexture(url: string | null) {
       if (![xmin, ymin, xmax, ymax].every(Number.isFinite) || xmax <= xmin || ymax <= ymin) {
         throw new Error("Invalid imagery extent");
       }
-      const image = await fetch(data.href, { signal: controller.signal });
+      const imageUrl = new URL(data.href, url);
+      if (imageUrl.origin !== new URL(url).origin) throw new Error("Unexpected imagery origin");
+      const image = await fetch(imageUrl, { signal: controller.signal });
       if (!image.ok) throw new Error("Imagery unavailable");
       const bitmap = await createImageBitmap(await image.blob());
       try {
