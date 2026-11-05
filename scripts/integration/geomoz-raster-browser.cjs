@@ -19,9 +19,11 @@ module.exports=async function validateRasterProcessing(page){
   await page.getByTestId("geomoz-tools-flyout").locator('[data-command="proc.raster.'+id+'"]').click();
   const dialog=page.getByRole("dialog").filter({has:page.locator("#raster-input")});
   await dialog.waitFor();
-  const chooser=page.waitForEvent("filechooser");
-  await dialog.locator("#raster-input").locator("..").getByRole("button").click();
-  await (await chooser).setFiles({name:"dem-controlo.tif",mimeType:"image/tiff",buffer:input});
+  // Supply the actual file input directly: the native picker trigger can
+  // be hidden in the clip-mask workflow while the input itself remains valid.
+  await dialog.locator("#raster-input").setInputFiles({
+    name:"dem-controlo.tif",mimeType:"image/tiff",buffer:input
+  });
   for(const [key,value] of Object.entries(params))await dialog.locator("#"+key).fill(String(value));
   if(maskId)await dialog.locator("#mask_path").selectOption({label:maskId});
   await dialog.getByRole("button",{name:/^(Run|Executar)$/}).click();
