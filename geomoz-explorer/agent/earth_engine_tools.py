@@ -235,6 +235,109 @@ def temporal_pixel(geometry, index, start1, end1, start2, end2, lon, lat,
             "classification": classification}
 
 
+
+def temporal_quality(start1, end1, start2, end2, scenes1, scenes2, valid_km2, aoi_km2):
+    """Calendar-window comparability is a flag, not proof of matched phenology."""
+    a0, a1 = validate_period(start1, end1, "2017-03-28")
+    b0, b1 = validate_period(start2, end2, "2017-03-28")
+    aligned = (a0.strftime("%m-%d"), a1.strftime("%m-%d")) == (
+        b0.strftime("%m-%d"), b1.strftime("%m-%d"))
+    percent = min(100.0, 100 * valid_km2 / aoi_km2) if aoi_km2 > 0 else 0
+    warnings = []
+    if not aligned:
+        warnings.append("As janelas A/B abrangem épocas do ano diferentes; a sazonalidade pode explicar parte da diferença.")
+    if scenes1 and scenes2 and min(scenes1, scenes2) / max(scenes1, scenes2) < 0.5:
+        warnings.append("Os números de cenas A/B diferem mais de duas vezes; avalie o desequilíbrio temporal.")
+    if percent < 70:
+        warnings.append("Menos de 70% da AOI tem pixels válidos comuns; interprete as áreas com cautela.")
+    return {
+        "calendarAligned": aligned,
+        "durationDays": {"A": (a1-a0).days, "B": (b1-b0).days},
+        "sceneCounts": {"A": scenes1, "B": scenes2},
+        "commonValidCoveragePercent": percent,
+        "status": "review" if warnings else "calendar_aligned",
+        "warnings": warnings,
+        "note": "Calendário equivalente não garante fenologia ou condições meteorológicas equivalentes.",
+    }
+
+
+def temporal_histogram(geometry, index, start1, end1, start2, end2, scale_m=30, cloud_pct=30):
+    """On-demand Earth Engine histograms at the original analysis grid, common footprint.
+
+    Histogram counts are weighted raster pixels, not independently surveyed area.
+    """
+    import ee
+    validate_period(start1, end1, "2017-03-28")
+    validate_period(start2, end2, "2017-03-28")
+    if end1 > start2 or index not in INDEX_BANDS:
+        raise ValueError("Períodos ou índice inválidos para histogramas.")
+    region, grid, _ = _grid(geometry, scale_m, 10 if index in ("ndvi", "ndwi") else 20)
+    before, scenes_a = _s2_image(region, index, start1, end1, cloud_pct)
+    after, scenes_b = _s2_image(region, index, start2, end2, cloud_pct)
+    common = before.mask().gt(0).And(after.mask().gt(0))
+    paired = ee.Image.cat(before.rename("A"), after.rename("B")).updateMask(common)
+    delta = after.subtract(before).rename("Delta").updateMask(common)
+    pair_hist = paired.reduceRegion(
+        reducer=ee.Reducer.fixedHistogram(-1, 1.000001, 24), **grid).getInfo() or {}
+    delta_hist = delta.reduceRegion(
+        reducer=ee.Reducer.fixedHistogram(-2, 2.000001, 32), **grid).getInfo() or {}
+    def bins(raw):
+        if not isinstance(raw, list):
+            return []
+        return [{"min": float(row[0]), "count": float(row[1])}
+                for row in raw if isinstance(row, (list, tuple)) and len(row) == 2
+                and all(isinstance(v, (int, float)) and math.isfinite(v) for v in row)]
+    return {
+        "status": "success", "index": index.upper(), "analysisScaleM": grid["scale"],
+        "periodA": {"startDate": start1, "endDate": end1},
+        "periodB": {"startDate": start2, "endDate": end2},
+        "sceneCounts": {"A": scenes_a, "B": scenes_b},
+        "histograms": {"A": bins(pair_hist.get("A")), "B": bins(pair_hist.get("B")),
+                       "Delta": bins(delta_hist.get("Delta"))},
+        "note": "Contagens ponderadas de pixels válidos comuns na grelha indicada; não são áreas cadastrais.",
+    }
+
+
+def temporal_geotiff_download(geometry, index, start1, end1, start2, end2,
+                              scale_m=30, cloud_pct=30):
+    """Bound a 3-band, masked, Float32 GeoTIFF to safe direct-download limits."""
+    import ee
+    from gee_download_grid import bounded_download_grid
+    validate_period(start1, end1, "2017-03-28")
+    validate_period(start2, end2, "2017-03-28")
+    if end1 > start2 or index not in INDEX_BANDS:
+        raise ValueError("Períodos ou índice inválidos para GeoTIFF.")
+    native = 10 if index in ("ndvi", "ndwi") else 20
+    region, _, _ = _grid(geometry, scale_m, native)
+    # Derive a small bounding rectangle for grid size, but clip the imagery to
+    # the original polygon. Never substitute the bounding rectangle as the AOI.
+    bounds = region.bounds(maxError=100).getInfo()
+    grid = bounded_download_grid(bounds, scale_m, 500_000)
+    before, _ = _s2_image(region, index, start1, end1, cloud_pct)
+    after, _ = _s2_image(region, index, start2, end2, cloud_pct)
+    common = before.mask().gt(0).And(after.mask().gt(0))
+    bands = ee.Image.cat(before.rename(index.upper() + "_A"),
+                         after.rename(index.upper() + "_B"),
+                         after.subtract(before).rename("Delta_" + index.upper()))
+    raster = bands.updateMask(common).clip(region).toFloat()
+    options = {
+        "name": "geomoz_" + index + "_comparison_" + start1[:4] + "_" + start2[:4],
+        "dimensions": grid["dimensions"], "crs": "EPSG:4326",
+        "crs_transform": grid["crsTransform"], "format": "GEO_TIFF",
+        "filePerBand": False,
+    }
+    return {
+        "status": "success", "downloadUrl": raster.getDownloadURL(options),
+        "format": "GEO_TIFF", "bands": [index.upper() + "_A", index.upper() + "_B",
+                                     "Delta_" + index.upper()],
+        "requestedScaleM": scale_m, "estimatedGridScaleM": grid["scale"],
+        "dimensions": grid["dimensions"], "resolutionAdjusted": grid["resolutionAdjusted"],
+        "estimatedBytes": grid["estimatedBytes"] * 3,
+        "crs": "EPSG:4326", "noData": "Masked pixels remain NoData.",
+        "note": "Download limitado a 500 000 pixels. O valor de escala é aproximado no CRS geográfico; confirme resolução e grelha do ficheiro no SIG.",
+    }
+
+
 def temporal_change(geometry, index, start1, end1, start2, end2, scale_m=30, cloud_pct=30, threshold=0.2):
     validate_period(start1, end1, "2017-03-28")
     validate_period(start2, end2, "2017-03-28")
@@ -261,11 +364,14 @@ def temporal_change(geometry, index, start1, end1, start2, end2, scale_m=30, clo
     period_a_visual = before.updateMask(common)
     period_b_visual = after.updateMask(common)
     comparison_palette = ["8c510a", "dfc27d", "f6e8c3", "80cdc1", "01665e"]
+    quality = temporal_quality(start1, end1, start2, end2, scenes1, scenes2, valid, area / 1e6)
+    neutral = max(0.0, valid - increase - decrease)
     result = _base(S2, grid, area, "Diferença de índice B − A; não confirma desflorestação, urbanização ou área ardida. Compare épocas sazonais equivalentes. Valores só na intersecção dos pixels válidos dos dois períodos.")
     result.update({"index": index, "formula": "delta = periodB - periodA", "threshold": threshold,
                    "periodA": {"startDate": start1, "endDate": end1}, "periodB": {"startDate": start2, "endDate": end2},
                    "sceneCounts": {"A": scenes1, "B": scenes2}, "stats": stats,
                    "commonValidAreaKm2": valid, "increaseAreaKm2": increase, "decreaseAreaKm2": decrease,
+                   "neutralAreaKm2": neutral, "quality": quality,
                    "mean": stats["mean"], "coveragePercent": min(100, valid / (area / 1e6) * 100),
                    "summary": f"Δ{index.upper()} (B − A): média {stats['mean']:.4f}; aumento ≥ {threshold}: {increase:.2f} km²; diminuição ≤ −{threshold}: {decrease:.2f} km²; suporte comum {valid:.2f} km² à escala {grid['scale']} m.",
                    "map_action": {
