@@ -43,25 +43,33 @@ def validate_geometry(geometry):
     if not isinstance(geometry, dict) or geometry.get("type") not in ("Polygon", "MultiPolygon"):
         raise ValueError("Seleccione um país, desenhe ou carregue uma AOI poligonal. Não é permitido processar o globo inteiro por omissão.")
     polygons = [geometry.get("coordinates")] if geometry["type"] == "Polygon" else geometry.get("coordinates")
-    if not isinstance(polygons, list) or not polygons:
+    if not isinstance(polygons, (list, tuple)) or not polygons:
         raise ValueError("A área de estudo não contém polígonos.")
     count = 0
+    normalised = []
     for polygon in polygons:
-        if not isinstance(polygon, list) or not polygon:
+        if not isinstance(polygon, (list, tuple)) or not polygon:
             raise ValueError("Polígono vazio.")
+        rings = []
         for ring in polygon:
-            if not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]:
+            if not isinstance(ring, (list, tuple)) or len(ring) < 4:
                 raise ValueError("Os anéis da AOI devem ser fechados e ter pelo menos quatro vértices.")
+            points = []
             for point in ring:
                 if not isinstance(point, (list, tuple)) or len(point) < 2:
                     raise ValueError("Coordenadas inválidas.")
                 x, y = point[:2]
                 if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in (x, y)) or not (-180 <= x <= 180 and -90 <= y <= 90):
                     raise ValueError("Coordenadas fora de EPSG:4326.")
+                points.append([x, y])
                 count += 1
+            if points[0] != points[-1]:
+                raise ValueError("Os anéis da AOI devem ser fechados.")
+            rings.append(points)
+        normalised.append(rings)
     if count > 20000:
         raise ValueError("AOI demasiado complexa. Simplifique para até 20.000 vértices.")
-    return geometry
+    return {**geometry, "coordinates": normalised[0] if geometry["type"] == "Polygon" else normalised}
 
 
 def grid_scale(area_m2, requested, native=10):
@@ -74,7 +82,7 @@ def grid_scale(area_m2, requested, native=10):
 
 def _grid(geometry, requested=30, native=10):
     import ee
-    region = (ee.Geometry(validate_geometry(geometry), opt_proj="EPSG:4326", opt_geodesic=False)
+    region = (ee.Geometry(validate_geometry(geometry), "EPSG:4326", False)
               if isinstance(geometry, dict) else geometry)
     area = float(region.area(maxError=10).getInfo())
     scale = grid_scale(area, requested, native)
