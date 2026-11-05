@@ -4,6 +4,7 @@
  * MapLibre keeps the satellite/topographic basemap visible around the patch.
  */
 import { useEffect, useRef, useState } from "react";
+import { composeTerrainTexture, renderLicensedXYZTexture, validLicensedXYZTemplate } from "./geomoz-terrain-texture-stack";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import proj4 from "proj4";
@@ -12,7 +13,7 @@ import type { GeoMozTerrainOverlay } from "./geomoz-terrain-overlays";
 import { terrainProjection, validTerrainGeography } from "./geomoz-terrain-tiles";
 import { createTerrainMapMesh, type TerrainMapMesh, type ModelAppearance, LOCAL_MODEL_ID } from "./geomoz-terrain-map-mesh";
 
-type Basemap = "satellite" | "topographic" | "streets";
+type Basemap = "satellite" | "topographic" | "streets" | "licensed";
 interface Props {
   terrain: TerrainMeshData;
   overlays: GeoMozTerrainOverlay[];
@@ -25,7 +26,7 @@ interface Props {
   flat?: boolean;
   translate?: (value: string) => string;
 }
-const BASEMAPS: Record<Basemap, { label: string; url: string; attribution: string }> = {
+const BASEMAPS: Record<Exclude<Basemap,"licensed">, { label: string; url: string; attribution: string }> = {
   satellite: {
     label: "Satélite",
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -47,7 +48,7 @@ const GLOBAL_DEM = "geomoz-global-raster-dem";
 const FOOTPRINT_ID = "geomoz-dem-footprint";
 const VECTOR_PREFIX = "geomoz-draped-layer-";
 
-function makeStyle(which: Basemap): maplibregl.StyleSpecification {
+function makeStyle(which: Exclude<Basemap,"licensed">): maplibregl.StyleSpecification {
   return {
     version: 8,
     name: "GeoMoz · DEM geográfico",
@@ -138,6 +139,56 @@ export default function GeoMozTerrainGeoMap({
   const overlaysRef = useRef(overlays);
   const modelRef = useRef<TerrainMapMesh | null>(null);
   const [basemap, setBasemap] = useState<Basemap>("satellite");
+  const [xyzTemplate,setXYZTemplate] = useState("");
+  const [xyzAttribution,setXYZAttribution] = useState("");
+  const [xyzAuthorized,setXYZAuthorized] = useState(false);
+  const [licensedXYZ,setLicensedXYZ] = useState<{url:string;credit:string}|null>(null);
+  const [basemapTexture,setBasemapTexture] = useState<string|null>(null);
+  const [terrainTexture,setTerrainTexture] = useState<string|null>(null);
+  const [xyzBusy,setXYZBusy] = useState(false);
+  const [xyzProgress,setXYZProgress] = useState("");
+  const xyzAbort=useRef<AbortController|null>(null);
+  useEffect(()=>{
+    const controller=new AbortController();
+    composeTerrainTexture([
+      ...(basemapTexture?[{id:"xyz",imageDataUrl:basemapTexture,visible:true,opacity:1}]:[]),
+      ...(rasterTexture?[{id:"thematic",imageDataUrl:rasterTexture,visible:true,opacity:rasterOpacity}]:[])
+    ],controller.signal).then(setTerrainTexture).catch(e=>{
+      if(!controller.signal.aborted)setError(e instanceof Error?e.message:"Falha ao combinar texturas 3D.");
+    });
+    return ()=>controller.abort();
+  },[basemapTexture,rasterTexture,rasterOpacity,terrain]);
+  useEffect(()=>()=>xyzAbort.current?.abort(),[]);
+  async function applyXYZ(){
+    if(!xyzAuthorized||!xyzAttribution.trim()||!validLicensedXYZTemplate(xyzTemplate)){
+      setError("Indique uma fonte XYZ HTTPS autorizada e respectiva atribuição. O serviço público OSM não é permitido.");
+      return;
+    }
+    xyzAbort.current?.abort();
+    const controller=new AbortController();xyzAbort.current=controller;
+    setXYZBusy(true);setXYZProgress("A preparar mosaico XYZ…");setError(null);
+    try {
+      terrainProjection(terrain);
+      const result=await renderLicensedXYZTexture(terrain,xyzTemplate,{
+        signal:controller.signal,
+        onProgress:(done,total)=>setXYZProgress("Tiles "+done+"/"+total),
+      });
+      if(controller.signal.aborted)return;
+      setBasemapTexture(result.imageDataUrl);
+      setLicensedXYZ({url:xyzTemplate,credit:xyzAttribution.trim()});
+      setBasemap("licensed");
+      setXYZProgress("Textura georreferenciada · "+result.tiles+" tiles · zoom "+result.zoom);
+    }catch(e) {
+      if(!controller.signal.aborted)setError(e instanceof Error?e.message:"Falha CORS do serviço XYZ.");
+    }finally {
+      if(xyzAbort.current===controller){xyzAbort.current=null;setXYZBusy(false);}
+    }
+  }
+  function clearXYZ(){
+    xyzAbort.current?.abort();setBasemapTexture(null);setLicensedXYZ(null);
+    if(basemap==="licensed")setBasemap("satellite");
+    setXYZProgress("");
+  }
   const [showMesh,setShowMesh] = useState(true);
   const [modelOpacity,setModelOpacity] = useState(0.91);
   const [verticalOffset,setVerticalOffset] = useState(3);
@@ -148,7 +199,7 @@ export default function GeoMozTerrainGeoMap({
   overlaysRef.current = overlays;
   const appearance: ModelAppearance = {
     exaggeration,offsetMeters:verticalOffset,opacity:modelOpacity,style,
-    vectors:vectorTexture,raster:rasterTexture,rasterOpacity,visible:showMesh && !flat,
+    vectors:vectorTexture,raster:terrainTexture,rasterOpacity:terrainTexture?1:0,visible:showMesh && !flat,
   };
   const appearanceRef = useRef(appearance);
   appearanceRef.current = appearance;
@@ -236,8 +287,10 @@ export default function GeoMozTerrainGeoMap({
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
     const source = map.getSource(BASE_ID) as maplibregl.RasterTileSource | undefined;
-    if (source) source.setTiles([BASEMAPS[basemap].url]);
-  }, [basemap]);
+    if (source) source.setTiles([basemap==="licensed"
+      ?licensedXYZ?.url??BASEMAPS.satellite.url
+      :BASEMAPS[basemap].url]);
+  }, [basemap,licensedXYZ]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -251,7 +304,7 @@ export default function GeoMozTerrainGeoMap({
 
   useEffect(() => {
     modelRef.current?.update(appearance);
-  }, [exaggeration, style, vectorTexture, rasterTexture, rasterOpacity,
+  }, [exaggeration, style, vectorTexture, terrainTexture,
       showMesh, modelOpacity, verticalOffset, flat]);
 
 
@@ -270,6 +323,7 @@ export default function GeoMozTerrainGeoMap({
           aria-label={translate("Escolher mapa de base")}>
           {Object.entries(BASEMAPS).map(([key, value]) =>
             <option key={key} value={key}>{translate(value.label)}</option>)}
+          {licensedXYZ&&<option value="licensed">XYZ autorizado · {licensedXYZ.credit}</option>}
         </select>
       </label>
       {!flat && <>
@@ -293,6 +347,34 @@ export default function GeoMozTerrainGeoMap({
         [[west, south], [east, north]], { padding: 42, duration: 600, maxZoom: 14 },
       )}>{translate("Localizar DEM")}</button>
     </div>
+    {!flat&&<details className="gm-terrain-xyz-panel">
+      <summary>Mapa-base como textura 3D</summary>
+      <p>Indique um serviço XYZ com licença para esta utilização. Não é efectuado download automático de mosaicos Esri/OSM.</p>
+      <label>Endereço XYZ HTTPS
+        <input type="url" value={xyzTemplate} onChange={e=>setXYZTemplate(e.target.value)}
+          placeholder="https://tiles.exemplo.com/{z}/{x}/{y}.png"
+          aria-label="URL XYZ autorizado"/>
+      </label>
+      <label>Atribuição do fornecedor
+        <input value={xyzAttribution} onChange={e=>setXYZAttribution(e.target.value)}
+          placeholder="© Fornecedor / licença" aria-label="Atribuição da imagem XYZ"/>
+      </label>
+      <label className="gm-terrain-xyz-consent">
+        <input type="checkbox" checked={xyzAuthorized}
+          onChange={e=>setXYZAuthorized(e.target.checked)}/>
+        Confirmo que esta fonte permite a utilização dos tiles como textura.
+      </label>
+      <div className="gm-terrain-xyz-buttons">
+        <button type="button" onClick={()=>void applyXYZ()}
+          disabled={!xyzAuthorized||xyzBusy||!xyzAttribution.trim()||!validLicensedXYZTemplate(xyzTemplate)}>
+          {xyzBusy?"A processar…":"Aplicar XYZ ao DEM"}
+        </button>
+        {licensedXYZ&&<button type="button" onClick={clearXYZ}>Remover textura</button>}
+        {xyzBusy&&<button type="button" onClick={()=>xyzAbort.current?.abort()}>Cancelar</button>}
+      </div>
+      {xyzProgress&&<small role="status">{xyzProgress}</small>}
+      {licensedXYZ&&<small>Textura: {licensedXYZ.credit}</small>}
+    </details>}
     <div className="gm-terrain-geographic-info">
       <strong>{translate("Modelo 3D sobre terreno global")}</strong>
       <span>{((west + east) / 2).toFixed(5)}°, {((south + north) / 2).toFixed(5)}° · {terrain.crs}</span>
