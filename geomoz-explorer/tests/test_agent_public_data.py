@@ -119,6 +119,50 @@ class PublicDataTests(unittest.TestCase):
         self.assertAlmostEqual(result["decreaseAreaKm2"], 1)
         self.assertAlmostEqual(result["commonValidAreaKm2"], 3)
 
+    def test_temporal_pixel_preserves_zero_and_classifies_real_delta(self):
+        region = MagicMock()
+        region.intersects.return_value.getInfo.return_value = True
+        mosaic = MagicMock()
+        mosaic.updateMask.return_value = mosaic
+        mosaic.reduceRegion.return_value = Info({"A": 0.0, "B": 0.35})
+        ee = SimpleNamespace(Geometry=SimpleNamespace(Point=lambda coords: "point"),
+                             Image=SimpleNamespace(cat=lambda a, b: mosaic),
+                             Reducer=SimpleNamespace(first=lambda: Reducer("first")))
+        before = Raster([0.0], [True])
+        after = Raster([0.35], [True])
+        with patch.dict("sys.modules", {"ee": ee}), \\
+             patch.object(engine, "_grid", return_value=(region, GRID, 100_000)), \\
+             patch.object(engine, "_s2_image", side_effect=[(before, 1), (after, 1)]):
+            result = engine.temporal_pixel(GEOMETRY, "ndvi", "2020-01-01", "2021-01-01",
+                                           "2025-01-01", "2026-01-01", 32.5, -19.5)
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["valueA"], 0)
+        self.assertAlmostEqual(result["delta"], 0.35)
+        self.assertEqual(result["classification"], "increase")
+        self.assertEqual(mosaic.reduceRegion.call_args.kwargs["crs"], GRID["crs"])
+
+    def test_temporal_pixel_returns_no_data_and_rejects_outside_aoi(self):
+        region = MagicMock()
+        region.intersects.return_value.getInfo.return_value = True
+        mosaic = MagicMock()
+        mosaic.updateMask.return_value = mosaic
+        mosaic.reduceRegion.return_value = Info({"A": None, "B": 0.6})
+        ee = SimpleNamespace(Geometry=SimpleNamespace(Point=lambda coords: "point"),
+                             Image=SimpleNamespace(cat=lambda a, b: mosaic),
+                             Reducer=SimpleNamespace(first=lambda: Reducer("first")))
+        with patch.dict("sys.modules", {"ee": ee}), \\
+             patch.object(engine, "_grid", return_value=(region, GRID, 100_000)), \\
+             patch.object(engine, "_s2_image", side_effect=[(Raster([0]), 1), (Raster([0.6]), 1)]):
+            result = engine.temporal_pixel(GEOMETRY, "ndvi", "2020-01-01", "2021-01-01",
+                                           "2025-01-01", "2026-01-01", 32.5, -19.5)
+        self.assertEqual(result["status"], "no_data")
+        self.assertIsNone(result["delta"])
+        region.intersects.return_value.getInfo.return_value = False
+        with patch.dict("sys.modules", {"ee": ee}), patch.object(engine, "_grid", return_value=(region, GRID, 100_000)):
+            with self.assertRaisesRegex(ValueError, "fora da área"):
+                engine.temporal_pixel(GEOMETRY, "ndvi", "2020-01-01", "2021-01-01",
+                                      "2025-01-01", "2026-01-01", 32.5, -19.5)
+
     def test_dossier_uses_actual_comparison_periods_not_project_window(self):
         from agent.intelligence import build_dossier
         comparison = {"A": {"startDate": "2020-01-01", "endDate": "2021-01-01"},
