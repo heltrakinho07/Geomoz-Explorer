@@ -135,7 +135,7 @@ export async function createTerrainRasterDrape(
     if(kind==="rgb"&&image.getSamplesPerPixel()<3)
       throw Error("O GeoTIFF RGB necessita de pelo menos três bandas.");
     const continuous=kind==="ndvi"||kind==="ndwi"||
-      (kind==="auto"&&/\b(ndvi|ndwi)\b/i.test(name));
+      (kind==="auto"&&/(?:^|[^a-z])(ndvi|ndwi)(?=[^a-z]|$)/i.test(name));
     const bands=rgb?[0,1,2]:[0];
     const samples=await image.readRasters({samples:bands,width:n,height:m,resampleMethod:"nearest"});
     verifyActive(options.signal);
