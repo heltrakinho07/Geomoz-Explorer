@@ -1,3 +1,5 @@
+import { GeoAgentCharts } from "./GeoAgentCharts";
+
 export interface IntelligenceDossier {
   version: string;
   id: string;
@@ -34,6 +36,8 @@ export function GeoIntelligenceDossier({ dossier }: { dossier: IntelligenceDossi
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return (
+    <>
+    <GeoAgentCharts evidence={dossier.evidence} />
     <details className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-900/60">
       <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-200">
         Dossiê de geointeligência · {labels[dossier.status] || dossier.status}
@@ -61,5 +65,6 @@ export function GeoIntelligenceDossier({ dossier }: { dossier: IntelligenceDossi
         <p className="break-all text-[10px] text-slate-400">{dossier.id} · {dossier.generatedAt}</p>
       </div>
     </details>
+    </>
   );
 }
