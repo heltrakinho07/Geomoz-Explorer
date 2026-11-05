@@ -12,13 +12,21 @@ from shapely.geometry import shape
 from terrain_dem import MAX_UPLOAD_BYTES, TerrainInputError, dem_to_preview
 
 
-def preview_scale_m(region_geojson: dict) -> int:
-    """Choose a scale that bounds a broad AOI to about 200 x 200 cells.
+PRO_QUALITY_TARGETS = {"standard": 180, "detailed": 360, "maximum": 600}
+
+
+def preview_scale_m(region_geojson: dict, quality: str = "standard") -> int:
+    """Choose a bounded scale for Pro preview up to 600 cells per axis.
 
     Geographic span is an estimate only, used for resource admission.
     The raster itself is subsequently reprojected by Rasterio.
     """
-    west, south, east, north = shape(region_geojson).bounds
+    if quality not in PRO_QUALITY_TARGETS:
+        raise TerrainInputError("Qualidade de DEM inválida.")
+    region = shape(region_geojson)
+    if region.is_empty or not region.is_valid:
+        raise TerrainInputError("A geometria da área de estudo é inválida.")
+    west, south, east, north = region.bounds
     if not all(math.isfinite(v) for v in (west, south, east, north)):
         raise TerrainInputError("Área geográfica inválida.")
     if not (-180 <= west < east <= 180 and -90 <= south < north <= 90):
@@ -26,7 +34,11 @@ def preview_scale_m(region_geojson: dict) -> int:
     mid_lat = (south + north) / 2
     lon_span_m = (east - west) * 111_320 * max(0.01, math.cos(math.radians(mid_lat)))
     lat_span_m = (north - south) * 111_320
-    return min(30_000, max(30, math.ceil(max(lon_span_m, lat_span_m) / 180)))
+    # Never request an unbounded global raster, even at coarse resolution.
+    estimated_scale = math.ceil(max(lon_span_m, lat_span_m) / PRO_QUALITY_TARGETS[quality])
+    if estimated_scale > 30_000:
+        raise TerrainInputError("Área de estudo demasiado extensa. Reduza a extensão para gerar o DEM.")
+    return max(30, estimated_scale)
 
 
 
@@ -87,11 +99,11 @@ def fetch_signed_gee_geotiff(download_url: str) -> bytes:
     return raw
 
 
-def copernicus_to_preview(region_geojson: dict) -> dict:
+def copernicus_to_preview(region_geojson: dict, quality: str = "standard") -> dict:
     """Fetch a signed GEE export, enforce size limit and discard all source bytes."""
     from gee_module import get_index_download_url
 
-    scale = preview_scale_m(region_geojson)
+    scale = preview_scale_m(region_geojson, quality)
     result = get_index_download_url("elevation", region_geojson, scale=scale)
     download_url = result.get("downloadUrl")
     if not isinstance(download_url, str):
@@ -99,5 +111,8 @@ def copernicus_to_preview(region_geojson: dict) -> dict:
     raw = fetch_signed_gee_geotiff(download_url)
     preview = dem_to_preview(raw, "Copernicus_GLO30_GEE.tif")
     preview["geeExportScaleMeters"] = scale
+    preview["geePreviewQuality"] = quality
+    preview["geeNativeResolutionMeters"] = 30
+    preview["geeScientificNote"] = "Pré-visualização simplificada. Para medições finais utilize o DEM original."
     preview["sourceName"] = "Copernicus GLO-30 · Google Earth Engine"
     return preview
