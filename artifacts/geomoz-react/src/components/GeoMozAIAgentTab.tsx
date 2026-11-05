@@ -4,6 +4,8 @@ import { PublicDataTools, type PublicAnalysisRequest } from "./PublicDataTools";
 import { GeoIntelligenceDossier, type IntelligenceDossier } from "./GeoIntelligenceDossier";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useProject } from "../context/ProjectContext";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import { specialistText, type SpecialistKey } from "@/i18n/specialist-ui";
 import { apiFetch } from "@/lib/api";
 import { aoiToAPI, mozambiqueAOI, countryAOI, GLOBAL_AOI, type AreaOfInterest } from "@/lib/aoi";
 import { useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
@@ -122,6 +124,8 @@ interface ChatMessage {
 }
 
 export default function GeoMozAIAgentTab() {
+  const { translatedLocale } = usePortalTranslation();
+  const ui = (key: SpecialistKey) => specialistText(translatedLocale, key);
   const { activeProject, updateProject, saveRunToActiveProject } = useProject();
 
   const loadGAULUnits = useCallback<LoadGAULUnits>(async (countryCode, level, parentCode, signal) => {
@@ -744,14 +748,14 @@ export default function GeoMozAIAgentTab() {
                     ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30"
                     : "bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700"
                 }`}
-                title="Configurar Chaves da OpenAI e Gemini"
+                title={ui("agent.settings")}
               >
                 <BrainCircuit size={11} />
                 <span>{activeProviderLabel.split(" ")[0]}</span>
               </button>
 
               {messages.some((message) => message.sender === "agent") && (
-                <button type="button" onClick={handleExportPDF} disabled={isExportingPdf || isRunning} title="Exportar último resultado em PDF" aria-label="Exportar último resultado em PDF" className="rounded-lg p-2 text-slate-200 hover:bg-slate-800 disabled:opacity-50">
+                <button type="button" onClick={handleExportPDF} disabled={isExportingPdf || isRunning} title={ui("agent.exportPdf")} aria-label={ui("agent.exportPdf")} className="rounded-lg p-2 text-slate-200 hover:bg-slate-800 disabled:opacity-50">
                   {isExportingPdf ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
                 </button>
               )}
@@ -765,7 +769,7 @@ export default function GeoMozAIAgentTab() {
                     setAgentContext(null);
                   }}
                   className="p-1 rounded-full text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
-                  title="Limpar Histórico de Mensagens"
+                  title={ui("agent.clear")}
                 >
                   <Trash2 size={12} />
                 </button>
@@ -777,7 +781,7 @@ export default function GeoMozAIAgentTab() {
           <div className="pt-2.5 border-t border-slate-800/80 space-y-1.5">
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-slate-400 font-medium flex items-center gap-1">
-                <MapPin size={11} className="text-sky-400" /> Área de Estudo:
+                <MapPin size={11} className="text-sky-400" /> {ui("agent.studyArea")}
               </span>
               <button
                 type="button"
@@ -1061,29 +1065,32 @@ export default function GeoMozAIAgentTab() {
         )}
 
         {/* Scrollable Conversation Thread & Quick Actions */}
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50/80 p-4 dark:bg-slate-950/30" role="log" aria-label="Conversa com GeoMoz AI" ref={chatScrollRef}>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50/80 p-4 dark:bg-slate-950/30" role="log" aria-label={ui("agent.chat")} ref={chatScrollRef}>
           {messages.length === 0 && !isRunning && (
             <div className="space-y-5 px-1 py-4 sm:px-3">
               <div className="space-y-2">
                 <Sparkles size={22} className="text-violet-500" aria-hidden="true" />
-                <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">O que quer analisar?</h2>
+                <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{ui("agent.heading")}</h2>
                 <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                  Escolha a área no cabeçalho e descreva a análise. Os resultados aparecem no mapa e cada resposta inclui as fontes e limitações.
+                  {ui("agent.description")}
                 </p>
               </div>
               <div className="grid gap-2">
-                {[
-                  "Calcular estatísticas zonais de NDVI entre 2025-05-01 e 2025-09-01",
-                  "Mapear a cobertura do solo com WorldCover",
-                  "Comparar NDVI entre 2020 e 2025",
-                  "Calcular a precipitação acumulada ERA5-Land em 2025",
-                  "Quais são as principais litologias de Manica?",
-                ].map((example) => (
+                {([
+                  "agent.example.ndvi",
+                  "agent.example.worldcover",
+                  "agent.example.compare",
+                  "agent.example.rain",
+                  "agent.example.lithology",
+                ] as const).map((key) => {
+                  const example = ui(key);
+                  return (
                   <button key={example} type="button" onClick={() => { setPrompt(example); promptRef.current?.focus(); }}
                     className="rounded-xl border border-slate-200 p-3 text-left text-sm text-slate-700 hover:border-violet-400 hover:bg-violet-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-violet-950/40">
                     {example}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1118,7 +1125,7 @@ export default function GeoMozAIAgentTab() {
                     {!msg.intelligence && msg.steps && msg.steps.length > 0 && (
                       <div className="p-2 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-100 dark:border-slate-800 space-y-1">
                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                          Ferramentas Executadas:
+                          {ui("agent.executedTools")}
                         </div>
                         {msg.steps.map((st, idx) => (
                           <div key={st.id || idx} className="flex items-center justify-between text-[11px]">
@@ -1208,14 +1215,14 @@ export default function GeoMozAIAgentTab() {
         {/* Bottom Input Area */}
         <div className="p-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex-none space-y-2">
           <details className="rounded-lg text-xs text-slate-600 dark:text-slate-300">
-            <summary className="cursor-pointer py-1 font-medium">Período e ferramentas de análise</summary>
+            <summary className="cursor-pointer py-1 font-medium">{ui("agent.periodTools")}</summary>
             <div className="max-h-36 space-y-2 overflow-y-auto pt-1">
               <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-500 dark:text-slate-400">
-                <label>Data inicial
-                  <input type="date" aria-label="Data inicial da análise" disabled={isRunning} value={analysisPeriod.startDate} onChange={(e) => setAnalysisPeriod((p) => ({ ...p, startDate: e.target.value }))} className="block w-full rounded border border-slate-200 bg-transparent p-1 dark:border-slate-700" />
+                <label>{ui("agent.startDate")}
+                  <input type="date" aria-label={ui("agent.startDate")} disabled={isRunning} value={analysisPeriod.startDate} onChange={(e) => setAnalysisPeriod((p) => ({ ...p, startDate: e.target.value }))} className="block w-full rounded border border-slate-200 bg-transparent p-1 dark:border-slate-700" />
                 </label>
-                <label>Data final (exclusiva)
-                  <input type="date" aria-label="Data final da análise" disabled={isRunning} value={analysisPeriod.endDate} min={analysisPeriod.startDate} onChange={(e) => setAnalysisPeriod((p) => ({ ...p, endDate: e.target.value }))} className="block w-full rounded border border-slate-200 bg-transparent p-1 dark:border-slate-700" />
+                <label>{ui("agent.endDate")}
+                  <input type="date" aria-label={ui("agent.endDate")} disabled={isRunning} value={analysisPeriod.endDate} min={analysisPeriod.startDate} onChange={(e) => setAnalysisPeriod((p) => ({ ...p, endDate: e.target.value }))} className="block w-full rounded border border-slate-200 bg-transparent p-1 dark:border-slate-700" />
                 </label>
               </div>
               <PublicDataTools disabled={isRunning} onRun={(label, request) => { void handlePromptSubmit(label, request); }} />
@@ -1232,7 +1239,7 @@ export default function GeoMozAIAgentTab() {
             <textarea
               ref={promptRef}
               rows={2}
-              aria-label="Mensagem para GeoMoz AI"
+              aria-label={ui("agent.promptAria")}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault();
@@ -1241,13 +1248,13 @@ export default function GeoMozAIAgentTab() {
               }}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Descreva a análise que pretende…"
+              placeholder={ui("agent.placeholder")}
               disabled={isRunning}
               className="min-w-0 flex-1 resize-none px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:bg-white"
             />
             <button
               type="submit"
-              aria-label="Enviar mensagem"
+              aria-label={ui("agent.send")}
               disabled={isRunning || !prompt.trim()}
               className="px-3.5 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-slate-200 dark:disabled:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer disabled:cursor-not-allowed"
             >
