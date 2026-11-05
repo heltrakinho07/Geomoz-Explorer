@@ -61,6 +61,9 @@ Diretrizes:
 """
 
 
+LANDCOVER_REQUEST = re.compile(r"\b(?:worldcover|(?:cobertura|ocupacao|uso) (?:do|de) solo)\b")
+
+
 def _public_chat_request(message):
     """Recognise public analysis commands while leaving other requests to the planner."""
     text = _fold_text(message)
@@ -79,7 +82,7 @@ def _public_chat_request(message):
         return {"tool": "detect_temporal_change", "args": dict(zip(
             ("index", "start_date_1", "end_date_1", "start_date_2", "end_date_2"), [index, *periods]))}
 
-    if any(phrase in text for phrase in ("worldcover", "cobertura do solo", "ocupacao do solo")):
+    if LANDCOVER_REQUEST.search(text):
         return {"tool": "get_public_landcover", "args": {}}
 
     if index and any(word in text for word in ("estatistica", "media", "calcular", "calcula", "mapear", "mapa")):
@@ -141,19 +144,32 @@ class GeoMozAgent:
                 return {"status": "needs_input", "steps": [], "runs": [], "map_actions": [],
                         "synthesis": str(exc)}
             if public_request:
-                # Public chat commands act on the selected area. Ask before using
-                # it when the command explicitly names a different place.
+                # An explicit location overrides the map for this analysis only.
                 place = re.search(
-                    r"\b(?:em|no distrito de|na provincia de|no municipio de) ([a-z][a-z -]*?)"
-                    r"(?=\s+(?:entre|durante|de\s+\d|em\s+\d|com|para)\b|[,.?!]|$)",
+                    r"\b(?:(?:em|para|n[ao])\s+(?:(?:a|o)\s+)?"
+                    r"(cidade|distrito|provincia|municipio)\s+d[aeo]\s+|em\s+)"
+                    r"([a-z][a-z -]*?)"
+                    r"(?=\s+(?:entre|durante|d[eo]\s+\d|em\s+\d|com|para)\b|[,.?!]|$)",
                     _fold_text(user_message),
                 )
-                label = _fold_text(str((current_map_state.get("aoi") or {}).get("label") or ""))
-                if place and place[1].strip() not in {"toda a area", "toda a regiao"} and not re.search(
-                    rf"\b{re.escape(place[1].strip())}\b", label
-                ):
-                    return {"status": "needs_input", "steps": [], "runs": [], "map_actions": [],
-                            "synthesis": "Seleccione no mapa a área indicada no pedido e volte a executar a análise."}
+                aoi = current_map_state.get("aoi") or {}
+                if place and place[2].strip() not in {"toda a area", "toda a regiao"}:
+                    kind, name = place[1], place[2].strip()
+                    label = _fold_text(str(aoi.get("label") or "")).split(",")[0].strip()
+                    if kind or name != label:
+                        country_code = aoi.get("countryCode") or (
+                            "MOZ" if aoi.get("source") == "mozambique" else None)
+                        unresolved = {"status": "needs_input", "steps": [], "runs": [], "map_actions": []}
+                        if not country_code:
+                            return {**unresolved, "synthesis": "Seleccione no mapa o país da área indicada e volte a executar a análise."}
+                        try:
+                            current_map_state["aoi"] = await ToolDispatcher.resolve_named_area(
+                                country_code, name, kind, current_map_state)
+                        except ValueError as exc:
+                            return {**unresolved, "synthesis": str(exc)}
+                        except Exception:
+                            logger.exception("FAO GAUL chat lookup failed")
+                            return {**unresolved, "synthesis": "Não foi possível consultar os limites FAO GAUL. Confirme a ligação ao Earth Engine ou seleccione a área no mapa."}
             elif catalogue_requested:
                 public_request = {"tool": "list_public_datasets", "args": {}}
         if public_request is not None:
@@ -568,7 +584,7 @@ class GeoMozAgent:
             index = next((code for code in ("mndwi", "ndwi", "ndbi", "nbr", "ndvi") if code in text), "ndvi")
             plan = [("detect_temporal_change", {"index": index, "start_date_1": start1, "end_date_1": end1,
                      "start_date_2": start2, "end_date_2": end2}, "Diferença temporal Sentinel-2 (B − A)")]
-        elif any(w in text for w in ("worldcover", "cobertura do solo", "ocupacao do solo")):
+        elif LANDCOVER_REQUEST.search(text):
             plan = [("get_public_landcover", {}, "Cobertura do solo — WorldCover 2021")]
         elif any(w in text for w in ("era5", "temperatura do ar", "clima global")):
             variable = "temperature" if "temperatura" in text else "precipitation"

@@ -190,6 +190,45 @@ class PublicDataTests(unittest.TestCase):
         execute.assert_not_awaited()
         self.assertIn("Seleccione no mapa", result["synthesis"])
 
+    def test_maputo_city_worldcover_uses_fao_boundary_instead_of_selected_area(self):
+        from agent import administrative_boundaries as boundaries
+
+        state = {"_gee_uid": "user-test",
+                 "aoi": {"source": "mozambique", "label": "Maringue, Sofala", "geometry": GEOMETRY}}
+        units = [
+            {"name": "Maputo", "code": 10, "countryName": "Mozambique", "level": 1},
+            {"name": "Maputo City", "code": 11, "countryName": "Mozambique", "level": 1},
+        ]
+        with patch.dict("sys.modules", {"gee_module": MagicMock(), "ee": MagicMock()}), \
+             patch.object(boundaries, "_read_units", return_value=units) as read, \
+             patch.object(ToolDispatcher, "_execute_impl", new_callable=AsyncMock,
+                          return_value={"status": "success", "summary": "Cobertura 2021"}) as execute:
+            result = asyncio.run(GeoMozAgent.process_user_request(
+                "podes ver o uso e cobertura de solo para cidade de maputo",
+                state, provider="openai", openai_api_key="sk-test"))
+        read.assert_called_once()
+        self.assertEqual(result["provider"], "public-data-engine")
+        tool, _, context = execute.await_args.args
+        self.assertEqual(tool, "get_public_landcover")
+        self.assertEqual(context["aoi"]["admin1Code"], 11)
+        self.assertEqual(context["aoi"]["boundarySource"], "gaul2025")
+        self.assertNotIn("geometry", context["aoi"])
+        self.assertEqual(state["aoi"]["label"], "Maringue, Sofala")
+
+    def test_city_request_does_not_substitute_a_province_with_the_same_name(self):
+        from agent import administrative_boundaries as boundaries
+
+        state = {"_gee_uid": "user-test",
+                 "aoi": {"source": "country", "countryCode": "MOZ", "label": "Maputo"}}
+        province = {"name": "Maputo", "code": 10, "countryName": "Mozambique", "level": 1}
+        with patch.dict("sys.modules", {"gee_module": MagicMock(), "ee": MagicMock()}), \
+             patch.object(boundaries, "_read_units", side_effect=[[province], []]), \
+             patch.object(ToolDispatcher, "execute", new_callable=AsyncMock) as execute:
+            result = asyncio.run(GeoMozAgent.process_user_request(
+                "Cobertura do solo na cidade de Maputo", state))
+        execute.assert_not_awaited()
+        self.assertIn("Não encontrei", result["synthesis"])
+
     def test_structured_request_bypasses_llm_but_uses_audited_dispatcher(self):
         state = {"aoi": {"source": "country", "countryCode": "PRT", "geometry": GEOMETRY},
                  "publicAnalysis": {"tool": "get_public_landcover", "args": {}}}

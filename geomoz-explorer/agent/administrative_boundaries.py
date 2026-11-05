@@ -4,6 +4,7 @@ ADM1/ADM2 names differ by country; they are not universally provinces/districts.
 Country geometry is explicitly derived by union of that country's ADM1 units.
 """
 import re
+import unicodedata
 
 GAUL1 = "FAO/GAUL/2025/level1"
 GAUL2 = "FAO/GAUL/2025/level2"
@@ -70,6 +71,17 @@ def list_units(country_code, level=1, parent_code=None):
         if parent_code is not None:
             raise ValueError("Uma listagem ADM1 não recebe código de pai.")
         selected, asset = _collection(country_code)
+    units = _read_units(selected, country_code, level)
+    if not units:
+        raise ValueError("Sem unidades neste nível para a selecção FAO GAUL 2025. Não foi usada outra fonte silenciosamente.")
+    return {"status": "success", "units": units, "countryCode": country_code, "level": level,
+            "parentCode": parent_code, "source": source(asset),
+            "summary": f"FAO GAUL 2025: {len(units)} unidades ADM{level} em {country_code}.",
+            "warning": "Níveis administrativos e designações variam por país; não são limites cadastrais."}
+
+
+def _read_units(selected, country_code, level):
+    import ee
     fields = ["GAUL0_CODE", "GAUL0_NAME", "GAUL1_CODE", "GAUL1_NAME"]
     if level == 2:
         fields += ["GAUL2_CODE", "GAUL2_NAME"]
@@ -90,9 +102,50 @@ def list_units(country_code, level=1, parent_code=None):
                       "countryCode": country_code, "parentCode": props.get("GAUL1_CODE") if level == 2 else None,
                       "countryName": props.get("GAUL0_NAME"), "level": level})
     units.sort(key=lambda unit: (unit["name"].casefold(), unit["code"]))
-    if not units:
-        raise ValueError("Sem unidades neste nível para a selecção FAO GAUL 2025. Não foi usada outra fonte silenciosamente.")
-    return {"status": "success", "units": units, "countryCode": country_code, "level": level,
-            "parentCode": parent_code, "source": source(asset),
-            "summary": f"FAO GAUL 2025: {len(units)} unidades ADM{level} em {country_code}.",
-            "warning": "Níveis administrativos e designações variam por país; não são limites cadastrais."}
+    return units
+
+
+def _name_key(name):
+    folded = "".join(c for c in unicodedata.normalize("NFKD", name.casefold())
+                     if not unicodedata.combining(c))
+    return " ".join(re.findall(r"[^\W_]+", folded))
+
+
+def find_named_area(country_code, name, kind=None):
+    """Resolve a chat place to an unambiguous FAO polygon within a known country."""
+    import ee
+
+    validate_selection(country_code)
+    target = _name_key(name)
+    city_names = {f"cidade de {target}", f"cidade {target}", f"{target} cidade",
+                  f"{target} city", f"city of {target}"}
+    if kind == "provincia":
+        target_names = {target, f"provincia de {target}", f"{target} province"}
+    else:
+        target_names = {target}
+    levels = (1,) if kind == "provincia" else (2,) if kind == "distrito" else (1, 2)
+    matches = []
+    for level in levels:
+        asset = GAUL1 if level == 1 else GAUL2
+        selected = ee.FeatureCollection(asset).filter(ee.Filter.eq("ISO3_CODE", country_code))
+        units = _read_units(selected, country_code, level)
+        if kind == "cidade" or kind == "municipio":
+            marked = [unit for unit in units if _name_key(unit["name"]) in city_names]
+            if marked:
+                matches.extend(marked)
+                break
+            # A bare ADM1 name can denote a province of the same name.
+            if level == 1:
+                continue
+        matches.extend(unit for unit in units if _name_key(unit["name"]) in target_names)
+
+    if not matches:
+        raise ValueError(f"Não encontrei «{name}» como unidade administrativa FAO GAUL em {country_code}. Confirme o nome e o país ou seleccione o limite no mapa.")
+    if len(matches) != 1:
+        raise ValueError(f"Há vários limites FAO GAUL para «{name}» em {country_code}. Indique o nível administrativo ou seleccione a unidade no mapa.")
+    unit = matches[0]
+    level = unit["level"]
+    return {"source": "country", "boundarySource": "gaul2025", "countryCode": country_code,
+            "label": f'{unit["name"]}, {unit["countryName"] or country_code}', "adminLevel": level,
+            "admin1Code": unit["code"] if level == 1 else unit["parentCode"],
+            "admin2Code": unit["code"] if level == 2 else None}
