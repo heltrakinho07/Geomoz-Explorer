@@ -5,6 +5,7 @@
  * postMessage, and no file re-selection. Source COG bytes are read under a
  * bounded stream; no original DEM is uploaded or saved on a second server.
  */
+import { TERRAIN_EXAGGERATION_PRESETS } from "../../lib/geomoz-terrain-basemap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "@geolibre/core";
 import { useLanguage } from "../../hooks/useLanguage";
@@ -455,6 +456,11 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
           <div className="gm-terrain-vertical-heading">
             <label htmlFor="gm-terrain-exaggeration">{ui("3. Exagero vertical")}</label>
             <strong>{exaggeration.toFixed(1)}×</strong>
+          </div>
+          <div className="gm-terrain-presets" role="group" aria-label="Exagero vertical">
+            {TERRAIN_EXAGGERATION_PRESETS.map(preset => <button key={preset}
+              type="button" aria-pressed={exaggeration === preset} disabled={!terrain}
+              onClick={() => setExaggeration(preset)}>{preset}×</button>)}
           </div>
           <input id="gm-terrain-exaggeration" type="range" min="1" max="15" step=".5"
             value={exaggeration} disabled={!terrain} aria-label={ui("Exagero vertical")}

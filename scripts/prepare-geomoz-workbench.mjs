@@ -186,6 +186,8 @@ for(const name of ["GeoMozWorkbenchChrome.tsx","GeoMozTerrainWorkspace.tsx","Geo
 }
 write("components/geomoz/geomoz-terrain-workspace.css",readFileSync(new URL("./assets/workbench/geomoz-terrain-workspace.css",import.meta.url),"utf8"));
 /** Share the SAME WebGL and scientific engine with the Explorer, no duplicate renderer. */
+write("lib/geomoz-terrain-basemap.ts",
+  readFileSync(new URL("../artifacts/geomoz-react/src/lib/terrain-basemap.ts",import.meta.url),"utf8"));
 write("lib/geomoz-terrain-webgl.ts",
   readFileSync(new URL("../artifacts/geomoz-react/src/lib/terrain-webgl.ts",import.meta.url),"utf8"));
 write("lib/geomoz-terrain-analysis.ts",

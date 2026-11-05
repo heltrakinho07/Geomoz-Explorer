@@ -12,7 +12,7 @@ import type { GeoMozTerrainOverlay } from "./geomoz-terrain-overlays";
 import { terrainProjection, validTerrainGeography } from "./geomoz-terrain-tiles";
 import { createTerrainMapMesh, type TerrainMapMesh, type ModelAppearance, LOCAL_MODEL_ID } from "./geomoz-terrain-map-mesh";
 
-type Basemap = "satellite" | "topographic" | "streets";
+import { BASEMAPS, type Basemap, terrainBasemapStyle, selectTerrainBasemap, exportTerrainMap, satelliteTextureUrl, useTerrainSatelliteTexture } from "../../lib/geomoz-terrain-basemap";
 interface Props {
   terrain: TerrainMeshData;
   overlays: GeoMozTerrainOverlay[];
@@ -25,41 +25,9 @@ interface Props {
   flat?: boolean;
   translate?: (value: string) => string;
 }
-const BASEMAPS: Record<Basemap, { label: string; url: string; attribution: string }> = {
-  satellite: {
-    label: "Satélite",
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
-  },
-  topographic: {
-    label: "Topográfico",
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-    attribution: "Tiles © Esri and contributors",
-  },
-  streets: {
-    label: "OpenStreetMap",
-    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    attribution: "© OpenStreetMap contributors",
-  },
-};
-const BASE_ID = "geomoz-local-basemap";
 const GLOBAL_DEM = "geomoz-global-raster-dem";
 const FOOTPRINT_ID = "geomoz-dem-footprint";
 const VECTOR_PREFIX = "geomoz-draped-layer-";
-
-function makeStyle(which: Basemap): maplibregl.StyleSpecification {
-  return {
-    version: 8,
-    name: "GeoMoz · DEM geográfico",
-    sources: {
-      [BASE_ID]: {
-        type: "raster", tiles: [BASEMAPS[which].url],
-        tileSize: 256, maxzoom: 19, attribution: BASEMAPS[which].attribution,
-      },
-    },
-    layers: [{ id: "geomoz-geographic-basemap", type: "raster", source: BASE_ID }],
-  };
-}
 
 function footprint(terrain: TerrainMeshData): GeoJSON.FeatureCollection {
   const [left, bottom, right, top] = terrain.boundsMeters;
@@ -138,17 +106,23 @@ export default function GeoMozTerrainGeoMap({
   const overlaysRef = useRef(overlays);
   const modelRef = useRef<TerrainMapMesh | null>(null);
   const [basemap, setBasemap] = useState<Basemap>("satellite");
+  const basemapRef = useRef(basemap);
+  basemapRef.current = basemap;
   const [showMesh,setShowMesh] = useState(true);
   const [modelOpacity,setModelOpacity] = useState(0.91);
   const [verticalOffset,setVerticalOffset] = useState(3);
-  const [coordinates, setCoordinates] = useState<[number, number] | null>(null);
+  const [coordinates, setCoordinates] = useState<[number, number, boolean] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [meshMounted,setMeshMounted] = useState(false);
   const isValid = validTerrainGeography(terrain);
   overlaysRef.current = overlays;
+  const [satelliteDrape, setSatelliteDrape] = useState(false);
+  const [imageryOpacity, setImageryOpacity] = useState(1);
+  const satellite = useTerrainSatelliteTexture(isValid && !flat && satelliteDrape && !rasterTexture
+    ? satelliteTextureUrl(terrain.boundsMeters, terrain.crs) : null);
   const appearance: ModelAppearance = {
     exaggeration,offsetMeters:verticalOffset,opacity:modelOpacity,style,
-    vectors:vectorTexture,raster:rasterTexture,rasterOpacity,visible:showMesh && !flat,
+    vectors:vectorTexture,raster:rasterTexture ?? satellite.image,rasterOpacity:rasterTexture ? rasterOpacity : imageryOpacity,visible:showMesh && modelOpacity > 0 && !flat,
   };
   const appearanceRef = useRef(appearance);
   appearanceRef.current = appearance;
@@ -163,7 +137,8 @@ export default function GeoMozTerrainGeoMap({
     try {
       const [west, south, east, north] = terrain.bounds4326;
       map = new maplibregl.Map({
-        container: container.current, style: makeStyle("satellite"),
+        container: container.current, style: terrainBasemapStyle(basemapRef.current),
+        canvasContextAttributes: { preserveDrawingBuffer: true },
         center: [(west + east) / 2, (south + north) / 2],
         zoom: 9, pitch: flat ? 0 : 55, bearing: flat ? 0 : -15,
         dragRotate: !flat, touchPitch: !flat,
@@ -172,6 +147,7 @@ export default function GeoMozTerrainGeoMap({
       const instance = map;
       mapRef.current = instance;
       const onStyle = () => {
+        selectTerrainBasemap(instance, basemapRef.current);
         // Global Mapzen terrain continues under and outside the local DEM.
         if (!instance.getSource(GLOBAL_DEM)) {
           instance.addSource(GLOBAL_DEM, {
@@ -211,8 +187,12 @@ export default function GeoMozTerrainGeoMap({
         [[west, south], [east, north]],
         { padding: 46, duration: 0, maxZoom: 14 },
       ));
-      instance.on("mousemove", (event) =>
-        setCoordinates([event.lngLat.lng, event.lngLat.lat]));
+      instance.on("mousemove", ({ lngLat }) => {
+        const [x, y] = proj4("EPSG:4326", terrain.crs, [lngLat.lng, lngLat.lat]);
+        const [left, bottom, right, top] = terrain.boundsMeters;
+        setCoordinates([lngLat.lng, lngLat.lat, x >= left && x <= right && y >= bottom && y <= top]);
+      });
+      instance.on("mouseout", () => setCoordinates(null));
       instance.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
       instance.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
       resize = new ResizeObserver(() => instance.resize());
@@ -234,9 +214,7 @@ export default function GeoMozTerrainGeoMap({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
-    const source = map.getSource(BASE_ID) as maplibregl.RasterTileSource | undefined;
-    if (source) source.setTiles([BASEMAPS[basemap].url]);
+    if (map) selectTerrainBasemap(map, basemap);
   }, [basemap]);
 
   useEffect(() => {
@@ -252,7 +230,7 @@ export default function GeoMozTerrainGeoMap({
   useEffect(() => {
     modelRef.current?.update(appearance);
   }, [exaggeration, style, vectorTexture, rasterTexture, rasterOpacity,
-      showMesh, modelOpacity, verticalOffset, flat]);
+      showMesh, modelOpacity, verticalOffset, satellite.image, imageryOpacity, flat]);
 
 
   if (!isValid) return <div className="gm-terrain-map-unavailable" role="alert">
@@ -279,10 +257,19 @@ export default function GeoMozTerrainGeoMap({
           {translate("Sobrepor modelo 3D")}
         </label>
         <label>{translate("Transparência do modelo")} · {Math.round((1-modelOpacity)*100)}%
-          <input type="range" min="0.2" max="1" step="0.05"
+          <input type="range" min="0" max="1" step="0.05"
             aria-label={translate("Transparência do modelo 3D")}
-            value={modelOpacity} onChange={event=>setModelOpacity(Number(event.target.value))}/>
+            value={1-modelOpacity} onChange={event=>setModelOpacity(1-Number(event.target.value))}/>
         </label>
+        {!rasterTexture && <label className="gm-terrain-model-toggle">
+          <input type="checkbox" checked={satelliteDrape}
+            onChange={event => setSatelliteDrape(event.target.checked)}/>
+          {translate("Textura Esri no DEM")}
+        </label>}
+        {(satellite.image) && <label>{translate("Opacidade da textura")} · {Math.round(imageryOpacity * 100)}%
+          <input type="range" min="0" max="1" step="0.05" value={imageryOpacity}
+            onChange={event => setImageryOpacity(Number(event.target.value))}/>
+        </label>}
         <label>{translate("Ajuste vertical")} · {verticalOffset} m
           <input type="range" min="-250" max="250" step="1"
             aria-label={translate("Ajuste vertical do modelo 3D")}
@@ -292,14 +279,29 @@ export default function GeoMozTerrainGeoMap({
       <button type="button" onClick={() => mapRef.current?.fitBounds(
         [[west, south], [east, north]], { padding: 42, duration: 600, maxZoom: 14 },
       )}>{translate("Localizar DEM")}</button>
+      {!flat && (["png", "pdf"] as const).map(format => <button key={format} type="button"
+        disabled={!meshMounted}
+        onClick={() => {
+          const map = mapRef.current;
+          if (!map) return;
+          const details = [
+            terrain.crs + " · " + exaggeration + "× · " + verticalOffset + " m · " + translate(BASEMAPS[basemap].label),
+            translate("Perspectiva 3D · escala variável · relevo exterior: Mapzen"),
+          ];
+          setError(null);
+          void exportTerrainMap(map, format, terrain.name, details, [BASEMAPS[basemap].attribution, satellite.image && basemap !== "satellite" ? BASEMAPS.satellite.attribution : ""].filter(Boolean).join(" · "))
+            .catch(() => setError(translate("Falha ao exportar o mapa 3D.")));
+        }}>{format === "pdf" ? translate("Layout PDF") : "PNG"}</button>)}
     </div>
     <div className="gm-terrain-geographic-info">
       <strong>{translate("Modelo 3D sobre terreno global")}</strong>
       <span>{((west + east) / 2).toFixed(5)}°, {((south + north) / 2).toFixed(5)}° · {terrain.crs}</span>
       {coordinates && <span>
-        {translate("Cursor")}: {coordinates[0].toFixed(5)}°, {coordinates[1].toFixed(5)}°
+        {translate("Cursor")}: {coordinates[0].toFixed(5)}°, {coordinates[1].toFixed(5)}° · {translate(coordinates[2] ? "Dentro do limite do DEM" : "Fora da área do projecto")}
       </span>}
-      <small>{translate("A malha local sobrepõe-se ao terreno global. Células sem dados deixam o relevo de referência visível. O ajuste vertical é apenas visual.")}</small>
+      {satelliteDrape && !rasterTexture && <span role="status">{translate(satellite.failed
+        ? "Textura Esri indisponível" : satellite.image ? "Textura: Esri World Imagery" : "A alinhar textura Esri…")}</span>}
+      <small>{translate("Fora do DEM e nas lacunas aparece o relevo global de referência. Confirme o datum vertical de ambas as fontes. O ajuste em metros só desloca a malha na vista.")}</small>
     </div>
     {error && <p className="gm-terrain-geographic-error" role="alert">{error}</p>}
   </div>;

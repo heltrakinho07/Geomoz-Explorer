@@ -187,6 +187,23 @@ module.exports=async function validateRasterProcessing(page){
  await terrain.getByTestId("terrain-view-map").waitFor({state:"visible",timeout:25000});
  await terrain.getByTestId("geomoz-georeferenced-model-map").waitFor({state:"visible",timeout:25000});
  assert.equal(await terrain.getByLabel("Sobrepor modelo 3D").isChecked(),true);
+ const mapView=terrain.getByTestId("geomoz-georeferenced-model-map");
+ const presets=terrain.getByTestId("terrain-workspace-exaggeration");
+ await presets.getByRole("button",{name:"5×",exact:true}).click();
+ assert.equal(await presets.getByRole("slider").inputValue(),"5");
+ await presets.getByRole("button",{name:"2×",exact:true}).click();
+ const basemap=mapView.getByLabel("Escolher mapa de base");
+ for(const provider of ["topographic","streets","satellite"]){
+   await basemap.selectOption(provider);
+   assert.equal(await basemap.inputValue(),provider);
+ }
+ for(const [button,extension,signature] of [["PNG","png","89504e47"],["Layout PDF","pdf","25504446"]]){
+   const download=page.waitForEvent("download");
+   await mapView.getByRole("button",{name:button,exact:true}).click();
+   const target="workbench-browser-artifacts/terrain-map."+extension;
+   await (await download).saveAs(target);
+   assert.equal((await readFile(target)).subarray(0,4).toString("hex"),signature);
+ }
  await terrain.getByTestId("terrain-view-model").click();
  const canvas=terrain.getByTestId("geomoz-native-terrain-canvas");
  await canvas.waitFor({state:"visible",timeout:25000});

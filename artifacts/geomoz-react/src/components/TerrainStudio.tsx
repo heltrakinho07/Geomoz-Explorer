@@ -1,3 +1,4 @@
+import { TERRAIN_EXAGGERATION_PRESETS } from "@/lib/terrain-basemap";
 import { useEffect, useRef, useState } from "react";
 import { jsPDF } from "jspdf";
 import { Download, FileUp, Image as ImageIcon, Loader2, Mountain, RotateCcw, Map as MapIcon, Box, X } from "lucide-react";
@@ -556,6 +557,11 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs font-semibold">
+          <div className="gm-terrain-presets" role="group" aria-label="Exagero vertical">
+            {TERRAIN_EXAGGERATION_PRESETS.map(preset => <button key={preset}
+              type="button" aria-pressed={exaggeration === preset} disabled={!terrain}
+              onClick={() => setExaggeration(preset)}>{preset}×</button>)}
+          </div>
               <label htmlFor="terrain-studio-exaggeration">3. Exagero vertical</label>
               <span className="text-sky-600 dark:text-sky-400">{exaggeration.toFixed(1)}×</span>
             </div>
