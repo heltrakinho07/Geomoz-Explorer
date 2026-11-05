@@ -2448,21 +2448,20 @@ function LandCoverPanel({
     <div className="space-y-4">
       <div>
         <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
-          Cobertura do Solo
+          {rT("landcover.title")}
         </h4>
         <div className="bg-lime-50 dark:bg-lime-950/40 border border-lime-200 dark:border-lime-900/50 rounded-xl p-3 text-xs text-lime-800 dark:text-lime-300 leading-relaxed">
-          Classificação <strong>ESA WorldCover 2021</strong> a 10 m — 11 classes
-          de uso e cobertura do solo (florestas, agricultura, água, mangais…).
+          {rT("landcover.details")}
         </div>
         <div className="mt-2.5">
-          <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Área (clipping)</label>
+          <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">{rT("landcover.clip")}</label>
           <div className="text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
             <MapPin size={12} className="text-lime-600" />
             {district
               ? <span>{district} <span className="text-slate-400">·</span> {province}</span>
               : province
-                ? <span>{province} <span className="text-slate-400">(toda a província)</span></span>
-                : <span className="text-slate-500 dark:text-slate-400">Moçambique (toda)</span>}
+                ? <span>{province} <span className="text-slate-400">({rT("landcover.provinceAll")})</span></span>
+                : <span className="text-slate-500 dark:text-slate-400">{rT("landcover.countryAll")}</span>}
           </div>
         </div>
       </div>
@@ -2470,20 +2469,20 @@ function LandCoverPanel({
       <button onClick={run} disabled={running}
         className="w-full flex items-center justify-center gap-2 py-2.5 bg-lime-600 hover:bg-lime-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-lime-200 cursor-pointer">
         {running
-          ? <><Loader2 size={14} className="animate-spin" /> A classificar cobertura…</>
-          : <><Sprout size={14} /> Calcular Cobertura do Solo</>}
+          ? <><Loader2 size={14} className="animate-spin" /> {rT("landcover.running")}</>
+          : <><Sprout size={14} /> {rT("landcover.run")}</>}
       </button>
 
       {running && (
         <div className="bg-lime-50 dark:bg-lime-950/40 border border-lime-200 dark:border-lime-900/50 rounded-xl p-3 text-xs text-lime-700 dark:text-lime-300 leading-relaxed">
           <Loader2 size={12} className="inline animate-spin mr-1.5" />
-          A computar áreas por classe a partir do ESA WorldCover (10 m). ~5–20 s.
+          {rT("landcover.computing")}
         </div>
       )}
 
       {error && (
         <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-xl p-3 text-xs text-red-700 dark:text-red-300">
-          <strong>Erro:</strong> {error}
+          <strong>{rT("analysis.error")}</strong> {error}
         </div>
       )}
 
@@ -2492,18 +2491,18 @@ function LandCoverPanel({
           <div className="bg-lime-50 dark:bg-lime-950/40 border border-lime-200 dark:border-lime-900/50 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
               <CheckCircle2 size={13} className="text-lime-600 dark:text-lime-400" />
-              <span className="text-xs font-semibold text-lime-700 dark:text-lime-300">Cobertura calculada</span>
+              <span className="text-xs font-semibold text-lime-700 dark:text-lime-300">{rT("landcover.completed")}</span>
             </div>
             <div className="text-xs text-lime-700 dark:text-lime-300">
-              Área total: <strong>{result.totalKm2.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²</strong>
-              {" · "}{ranked.length} classes presentes
+              {rT("landcover.total")} <strong>{result.totalKm2.toLocaleString(numberLocale, { maximumFractionDigits: 0 })} km²</strong>
+              {" · "}{ranked.length} {rT("landcover.classes")}
             </div>
           </div>
 
           {/* Complete area analysis (ranked, only classes > 0) */}
           <div>
             <h5 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-              Análise de Área (km² · %)
+              {rT("landcover.areaAnalysis")}
             </h5>
             <div className="space-y-1.5">
               {ranked.map(c => (
@@ -2511,7 +2510,7 @@ function LandCoverPanel({
                   <div className="flex items-center gap-2">
                     <span className="inline-block w-3 h-3 rounded shrink-0" style={{ background: c.color }} />
                     <span className="flex-1 truncate text-slate-700 dark:text-slate-200">{c.label}</span>
-                    <span className="text-slate-400 font-mono">{c.areaKm2.toLocaleString(undefined, { maximumFractionDigits: 1 })} km²</span>
+                    <span className="text-slate-400 font-mono">{c.areaKm2.toLocaleString(numberLocale, { maximumFractionDigits: 1 })} km²</span>
                     <span className="w-11 text-right font-semibold text-lime-700 dark:text-lime-400">{c.pct.toFixed(1)}%</span>
                   </div>
                   <div className="ml-5 mt-0.5 bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
@@ -2525,7 +2524,7 @@ function LandCoverPanel({
           {/* Full legend (official order, all 11 classes) */}
           <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
             <h5 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
-              Legenda (ESA WorldCover)
+              {rT("landcover.legend")}
             </h5>
             <div className="grid grid-cols-1 gap-0.5">
               {result.classes.map(c => (
