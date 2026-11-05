@@ -5,7 +5,7 @@
  * mosaics (they remain available as live map backgrounds in MapLibre).
  */
 import proj4 from "proj4";
-import type { TerrainMeshData } from "../lib/geomoz-terrain-webgl";
+import type { TerrainMeshData } from "../../lib/geomoz-terrain-webgl";
 import { terrainProjection, validTerrainGeography } from "./geomoz-terrain-tiles";
 
 const MAX_TILES=16;
