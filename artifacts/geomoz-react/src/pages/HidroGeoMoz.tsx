@@ -31,6 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { usePortalTranslation } from "@/i18n/usePortalTranslation";
 import { hydrologyText, type HydrologyCopyKey } from "@/i18n/hydrology";
+import { hydrologyResultText, type HydrologyResultKey } from "@/i18n/hydrologyResults";
 import { useStats } from "@/hooks/useGeoMoz";
 import { apiUrl, apiFetch } from "@/lib/api";
 import { HydroRequestGuard } from "@/lib/hydro-request-guard";
@@ -240,6 +241,7 @@ export default function HidroGeoMoz({
   const { toast } = useToast();
   const { translatedLocale } = usePortalTranslation();
   const h = useCallback((key: HydrologyCopyKey) => hydrologyText(translatedLocale, key), [translatedLocale]);
+  const ht = useCallback((key: HydrologyResultKey) => hydrologyResultText(translatedLocale, key), [translatedLocale]);
   const numberLocale = translatedLocale === "pt" ? "pt-MZ" : translatedLocale;
   const mapRef = useRef<LMap | null>(null);
 
@@ -2103,10 +2105,10 @@ export default function HidroGeoMoz({
                     <div className="text-xs opacity-75">km²</div>
                     <div className="mt-2 text-xs opacity-70">
                       {watershedData.source === "hydrobasins"
-                        ? `HydroBASINS · nível ${watershedData.level ?? level}`
+                        ? `HydroBASINS · ${ht("result.source.level")} ${watershedData.level ?? level}`
                         : watershedData.source === "polygon"
-                        ? "Delimitação por Polígono / Área de Estudo"
-                        : `D8 · HydroSHEDS (nível ${watershedData.requestedLevel ?? level} não aplicado)`}
+                        ? ht("result.source.polygon")
+                        : `D8 · HydroSHEDS (${ht("result.source.levelIgnored")}: ${watershedData.requestedLevel ?? level})`}
                     </div>
                   </div>
 
@@ -2121,7 +2123,7 @@ export default function HidroGeoMoz({
                           : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                       }`}
                     >
-                      Morfometria
+                      {ht("result.tabs.morphometry")}
                     </button>
                     <button
                       type="button"
@@ -2132,7 +2134,7 @@ export default function HidroGeoMoz({
                           : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                       }`}
                     >
-                      Uso Solo
+                      {ht("result.tabs.landcover")}
                     </button>
                     <button
                       type="button"
@@ -2143,7 +2145,7 @@ export default function HidroGeoMoz({
                           : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                       }`}
                     >
-                      Chuva & CN
+                      {ht("result.tabs.rain")}
                     </button>
                     <button
                       type="button"
@@ -2154,7 +2156,7 @@ export default function HidroGeoMoz({
                           : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                       }`}
                     >
-                      Ações
+                      {ht("result.tabs.actions")}
                     </button>
                   </div>
 
@@ -2167,7 +2169,7 @@ export default function HidroGeoMoz({
                           <div className="flex items-center gap-1.5">
                             <GitBranch size={13} className="text-cyan-500" />
                             <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                              Linhas de Água da Bacia
+                              {ht("result.streams")}
                             </span>
                           </div>
                           <button
@@ -2178,7 +2180,7 @@ export default function HidroGeoMoz({
                                 : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
                             }`}
                           >
-                            {showWatershedDrainage ? "Visível" : "Oculto"}
+                            {showWatershedDrainage ? ht("result.visible") : ht("result.hidden")}
                           </button>
                         </div>
 
@@ -2186,21 +2188,21 @@ export default function HidroGeoMoz({
                           <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400 py-1.5">
                             <div role="status" className="flex items-center gap-2">
                               <Loader2 size={12} className="animate-spin text-cyan-500" />
-                              <span>A traçar canais e afluentes no GEE…</span>
+                              <span>{ht("result.tracing")}</span>
                             </div>
                             <button type="button" onClick={() => cancelWatershedDrainage(true)}
                               className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-800 px-2 py-1 text-[11px] font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                              aria-label="Cancelar cálculo das linhas de água da bacia">
-                              <X size={12} /> Cancelar
+                              aria-label={ht("result.cancelStreams")}>
+                              <X size={12} /> {ht("result.cancel")}
                             </button>
                           </div>
                         ) : watershedDrainageTile ? (
                           <div className="space-y-2">
                             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                              Rede hidrográfica recortada ao interior da bacia (HydroSHEDS).
+                              {ht("result.clippedStreams")}
                             </p>
                             <div className="flex items-center gap-2 pt-1">
-                              <label className="text-[10px] text-slate-400 shrink-0">Densidade:</label>
+                              <label className="text-[10px] text-slate-400 shrink-0">{ht("result.density")}</label>
                               <select
                                 value={watershedDrainThresh}
                                 onChange={(e) => {
@@ -2211,17 +2213,17 @@ export default function HidroGeoMoz({
                                 }}
                                 className="flex-1 text-[11px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-cyan-500"
                               >
-                                <option value={100}>Muito Alta (100 px)</option>
-                                <option value={250}>Alta (250 px)</option>
-                                <option value={500}>Média (500 px)</option>
-                                <option value={1000}>Baixa (1000 px)</option>
+                                <option value={100}>{ht("result.densityVeryHigh")} (100 px)</option>
+                                <option value={250}>{ht("result.densityHigh")} (250 px)</option>
+                                <option value={500}>{ht("result.densityMedium")} (500 px)</option>
+                                <option value={1000}>{ht("result.densityLow")} (1000 px)</option>
                               </select>
                               <button
                                 onClick={() => {
                                   const geom = watershedData?.geojson?.features?.[0]?.geometry ?? watershedData?.geojson;
                                   if (geom) loadWatershedDrainage(geom, watershedDrainThresh);
                                 }}
-                                title="Recalcular linhas de água"
+                                title={ht("result.recalculateStreams")}
                                 className="p-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 rounded-lg text-slate-600 dark:text-slate-300 transition-colors"
                               >
                                 <RefreshCw size={12} />
@@ -2236,7 +2238,7 @@ export default function HidroGeoMoz({
                             }}
                             className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-cyan-50 dark:bg-cyan-950/30 hover:bg-cyan-100 dark:hover:bg-cyan-900/40 border border-cyan-200 dark:border-cyan-800/50 text-cyan-700 dark:text-cyan-300 text-[11px] font-medium rounded-lg transition-colors"
                           >
-                            <GitBranch size={11} /> Gerar Linhas de Água
+                            <GitBranch size={11} /> {ht("result.generateStreams")}
                           </button>
                         )}
                       </div>
@@ -2244,15 +2246,15 @@ export default function HidroGeoMoz({
                       {/* Morphometry from Basin Report if available */}
                       {basinReport?.morphometry && (
                         <div>
-                          <SectionHeader title="Morfometria Avançada" icon={Mountain} />
+                          <SectionHeader title={ht("result.advancedMorphometry")} icon={Mountain} />
                           <div className="grid grid-cols-3 gap-1.5">
                             {([
-                              ["Relevo", `${basinReport.morphometry.reliefM} m`],
-                              ["Declive méd.", `${basinReport.morphometry.slopeMeanDeg}°`],
-                              ["Elev. máx.", `${basinReport.morphometry.elevMaxM} m`],
-                              ["Dens. dren.", `${basinReport.morphometry.drainageDensity}`],
-                              ["Compacidade", `${basinReport.morphometry.compactness}`],
-                              ["Fator forma", `${basinReport.morphometry.formFactor}`],
+                              [ht("result.relief"), `${basinReport.morphometry.reliefM} m`],
+                              [ht("result.meanSlopeShort"), `${basinReport.morphometry.slopeMeanDeg}°`],
+                              [ht("result.maxElevationShort"), `${basinReport.morphometry.elevMaxM} m`],
+                              [ht("result.drainageDensityShort"), `${basinReport.morphometry.drainageDensity}`],
+                              [ht("result.compactness"), `${basinReport.morphometry.compactness}`],
+                              [ht("result.formFactor"), `${basinReport.morphometry.formFactor}`],
                             ] as const).map(([k, v]) => (
                               <div key={k} className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2 text-center border border-slate-100 dark:border-slate-800">
                                 <div className="text-[9px] text-slate-400 uppercase tracking-wide leading-tight">{k}</div>
@@ -2266,12 +2268,12 @@ export default function HidroGeoMoz({
                       {/* Morphometry from GEE Stats */}
                       {wsStats && (
                         <div>
-                          <SectionHeader title="Altimetria & Declive" icon={Activity} />
+                          <SectionHeader title={ht("result.elevationSlope")} icon={Activity} />
                           <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-0 border border-slate-100 dark:border-slate-800">
-                            <StatRow label="Elev. mínima" value={wsStats.elevMinM.toFixed(0)} unit=" m" />
-                            <StatRow label="Elev. média" value={wsStats.elevMeanM.toFixed(0)} unit=" m" />
-                            <StatRow label="Elev. máxima" value={wsStats.elevMaxM.toFixed(0)} unit=" m" />
-                            <StatRow label="Declive médio" value={wsStats.slopeMeanDeg.toFixed(1)} unit="°" />
+                            <StatRow label={ht("result.minElevation")} value={wsStats.elevMinM.toFixed(0)} unit=" m" />
+                            <StatRow label={ht("result.meanElevation")} value={wsStats.elevMeanM.toFixed(0)} unit=" m" />
+                            <StatRow label={ht("result.maxElevation")} value={wsStats.elevMaxM.toFixed(0)} unit=" m" />
+                            <StatRow label={ht("result.meanSlope")} value={wsStats.slopeMeanDeg.toFixed(1)} unit="°" />
                           </div>
                         </div>
                       )}
@@ -2284,7 +2286,7 @@ export default function HidroGeoMoz({
                       {basinReport?.landcover ? (
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
-                            <SectionHeader title="Classes de Uso (ESA 10m)" icon={Activity} />
+                            <SectionHeader title={ht("result.landcoverClasses")} icon={Activity} />
                             <button
                               onClick={() => {
                                 setReportLayer((l) => {
@@ -2641,12 +2643,12 @@ export default function HidroGeoMoz({
                           <div className="text-xs opacity-75">km²  ·  Perím. {basinStats.perimeterKm.toFixed(0)} km</div>
                         </div>
                         <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-0 mb-3">
-                          <StatRow label="Elev. mínima" value={basinStats.elevMinM.toFixed(0)} unit=" m" />
-                          <StatRow label="Elev. média" value={basinStats.elevMeanM.toFixed(0)} unit=" m" />
-                          <StatRow label="Elev. máxima" value={basinStats.elevMaxM.toFixed(0)} unit=" m" />
-                          <StatRow label="Declive médio" value={basinStats.slopeMeanDeg.toFixed(1)} unit="°" />
-                          <StatRow label="NDVI médio" value={basinStats.ndviMean != null ? basinStats.ndviMean.toFixed(3) : "—"} />
-                          <StatRow label="Precipitação" value={basinStats.precipMmYr.toFixed(0)} unit=" mm/ano" />
+                          <StatRow label={ht("result.minElevation")} value={basinStats.elevMinM.toFixed(0)} unit=" m" />
+                          <StatRow label={ht("result.meanElevation")} value={basinStats.elevMeanM.toFixed(0)} unit=" m" />
+                          <StatRow label={ht("result.maxElevation")} value={basinStats.elevMaxM.toFixed(0)} unit=" m" />
+                          <StatRow label={ht("result.meanSlope")} value={basinStats.slopeMeanDeg.toFixed(1)} unit="°" />
+                          <StatRow label={ht("result.meanNdvi")} value={basinStats.ndviMean != null ? basinStats.ndviMean.toFixed(3) : "—"} />
+                          <StatRow label={ht("result.precipitation")} value={basinStats.precipMmYr.toFixed(0)} unit=" mm/ano" />
                         </div>
 
                         <div className="mb-3">
