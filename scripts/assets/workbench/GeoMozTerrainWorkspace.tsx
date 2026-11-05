@@ -5,6 +5,7 @@
  * postMessage, and no file re-selection. Source COG bytes are read under a
  * bounded stream; no original DEM is uploaded or saved on a second server.
  */
+import { TERRAIN_EXAGGERATION_PRESETS } from "../../lib/geomoz-terrain-basemap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "@geolibre/core";
 import { useLanguage } from "../../hooks/useLanguage";
@@ -445,8 +446,10 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
                 aria-label={ui("Reabrir cena do terreno")} onChange={event=>void loadScene(event.target.files?.[0])}/>
               <button type="button" onClick={()=>sceneInputRef.current?.click()}>{ui("Reabrir cena")}</button>
               <button type="button" disabled={!terrain} onClick={exportGLB} data-testid="geomoz-terrain-export-glb">GLB 3D</button>
-              <button type="button" disabled={!terrain||!!rendererError||viewMode==="map"} onClick={downloadPNG}>PNG</button>
-              <button type="button" disabled={!terrain||!!rendererError||viewMode==="map"} onClick={()=>void downloadPDF()}>PDF</button>
+              {viewMode!=="map" && <>
+                <button type="button" disabled={!terrain||!!rendererError} onClick={downloadPNG}>PNG</button>
+                <button type="button" disabled={!terrain||!!rendererError} onClick={()=>void downloadPDF()}>PDF</button>
+              </>}
             </div>
             <p className="gm-terrain-native-hint">As camadas vectoriais do 3D ficam disponíveis na vista actual. O GLB exportado contém a malha do DEM; a textura vectorial deve ser exportada separadamente numa próxima versão.</p>
           </>}
@@ -455,6 +458,11 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
           <div className="gm-terrain-vertical-heading">
             <label htmlFor="gm-terrain-exaggeration">{ui("3. Exagero vertical")}</label>
             <strong>{exaggeration.toFixed(1)}×</strong>
+          </div>
+          <div className="gm-terrain-presets" role="group" aria-label={ui("Exagero vertical")}>
+            {TERRAIN_EXAGGERATION_PRESETS.map(preset => <button key={preset}
+              type="button" aria-pressed={exaggeration === preset} disabled={!terrain}
+              onClick={() => setExaggeration(preset)}>{preset}×</button>)}
           </div>
           <input id="gm-terrain-exaggeration" type="range" min="1" max="15" step=".5"
             value={exaggeration} disabled={!terrain} aria-label={ui("Exagero vertical")}
