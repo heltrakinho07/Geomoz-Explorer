@@ -292,7 +292,9 @@ module.exports=async function validateRasterProcessing(page){
    name:"solo_classes.tif",mimeType:"image/tiff",buffer:thematic
  });
  // Preserve failure details from a real unsuccessful georeferenced raster import.
- await terrain.getByText("solo_classes.tif").waitFor({timeout:25000}).catch(async cause=>{
+ // The file name is also shown while bytes are processing: wait for a
+ // rendered raster card, not a premature match on the progress message.
+ await terrain.locator(".gm-terrain-layer-raster").waitFor({state:"visible",timeout:25000}).catch(async cause=>{
    const message=await terrain.locator(".gm-terrain-workspace-error").allInnerTexts();
    const inline=await terrain.locator(".gm-terrain-layer-error").allInnerTexts();
    throw new Error("Raster thematic import failed: "+[...message,...inline].join(" | ")+
