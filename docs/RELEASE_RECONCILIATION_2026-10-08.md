@@ -6,9 +6,11 @@
 
 ## 1. Decisão de gestão de versões
 
-A branch padrão do repositório é `fix/geology-invalid-geometry`, mas os workflows de deploy Firebase Hosting e Cloud Run são accionados por push em `main` (ou manualmente). Por isso:
+> **Actualização (2026-11-05):** a branch predefinida do repositório foi reposta para `main`.
 
-- **Não interpretar a branch padrão como produção.**
+Na data desta auditoria (2026-10-08), a branch padrão do repositório era `fix/geology-invalid-geometry`, mas os workflows de deploy Firebase Hosting e Cloud Run eram accionados por push em `main` (ou manualmente). Por isso:
+
+- **Não interpretar a branch padrão daquela data como produção.**
 - Não mudar a branch padrão, nem fundir `main` na branch padrão, até reconciliar as diferenças.
 - Não executar um merge global das branches de Setembro.
 - Evitar deploys automáticos de uma alteração não validada. Preferir PRs por funcionalidade com revisão de testes e smoke tests.
