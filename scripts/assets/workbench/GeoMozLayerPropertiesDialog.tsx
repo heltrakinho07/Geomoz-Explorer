@@ -12,8 +12,8 @@ import { GeoMozVectorCategories } from "./GeoMozVectorCategories";
 import { RasterSymbologySection } from "../panels/RasterSymbologySection";
 import type { LayerPanel } from "../panels/LayerPanel";
 import {
-  Database, Eye, FileStack, Histogram, Info, Layers3, Palette,
-  Settings2, SlidersHorizontal, Table2, X,
+  Database, Eye, FileStack, BarChart3, Info, Layers3, Palette,
+  SlidersHorizontal, Table2, X,
 } from "lucide-react";
 
 type Props = ComponentProps<typeof LayerPanel>;
@@ -48,7 +48,6 @@ export function GeoMozLayerPropertiesDialog({
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
-  const update = useAppStore(s => s.updateLayer);
   const visibility = useAppStore(s => s.setLayerVisibility);
   const opacity = useAppStore(s => s.setLayerOpacity);
   const select = useAppStore(s => s.selectLayer);
@@ -79,7 +78,7 @@ export function GeoMozLayerPropertiesDialog({
     { key: "rendering", title: ui("Renderização"), icon: SlidersHorizontal },
     { key: "organization", title: ui("Organização"), icon: FileStack },
     { key: "attributes", title: vector ? ui("Atributos") : ui("Bandas e histograma"),
-      icon: vector ? Table2 : Histogram },
+      icon: vector ? Table2 : BarChart3 },
   ];
 
   useEffect(() => {
@@ -161,7 +160,7 @@ export function GeoMozLayerPropertiesDialog({
           <main className="gm-prop-content" data-testid="geomoz-layer-properties-content">
             {section === "info" && <>
               <h3>{ui("Informação geral da camada")}</h3>
-              <div className="gm-prop-facts">
+              <dl className="gm-prop-facts">
                 {field("Nome da camada", layer.name)}
                 {field("Tipo de dados", raster ? "Raster" : vector ? "Vector" : layer.type)}
                 {field("Formato do motor", layer.type)}
@@ -169,7 +168,7 @@ export function GeoMozLayerPropertiesDialog({
                 {field("Opacidade", Math.round(layer.opacity * 100) + "%")}
                 {vector && field("Número de feições", featureCount ?? ui("Fonte optimizada em mosaicos (DuckDB)"))}
                 {raster && field("Número de bandas", bandCount ?? "—")}
-              </div>
+              </dl>
               <p className="gm-prop-explainer">{raster
                 ? ui("Num raster, os valores pertencem aos píxeis. A renderização depende das bandas, intervalos, rampas e valores sem dados.")
                 : vector
@@ -238,16 +237,16 @@ export function GeoMozLayerPropertiesDialog({
                   </button>
                 </>
               : raster ? <><h3>{ui("Bandas, histogramas e classes raster")}</h3>
-                  <div className="gm-prop-facts">
+                  <dl className="gm-prop-facts">
                     {field("Bandas disponíveis", bandCount ?? "—")}
                     {field("Bandas utilizadas", bands)}
                     {field("Modo de renderização", String(rasterState?.mode ?? "single"))}
                     {field("Mapa de cores", String(rasterState?.colormap ?? "—"))}
                     {field("Valor NoData", String(rasterState?.nodata ?? "auto"))}
-                  </div>
+                  </dl>
                   <p className="gm-prop-explainer">{ui("O histograma representa a distribuição dos valores dos píxeis, não o número de feições. Para alterar os limites e a classificação, abra «Simbologia».")}</p>
                   <button type="button" onClick={() => setSection("symbology")}>
-                    <Histogram size={16}/>{ui("Editar bandas e classes raster")}
+                    <BarChart3 size={16}/>{ui("Editar bandas e classes raster")}
                   </button>
                 </>
               : <><h3>{ui("Informações do serviço")}</h3><p>{ui("Esta camada não possui uma tabela de atributos raster ou vectorial local.")}</p></>)}
