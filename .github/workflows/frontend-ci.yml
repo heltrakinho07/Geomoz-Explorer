@@ -139,6 +139,11 @@ jobs:
         env:
           CI: "true"
 
+      - name: Verify authentication and project wizard flows
+        run: pnpm --dir artifacts/geomoz-react exec vitest run src/components/AuthModal.test.tsx src/components/ProjectWorkspaceModal.test.tsx
+        env:
+          CI: "true"
+
   build:
     name: Production build
     runs-on: ubuntu-latest
