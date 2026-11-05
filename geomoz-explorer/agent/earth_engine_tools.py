@@ -244,11 +244,15 @@ def temporal_quality(start1, end1, start2, end2, scenes1, scenes2, valid_km2, ao
         b0.strftime("%m-%d"), b1.strftime("%m-%d"))
     percent = min(100.0, 100 * valid_km2 / aoi_km2) if aoi_km2 > 0 else 0
     warnings = []
+    warning_codes = []
     if not aligned:
+        warning_codes.append("season")
         warnings.append("As janelas A/B abrangem épocas do ano diferentes; a sazonalidade pode explicar parte da diferença.")
     if scenes1 and scenes2 and min(scenes1, scenes2) / max(scenes1, scenes2) < 0.5:
+        warning_codes.append("scenes")
         warnings.append("Os números de cenas A/B diferem mais de duas vezes; avalie o desequilíbrio temporal.")
     if percent < 70:
+        warning_codes.append("coverage")
         warnings.append("Menos de 70% da AOI tem pixels válidos comuns; interprete as áreas com cautela.")
     return {
         "calendarAligned": aligned,
@@ -256,7 +260,7 @@ def temporal_quality(start1, end1, start2, end2, scenes1, scenes2, valid_km2, ao
         "sceneCounts": {"A": scenes1, "B": scenes2},
         "commonValidCoveragePercent": percent,
         "status": "review" if warnings else "calendar_aligned",
-        "warnings": warnings,
+        "warnings": warnings, "warningCodes": warning_codes,
         "note": "Calendário equivalente não garante fenologia ou condições meteorológicas equivalentes.",
     }
 
