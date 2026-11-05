@@ -25,6 +25,7 @@ jobs:
           PYTHONPATH: geomoz-explorer
         run: |
           python -m unittest discover -s geomoz-explorer/tests -p test_agent_intelligence.py -v
+          python -m unittest discover -s geomoz-explorer/tests -p test_agent_locale.py -v
           python -m unittest discover -s geomoz-explorer/tests -p test_agent_tools.py -v
           python -m unittest discover -s geomoz-explorer/tests -p test_agent_public_data.py -v
 

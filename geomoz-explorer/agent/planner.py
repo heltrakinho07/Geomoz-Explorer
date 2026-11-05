@@ -64,6 +64,28 @@ Diretrizes:
 LANDCOVER_REQUEST = re.compile(r"\b(?:worldcover|(?:cobertura|ocupacao|uso) (?:do|de) solo)\b")
 
 
+
+_RESPONSE_LANGUAGES = {
+    "pt": "português (Portugal)",
+    "en": "English",
+    "es": "español",
+    "fr": "français",
+}
+
+
+def _response_locale_instruction(context):
+    """Return a fixed, allowlisted language instruction, never executable client text."""
+    raw = context.get("uiLocale") if isinstance(context, dict) else None
+    locale = raw.split("-", 1)[0].lower() if isinstance(raw, str) else "pt"
+    language = _RESPONSE_LANGUAGES.get(locale, _RESPONSE_LANGUAGES["en"])
+    return (
+        "\nResponde no idioma " + language + " nas explicações e na síntese. "
+        "Não alteres nomes de ferramentas, chaves JSON, identificadores, "
+        "unidades, fórmulas, valores numéricos, nomes próprios, fontes ou evidências. "
+        "Indica as falhas e limitações com precisão; nunca inventes resultados."
+    )
+
+
 def _public_chat_request(message):
     """Recognise public analysis commands while leaving other requests to the planner."""
     text = _fold_text(message)
@@ -273,7 +295,7 @@ class GeoMozAgent:
         ]
 
         messages: List[Dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT}
+            {"role": "system", "content": SYSTEM_PROMPT + _response_locale_instruction(current_map_state)}
         ]
 
         # Multi-turn context memory
@@ -416,7 +438,7 @@ class GeoMozAgent:
         for turn in range(5):
             payload = {
                 "contents": contents,
-                "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+                "system_instruction": {"parts": [{"text": SYSTEM_PROMPT + _response_locale_instruction(current_map_state)}]},
                 "tools": gemini_tools,
                 "generationConfig": {"temperature": 0.2}
             }
