@@ -28,19 +28,23 @@ interface Props {
   rasterProgress:{label:string;percent:number|null}|null;
   onCancelRaster:()=>void;
   onRastersChange:(next:TerrainDrapeLayer[])=>void;
+  onAddXYZ:(template:string,attribution:string)=>Promise<void>;
   onImportRaster:(input:File|{source:string;name:string},
     renderer?:TerrainRasterDrapeOptions["renderer"],
     palette?:TerrainRasterDrapeOptions["palette"])=>Promise<void>;
 }
 export default function GeoMozTerrainLayers({
   layers,overlays,onChange,activePanel,terrainReady,onNotice,
-  rasterOptions,rasters,rasterBusy,rasterProgress,onCancelRaster,onRastersChange,onImportRaster
+  rasterOptions,rasters,rasterBusy,rasterProgress,onCancelRaster,onRastersChange,onImportRaster,onAddXYZ
 }:Props) {
   const upload=useRef<HTMLInputElement>(null);
   const rasterInput=useRef<HTMLInputElement>(null);
   const [rasterSource,setRasterSource]=useState("");
   const [rasterRenderer,setRasterRenderer]=useState<"auto"|"classified"|"continuous"|"rgb">("auto");
   const [rasterPalette,setRasterPalette]=useState<"ndvi"|"ndwi"|"terrain">("ndvi");
+  const [xyzTemplate,setXyzTemplate]=useState("");
+  const [xyzAttribution,setXyzAttribution]=useState("");
+  const [xyzRights,setXyzRights]=useState(false);
   const updateRaster=(id:string,change:Partial<TerrainDrapeLayer>)=>
     onRastersChange(rasters.map(item=>item.id===id?{...item,...change}:item));
   const [selectedId,setSelectedId]=useState("");
@@ -176,6 +180,29 @@ export default function GeoMozTerrainLayers({
       <button type="button" className="gm-terrain-import-cancel" onClick={onCancelRaster}
         data-testid="geomoz-terrain-raster-cancel"><XCircle size={15} aria-hidden="true"/> Cancelar importação</button>
     </div>}
+    <details className="gm-terrain-xyz-source">
+      <summary>Adicionar mapa-base XYZ como textura do DEM</summary>
+      <p>Introduza uma fonte XYZ com utilização de mosaicos autorizada (por exemplo, um serviço próprio ou contratado). OSM público e Esri são apenas mapas-base de visualização e não são descarregados como textura.</p>
+      <label className="gm-terrain-native-label">URL XYZ · HTTPS
+        <input type="url" aria-label="URL XYZ licenciado"
+          placeholder="https://exemplo.com/{z}/{x}/{y}.png"
+          value={xyzTemplate} onChange={e=>setXyzTemplate(e.target.value)}/>
+      </label>
+      <label className="gm-terrain-native-label">Atribuição / fornecedor
+        <input aria-label="Atribuição XYZ" value={xyzAttribution}
+          onChange={e=>setXyzAttribution(e.target.value)} placeholder="© Fornecedor"/>
+      </label>
+      <label className="gm-terrain-xyz-consent">
+        <input type="checkbox" checked={xyzRights} onChange={e=>setXyzRights(e.target.checked)}/>
+        Confirmo que posso utilizar estes tiles como textura 3D.
+      </label>
+      <button type="button" className="gm-terrain-layer-secondary"
+        disabled={!terrainReady||rasterBusy||!xyzRights||!xyzTemplate.trim()||!xyzAttribution.trim()}
+        onClick={()=>void onAddXYZ(xyzTemplate,xyzAttribution)}>
+        Aplicar mapa-base à superfície 3D
+      </button>
+      <small>Máximo de 16 tiles por aplicação; necessita de CORS. A ligação e eventuais chaves não são guardadas pelo GeoMoz.</small>
+    </details>
     <div className="gm-terrain-panel-heading"><strong>Rasters sobrepostos ({rasters.length})</strong></div>
     {rasters.length===0&&<p className="gm-terrain-layer-empty">Sem raster temático. Pode combinar vários NDVI, uso do solo e imagens RGB.</p>}
     {rasters.map((raster,index)=><div key={raster.id} className="gm-terrain-layer-raster"
