@@ -923,11 +923,10 @@ export default function GeoMozAIAgentTab() {
                     && isMaputoCity(currentAoi.admin1Name) && (
                     <MaputoMunicipalSelect value={currentAoi.municipalDistrict ?? ""} disabled={isRunning}
                       onChange={(district) => {
-                        const [west, south, east, north] = district?.bbox ?? [];
                         const next: AreaOfInterest = {
                           ...currentAoi, municipalDistrict: district?.code ?? null,
                           label: [district?.name, "Cidade de Maputo", currentAoi.countryName].filter(Boolean).join(", "),
-                          bounds: district ? [[south, west], [north, east]] : null,
+                          bounds: district ? [[district.bbox[1], district.bbox[0]], [district.bbox[3], district.bbox[2]]] : null,
                         };
                         setCurrentAoi(next); setAgentContext(null);
                         if (activeProject) void updateProject(activeProject.id, { aoi: next });
