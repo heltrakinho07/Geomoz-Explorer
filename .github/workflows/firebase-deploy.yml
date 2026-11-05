@@ -37,7 +37,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Verify GeoMoz portal internationalization
-        run: pnpm --dir artifacts/geomoz-react exec vitest run src/i18n/portal.test.tsx src/i18n/shared-map.test.ts src/i18n/groundwater.test.ts src/i18n/terrain.test.ts
+        run: pnpm --dir artifacts/geomoz-react exec vitest run src/i18n/portal.test.tsx src/i18n/scientific-specialists.test.ts src/i18n/shared-map.test.ts src/i18n/groundwater.test.ts src/i18n/terrain.test.ts
 
       - name: Build frontend
         run: pnpm --filter @workspace/geomoz-react run build
