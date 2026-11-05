@@ -223,13 +223,21 @@ module.exports=async function validateRasterProcessing(page){
    buffer:Buffer.from(JSON.stringify(overlayGeoJSON))
  });
  await terrain.getByText("geologia_controlo.geojson").waitFor();
- // Classified thematic GeoTIFF: actual georeferencing, clipping and legend.
- const thematicValues=Uint8Array.from({length:256},(_,i)=>i%2?1:2);
- const thematic=Buffer.from(writeArrayBuffer(thematicValues,{
-   width:16,height:16,ModelPixelScale:[30,30,0],
-   ModelTiepoint:[0,0,0,500000,7200000,0],
-   GTModelTypeGeoKey:1,GTRasterTypeGeoKey:1,ProjectedCSTypeGeoKey:32736
- }));
+ // Exercise a genuinely georeferenced thematic GeoTIFF: reuse the
+ // GDAL-cutline output from this test, rather than a geotiff.js writeArrayBuffer
+ // fixture which silently drops ModelPixelScale/ModelTiepoint metadata.
+ // The clipped DEM has a small (<16x16), finite set of values and is therefore
+ // valid for the categorised raster renderer as well as for spatial clipping.
+ const thematic=await readFile("workbench-browser-artifacts/masked.tif");
+ const checkedTiff=await fromArrayBuffer(thematic.buffer.slice(
+   thematic.byteOffset,thematic.byteOffset+thematic.byteLength
+ ));
+ const checkedImage=await checkedTiff.getImage();
+ assert.equal(checkedImage.getGeoKeys().ProjectedCSTypeGeoKey,32736,
+   "The thematic test raster must declare its genuine source EPSG");
+ assert.ok(checkedImage.fileDirectory.ModelPixelScale&&checkedImage.fileDirectory.ModelTiepoint,
+   "The thematic test raster must contain north-up GeoTIFF georeferencing tags");
+ await checkedTiff.close();
  await terrain.getByLabel("Importar GeoTIFF temático").setInputFiles({
    name:"solo_classes.tif",mimeType:"image/tiff",buffer:thematic
  });
