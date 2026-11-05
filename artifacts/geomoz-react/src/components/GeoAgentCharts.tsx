@@ -32,6 +32,7 @@ export function chartsFor(tool: string, result: Record<string, unknown>): Chart[
     add(`${title} · área por classe de mudança`, "km²", points([
       [threshold ? `Aumento ≥ ${threshold}` : "Aumento", result.increaseAreaKm2],
       [threshold ? `Diminuição ≤ −${threshold}` : "Diminuição", result.decreaseAreaKm2],
+      ["Alteração inferior ao limiar", result.neutralAreaKm2],
     ]));
   } else if (tool === "calculate_zonal_statistics" && number(result.selectedAreaKm2)) {
     const operators: Record<string, string> = { gte: "≥", gt: ">", lte: "≤", lt: "<" };
