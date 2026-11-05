@@ -41,14 +41,18 @@ describe("Feature inspector", () => {
     expect(root.textContent).toContain("Nenhum atributo encontrado");
   });
   it("exports the complete attribute object", () => {
-    const createURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
-    const revokeURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const priorCreate = URL.createObjectURL;
+    const priorRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn(() => "blob:test");
+    URL.revokeObjectURL = vi.fn();
+    const createURL = vi.mocked(URL.createObjectURL);
+    const revokeURL = vi.mocked(URL.revokeObjectURL);
     const anchor = vi.spyOn(HTMLAnchorElement.prototype,"click").mockImplementation(() => {});
     const root = createFeatureInspector("Test", {name:"A", number:2});
     root.querySelector("button")!.click();
     expect(createURL).toHaveBeenCalledOnce();
     expect(anchor).toHaveBeenCalledOnce();
     expect(revokeURL).toHaveBeenCalledWith("blob:test");
-    createURL.mockRestore(); revokeURL.mockRestore(); anchor.mockRestore();
+    URL.createObjectURL = priorCreate; URL.revokeObjectURL = priorRevoke; anchor.mockRestore();
   });
 });
