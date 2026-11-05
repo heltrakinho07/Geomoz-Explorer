@@ -80,14 +80,25 @@ async function getTiffTag(directory:unknown,key:string):Promise<unknown>{
   return tags[key];
 }
 
+/** Progress reports the proportion of the 384-row alignment actually completed. */
+export interface TerrainRasterDrapeOptions {
+  signal?:AbortSignal;
+  onProgress?:(fraction:number)=>void;
+}
+function verifyActive(signal?:AbortSignal){
+  if(signal?.aborted)throw new DOMException("Importação do raster cancelada.","AbortError");
+}
 /** Reproject and clip a categorical or true-colour georeferenced GeoTIFF. */
 export async function createTerrainRasterDrape(
-  bytes:ArrayBuffer,name:string,terrain:TerrainMeshData
+  bytes:ArrayBuffer,name:string,terrain:TerrainMeshData,
+  options:TerrainRasterDrapeOptions={}
 ):Promise<GeoMozRasterDrape>{
+  verifyActive(options.signal);
   if(!bytes.byteLength||bytes.byteLength>LIMIT)throw Error("GeoTIFF tem de ter até 32 MB.");
   const tiff=await fromArrayBuffer(bytes);
   try{
     const image=await tiff.getImage();
+    verifyActive(options.signal);
     const w=image.getWidth(),h=image.getHeight();
     if(w<2||h<2||w*h>100_000_000)throw Error("Raster demasiado grande.");
     const geoTags=image.fileDirectory;
@@ -121,6 +132,7 @@ export async function createTerrainRasterDrape(
     const rgb=image.getSamplesPerPixel()>=3;
     const bands=rgb?[0,1,2]:[0];
     const samples=await image.readRasters({samples:bands,width:n,height:m,resampleMethod:"nearest"});
+    verifyActive(options.signal);
     const channels=bands.map((_,i)=>samples[i] as ArrayLike<number>);
     const nodataRaw=image.getGDALNoData(),nodata=nodataRaw===null?null:Number(nodataRaw);
     const [left,bottom,right,top]=terrain.boundsMeters;
@@ -134,7 +146,15 @@ export async function createTerrainRasterDrape(
     const convert=(terrain.crs===sourceCrs)?([x,y]:[number,number])=>[x,y]:
       (p:[number,number])=>proj4(terrain.crs,sourceCrs,p) as [number,number];
     const idx=(col:number,row:number)=>row*n+col;
-    for(let row=0;row<SIZE;row++)for(let col=0;col<SIZE;col++){
+    for(let row=0;row<SIZE;row++){
+      // Yield periodically so the browser can render progress and process Cancel.
+      if(row%48===0){
+        verifyActive(options.signal);
+        options.onProgress?.(row/SIZE);
+        await new Promise<void>(resolve=>setTimeout(resolve,0));
+        verifyActive(options.signal);
+      }
+      for(let col=0;col<SIZE;col++){
       const x=left+(col+0.5)/SIZE*(right-left);
       const y=top-(row+0.5)/SIZE*(top-bottom);
       const [px,py]=convert([x,y]);
@@ -155,7 +175,10 @@ export async function createTerrainRasterDrape(
       }
       frame.data[out+3]=255;
       covered++;
+      }
     }
+    verifyActive(options.signal);
+    options.onProgress?.(1);
     if(covered===0)throw Error("O GeoTIFF não se sobrepõe à extensão do DEM.");
     const values=[...classifiedValues].sort((a,b)=>a-b);
     for(const item of pixels){
@@ -164,7 +187,9 @@ export async function createTerrainRasterDrape(
       frame.data[item.pos+1]=parseInt(color.slice(3,5),16);
       frame.data[item.pos+2]=parseInt(color.slice(5,7),16);
     }
+    verifyActive(options.signal);
     ctx.putImageData(frame,0,0);
+    verifyActive(options.signal);
     return {name,imageDataUrl:canvas.toDataURL("image/png"),mode:rgb?"rgb":"classified",
       coverage:covered/(SIZE*SIZE),
       categories:values.map(value=>{const [label,color]=categoryColor(value,values);return {value,label,color};})};
