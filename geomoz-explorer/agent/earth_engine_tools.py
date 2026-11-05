@@ -206,6 +206,12 @@ def temporal_change(geometry, index, start1, end1, start2, end2, scale_m=30, clo
     # Keep the original delta for statistics and a selectable continuous view.
     changed_mask = delta.gte(threshold).Or(delta.lte(-threshold))
     changed_classes = delta.gte(threshold).subtract(delta.lte(-threshold)).updateMask(changed_mask)
+    # Render both real observation windows with an identical palette and on the
+    # same common-valid footprint. Swipe comparison never substitutes one period
+    # for the other or treats no-data as vegetation loss.
+    period_a_visual = before.updateMask(common)
+    period_b_visual = after.updateMask(common)
+    comparison_palette = ["8c510a", "dfc27d", "f6e8c3", "80cdc1", "01665e"]
     result = _base(S2, grid, area, "Diferença de índice B − A; não confirma desflorestação, urbanização ou área ardida. Compare épocas sazonais equivalentes. Valores só na intersecção dos pixels válidos dos dois períodos.")
     result.update({"index": index, "formula": "delta = periodB - periodA", "threshold": threshold,
                    "periodA": {"startDate": start1, "endDate": end1}, "periodB": {"startDate": start2, "endDate": end2},
@@ -224,6 +230,10 @@ def temporal_change(geometry, index, start1, end1, start2, end2, scale_m=30, clo
                            "periodB": {"startDate": start2, "endDate": end2},
                            "continuousTileUrl": _tile(delta, -0.4, 0.4, ["b2182b", "f7f7f7", "1a9850"]),
                            "continuousRange": [-0.4, 0.4],
+                           "periodATileUrl": _tile(period_a_visual, -0.2, 0.9, comparison_palette),
+                           "periodBTileUrl": _tile(period_b_visual, -0.2, 0.9, comparison_palette),
+                           "comparisonRange": [-0.2, 0.9],
+                           "comparisonPalette": comparison_palette,
                        },
                    }})
     return result

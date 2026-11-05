@@ -94,7 +94,7 @@ class PublicDataTests(unittest.TestCase):
         after = Raster([.50, .40, .45, .90], [True, True, True, True])
         with patch.dict("sys.modules", {"ee": FAKE_EE}), patch.object(engine, "_grid", return_value=("region", GRID, 4_000_000)), \
              patch.object(engine, "_s2_image", side_effect=[(before, 3), (after, 4)]), \
-             patch.object(engine, "_tile", side_effect=["significant-tiles", "continuous-tiles"]) as tiles:
+             patch.object(engine, "_tile", side_effect=["significant-tiles", "continuous-tiles", "period-A-tiles", "period-B-tiles"]) as tiles:
             result = engine.temporal_change(GEOMETRY, "ndvi", "2020-01-01", "2021-01-01", "2025-01-01", "2026-01-01")
         classified = tiles.call_args_list[0].args[0]
         assert classified.values[:3] == [1, -1, 0]
@@ -105,6 +105,14 @@ class PublicDataTests(unittest.TestCase):
         self.assertEqual(action["tileUrl"], "significant-tiles")
         self.assertEqual(action["temporalChange"]["continuousTileUrl"], "continuous-tiles")
         self.assertEqual(action["temporalChange"]["threshold"], 0.2)
+        self.assertEqual(action["temporalChange"]["periodATileUrl"], "period-A-tiles")
+        self.assertEqual(action["temporalChange"]["periodBTileUrl"], "period-B-tiles")
+        self.assertEqual(action["temporalChange"]["comparisonRange"], [-0.2, 0.9])
+        before_visual, after_visual = tiles.call_args_list[2].args[0], tiles.call_args_list[3].args[0]
+        self.assertEqual(before_visual.valid, [True, True, True, False])
+        self.assertEqual(after_visual.valid, [True, True, True, False])
+        self.assertEqual(tiles.call_args_list[2].args[1:], tiles.call_args_list[3].args[1:])
+        self.assertEqual(tiles.call_args_list[2].args[1:3], (-0.2, 0.9))
         self.assertEqual(action["temporalChange"]["periodA"]["startDate"], "2020-01-01")
         self.assertEqual(action["temporalChange"]["periodB"]["startDate"], "2025-01-01")
         self.assertAlmostEqual(result["increaseAreaKm2"], 1)

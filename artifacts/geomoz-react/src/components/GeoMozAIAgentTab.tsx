@@ -4,6 +4,7 @@ import { PublicDataTools, type PublicAnalysisRequest } from "./PublicDataTools";
 import { GeoIntelligenceDossier, type IntelligenceDossier } from "./GeoIntelligenceDossier";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useProject } from "../context/ProjectContext";
+import { collectGeoAiMapActions, type GeoAiTemporalChange } from "@/lib/geoai-map-actions";
 import { apiFetch } from "@/lib/api";
 import { useGeeAuth } from "@/hooks/useGeeAuth";
 import { usePortalTranslation } from "@/i18n/usePortalTranslation";
@@ -40,7 +41,7 @@ import {
   Globe,
   RefreshCw,
 } from "lucide-react";
-import { GeoJSON, MapContainer, TileLayer, ScaleControl, useMap } from "react-leaflet";
+import { GeoJSON, MapContainer, Pane, TileLayer, ScaleControl, useMap } from "react-leaflet";
 import { GeoAgentMarkdown } from "./GeoAgentMarkdown";
 import "leaflet/dist/leaflet.css";
 import { GOOGLE_BASEMAPS } from "@/lib/basemaps";
@@ -74,6 +75,19 @@ function ZoomToPublicAOI({ aoi }: { aoi: AreaOfInterest }) {
       map.fitBounds(aoi.bounds, { padding: [24, 24], maxZoom: 11 });
     }
   }, [map, aoi.source, boundsKey]);
+  return null;
+}
+
+/** React-Leaflet Pane styles are initial options in some versions.
+ * Apply live split position to both panes so the slider always updates clipping. */
+function SyncSwipePanes({ position }: { position: number }) {
+  const map = useMap();
+  useEffect(() => {
+    const periodA = map.getPane("geoai-period-a");
+    const periodB = map.getPane("geoai-period-b");
+    if (periodA) periodA.style.clipPath = `inset(0 ${100 - position}% 0 0)`;
+    if (periodB) periodB.style.clipPath = `inset(0 0 0 ${position}%)`;
+  }, [map, position]);
   return null;
 }
 
@@ -111,15 +125,6 @@ interface WorkflowStep {
   name: string;
   status: "pending" | "running" | "completed" | "error";
   resultSummary?: string;
-}
-
-interface TemporalChangeStyle {
-  index: string;
-  threshold: number;
-  periodA: { startDate: string; endDate: string };
-  periodB: { startDate: string; endDate: string };
-  continuousTileUrl: string;
-  continuousRange: [number, number];
 }
 
 interface ChatMessage {
@@ -264,8 +269,12 @@ export default function GeoMozAIAgentTab() {
   const [completedRuns, setCompletedRuns] = useState<any[]>([]);
   const [selectedLayerIndex, setSelectedLayerIndex] = useState<number>(0);
   const [layerOpacity, setLayerOpacity] = useState<number>(0.85);
-  const [changeMode, setChangeMode] = useState<"significant" | "continuous">("significant");
-  const selectedTemporal = completedRuns[selectedLayerIndex]?.temporalChange as TemporalChangeStyle | undefined;
+  const [changeMode, setChangeMode] = useState<"significant" | "continuous" | "comparison">("significant");
+  const [swipePosition, setSwipePosition] = useState(50);
+  const [mapLayerNotice, setMapLayerNotice] = useState<string | null>(null);
+  const selectedTemporal = completedRuns[selectedLayerIndex]?.temporalChange as GeoAiTemporalChange | undefined;
+  const comparisonReady = Boolean(selectedTemporal?.periodATileUrl && selectedTemporal?.periodBTileUrl);
+  const showComparison = Boolean(comparisonReady && changeMode === "comparison" && activeTileUrl);
   const renderedTileUrl = selectedTemporal && changeMode === "continuous"
     ? selectedTemporal.continuousTileUrl : activeTileUrl;
 
@@ -517,7 +526,9 @@ export default function GeoMozAIAgentTab() {
         : analysisPeriod;
       const computedLayers: any[] = [];
       const vectorWarnings: string[] = [];
-      for (const act of data.map_actions || []) {
+      // Some agent planners return verified map actions only inside successful runs.
+      // Recover those actions rather than leaving a completed comparison invisible.
+      for (const act of collectGeoAiMapActions(data)) {
         if (act.type === "SET_AOI" && act.province) {
           setSelectedProvince(act.province);
           setSelectedDistrict(act.district || null);
@@ -572,19 +583,32 @@ export default function GeoMozAIAgentTab() {
       }
 
       if (computedLayers.length > 0) {
-        setSelectedLayerIndex(completedRuns.length);
-        setChangeMode("significant");
+        // Prefer a new temporal raster; never keep an older active layer after
+        // a new comparison has finished. The swipe opens automatically.
+        const temporalIndex = computedLayers.findIndex((layer) =>
+          Boolean(layer.temporalChange?.periodATileUrl && layer.temporalChange?.periodBTileUrl));
+        const rasterIndex = computedLayers.findIndex((layer) => Boolean(layer.tileUrl));
+        const preferredIndex = temporalIndex >= 0 ? temporalIndex : rasterIndex >= 0 ? rasterIndex : 0;
+        const preferredLayer = computedLayers[preferredIndex];
+        setSelectedLayerIndex(completedRuns.length + preferredIndex);
+        setChangeMode(temporalIndex >= 0 ? "comparison" : "significant");
+        if (temporalIndex >= 0) setLayerOpacity(1);
+        setSwipePosition(50);
+        setMapLayerNotice(null);
         setCompletedRuns((prev) => [...prev, ...computedLayers]);
-        const firstLayer = computedLayers[0];
-        setActiveTileUrl(firstLayer.tileUrl || null);
-        setActiveGeology(firstLayer.geojson || null);
-        setActiveTileName(firstLayer.name);
+        setActiveTileUrl(preferredLayer.tileUrl || null);
+        setActiveGeology(preferredLayer.geojson || null);
+        setActiveTileName(preferredLayer.name);
         if (activeProject) {
           for (const resultLayer of computedLayers) {
             // Do not persist large inline GeoJSON as a project run.
             if (resultLayer.tileUrl) await saveRunToActiveProject(resultLayer);
           }
         }
+      }
+      if (!computedLayers.length && Array.isArray(data.runs) && data.runs.some(
+        (run: { tool?: string; output?: { status?: string } }) => run.tool === "detect_temporal_change" && run.output?.status === "success")) {
+        setMapLayerNotice(copy("map.noLayer"));
       }
       const generalized = computedLayers.some((layer) => layer.geojson?.generalized);
       setGeologyNotice(vectorWarnings.join(" ") || (generalized
@@ -1172,7 +1196,9 @@ export default function GeoMozAIAgentTab() {
                             onClick={() => {
                               const layerIndex = completedRuns.findIndex((layer) => layer === r);
                               if (layerIndex >= 0) setSelectedLayerIndex(layerIndex);
-                              setChangeMode("significant");
+                              setChangeMode(r.temporalChange?.periodATileUrl && r.temporalChange?.periodBTileUrl ? "comparison" : "significant");
+                              setSwipePosition(50);
+                              setMapLayerNotice(null);
                               setActiveTileUrl(r.tileUrl || null);
                               setActiveGeology(r.geojson || null);
                               setActiveTileName(r.name);
@@ -1297,7 +1323,9 @@ export default function GeoMozAIAgentTab() {
                     type="button"
                     onClick={() => {
                       setSelectedLayerIndex(i);
-                      setChangeMode("significant");
+                      setChangeMode(run.temporalChange?.periodATileUrl && run.temporalChange?.periodBTileUrl ? "comparison" : "significant");
+                      setSwipePosition(50);
+                      setMapLayerNotice(null);
                       setActiveTileUrl(run.tileUrl || null);
                       setActiveGeology(run.geojson || null);
                       setActiveTileName(run.name);
@@ -1334,6 +1362,9 @@ export default function GeoMozAIAgentTab() {
           </div>
         )}
 
+        {mapLayerNotice && (
+          <div role="alert" className="border-b border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">{mapLayerNotice}</div>
+        )}
         {geologyNotice && (
           <div role="status" className="px-3 py-2 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/20">
             Camada geológica: {geologyNotice}
@@ -1362,12 +1393,30 @@ export default function GeoMozAIAgentTab() {
             />}
             <ZoomToPublicAOI aoi={currentAoi} />
 
-            {renderedTileUrl && (
+            {/* Same Leaflet viewport for both real satellite mosaics. Each pane
+                is clipped in map pixel space; panning/zoom remain synchronized. */}
+            {showComparison && selectedTemporal?.periodATileUrl && selectedTemporal?.periodBTileUrl && (
+              <>
+                <Pane name="geoai-period-a" style={{ zIndex: 300, width: "100%", height: "100%", pointerEvents: "none", clipPath: `inset(0 ${100 - swipePosition}% 0 0)` }}>
+                  <TileLayer crossOrigin="anonymous" key={selectedTemporal.periodATileUrl}
+                    url={selectedTemporal.periodATileUrl} opacity={layerOpacity}
+                    eventHandlers={{ tileerror: () => setMapLayerNotice(copy("map.tileError")) }} />
+                </Pane>
+                <Pane name="geoai-period-b" style={{ zIndex: 301, width: "100%", height: "100%", pointerEvents: "none", clipPath: `inset(0 0 0 ${swipePosition}%)` }}>
+                  <TileLayer crossOrigin="anonymous" key={selectedTemporal.periodBTileUrl}
+                    url={selectedTemporal.periodBTileUrl} opacity={layerOpacity}
+                    eventHandlers={{ tileerror: () => setMapLayerNotice(copy("map.tileError")) }} />
+                </Pane>
+                <SyncSwipePanes position={swipePosition} />
+              </>
+            )}
+            {!showComparison && renderedTileUrl && (
               <TileLayer
                 crossOrigin="anonymous"
                 key={renderedTileUrl}
                 url={renderedTileUrl}
                 opacity={layerOpacity}
+                eventHandlers={{ tileerror: () => setMapLayerNotice(copy("map.tileError")) }}
               />
             )}
             {activeGeology && (
@@ -1388,9 +1437,16 @@ export default function GeoMozAIAgentTab() {
             )}
             <ScaleControl position="bottomleft" />
           </MapContainer>
+          {showComparison && selectedTemporal && (
+            <>
+              <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 z-[900] w-0.5 bg-white shadow-[0_0_0_1px_rgba(30,41,59,0.7)]" style={{ left: `${swipePosition}%` }} />
+              <div className="pointer-events-none absolute left-4 top-20 z-[900] rounded-lg bg-slate-900/85 px-2.5 py-1 text-[11px] font-bold text-white shadow-lg">{copy("map.before")} · {selectedTemporal.periodA.startDate.slice(0, 4)}</div>
+              <div className="pointer-events-none absolute right-4 top-20 z-[900] rounded-lg bg-slate-900/85 px-2.5 py-1 text-[11px] font-bold text-white shadow-lg">{copy("map.after")} · {selectedTemporal.periodB.startDate.slice(0, 4)}</div>
+            </>
+          )}
           {selectedTemporal && activeTileUrl && (
             <div role="region" aria-label={`Legenda de alteração de ${selectedTemporal.index}`}
-              className="absolute bottom-4 right-4 z-[1001] w-[min(285px,calc(100%-2rem))] rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+              className="absolute bottom-4 right-4 z-[1001] w-[min(345px,calc(100%-2rem))] rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
               <div className="text-xs font-bold text-slate-800 dark:text-slate-100">Δ{selectedTemporal.index} · Período B − A</div>
               <div className="mt-1 text-[10px] leading-relaxed text-slate-600 dark:text-slate-300">
                 A: {selectedTemporal.periodA.startDate} → {selectedTemporal.periodA.endDate}
@@ -1401,13 +1457,20 @@ export default function GeoMozAIAgentTab() {
                 <button type="button" onClick={() => setChangeMode("significant")}
                   aria-pressed={changeMode === "significant"}
                   className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${changeMode === "significant" ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"}`}>
-                  Mudanças ≥ limiar
+                  {copy("map.significant")}
                 </button>
                 <button type="button" onClick={() => setChangeMode("continuous")}
                   aria-pressed={changeMode === "continuous"}
                   className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${changeMode === "continuous" ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"}`}>
-                  Contínuo
+                  {copy("map.continuous")}
                 </button>
+                {comparisonReady && (
+                  <button type="button" onClick={() => { setChangeMode("comparison"); setSwipePosition(50); }}
+                    aria-pressed={changeMode === "comparison"}
+                    className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${changeMode === "comparison" ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"}`}>
+                    {copy("map.swipe")}
+                  </button>
+                )}
               </div>
               {changeMode === "significant" ? (
                 <div className="mt-2 space-y-1 text-[11px] text-slate-700 dark:text-slate-200">
@@ -1415,11 +1478,26 @@ export default function GeoMozAIAgentTab() {
                   <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#1a9850]" /> Aumento ≥ +{selectedTemporal.threshold}</div>
                   <p className="text-[10px] text-slate-500 dark:text-slate-400">Sem cor: alteração inferior ao limiar ou pixel sem dados comparáveis.</p>
                 </div>
-              ) : (
+              ) : changeMode === "continuous" ? (
                 <div className="mt-2 text-[10px] text-slate-700 dark:text-slate-200">
                   <div className="h-3 rounded-sm" style={{ background: "linear-gradient(90deg,#b2182b 0%,#f7f7f7 50%,#1a9850 100%)" }} />
                   <div className="mt-1 flex justify-between"><span>{selectedTemporal.continuousRange[0]}</span><span>0</span><span>+{selectedTemporal.continuousRange[1]}</span></div>
                   <p className="mt-1 text-slate-500 dark:text-slate-400">Valores extremos saturados na escala de cores; estatísticas calculadas sobre os valores originais.</p>
+                </div>
+              ) : (
+                <div className="mt-2 space-y-2 text-[10px] text-slate-700 dark:text-slate-200">
+                  <input type="range" min="0" max="100" step="1" value={swipePosition}
+                    onChange={(event) => setSwipePosition(Number(event.target.value))}
+                    aria-label={copy("map.swipePosition")}
+                    className="w-full cursor-ew-resize accent-violet-600" />
+                  <div className="flex justify-between text-[10px] font-semibold">
+                    <span>{copy("map.before")}: {selectedTemporal.periodA.startDate.slice(0, 4)}</span>
+                    <span>{swipePosition}%</span>
+                    <span>{copy("map.after")}: {selectedTemporal.periodB.startDate.slice(0, 4)}</span>
+                  </div>
+                  <div className="h-3 rounded-sm" style={{ background: "linear-gradient(90deg,#8c510a,#dfc27d,#f6e8c3,#80cdc1,#01665e)" }} />
+                  <div className="flex justify-between"><span>{selectedTemporal.comparisonRange?.[0] ?? -0.2}</span><span>{selectedTemporal.index} · mesma escala</span><span>+{selectedTemporal.comparisonRange?.[1] ?? 0.9}</span></div>
+                  <p className="text-slate-500 dark:text-slate-400">{copy("map.swipeNote")}</p>
                 </div>
               )}
               <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400">Mudanças de índice não comprovam desflorestação. Compare épocas sazonais equivalentes.</p>
