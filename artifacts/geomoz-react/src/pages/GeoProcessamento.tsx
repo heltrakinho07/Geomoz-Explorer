@@ -127,6 +127,8 @@ import {
   Cell,
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import { specialistText, type SpecialistKey } from "@/i18n/specialist-ui";
 import BasemapSwitcher from "@/components/BasemapSwitcher";
 import { BasemapType } from "@/lib/basemaps";
 import type { AreaOfInterest } from "@/lib/aoi";
@@ -294,6 +296,8 @@ export default function GeoProcessamento({
   onDistrictChange,
   onAOIChange,
 }: Props) {
+  const { translatedLocale } = usePortalTranslation();
+  const ui = (key: SpecialistKey) => specialistText(translatedLocale, key);
   const { toast } = useToast();
   // Geoprocessing remains local; a user may explicitly enable an IndexedDB
   // backup. Firestore + Firebase Storage are reserved for future verified PRO.
@@ -3108,12 +3112,12 @@ export default function GeoProcessamento({
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Estúdio GIS</h2>
+                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">{ui("processing.studio")}</h2>
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
                   GeoMoz Core
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400">Dados · Área · Análise · Resultados</p>
+              <p className="text-[10px] text-slate-400">{ui("processing.breadcrumb")}</p>
             </div>
           </div>
           <button
@@ -3127,51 +3131,48 @@ export default function GeoProcessamento({
 
         {processingError && activeTab !== "layers" && <p role="alert" className="gw-error mx-3">{processingError}</p>}
         <details className="mx-3 mt-3 rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-          <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300">Projecto e armazenamento local</summary>
+          <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300">{ui("processing.projectStorage")}</summary>
         <div role="status" aria-live="polite"
           className="border-b border-slate-100 bg-sky-50/60 px-3 py-2 text-[10px] leading-relaxed text-sky-800 dark:border-slate-800 dark:bg-sky-950/20 dark:text-sky-300">
-          <strong>Sessão local por defeito:</strong> dados e resultados mantêm-se na memória.
-          Pode guardar uma cópia neste dispositivo (IndexedDB) ou exportar o projecto.
-          Não existe sincronização automática com Firestore ou Firebase Storage.
-          A sincronização na nuvem ficará reservada a contas PRO validadas.
+          {ui("processing.localNotice")}
           {projectNotice && <span className="mt-1 block font-semibold">{projectNotice}</span>}
         </div>
 
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-800">
           <button type="button" onClick={exportWorkspaceProject}
             className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-sky-200 px-2.5 text-[11px] font-semibold text-sky-800 hover:bg-sky-50 dark:border-sky-800 dark:text-sky-300">
-            <Download size={13} /> Exportar projecto
+            <Download size={13} /> {ui("processing.exportProject")}
           </button>
           <button type="button" onClick={() => projectInputRef.current?.click()}
             className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200">
-            <Upload size={13} /> Abrir projecto
+            <Upload size={13} /> {ui("processing.openProject")}
           </button>
           <button type="button" disabled={deviceSaveBusy !== null} onClick={() => void saveDeviceWorkspace()}
             title="Guardar voluntariamente o Workspace, incluindo GeoTIFFs, no IndexedDB"
             className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-emerald-200 px-2.5 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300">
-            <Save size={13} /> {deviceSaveBusy === "save" ? "A guardar…" : "Guardar no dispositivo"}
+            <Save size={13} /> {deviceSaveBusy === "save" ? ui("processing.saving") : ui("processing.saveDevice")}
           </button>
           <button type="button" disabled={deviceSaveBusy !== null} onClick={() => void restoreDeviceWorkspace()}
             className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200">
-            <RefreshCw size={13} /> {deviceSaveBusy === "restore" ? "A restaurar…" : "Restaurar cópia"}
+            <RefreshCw size={13} /> {deviceSaveBusy === "restore" ? ui("processing.restoring") : ui("processing.restore")}
           </button>
           <button type="button" disabled={deviceSaveBusy !== null} onClick={() => void clearDeviceWorkspace()}
             title="Eliminar apenas a cópia IndexedDB deste Workspace"
             className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-rose-200 px-2.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300">
-            <Trash2 size={13} /> Apagar cópia local
+            <Trash2 size={13} /> {ui("processing.deleteCopy")}
           </button>
           <span title="Preparado na infraestrutura; requer assinaturas activas e regras de segurança aplicadas"
             className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-slate-100 px-2.5 text-[11px] text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-            Cloud PRO · em preparação
+            {ui("processing.proPending")}
           </span>
           <button type="button" disabled={demLoading} onClick={() => void requestGlobalDem()}
             className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-sky-600 px-2.5 text-[11px] font-semibold text-white disabled:opacity-50">
-            <Mountain size={13} /> {demLoading ? "DEM a processar…" : "Obter DEM Global"}
+            <Mountain size={13} /> {demLoading ? ui("processing.demLoading") : ui("processing.getDem")}
           </button>
           {demLoading && (
             <div role="status" aria-live="polite" className="min-w-0 text-[11px] text-sky-800 dark:text-sky-300">
-              <span>{demProgress?.completed ?? 0} / {demProgress?.total ?? 0} tiles descarregados</span>
-              <button type="button" className="ml-2 underline" onClick={() => demAbortRef.current?.abort()}>Cancelar</button>
+              <span>{demProgress?.completed ?? 0} / {demProgress?.total ?? 0} {ui("processing.tilesDownloaded")}</span>
+              <button type="button" className="ml-2 underline" onClick={() => demAbortRef.current?.abort()}>{ui("processing.cancel")}</button>
             </div>
           )}
         </div>
@@ -3196,7 +3197,7 @@ export default function GeoProcessamento({
               }`}
             >
               <Wrench size={12} />
-              <span>Vetores</span>
+              <span>{ui("processing.vector")}</span>
             </button>
             <button
               onClick={() => setActiveTab("whitebox_toolbox")}
@@ -3207,7 +3208,7 @@ export default function GeoProcessamento({
               }`}
             >
               <Boxes size={12} />
-              <span>Processar</span>
+              <span>{ui("processing.tools")}</span>
             </button>
             <button
               onClick={() => setActiveTab("model_builder")}
@@ -3243,7 +3244,7 @@ export default function GeoProcessamento({
               }`}
             >
               <Globe2 size={12} />
-              <span>Dados</span>
+              <span>{ui("processing.data")}</span>
             </button>
             <button
               onClick={() => setActiveTab("layers")}
@@ -3254,7 +3255,7 @@ export default function GeoProcessamento({
               }`}
             >
               <Layers size={12} />
-              <span>Camadas ({layers.length + rasterLayers.length + serviceLayers.length})</span>
+              <span>{ui("processing.layers")} ({layers.length + rasterLayers.length + serviceLayers.length})</span>
             </button>
             <button
               onClick={() => setActiveTab("dashboard")}
@@ -3265,7 +3266,7 @@ export default function GeoProcessamento({
               }`}
             >
               <BarChart3 size={12} />
-              <span>Dashboard</span>
+              <span>{ui("processing.dashboard")}</span>
             </button>
             <button
               onClick={() => setActiveTab("history")}
@@ -3276,7 +3277,7 @@ export default function GeoProcessamento({
               }`}
             >
               <History size={12} />
-              <span>Histórico</span>
+              <span>{ui("processing.history")}</span>
             </button>
             
           </div>
@@ -3284,7 +3285,7 @@ export default function GeoProcessamento({
 
         <button type="button" onClick={() => setActiveTab("terrain_workflow")}
           className={`mx-3 mt-3 flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-bold ${activeTab === "terrain_workflow" ? "border-teal-500 bg-teal-50 text-teal-800 dark:bg-teal-950 dark:text-teal-200" : "border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300"}`}>
-          <Mountain size={16} /> Terreno e Hidrologia
+          <Mountain size={16} /> {ui("processing.terrainHydro")}
         </button>
         {workspaceHydrated && <div hidden={activeTab !== "terrain_workflow"}>
           <TerrainWorkflowPanel aoi={aoi} rasters={rasterLayers}
@@ -3296,9 +3297,8 @@ export default function GeoProcessamento({
         {activeTab === "data_sources" && (
           <div className="p-3 space-y-3 flex-1">
             <div className="rounded-xl border border-cyan-100 bg-cyan-50 p-2.5 text-[11px] text-cyan-900 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-300">
-              <span className="font-semibold block mb-0.5">Data Sources do projeto</span>
-              Adicione ficheiros locais, COGs e serviços OGC. Os dados ficam na
-              memória do navegador; nenhum upload ou sincronização automática.
+              <span className="font-semibold block mb-0.5">{ui("processing.sourcesTitle")}</span>
+              {ui("processing.sourcesDescription")}
             </div>
 
             <div className="grid grid-cols-2 gap-2">
@@ -3307,7 +3307,7 @@ export default function GeoProcessamento({
                 className="rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-indigo-300 dark:border-slate-700 dark:bg-slate-800"
               >
                 <Upload size={16} className="mb-1.5 text-indigo-600" />
-                <span className="block text-xs font-bold">Ficheiro local</span>
+                <span className="block text-xs font-bold">{ui("processing.localFile")}</span>
                 <span className="text-[9px] text-slate-400">Vector · GeoTIFF/COG</span>
               </button>
               <button
@@ -4199,7 +4199,7 @@ export default function GeoProcessamento({
                 type="text"
                 value={toolSearch}
                 onChange={(e) => setToolSearch(e.target.value)}
-                placeholder="Procurar declividade, drenagem, relevo…"
+                placeholder={ui("processing.searchTools")}
                 className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
@@ -4213,7 +4213,7 @@ export default function GeoProcessamento({
                     : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                 }`}
               >
-                Todas
+                {ui("processing.all")}
               </button>
               {whiteboxCategories.map((category) => {
                 const id = category.toLowerCase();
@@ -5745,7 +5745,7 @@ export default function GeoProcessamento({
             {layers.length > 0 && (rasterLayers.length > 0 || serviceLayers.length > 0) && (
               <div className="flex items-center gap-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 <Layers size={12} />
-                <span>Vetores</span>
+                <span>{ui("processing.vector")}</span>
               </div>
             )}
 

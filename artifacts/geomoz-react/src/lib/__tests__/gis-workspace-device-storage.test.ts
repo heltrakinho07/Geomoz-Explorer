@@ -96,7 +96,7 @@ describe("GeoMoz opt-in IndexedDB for local GIS Workspace", () => {
     expect(page).toContain("clearGISWorkspaceOnDevice(deviceCacheKey");
     expect(page).not.toContain("syncGISWorkspaceToCloud(");
     expect(page).not.toContain("loadGISWorkspaceFromCloud(");
-    expect(page).toContain("Cloud PRO · em preparação");
+    expect(page).toContain('ui("processing.proPending")');
     expect(shell).toContain('"save-device"');
     expect(shell).toContain('"restore-device"');
     expect(persistence).toContain("syncGISWorkspaceRasterFiles");

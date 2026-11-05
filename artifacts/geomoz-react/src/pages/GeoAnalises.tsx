@@ -3,6 +3,9 @@ import { validateFirePeriods, precedingFirePeriod } from "@/lib/fire-periods";
 import "./geoanalises-sidebar.css";
 import "./geoanalises-catalog.css";
 import scienceCatalog from "@/lib/index-science.json";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import { localizeAnalysisCategories } from "@/i18n/analysis-catalog";
+import { specialistText, type SpecialistKey } from "@/i18n/specialist-ui";
 type ScienceEntry = { status: string; kind: string; source: string; note: string; name?: string; formula?: string; bands?: string };
 const SCIENCE: Record<string, ScienceEntry> = scienceCatalog;
 import { useProject } from "@/context/ProjectContext";
@@ -2858,9 +2861,12 @@ export const GEO_CATEGORIES: GeoAnaliseCategory[] = [
 export default function GeoAnalises({
   aoi, province, district, onProvinceChange, onDistrictChange, onAOIChange,
 }: GeoAnalisesProps) {
+  const { translatedLocale } = usePortalTranslation();
+  const ui = (key: SpecialistKey) => specialistText(translatedLocale, key);
+  const categories = useMemo(() => localizeAnalysisCategories(translatedLocale, GEO_CATEGORIES), [translatedLocale]);
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const categoryInDevelopment = GEO_CATEGORIES.some(cat => cat.id === selectedCategory && cat.status === "development");
+  const categoryInDevelopment = categories.some(cat => cat.id === selectedCategory && cat.status === "development");
   const sidebarSize = useSidebarWidth("geomoz-GeoAnalises-sidebar", 360);
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -3562,47 +3568,47 @@ export default function GeoAnalises({
 
   // Tabs grouped by category — rendered below with section labels
   const tabGroups: { name: string; badge: string; badgeColor: string; tabs: { id: string; label: string; icon: React.ReactNode }[] }[] = [
-    { name: "Mosaico Óptico",         badge: "Sentinel-2 · EOX",    badgeColor: "bg-sky-100 text-sky-700",
+    { name: ui("analysis.group.optical"),         badge: "Sentinel-2 · EOX",    badgeColor: "bg-sky-100 text-sky-700",
       tabs: [{ id: "s2", label: "S-2 Cloudless", icon: <Satellite size={13} /> }] },
-    { name: "Vegetação & Solo",        badge: "Sentinel-2 · 10–20 m", badgeColor: "bg-emerald-100 text-emerald-700",
+    { name: ui("analysis.group.vegetation"),        badge: "Sentinel-2 · 10–20 m", badgeColor: "bg-emerald-100 text-emerald-700",
       tabs: INDEX_DEFS.filter(d => d.group === "spectral").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Landsat 8",              badge: "Landsat · 30 m",       badgeColor: "bg-orange-100 text-orange-700",
+    { name: ui("analysis.group.landsat"),              badge: "Landsat · 30 m",       badgeColor: "bg-orange-100 text-orange-700",
       tabs: INDEX_DEFS.filter(d => d.group === "landsat").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Relevo & Morfologia",    badge: "DEM GLO-30 · 30 m",   badgeColor: "bg-amber-100 text-amber-700",
+    { name: ui("analysis.group.terrain"),    badge: "DEM GLO-30 · 30 m",   badgeColor: "bg-amber-100 text-amber-700",
       tabs: [
         ...INDEX_DEFS.filter(d => d.group === "terrain").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
         { id: "topo_custom", label: "Classes personalizadas", icon: <Sliders size={13} /> },
         { id: "profile",     label: "Perfil A→B",     icon: <Route size={13} /> },
         { id: "contours",    label: "Curvas Nível",   icon: <Waves size={13} /> },
       ]},
-    { name: "Geologia & Minerais", badge: "Landsat-8 SWIR · S-2", badgeColor: "bg-amber-100 text-amber-800 font-semibold",
+    { name: ui("analysis.group.geology"), badge: "Landsat-8 SWIR · S-2", badgeColor: "bg-amber-100 text-amber-800 font-semibold",
       tabs: [
         { id: "targeting", label: "Targeting AI", icon: <Target size={13} /> },
         { id: "lineaments", label: "Lineamentos", icon: <Activity size={13} /> },
         ...INDEX_DEFS.filter(d => d.group === "minerals").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
       ]},
-    { name: "Uso & Cobertura",        badge: "ESA WorldCover · 10 m", badgeColor: "bg-lime-100 text-lime-700",
+    { name: ui("analysis.group.landcover"),        badge: "ESA WorldCover · 10 m", badgeColor: "bg-lime-100 text-lime-700",
       tabs: [{ id: "landcover", label: "Cobertura do Solo", icon: <Sprout size={13} /> }] },
-    { name: "Agricultura",              badge: "Sentinel-2 · 10–20 m",  badgeColor: "bg-green-100 text-green-700",
+    { name: ui("analysis.group.agriculture"),              badge: "Sentinel-2 · 10–20 m",  badgeColor: "bg-green-100 text-green-700",
       tabs: [
         ...INDEX_DEFS.filter(d => d.group === "agriculture").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
       ]},
-    { name: "Seca & Stress Hídrico",    badge: "Sentinel-2 · 10–20 m",  badgeColor: "bg-orange-100 text-orange-700",
+    { name: ui("analysis.group.drought"),    badge: "Sentinel-2 · 10–20 m",  badgeColor: "bg-orange-100 text-orange-700",
       tabs: [
         ...INDEX_DEFS.filter(d => d.group === "drought").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
         { id: "spi_ndvi", label: "SPI × NDVI", icon: <Droplets size={13} /> },
       ]},
-    { name: "Incêndios & Desflorestação", badge: "Multi-sensor",          badgeColor: "bg-red-100 text-red-700",
+    { name: ui("analysis.group.fire"), badge: "Multi-sensor",          badgeColor: "bg-red-100 text-red-700",
       tabs: INDEX_DEFS.filter(d => d.group === "fire").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Recursos Hídricos & Índices de Água",  badge: "Sentinel-2 · SWIR/NIR", badgeColor: "bg-cyan-100 text-cyan-700",
+    { name: ui("analysis.group.water"),  badge: "Sentinel-2 · SWIR/NIR", badgeColor: "bg-cyan-100 text-cyan-700",
       tabs: INDEX_DEFS.filter(d => d.group === "water").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Clima & Desastres",          badge: "Multi-sensor",          badgeColor: "bg-violet-100 text-violet-700",
+    { name: ui("analysis.group.climate"),          badge: "Multi-sensor",          badgeColor: "bg-violet-100 text-violet-700",
       tabs: INDEX_DEFS.filter(d => d.group === "climate").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Urbano & Infraestruturas",    badge: "Multi-sensor",          badgeColor: "bg-stone-100 text-stone-700",
+    { name: ui("analysis.group.urban"),    badge: "Multi-sensor",          badgeColor: "bg-stone-100 text-stone-700",
       tabs: INDEX_DEFS.filter(d => d.group === "urban").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Saúde Pública",                badge: "Multi-sensor",          badgeColor: "bg-rose-100 text-rose-700",
+    { name: ui("analysis.group.health"),                badge: "Multi-sensor",          badgeColor: "bg-rose-100 text-rose-700",
       tabs: INDEX_DEFS.filter(d => d.group === "health").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Biofísicos",                  badge: "Multi-sensor · L8/S2", badgeColor: "bg-emerald-100 text-emerald-700",
+    { name: ui("analysis.group.biophysics"),                  badge: "Multi-sensor · L8/S2", badgeColor: "bg-emerald-100 text-emerald-700",
       tabs: INDEX_DEFS.filter(d => d.group === "biophysical").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
 
   ];
@@ -3612,20 +3618,20 @@ export default function GeoAnalises({
     const g = tabGroups.find(grp => grp.tabs.some(t => t.id === activeTab));
     if (g) setOpenGroup(g.name);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, geeStartDate, geeEndDate, geeCloudPct, preStartDate, preEndDate, aoi]);
+  }, [activeTab, geeStartDate, geeEndDate, geeCloudPct, preStartDate, preEndDate, aoi, translatedLocale]);
 
   const activeCategory = useMemo(() => {
     if (selectedCategory) {
-      const found = GEO_CATEGORIES.find(c => c.id === selectedCategory);
+      const found = categories.find(c => c.id === selectedCategory);
       if (found) return found;
     }
-    return GEO_CATEGORIES.find(c => c.tabIds.includes(activeTab)) || GEO_CATEGORIES[0];
-  }, [selectedCategory, activeTab]);
+    return categories.find(c => c.tabIds.includes(activeTab)) || categories[0];
+  }, [selectedCategory, activeTab, categories]);
 
   const filteredCategories = useMemo(() => {
-    if (!categoryFilter.trim()) return GEO_CATEGORIES;
+    if (!categoryFilter.trim()) return categories;
     const q = categoryFilter.toLowerCase();
-    return GEO_CATEGORIES.filter(cat =>
+    return categories.filter(cat =>
       cat.title.toLowerCase().includes(q) ||
       cat.subtitle.toLowerCase().includes(q) ||
       cat.description.toLowerCase().includes(q) ||
@@ -3635,7 +3641,7 @@ export default function GeoAnalises({
         return t.toLowerCase().includes(q) || (def && (def.label.toLowerCase().includes(q) || def.short.toLowerCase().includes(q)));
       })
     );
-  }, [categoryFilter]);
+  }, [categoryFilter, categories]);
 
   const dynamicStoryMapContext = useMemo<DynamicAnalysisContext>(() => {
     return {
@@ -3739,24 +3745,24 @@ export default function GeoAnalises({
           <div className="geo-catalog-content mx-auto w-full max-w-7xl flex-1 space-y-4 p-3 sm:space-y-6 sm:p-6 md:p-8">
             <header className="space-y-4">
               <div>
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">O que pretende analisar?</h2>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Escolha uma área temática. Defina a área de estudo, configure os dados e consulte os resultados no mapa.</p>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">{ui("analysis.heading")}</h2>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{ui("analysis.intro")}</p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <div className="relative min-w-0 flex-1 basis-72">
                   <Search size={18} className="absolute left-3 top-3 text-slate-500" />
-                  <input type="search" aria-label="Pesquisar análises" value={categoryFilter}
-                    onChange={e => setCategoryFilter(e.target.value)} placeholder="Pesquisar tema ou índice: NDVI, água, relevo…"
+                  <input type="search" aria-label={ui("analysis.search")} value={categoryFilter}
+                    onChange={e => setCategoryFilter(e.target.value)} placeholder={ui("analysis.searchHint")}
                     className="geo-catalog-search min-h-11 w-full rounded-xl border border-slate-300 pl-10 pr-3 text-sm text-slate-900 focus:ring-2 focus:ring-sky-500 dark:border-slate-700 dark:text-white" />
                 </div>
                 <button type="button" onClick={() => { setSelectedCategory("satellite"); setActiveTab("s2"); setShowS2(true); setCompareActive(false); }}
                   className="geo-catalog-quick-action min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-medium dark:border-slate-700">Mosaicos EOX · 2016–2024</button>
                 <button type="button" onClick={() => { setSelectedCategory("satellite"); setActiveTab("s2"); setShowS2(true); setCompareActive(true); }}
-                  className="geo-catalog-quick-action min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-medium dark:border-slate-700">Comparar períodos</button>
+                  className="geo-catalog-quick-action min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-medium dark:border-slate-700">{ui("analysis.compare")}</button>
               </div>
-              <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{filteredCategories.length} áreas temáticas · Os cálculos requerem ligação ao Google Earth Engine; os mosaicos EOX podem ser explorados directamente.</p>
+              <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{filteredCategories.length} {ui("analysis.catalogSummary")}</p>
             </header>
-            {filteredCategories.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center"><p>Nenhuma análise encontrada.</p><button type="button" onClick={() => setCategoryFilter("")} className="mt-2 text-sky-700 underline">Limpar pesquisa</button></div>}
+            {filteredCategories.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center"><p>{ui("analysis.none")}</p><button type="button" onClick={() => setCategoryFilter("")} className="mt-2 text-sky-700 underline">{ui("analysis.clearSearch")}</button></div>}
 
             <div className="geo-catalog-grid grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-4 sm:gap-5">
               {filteredCategories.map(cat => {
@@ -3766,7 +3772,7 @@ export default function GeoAnalises({
                     type="button"
                     key={cat.id}
                     data-category={cat.id}
-                    aria-label={`${cat.status === "development" ? "Ver estado do módulo" : "Abrir análise especializada"}: ${cat.title}`}
+                    aria-label={`${cat.status === "development" ? ui("analysis.development") : ui("analysis.open")}: ${cat.title}`}
                     onClick={() => {
                       setCompareActive(false);
                       setStoryMapOpen(false);
@@ -3785,7 +3791,7 @@ export default function GeoAnalises({
                           <IconComponent size={20} />
                         </div>
                         <span className="geo-catalog-card__badge">
-                          {cat.status === "development" ? "Em desenvolvimento" : cat.badge}
+                          {cat.status === "development" ? ui("analysis.inDevelopment") : cat.badge}
                         </span>
                       </div>
 
@@ -3794,7 +3800,7 @@ export default function GeoAnalises({
                       </h3>
                       <p className="geo-catalog-card__subtitle mb-3 mt-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
                         {cat.subtitle}
-                        {cat.tabIds.some(id => SCIENCE[id]?.status === "experimental") && <span className="geo-catalog-card__review">Inclui ferramentas em revisão</span>}
+                        {cat.tabIds.some(id => SCIENCE[id]?.status === "experimental") && <span className="geo-catalog-card__review">{ui("analysis.review")}</span>}
                       </p>
 
                       <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-3">
@@ -3811,7 +3817,7 @@ export default function GeoAnalises({
                     </div>
 
                     <div className="geo-catalog-card__footer flex items-center justify-between gap-2 border-t pt-3 text-xs font-bold">
-                      <span>{cat.status === "development" ? "Ver estado do módulo" : "Abrir Análise Especializada"}</span>
+                      <span>{cat.status === "development" ? ui("analysis.development") : ui("analysis.open")}</span>
                       <span className="geo-catalog-card__arrow" aria-hidden="true">→</span>
                     </div>
                   </button>
@@ -3824,11 +3830,11 @@ export default function GeoAnalises({
         <div className="flex-1 overflow-y-auto bg-slate-50 p-6 dark:bg-slate-950 md:p-8">
           <button type="button" onClick={() => setSelectedCategory(null)}
             className="mb-6 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-            <ArrowLeft size={16} /> Voltar ao catálogo
+            <ArrowLeft size={16} /> {ui("analysis.back")}
           </button>
           <section aria-labelledby="module-development-title" className="mx-auto max-w-2xl rounded-2xl border border-amber-200 bg-white p-6 dark:border-amber-900 dark:bg-slate-900">
             <span role="status" className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-              <Clock size={14} /> Em desenvolvimento
+              <Clock size={14} /> {ui("analysis.inDevelopment")}
             </span>
             <h2 id="module-development-title" className="mt-4 text-xl font-bold text-slate-900 dark:text-slate-100">{activeCategory.title}</h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{activeCategory.description}</p>
@@ -3848,10 +3854,10 @@ export default function GeoAnalises({
               <button
                 onClick={() => setSelectedCategory(null)}
                 className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-sky-700 dark:hover:text-sky-400 bg-slate-100 dark:bg-slate-800 hover:bg-sky-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 hover:border-sky-200 dark:hover:border-sky-600 px-3 py-1.5 rounded-xl transition-all shrink-0 shadow-2xs cursor-pointer"
-                title="Voltar ao catálogo de especialidades"
+                title={ui("analysis.back")}
               >
                 <ArrowLeft size={13} />
-                <span>Voltar ao Catálogo</span>
+                <span>{ui("analysis.back")}</span>
               </button>
 
               <div className="h-5 w-px bg-slate-200 dark:bg-slate-700 shrink-0" />
@@ -3869,18 +3875,18 @@ export default function GeoAnalises({
 
             {/* Mobile category selector prevents clipped tabs and narrow touch targets. */}
             <label className="order-3 w-full min-w-0 sm:order-none sm:flex-1">
-              <span className="sr-only">Escolher índice ou análise</span>
+              <span className="sr-only">{ui("analysis.selectIndex")}</span>
               <select
                 value={activeTab}
                 onChange={event => {
                   setActiveTab(event.target.value as SpectralTab);
                   setSidebarOpen(false);
                 }}
-                aria-label="Escolher índice ou análise"
+                aria-label={ui("analysis.selectIndex")}
                 className="min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
               >
                 {activeCategory.tabIds.map(tabId => (
-                  <option key={tabId} value={tabId}>{descriptiveIndexName(tabId)}{SCIENCE[tabId]?.status === "experimental" ? " · Em revisão" : ""}</option>
+                  <option key={tabId} value={tabId}>{descriptiveIndexName(tabId)}{SCIENCE[tabId]?.status === "experimental" ? ` · ${ui("analysis.underReview")}` : ""}</option>
                 ))}
               </select>
             </label>
@@ -3895,22 +3901,22 @@ export default function GeoAnalises({
                 }}
                 aria-expanded={resultsPanelOpen}
                 className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-2.5 text-xs font-semibold text-sky-700 hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300"
-                title={resultsPanelOpen ? "Ocultar painel sem perder os dados" : hasActiveResult ? "Mostrar resultados" : "Sobre a análise e opções específicas"}
+                title={resultsPanelOpen ? ui("analysis.hidePanelHint") : hasActiveResult ? ui("analysis.showResults") : ui("analysis.aboutOptionsLong")}
               >
                 <BarChart2 size={15} />
-                <span className="hidden lg:inline">{resultsPanelOpen ? "Ocultar painel" : hasActiveResult ? "Resultados" : "Sobre e opções"}</span>
-                <span className="lg:hidden">Resultados</span>
+                <span className="hidden lg:inline">{resultsPanelOpen ? ui("analysis.hidePanel") : hasActiveResult ? ui("analysis.results") : ui("analysis.aboutOptions")}</span>
+                <span className="lg:hidden">{ui("analysis.results")}</span>
                 {resultsPanelOpen ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
               </button>
               <details className="relative">
-                <summary className="cursor-pointer rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-700">Exportar</summary>
+                <summary className="cursor-pointer rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-700">{ui("analysis.export")}</summary>
                 <div className="absolute right-0 top-full z-[800] mt-2 flex w-56 flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900">
                   <button type="button" disabled={isLineaments || indexBlocked || !hasActiveResult}
-                    onClick={exportGeoAnalisesPdf} className="rounded-lg p-2 text-left text-sm hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">Relatório PDF</button>
+                    onClick={exportGeoAnalisesPdf} className="rounded-lg p-2 text-left text-sm hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">{ui("analysis.pdf")}</button>
                   <button type="button" disabled={isLineaments || indexBlocked || !hasActiveResult}
-                    onClick={() => setStoryMapOpen(true)} className="rounded-lg p-2 text-left text-sm hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">Apresentação executiva</button>
-                  {!hasActiveResult && <p className="text-xs text-slate-600 dark:text-slate-300">Execute uma análise para exportar os resultados.</p>}
-                  <p className="text-xs text-slate-600 dark:text-slate-300">Para compor uma folha cartográfica, use o Layout de impressão no cabeçalho.</p>
+                    onClick={() => setStoryMapOpen(true)} className="rounded-lg p-2 text-left text-sm hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">{ui("analysis.executive")}</button>
+                  {!hasActiveResult && <p className="text-xs text-slate-600 dark:text-slate-300">{ui("analysis.exportHint")}</p>}
+                  <p className="text-xs text-slate-600 dark:text-slate-300">{ui("analysis.layoutHint")}</p>
                 </div>
               </details>
             </div>
@@ -3931,7 +3937,7 @@ export default function GeoAnalises({
               type="button"
               onClick={() => setDesktopSidebarOpen(v => !v)}
               style={{ left: desktopSidebarOpen ? sidebarSize.width : 0 }}
-              title={desktopSidebarOpen ? "Recolher painel lateral" : "Expandir painel lateral"}
+              title={desktopSidebarOpen ? ui("analysis.collapseSidebar") : ui("analysis.expandSidebar")}
               className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-l-0 border-slate-200 dark:border-slate-800 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 cursor-pointer"
             >
               {desktopSidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
@@ -3942,7 +3948,7 @@ export default function GeoAnalises({
       <div
               ref={sidebarSize.ref}
         style={sidebarSize.style}
-        aria-label="Parâmetros da análise"
+        aria-label={ui("analysis.parameters")}
               className={`geomoz-analysis-sidebar fixed md:relative inset-y-0 left-0 z-[700] flex w-[min(94vw,26rem)] min-h-0 flex-col overflow-y-auto overscroll-contain bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 shadow-xl md:shadow-none ${
                 sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
               } ${
@@ -3953,12 +3959,12 @@ export default function GeoAnalises({
               <div className="md:hidden px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
                   <SlidersHorizontal size={14} className="text-sky-500" />
-                  Filtros & Parâmetros
+                  {ui("analysis.filters")}
                 </span>
                 <button
                   type="button"
                   onClick={() => setSidebarOpen(false)}
-                  aria-label="Fechar filtros"
+                  aria-label={ui("analysis.closeFilters")}
                   className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                 >
                   <X size={18} />
@@ -3968,7 +3974,7 @@ export default function GeoAnalises({
               {/* Area filter — AOI global & Parâmetros GEE */}
               <div className="p-4 border-b border-slate-100 dark:border-slate-800 space-y-3">
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Área de Estudo</h4>
+                  <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{ui("analysis.studyArea")}</h4>
                   <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
                 </div>
 
@@ -3976,7 +3982,7 @@ export default function GeoAnalises({
                 <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <h5 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      Parâmetros GEE
+                      {ui("analysis.geeParams")}
                     </h5>
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
                       S-2 / L8
@@ -3985,7 +3991,7 @@ export default function GeoAnalises({
 
                   <div className="period-grid grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">{needsPrePeriod ? "Pós-incêndio: início" : "Data início"}</label>
+                      <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">{needsPrePeriod ? ui("analysis.postFireStart") : ui("analysis.startDate")}</label>
                       <input
                         type="date"
                         value={geeStartDate}
@@ -4629,7 +4635,7 @@ export default function GeoAnalises({
                 setSidebarOpen(true);
               }}
               className="flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/95 px-3 text-xs font-semibold text-slate-700 shadow-md backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200"
-              aria-label="Abrir filtros e parâmetros"
+              aria-label={ui("analysis.openFilters")}
             >
               <SlidersHorizontal size={15} className="text-sky-600 dark:text-sky-400" />
               Filtros
@@ -4642,7 +4648,7 @@ export default function GeoAnalises({
                   setResultsPanelOpen(true);
                 }}
                 className="flex min-h-11 items-center gap-1.5 rounded-xl border border-sky-200 bg-white/95 px-3 text-xs font-semibold text-sky-700 shadow-md backdrop-blur-md dark:border-sky-800 dark:bg-slate-900/95 dark:text-sky-300"
-                aria-label="Mostrar painel de resultados"
+                aria-label={ui("analysis.showPanel")}
               >
                 <BarChart2 size={15} />
                 Resultados
