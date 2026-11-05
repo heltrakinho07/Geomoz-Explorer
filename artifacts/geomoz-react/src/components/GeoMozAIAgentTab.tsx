@@ -2,6 +2,7 @@ import { GAULAreaSelect, type LoadGAULUnits } from "./GAULAreaSelect";
 import { WORLD_COUNTRIES } from "@/lib/world-countries";
 import { PublicDataTools, type PublicAnalysisRequest } from "./PublicDataTools";
 import { GeoIntelligenceDossier, type IntelligenceDossier } from "./GeoIntelligenceDossier";
+import { GeoTemporalAnalysisPanel, type TemporalQuality } from "./GeoTemporalAnalysisPanel";
 import { makeTemporalReplay, isTemporalReplay } from "@/lib/geoai-temporal-replay";
 import type { TemporalReplay } from "@/types/project";
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -606,6 +607,7 @@ export default function GeoMozAIAgentTab() {
             tileUrl: act.tileUrl,
             temporalChange: act.temporalChange || null,
             replay: replayRecipe,
+            quality: sourceRun?.output?.quality || null,
           });
         }
         if (act.type === "ADD_GEOJSON_LAYER" && act.id === "agent_geology") {
@@ -730,6 +732,20 @@ export default function GeoMozAIAgentTab() {
       clearTimeout(timeoutId);
       abortRef.current = null;
       setIsRunning(false);
+    }
+  };
+
+  const handleExportMapPNG = async () => {
+    if (!mapRef.current || !selectedRecipe) throw new Error(copy("temporal.noMap"));
+    try {
+      const canvas = await html2canvas(mapRef.current, { useCORS: true, logging: false, backgroundColor: "#ffffff" });
+      const dataUrl = canvas.toDataURL("image/png");
+      const anchor = document.createElement("a");
+      anchor.href = dataUrl;
+      anchor.download = `GeoMoz_${selectedRecipe.args.index}_${selectedRecipe.args.start_date_1.slice(0, 4)}_${selectedRecipe.args.start_date_2.slice(0, 4)}.png`;
+      anchor.click();
+    } catch {
+      throw new Error(copy("temporal.pngError"));
     }
   };
 
@@ -1294,6 +1310,16 @@ export default function GeoMozAIAgentTab() {
               )}
             </div>
           ))}
+
+          {selectedRecipe && (
+            <GeoTemporalAnalysisPanel
+              replay={selectedRecipe}
+              quality={completedRuns[selectedLayerIndex]?.quality as TemporalQuality | null | undefined}
+              disabled={isRunning || isExportingPdf}
+              onExportPdf={handleExportPDF}
+              onExportPng={handleExportMapPNG}
+            />
+          )}
 
           {/* Saved scientific recipes: old Earth Engine map URLs are never reused. */}
           {activeProject && activeRuns.some(isTemporalReplay) && (
