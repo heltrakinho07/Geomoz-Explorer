@@ -2744,7 +2744,7 @@ export default function HidroGeoMoz({
 
       {/* ── Modal de Partilha WebGIS ────────────────────────────────────── */}
       {shareModalOpen && (
-        <div className="fixed inset-0 z-[1000] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" aria-label={ht("share.title")} className="fixed inset-0 z-[1000] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl text-slate-800 dark:text-slate-100 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
@@ -2759,6 +2759,7 @@ export default function HidroGeoMoz({
               <button
                 type="button"
                 onClick={() => setShareModalOpen(false)}
+                aria-label={ht("dialog.close")}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-xs p-1"
               >
                 <X size={14} />
@@ -2865,7 +2866,7 @@ export default function HidroGeoMoz({
 
       {/* ── Modal de Exportação PDF QGIS ─────────────────────────────────── */}
       {pdfExportModalOpen && (
-        <div className="fixed inset-0 z-[1000] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" aria-label={ht("pdf.title")} className="fixed inset-0 z-[1000] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl text-slate-800 dark:text-slate-100 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
@@ -2880,6 +2881,7 @@ export default function HidroGeoMoz({
               <button
                 type="button"
                 onClick={() => setPdfExportModalOpen(false)}
+                aria-label={ht("dialog.close")}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-xs p-1"
               >
                 <X size={14} />
@@ -2967,7 +2969,7 @@ export default function HidroGeoMoz({
 
       {/* ── Modal de Análises Guardadas (Arquivo Permanente) ──────────────── */}
       {savedModalOpen && (
-        <div className="fixed inset-0 z-[1000] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" aria-label={ht("archive.title")} className="fixed inset-0 z-[1000] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl text-slate-800 dark:text-slate-100 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
               <div className="flex items-center gap-2.5">
@@ -2982,6 +2984,7 @@ export default function HidroGeoMoz({
               <button
                 type="button"
                 onClick={() => setSavedModalOpen(false)}
+                aria-label={ht("dialog.close")}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-xs p-1"
               >
                 <X size={14} />
