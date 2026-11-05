@@ -12,10 +12,10 @@ import { apiFetch } from "@/lib/api";
 
 const features: Record<PlanId, string[]> = {
   community: ["GIS Workspace e ferramentas SIG locais"],
-  academic: ["Análises científicas e GEE próprio", "Elegibilidade académica"],
-  pro: ["Processamento e exportação avançados"],
-  teams: ["Colaboração e equipas"],
-  enterprise: ["Integrações, APIs e SLA", "Licenciamento institucional"],
+  academic: ["Análises científicas e outros índices GEE próprios", "Elegibilidade académica"],
+  pro: ["DEM Copernicus GLO-30 via GEE da sua conta", "Qualidade de aquisição ajustável e geomorfometria Pro", "Processamento e exportação avançados"],
+  teams: ["Inclui DEM Copernicus GEE e geomorfometria Pro", "Colaboração e equipas"],
+  enterprise: ["Inclui DEM Copernicus GEE e geomorfometria Pro", "Integrações, APIs e SLA", "Licenciamento institucional"],
 };
 type PaymentRecord = {
   id: string;

@@ -78,6 +78,17 @@ async def require_firebase_auth(request: Request) -> str:
     return uid
 
 
+async def require_pro_gee_auth(request: Request) -> str:
+    """Pro entitlement is checked server-side before allocating GEE resources.
+
+    A client-side Pro badge or user-supplied plan is never sufficient.
+    """
+    from terrain_pro import require_terrain_pro_plan
+    uid = await require_firebase_auth(request)
+    require_terrain_pro_plan(uid)
+    return await require_gee_auth(request)
+
+
 async def require_gee_auth(request: Request) -> str:
     """Require a verified Firebase UID with that UID's own GEE credentials.
 
@@ -1380,6 +1391,11 @@ async def gee_download_url(req: GEEDownloadRequest, uid: str = Depends(require_g
     import asyncio
     from gee_module import get_index_download_url
 
+    if req.index.strip().lower() in ("elevation", "dem"):
+        # Generic elevation GeoTIFF export is another path to the same DEM.
+        # Protect it as well; other GEE indices retain their existing access.
+        from terrain_pro import require_terrain_pro_plan
+        require_terrain_pro_plan(uid)
     region = _region_geojson(req.province, req.district, req.geometry)
     loop = asyncio.get_event_loop()
 
@@ -3175,12 +3191,13 @@ class GEETerrainPreviewRequest(BaseModel):
     province: Optional[str] = None
     district: Optional[str] = None
     geometry: Optional[dict] = None
+    quality: Literal["standard", "detailed", "maximum"] = "standard"
 
 
 @app.post("/geomoz-api/terrain/gee-mesh")
 async def terrain_gee_mesh_preview(
     req: GEETerrainPreviewRequest,
-    uid: str = Depends(require_gee_auth),
+    uid: str = Depends(require_pro_gee_auth),
 ):
     """Load Copernicus GLO-30 from the current authenticated user's GEE project."""
     from starlette.concurrency import run_in_threadpool
@@ -3192,7 +3209,7 @@ async def terrain_gee_mesh_preview(
     if region is None:
         raise HTTPException(status_code=422, detail="Seleccione uma província, distrito ou desenhe uma área de estudo para o terreno 3D.")
     try:
-        return await run_in_threadpool(copernicus_to_preview, region)
+        return await run_in_threadpool(copernicus_to_preview, region, req.quality)
     except TerrainInputError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except httpx.HTTPError as exc:

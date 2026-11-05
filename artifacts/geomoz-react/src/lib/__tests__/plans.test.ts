@@ -17,6 +17,12 @@ describe("GeoMoz subscription catalogue",()=>{
     expect(hasPlanFeature("community","cloud_jobs")).toBe(false);
     expect(hasPlanFeature("academic","scientific_analysis")).toBe(true);
   });
+  it("reserva a aquisição GEE de DEM aos planos Pro e superiores",()=>{
+    expect(hasPlanFeature("community","gee_terrain_pro")).toBe(false);
+    expect(hasPlanFeature("academic","gee_terrain_pro")).toBe(false);
+    for(const id of ["pro","teams","enterprise"] as const)
+      expect(hasPlanFeature(id,"gee_terrain_pro")).toBe(true);
+  });
   it("rejects unknown plan identifiers",()=>{
     expect(isPlanId("enterprise")).toBe(true);
     expect(isPlanId("unlimited")).toBe(false);

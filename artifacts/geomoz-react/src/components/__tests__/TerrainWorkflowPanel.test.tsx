@@ -2,6 +2,9 @@ import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-libra
 import { afterEach, expect, it, vi } from 'vitest';
 import TerrainWorkflowPanel from '../TerrainWorkflowPanel';
 import { runTerrainWorkflow } from '@/lib/terrain-workflow-client';
+vi.mock('@/hooks/useSubscription',()=>({
+  useSubscription:()=>({loading:false,can:()=>false,plan:"community"})
+}));
 vi.mock('@/lib/api', () => ({apiFetch: vi.fn()}));
 vi.mock('@/lib/terrain-workflow-client', () => ({runTerrainWorkflow: vi.fn(), readBoundedDem: vi.fn()}));
 vi.mock('@/lib/terrain-report', () => ({downloadTerrainBlob: vi.fn(), exportTerrainPdf: vi.fn(), exportTerrainPng: vi.fn()}));
@@ -14,6 +17,15 @@ it('requires a DEM and prevents whole-world Earth Engine requests', async () => 
   fireEvent.change(screen.getByLabelText('Fonte'), {target: {value: 'gee'}});
   fireEvent.click(screen.getByText('Executar análise completa'));
   expect(await screen.findByRole('alert')).toHaveTextContent('Seleccione um distrito');
+  expect(runTerrainWorkflow).not.toHaveBeenCalled();
+});
+it('blocks Community users from requesting Copernicus DEM from GEE', async () => {
+  render(<TerrainWorkflowPanel {...props}
+    aoi={{source:'draw',label:'AOI',
+      geometry:{type:'Polygon',coordinates:[[[32,-25],[33,-25],[33,-24],[32,-25]]]}}}/>);
+  fireEvent.change(screen.getByLabelText('Fonte'),{target:{value:'gee'}});
+  fireEvent.click(screen.getByText('Executar análise completa'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('GeoMoz Pro');
   expect(runTerrainWorkflow).not.toHaveBeenCalled();
 });
 it('cancels the active worker and never adds partial products', async () => {

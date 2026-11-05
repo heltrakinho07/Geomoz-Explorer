@@ -3,6 +3,8 @@ import { jsPDF } from "jspdf";
 import { Download, FileUp, Image as ImageIcon, Loader2, Mountain, RotateCcw, Map as MapIcon, Box, X } from "lucide-react";
 import TerrainBasemap from "@/components/terrain/TerrainBasemap";
 import TerrainDrapePanel from "@/components/terrain/TerrainDrapePanel";
+import TerrainProInsights from "@/components/terrain/TerrainProInsights";
+import { useSubscription } from "@/hooks/useSubscription";
 import {composeTerrainDrapes,type TerrainDrapeLayer} from "@/lib/terrain-drape-stack";
 import { validTerrainGeography } from "@/lib/terrain-map-geo";
 import { apiFetch } from "@/lib/api";
@@ -36,10 +38,13 @@ interface TerrainStudioProps {
 export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRegion, embedded = false }: TerrainStudioProps) {
   const { terrain, setTerrain } = useTerrainSession();
   const { activeProject } = useProject();
+  const subscription=useSubscription();
+  const proGeeEnabled=!subscription.loading && subscription.can("gee_terrain_pro");
   const [busy, setBusy] = useState(false);
   const [textureBusy, setTextureBusy] = useState(false);
   const [glbBusy, setGlbBusy] = useState(false);
   const [cloudLimit, setCloudLimit] = useState(35);
+  const [geeQuality,setGeeQuality]=useState<"standard"|"detailed"|"maximum">("standard");
   const [textureDescription, setTextureDescription] = useState<string | null>(null);
   const textureRequestId = useRef(0);
   const [error, setError] = useState<string | null>(null);
@@ -177,6 +182,10 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   }
 
   async function loadFromGEE() {
+    if (!proGeeEnabled) {
+      setError("A geração do DEM Copernicus requer uma subscrição GeoMoz Pro, Teams ou Enterprise activa.");
+      return;
+    }
     if (!geeEnabled) {
       setError("Ligue a sua conta Google Earth Engine para obter o DEM Copernicus.");
       return;
@@ -188,7 +197,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
       const response = await apiFetch("/geomoz-api/terrain/gee-mesh", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(geeRegion ?? {}),
+        body: JSON.stringify({...(geeRegion ?? {}),quality:geeQuality}),
       });
       const result = await response.json().catch(() => null);
       if (!response.ok) {
@@ -475,12 +484,39 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               1. Modelo digital de elevação
             </label>
             {geeRegion && (
-              <button type="button" disabled={busy || !geeEnabled}
-                onClick={() => void loadFromGEE()}
-                className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-sky-500/50 bg-sky-600 px-3 py-2.5 text-xs font-bold text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-40">
-                {busy ? <Loader2 size={15} className="animate-spin"/> : <Mountain size={15}/>}
-                Gerar do DEM Copernicus (GEE)
-              </button>
+              <section aria-label="Geração Pro do DEM Copernicus" className="mb-3 space-y-2 rounded-xl border border-violet-300 bg-violet-50/80 p-3 dark:border-violet-800 dark:bg-violet-950/25">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-violet-900 dark:text-violet-200">Copernicus GLO-30 · Earth Engine</span>
+                  <span className="rounded-full bg-violet-700 px-2 py-0.5 text-[10px] font-semibold text-white">Pro</span>
+                </div>
+                {proGeeEnabled ? <>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200" htmlFor="terrain-gee-quality">
+                    Qualidade de aquisição
+                  </label>
+                  <select id="terrain-gee-quality" value={geeQuality}
+                    onChange={event=>setGeeQuality(event.target.value as typeof geeQuality)}
+                    className="w-full rounded-lg border border-violet-200 bg-white p-2 text-xs text-slate-700 dark:border-violet-700 dark:bg-slate-900 dark:text-white">
+                    <option value="standard">Rápida · até 180 células por eixo</option>
+                    <option value="detailed">Detalhada · até 360 células por eixo</option>
+                    <option value="maximum">Máxima · até 600 células por eixo</option>
+                  </select>
+                  <button type="button" disabled={busy || !geeEnabled}
+                    onClick={() => void loadFromGEE()}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-700 px-3 py-2.5 text-xs font-bold text-white hover:bg-violet-600 disabled:cursor-not-allowed disabled:opacity-40">
+                    {busy ? <Loader2 size={15} className="animate-spin"/> : <Mountain size={15}/>}
+                    Gerar DEM Copernicus (GEE)
+                  </button>
+                  {!geeEnabled && <p className="text-[11px] text-amber-700 dark:text-amber-300">Ligue primeiro a sua conta Google Earth Engine.</p>}
+                  <p className="text-[10px] text-slate-600 dark:text-slate-300">
+                    Escala nominal 30 m ou mais grossa conforme a extensão. A malha 3D é simplificada para visualização científica exploratória.
+                  </p>
+                </> : <div className="space-y-2 text-[11px] text-violet-900 dark:text-violet-200">
+                  <p>{subscription.loading?"A verificar o plano…":"A geração do DEM pelo GEE está reservada aos planos Pro, Teams e Enterprise."}</p>
+                  <a href="/planos" className="inline-flex rounded-lg bg-violet-700 px-3 py-2 font-semibold text-white hover:bg-violet-600">
+                    Consultar planos Pro
+                  </a>
+                </div>}
+              </section>
             )}
             <input ref={sceneInputRef} type="file" accept=".geomoz"
               className="sr-only" aria-label="Abrir cena 3D .geomoz"
@@ -624,6 +660,14 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
           )}
           {terrain && <TerrainSciencePanel terrain={terrain} pickedPoint={lastPick}
             activePickTarget={pickTarget} onRequestPick={setPickTarget} />}
+          {terrain && proGeeEnabled && <TerrainProInsights terrain={terrain}/>}
+          {terrain && !proGeeEnabled && !subscription.loading && (
+            <div className="rounded-xl border border-violet-200 bg-violet-50/70 p-3 text-xs text-violet-900 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-200">
+              <strong>GeoMoz Pro · Análise geomorfométrica</strong>
+              <p className="mt-1">Orientação de encostas, TRI, relevo local, percentis altimétricos e relatório de proveniência.</p>
+              <a href="/planos" className="mt-2 inline-block font-semibold underline">Explorar GeoMoz Pro</a>
+            </div>
+          )}
           {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 dark:border-rose-700 dark:bg-rose-950/40 p-3 text-xs text-rose-700 dark:text-rose-200">{error}</p>}
           {rendererError && <p role="alert" className="rounded-lg border border-rose-700 bg-rose-950/40 p-3 text-xs text-rose-200">{rendererError}</p>}
         </aside>

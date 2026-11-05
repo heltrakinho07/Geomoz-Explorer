@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Mountain, Play, Square, Download, MapPin, FileText } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { useSubscription } from "@/hooks/useSubscription";
 import { usePortalTranslation } from "@/i18n/usePortalTranslation";
 import { terrainText, terrainStageText, type TerrainCopyKey } from "@/i18n/terrain";
 import { aoiToAPI, computeGeoJSONBounds, type AreaOfInterest } from "@/lib/aoi";
@@ -26,6 +27,8 @@ const button = "rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibo
 
 export default function TerrainWorkflowPanel({ aoi, rasters, onComplete, onShowProduct, onDraw }: Props) {
   const { language } = usePortalTranslation();
+  const subscription=useSubscription();
+  const canGenerateGEE=!subscription.loading && subscription.can("gee_terrain_pro");
   const tr = (key: TerrainCopyKey, params?: Record<string, string | number>) => terrainText(language, key, params);
   const [source, setSource] = useState<"file" | "layer" | "gee">("file");
   const [file, setFile] = useState<File | null>(null);
@@ -59,6 +62,7 @@ export default function TerrainWorkflowPanel({ aoi, rasters, onComplete, onShowP
       if (source === "gee") {
         if (aoi.source === "global" || (aoi.source === "mozambique" && !aoi.province))
           throw new TerrainUIError("error.needAoi");
+        if (!canGenerateGEE) throw new Error("O DEM Copernicus via GEE está disponível apenas nos planos GeoMoz Pro, Teams e Enterprise.");
         const response = await apiFetch("/geomoz-api/gee/download-url", {
           method: "POST", signal: abort.signal, headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ index: "elevation", ...aoiToAPI(aoi), scale: options.resolution }),
@@ -117,7 +121,7 @@ export default function TerrainWorkflowPanel({ aoi, rasters, onComplete, onShowP
       <legend className="mb-2 font-semibold">{tr("step.source")}</legend>
       <label className="block">{tr("source.label")}
         <select className={field} value={source} onChange={e => setSource(e.target.value as typeof source)}>
-          <option value="file">{tr("source.file")}</option><option value="layer">{tr("source.layer")}</option><option value="gee">{tr("source.gee")}</option>
+          <option value="file">{tr("source.file")}</option><option value="layer">{tr("source.layer")}</option><option value="gee">{tr("source.gee")} · Pro</option>
         </select>
       </label>
       {source === "file" && <label className="block text-xs">{tr("source.fileHint")}
@@ -134,7 +138,13 @@ export default function TerrainWorkflowPanel({ aoi, rasters, onComplete, onShowP
         {bbox && <p className="mt-1 font-mono">{bbox.map(v => v.toFixed(4)).join(", ")} (W, S, E, N)</p>}
         <button type="button" className={button + " mt-2 block"} onClick={() => { setClip(true); setError(null); onDraw(); }}><MapPin size={12} className="mr-1 inline" /> {tr("aoi.draw")}</button>
       </div>
-      {source === "gee" ? <p className="text-xs text-slate-500">{tr("gee.hint")}</p> : <label className="flex gap-2 text-xs">
+      {source === "gee" ? <div className="space-y-1 text-xs text-slate-500">
+        <p>{tr("gee.hint")}</p>
+        {!canGenerateGEE && <p className="text-violet-700 dark:text-violet-300">
+          A aquisição do DEM Copernicus no GEE requer GeoMoz Pro, Teams ou Enterprise.{" "}
+          <a href="/planos" className="font-semibold underline">Consultar planos</a>
+        </p>}
+      </div> : <label className="flex gap-2 text-xs">
         <input type="checkbox" checked={clip && !!bbox} disabled={!bbox} onChange={e => setClip(e.target.checked)} /> {tr("clip")}
       </label>}
       <label className="block">{tr("units.label")}
