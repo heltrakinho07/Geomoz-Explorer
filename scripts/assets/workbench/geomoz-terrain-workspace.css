@@ -214,3 +214,81 @@
 .gm-terrain-raster-legend span{display:block;width:16px;height:13px;border:1px solid #cbd5e1;border-radius:3px}
 .gm-terrain-raster-legend small{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dark .gm-terrain-layer-raster{background:#122b46;border-color:#24547e}
+
+/* Real-world DEM basemap and synchronized local mesh — one GeoMoz workspace. */
+.gm-terrain-view-switch{
+  position:absolute;top:12px;left:12px;z-index:25;
+  display:flex;gap:3px;align-items:center;padding:4px;
+  border:1px solid rgba(148,163,184,.45);border-radius:12px;
+  background:rgba(15,23,42,.89);box-shadow:0 7px 24px #02061755;
+  backdrop-filter:blur(12px);max-width:calc(100% - 24px);
+}
+.gm-terrain-view-switch button{
+  display:inline-flex;align-items:center;gap:6px;border:0;border-radius:8px;
+  min-height:33px;padding:7px 11px;color:#cbd5e1;background:transparent;
+  font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;
+}
+.gm-terrain-view-switch button:hover:not(:disabled){background:#334155;color:white;}
+.gm-terrain-view-switch button.gm-terrain-view-active{background:#0284c7;color:white;}
+.gm-terrain-view-switch button:disabled{opacity:.35;cursor:not-allowed;}
+.gm-terrain-comparison{display:flex;width:100%;height:100%;min-height:0;min-width:0;}
+.gm-terrain-comparison-split{flex-direction:row;}
+.gm-terrain-model-pane,.gm-terrain-map-pane{
+  position:relative;flex:1;min-height:0;min-width:0;overflow:hidden;
+}
+.gm-terrain-comparison-split .gm-terrain-model-pane{flex:3;}
+.gm-terrain-comparison-split .gm-terrain-map-pane{
+  flex:2;box-shadow:inset 1px 0 0 #475569;border-left:1px solid #475569;
+}
+.gm-terrain-geographic{height:100%;width:100%;position:relative;overflow:hidden;
+  background:#dbeafe;color:#0f172a;}
+.gm-terrain-geographic-map{height:100%;width:100%;}
+.gm-terrain-geographic-tools{
+  position:absolute;top:58px;left:9px;z-index:10;
+  display:flex;gap:6px;flex-wrap:wrap;align-items:end;
+  padding:8px;background:rgba(255,255,255,.94);
+  border:1px solid #cbd5e1;border-radius:11px;
+  box-shadow:0 7px 22px #0f172a25;backdrop-filter:blur(9px);
+  max-width:calc(100% - 50px);
+}
+.gm-terrain-geographic-tools label{font-size:10px;font-weight:700;color:#475569;
+  display:flex;flex-direction:column;gap:4px;}
+.gm-terrain-geographic-tools select,.gm-terrain-geographic-tools button{
+  border:1px solid #cbd5e1;background:#f8fafc;color:#0f172a;
+  border-radius:7px;padding:6px 8px;min-height:30px;font-size:11px;
+}
+.gm-terrain-geographic-tools button{cursor:pointer;font-weight:700;}
+.gm-terrain-geographic-tools button:hover{border-color:#0284c7;color:#0369a1;}
+.gm-terrain-geographic-info{
+  position:absolute;bottom:30px;left:10px;z-index:9;
+  display:flex;flex-direction:column;gap:3px;
+  max-width:min(390px,calc(100% - 70px));padding:9px 11px;
+  border-radius:10px;border:1px solid #cbd5e1;
+  background:rgba(255,255,255,.93);box-shadow:0 5px 16px #0f172a26;
+  font-size:11px;line-height:1.4;pointer-events:none;
+}
+.gm-terrain-geographic-info strong{font-size:12px;color:#0369a1;}
+.gm-terrain-geographic-info small{font-size:10px;color:#64748b;}
+.gm-terrain-geographic-error,.gm-terrain-map-unavailable{
+  position:absolute;top:130px;left:12px;z-index:20;
+  max-width:340px;border:1px solid #fecaca;background:#fef2f2;
+  color:#991b1b;font-size:12px;border-radius:10px;padding:12px;
+}
+.gm-terrain-map-unavailable{position:relative;top:auto;left:auto;}
+@media(max-width:1050px){
+  .gm-terrain-comparison-split{flex-direction:column;}
+  .gm-terrain-comparison-split .gm-terrain-model-pane{flex:1;min-height:0;}
+  .gm-terrain-comparison-split .gm-terrain-map-pane{
+    flex:1;border-left:0;border-top:1px solid #475569;
+  }
+}
+@media(max-width:600px){
+  .gm-terrain-view-switch{left:6px;top:6px;padding:2px;}
+  .gm-terrain-view-switch button{padding:6px 7px;font-size:10px;gap:4px;}
+  .gm-terrain-geographic-tools{top:48px;left:5px;padding:5px;gap:4px;
+    max-width:calc(100% - 14px);}
+  .gm-terrain-geographic-tools select,.gm-terrain-geographic-tools button{
+    font-size:10px;max-width:116px;}
+  .gm-terrain-geographic-info small{display:none;}
+  .gm-terrain-geographic-info{left:6px;bottom:24px;padding:5px 7px;font-size:10px;}
+}
