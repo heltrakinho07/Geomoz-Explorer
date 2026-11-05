@@ -464,6 +464,23 @@ async function settleRecovery(page){
   await row.waitFor();
   console.log("GeoJSON imported through the real GIS drop handler.");
   await row.locator(".gm-layer-select").click();
+  // QGIS-like specialist properties: vector attributes and vector categories
+  // must never be presented as raster band values.
+  await page.getByTestId("geomoz-layer-properties-open").click();
+  const properties=page.getByTestId("geomoz-layer-properties-dialog");
+  await properties.waitFor({state:"visible"});
+  assert.equal(await properties.getAttribute("data-layer-kind"),"vector");
+  await properties.getByRole("button",{name:"Simbologia"}).click();
+  await properties.getByText("Simbologia vectorial").waitFor();
+  assert.equal(await properties.getByText("As classes de um raster", {exact:false}).count(),0);
+  await properties.getByRole("button",{name:"Atributos"}).click();
+  await properties.getByText("Campos da tabela de atributos").waitFor();
+  await properties.getByText("population",{exact:true}).waitFor();
+  await properties.getByText("name",{exact:true}).waitFor();
+  await properties.getByRole("button",{name:"Fonte"}).click();
+  await properties.getByText("Fonte e metadados").waitFor();
+  await properties.getByRole("button",{name:"Fechar propriedades da camada"}).click();
+  await properties.waitFor({state:"hidden"});
   // Fix regression: layer style must be editable without the hidden specialist panel.
   await page.getByRole("button",{name:"Editar simbologia"}).click();
   await page.getByLabel("Cor do símbolo",{exact:true}).fill("#a855f7");
