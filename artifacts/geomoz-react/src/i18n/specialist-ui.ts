@@ -129,7 +129,21 @@ export const SPECIALIST_UI_CATALOGS = {
     "agent.endDate": "Data final (exclusiva)",
     "agent.promptAria": "Mensagem para GeoMoz AI",
     "agent.placeholder": "Descreva a análise que pretende…",
-    "agent.send": "Enviar mensagem"
+    "agent.send": "Enviar mensagem",
+    "analysis.group.optical": "Mosaico óptico",
+    "analysis.group.vegetation": "Vegetação e solo",
+    "analysis.group.landsat": "Landsat 8",
+    "analysis.group.terrain": "Relevo e morfologia",
+    "analysis.group.geology": "Geologia e minerais",
+    "analysis.group.landcover": "Uso e cobertura do solo",
+    "analysis.group.agriculture": "Agricultura",
+    "analysis.group.drought": "Seca e stress hídrico",
+    "analysis.group.fire": "Incêndios e desflorestação",
+    "analysis.group.water": "Recursos hídricos e índices de água",
+    "analysis.group.climate": "Clima e desastres",
+    "analysis.group.urban": "Urbano e infraestruturas",
+    "analysis.group.health": "Saúde pública",
+    "analysis.group.biophysics": "Índices biofísicos"
   },
   "en": {
     "analysis.heading": "What would you like to analyse?",
@@ -256,7 +270,21 @@ export const SPECIALIST_UI_CATALOGS = {
     "agent.endDate": "End date (exclusive)",
     "agent.promptAria": "Message for GeoMoz AI",
     "agent.placeholder": "Describe your analysis…",
-    "agent.send": "Send message"
+    "agent.send": "Send message",
+    "analysis.group.optical": "Optical mosaic",
+    "analysis.group.vegetation": "Vegetation & soil",
+    "analysis.group.landsat": "Landsat 8",
+    "analysis.group.terrain": "Terrain & morphology",
+    "analysis.group.geology": "Geology & minerals",
+    "analysis.group.landcover": "Land use & cover",
+    "analysis.group.agriculture": "Agriculture",
+    "analysis.group.drought": "Drought & water stress",
+    "analysis.group.fire": "Wildfires & deforestation",
+    "analysis.group.water": "Water resources & indices",
+    "analysis.group.climate": "Climate & disasters",
+    "analysis.group.urban": "Urban & infrastructure",
+    "analysis.group.health": "Public health",
+    "analysis.group.biophysics": "Biophysical indices"
   },
   "es": {
     "analysis.heading": "¿Qué desea analizar?",
@@ -383,7 +411,21 @@ export const SPECIALIST_UI_CATALOGS = {
     "agent.endDate": "Fecha final (exclusiva)",
     "agent.promptAria": "Mensaje para GeoMoz AI",
     "agent.placeholder": "Describa el análisis que desea…",
-    "agent.send": "Enviar mensaje"
+    "agent.send": "Enviar mensaje",
+    "analysis.group.optical": "Mosaico óptico",
+    "analysis.group.vegetation": "Vegetación y suelo",
+    "analysis.group.landsat": "Landsat 8",
+    "analysis.group.terrain": "Relieve y morfología",
+    "analysis.group.geology": "Geología y minerales",
+    "analysis.group.landcover": "Uso y cobertura del suelo",
+    "analysis.group.agriculture": "Agricultura",
+    "analysis.group.drought": "Sequía y estrés hídrico",
+    "analysis.group.fire": "Incendios y deforestación",
+    "analysis.group.water": "Recursos hídricos e índices de agua",
+    "analysis.group.climate": "Clima y desastres",
+    "analysis.group.urban": "Urbano e infraestructuras",
+    "analysis.group.health": "Salud pública",
+    "analysis.group.biophysics": "Índices biofísicos"
   },
   "fr": {
     "analysis.heading": "Que souhaitez-vous analyser ?",
@@ -510,7 +552,21 @@ export const SPECIALIST_UI_CATALOGS = {
     "agent.endDate": "Date de fin (exclusive)",
     "agent.promptAria": "Message pour GeoMoz AI",
     "agent.placeholder": "Décrivez l'analyse souhaitée…",
-    "agent.send": "Envoyer un message"
+    "agent.send": "Envoyer un message",
+    "analysis.group.optical": "Mosaïque optique",
+    "analysis.group.vegetation": "Végétation et sol",
+    "analysis.group.landsat": "Landsat 8",
+    "analysis.group.terrain": "Relief et morphologie",
+    "analysis.group.geology": "Géologie et minéraux",
+    "analysis.group.landcover": "Occupation et couverture du sol",
+    "analysis.group.agriculture": "Agriculture",
+    "analysis.group.drought": "Sécheresse et stress hydrique",
+    "analysis.group.fire": "Incendies et déforestation",
+    "analysis.group.water": "Ressources en eau et indices hydriques",
+    "analysis.group.climate": "Climat et catastrophes",
+    "analysis.group.urban": "Zones urbaines et infrastructures",
+    "analysis.group.health": "Santé publique",
+    "analysis.group.biophysics": "Indices biophysiques"
   }
 } as const;
 export type SpecialistKey = keyof typeof SPECIALIST_UI_CATALOGS.pt;
