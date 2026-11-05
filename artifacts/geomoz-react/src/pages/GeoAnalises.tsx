@@ -9,6 +9,7 @@ import { useProject } from "@/context/ProjectContext";
 import { usePortalTranslation } from "@/i18n/usePortalTranslation";
 import { scienceUiText, type ScienceUiKey } from "@/i18n/scienceUi";
 import { analysisControlText, type AnalysisControlKey } from "@/i18n/analysisControls";
+import { geoAnalisesResultText, type GeoAnalisesResultKey } from "@/i18n/geoAnalisesResults";
 /**
  * GeoAnálises — Sentinel-2 spectral analysis module.
  *
@@ -1058,6 +1059,9 @@ function GeospatialAnalyticsPanel({
   onOpenStoryMap?: () => void;
 }) {
   const { activeProject, saveRunToActiveProject } = useProject();
+  const { language } = usePortalTranslation();
+  const rT = (key: GeoAnalisesResultKey) => geoAnalisesResultText(language, key);
+  const numberLocale = language === "pt" ? "pt-MZ" : language;
   const { toast } = useToast();
   const [savingRun, setSavingRun] = useState(false);
   const [runSaved, setRunSaved]   = useState(false);
@@ -2409,6 +2413,9 @@ function LandCoverPanel({
   geometry?: Record<string, unknown> | null;
   onResult: (r: LandCoverResult | null) => void;
 }) {
+  const { language } = usePortalTranslation();
+  const rT = (key: GeoAnalisesResultKey) => geoAnalisesResultText(language, key);
+  const numberLocale = language === "pt" ? "pt-MZ" : language;
   const [running, setRunning] = useState(false);
   const [error, setError]     = useState<string | null>(null);
   const [result, setResult]   = useState<LandCoverResult | null>(null);
@@ -2864,6 +2871,7 @@ export default function GeoAnalises({
   const { language } = usePortalTranslation();
   const scienceT = (key: ScienceUiKey) => scienceUiText(language, key);
   const analysisT = (key: AnalysisControlKey) => analysisControlText(language, key);
+  const resultT = (key: GeoAnalisesResultKey) => geoAnalisesResultText(language, key);
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const categoryInDevelopment = GEO_CATEGORIES.some(cat => cat.id === selectedCategory && cat.status === "development");
@@ -2976,9 +2984,9 @@ export default function GeoAnalises({
   async function exportGeoAnalisesPdf() {
     if (categoryInDevelopment || indexBlocked || !mapContainerRef.current) return;
     const ctx = createPDFContext(`${activeTab} — ${aoi.label}`);
-    drawCover(ctx, `Relatório de Análise — ${activeTab}`, [
-      `Análise: ${activeTab}`,
-      `${province ? `Província: ${province}` : "Área: Moçambique"}`,
+    drawCover(ctx, `${resultT("pdf.title")} — ${activeTab}`, [
+      `${resultT("pdf.analysis")} ${activeTab}`,
+      `${province ? `${resultT("pdf.province")} ${province}` : `${resultT("pdf.area")} ${resultT("area.mozambique")}`}`,
       ctx.date,
     ]);
     try {
@@ -3005,7 +3013,7 @@ export default function GeoAnalises({
         { south: -26.9, north: -10.4, west: 30.2, east: 41 },
         { tileUrl: analysisTile,
           legendItems: analysisLegendItems,
-          title: `Análise ${activeTab} — ${province ?? "Moçambique"}`, dpi: 200 },
+          title: `${resultT("pdf.mapTitle")} ${activeTab} — ${province ?? resultT("area.mozambique")}`, dpi: 200 },
       );
       addMapImage(ctx, imgData, 100);
     } catch (e) {
