@@ -119,6 +119,61 @@ class PublicDataTests(unittest.TestCase):
         self.assertAlmostEqual(result["decreaseAreaKm2"], 1)
         self.assertAlmostEqual(result["commonValidAreaKm2"], 3)
 
+    def test_seasonal_quality_flags_only_comparable_evidence(self):
+        same = engine.temporal_quality("2020-05-01", "2020-09-01", "2025-05-01", "2025-09-01",
+                                       15, 16, 85, 100)
+        self.assertTrue(same["calendarAligned"])
+        self.assertEqual(same["warningCodes"], [])
+        self.assertEqual(same["durationDays"]["A"], 123)
+        caution = engine.temporal_quality("2020-05-01", "2020-09-01", "2025-01-01", "2025-04-01",
+                                          30, 5, 42, 100)
+        self.assertFalse(caution["calendarAligned"])
+        self.assertEqual(caution["warningCodes"], ["season", "scenes", "coverage"])
+        self.assertEqual(caution["status"], "review")
+        self.assertAlmostEqual(caution["commonValidCoveragePercent"], 42)
+
+    def test_on_demand_histograms_share_common_valid_footprint(self):
+        ee = MagicMock()
+        paired = MagicMock()
+        ee.Image.cat.return_value = paired
+        paired.updateMask.return_value = paired
+        paired.reduceRegion.return_value.getInfo.return_value = {
+            "A": [[-1.0, 7.5], [0.0, 12]], "B": [[-1.0, 2], [0.0, 17.5]],
+        }
+        before = Raster([0.2, 0.6], [True, True])
+        after = Raster([0.5, 0.8], [True, False])
+        with patch.dict("sys.modules", {"ee": ee}), patch.object(engine, "_grid", return_value=("region", GRID, 4_000_000)), \
+             patch.object(engine, "_s2_image", side_effect=[(before, 3), (after, 5)]), \
+             patch.object(Raster, "reduceRegion", return_value=Info({"Delta": [[-2.0, 0], [0.0, 7.5]]})):
+            result = engine.temporal_histogram(GEOMETRY, "ndvi", "2020-01-01", "2021-01-01", "2025-01-01", "2026-01-01")
+        self.assertEqual(result["sceneCounts"], {"A": 3, "B": 5})
+        self.assertEqual(result["histograms"]["A"][0]["count"], 7.5)
+        self.assertEqual(result["histograms"]["Delta"][1]["count"], 7.5)
+        self.assertEqual(paired.reduceRegion.call_args.kwargs["crs"], GRID["crs"])
+        self.assertEqual(paired.updateMask.call_args.args[0].values, [True, False])
+
+    def test_geotiff_is_three_band_bounded_and_clipped_to_original_aoi(self):
+        region = MagicMock()
+        region.bounds.return_value.getInfo.return_value = GEOMETRY
+        ee = MagicMock()
+        stacked = ee.Image.cat.return_value
+        stacked.updateMask.return_value = stacked
+        stacked.clip.return_value = stacked
+        stacked.toFloat.return_value = stacked
+        stacked.getDownloadURL.return_value = "https://earthengine.googleapis.com/download/secure"
+        before = Raster([0.2, 0.7])
+        after = Raster([0.3, 0.5])
+        with patch.dict("sys.modules", {"ee": ee}), patch.object(engine, "_grid", return_value=(region, GRID, 4_000_000)), \
+             patch.object(engine, "_s2_image", side_effect=[(before, 3), (after, 4)]):
+            output = engine.temporal_geotiff_download(GEOMETRY, "ndvi", "2020-01-01", "2021-01-01", "2025-01-01", "2026-01-01")
+        self.assertEqual(output["bands"], ["NDVI_A", "NDVI_B", "Delta_NDVI"])
+        self.assertTrue(output["resolutionAdjusted"])
+        self.assertLessEqual(output["dimensions"][0] * output["dimensions"][1], 500_000)
+        self.assertLessEqual(output["estimatedBytes"], 6_000_000)
+        self.assertEqual(stacked.clip.call_args.args[0], region)
+        self.assertEqual(stacked.getDownloadURL.call_args.args[0]["format"], "GEO_TIFF")
+        self.assertEqual(stacked.getDownloadURL.call_args.args[0]["filePerBand"], False)
+
     def test_temporal_pixel_preserves_zero_and_classifies_real_delta(self):
         region = MagicMock()
         region.intersects.return_value.getInfo.return_value = True
