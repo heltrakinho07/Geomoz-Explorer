@@ -4207,7 +4207,7 @@ export default function GeoAnalises({
         {/* Draggable Results Panel */}
         {!indexBlocked && resultsPanelOpen && (activeDef || isComposite || isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || activeTab === "s2") && (
           <DraggablePanel
-            title={`Análise: ${descriptiveIndexName(activeTab)}`}
+            title={`${resultT("analysis.panelTitle")} ${descriptiveIndexName(activeTab)}`}
             icon={<Activity size={16} className="shrink-0 text-sky-500" />}
             isDocked={rightPanelDocked}
             onDockToggle={() => setRightPanelDocked(d => !d)}
@@ -4295,7 +4295,7 @@ export default function GeoAnalises({
                   <SpiNdviPanel province={province} district={district} geometry={apiParams.geometry} onResult={r => { setSpiNdviResult(r); setShowSpiChart(true); }} />
                   {spiNdviResult && (
                     <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
-                      <h5 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Camada no mapa</h5>
+                      <h5 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{resultT("overlay.results")}</h5>
                       <div className="flex gap-1.5">
                         {(["spi", "ndvi"] as const).map(m => (
                           <button key={m} onClick={() => setSpiLayerMode(m)}
@@ -4312,7 +4312,7 @@ export default function GeoAnalises({
                         <input type="checkbox" checked={showSpiChart}
                           onChange={e => setShowSpiChart(e.target.checked)}
                           className="accent-orange-500" />
-                        Mostrar gráfico de correlação
+                        {resultT("overlay.showChart")}
                       </label>
                     </div>
                   )}
@@ -4642,10 +4642,10 @@ export default function GeoAnalises({
                 setSidebarOpen(true);
               }}
               className="flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/95 px-3 text-xs font-semibold text-slate-700 shadow-md backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200"
-              aria-label="Abrir filtros e parâmetros"
+              aria-label={resultT("overlay.openFilters")}
             >
               <SlidersHorizontal size={15} className="text-sky-600 dark:text-sky-400" />
-              Filtros
+              {resultT("overlay.filters")}
             </button>
             {!resultsPanelOpen && (
               <button
@@ -4655,10 +4655,10 @@ export default function GeoAnalises({
                   setResultsPanelOpen(true);
                 }}
                 className="flex min-h-11 items-center gap-1.5 rounded-xl border border-sky-200 bg-white/95 px-3 text-xs font-semibold text-sky-700 shadow-md backdrop-blur-md dark:border-sky-800 dark:bg-slate-900/95 dark:text-sky-300"
-                aria-label="Mostrar painel de resultados"
+                aria-label={resultT("overlay.openResults")}
               >
                 <BarChart2 size={15} />
-                Resultados
+                {resultT("overlay.results")}
               </button>
             )}
           </div>
@@ -5052,13 +5052,13 @@ export default function GeoAnalises({
             <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-amber-200 dark:border-amber-900/50 p-3 w-64 pointer-events-none">
               <div className="flex items-center gap-1.5 mb-1">
                 <Waves size={12} className="text-amber-700 dark:text-amber-400" />
-                <div className="text-xs font-semibold text-amber-800 dark:text-amber-300">Curvas de Nível ({contoursTile.intervalM} m)</div>
+                <div className="text-xs font-semibold text-amber-800 dark:text-amber-300">{resultT("overlay.contours")} ({contoursTile.intervalM} m)</div>
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-300">
-                Elevação: {contoursTile.minElevM?.toFixed(0) ?? "—"} m → {contoursTile.maxElevM?.toFixed(0) ?? "—"} m
+                {resultT("overlay.elevation")} {contoursTile.minElevM?.toFixed(0) ?? "—"} m → {contoursTile.maxElevM?.toFixed(0) ?? "—"} m
               </div>
               <div className="text-xs text-slate-400">
-                {contoursTile.intervals.length} curvas · linhas-mestras a cada {contoursTile.indexIntervalM} m
+                {contoursTile.intervals.length} {resultT("overlay.curves")} · {resultT("overlay.indexContours")} {contoursTile.indexIntervalM} m
               </div>
             </div>
           )}
@@ -5071,13 +5071,13 @@ export default function GeoAnalises({
                 <div className="flex items-center gap-1.5">
                   <Route size={12} className="text-sky-600 dark:text-sky-400" />
                   <div className="text-xs font-semibold text-sky-800 dark:text-sky-300">
-                    Perfil Topográfico — {(profileResult.stats.totalDistanceM / 1000).toFixed(2)} km ·{" "}
+                    {resultT("overlay.topoProfile")} — {(profileResult.stats.totalDistanceM / 1000).toFixed(2)} km ·{" "}
                     Δ {(profileResult.stats.maxElevM - profileResult.stats.minElevM).toFixed(0)} m
                   </div>
                 </div>
                 <button onClick={() => { setProfileResult(null); setProfilePoints([]); }}
                   className="text-xs text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 flex items-center gap-1 cursor-pointer">
-                  <X size={11} /> fechar
+                  <X size={11} /> {resultT("overlay.close")}
                 </button>
               </div>
               <div style={{ height: 165 }}>
@@ -5095,12 +5095,12 @@ export default function GeoAnalises({
                   <Droplets size={12} className="text-orange-600 dark:text-orange-400" />
                   <div className="text-xs font-semibold text-orange-800 dark:text-orange-300">
                     SPI × NDVI {spiNdviResult.year} — r = {spiNdviResult.stats.pearsonR != null ? spiNdviResult.stats.pearsonR.toFixed(2) : "—"}
-                    {" · "}{spiNdviResult.stats.sampleCount} amostras
+                    {" · "}{spiNdviResult.stats.sampleCount} {resultT("overlay.samples")}
                   </div>
                 </div>
                 <button onClick={() => setShowSpiChart(false)}
                   className="text-xs text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 flex items-center gap-1 cursor-pointer">
-                  <X size={11} /> fechar
+                  <X size={11} /> {resultT("overlay.close")}
                 </button>
               </div>
               <div style={{ height: 190 }}>
@@ -5122,11 +5122,11 @@ export default function GeoAnalises({
                 background: `linear-gradient(to right, ${(spiLayerMode === "spi" ? spiNdviResult.spiPalette : spiNdviResult.ndviPalette).join(", ")})`,
               }} />
               <div className="flex justify-between text-[9px] text-slate-400 mt-0.5">
-                {spiLayerMode === "spi" ? <><span>−2 seca</span><span>+2 húmido</span></> : <><span>0</span><span>0.9</span></>}
+                {spiLayerMode === "spi" ? <><span>−2 {resultT("overlay.drought")}</span><span>+2 {resultT("overlay.wet")}</span></> : <><span>0</span><span>0.9</span></>}
               </div>
               <button onClick={() => setShowSpiChart(true)}
                 className="mt-1.5 text-[10px] text-orange-600 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-300 font-medium cursor-pointer">
-                ↺ reabrir gráfico
+                ↺ {resultT("overlay.reopen")}
               </button>
             </div>
           )}
@@ -5136,7 +5136,7 @@ export default function GeoAnalises({
             <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-emerald-200 dark:border-emerald-900/50 p-3 w-64 pointer-events-none">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <Sliders size={12} className="text-emerald-600 dark:text-emerald-400" />
-                <div className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">Classes Topográficas</div>
+                <div className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">{resultT("overlay.topoClasses")}</div>
               </div>
               <div className="space-y-0.5">
                 {topoClassesTile.labels.map((lbl, i) => (
@@ -5156,22 +5156,22 @@ export default function GeoAnalises({
             <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-amber-200 dark:border-amber-900/50 p-3 w-64 pointer-events-none">
               <div className="flex items-center gap-1.5 mb-1">
                 <Gem size={12} className="text-amber-500" />
-                <div className="text-xs font-semibold text-amber-700 dark:text-amber-400">Potencial: {targetingTile.mineralName}</div>
+                <div className="text-xs font-semibold text-amber-700 dark:text-amber-400">{resultT("overlay.potential")} {targetingTile.mineralName}</div>
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-300">
-                Score médio: <strong className="text-amber-700 dark:text-amber-400">{((targetingTile.stats.meanScore ?? 0) * 100).toFixed(0)}/100</strong>
+                {resultT("overlay.meanScore")} <strong className="text-amber-700 dark:text-amber-400">{((targetingTile.stats.meanScore ?? 0) * 100).toFixed(0)}/100</strong>
                 {" · "}P95: <strong className="text-amber-700 dark:text-amber-400">{((targetingTile.stats.p95 ?? 0) * 100).toFixed(0)}</strong>
               </div>
               <div className="text-xs text-slate-400">
-                Área favorável: {targetingTile.stats.favorableKm2 != null
+                {resultT("overlay.favorable")} {targetingTile.stats.favorableKm2 != null
                   ? `${targetingTile.stats.favorableKm2.toFixed(1)} km²`
                   : "—"}
               </div>
               {/* On-map legend: what the score raster means */}
               <div className="mt-2 pt-2 border-t border-amber-100 dark:border-amber-900/40">
-                <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Favorabilidade (0–100)</div>
+                <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mb-1">{resultT("overlay.favorability")}</div>
                 <div className="h-2 rounded-full" style={{ background: "linear-gradient(to right,#0d47a1,#7b1fa2,#e53935,#fdd835,#fffde7)" }} />
-                <div className="flex justify-between text-[9px] text-slate-400 mt-0.5"><span>0 · baixa</span><span>alta · 100</span></div>
+                <div className="flex justify-between text-[9px] text-slate-400 mt-0.5"><span>0 · {resultT("overlay.low")}</span><span>{resultT("overlay.high")} · 100</span></div>
               </div>
             </div>
           )}
@@ -5181,11 +5181,11 @@ export default function GeoAnalises({
             <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-emerald-200 dark:border-emerald-900/50 p-3 w-64 pointer-events-none">
               <div className="flex items-center gap-1.5 mb-1">
                 <CheckCircle2 size={12} className="text-emerald-500" />
-                <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">GEE Real</div>
+                <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">{resultT("overlay.realGee")}</div>
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-300">{geeTile.name.split("—")[0].trim()}</div>
               {geeTile.sceneCount > 0 && (
-                <div className="text-xs text-slate-400">{geeTile.sceneCount} cenas · {geeTile.dateRange}</div>
+                <div className="text-xs text-slate-400">{geeTile.sceneCount} {resultT("overlay.scenes")} · {geeTile.dateRange}</div>
               )}
               {isTopoClass && (
                 <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-x-2 gap-y-0.5">
@@ -5229,15 +5229,15 @@ export default function GeoAnalises({
                 : "Lineamentos · Em desenvolvimento"
               : isTargeting
                 ? targetingTile
-                  ? `Targeting · ${targetingTile.formula}${overlapResult ? ` · ${overlapResult.report.zoneCount} zonas cruzadas` : ""}`
-                  : "Targeting · escolha um mineral e execute"
+                  ? `Targeting · ${targetingTile.formula}${overlapResult ? ` · ${overlapResult.report.zoneCount} ${resultT("overlay.areas")}` : ""}`
+                  : `Targeting · ${resultT("overlay.startTarget")}`
                 : isSpiNdvi
                   ? spiNdviResult
                     ? `SPI×NDVI · ${spiNdviResult.formula}`
-                    : "SPI × NDVI · escolha o ano e execute"
+                    : `SPI × NDVI · ${resultT("overlay.startSpi")}`
                   : geeReady && geeTile
-                    ? `GEE Real · ${geeTile.formula}${geeTile.sceneCount ? ` · ${geeTile.sceneCount} cenas` : ""}`
-                    : `${isGeeOnly ? "GEE necessário" : "Proxy"} · ${activeDef?.formula ?? ""}`}
+                    ? `${resultT("overlay.realGee")} · ${geeTile.formula}${geeTile.sceneCount ? ` · ${geeTile.sceneCount} ${resultT("overlay.scenes")}` : ""}`
+                    : `${isGeeOnly ? resultT("overlay.requiredGee") : "Proxy"} · ${activeDef?.formula ?? ""}`}
         </span>
         {province && (
           <span className="ml-auto text-sky-500 font-medium">
