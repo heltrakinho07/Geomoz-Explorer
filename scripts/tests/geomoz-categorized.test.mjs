@@ -17,6 +17,7 @@ test("GeoMoz patch integrates automatic full-domain categories in reviewed upstr
     "apps/geolibre-desktop/src/components/panels/style-panel/VectorSymbologySection.tsx",
     "apps/geolibre-desktop/src/components/panels/style-panel/useStylePanelDrafts.ts",
     "packages/plugins/src/plugins/vector-layer-sync.ts",
+    "tests/vector-style-classification.test.ts",
   ];
   try {
     writeFileSync(join(directory, "LICENSE"), "MIT");
@@ -25,7 +26,7 @@ test("GeoMoz patch integrates automatic full-domain categories in reviewed upstr
       cpSync(join(upstream, path), join(directory, path));
     }
     const modified = prepareGeoMozCategorizedStyles(directory);
-    assert.equal(modified.length, 6);
+    assert.equal(modified.length, 7);
     const lib = readFileSync(join(directory, paths[0]), "utf8");
     const helper = readFileSync(join(directory, paths[1]), "utf8");
     const panel = readFileSync(join(directory, paths[2]), "utf8");
@@ -40,6 +41,10 @@ test("GeoMoz patch integrates automatic full-domain categories in reviewed upstr
     assert.match(drafts, /setDraftVectorStyleAllCategories\(vectorStyleMode === "categorized"\)/);
     assert.match(sync, /MAX_COLOR_EXPRESSION_CHARS = 2_000_000/);
     assert.ok(existsSync(join(directory, "tests/geomoz-categorized.test.ts")));
+    const migratedTest = readFileSync(join(directory, "tests/vector-style-classification.test.ts"), "utf8");
+    assert.match(migratedTest, /length: 513/);
+    assert.match(migratedTest, /stops\.length, 513/);
+    assert.doesNotMatch(migratedTest, /MAX_MANUAL_CATEGORIZED_VALUES/);
     assert.throws(() => prepareGeoMozCategorizedStyles(directory), /anchor changed/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
