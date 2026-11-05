@@ -75,6 +75,23 @@ export const PROJECT_CATEGORIES: ProjectCategoryMeta[] = [
   },
 ];
 
+/** Stable recipe for generating fresh Earth Engine tiles after old map IDs expire. */
+export interface TemporalReplay {
+  version: 1;
+  tool: "detect_temporal_change";
+  aoi: Record<string, unknown>;
+  args: {
+    index: string;
+    start_date_1: string;
+    end_date_1: string;
+    start_date_2: string;
+    end_date_2: string;
+    threshold: number;
+    scale_m: number;
+    cloud_pct: number;
+  };
+}
+
 export interface StudyRunMetrics {
   min?: number;
   max?: number;
@@ -100,6 +117,8 @@ export interface StudyRun {
   metrics?: StudyRunMetrics;
   histogram?: { bin: string; count: number }[];
   tileUrl?: string;
+  /** Reprocessing recipe; never store temporary Earth Engine URLs in this field. */
+  replay?: TemporalReplay;
   notes?: string;
   createdAt: string; // ISO String
 }
