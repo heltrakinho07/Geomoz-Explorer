@@ -2,6 +2,7 @@
 import { resolvedPortalLocale, type PortalCatalogLocale } from "./portal";
 
 export const HYDROLOGY_RESULT_MESSAGES = {
+  "pdfContent.source": ["Fonte:","Source:","Fuente:","Source :"],
   "viewer.readOnly": ["Apenas leitura","Read-only","Solo lectura","Lecture seule"],
   "viewer.tagline": ["Inteligência geoespacial planetária","Planetary geospatial intelligence","Inteligencia geoespacial planetaria","Intelligence géospatiale planétaire"],
   "viewer.lightMode": ["Modo claro","Light mode","Modo claro","Mode clair"],
@@ -56,7 +57,7 @@ export const HYDROLOGY_RESULT_MESSAGES = {
   "pdfContent.lulc": ["Uso e cobertura do solo (ESA WorldCover 2021)","Land use and land cover (ESA WorldCover 2021)","Uso y cobertura del suelo (ESA WorldCover 2021)","Occupation et utilisation du sol (ESA WorldCover 2021)"],
   "pdfContent.runoff": ["Escoamento superficial (SCS Curve Number)","Surface runoff (SCS Curve Number)","Escorrentía superficial (SCS Curve Number)","Ruissellement de surface (SCS Curve Number)"],
   "pdfContent.scsNote": ["Classificação SCS: menor CN = maior infiltração; maior CN = escoamento rápido","SCS classification: lower CN = more infiltration; higher CN = faster runoff","Clasificación SCS: menor CN = más infiltración; mayor CN = escorrentía rápida","Classification SCS : CN faible = infiltration élevée ; CN élevé = ruissellement rapide"],
-  "pdfContent.scale": ["Escala 1:bacia · Coordenadas WGS 84","Scale 1:basin · WGS 84 coordinates","Escala 1:cuenca · Coordenadas WGS 84","Échelle 1:bassin · Coordonnées WGS 84"],
+  "pdfContent.scale": ["Coordenadas WGS 84 · Escala gráfica","WGS 84 coordinates · Graphic scale","Coordenadas WGS 84 · Escala gráfica","Coordonnées WGS 84 · Échelle graphique"],
   "pdfContent.legendLulc": ["LEGENDA — USO DO SOLO","LEGEND — LAND COVER","LEYENDA — USO DEL SUELO","LÉGENDE — OCCUPATION DU SOL"],
   "pdfContent.legendCN": ["LEGENDA — ESCOAMENTO (CN)","LEGEND — RUNOFF (CN)","LEYENDA — ESCORRENTÍA (CN)","LÉGENDE — RUISSELLEMENT (CN)"],
   "pdfContent.cnLow": ["CN < 50 · Alta infiltração","CN < 50 · High infiltration","CN < 50 · Alta infiltración","CN < 50 · Infiltration élevée"],
