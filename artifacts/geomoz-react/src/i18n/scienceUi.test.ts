@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { SCIENCE_UI_MESSAGES, scienceUiText } from "./scienceUi";
 
 describe("GeoMoz scientific UI internationalization", () => {
@@ -22,7 +23,7 @@ describe("GeoMoz scientific UI internationalization", () => {
     expect(scienceUiText("ar","overview.draw")).toBe("Draw on map");
   });
   it("wires GeoAnalyses catalog to translated controls without changing scientific indices or command ids", () => {
-    const src = readFileSync(new URL("../pages/GeoAnalises.tsx",import.meta.url),"utf8");
+    const src = readFileSync(resolve(process.cwd(),"src/pages/GeoAnalises.tsx"),"utf8");
     for(const key of ["catalog.title","catalog.description","catalog.search","catalog.searchHint","catalog.compare","catalog.open","catalog.development","catalog.choose","catalog.export","catalog.runFirst"]){
       expect(src).toContain('scienceT("'+key+'")');
     }
@@ -31,7 +32,7 @@ describe("GeoMoz scientific UI internationalization", () => {
     expect(src).toContain('SCIENCE[tabId]?.status === "experimental"');
   });
   it("wires Workspace overview raster and DEM status without altering operations", () => {
-    const src = readFileSync(new URL("../components/GISWorkspaceOverview.tsx",import.meta.url),"utf8");
+    const src = readFileSync(resolve(process.cwd(),"src/components/GISWorkspaceOverview.tsx"),"utf8");
     for(const key of ["overview.title","overview.draw","overview.import","overview.terrain","overview.sourceGrid","overview.processing","overview.error","overview.view"]){
       expect(src).toContain('t("'+key+'")');
     }
