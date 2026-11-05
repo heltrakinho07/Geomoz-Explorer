@@ -90,7 +90,7 @@ describe("GeoAnálises: translucent category cards", () => {
 
   it("retains scientific caveats and responsive highlighting without fake activation", () => {
     expect(analytics).toContain('className="geo-catalog-card__review"');
-    expect(analytics).toContain("Inclui ferramentas em revisão");
+    expect(analytics).toContain('scienceT("catalog.review")');
     expect(analytics).toContain('cat.highlights.slice(0, 3)');
     expect(analytics).toContain('cat.status === "development" ? "Ver estado do módulo"');
     expect(analytics).toContain("geo-catalog-grid grid");
