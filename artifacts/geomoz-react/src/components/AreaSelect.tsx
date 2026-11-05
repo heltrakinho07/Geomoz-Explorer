@@ -98,7 +98,7 @@ export default function AreaSelect({
     <>
       {provinces && (
         <GeoJSON
-          key={`area-provinces-${selectable}`}
+          key={`area-provinces-${province ?? "all"}-${district ?? "all"}-${selectable}`}
           data={provinces as GeoJSON.GeoJsonObject}
           interactive={selectable}
           style={provinceStyle as L.StyleFunction}
@@ -113,7 +113,7 @@ export default function AreaSelect({
       )}
       {province && districts && (
         <GeoJSON
-          key={`area-districts-${province}-${selectable}`}
+          key={`area-districts-${province}-${district ?? "all"}-${selectable}`}
           data={districts as GeoJSON.GeoJsonObject}
           interactive={selectable}
           style={districtStyle as L.StyleFunction}
