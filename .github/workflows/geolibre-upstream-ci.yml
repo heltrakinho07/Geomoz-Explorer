@@ -80,7 +80,7 @@ jobs:
 
       - name: Test categorized symbology against >256 geological values
         working-directory: .geolibre-upstream
-        run: node --import tsx --test tests/geomoz-categorized.test.ts
+        run: node --import tsx --test tests/vector-style-classification.test.ts tests/geomoz-categorized.test.ts
 
       - name: Build GeoMoz Workbench with pinned GIS engine
         working-directory: .geolibre-upstream
