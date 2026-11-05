@@ -2,11 +2,27 @@
  * silently disappear when an orchestrator omits the top-level action list.
  * The synthesis and audit dossier are not trusted sources of tile URLs.
  */
+export interface GeoAiTemporalChange {
+  index: string;
+  threshold: number;
+  periodA: { startDate: string; endDate: string };
+  periodB: { startDate: string; endDate: string };
+  continuousTileUrl: string;
+  continuousRange: [number, number];
+  periodATileUrl?: string;
+  periodBTileUrl?: string;
+  comparisonRange?: [number, number];
+  comparisonPalette?: string[];
+}
+
 export type GeoAiMapAction = Record<string, unknown> & {
   type: string;
   id?: string;
   tileUrl?: string;
   name?: string;
+  province?: string;
+  district?: string;
+  temporalChange?: GeoAiTemporalChange;
 };
 
 function isAction(value: unknown): value is GeoAiMapAction {
