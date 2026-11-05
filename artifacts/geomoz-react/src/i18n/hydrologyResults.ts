@@ -2,6 +2,10 @@
 import { resolvedPortalLocale, type PortalCatalogLocale } from "./portal";
 
 export const HYDROLOGY_RESULT_MESSAGES = {
+  "result.risk.low": ["Baixo","Low","Bajo","Faible"],
+  "result.risk.moderate": ["Moderado","Moderate","Moderado","Modéré"],
+  "result.risk.high": ["Alto","High","Alto","Élevé"],
+  "result.risk.veryHigh": ["Muito alto","Very high","Muy alto","Très élevé"],
   "result.tabs.morphometry": [
     "Morfometria",
     "Morphometry",
