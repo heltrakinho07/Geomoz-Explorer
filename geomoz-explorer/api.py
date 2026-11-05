@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 import time
+from urllib.parse import urlsplit
 from collections import defaultdict
 from functools import lru_cache
 from typing import Optional, Literal
@@ -142,7 +143,7 @@ def handle_gee_api_error(exc: Exception, prefix: str = "Cálculo GEE", uid: str 
             detail="A sua sessão do Google Earth Engine expirou. Por favor clique em 'Reconectar Google Earth Engine' nas Definições ou no cabeçalho para renovar o acesso."
         )
     raise HTTPException(500, f"{prefix} falhou: {exc}")
-from pydantic import BaseModel, field_validator, constr, Field
+from pydantic import BaseModel, field_validator, model_validator, constr, Field
 
 from processing_jobs import (
     cleanup_expired_jobs,
@@ -2857,6 +2858,10 @@ class GEEMapImageRequest(BaseModel):
         required = {"south", "north", "west", "east"}
         if not isinstance(v, dict) or not required.issubset(v.keys()):
             raise ValueError(f'bounds must contain {required}')
+        if not (-90 <= v["south"] <= 90 and -90 <= v["north"] <= 90):
+            raise ValueError('latitude bounds must be between -90 and 90')
+        if not (-180 <= v["west"] <= 180 and -180 <= v["east"] <= 180):
+            raise ValueError('longitude bounds must be between -180 and 180')
         if v["south"] >= v["north"]:
             raise ValueError('south must be < north')
         if v["west"] >= v["east"]:
@@ -2869,6 +2874,54 @@ class GEEMapImageRequest(BaseModel):
         if not 72 <= v <= 600:
             raise ValueError('dpi must be between 72 and 600')
         return v
+
+    @field_validator("tile_url")
+    @classmethod
+    def validate_tile_url(cls, v):
+        if v is None:
+            return v
+        parsed = urlsplit(v)
+        if parsed.scheme != "https":
+            raise ValueError("tile_url must use https")
+        if parsed.hostname != "earthengine.googleapis.com":
+            raise ValueError("tile_url host is not allowed")
+        if not all(token in parsed.path for token in ("{z}", "{x}", "{y}")):
+            raise ValueError("tile_url must include {z}/{x}/{y} placeholders")
+        return v
+
+    @field_validator("width_mm", "height_mm")
+    @classmethod
+    def validate_dimensions_mm(cls, v):
+        if not 10 <= v <= 2000:
+            raise ValueError("map dimensions must be between 10mm and 2000mm")
+        return v
+
+    @field_validator("legend_items")
+    @classmethod
+    def validate_legend_items(cls, v):
+        if v is None:
+            return v
+        if len(v) > 30:
+            raise ValueError("legend_items must not contain more than 30 entries")
+        return v
+
+    @field_validator("overlay_geojson")
+    @classmethod
+    def validate_overlay_geojson(cls, v):
+        if v is None:
+            return v
+        payload_size = len(json.dumps(v, ensure_ascii=False).encode("utf-8"))
+        if payload_size > 2_000_000:
+            raise ValueError("overlay_geojson payload exceeds 2MB limit")
+        return v
+
+    @model_validator(mode="after")
+    def validate_render_budget(self):
+        width_px = int(self.width_mm / 25.4 * self.dpi)
+        height_px = int(self.height_mm / 25.4 * self.dpi)
+        if width_px * height_px > 20_000_000:
+            raise ValueError("requested render size exceeds 20 megapixels")
+        return self
 
 
 @app.post("/geomoz-api/gee/map-image")
