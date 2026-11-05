@@ -202,6 +202,10 @@ def temporal_change(geometry, index, start1, end1, start2, end2, scale_m=30, clo
     valid = _area(delta, grid)
     increase = _selected_area(delta.gte(threshold), grid)
     decrease = _selected_area(delta.lte(-threshold), grid)
+    # Thresholded overlay: neutral pixels remain transparent, not opaque white.
+    # Keep the original delta for statistics and a selectable continuous view.
+    changed_mask = delta.gte(threshold).Or(delta.lte(-threshold))
+    changed_classes = delta.gte(threshold).subtract(delta.lte(-threshold)).updateMask(changed_mask)
     result = _base(S2, grid, area, "Diferença de índice B − A; não confirma desflorestação, urbanização ou área ardida. Compare épocas sazonais equivalentes. Valores só na intersecção dos pixels válidos dos dois períodos.")
     result.update({"index": index, "formula": "delta = periodB - periodA", "threshold": threshold,
                    "periodA": {"startDate": start1, "endDate": end1}, "periodB": {"startDate": start2, "endDate": end2},
@@ -209,7 +213,19 @@ def temporal_change(geometry, index, start1, end1, start2, end2, scale_m=30, clo
                    "commonValidAreaKm2": valid, "increaseAreaKm2": increase, "decreaseAreaKm2": decrease,
                    "mean": stats["mean"], "coveragePercent": min(100, valid / (area / 1e6) * 100),
                    "summary": f"Δ{index.upper()} (B − A): média {stats['mean']:.4f}; aumento ≥ {threshold}: {increase:.2f} km²; diminuição ≤ −{threshold}: {decrease:.2f} km²; suporte comum {valid:.2f} km² à escala {grid['scale']} m.",
-                   "map_action": {"type": "ADD_LAYER", "id": f"agent_change_{index}", "name": f"Δ{index.upper()} — B − A", "tileUrl": _tile(delta, -2, 2, ["b2182b", "f7f7f7", "2166ac"]), "opacity": 0.8}})
+                   "map_action": {
+                       "type": "ADD_LAYER", "id": f"agent_change_{index}",
+                       "name": f"Δ{index.upper()} — B − A",
+                       "tileUrl": _tile(changed_classes, -1, 1, ["d73027", "1a9850"]),
+                       "opacity": 0.9,
+                       "temporalChange": {
+                           "index": index.upper(), "threshold": threshold,
+                           "periodA": {"startDate": start1, "endDate": end1},
+                           "periodB": {"startDate": start2, "endDate": end2},
+                           "continuousTileUrl": _tile(delta, -0.4, 0.4, ["b2182b", "f7f7f7", "1a9850"]),
+                           "continuousRange": [-0.4, 0.4],
+                       },
+                   }})
     return result
 
 
