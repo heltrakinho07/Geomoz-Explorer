@@ -138,7 +138,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
   const [style,setStyle]=useState<TerrainVisualStyle>("hypsometric");
   const [detailLevel,setDetailLevel]=useState<"auto"|"full"|"medium"|"low">("auto");
   const [workspaceTab,setWorkspaceTab]=useState<"layers"|"style"|"analysis"|"export">("layers");
-  const [viewMode,setViewMode]=useState<"model"|"map"|"split">("split");
+  const [viewMode,setViewMode]=useState<"model"|"map"|"split">("map");
   const [overlays,setOverlays]=useState<GeoMozTerrainOverlay[]>([]);
   const [rasterDrape,setRasterDrape]=useState<(GeoMozRasterDrape & {opacity:number;visible:boolean})|null>(null);
   const [rasterBusy,setRasterBusy]=useState(false);
@@ -205,7 +205,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
       if(controller.signal.aborted)return;
       setTerrain(preview);setPicked({});setLastPick(null);setPickTarget(null);
       setOverlays([]);setRasterDrape(null);setWorkspaceTab("layers");
-      setViewMode(validTerrainGeography(preview)?"split":"model");
+      setViewMode(validTerrainGeography(preview)?"map":"model");
       setNotice("Modelo 3D do projecto: "+layer.name+
         " · "+preview.crs+" · "+preview.validFraction.toLocaleString("pt-PT",{style:"percent",maximumFractionDigits:1})+" válido");
     }catch(cause){
@@ -260,7 +260,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
       setTerrain(scene.terrain);setStyle(scene.style);setExaggeration(scene.exaggeration);
       setPicked({});setPickTarget(null);setLastPick(null);
       setOverlays([]);setRasterDrape(null);
-      setViewMode(validTerrainGeography(scene.terrain)?"split":"model");
+      setViewMode(validTerrainGeography(scene.terrain)?"map":"model");
       setNotice("Cena 3D reaberta. A camada raster original permanece no projecto SIG.");
     }catch(cause){setError(cause instanceof Error?cause.message:"Cena .geomoz inválida.");}
     finally{if(sceneInputRef.current)sceneInputRef.current.value="";}
@@ -413,7 +413,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
         {terrain&&<nav className="gm-terrain-view-switch" aria-label={ui("Modos de visualização do terreno")}>
           {([
             ["model","Modelo 3D",Box],
-            ["map","Mapa 3D",MapIcon],
+            ["map","Modelo sobre mapa 3D",MapIcon],
             ["split","2D / 3D",Columns2]
           ] as const).map(([mode,label,Icon])=><button key={mode} type="button"
             className={viewMode===mode?"gm-terrain-view-active":""}
@@ -435,7 +435,11 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
           {viewMode!=="model"&&<div className="gm-terrain-map-pane"
             aria-label={ui("Localização do DEM no basemap")}>
             <GeoMozTerrainGeoMap terrain={terrain} overlays={overlays}
-              exaggeration={exaggeration} flat={viewMode==="split"} translate={ui}/>
+              exaggeration={exaggeration} style={style}
+              vectorTexture={overlayTexture}
+              rasterTexture={rasterDrape?.visible?rasterDrape.imageDataUrl:null}
+              rasterOpacity={rasterDrape?.visible?rasterDrape.opacity:0}
+              flat={viewMode==="split"} translate={ui}/>
           </div>}
         </div>:
           <div className="gm-terrain-native-empty">

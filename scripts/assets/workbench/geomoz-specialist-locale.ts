@@ -3,6 +3,14 @@
  * For additional languages, custom labels fall back to English, not Portuguese.
  */
 const entries: Record<string, {en:string;es:string;fr:string}> = {
+  "Modelo sobre mapa 3D": {"en":"3D model on map","es":"Modelo sobre mapa 3D","fr":"Modèle superposé à la carte 3D"},
+  "Sobrepor modelo 3D": {"en":"Overlay 3D model","es":"Superponer modelo 3D","fr":"Superposer le modèle 3D"},
+  "Transparência do modelo": {"en":"Model transparency","es":"Transparencia del modelo","fr":"Transparence du modèle"},
+  "Transparência do modelo 3D": {"en":"3D model transparency","es":"Transparencia del modelo 3D","fr":"Transparence du modèle 3D"},
+  "Ajuste vertical": {"en":"Vertical alignment","es":"Ajuste vertical","fr":"Ajustement vertical"},
+  "Ajuste vertical do modelo 3D": {"en":"3D model vertical adjustment","es":"Ajuste vertical del modelo 3D","fr":"Réglage vertical du modèle 3D"},
+  "Modelo 3D sobre terreno global": {"en":"3D model over global terrain","es":"Modelo 3D sobre terreno global","fr":"Modèle 3D sur le terrain mondial"},
+  "A malha local sobrepõe-se ao terreno global. Células sem dados deixam o relevo de referência visível. O ajuste vertical é apenas visual.": {"en":"The local mesh overlays global terrain. Missing cells reveal the reference terrain. Vertical adjustment is for display only.","es":"La malla local se superpone al relieve global. Las celdas sin datos dejan visible el relieve de referencia. El ajuste vertical es solo visual.","fr":"Le maillage local se superpose au terrain mondial. Les cellules sans données laissent voir le relief de référence. Le réglage vertical n'agit que sur l'affichage."},
   // Real-world 3D terrain geolocation, basemaps and comparison view.
   "Modelo 3D": {"en":"3D model","es":"Modelo 3D","fr":"Modèle 3D"},
   "Mapa 3D": {"en":"3D map","es":"Mapa 3D","fr":"Carte 3D"},

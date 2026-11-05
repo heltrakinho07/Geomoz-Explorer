@@ -1,24 +1,26 @@
 /**
  * Real-world DEM positioning within the native GeoMoz GIS Workspace.
- * MapLibre drapes selected basemap tiles over the DEM's own elevation grid,
- * resampled on demand from project memory (never uploaded to another service).
+ * A real georeferenced DEM mesh overlays continuous global 3D terrain.
+ * MapLibre keeps the satellite/topographic basemap visible around the patch.
  */
 import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import proj4 from "proj4";
-import type { TerrainMeshData } from "../../lib/geomoz-terrain-webgl";
+import type { TerrainMeshData, TerrainVisualStyle } from "../../lib/geomoz-terrain-webgl";
 import type { GeoMozTerrainOverlay } from "./geomoz-terrain-overlays";
-import {
-  terrainProjection, terrainRecommendedMaxZoom, terrainTerrariumPng, validTerrainGeography,
-} from "./geomoz-terrain-tiles";
+import { terrainProjection, validTerrainGeography } from "./geomoz-terrain-tiles";
+import { createTerrainMapMesh, type TerrainMapMesh, type ModelAppearance, LOCAL_MODEL_ID } from "./geomoz-terrain-map-mesh";
 
 type Basemap = "satellite" | "topographic" | "streets";
-type Elevation = "local" | "global";
 interface Props {
   terrain: TerrainMeshData;
   overlays: GeoMozTerrainOverlay[];
   exaggeration: number;
+  style: TerrainVisualStyle;
+  vectorTexture: string | null;
+  rasterTexture: string | null;
+  rasterOpacity: number;
   /** Split view uses a north-up, truly flat overview alongside the local 3D canvas. */
   flat?: boolean;
   translate?: (value: string) => string;
@@ -41,7 +43,6 @@ const BASEMAPS: Record<Basemap, { label: string; url: string; attribution: strin
   },
 };
 const BASE_ID = "geomoz-local-basemap";
-const LOCAL_DEM = "geomoz-local-raster-dem";
 const GLOBAL_DEM = "geomoz-global-raster-dem";
 const FOOTPRINT_ID = "geomoz-dem-footprint";
 const VECTOR_PREFIX = "geomoz-draped-layer-";
@@ -129,35 +130,37 @@ function syncGeoOverlays(map: maplibregl.Map, overlays: GeoMozTerrainOverlay[]) 
 }
 
 export default function GeoMozTerrainGeoMap({
-  terrain, overlays, exaggeration, flat = false, translate = (value) => value,
+  terrain, overlays, exaggeration, style, vectorTexture, rasterTexture,
+  rasterOpacity, flat = false, translate = (value) => value,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const overlaysRef = useRef(overlays);
-  const elevationRef = useRef<Elevation>("local");
+  const modelRef = useRef<TerrainMapMesh | null>(null);
   const [basemap, setBasemap] = useState<Basemap>("satellite");
-  const [elevation, setElevation] = useState<Elevation>("local");
+  const [showMesh,setShowMesh] = useState(true);
+  const [modelOpacity,setModelOpacity] = useState(0.91);
+  const [verticalOffset,setVerticalOffset] = useState(3);
   const [coordinates, setCoordinates] = useState<[number, number] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [meshMounted,setMeshMounted] = useState(false);
   const isValid = validTerrainGeography(terrain);
   overlaysRef.current = overlays;
-  elevationRef.current = elevation;
+  const appearance: ModelAppearance = {
+    exaggeration,offsetMeters:verticalOffset,opacity:modelOpacity,style,
+    vectors:vectorTexture,raster:rasterTexture,rasterOpacity,visible:showMesh && !flat,
+  };
+  const appearanceRef = useRef(appearance);
+  appearanceRef.current = appearance;
 
   useEffect(() => {
     if (!container.current || !isValid) return;
-    const protocol = "geomozdem" + Math.random().toString(36).slice(2, 12);
+    setMeshMounted(false);
+    // Register UTM definitions for the densified footprint as well as the mesh.
+    terrainProjection(terrain);
     let map: maplibregl.Map | null = null;
     let resize: ResizeObserver | null = null;
     try {
-      const project = terrainProjection(terrain);
-      maplibregl.addProtocol(protocol, async ({ url }) => {
-        const match = /(\d+)\/(\d+)\/(\d+)\.png(?:\?.*)?$/.exec(url);
-        if (!match) throw Error("Tile DEM inválido.");
-        return {
-          data: await terrainTerrariumPng(terrain, project,
-            Number(match[1]), Number(match[2]), Number(match[3])),
-        };
-      });
       const [west, south, east, north] = terrain.bounds4326;
       map = new maplibregl.Map({
         container: container.current, style: makeStyle("satellite"),
@@ -169,13 +172,7 @@ export default function GeoMozTerrainGeoMap({
       const instance = map;
       mapRef.current = instance;
       const onStyle = () => {
-        if (!instance.getSource(LOCAL_DEM)) {
-          instance.addSource(LOCAL_DEM, {
-            type: "raster-dem", tiles: [protocol + "://tiles/{z}/{x}/{y}.png"],
-            encoding: "terrarium", tileSize: 256,
-            minzoom: 0, maxzoom: terrainRecommendedMaxZoom(terrain),
-          });
-        }
+        // Global Mapzen terrain continues under and outside the local DEM.
         if (!instance.getSource(GLOBAL_DEM)) {
           instance.addSource(GLOBAL_DEM, {
             type: "raster-dem",
@@ -183,10 +180,7 @@ export default function GeoMozTerrainGeoMap({
             encoding: "terrarium", tileSize: 256, maxzoom: 14,
           });
         }
-        instance.setTerrain(flat ? null : {
-          source: elevationRef.current === "local" ? LOCAL_DEM : GLOBAL_DEM,
-          exaggeration,
-        });
+        instance.setTerrain(flat ? null : { source: GLOBAL_DEM, exaggeration: 1 });
         if (!instance.getSource(FOOTPRINT_ID)) {
           instance.addSource(FOOTPRINT_ID, { type: "geojson", data: footprint(terrain) });
           instance.addLayer({
@@ -199,7 +193,18 @@ export default function GeoMozTerrainGeoMap({
               "line-dasharray": [3, 2] },
           });
         }
-        syncGeoOverlays(instance, overlaysRef.current);
+        // Vector GIS features are draped onto the mesh in 3D, and normal GeoJSON layers in 2D.
+        syncGeoOverlays(instance, flat ? overlaysRef.current : []);
+        if (!flat && !instance.getLayer(LOCAL_MODEL_ID)) {
+          const layer = createTerrainMapMesh(terrain, appearanceRef.current);
+          modelRef.current = layer;
+          try { instance.addLayer(layer); setMeshMounted(true); }
+          catch (cause) {
+            modelRef.current = null;
+            setMeshMounted(false);
+            setError(cause instanceof Error ? cause.message : "Não foi possível mostrar a malha 3D.");
+          }
+        }
       };
       instance.on("style.load", onStyle);
       instance.on("load", () => instance.fitBounds(
@@ -216,7 +221,6 @@ export default function GeoMozTerrainGeoMap({
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível iniciar o mapa do DEM.");
       map?.remove();
-      maplibregl.removeProtocol(protocol);
       mapRef.current = null;
       return;
     }
@@ -224,9 +228,9 @@ export default function GeoMozTerrainGeoMap({
       resize?.disconnect();
       map?.remove();
       mapRef.current = null;
-      maplibregl.removeProtocol(protocol);
+      modelRef.current = null;
     };
-  }, [terrain, isValid]);
+  }, [terrain, isValid, flat]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -239,29 +243,25 @@ export default function GeoMozTerrainGeoMap({
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
     try {
-      syncGeoOverlays(map, overlays);
+      syncGeoOverlays(map, flat ? overlays : []);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Falha ao mostrar camadas geográficas.");
     }
-  }, [overlays]);
+  }, [overlays, flat]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
-    map.setTerrain(flat ? null : {
-      source: elevation === "local" ? LOCAL_DEM : GLOBAL_DEM, exaggeration,
-    });
-    if (flat) map.dragRotate.disable();
-    else map.dragRotate.enable();
-    map.easeTo({ pitch: flat ? 0 : 55, bearing: flat ? 0 : map.getBearing(), duration: 350 });
-  }, [elevation, exaggeration, flat]);
+    modelRef.current?.update(appearance);
+  }, [exaggeration, style, vectorTexture, rasterTexture, rasterOpacity,
+      showMesh, modelOpacity, verticalOffset, flat]);
+
 
   if (!isValid) return <div className="gm-terrain-map-unavailable" role="alert">
     {translate("Este DEM não possui coordenadas ou um CRS geográfico válido para o mapa.")}
   </div>;
 
   const [west, south, east, north] = terrain.bounds4326;
-  return <div className="gm-terrain-geographic">
+  return <div className="gm-terrain-geographic"
+    data-testid={meshMounted && !flat ? "geomoz-georeferenced-model-map" : undefined}>
     <div className="gm-terrain-geographic-map" ref={container}
       role="region" aria-label={translate("DEM georreferenciado sobre mapa de base")}/>
     <div className="gm-terrain-geographic-tools">
@@ -272,24 +272,34 @@ export default function GeoMozTerrainGeoMap({
             <option key={key} value={key}>{translate(value.label)}</option>)}
         </select>
       </label>
-      <label>{translate("Elevação")}
-        <select value={elevation} onChange={event=>setElevation(event.target.value as Elevation)}
-          aria-label={translate("Fonte da elevação 3D")}>
-          <option value="local">{translate("DEM carregado")}</option>
-          <option value="global">{translate("Relevo global de referência")}</option>
-        </select>
-      </label>
+      {!flat && <>
+        <label className="gm-terrain-model-toggle">
+          <input type="checkbox" checked={showMesh}
+            onChange={event=>setShowMesh(event.target.checked)}/>
+          {translate("Sobrepor modelo 3D")}
+        </label>
+        <label>{translate("Transparência do modelo")} · {Math.round((1-modelOpacity)*100)}%
+          <input type="range" min="0.2" max="1" step="0.05"
+            aria-label={translate("Transparência do modelo 3D")}
+            value={modelOpacity} onChange={event=>setModelOpacity(Number(event.target.value))}/>
+        </label>
+        <label>{translate("Ajuste vertical")} · {verticalOffset} m
+          <input type="range" min="-250" max="250" step="1"
+            aria-label={translate("Ajuste vertical do modelo 3D")}
+            value={verticalOffset} onChange={event=>setVerticalOffset(Number(event.target.value))}/>
+        </label>
+      </>}
       <button type="button" onClick={() => mapRef.current?.fitBounds(
         [[west, south], [east, north]], { padding: 42, duration: 600, maxZoom: 14 },
       )}>{translate("Localizar DEM")}</button>
     </div>
     <div className="gm-terrain-geographic-info">
-      <strong>{translate("Localização real do DEM")}</strong>
+      <strong>{translate("Modelo 3D sobre terreno global")}</strong>
       <span>{((west + east) / 2).toFixed(5)}°, {((south + north) / 2).toFixed(5)}° · {terrain.crs}</span>
       {coordinates && <span>
         {translate("Cursor")}: {coordinates[0].toFixed(5)}°, {coordinates[1].toFixed(5)}°
       </span>}
-      <small>{translate("Contorno azul: extensão do DEM. Fora do DEM, o relevo local é uma referência plana; não corresponde a medições.")}</small>
+      <small>{translate("A malha local sobrepõe-se ao terreno global. Células sem dados deixam o relevo de referência visível. O ajuste vertical é apenas visual.")}</small>
     </div>
     {error && <p className="gm-terrain-geographic-error" role="alert">{error}</p>}
   </div>;
