@@ -183,7 +183,7 @@ module.exports=async function validateRasterProcessing(page){
  assert.equal(await terrain.locator("iframe").count(),0,"3D must be native to GIS Workspace");
  await terrain.getByLabel("Seleccionar DEM do GIS Workspace").selectOption({label:"reprojected"});
  await terrain.getByTestId("geomoz-workbench-terrain-import").click();
- // The preferred mode now overlays the DEM mesh directly on global 3D terrain.
+ // A sobreposição georreferenciada deve existir na própria cena MapLibre.
  await terrain.getByTestId("terrain-view-map").waitFor({state:"visible",timeout:25000});
  await terrain.getByTestId("geomoz-georeferenced-model-map").waitFor({state:"visible",timeout:25000});
  assert.equal(await terrain.getByLabel("Sobrepor modelo 3D").isChecked(),true);
@@ -235,6 +235,24 @@ module.exports=async function validateRasterProcessing(page){
    ModelTiepoint:[0,0,0,500000,7200000,0],
    GTModelTypeGeoKey:1,GTRasterTypeGeoKey:1,ProjectedCSTypeGeoKey:32736
  }));
+ // Verify the fixture really carries georeferencing under GeoTIFF.js v3.
+ // A direct fileDirectory.ModelPixelScale lookup is not valid in v3 and
+ // previously caused a false "rotated raster" error for this valid file.
+ const thematicTiff=await fromArrayBuffer(thematic.buffer.slice(
+   thematic.byteOffset,thematic.byteOffset+thematic.byteLength
+ ));
+ try {
+   const image=await thematicTiff.getImage();
+   const meta=image.fileDirectory;
+   const scale=typeof meta.getValue==="function"
+     ?meta.getValue("ModelPixelScale"):meta.ModelPixelScale;
+   const tiepoint=typeof meta.getValue==="function"
+     ?meta.getValue("ModelTiepoint"):meta.ModelTiepoint;
+   assert.ok(scale&&tiepoint,"Test fixture must be a georeferenced north-up GeoTIFF");
+   assert.deepEqual([...image.getBoundingBox()].map(Math.round),
+     [500000,7199520,500480,7200000],
+     "Fixture extent must be expressed in metres in UTM 36S");
+ } finally {await thematicTiff.close();}
  await terrain.getByLabel("Importar GeoTIFF temático").setInputFiles({
    name:"solo_classes.tif",mimeType:"image/tiff",buffer:thematic
  });
@@ -246,6 +264,11 @@ module.exports=async function validateRasterProcessing(page){
      "; original: "+String(cause));
  });
  assert.match(await terrain.innerText(),/Raster categorizado/);
+ await terrain.getByText("Classes identificadas (2)").waitFor();
+ await terrain.getByText("Textura 1 (1)",{exact:true}).waitFor();
+ await terrain.getByText("Textura 2 (2)",{exact:true}).waitFor();
+ assert.equal(await terrain.locator(".gm-terrain-layer-error:visible").count(),0,
+   "A valid georeferenced thematic raster must not leave an import error");
  await terrain.getByLabel("Transparência do raster").evaluate((el)=>{
    const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set;
    setter.call(el,"35");el.dispatchEvent(new Event("input",{bubbles:true}));
