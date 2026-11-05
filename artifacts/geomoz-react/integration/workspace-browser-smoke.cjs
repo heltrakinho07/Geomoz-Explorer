@@ -139,6 +139,45 @@ const server = createServer(async (req, res) => {
       await page.getByRole("button",{name:copy.action,exact:true}).waitFor({state:"visible"});
     }
     console.log("Geoperigos form and flood controls translated in PT/EN/ES/FR without reloading.");
+    // Specialist modules must translate in place without resetting their GIS IDs or
+    // forcing a page reload. These checks exercise real category cards and controls.
+    await page.getByRole("button",{name:"GeoAnálises",exact:true}).click();
+    await page.getByRole("heading",{name:"O que pretende analisar?",exact:true}).waitFor();
+    for(const copy of [
+      {code:"en",heading:"What would you like to analyse?",category:"Relief, Topography & Morphology"},
+      {code:"es",heading:"¿Qué desea analizar?",category:"Relieve, Topografía y Morfología"},
+      {code:"fr",heading:"Que souhaitez-vous analyser ?",category:"Relief, Topographie et Morphologie"},
+      {code:"pt",heading:"O que pretende analisar?",category:"Relevo, Topografia & Morfologia"},
+    ]){
+      await page.evaluate(code=>window.GeoMozPreferences.setLanguage(code),copy.code);
+      await page.waitForFunction(copy=>
+        [...document.querySelectorAll("h2")].some(h=>h.textContent?.trim()===copy.heading) &&
+        document.querySelector('[data-category="terrain"]')?.textContent?.includes(copy.category),
+        copy,{timeout:16000});
+    }
+    console.log("GeoAnálises category titles and scientific catalogue switch in PT/EN/ES/FR.");
+    await page.getByRole("button",{name:"Bacias hidrográficas",exact:true}).click();
+    await page.getByRole("heading",{name:"Bacias hidrográficas",exact:true}).waitFor();
+    for(const copy of [
+      {code:"en",heading:"Watersheds",mode:"Delineate"},
+      {code:"fr",heading:"Bassins versants",mode:"Délimiter"},
+      {code:"pt",heading:"Bacias hidrográficas",mode:"Delimitar"},
+    ]){
+      await page.evaluate(code=>window.GeoMozPreferences.setLanguage(code),copy.code);
+      await page.getByRole("heading",{name:copy.heading,exact:true}).waitFor();
+      await page.getByRole("button",{name:copy.mode,exact:true}).first().waitFor();
+    }
+    console.log("Hydrology watershed and delineation modes switch without reloading.");
+    await page.getByRole("button",{name:"GeoMoz AI Agent",exact:true}).click();
+    const aiInput=page.locator('textarea[aria-label="Mensagem para GeoMoz AI"]');
+    await aiInput.waitFor();
+    await page.evaluate(()=>window.GeoMozPreferences.setLanguage("en"));
+    await page.locator('textarea[aria-label="Message for GeoMoz AI"]').waitFor();
+    if (await page.locator('textarea[aria-label="Message for GeoMoz AI"]').getAttribute("placeholder")!=="Describe your analysis…")
+      throw Error("GeoMoz AI prompt did not switch to English.");
+    await page.evaluate(()=>window.GeoMozPreferences.setLanguage("pt"));
+    await aiInput.waitFor();
+    console.log("GeoMoz AI agent composer and accessible labels switch PT/EN without reload.");
     await page.getByRole("button",{name:"GIS Workspace",exact:true}).click();
     await page.getByRole("heading",{name:"Da área de estudo ao resultado.",exact:true}).waitFor();
     await page.locator('[data-testid="cesium-workspace"] .cesium-widget canvas').waitFor();
