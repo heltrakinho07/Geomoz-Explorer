@@ -397,11 +397,12 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   if (!open) return null;
   const mapReady = !!terrain && validTerrainGeography(terrain);
   const localCanvasReady = viewMode === "model" || !mapReady;
-  const outOfProjectArea = !!(terrain && activeProject?.aoi.bounds && (() => {
-    const [[south,west],[north,east]]=activeProject.aoi.bounds;
-    const [demWest,demSouth,demEast,demNorth]=terrain.bounds4326;
-    return west>demEast || east<demWest || south>demNorth || north<demSouth;
-  })());
+  const projectBounds=activeProject?.aoi.bounds;
+  const outOfProjectArea=!!(terrain && projectBounds &&
+    (projectBounds[0][1]>terrain.bounds4326[2] ||
+     projectBounds[1][1]<terrain.bounds4326[0] ||
+     projectBounds[0][0]>terrain.bounds4326[3] ||
+     projectBounds[1][0]<terrain.bounds4326[1]));
   return (
     <div data-testid="geomoz-terrain-module" role="region" aria-label="Terreno 3D"
       className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
