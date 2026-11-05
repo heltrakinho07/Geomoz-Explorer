@@ -124,13 +124,9 @@ def handle_gee_api_error(exc: Exception, prefix: str = "Cálculo GEE", uid: str 
             f"Por favor abra as Definições, insira o ID do seu projeto Google Cloud (ex: geoprocessamento-426809 ou o projeto do Code Editor) "
             f"e confirme se a Earth Engine API está ativada."
         )
-    if (
-        "The credentials do not contain the necessary fields need to refresh the access token" in msg
-        or "RefreshError" in msg
-        or "invalid_grant" in msg
-        or "Token has been expired or revoked" in msg
-        or "expirou" in msg
-    ):
+    from gee_auth_errors import RECONNECT_GEE_MESSAGE, is_gee_session_expired
+
+    if is_gee_session_expired(exc) or "expirou" in msg:
         reset_gee()
         if uid:
             try:
@@ -139,7 +135,7 @@ def handle_gee_api_error(exc: Exception, prefix: str = "Cálculo GEE", uid: str 
                 pass
         raise HTTPException(
             401,
-            detail="A sua sessão do Google Earth Engine expirou. Por favor clique em 'Reconectar Google Earth Engine' nas Definições ou no cabeçalho para renovar o acesso."
+            detail=RECONNECT_GEE_MESSAGE
         )
     raise HTTPException(500, f"{prefix} falhou: {exc}")
 from pydantic import BaseModel, field_validator, constr, Field

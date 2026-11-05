@@ -822,6 +822,12 @@ class ToolDispatcher:
                 return {"status": "error", "message": f"Ferramenta desconhecida: {tool_name}"}
 
         except Exception as exc:
+            from gee_auth_errors import RECONNECT_GEE_MESSAGE, is_gee_session_expired
+
+            if is_gee_session_expired(exc):
+                from gee_module import reset_gee
+                reset_gee()
+                return {"status": "error", "code": "gee_reconnect_required", "message": RECONNECT_GEE_MESSAGE}
             err_str = str(exc)
             if "Earth Engine client library not initialized" in err_str or "Não foi possível inicializar o Earth Engine" in err_str:
                 logger.warning("GEE not initialized during tool '%s': %s", tool_name, exc)
