@@ -464,6 +464,27 @@ async function settleRecovery(page){
   await row.waitFor();
   console.log("GeoJSON imported through the real GIS drop handler.");
   await row.locator(".gm-layer-select").click();
+  // Layer Properties follows a QGIS workflow while keeping vector attribute
+  // categorization separate from pixel/band classification for rasters.
+  await page.getByTestId("geomoz-open-layer-properties").click();
+  const vectorProps=page.getByTestId("geomoz-layer-properties-dialog");
+  await vectorProps.waitFor({state:"visible"});
+  assert.equal(await vectorProps.getAttribute("data-layer-kind"),"vector");
+  await vectorProps.getByRole("button",{name:"Simbologia",exact:true}).click();
+  await vectorProps.getByLabel("Tipo de renderização vectorial").selectOption("categorized");
+  await vectorProps.getByLabel("Coluna de categorização").selectOption("name");
+  assert.equal(await vectorProps.getByLabel("Coluna de categorização").inputValue(),"name");
+  await vectorProps.getByRole("button",{name:"Classificar todos os valores distintos"}).click();
+  await vectorProps.locator(".gm-prop-category-row").first().waitFor();
+  assert.equal(await vectorProps.locator(".gm-prop-category-row").count(),2,
+    "Vector category count must follow all distinct values of NAME, not raster class presets");
+  assert.ok((await vectorProps.locator(".gm-prop-category-list").innerText()).includes("Beira"));
+  assert.ok((await vectorProps.locator(".gm-prop-category-list").innerText()).includes("Chimoio"));
+  await vectorProps.getByRole("button",{name:"Aplicar simbologia"}).click();
+  await vectorProps.getByText(/Simbologia categorizada aplicada: 2 categorias/).waitFor();
+  await vectorProps.getByRole("button",{name:"Fechar propriedades"}).click();
+  await vectorProps.waitFor({state:"hidden"});
+  console.log("QGIS-style properties: vector categories derived from complete feature attributes and applied.");
   // Fix regression: layer style must be editable without the hidden specialist panel.
   await page.getByRole("button",{name:"Editar simbologia"}).click();
   await page.getByLabel("Cor do símbolo",{exact:true}).fill("#a855f7");
