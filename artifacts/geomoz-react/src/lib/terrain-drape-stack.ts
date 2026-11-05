@@ -30,7 +30,7 @@ export function visibleDrapeCount(layers:readonly TerrainDrapeLayer[]):number{
   return layers.filter(l=>l.visible&&l.opacity>0).length;
 }
 function loadImage(src:string):Promise<HTMLImageElement>{
-  if(!/^data:image\/(png|jpeg|webp);base64,/i.test(src))return Promise.reject(
+  if(!/^data:image\/(png|jpeg|webp);base64,/i.test(src) && !src.startsWith("blob:"))return Promise.reject(
     Error("A textura deve ser uma imagem local produzida pelo GeoMoz."));
   return new Promise((resolve,reject)=>{
     const img=new Image();
