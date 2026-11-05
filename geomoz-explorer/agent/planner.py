@@ -61,6 +61,45 @@ Diretrizes:
 """
 
 
+def _public_chat_request(message):
+    """Recognise public analysis commands while leaving other requests to the planner."""
+    text = _fold_text(message)
+    index = next((code for code in ("mndwi", "ndwi", "ndbi", "nbr", "ndvi")
+                  if re.search(rf"\b{code}\b", text)), None)
+    dates = re.findall(r"\b\d{4}-\d{2}-\d{2}\b", text)
+    years = re.findall(r"(?<![\d-])(?:19|20)\d{2}(?![\d-])", text)
+
+    if index and any(word in text for word in ("compar", "mudanca temporal", "alteracao temporal")):
+        if len(dates) == 4:
+            periods = dates
+        elif not dates and len(years) == 2:
+            periods = [date for year in map(int, years) for date in (f"{year}-01-01", f"{year + 1}-01-01")]
+        else:
+            raise ValueError("Indique dois anos ou quatro datas YYYY-MM-DD para comparar os dois períodos.")
+        return {"tool": "detect_temporal_change", "args": dict(zip(
+            ("index", "start_date_1", "end_date_1", "start_date_2", "end_date_2"), [index, *periods]))}
+
+    if any(phrase in text for phrase in ("worldcover", "cobertura do solo", "ocupacao do solo")):
+        return {"tool": "get_public_landcover", "args": {}}
+
+    if index and any(word in text for word in ("estatistica", "media", "calcular", "calcula", "mapear", "mapa")):
+        request = {"tool": "calculate_zonal_statistics", "args": {"index": index}}
+    elif "era5" in text or "temperatura do ar" in text:
+        request = {"tool": "get_global_climate", "args": {
+            "variable": "temperature" if "temperatura" in text else "precipitation"}}
+    else:
+        return None
+
+    if len(dates) == 2:
+        request["args"].update(start_date=dates[0], end_date=dates[1])
+    elif not dates and len(years) == 1:
+        year = int(years[0])
+        request["args"].update(start_date=f"{year}-01-01", end_date=f"{year + 1}-01-01")
+    elif dates or years:
+        raise ValueError("Indique um ano completo ou duas datas YYYY-MM-DD. A data final é exclusiva.")
+    return request
+
+
 class GeoMozAgent:
     """Autonomous Geospatial Agent with ReAct planning."""
 
@@ -95,16 +134,39 @@ class GeoMozAgent:
         public_request = current_map_state.get("publicAnalysis")
         catalogue_requested = any(phrase in _fold_text(user_message) for phrase in
                                   ("dados publicos", "fontes publicas", "catalogo de dados", "fontes globais"))
-        if public_request is not None or catalogue_requested:
-            if catalogue_requested and public_request is None:
+        if public_request is None:
+            try:
+                public_request = _public_chat_request(user_message)
+            except ValueError as exc:
+                return {"status": "needs_input", "steps": [], "runs": [], "map_actions": [],
+                        "synthesis": str(exc)}
+            if public_request:
+                # Public chat commands act on the selected area. Ask before using
+                # it when the command explicitly names a different place.
+                place = re.search(
+                    r"\b(?:em|no distrito de|na provincia de|no municipio de) ([a-z][a-z -]*?)"
+                    r"(?=\s+(?:entre|durante|de\s+\d|em\s+\d|com|para)\b|[,.?!]|$)",
+                    _fold_text(user_message),
+                )
+                label = _fold_text(str((current_map_state.get("aoi") or {}).get("label") or ""))
+                if place and place[1].strip() not in {"toda a area", "toda a regiao"} and not re.search(
+                    rf"\b{re.escape(place[1].strip())}\b", label
+                ):
+                    return {"status": "needs_input", "steps": [], "runs": [], "map_actions": [],
+                            "synthesis": "Seleccione no mapa a área indicada no pedido e volte a executar a análise."}
+            elif catalogue_requested:
                 public_request = {"tool": "list_public_datasets", "args": {}}
+        if public_request is not None:
             allowed = {"list_administrative_units", "list_public_datasets", "calculate_zonal_statistics", "detect_temporal_change",
                        "get_public_landcover", "get_global_climate"}
             if not isinstance(public_request, dict) or public_request.get("tool") not in allowed or not isinstance(public_request.get("args", {}), dict):
                 return {"status": "error", "steps": [], "runs": [], "map_actions": [],
                         "synthesis": "Pedido de análise pública inválido."}
             name = public_request["tool"]
-            output = await ToolDispatcher.execute(name, public_request.get("args", {}), current_map_state)
+            args = public_request.get("args", {})
+            if args.get("start_date") and args.get("end_date"):
+                current_map_state["temporalWindow"] = {"startDate": args["start_date"], "endDate": args["end_date"]}
+            output = await ToolDispatcher.execute(name, args, current_map_state)
             success = output.get("status") == "success"
             return {"status": "reference" if name in ("list_public_datasets", "list_administrative_units") and success else "completed" if success else "error",
                     "provider": "public-data-engine", "model": "Earth Engine / dados públicos",

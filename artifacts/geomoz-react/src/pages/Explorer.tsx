@@ -912,14 +912,17 @@ function ExplorerContent() {
           )}
 
           {activeTab === "Exportar" && (
-            <ExportPanel
-              province={province}
-              district={district}
-              colorBy={colorBy}
-              layers={layers}
-              mapCenter={mapCenter}
-              mapZoom={mapZoom}
-            />
+            <section aria-label="Relatório do estudo" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              <button type="button" onClick={() => setActiveTab("Dashboard")} className="shrink-0 self-start rounded-lg px-4 py-3 text-sm font-medium text-sky-700 hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-slate-800">← Voltar ao painel do estudo</button>
+              <ExportPanel
+                province={province}
+                district={district}
+                colorBy={colorBy}
+                layers={layers}
+                mapCenter={mapCenter}
+                mapZoom={mapZoom}
+              />
+            </section>
           )}
 
           {activeTab === "Documentação" && (

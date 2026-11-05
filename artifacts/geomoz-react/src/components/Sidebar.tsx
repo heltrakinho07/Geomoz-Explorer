@@ -14,7 +14,6 @@ import {
   Droplet,
   AlertTriangle,
   BrainCircuit,
-  FileText,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -73,7 +72,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: "Água Subterrânea", labelKey: "sidebar.nav.groundwater", icon: <Droplet size={20} /> },
   { id: "Geoperigos", labelKey: "sidebar.nav.hazards", icon: <AlertTriangle size={20} /> },
   { id: "GeoMoz AI", labelKey: "sidebar.nav.ai", icon: <BrainCircuit size={20} /> },
-  { id: "Exportar", labelKey: "sidebar.nav.export", icon: <FileText size={20} /> },
 
 ];
 

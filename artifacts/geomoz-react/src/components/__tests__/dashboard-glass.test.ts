@@ -23,10 +23,10 @@ describe("GeoMoz Dashboard glassmorphism", () => {
     expect(source).toContain('onTabChange?.("GeoAnálises")');
   });
 
-  it("keeps all seven real module launchers keyboard accessible", () => {
+  it("keeps the six module launchers keyboard accessible", () => {
     for (const id of [
       "mapa", "geoanalises", "bacias", "agua_subterranea",
-      "geoperigos", "geomoz_ai", "exportar",
+      "geoperigos", "geomoz_ai",
     ]) {
       expect(source).toContain(`id: "${id}"`);
       expect(styles).toContain(`data-module="${id}"`);
@@ -38,6 +38,12 @@ describe("GeoMoz Dashboard glassmorphism", () => {
     expect(source).toContain("onClick={() => onTabChange?.(mod.tab)}");
     expect(source).toMatch(/<button\s+type="button"\s+key=\{mod.id\}/);
     expect(source).toContain("gm-dashboard-module__footer");
+  });
+
+  it("offers the study report as an action instead of a module card", () => {
+    expect(source).not.toContain('id: "exportar"');
+    expect(source).toContain('onClick={() => onTabChange?.("Exportar")}');
+    expect(source).toContain('t("dashboard.reportAction")');
   });
 
   it("supports dark mode, focus navigation, mobile layout and accessibility fallbacks", () => {

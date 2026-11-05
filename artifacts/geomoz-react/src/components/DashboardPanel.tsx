@@ -131,17 +131,6 @@ const MODULE_LAUNCHERS: ModuleLauncher[] = [
     accentBorder: "hover:border-purple-500/40",
     tagKey: "dashboard.tag.ai",
   },
-  {
-    id: "exportar",
-    tab: "Exportar",
-    titleKey: "dashboard.module.export.title",
-    descriptionKey: "dashboard.module.export.description",
-    icon: <FileText size={22} />,
-    colorClass: "text-emerald-500",
-    badgeBgClass: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400",
-    accentBorder: "hover:border-emerald-500/40",
-    tagKey: "dashboard.tag.formats",
-  },
 ];
 
 export default function DashboardPanel({
