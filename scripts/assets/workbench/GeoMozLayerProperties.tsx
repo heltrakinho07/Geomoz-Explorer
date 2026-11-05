@@ -9,7 +9,7 @@ import {useLayerActions} from "../panels/layer-panel/useLayerActions";
 import type {ComponentProps} from "react";
 import type {LayerPanel} from "../panels/LayerPanel";
 
-export function GeoMozLayerProperties({layer,props}:{layer:GeoLibreLayer;props:ComponentProps<typeof LayerPanel>}) {
+export function GeoMozLayerProperties({layer,props,expanded=false}:{layer:GeoLibreLayer;props:ComponentProps<typeof LayerPanel>;expanded?:boolean}) {
   const {viewer}=useLayoutOptions();
   const {language}=useLanguage();
   const ui=(pt:string)=>geoMozSpecialistText(language,pt);
@@ -48,7 +48,7 @@ export function GeoMozLayerProperties({layer,props}:{layer:GeoLibreLayer;props:C
   let parent=groups.find(group=>group.id===layer.groupId);
   while(parent&&!visited.has(parent.id)){visited.add(parent.id);ancestors.push(parent);parent=groups.find(group=>group.id===parent?.parentId);}
 
-  return <details className="gm-layer-properties" key={layer.id}><summary>{ui("Propriedades da camada")}</summary>
+  return <details className="gm-layer-properties" key={layer.id} open={expanded ? true : undefined}><summary>{ui("Propriedades da camada")}</summary>
     <label>{ui("Nome")}<input aria-label={ui("Renomear camada")} defaultValue={layer.name} disabled={!editable}
       onBlur={event=>{const name=event.target.value.trim();if(name&&editable)update(layer.id,{name});else event.target.value=layer.name;}}
       onKeyDown={event=>{if(event.key==="Enter"&&!event.nativeEvent.isComposing)event.currentTarget.blur();}}/></label>
