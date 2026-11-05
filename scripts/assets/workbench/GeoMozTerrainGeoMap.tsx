@@ -90,7 +90,7 @@ function footprint(terrain: TerrainMeshData): GeoJSON.FeatureCollection {
 
 function colourPaint(overlay: GeoMozTerrainOverlay): string | maplibregl.ExpressionSpecification {
   if (overlay.mode !== "categorized" || !overlay.field) return overlay.color;
-  const pairs = Object.entries(overlay.categories).slice(0, 64).flatMap(([category, color]) => [category, color]);
+  const pairs = Object.entries(overlay.categories).flatMap(([category, color]) => [category, color]);
   return ["match", ["to-string", ["get", overlay.field]], ...pairs, overlay.color] as maplibregl.ExpressionSpecification;
 }
 
