@@ -12,6 +12,8 @@ import { prepareGeoMozPrintQuality } from "./geomoz-print-quality.mjs";
 import { prepareGeoMozProjectFormat } from "./geomoz-project-format.mjs";
 import {prepareGeoMozRasterProcessing} from "./geomoz-raster-processing.mjs";
 import { patchGeoMozDigitizingEngine } from "./geomoz-digitizing-engine.mjs";
+import { prepareGeoMozLargeVector } from "./geomoz-large-vector.mjs";
+import { prepareGeoMozCategorizedStyles } from "./geomoz-categorized.mjs";
 const root=resolve(process.argv[2]??".geolibre-upstream");
 const app=resolve(root,"apps/geolibre-desktop/src");
 const read=path=>readFileSync(resolve(app,path),"utf8");
@@ -30,6 +32,8 @@ const tail=toolbar.indexOf('      <div className="ms-auto flex min-w-0 items-cen
 const end=toolbar.indexOf("    </header>",tail);
 if(start<0||logoEnd<start||tail<logoEnd||end<tail)throw Error("GeoMoz toolbar source anchors changed");
 prepareGeoMozProjectFormat(root);
+prepareGeoMozLargeVector(root);
+prepareGeoMozCategorizedStyles(root);
 prepareGeoMozPrintQuality(root);
 prepareGeoMozLayoutEditor(root);
 prepareGeoMozMapPlacement(root);
