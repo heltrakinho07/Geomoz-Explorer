@@ -23,15 +23,17 @@ interface Props {
   onNotice:(message:string)=>void;
   rasterOptions:readonly {id:string;name:string;source:string}[];
   raster:(GeoMozRasterDrape & {opacity:number;visible:boolean})|null;
+  rasters:(GeoMozRasterDrape & {id:string;opacity:number;visible:boolean})[];
+  onRastersChange:(value:(GeoMozRasterDrape & {id:string;opacity:number;visible:boolean})[])=>void;
   rasterBusy:boolean;
   rasterProgress:{label:string;percent:number|null}|null;
   onCancelRaster:()=>void;
   onRasterChange:(next:(GeoMozRasterDrape & {opacity:number;visible:boolean})|null)=>void;
-  onImportRaster:(input:File|{source:string;name:string})=>Promise<void>;
+  onImportRaster:(input:File|{source:string;name:string},kind?:"auto"|"classified"|"ndvi"|"ndwi"|"rgb")=>Promise<void>;
 }
 export default function GeoMozTerrainLayers({
   layers,overlays,onChange,activePanel,terrainReady,onNotice,
-  rasterOptions,raster,rasterBusy,rasterProgress,onCancelRaster,onRasterChange,onImportRaster
+  rasterOptions,raster,rasters,onRastersChange,rasterBusy,rasterProgress,onCancelRaster,onRasterChange,onImportRaster
 }:Props) {
   const upload=useRef<HTMLInputElement>(null);
   const rasterInput=useRef<HTMLInputElement>(null);
@@ -39,6 +41,7 @@ export default function GeoMozTerrainLayers({
   const [selectedId,setSelectedId]=useState("");
   const [projectId,setProjectId]=useState("");
   const [loadError,setLoadError]=useState("");
+  const [rasterKind,setRasterKind]=useState<"auto"|"classified"|"ndvi"|"ndwi"|"rgb">("auto");
   const candidates=useMemo(
     ()=>layers.filter(l=>l.type==="geojson"&&l.geojson&&l.geojson.features?.length),
     [layers]
@@ -119,7 +122,17 @@ export default function GeoMozTerrainLayers({
       onClick={()=>upload.current?.click()}><FileUp size={14}/> Importar GeoJSON WGS84</button>
     {loadError&&<p role="alert" className="gm-terrain-layer-error">{loadError}</p>}
     <div className="gm-terrain-panel-heading"><strong>Rasters temáticos georreferenciados</strong></div>
-    <p>GeoTIFF de uso do solo, classes pedológicas ou imagem RGB: a grelha é reprojetada e limitada automaticamente ao DEM.</p>
+    <p>GeoTIFF de uso do solo, NDVI/NDWI ou RGB. Cada camada conserva a resolução e os valores originais fora da textura visual.</p>
+    <label className="gm-terrain-native-label">Tipo de representação do raster
+      <select aria-label="Tipo de raster sobre terreno 3D" value={rasterKind}
+        onChange={e=>setRasterKind(e.target.value as typeof rasterKind)}>
+        <option value="auto">Automático</option>
+        <option value="classified">Uso do solo · categorizado</option>
+        <option value="ndvi">NDVI · contínuo</option>
+        <option value="ndwi">NDWI · contínuo</option>
+        <option value="rgb">Imagem RGB</option>
+      </select>
+    </label>
     <label className="gm-terrain-native-label">Raster do catálogo SIG
       <select value={rasterSource} aria-label="Escolher raster temático"
         onChange={e=>setRasterSource(e.target.value)}>
@@ -128,12 +141,12 @@ export default function GeoMozTerrainLayers({
       </select>
     </label>
     <button type="button" className="gm-terrain-layer-secondary" disabled={!terrainReady||rasterBusy||!rasterSource}
-      onClick={()=>{const o=rasterOptions.find(o=>o.id===rasterSource);if(o)void onImportRaster({source:o.source,name:o.name});}}>
+      onClick={()=>{const o=rasterOptions.find(o=>o.id===rasterSource);if(o)void onImportRaster({source:o.source,name:o.name},rasterKind);}}>
       {rasterBusy?"A alinhar raster…":"Sobrepor raster do projecto"}
     </button>
     <input ref={rasterInput} type="file" className="sr-only" accept=".tif,.tiff,image/tiff"
       aria-label="Importar GeoTIFF temático" onChange={e=>{
-        const file=e.target.files?.[0];if(file)void onImportRaster(file);
+        const file=e.target.files?.[0];if(file)void onImportRaster(file,rasterKind);
         e.target.value="";
       }}/>
     <button type="button" disabled={!terrainReady||rasterBusy} className="gm-terrain-layer-secondary"
@@ -160,7 +173,7 @@ export default function GeoMozTerrainLayers({
         <strong title={raster.name}>{raster.name}</strong>
         <button type="button" aria-label="Remover raster temático" onClick={()=>onRasterChange(null)}><Trash2 size={14}/></button>
       </div>
-      <small>{raster.mode==="classified"?"Raster categorizado":"Imagem RGB"} · {Math.round(raster.coverage*100)}% do DEM</small>
+      <small>{raster.mode==="classified"?"Raster categorizado":raster.mode==="continuous"?"Índice contínuo":"Imagem RGB"} · {Math.round(raster.coverage*100)}% do DEM</small>
       <label className="gm-terrain-native-label">Transparência do raster · {Math.round((1-raster.opacity)*100)}%
         <input type="range" aria-label="Transparência do raster" min="0" max="100"
           value={Math.round((1-raster.opacity)*100)}
@@ -172,6 +185,33 @@ export default function GeoMozTerrainLayers({
           <span style={{background:c.color}}/><small>{c.label} ({c.value})</small>
         </div>)}
       </div>}
+    </div>}
+    {rasters.length>1&&<div className="gm-terrain-raster-stack" aria-label="Pilha de camadas raster 3D">
+      <strong>Ordem e opacidade dos rasters ({rasters.length})</strong>
+      <small>De baixo para cima: o último raster visível aparece sobre os restantes.</small>
+      {rasters.map((layer,index)=><div className="gm-terrain-raster-stack-item" key={layer.id}>
+        <div className="gm-terrain-panel-heading">
+          <button type="button" aria-label={"Alternar "+layer.name}
+            onClick={()=>onRastersChange(rasters.map(item=>item.id===layer.id?{...item,visible:!item.visible}:item))}>
+            {layer.visible?<Eye size={14}/>:<EyeOff size={14}/>}
+          </button>
+          <strong title={layer.name}>{index+1}. {layer.name}</strong>
+          <button type="button" disabled={index===0} aria-label={"Descer "+layer.name}
+            onClick={()=>{const next=[...rasters];[next[index-1],next[index]]=[next[index],next[index-1]];onRastersChange(next);}}>↓</button>
+          <button type="button" disabled={index===rasters.length-1} aria-label={"Subir "+layer.name}
+            onClick={()=>{const next=[...rasters];[next[index],next[index+1]]=[next[index+1],next[index]];onRastersChange(next);}}>↑</button>
+          <button type="button" aria-label={"Remover "+layer.name}
+            onClick={()=>onRastersChange(rasters.filter(item=>item.id!==layer.id))}><Trash2 size={13}/></button>
+        </div>
+        <label className="gm-terrain-native-label">Opacidade · {Math.round(layer.opacity*100)}%
+          <input type="range" min="0" max="100" value={Math.round(layer.opacity*100)}
+            aria-label={"Opacidade de "+layer.name}
+            disabled={!layer.visible}
+            onChange={e=>onRastersChange(rasters.map(item=>item.id===layer.id?{
+              ...item,opacity:Number(e.target.value)/100
+            }:item))}/>
+        </label>
+      </div>)}
     </div>}
     <div className="gm-terrain-panel-heading"><strong>Camadas aplicadas ({overlays.length})</strong></div>
     {overlays.length===0&&<p className="gm-terrain-layer-empty">Sem sobreposições. Adicione uma camada e ajuste a respectiva simbologia no separador «Simbologia».</p>}
