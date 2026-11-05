@@ -2,6 +2,8 @@ import { GAULAreaSelect, type LoadGAULUnits } from "./GAULAreaSelect";
 import { WORLD_COUNTRIES } from "@/lib/world-countries";
 import { PublicDataTools, type PublicAnalysisRequest } from "./PublicDataTools";
 import { GeoIntelligenceDossier, type IntelligenceDossier } from "./GeoIntelligenceDossier";
+import { makeTemporalReplay, isTemporalReplay } from "@/lib/geoai-temporal-replay";
+import type { TemporalReplay } from "@/types/project";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useProject } from "../context/ProjectContext";
 import { collectGeoAiMapActions, type GeoAiTemporalChange } from "@/lib/geoai-map-actions";
@@ -41,7 +43,7 @@ import {
   Globe,
   RefreshCw,
 } from "lucide-react";
-import { GeoJSON, MapContainer, Pane, TileLayer, ScaleControl, useMap } from "react-leaflet";
+import { GeoJSON, MapContainer, Pane, TileLayer, ScaleControl, useMap, useMapEvents } from "react-leaflet";
 import { GeoAgentMarkdown } from "./GeoAgentMarkdown";
 import "leaflet/dist/leaflet.css";
 import { GOOGLE_BASEMAPS } from "@/lib/basemaps";
@@ -80,6 +82,22 @@ function ZoomToPublicAOI({ aoi }: { aoi: AreaOfInterest }) {
 
 /** React-Leaflet Pane styles are initial options in some versions.
  * Apply live split position to both panes so the slider always updates clipping. */
+function TemporalPixelClick({ enabled, onProbe }: { enabled: boolean; onProbe: (lat: number, lon: number) => void }) {
+  useMapEvents({ click: (event) => { if (enabled) onProbe(event.latlng.lat, event.latlng.lng); } });
+  return null;
+}
+
+interface TemporalPixelResult {
+  status: "success" | "no_data";
+  latitude: number;
+  longitude: number;
+  valueA: number | null;
+  valueB: number | null;
+  delta: number | null;
+  classification: "increase" | "decrease" | "stable" | "no_data";
+  analysisScaleM: number;
+}
+
 function SyncSwipePanes({ position }: { position: number }) {
   const map = useMap();
   useEffect(() => {
@@ -140,7 +158,7 @@ interface ChatMessage {
 }
 
 export default function GeoMozAIAgentTab() {
-  const { activeProject, updateProject, saveRunToActiveProject } = useProject();
+  const { activeProject, activeRuns, updateProject, saveRunToActiveProject } = useProject();
   const { refreshStatus } = useGeeAuth();
   const { translatedLocale } = usePortalTranslation();
   const copy = useCallback((key: AiAgentCopyKey) => aiAgentText(translatedLocale, key), [translatedLocale]);
@@ -272,11 +290,51 @@ export default function GeoMozAIAgentTab() {
   const [changeMode, setChangeMode] = useState<"significant" | "continuous" | "comparison">("significant");
   const [swipePosition, setSwipePosition] = useState(50);
   const [mapLayerNotice, setMapLayerNotice] = useState<string | null>(null);
+  const [pixelLoading, setPixelLoading] = useState(false);
+  const [pixelError, setPixelError] = useState<string | null>(null);
+  const [pixelResult, setPixelResult] = useState<TemporalPixelResult | null>(null);
+  const pixelAbortRef = useRef<AbortController | null>(null);
   const selectedTemporal = completedRuns[selectedLayerIndex]?.temporalChange as GeoAiTemporalChange | undefined;
   const comparisonReady = Boolean(selectedTemporal?.periodATileUrl && selectedTemporal?.periodBTileUrl);
   const showComparison = Boolean(comparisonReady && changeMode === "comparison" && activeTileUrl);
   const renderedTileUrl = selectedTemporal && changeMode === "continuous"
     ? selectedTemporal.continuousTileUrl : activeTileUrl;
+  const selectedRecipe = completedRuns[selectedLayerIndex]?.replay as TemporalReplay | undefined;
+
+  useEffect(() => {
+    pixelAbortRef.current?.abort();
+    setPixelLoading(false);
+    setPixelResult(null);
+    setPixelError(null);
+    return () => pixelAbortRef.current?.abort();
+  }, [selectedLayerIndex, activeTileUrl]);
+
+  const probeTemporalPixel = async (latitude: number, longitude: number) => {
+    if (!selectedRecipe) return;
+    pixelAbortRef.current?.abort();
+    const controller = new AbortController();
+    pixelAbortRef.current = controller;
+    setPixelLoading(true);
+    setPixelError(null);
+    setPixelResult(null);
+    try {
+      const response = await apiFetch("/geomoz-api/ai/temporal-pixel", {
+        method: "POST", signal: controller.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...selectedRecipe.args, aoi: selectedRecipe.aoi, latitude, longitude }),
+      });
+      if (!response.ok) {
+        const problem = await response.json().catch(() => null);
+        throw new Error(agentHttpError(translatedLocale, response.status, problem?.detail, response.headers.get("X-Request-ID")));
+      }
+      const result = await response.json() as TemporalPixelResult;
+      if (!controller.signal.aborted) setPixelResult(result);
+    } catch (error) {
+      if (!controller.signal.aborted) setPixelError(error instanceof Error ? error.message : copy("map.pixelError"));
+    } finally {
+      if (!controller.signal.aborted) setPixelLoading(false);
+    }
+  };
 
   // Abort controller reference for cancelling runs
   const abortRef = useRef<AbortController | null>(null);
@@ -414,7 +472,7 @@ export default function GeoMozAIAgentTab() {
   const isAIActive = Boolean(openaiApiKey.trim() || geminiApiKey.trim());
 
   // Submit natural language prompt
-  const handlePromptSubmit = async (customText?: string, publicRequest?: PublicAnalysisRequest) => {
+  const handlePromptSubmit = async (customText?: string, publicRequest?: PublicAnalysisRequest, replay?: TemporalReplay) => {
     const textToSend = customText ?? prompt.trim();
     if (!textToSend || isRunning) return;
 
@@ -447,7 +505,7 @@ export default function GeoMozAIAgentTab() {
     try {
       const aoiPayload = aoiToAPI(currentAoi);
       const currentMapState = {
-        aoi: {
+        aoi: replay?.aoi ?? {
           source: currentAoi.source,
           countryCode: currentAoi.countryCode,
           countryName: currentAoi.countryName,
@@ -460,15 +518,15 @@ export default function GeoMozAIAgentTab() {
           district: aoiPayload.district || null,
           geometry: aoiPayload.geometry || null,
         },
-        temporalWindow: analysisPeriod,
+        temporalWindow: replay ? { startDate: replay.args.start_date_2, endDate: replay.args.end_date_2 } : analysisPeriod,
         uiLocale: translatedLocale,
-        agentContext,
-        publicAnalysis: publicRequest ? {
+        agentContext: replay ? null : agentContext,
+        publicAnalysis: replay ? { tool: replay.tool, args: replay.args } : publicRequest ? {
           ...publicRequest,
           args: publicRequest.tool === "detect_temporal_change" ? {
             ...publicRequest.args,
-            start_date_2: analysisPeriod.startDate,
-            end_date_2: analysisPeriod.endDate,
+            start_date_2: publicRequest.args.start_date_2 || analysisPeriod.startDate,
+            end_date_2: publicRequest.args.end_date_2 || analysisPeriod.endDate,
           } : publicRequest.args,
         } : undefined,
       };
@@ -535,6 +593,9 @@ export default function GeoMozAIAgentTab() {
           setCurrentAoi(mozambiqueAOI(act.province, act.district || null));
         }
         if (act.type === "ADD_LAYER" && act.tileUrl) {
+          const sourceRun = (data.runs || []).find((run: { output?: { map_action?: { id?: string } } }) =>
+            run.output?.map_action?.id === act.id);
+          const replayRecipe = act.temporalChange ? makeTemporalReplay(sourceRun, act.temporalChange) : null;
           computedLayers.push({
             name: act.name || diag("agent.viewLayer"),
             type: "remote_sensing",
@@ -544,6 +605,7 @@ export default function GeoMozAIAgentTab() {
             metrics: {},
             tileUrl: act.tileUrl,
             temporalChange: act.temporalChange || null,
+            replay: replayRecipe,
           });
         }
         if (act.type === "ADD_GEOJSON_LAYER" && act.id === "agent_geology") {
@@ -601,8 +663,24 @@ export default function GeoMozAIAgentTab() {
         setActiveTileName(preferredLayer.name);
         if (activeProject) {
           for (const resultLayer of computedLayers) {
-            // Do not persist large inline GeoJSON as a project run.
-            if (resultLayer.tileUrl) await saveRunToActiveProject(resultLayer);
+            try {
+              if (resultLayer.replay) {
+                const recipe = resultLayer.replay as TemporalReplay;
+                await saveRunToActiveProject({
+                  name: resultLayer.name, type: "remote_sensing",
+                  sensor: "Sentinel-2 SR Harmonized", code: `agent_change_${recipe.args.index}`,
+                  dateRange: { start: recipe.args.start_date_1, end: recipe.args.end_date_2 },
+                  replay: recipe,
+                  notes: `B − A; limiar ±${recipe.args.threshold}; dados Sentinel-2; reexecutar para obter novos mosaicos.`,
+                });
+              } else if (resultLayer.tileUrl && !resultLayer.temporalChange) {
+                // Legacy non-temporal layers keep their existing behaviour.
+                await saveRunToActiveProject(resultLayer);
+              }
+            } catch {
+              // A Firestore/local-storage failure must not hide a successful GEE result.
+              setMapLayerNotice(copy("map.saveError"));
+            }
           }
         }
       }
@@ -1217,6 +1295,25 @@ export default function GeoMozAIAgentTab() {
             </div>
           ))}
 
+          {/* Saved scientific recipes: old Earth Engine map URLs are never reused. */}
+          {activeProject && activeRuns.some(isTemporalReplay) && (
+            <section aria-label={copy("map.savedTitle")} className="mx-3 my-2 rounded-xl border border-violet-200 bg-violet-50/50 p-2.5 dark:border-violet-900 dark:bg-violet-950/20">
+              <div className="flex items-center gap-2 text-[11px] font-bold text-slate-800 dark:text-slate-100"><FolderKanban size={14} />{copy("map.savedTitle")}</div>
+              <div className="mt-2 flex flex-col gap-1.5">
+                {activeRuns.filter(isTemporalReplay).slice(0, 5).map((run) => (
+                  <button type="button" key={run.id} disabled={isRunning}
+                    onClick={() => void handlePromptSubmit(
+                      `${copy("map.replay")}: ${run.replay.args.index.toUpperCase()} ${run.replay.args.start_date_1.slice(0, 4)} / ${run.replay.args.start_date_2.slice(0, 4)}`,
+                      undefined, run.replay)}
+                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-left text-[11px] text-slate-700 hover:border-violet-400 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                    <span className="truncate">{run.name} · {run.replay.args.start_date_1.slice(0, 4)}–{run.replay.args.start_date_2.slice(0, 4)}</span>
+                    <span className="shrink-0 font-semibold text-violet-700 dark:text-violet-300"><RefreshCw size={11} className="inline" /> {copy("map.replay")}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Running Status Tracker */}
           {isRunning && (
             <div className="p-3 bg-violet-50/50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800 rounded-xl space-y-2">
@@ -1435,6 +1532,7 @@ export default function GeoMozAIAgentTab() {
                 <ZoomToGeology bounds={activeGeology.bbox} />
               </>
             )}
+            <TemporalPixelClick enabled={Boolean(selectedTemporal && selectedRecipe && activeTileUrl)} onProbe={probeTemporalPixel} />
             <ScaleControl position="bottomleft" />
           </MapContainer>
           {showComparison && selectedTemporal && (
@@ -1443,6 +1541,24 @@ export default function GeoMozAIAgentTab() {
               <div className="pointer-events-none absolute left-4 top-20 z-[900] rounded-lg bg-slate-900/85 px-2.5 py-1 text-[11px] font-bold text-white shadow-lg">{copy("map.before")} · {selectedTemporal.periodA.startDate.slice(0, 4)}</div>
               <div className="pointer-events-none absolute right-4 top-20 z-[900] rounded-lg bg-slate-900/85 px-2.5 py-1 text-[11px] font-bold text-white shadow-lg">{copy("map.after")} · {selectedTemporal.periodB.startDate.slice(0, 4)}</div>
             </>
+          )}
+          {selectedTemporal && selectedRecipe && (pixelResult || pixelLoading || pixelError) && (
+            <div role="status" className="absolute bottom-4 left-4 z-[1002] w-[min(290px,calc(100%-2rem))] rounded-xl border border-slate-200 bg-white/95 p-3 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900/95">
+              <div className="flex items-center justify-between gap-2 font-bold text-slate-800 dark:text-slate-100">
+                {copy("map.pixelHeading")}
+                <button type="button" onClick={() => { pixelAbortRef.current?.abort(); setPixelLoading(false); setPixelResult(null); setPixelError(null); }} aria-label={copy("map.pixelClose")}><X size={14} /></button>
+              </div>
+              {pixelLoading && <p className="mt-2 text-violet-700 dark:text-violet-300">{copy("map.pixelLoading")}</p>}
+              {pixelError && <p className="mt-2 text-rose-700 dark:text-rose-300">{pixelError}</p>}
+              {pixelResult && <div className="mt-2 space-y-1 font-mono text-[11px] text-slate-700 dark:text-slate-200">
+                <p>{pixelResult.latitude.toFixed(5)}, {pixelResult.longitude.toFixed(5)}</p>
+                <p>{copy("map.before")}: {pixelResult.valueA === null ? "—" : pixelResult.valueA.toFixed(4)}</p>
+                <p>{copy("map.after")}: {pixelResult.valueB === null ? "—" : pixelResult.valueB.toFixed(4)}</p>
+                <p>Δ{selectedTemporal.index}: {pixelResult.delta === null ? "—" : pixelResult.delta.toFixed(4)}</p>
+                <p className="font-semibold">{copy(pixelResult.status === "no_data" ? "map.pixelNoData" : pixelResult.classification === "increase" ? "map.pixelIncrease" : pixelResult.classification === "decrease" ? "map.pixelDecrease" : "map.pixelStable")}</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">{pixelResult.analysisScaleM} m · Sentinel-2 SR</p>
+              </div>}
+            </div>
           )}
           {selectedTemporal && activeTileUrl && (
             <div role="region" aria-label={`Legenda de alteração de ${selectedTemporal.index}`}
@@ -1501,6 +1617,7 @@ export default function GeoMozAIAgentTab() {
                 </div>
               )}
               <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400">Mudanças de índice não comprovam desflorestação. Compare épocas sazonais equivalentes.</p>
+              {selectedRecipe && <p className="mt-1 text-[10px] font-medium text-violet-700 dark:text-violet-300">{copy("map.pixelPrompt")}</p>}
             </div>
           )}
         </div>
