@@ -189,7 +189,8 @@ module.exports=async function validateRasterProcessing(page){
    const c=document.querySelector('[data-testid="geomoz-native-terrain-canvas"]');
    return c instanceof HTMLCanvasElement&&c.width>50&&c.height>50;
  },{timeout:12000});
- assert.match(await terrain.innerText(),/EPSG:4326 → EPSG:32736/);
+ // Allow React to commit the newly selected Export tab before checking its metadata.
+ await terrain.getByText("EPSG:4326 → EPSG:32736",{exact:false}).waitFor({state:"visible",timeout:15000});
 
  // The upstream Terrain Studio feature set must survive localization merges.
  const lod=terrain.getByLabel("Detalhe do terreno 3D");
