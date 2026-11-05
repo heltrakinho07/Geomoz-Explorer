@@ -263,7 +263,7 @@ async def restrict_disabled_modules(request: Request, call_next):
 async def isolate_gee_requests(request: Request, call_next):
     if (request.url.path.startswith("/geomoz-api/gee/") or
             request.url.path.startswith("/geomoz-api/terrain/gee-") or
-            request.url.path == "/geomoz-api/ai/agent-chat"):
+            request.url.path in ("/geomoz-api/ai/agent-chat", "/geomoz-api/ai/temporal-pixel")):
         async with _gee_request_lock:
             return await call_next(request)
     return await call_next(request)
@@ -1505,6 +1505,66 @@ async def agent_model_catalog(req: AgentModelCatalogRequest):
     except Exception:
         logger.exception("GEOAGENTE model catalogue request failed")
         raise HTTPException(status_code=503, detail="Catálogo de modelos temporariamente indisponível.") from None
+
+
+class GeoAiTemporalPixelRequest(BaseModel):
+    aoi: dict
+    index: str
+    start_date_1: str
+    end_date_1: str
+    start_date_2: str
+    end_date_2: str
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    threshold: float = Field(default=0.2, gt=0, le=2)
+    scale_m: float = Field(default=30, ge=10, le=20000)
+    cloud_pct: float = Field(default=30, ge=0, le=100)
+
+
+@app.post("/geomoz-api/ai/temporal-pixel")
+async def geoai_temporal_pixel(req: GeoAiTemporalPixelRequest,
+                               uid: str = Depends(require_gee_auth)):
+    """Read a real GEE A/B pixel from the authenticated user's own project.
+
+    Recompute from scientific inputs, not the short-lived map tile URL.
+    Only spatially bounded AOIs and a small fixed set of datasets are allowed.
+    """
+    import json
+    if len(json.dumps(req.aoi)) > 125_000:
+        raise HTTPException(status_code=422, detail="A área de estudo é demasiado complexa.")
+    def execute():
+        from agent import earth_engine_tools as public
+        aoi = req.aoi
+        geometry = aoi.get("geometry")
+        if geometry is not None:
+            geometry = public.validate_geometry(geometry)
+        elif aoi.get("source") == "country" or aoi.get("countryCode"):
+            code = aoi.get("countryCode")
+            if aoi.get("boundarySource") == "gaul2025":
+                from agent.administrative_boundaries import administrative_geometry
+                geometry, _ = administrative_geometry(code, aoi.get("adminLevel", 0),
+                                                       aoi.get("admin1Code"), aoi.get("admin2Code"))
+            else:
+                if aoi.get("adminLevel") not in (None, 0):
+                    raise ValueError("Seleccione a fonte FAO GAUL para analisar ADM1/ADM2.")
+                geometry = public.country_geometry(code)
+        elif aoi.get("province"):
+            geometry = _region_geojson(province=aoi.get("province"), district=aoi.get("district"))
+        elif aoi.get("source") == "mozambique":
+            geometry = public.country_geometry("MOZ")
+        else:
+            raise ValueError("A área original do estudo não está definida.")
+        return public.temporal_pixel(
+            geometry, req.index.lower(), req.start_date_1, req.end_date_1,
+            req.start_date_2, req.end_date_2, req.longitude, req.latitude,
+            req.threshold, req.scale_m, req.cloud_pct)
+    try:
+        return await run_in_threadpool(execute)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except Exception as exc:
+        logger.error("GeoMoz temporal pixel analysis failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Falha na leitura do pixel Earth Engine. Verifique a ligação e tente novamente.") from None
 
 
 @app.post("/geomoz-api/ai/agent-chat")
