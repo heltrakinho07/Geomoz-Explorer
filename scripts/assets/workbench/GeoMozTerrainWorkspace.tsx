@@ -451,6 +451,20 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
             <p className="gm-terrain-native-hint">As camadas vectoriais do 3D ficam disponíveis na vista actual. O GLB exportado contém a malha do DEM; a textura vectorial deve ser exportada separadamente numa próxima versão.</p>
           </>}
         </div>
+        <div className="gm-terrain-vertical-panel" data-testid="terrain-workspace-exaggeration">
+          <div className="gm-terrain-vertical-heading">
+            <label htmlFor="gm-terrain-exaggeration">{ui("3. Exagero vertical")}</label>
+            <strong>{exaggeration.toFixed(1)}×</strong>
+          </div>
+          <input id="gm-terrain-exaggeration" type="range" min="1" max="15" step=".5"
+            value={exaggeration} disabled={!terrain} aria-label={ui("Exagero vertical")}
+            onChange={event=>setExaggeration(Number(event.target.value))}/>
+          <div className="gm-terrain-vertical-footer">
+            <small>{ui("Ajuste apenas visual; as altitudes do DEM mantêm-se.")}</small>
+            <button type="button" disabled={!terrain} aria-label={ui("Restaurar exagero vertical")}
+              onClick={()=>setExaggeration(2)}><RotateCcw size={13}/> 2×</button>
+          </div>
+        </div>
         <div className="gm-terrain-display-options">
           <details>
             <summary>Visualização do relevo</summary>
@@ -468,10 +482,6 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
                 <option value="medium">{ui("LOD 2 · equilibrado")}</option>
                 <option value="low">{ui("LOD 4 · rápido")}</option>
               </select>
-            </label>
-            <label className="gm-terrain-native-label">{ui("Exagero vertical")} · {exaggeration.toFixed(1)}×
-              <input type="range" min="1" max="15" step=".5" value={exaggeration}
-                onChange={event=>setExaggeration(Number(event.target.value))}/>
             </label>
             <button type="button" className="gm-terrain-native-reset"
               onClick={()=>{setExaggeration(2);setStyle("hypsometric");}}>

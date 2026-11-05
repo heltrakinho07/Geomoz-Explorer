@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { jsPDF } from "jspdf";
-import { Download, FileUp, Image as ImageIcon, Loader2, Mountain, RotateCcw, X } from "lucide-react";
+import { Download, FileUp, Image as ImageIcon, Loader2, Mountain, RotateCcw, Map as MapIcon, Box, X } from "lucide-react";
+import TerrainBasemap from "@/components/terrain/TerrainBasemap";
+import { validTerrainGeography } from "@/lib/terrain-map-geo";
 import { apiFetch } from "@/lib/api";
 import { useTerrainSession } from "@/context/TerrainSessionContext";
 import { useProject } from "@/context/ProjectContext";
@@ -40,6 +42,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   const [error, setError] = useState<string | null>(null);
   const [rendererError, setRendererError] = useState<string | null>(null);
   const [exaggeration, setExaggeration] = useState(2);
+  const [viewMode, setViewMode] = useState<"map"|"model">("map");
   const [style, setStyle] = useState<TerrainVisualStyle>("hypsometric");
   const [detailLevel, setDetailLevel] = useState<"auto"|"full"|"medium"|"low">("auto");
   const [textureUrl, setTextureUrl] = useState<string | null>(null);
@@ -62,6 +65,11 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   useEffect(() => () => {
     if (textureUrl?.startsWith("blob:")) URL.revokeObjectURL(textureUrl);
   }, [textureUrl]);
+
+  // Open georeferenced 3D terrain on the world basemap when the DEM permits.
+  useEffect(() => {
+    setViewMode(terrain && validTerrainGeography(terrain) ? "map" : "model");
+  }, [terrain]);
 
   // Both the GIS Workspace and Explorer now use the same WebGL renderer.
   // There is no iframe handoff; a click resolves a genuine 3D triangle.
@@ -88,7 +96,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
 
 
   useEffect(() => {
-    if (!open || !terrain || !canvasRef.current) return;
+    if (!open || !terrain || viewMode === "map" || !canvasRef.current) return;
     setRendererError(null);
     try {
       return createTerrainRenderer(canvasRef.current, terrain, {
@@ -103,7 +111,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
       setRendererError(cause instanceof Error ? cause.message : String(cause));
       return undefined;
     }
-  }, [open, terrain, exaggeration, style, textureUrl, pickTarget, picked, detailLevel]);
+  }, [open, terrain, exaggeration, style, textureUrl, pickTarget, picked, detailLevel, viewMode]);
 
   async function loadGeoTiff(file: File | undefined) {
     if (!file) return;
@@ -383,6 +391,8 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   }
 
   if (!open) return null;
+  const mapReady = !!terrain && validTerrainGeography(terrain);
+  const localCanvasReady = viewMode === "model" || !mapReady;
   return (
     <div data-testid="geomoz-terrain-module" role="region" aria-label="Terreno 3D"
       className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -409,12 +419,12 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
             {glbBusy ? <Loader2 size={13} className="mr-1 inline animate-spin"/> : <Download size={13} className="mr-1 inline"/>}
             GLB 3D
           </button>
-          <button type="button" disabled={!terrain || !!rendererError}
+          <button type="button" disabled={!terrain || !!rendererError || !localCanvasReady}
             onClick={downloadCanvas}
             className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
             <Download size={13} className="mr-1 inline"/> PNG
           </button>
-          <button type="button" disabled={!terrain || !!rendererError}
+          <button type="button" disabled={!terrain || !!rendererError || !localCanvasReady}
             onClick={exportPdf}
             className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
             <Download size={13} className="mr-1 inline"/> PDF
@@ -578,9 +588,28 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
         </aside>
         <section className="relative order-1 min-h-[220px] flex-1 overflow-hidden bg-slate-100 md:order-2 dark:bg-slate-950"
           aria-label="Visualizador tridimensional do DEM">
+          {terrain && mapReady && (
+            <div data-testid="terrain-studio-view-switch" role="group"
+              aria-label="Modos de visualização do terreno 3D"
+              className="absolute right-4 top-4 z-30 flex gap-1 rounded-xl border border-slate-500/40 bg-slate-950/90 p-1 text-xs font-semibold text-white shadow-xl backdrop-blur">
+              <button type="button" data-testid="terrain-studio-map-mode"
+                aria-pressed={viewMode==="map"} onClick={()=>setViewMode("map")}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 ${viewMode==="map"?"bg-sky-600 text-white":"text-slate-200 hover:bg-slate-700"}`}>
+                <MapIcon size={14}/> Sobre mapa 3D
+              </button>
+              <button type="button" data-testid="terrain-studio-model-mode"
+                aria-pressed={viewMode==="model"} onClick={()=>setViewMode("model")}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 ${viewMode==="model"?"bg-sky-600 text-white":"text-slate-200 hover:bg-slate-700"}`}>
+                <Box size={14}/> Modelo isolado
+              </button>
+            </div>
+          )}
           {terrain ? (
-            <canvas ref={canvasRef} aria-label="Modelo tridimensional de elevação"
-              className="block h-full w-full cursor-grab touch-none active:cursor-grabbing"/>
+            localCanvasReady
+              ? <canvas ref={canvasRef} aria-label="Modelo tridimensional de elevação"
+                  className="block h-full w-full cursor-grab touch-none active:cursor-grabbing"/>
+              : <TerrainBasemap terrain={terrain} exaggeration={exaggeration}
+                  style={style} rasterTexture={textureUrl}/>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
               <Mountain size={56} className="text-sky-500/60"/>
@@ -593,7 +622,8 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               </div>
             </div>
           )}
-          {terrain && <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/80 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 backdrop-blur">
+          {terrain && !mapReady && <div role="status" className="absolute left-4 top-4 max-w-xs rounded-lg border border-amber-300 bg-amber-50/95 p-3 text-xs text-amber-900 shadow-sm">O mapa-base 3D requer um DEM com georreferenciação WGS84/UTM válida. O modelo isolado continua disponível.</div>}
+          {terrain && localCanvasReady && <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/80 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 backdrop-blur">
             {pickTarget?"Clique sobre o relevo para marcar "+pickTarget:
               "Arrastar: rodar · Roda: aproximar · Seleccione A/B para consultar a elevação"}
           </div>}

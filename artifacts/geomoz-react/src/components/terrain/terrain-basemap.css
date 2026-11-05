@@ -1,0 +1,60 @@
+/* Basemap geográfico e malha 3D sobre o mapa na página /terreno-3d. */
+.gm-terrain-geographic{height:100%;width:100%;position:relative;overflow:hidden;
+  background:#dbeafe;color:#0f172a;}
+.gm-terrain-geographic-map{height:100%;width:100%;}
+.gm-terrain-geographic-tools{
+  position:absolute;top:58px;left:9px;z-index:10;
+  display:flex;gap:6px;flex-wrap:wrap;align-items:end;
+  padding:8px;background:rgba(255,255,255,.94);
+  border:1px solid #cbd5e1;border-radius:11px;
+  box-shadow:0 7px 22px #0f172a25;backdrop-filter:blur(9px);
+  max-width:calc(100% - 50px);
+}
+.gm-terrain-geographic-tools label{font-size:10px;font-weight:700;color:#475569;
+  display:flex;flex-direction:column;gap:4px;}
+.gm-terrain-geographic-tools select,.gm-terrain-geographic-tools button{
+  border:1px solid #cbd5e1;background:#f8fafc;color:#0f172a;
+  border-radius:7px;padding:6px 8px;min-height:30px;font-size:11px;
+}
+.gm-terrain-geographic-tools button{cursor:pointer;font-weight:700;}
+.gm-terrain-geographic-tools button:hover{border-color:#0284c7;color:#0369a1;}
+.gm-terrain-geographic-info{
+  position:absolute;bottom:30px;left:10px;z-index:9;
+  display:flex;flex-direction:column;gap:3px;
+  max-width:min(390px,calc(100% - 70px));padding:9px 11px;
+  border-radius:10px;border:1px solid #cbd5e1;
+  background:rgba(255,255,255,.93);box-shadow:0 5px 16px #0f172a26;
+  font-size:11px;line-height:1.4;pointer-events:none;
+}
+.gm-terrain-geographic-info strong{font-size:12px;color:#0369a1;}
+.gm-terrain-geographic-info small{font-size:10px;color:#64748b;}
+.gm-terrain-geographic-error,.gm-terrain-map-unavailable{
+  position:absolute;top:130px;left:12px;z-index:20;
+  max-width:340px;border:1px solid #fecaca;background:#fef2f2;
+  color:#991b1b;font-size:12px;border-radius:10px;padding:12px;
+}
+.gm-terrain-map-unavailable{position:relative;top:auto;left:auto;}
+
+/* True georeferenced 3D mesh placed on the continuous world terrain. */
+.gm-terrain-model-toggle {
+  display:inline-flex!important;flex-direction:row!important;align-items:center;
+  gap:7px;font-size:11px!important;white-space:nowrap;min-height:32px;
+  padding:4px 8px;border-radius:8px;background:#e0f2fe;color:#075985!important;
+}
+.gm-terrain-model-toggle input{width:15px;height:15px;accent-color:#0284c7;}
+.gm-terrain-geographic-tools input[type=range]{
+  width:120px;max-width:100%;height:18px;accent-color:#0284c7;
+}
+.gm-terrain-geographic-tools{max-width:min(750px,calc(100% - 52px));}
+.gm-terrain-geographic-tools>label{min-width:0;}
+@media(max-width:600px){
+  .gm-terrain-geographic-tools{max-width:calc(100% - 14px);}
+  .gm-terrain-geographic-tools input[type=range]{width:76px;}
+  .gm-terrain-geographic-tools>label{font-size:9px;}
+  .gm-terrain-geographic-tools{gap:5px;}
+}
+.gm-terrain-geographic{min-height:240px;}
+.dark .gm-terrain-geographic-tools,.dark .gm-terrain-geographic-info{background:rgba(15,23,42,.91);border-color:#475569;color:#e2e8f0;}
+.dark .gm-terrain-geographic-tools label,.dark .gm-terrain-geographic-info strong{color:#bae6fd;}
+.dark .gm-terrain-geographic-tools select,.dark .gm-terrain-geographic-tools button{background:#1e293b;border-color:#475569;color:#e2e8f0;}
+.dark .gm-terrain-geographic-info small{color:#cbd5e1;}
