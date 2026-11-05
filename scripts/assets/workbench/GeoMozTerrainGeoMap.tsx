@@ -275,7 +275,8 @@ export default function GeoMozTerrainGeoMap({
 
   const [west, south, east, north] = terrain.bounds4326;
   return <div className="gm-terrain-geographic"
-    data-testid={meshMounted && !flat ? "geomoz-georeferenced-model-map" : undefined}>
+    data-testid={meshMounted && !flat ? "geomoz-georeferenced-model-map" : undefined}
+    data-active-basemap={activeBasemap}>
     <div className="gm-terrain-geographic-map" ref={container}
       role="region" aria-label={translate("DEM georreferenciado sobre mapa de base")}/>
     <div className="gm-terrain-geographic-tools">
