@@ -2,7 +2,7 @@ import { GAULAreaSelect, type LoadGAULUnits } from "./GAULAreaSelect";
 import { WORLD_COUNTRIES } from "@/lib/world-countries";
 import { PublicDataTools, type PublicAnalysisRequest } from "./PublicDataTools";
 import { GeoIntelligenceDossier, type IntelligenceDossier } from "./GeoIntelligenceDossier";
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useProject } from "../context/ProjectContext";
 import { apiFetch } from "@/lib/api";
 import { aoiToAPI, mozambiqueAOI, countryAOI, GLOBAL_AOI, type AreaOfInterest } from "@/lib/aoi";
@@ -19,10 +19,6 @@ import {
   Calendar,
   Layers,
   FileText,
-  Sprout,
-  Droplets,
-  Mountain,
-  ChevronRight,
   ShieldCheck,
   KeyRound,
   Check,
@@ -124,97 +120,6 @@ interface ChatMessage {
   model?: string;
   provider?: string;
 }
-
-interface QuickWorkflow {
-  id: string;
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-  badge: string;
-  indices: { code: string; name: string; sensor: string }[];
-}
-
-const QUICK_WORKFLOWS: QuickWorkflow[] = [
-  {
-    id: "agricultural_potential",
-    title: "Vigor da Vegetação (NDVI)",
-    description: "Calcula o NDVI para explorar o vigor da vegetação no período seleccionado. Não estima produção ou biomassa.",
-    icon: <Sprout size={16} className="text-emerald-500" />,
-    badge: "Agricultura · Sentinel-2",
-    indices: [
-      { code: "ndvi", name: "NDVI (Vigor de Biomassa)", sensor: "Sentinel-2 MSI" },
-      { code: "ndwi", name: "NDWI (Teor Hídrico Vegetal)", sensor: "Sentinel-2 MSI" },
-      { code: "slope", name: "Declividade Topográfica", sensor: "Copernicus DEM 30m" },
-    ],
-  },
-  {
-    id: "water_stress_smap",
-    title: "Humidade do Solo (NASA SMAP)",
-    description: "Mapeia a humidade na zona radicular (0-100cm) e à superfície via NASA-USDA SMAP 9km.",
-    icon: <Droplets size={16} className="text-cyan-500" />,
-    badge: "NASA SMAP · Radar Radiometer",
-    indices: [
-      { code: "smap_rootzone", name: "Humidade Radicular SMAP", sensor: "NASA SMAP 9km" },
-      { code: "ndmi", name: "NDMI (Teor de Humidade)", sensor: "Sentinel-2 MSI" },
-    ],
-  },
-  {
-    id: "flood_risk",
-    title: "Geoperigos & Risco de Cheias",
-    description: "Identifica áreas de planície baixa, acumulação de fluxo e bacias com suscetibilidade a alagamento.",
-    icon: <AlertTriangle size={16} className="text-amber-500" />,
-    badge: "Geoperigos · DEM / Altimetria",
-    indices: [
-      { code: "mndwi", name: "MNDWI (Água Modificada)", sensor: "Sentinel-2 MSI" },
-      { code: "elevation", name: "Hipsometria Altimétrica", sensor: "Copernicus DEM 30m" },
-    ],
-  },
-  {
-    id: "rusle_erosion",
-    title: "Erosão Hídrica do Solo (RUSLE)",
-    description: "Calcula a perda de solo (t/ha/ano) cruzando relevo DEM, chuva CHIRPS e cobertura vegetal.",
-    icon: <Mountain size={16} className="text-orange-500" />,
-    badge: "Solo · RUSLE / CHIRPS",
-    indices: [
-      { code: "erosion_rusle", name: "Perda de Solo RUSLE", sensor: "Modelo RUSLE" },
-      { code: "slope", name: "Declividade Topográfica", sensor: "Copernicus DEM 30m" },
-    ],
-  },
-  {
-    id: "mineral_exploration",
-    title: "Prospeção Mineral & Hidrotermal",
-    description: "Mapeia anomalias de argilas, óxidos de ferro e halos de alteração hidrotermal via Landsat 8 / Sentinel-2.",
-    icon: <Mountain size={16} className="text-amber-600" />,
-    badge: "Geologia · Landsat 8 L2",
-    indices: [
-      { code: "clay_l8", name: "Argilas e Al-OH (B6/B7)", sensor: "Landsat 8 L2" },
-      { code: "fe_oxide_l8", name: "Óxidos de Ferro (B4/B2)", sensor: "Landsat 8 L2" },
-      { code: "hydrothermal_l8", name: "Alteração Hidrotermal Sabins", sensor: "Landsat 8 L2" },
-    ],
-  },
-  {
-    id: "alphaearth_foundation",
-    title: "Anomalias de Superfície (AlphaEarth)",
-    description: "Aplica os embeddings de 64 dimensões do modelo fundacional do Google DeepMind reduzidos para RGB.",
-    icon: <Sparkles size={16} className="text-indigo-500" />,
-    badge: "AlphaEarth · DeepMind",
-    indices: [
-      { code: "alphaearth_pca", name: "AlphaEarth 64-d PCA", sensor: "DeepMind Satellite Embedding" },
-      { code: "slope", name: "Declividade Topográfica", sensor: "Copernicus DEM 30m" },
-    ],
-  },
-];
-
-const SUGGESTED_PROMPTS = [
-  "Avaliar o stress hídrico e humidade do solo NASA SMAP",
-  "Identificar anomalias de alteração hidrotermal Landsat 8 para ouro",
-  "Mapear setores com risco de erosão hídrica do solo RUSLE",
-  "Quais são as principais litologias na província de Manica? Mostra no mapa.",
-  "Identifica as formações geológicas e áreas aproximadas em Tete.",
-  "Mostra os granitos cartografados na área seleccionada.",
-  "Detetar falhas, fraturas e lineamentos estruturais no relevo",
-  "Delimitar zonas baixas e planícies com suscetibilidade a cheias",
-];
 
 export default function GeoMozAIAgentTab() {
   const { activeProject, updateProject, saveRunToActiveProject } = useProject();
@@ -318,14 +223,18 @@ export default function GeoMozAIAgentTab() {
     handleProvinceChange(null);
   };
 
+  const projectId = activeProject?.id;
+  const projectStart = activeProject?.period?.startDate;
+  const projectEnd = activeProject?.period?.endDate;
   const [analysisPeriod, setAnalysisPeriod] = useState(() => activeProject?.period || {
     startDate: `${new Date().getFullYear() - 1}-01-01`,
     endDate: `${new Date().getFullYear()}-01-01`,
   });
   useEffect(() => {
-    if (activeProject?.period) setAnalysisPeriod(activeProject.period);
-  }, [activeProject?.period]);
+    if (projectStart && projectEnd) setAnalysisPeriod({ startDate: projectStart, endDate: projectEnd });
+  }, [projectId, projectStart, projectEnd]);
   const [prompt, setPrompt] = useState("");
+  const promptRef = useRef<HTMLTextAreaElement>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [steps, setSteps] = useState<WorkflowStep[]>([]);
   const [synthesis, setSynthesis] = useState<string | null>(null);
@@ -473,11 +382,6 @@ export default function GeoMozAIAgentTab() {
 
   const isAIActive = Boolean(openaiApiKey.trim() || geminiApiKey.trim());
 
-  // All entry points share the same validated execution/evidence pipeline.
-  const runWorkflow = async (workflow: QuickWorkflow) => {
-    await handlePromptSubmit(`${workflow.title}. ${workflow.description}`);
-  };
-
   // Submit natural language prompt
   const handlePromptSubmit = async (customText?: string, publicRequest?: PublicAnalysisRequest) => {
     const textToSend = customText ?? prompt.trim();
@@ -590,6 +494,10 @@ export default function GeoMozAIAgentTab() {
       ];
       setSteps(finalSteps);
 
+      const resultPeriod = data.intelligence?.period as IntelligenceDossier["period"] | undefined;
+      const layerPeriod = resultPeriod?.startDate && resultPeriod.endDate
+        ? { startDate: resultPeriod.startDate, endDate: resultPeriod.endDate }
+        : analysisPeriod;
       const computedLayers: any[] = [];
       const vectorWarnings: string[] = [];
       for (const act of data.map_actions || []) {
@@ -604,7 +512,7 @@ export default function GeoMozAIAgentTab() {
             type: "remote_sensing",
             sensor: "GeoMoz AI",
             code: act.id,
-            dateRange: analysisPeriod,
+            dateRange: layerPeriod,
             metrics: {},
             tileUrl: act.tileUrl,
           });
@@ -707,6 +615,9 @@ export default function GeoMozAIAgentTab() {
   // Export Executive PDF Report
   const handleExportPDF = async () => {
     if (messages.length === 0 && !synthesis) return;
+    const lastResponse = [...messages].reverse().find((message) => message.sender === "agent");
+    if (!lastResponse) return;
+    const reportArea = lastResponse.intelligence?.scope.label || currentAoi.label || "Moçambique (Geral)";
     setIsExportingPdf(true);
 
     try {
@@ -739,7 +650,7 @@ export default function GeoMozAIAgentTab() {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
       doc.setTextColor(30, 41, 59);
-      doc.text(`Área de Estudo: ${activeProject?.aoi?.label || "Moçambique (Geral)"}`, margin + 5, y + 6);
+      doc.text(`Área de Estudo: ${reportArea}`, margin + 5, y + 6);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
       doc.setTextColor(100, 116, 139);
@@ -779,7 +690,7 @@ export default function GeoMozAIAgentTab() {
       }
 
       // Technical diagnostic synthesis
-      const lastText = synthesis || messages[messages.length - 1]?.text || "";
+      const lastText = lastResponse.text;
       if (lastText) {
         doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
@@ -799,7 +710,7 @@ export default function GeoMozAIAgentTab() {
       doc.setTextColor(148, 163, 184);
       doc.text("GeoMoz AI Agent — Documento gerado automaticamente para suporte à decisão técnica.", margin, 290);
 
-      doc.save(`GeoMoz_Missao_${(activeProject?.aoi?.label || "Geral").replace(/\s+/g, "_")}.pdf`);
+      doc.save(`GeoMoz_Missao_${reportArea.replace(/\s+/g, "_")}.pdf`);
     } catch (e: any) {
       alert(`Falha ao gerar PDF: ${e.message}`);
     } finally {
@@ -808,11 +719,11 @@ export default function GeoMozAIAgentTab() {
   };
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-slate-50 dark:bg-slate-900">
+    <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,2fr)_minmax(0,1fr)] overflow-hidden bg-slate-50 md:grid-cols-[minmax(320px,42%)_minmax(0,1fr)] md:grid-rows-1 dark:bg-slate-900">
       {/* Left Control / Chat Panel */}
-      <div className="w-full md:w-[460px] xl:w-[500px] flex-none bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-slate-200 bg-white md:border-b-0 md:border-r dark:border-slate-800 dark:bg-slate-900">
         {/* Top Agent Header */}
-        <div className="p-3.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border-b border-slate-800 flex-none">
+        <div className="max-h-[45%] shrink-0 overflow-y-auto border-b border-slate-800 bg-gradient-to-r from-slate-900 to-indigo-950 px-4 py-3 text-white">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30 flex items-center gap-1">
               <Sparkles size={11} /> GeoMoz AI Agent
@@ -839,6 +750,11 @@ export default function GeoMozAIAgentTab() {
                 <span>{activeProviderLabel.split(" ")[0]}</span>
               </button>
 
+              {messages.some((message) => message.sender === "agent") && (
+                <button type="button" onClick={handleExportPDF} disabled={isExportingPdf || isRunning} title="Exportar último resultado em PDF" aria-label="Exportar último resultado em PDF" className="rounded-lg p-2 text-slate-200 hover:bg-slate-800 disabled:opacity-50">
+                  {isExportingPdf ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                </button>
+              )}
               {messages.length > 0 && (
                 <button
                   type="button"
@@ -1145,55 +1061,29 @@ export default function GeoMozAIAgentTab() {
         )}
 
         {/* Scrollable Conversation Thread & Quick Actions */}
-        <div className="flex-1 overflow-y-auto p-3.5 space-y-4" ref={chatScrollRef}>
-          {/* Welcome Card if no messages */}
-          {messages.length === 0 && (
-            <div className="space-y-3">
-              <div className="p-3 bg-violet-50/70 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl space-y-1.5">
-                <div className="flex items-center gap-1.5 font-bold text-xs text-violet-800 dark:text-violet-300">
-                  <Sparkles size={14} />
-                  <span>GeoMoz · Geointeligência Geoespacial</span>
-                </div>
-                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
-                  Faça pedidos em linguagem natural sobre o território de Moçambique. Consulte dados geológicos e execute análises com as ferramentas disponíveis. Cada pedido apresenta as evidências calculadas, a área utilizada e as limitações num dossiê exportável.
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50/80 p-4 dark:bg-slate-950/30" role="log" aria-label="Conversa com GeoMoz AI" ref={chatScrollRef}>
+          {messages.length === 0 && !isRunning && (
+            <div className="space-y-5 px-1 py-4 sm:px-3">
+              <div className="space-y-2">
+                <Sparkles size={22} className="text-violet-500" aria-hidden="true" />
+                <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">O que quer analisar?</h2>
+                <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                  Escolha a área no cabeçalho e descreva a análise. Os resultados aparecem no mapa e cada resposta inclui as fontes e limitações.
                 </p>
               </div>
-
-              {/* Quick Workflows Catalog */}
-              <div className="space-y-1.5">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Workflows Automáticos Recomendados
-                </span>
-                <div className="grid grid-cols-1 gap-2">
-                  {QUICK_WORKFLOWS.map((wf) => (
-                    <div
-                      key={wf.id}
-                      className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-violet-300 dark:hover:border-violet-700 bg-white dark:bg-slate-800/60 hover:shadow-2xs transition-all flex items-center justify-between gap-2"
-                    >
-                      <div className="flex items-center gap-2 truncate">
-                        <div className="p-1 rounded-lg bg-slate-100 dark:bg-slate-700 shrink-0">
-                          {wf.icon}
-                        </div>
-                        <div className="truncate">
-                          <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
-                            {wf.title}
-                          </h4>
-                          <span className="text-[10px] text-slate-400 truncate block">{wf.badge}</span>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => runWorkflow(wf)}
-                        disabled={isRunning}
-                        className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-violet-50 hover:text-violet-700 dark:bg-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1 shrink-0 cursor-pointer disabled:opacity-40"
-                      >
-                        <span>Iniciar</span>
-                        <ChevronRight size={11} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+              <div className="grid gap-2">
+                {[
+                  "Calcular estatísticas zonais de NDVI entre 2025-05-01 e 2025-09-01",
+                  "Mapear a cobertura do solo com WorldCover",
+                  "Comparar NDVI entre 2020 e 2025",
+                  "Calcular a precipitação acumulada ERA5-Land em 2025",
+                  "Quais são as principais litologias de Manica?",
+                ].map((example) => (
+                  <button key={example} type="button" onClick={() => { setPrompt(example); promptRef.current?.focus(); }}
+                    className="rounded-xl border border-slate-200 p-3 text-left text-sm text-slate-700 hover:border-violet-400 hover:bg-violet-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-violet-950/40">
+                    {example}
+                  </button>
+                ))}
               </div>
             </div>
           )}
@@ -1203,7 +1093,7 @@ export default function GeoMozAIAgentTab() {
             <div key={msg.id} className="space-y-2">
               {msg.sender === "user" ? (
                 <div className="flex justify-end">
-                  <div className="max-w-[85%] bg-violet-600 text-white rounded-2xl rounded-tr-xs p-3 text-xs leading-relaxed shadow-2xs">
+                  <div className="max-w-[85%] bg-violet-600 text-white rounded-2xl rounded-tr-xs p-3 text-sm leading-relaxed whitespace-pre-wrap break-words shadow-2xs">
                     <div className="font-medium">{msg.text}</div>
                     <div className="text-[9px] text-violet-200 text-right mt-1">{msg.timestamp}</div>
                   </div>
@@ -1225,7 +1115,7 @@ export default function GeoMozAIAgentTab() {
                     </div>
 
                     {/* Step Checklist for this turn */}
-                    {msg.steps && msg.steps.length > 0 && (
+                    {!msg.intelligence && msg.steps && msg.steps.length > 0 && (
                       <div className="p-2 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-100 dark:border-slate-800 space-y-1">
                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                           Ferramentas Executadas:
@@ -1285,7 +1175,7 @@ export default function GeoMozAIAgentTab() {
               <div className="flex items-center justify-between text-xs font-semibold text-violet-700 dark:text-violet-300">
                 <div className="flex items-center gap-2">
                   <Loader2 size={13} className="animate-spin" />
-                  <span>Orquestração em curso ({activeProviderLabel})…</span>
+                  <span>A executar a análise…</span>
                 </div>
                 <button
                   type="button"
@@ -1317,30 +1207,20 @@ export default function GeoMozAIAgentTab() {
 
         {/* Bottom Input Area */}
         <div className="p-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex-none space-y-2">
-          <PublicDataTools disabled={isRunning} onRun={(label, request) => { void handlePromptSubmit(label, request); }} />
-          {/* Quick prompt suggestion pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-            {SUGGESTED_PROMPTS.map((sp, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => handlePromptSubmit(sp)}
-                disabled={isRunning}
-                className="px-2 py-0.5 text-[10px] rounded-full bg-slate-100 hover:bg-violet-50 hover:text-violet-700 dark:bg-slate-800 dark:text-slate-300 text-slate-600 whitespace-nowrap transition-colors shrink-0 cursor-pointer disabled:opacity-40"
-              >
-                {sp}
-              </button>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-500 dark:text-slate-400">
-            <label>Data inicial
-              <input type="date" aria-label="Data inicial da análise" disabled={isRunning} value={analysisPeriod.startDate} onChange={(e) => setAnalysisPeriod((p) => ({ ...p, startDate: e.target.value }))} className="block w-full rounded border border-slate-200 bg-transparent p-1 dark:border-slate-700" />
-            </label>
-            <label>Data final (exclusiva)
-              <input type="date" aria-label="Data final da análise" disabled={isRunning} value={analysisPeriod.endDate} min={analysisPeriod.startDate} onChange={(e) => setAnalysisPeriod((p) => ({ ...p, endDate: e.target.value }))} className="block w-full rounded border border-slate-200 bg-transparent p-1 dark:border-slate-700" />
-            </label>
-          </div>
+          <details className="rounded-lg text-xs text-slate-600 dark:text-slate-300">
+            <summary className="cursor-pointer py-1 font-medium">Período e ferramentas de análise</summary>
+            <div className="max-h-36 space-y-2 overflow-y-auto pt-1">
+              <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-500 dark:text-slate-400">
+                <label>Data inicial
+                  <input type="date" aria-label="Data inicial da análise" disabled={isRunning} value={analysisPeriod.startDate} onChange={(e) => setAnalysisPeriod((p) => ({ ...p, startDate: e.target.value }))} className="block w-full rounded border border-slate-200 bg-transparent p-1 dark:border-slate-700" />
+                </label>
+                <label>Data final (exclusiva)
+                  <input type="date" aria-label="Data final da análise" disabled={isRunning} value={analysisPeriod.endDate} min={analysisPeriod.startDate} onChange={(e) => setAnalysisPeriod((p) => ({ ...p, endDate: e.target.value }))} className="block w-full rounded border border-slate-200 bg-transparent p-1 dark:border-slate-700" />
+                </label>
+              </div>
+              <PublicDataTools disabled={isRunning} onRun={(label, request) => { void handlePromptSubmit(label, request); }} />
+            </div>
+          </details>
           {/* Input Form */}
           <form
             onSubmit={(e) => {
@@ -1349,16 +1229,25 @@ export default function GeoMozAIAgentTab() {
             }}
             className="flex items-center gap-1.5"
           >
-            <input
-              type="text"
+            <textarea
+              ref={promptRef}
+              rows={2}
+              aria-label="Mensagem para GeoMoz AI"
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  void handlePromptSubmit();
+                }
+              }}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Instrua o agente (ex: Analisa a humidade do solo e risco de seca em Tete...)"
+              placeholder="Descreva a análise que pretende…"
               disabled={isRunning}
-              className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:bg-white"
+              className="min-w-0 flex-1 resize-none px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:bg-white"
             />
             <button
               type="submit"
+              aria-label="Enviar mensagem"
               disabled={isRunning || !prompt.trim()}
               className="px-3.5 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-slate-200 dark:disabled:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer disabled:cursor-not-allowed"
             >
@@ -1366,23 +1255,6 @@ export default function GeoMozAIAgentTab() {
             </button>
           </form>
 
-          {/* Export PDF Button if results exist */}
-          {(messages.length > 0 || completedRuns.length > 0) && (
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-[10px] text-slate-400">
-                {completedRuns.length} camada(s) disponível(eis) no mapa
-              </span>
-              <button
-                type="button"
-                onClick={handleExportPDF}
-                disabled={isExportingPdf}
-                className="px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:text-violet-600 bg-slate-100 dark:bg-slate-800 hover:bg-violet-50 dark:hover:bg-violet-950/40 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                {isExportingPdf ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
-                <span>Exportar Relatório PDF</span>
-              </button>
-            </div>
-          )}
         </div>
       </div>
 

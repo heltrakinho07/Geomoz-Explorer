@@ -151,6 +151,31 @@ class PublicDataTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "incompleto"):
                 engine.climate(GEOMETRY, "2025-01-01", "2025-01-03")
 
+    def test_chat_uses_custom_dates_and_retains_selected_fao_area(self):
+        state = {"aoi": {"source": "country", "countryCode": "MOZ",
+                         "boundarySource": "gaul2025", "label": "Chimoio, Manica",
+                         "adminLevel": 2, "admin2Code": 7},
+                 "temporalWindow": {"startDate": "2025-01-01", "endDate": "2026-01-01"}}
+        with patch.object(ToolDispatcher, "_execute_impl", new_callable=AsyncMock,
+                          return_value={"status": "success", "mean": 0.35}) as execute:
+            result = asyncio.run(GeoMozAgent.process_user_request(
+                "Calcular estatísticas zonais de NDVI em Chimoio entre 2025-05-01 e 2025-09-01",
+                state, openai_api_key="sk-test"))
+        tool, args, context = execute.await_args.args
+        self.assertEqual(tool, "calculate_zonal_statistics")
+        self.assertEqual(args["start_date"], "2025-05-01")
+        self.assertEqual(args["end_date"], "2025-09-01")
+        self.assertEqual(context["aoi"]["admin2Code"], 7)
+        self.assertEqual(result["intelligence"]["period"]["startDate"], "2025-05-01")
+        self.assertEqual(state["temporalWindow"]["startDate"], "2025-01-01")
+
+    def test_chat_asks_for_a_mismatched_area_before_running_worldcover(self):
+        with patch.object(ToolDispatcher, "execute", new_callable=AsyncMock) as execute:
+            result = asyncio.run(GeoMozAgent.process_user_request(
+                "Mapear WorldCover em Lisboa", {"aoi": {"label": "Chimoio, Manica"}}))
+        execute.assert_not_awaited()
+        self.assertIn("Seleccione no mapa", result["synthesis"])
+
     def test_structured_request_bypasses_llm_but_uses_audited_dispatcher(self):
         state = {"aoi": {"source": "country", "countryCode": "PRT", "geometry": GEOMETRY},
                  "publicAnalysis": {"tool": "get_public_landcover", "args": {}}}
