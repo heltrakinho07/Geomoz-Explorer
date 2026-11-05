@@ -2,6 +2,11 @@
 import { resolvedPortalLocale, type PortalCatalogLocale } from "./portal";
 
 export const HYDROLOGY_RESULT_MESSAGES = {
+  "viewer.readOnly": ["Apenas leitura","Read-only","Solo lectura","Lecture seule"],
+  "viewer.tagline": ["Inteligência geoespacial planetária","Planetary geospatial intelligence","Inteligencia geoespacial planetaria","Intelligence géospatiale planétaire"],
+  "viewer.lightMode": ["Modo claro","Light mode","Modo claro","Mode clair"],
+  "viewer.darkMode": ["Modo escuro","Dark mode","Modo oscuro","Mode sombre"],
+  "viewer.copyButton": ["Copiar ligação","Copy link","Copiar enlace","Copier le lien"],
   "viewer.loading": ["A carregar análise da bacia hidrográfica…","Loading watershed analysis…","Cargando análisis de cuenca hidrográfica…","Chargement de l'analyse du bassin versant…"],
   "viewer.notFound": ["Análise não encontrada","Analysis not found","Análisis no encontrado","Analyse introuvable"],
   "viewer.invalid": ["A ligação de visualização pode ter expirado ou o identificador é inválido.","The viewing link may have expired or the identifier is invalid.","El enlace de visualización puede haber caducado o el identificador no es válido.","Le lien de visualisation a peut-être expiré ou son identifiant est invalide."],
