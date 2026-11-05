@@ -130,8 +130,8 @@ class PublicDataTests(unittest.TestCase):
                              Reducer=SimpleNamespace(first=lambda: Reducer("first")))
         before = Raster([0.0], [True])
         after = Raster([0.35], [True])
-        with patch.dict("sys.modules", {"ee": ee}), \\
-             patch.object(engine, "_grid", return_value=(region, GRID, 100_000)), \\
+        with patch.dict("sys.modules", {"ee": ee}), \
+             patch.object(engine, "_grid", return_value=(region, GRID, 100_000)), \
              patch.object(engine, "_s2_image", side_effect=[(before, 1), (after, 1)]):
             result = engine.temporal_pixel(GEOMETRY, "ndvi", "2020-01-01", "2021-01-01",
                                            "2025-01-01", "2026-01-01", 32.5, -19.5)
@@ -150,8 +150,8 @@ class PublicDataTests(unittest.TestCase):
         ee = SimpleNamespace(Geometry=SimpleNamespace(Point=lambda coords: "point"),
                              Image=SimpleNamespace(cat=lambda a, b: mosaic),
                              Reducer=SimpleNamespace(first=lambda: Reducer("first")))
-        with patch.dict("sys.modules", {"ee": ee}), \\
-             patch.object(engine, "_grid", return_value=(region, GRID, 100_000)), \\
+        with patch.dict("sys.modules", {"ee": ee}), \
+             patch.object(engine, "_grid", return_value=(region, GRID, 100_000)), \
              patch.object(engine, "_s2_image", side_effect=[(Raster([0]), 1), (Raster([0.6]), 1)]):
             result = engine.temporal_pixel(GEOMETRY, "ndvi", "2020-01-01", "2021-01-01",
                                            "2025-01-01", "2026-01-01", 32.5, -19.5)
