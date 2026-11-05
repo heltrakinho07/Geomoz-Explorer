@@ -12,6 +12,7 @@ import {
 import {
   completeCategorizedValueCount,
   normalizeVectorStyleClassCount,
+  normalizeVectorStyleStops,
 } from "../apps/geolibre-desktop/src/components/panels/style-panel/classification-helpers";
 
 function geologicalLayer(values: (string | number | null)[]) {
@@ -68,6 +69,16 @@ test("ordering schemes never delete categories; missing values are excluded", ()
     assert.ok(stops.some((s) => s.value === "1"));
   }
   assert.equal(createCategorizedStops(layer, "LITOLOGIA", count, "viridis", "top-values")[0].value, "Granito");
+});
+
+test("blank values are not categories, and literal geological attribute strings are preserved", () => {
+  const values = ["Gabro", " Gabro ", "", "   ", null];
+  const layer = geologicalLayer(values);
+  assert.equal(countCategorizedValues(values), 2);
+  const stops = createCategorizedStops(layer, "LITOLOGIA", 2, "viridis", "first-values");
+  assert.equal(stops.length, 2);
+  const normalized = normalizeVectorStyleStops("categorized", stops);
+  assert.deepEqual(normalized.map((item) => item.value), ["Gabro", " Gabro "]);
 });
 
 test("DuckDB-backed vector tiles use complete values, ordinary tiles do not claim completeness", () => {
