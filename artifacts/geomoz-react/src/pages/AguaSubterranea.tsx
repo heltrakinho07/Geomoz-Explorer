@@ -21,7 +21,7 @@ import BasemapSwitcher from "@/components/BasemapSwitcher";
 import ZoneSelect from "@/components/ZoneSelect";
 import MapDraw from "@/components/MapDraw";
 import type { AreaOfInterest } from "@/lib/aoi";
-import { aoiToAPI, customAOI, GLOBAL_AOI } from "@/lib/aoi";
+import { aoiToAPI, aoiToMapBounds, customAOI, GLOBAL_AOI } from "@/lib/aoi";
 import {
   createPDFContext, drawCover, sectionTitle, addPDFFooter, MARGIN, CONTENT_W,
   drawStatCards, drawTable, addMapImage, fetchMapImage,
@@ -95,7 +95,7 @@ export default function AguaSubterranea({ aoi, province, district, onProvinceCha
     try {
       const legendItems = result?.classes?.map(c => ({ label: classLabel(c), color: c.color }));
       const imgData = await fetchMapImage(
-        { south: -26.9, north: -10.4, west: 30.2, east: 41 },
+        aoiToMapBounds(aoi),
         { tileUrl: result?.tile,
           legendItems,
           title: `${g("pdf.mapTitle")} — ${aoi.label}`, dpi: 200 },
