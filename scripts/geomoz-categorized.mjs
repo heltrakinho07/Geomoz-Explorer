@@ -71,6 +71,11 @@ export function prepareGeoMozCategorizedStyles(rootDir) {
 
   edit("components/panels/style-panel/VectorSymbologySection.tsx", [
     [
+      '    draftVectorStyleAllCategories,\n    setDraftVectorStyleAllCategories,',
+      '    setDraftVectorStyleAllCategories,',
+      "remove unused partial-categorization state",
+    ],
+    [
       '    setDraftVectorStyleMode(mode);\n    setDraftVectorStyleAllCategories(false);',
       '    setDraftVectorStyleMode(mode);\n    setDraftVectorStyleAllCategories(mode === "categorized");',
       "categorized mode defaults to all distinct values",
@@ -185,9 +190,9 @@ export function prepareGeoMozCategorizedStyles(rootDir) {
       "show automatic real category count, keep graduated 2-12",
     ],
     [
-      '            <div className="space-y-2">\n' +
+      '          <div className="space-y-2">\n' +
       '            {draftVectorStyleStops.map((stop, index) => (',
-      '            <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-1">\n' +
+      '          <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-1">\n' +
       '            {draftVectorStyleStops.map((stop, index) => (',
       "scroll large lithological legends",
     ],
