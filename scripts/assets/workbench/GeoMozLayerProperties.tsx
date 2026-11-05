@@ -1,4 +1,5 @@
 import {useState,useCallback} from "react";
+import {GeoMozLayerDetailsDialog} from "./GeoMozLayerDetailsDialog";
 import {useAppStore,useAppCapability,type GeoLibreLayer} from "@geolibre/core";
 import {participantCanEditLayer} from "../../lib/collab-protocol";
 import {useLayoutOptions} from "../../hooks/useLayoutOptions";
@@ -22,6 +23,7 @@ export function GeoMozLayerProperties({layer,props}:{layer:GeoLibreLayer;props:C
   const addGroup=useAppStore(s=>s.addLayerGroup);
   const setGroupVisible=useAppStore(s=>s.setLayerGroupVisibility);
   const [groupName,setGroupName]=useState("");
+  const [detailsOpen,setDetailsOpen]=useState(false);
   const exportPrivilege=useAppCapability("export:data");
   const canEditLayer=useCallback((id:string)=>{
     if(viewer||!deployment.has("project:edit"))return false;
@@ -48,7 +50,8 @@ export function GeoMozLayerProperties({layer,props}:{layer:GeoLibreLayer;props:C
   let parent=groups.find(group=>group.id===layer.groupId);
   while(parent&&!visited.has(parent.id)){visited.add(parent.id);ancestors.push(parent);parent=groups.find(group=>group.id===parent?.parentId);}
 
-  return <details className="gm-layer-properties" key={layer.id}><summary>{ui("Propriedades da camada")}</summary>
+  return <><div className="gm-layer-properties-trigger"><button type="button" data-testid="geomoz-layer-properties-open" onClick={()=>setDetailsOpen(true)}>{ui("Abrir propriedades da camada")}</button></div>
+  <details className="gm-layer-properties" key={layer.id}><summary>{ui("Gestão rápida da camada")}</summary>
     <label>{ui("Nome")}<input aria-label={ui("Renomear camada")} defaultValue={layer.name} disabled={!editable}
       onBlur={event=>{const name=event.target.value.trim();if(name&&editable)update(layer.id,{name});else event.target.value=layer.name;}}
       onKeyDown={event=>{if(event.key==="Enter"&&!event.nativeEvent.isComposing)event.currentTarget.blur();}}/></label>
@@ -61,5 +64,9 @@ export function GeoMozLayerProperties({layer,props}:{layer:GeoLibreLayer;props:C
     <p>{layer.type} · {layer.geojson?.features.length??"—"}{ui(" feições")}</p>
     {status&&<p role="status">{status.message}</p>}
     {!editable&&<p>{ui("As propriedades estão disponíveis para consulta nesta sessão.")}</p>}
-  </details>;
+  </details>
+  {detailsOpen&&<GeoMozLayerDetailsDialog layer={layer} editable={editable}
+    onClose={()=>setDetailsOpen(false)}
+    onOpenStylePanel={props.onOpenStylePanel?()=>props.onOpenStylePanel?.():undefined}/>}
+  </>;
 }
