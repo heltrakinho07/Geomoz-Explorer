@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap, MapMouseEvent, StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { createFeatureInspector } from "@/lib/gis-feature-inspector";
+import { gisWidgetRegistry } from "@/lib/gis-widget-registry";
 import { bbox } from "@turf/turf";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
 import { GOOGLE_BASEMAPS, type BasemapType } from "@/lib/basemaps";
@@ -473,14 +475,12 @@ export default function GISWorkspaceMapLibre({
       if (ownerId) onSelectLayerRef.current?.(ownerId);
       const owner = layersRef.current.find((layer) => layer.id === ownerId);
 
-      const popup = document.createElement("div");
-      popup.style.maxWidth = "280px";
-      const title = document.createElement("strong");
-      title.textContent = owner?.name ?? "Camada";
-      popup.appendChild(title);
-      Object.entries((hit.properties ?? {}) as Record<string, unknown>)
-        .slice(0, 8)
-        .forEach(([key, value]) => appendTextRow(popup, key, value));
+      // The inspector is a lazily registered GIS widget. Avoid truncating attributes.
+      if (!gisWidgetRegistry.list({ mapId: "workspace", layerId: ownerId }, "vector")
+        .some(widget => widget.id === "feature-inspector")) return;
+      const popup = createFeatureInspector(owner?.name ?? "Camada", (hit.properties ?? {}) as Record<string, unknown>, {
+        lng: event.lngLat.lng, lat: event.lngLat.lat,
+      });
 
       new maplibregl.Popup({ closeButton: true, maxWidth: "320px" })
         .setLngLat(event.lngLat)
