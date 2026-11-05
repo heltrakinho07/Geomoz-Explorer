@@ -54,3 +54,17 @@ A implementação e os limites das fontes estão em [GLOBAL_PUBLIC_DATA.md](GLOB
 ## FAO GAUL 2025
 
 A selecção mundial permite escolher FAO GAUL 2025 com país, ADM1 e ADM2, ou manter geoBoundaries v6 no nível nacional. As listas FAO são carregadas por ISO3 e código GAUL1; seleccionar outro pai limpa o filho. O dossiê regista fonte, versão e códigos. A AOI nacional FAO é uma união explícita das unidades ADM1, não um asset level0 inexistente nesta edição. Os motores anteriores também recebem a geometria FAO seleccionada, com cache isolada no pedido e limite de complexidade para transferências GeoJSON. A edição 2015 não é usada como fallback.
+
+
+## Comparação temporal avançada (PR #239)
+
+- Comparações A/B Sentinel-2 partilham a máscara dos pixels válidos e usam o limiar |Δ| seleccionado para distinguir aumento, diminuição e área sem alteração significativa.
+- A avaliação de qualidade assinala janelas com épocas do ano diferentes, números de cenas com desequilíbrio superior a 2:1 e cobertura válida comum inferior a 70%. Uma coincidência de datas do calendário não comprova fenologia equivalente.
+- O painel GeoMoz AI pode solicitar histogramas A, B e Δ directamente ao Earth Engine, à escala da grelha analítica. Os valores representam contagens ponderadas de pixels, não áreas cadastrais.
+- Os histogramas não são simulados nem derivados das cores do mapa; requerem a sessão GEE pessoal do utilizador.
+- A exportação GeoTIFF disponibiliza três bandas Float32 (índice A, índice B e diferença B − A), recortadas ao polígono original, usando o suporte válido comum. O download directo está limitado a 500 000 células e pode aumentar a dimensão de célula; a resolução efectiva é comunicada ao utilizador.
+- O GeoTIFF é servido através de URL assinado temporário gerado pelo Earth Engine. Exportações de AOIs muito grandes em resolução nativa exigem uma tarefa assíncrona posterior, e não devem ser apresentadas como um download completo a 30 m.
+- A exportação de mapa PNG depende de as tiles permitirem captura pelo navegador (CORS); o PDF reutiliza o relatório do agente. Não declarar sucesso se a captura falhar.
+- Os endpoints `/geomoz-api/ai/temporal-histogram` e `/geomoz-api/ai/temporal-geotiff` exigem Firebase e GEE; a conta Google Cloud e as quotas são as do utilizador autenticado.
+
+A validação de laboratório confirma contratos, máscaras e limites com testes; a aceitação final de resultados científicos exige confrontação com Earth Engine real e dados de referência.
