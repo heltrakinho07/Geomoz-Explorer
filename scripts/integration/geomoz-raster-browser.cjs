@@ -198,7 +198,7 @@ module.exports=async function validateRasterProcessing(page){
  await terrain.locator('[data-active-basemap="satellite"]').waitFor({state:"visible",timeout:15000});
  const exaggerationPanel=terrain.getByTestId("terrain-workspace-exaggeration");
  await exaggerationPanel.getByRole("button",{name:"3×",exact:true}).click();
- assert.match(await exaggerationPanel.innerText(),/3\\.0×/);
+ assert.match(await exaggerationPanel.innerText(),/3\.0×/);
  await exaggerationPanel.getByRole("button",{name:"2×",exact:true}).click();
  await terrain.getByTestId("terrain-tab-export").click();
  const mapPng=terrain.getByRole("button",{name:"PNG",exact:true});
