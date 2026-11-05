@@ -111,9 +111,12 @@ jobs:
           ! grep -q 'geoprocessamento-426809.firebasestorage.app' artifacts/geomoz-react/dist/public/gis-workspace/index.html
 
       - name: Install browser test runtime
+        timeout-minutes: 12
         run: |
           npm install --prefix "$RUNNER_TEMP/gis-browser" playwright@1.51.1
-          node "$RUNNER_TEMP/gis-browser/node_modules/playwright/cli.js" install --with-deps chromium
+          # Headless smoke tests need the Chromium shell, not the full headed
+          # browser and a lengthy apt-get dependency installation.
+          node "$RUNNER_TEMP/gis-browser/node_modules/playwright/cli.js" install chromium --only-shell
 
       - name: Validate the built GeoMoz interface in Chromium
         run: node scripts/integration/geomoz-workbench-browser.cjs

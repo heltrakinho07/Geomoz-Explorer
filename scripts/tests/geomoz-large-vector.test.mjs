@@ -41,7 +41,12 @@ test("pinned GeoLibre is patched at the Add Vector Layer source", () => {
     assert.match(panel, /DUCKDB_VECTOR_ROUTE_BYTES/);
     assert.match(panel, /controller.abort\(\)/);
     assert.match(panel, /renderMode: "tiles"/);
-    assert.match(panel, /role", "alert"/);
+    assert.match(panel, /"alert"/);
+    assert.ok(panel.includes("current.abort()"));
+    assert.match(panel, /geomoz-large-vector-meter/);
+    assert.ok(panel.includes('meter.removeAttribute("value")'));
+    assert.match(panel, /"Tentar novamente"/);
+    assert.match(panel, /"Fechar"/);
     assert.throws(() => prepareGeoMozLargeVector(temp), /already exists/);
   } finally {
     rmSync(temp, { recursive: true, force: true });
@@ -58,4 +63,18 @@ test("worker and host bridge expose explicit cancellation and failures", () => {
   assert.match(runner, /new File\(\[message.buffer\]/);
   assert.match(worker, /kind: "error"/);
   assert.match(worker, /kind: "progress"/);
+});
+
+test("150 MB vector import browser regression is wired into Workbench CI", () => {
+  const browser = readFileSync(
+    join(process.cwd(), "scripts/integration/geomoz-workbench-browser.cjs"), "utf8",
+  );
+  const smoke = readFileSync(
+    join(process.cwd(), "scripts/integration/geomoz-large-vector-browser.cjs"), "utf8",
+  );
+  assert.ok(browser.includes("geomoz-large-vector-browser.cjs"));
+  assert.ok(smoke.includes("150 * 1024 * 1024"));
+  assert.match(smoke, /Cancelar importação/);
+  assert.match(smoke, /Tentar novamente/);
+  assert.match(smoke, /geomoz-large-vector-meter/);
 });
