@@ -435,6 +435,10 @@ async function settleRecovery(page){
   await page.getByTestId("geomoz-workbench-chrome").waitFor();
   await settleRecovery(page);
   await page.getByTestId("geomoz-layer-catalog").waitFor();
+  // Validate the native Add Vector Layer panel using a 150 MiB local File.
+  // The expensive conversion is simulated but the real worker bridge, UI,
+  // cancellation, error recovery and File routing are exercised in Chromium.
+  await require("./geomoz-large-vector-browser.cjs")(page);
   await page.getByRole("navigation",{name:"Categorias de ferramentas GIS"}).getByRole("button",{name:"Vector",exact:true}).click();
   await page.keyboard.press("Escape");
   await page.locator(".gm-catalog-nav").getByRole("button",{name:/^Camadas/}).click();
