@@ -1,0 +1,261 @@
+/** Reviewed GeoMoz AI Agent UI copy, preserving request bodies and scientific identifiers. */
+import { resolvedPortalLocale, type PortalCatalogLocale } from "./portal";
+export const AI_AGENT_MESSAGES = {
+  "settings.tooltip": [
+    "Configurar chaves OpenAI e Gemini",
+    "Configure OpenAI and Gemini keys",
+    "Configurar claves de OpenAI y Gemini",
+    "Configurer les clés OpenAI et Gemini"
+  ],
+  "export.tooltip": [
+    "Exportar último resultado em PDF",
+    "Export latest result as PDF",
+    "Exportar último resultado en PDF",
+    "Exporter le dernier résultat en PDF"
+  ],
+  "history.clear": [
+    "Limpar histórico de mensagens",
+    "Clear message history",
+    "Borrar historial de mensajes",
+    "Effacer l'historique des messages"
+  ],
+  "studyArea": [
+    "Área de estudo:",
+    "Study area:",
+    "Área de estudio:",
+    "Zone d'étude :"
+  ],
+  "studyArea.open": [
+    "Alterar área",
+    "Change area",
+    "Cambiar área",
+    "Changer de zone"
+  ],
+  "studyArea.close": [
+    "Fechar selector",
+    "Close selector",
+    "Cerrar selector",
+    "Fermer le sélecteur"
+  ],
+  "studyArea.default": [
+    "Moçambique (geral)",
+    "Mozambique (all)",
+    "Mozambique (general)",
+    "Mozambique (ensemble)"
+  ],
+  "project": [
+    "Projecto:",
+    "Project:",
+    "Proyecto:",
+    "Projet :"
+  ],
+  "studyArea.effective": [
+    "Área efectiva da consulta:",
+    "Effective query area:",
+    "Área efectiva de consulta:",
+    "Zone effective de la requête :"
+  ],
+  "studyArea.apply": [
+    "Usar esta área no mapa",
+    "Use this area on the map",
+    "Usar esta área en el mapa",
+    "Utiliser cette zone sur la carte"
+  ],
+  "studyArea.country": [
+    "País para análise mundial",
+    "Country for global analysis",
+    "País para análisis mundial",
+    "Pays pour l'analyse mondiale"
+  ],
+  "studyArea.countryChoose": [
+    "Escolher país",
+    "Choose country",
+    "Elegir país",
+    "Choisir un pays"
+  ],
+  "studyArea.bounds": [
+    "Fonte dos limites administrativos",
+    "Administrative boundary source",
+    "Fuente de límites administrativos",
+    "Source des limites administratives"
+  ],
+  "studyArea.allDistricts": [
+    "Todos os distritos",
+    "All districts",
+    "Todos los distritos",
+    "Tous les districts"
+  ],
+  "settings.heading": [
+    "Configurar motores de inteligência artificial",
+    "Configure AI engines",
+    "Configurar motores de inteligencia artificial",
+    "Configurer les moteurs d'intelligence artificielle"
+  ],
+  "settings.openai": [
+    "Chave API OpenAI (sk-...)",
+    "OpenAI API key (sk-...)",
+    "Clave API OpenAI (sk-...)",
+    "Clé API OpenAI (sk-...)"
+  ],
+  "settings.gemini": [
+    "Chave API Gemini (Google AI Studio)",
+    "Gemini API key (Google AI Studio)",
+    "Clave API Gemini (Google AI Studio)",
+    "Clé API Gemini (Google AI Studio)"
+  ],
+  "settings.provider": [
+    "Fornecedor preferencial",
+    "Preferred provider",
+    "Proveedor preferido",
+    "Fournisseur préféré"
+  ],
+  "settings.providerAuto": [
+    "Automático (detecção)",
+    "Automatic (detection)",
+    "Automático (detección)",
+    "Automatique (détection)"
+  ],
+  "settings.model": [
+    "Modelo compatível",
+    "Compatible model",
+    "Modelo compatible",
+    "Modèle compatible"
+  ],
+  "settings.modelsLoading": [
+    "A consultar modelos…",
+    "Checking models…",
+    "Consultando modelos…",
+    "Consultation des modèles…"
+  ],
+  "settings.modelsRefresh": [
+    "Consultar modelos disponíveis na minha API",
+    "Check models available through my API",
+    "Consultar modelos disponibles en mi API",
+    "Consulter les modèles disponibles via mon API"
+  ],
+  "settings.cancel": [
+    "Cancelar",
+    "Cancel",
+    "Cancelar",
+    "Annuler"
+  ],
+  "settings.save": [
+    "Guardar definições",
+    "Save settings",
+    "Guardar ajustes",
+    "Enregistrer les paramètres"
+  ],
+  "chat.log": [
+    "Conversa com GeoMoz AI",
+    "GeoMoz AI conversation",
+    "Conversación con GeoMoz AI",
+    "Conversation avec GeoMoz AI"
+  ],
+  "chat.heading": [
+    "O que quer analisar?",
+    "What would you like to analyse?",
+    "¿Qué desea analizar?",
+    "Que souhaitez-vous analyser ?"
+  ],
+  "chat.explanation": [
+    "Escolha a área no cabeçalho e descreva a análise. Os resultados aparecem no mapa e cada resposta inclui fontes e limitações.",
+    "Choose the area in the header and describe your analysis. Results appear on the map, and each response includes sources and limitations.",
+    "Elija el área en el encabezado y describa el análisis. Los resultados aparecen en el mapa y cada respuesta incluye fuentes y limitaciones.",
+    "Choisissez la zone dans l'en-tête et décrivez l'analyse. Les résultats apparaissent sur la carte et chaque réponse inclut les sources et les limites."
+  ],
+  "chat.tools": [
+    "Ferramentas executadas:",
+    "Tools executed:",
+    "Herramientas ejecutadas:",
+    "Outils exécutés :"
+  ],
+  "chat.running": [
+    "A executar a análise…",
+    "Running analysis…",
+    "Ejecutando análisis…",
+    "Exécution de l'analyse…"
+  ],
+  "chat.stopTooltip": [
+    "Interromper a execução em curso",
+    "Stop current execution",
+    "Detener la ejecución actual",
+    "Arrêter l'exécution en cours"
+  ],
+  "chat.cancel": [
+    "Cancelar",
+    "Cancel",
+    "Cancelar",
+    "Annuler"
+  ],
+  "chat.advanced": [
+    "Período e ferramentas de análise",
+    "Analysis period and tools",
+    "Periodo y herramientas de análisis",
+    "Période et outils d'analyse"
+  ],
+  "chat.start": [
+    "Data inicial",
+    "Start date",
+    "Fecha de inicio",
+    "Date de début"
+  ],
+  "chat.end": [
+    "Data final (exclusiva)",
+    "End date (exclusive)",
+    "Fecha final (exclusiva)",
+    "Date de fin (exclusive)"
+  ],
+  "chat.message": [
+    "Mensagem para GeoMoz AI",
+    "Message to GeoMoz AI",
+    "Mensaje para GeoMoz AI",
+    "Message pour GeoMoz AI"
+  ],
+  "chat.placeholder": [
+    "Descreva a análise que pretende…",
+    "Describe the analysis you want…",
+    "Describa el análisis que desea…",
+    "Décrivez l'analyse souhaitée…"
+  ],
+  "chat.send": [
+    "Enviar mensagem",
+    "Send message",
+    "Enviar mensaje",
+    "Envoyer le message"
+  ],
+  "chat.exampleNdvi": [
+    "Calcular estatísticas zonais de NDVI entre 2025-05-01 e 2025-09-01",
+    "Calculate zonal NDVI statistics from 2025-05-01 to 2025-09-01",
+    "Calcular estadísticas zonales de NDVI entre 2025-05-01 y 2025-09-01",
+    "Calculer les statistiques zonales du NDVI du 2025-05-01 au 2025-09-01"
+  ],
+  "chat.exampleLandcover": [
+    "Mapear a cobertura do solo com WorldCover",
+    "Map land cover using WorldCover",
+    "Cartografiar la cobertura del suelo con WorldCover",
+    "Cartographier l'occupation du sol avec WorldCover"
+  ],
+  "chat.exampleCompare": [
+    "Comparar NDVI entre 2020 e 2025",
+    "Compare NDVI between 2020 and 2025",
+    "Comparar NDVI entre 2020 y 2025",
+    "Comparer le NDVI entre 2020 et 2025"
+  ],
+  "chat.examplePrecip": [
+    "Calcular a precipitação acumulada ERA5-Land em 2025",
+    "Calculate cumulative ERA5-Land precipitation in 2025",
+    "Calcular la precipitación acumulada ERA5-Land en 2025",
+    "Calculer les précipitations cumulées ERA5-Land en 2025"
+  ],
+  "chat.exampleGeology": [
+    "Quais são as principais litologias de Manica?",
+    "What are the main lithologies in Manica?",
+    "¿Cuáles son las principales litologías de Manica?",
+    "Quelles sont les principales lithologies de Manica ?"
+  ]
+} as const satisfies Record<string, readonly [string,string,string,string]>;
+export type AiAgentCopyKey = keyof typeof AI_AGENT_MESSAGES;
+const INDICES: Record<PortalCatalogLocale,0|1|2|3> = {pt:0,en:1,es:2,fr:3};
+export function aiAgentText(language:string,key:AiAgentCopyKey):string{
+  return AI_AGENT_MESSAGES[key][INDICES[resolvedPortalLocale(language)]];
+}

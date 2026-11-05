@@ -6,6 +6,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useProject } from "../context/ProjectContext";
 import { apiFetch } from "@/lib/api";
 import { useGeeAuth } from "@/hooks/useGeeAuth";
+import { usePortalTranslation } from "@/i18n/usePortalTranslation";
+import { aiAgentText, type AiAgentCopyKey } from "@/i18n/aiAgent";
 import { aoiToAPI, mozambiqueAOI, countryAOI, GLOBAL_AOI, type AreaOfInterest } from "@/lib/aoi";
 import { useProvinceNames, useDistrictNames } from "@/hooks/useGeoMoz";
 import AreaSelect from "./AreaSelect";
@@ -125,6 +127,8 @@ interface ChatMessage {
 export default function GeoMozAIAgentTab() {
   const { activeProject, updateProject, saveRunToActiveProject } = useProject();
   const { refreshStatus } = useGeeAuth();
+  const { translatedLocale } = usePortalTranslation();
+  const copy = useCallback((key: AiAgentCopyKey) => aiAgentText(translatedLocale, key), [translatedLocale]);
 
   const loadGAULUnits = useCallback<LoadGAULUnits>(async (countryCode, level, parentCode, signal) => {
     const response = await apiFetch("/geomoz-api/ai/agent-chat", {
@@ -749,14 +753,14 @@ export default function GeoMozAIAgentTab() {
                     ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30"
                     : "bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700"
                 }`}
-                title="Configurar Chaves da OpenAI e Gemini"
+                title={copy("settings.tooltip")}
               >
                 <BrainCircuit size={11} />
                 <span>{activeProviderLabel.split(" ")[0]}</span>
               </button>
 
               {messages.some((message) => message.sender === "agent") && (
-                <button type="button" onClick={handleExportPDF} disabled={isExportingPdf || isRunning} title="Exportar último resultado em PDF" aria-label="Exportar último resultado em PDF" className="rounded-lg p-2 text-slate-200 hover:bg-slate-800 disabled:opacity-50">
+                <button type="button" onClick={handleExportPDF} disabled={isExportingPdf || isRunning} title={copy("export.tooltip")} aria-label={copy("export.tooltip")} className="rounded-lg p-2 text-slate-200 hover:bg-slate-800 disabled:opacity-50">
                   {isExportingPdf ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
                 </button>
               )}
@@ -770,7 +774,7 @@ export default function GeoMozAIAgentTab() {
                     setAgentContext(null);
                   }}
                   className="p-1 rounded-full text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
-                  title="Limpar Histórico de Mensagens"
+                  title={copy("history.clear")}
                 >
                   <Trash2 size={12} />
                 </button>
@@ -782,32 +786,32 @@ export default function GeoMozAIAgentTab() {
           <div className="pt-2.5 border-t border-slate-800/80 space-y-1.5">
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-slate-400 font-medium flex items-center gap-1">
-                <MapPin size={11} className="text-sky-400" /> Área de Estudo:
+                <MapPin size={11} className="text-sky-400" /> {copy("studyArea")}
               </span>
               <button
                 type="button"
                 onClick={() => setShowAoiSelector(!showAoiSelector)}
                 className="text-[10px] px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 hover:bg-sky-500/30 border border-sky-500/40 font-semibold cursor-pointer transition-colors"
               >
-                {showAoiSelector ? "Fechar Seletor" : "Alterar Área"}
+                {showAoiSelector ? copy("studyArea.close") : copy("studyArea.open")}
               </button>
             </div>
 
             {/* Active AOI Summary Pill */}
             <div className="flex items-center justify-between text-xs bg-slate-950/60 border border-slate-800 rounded-lg px-2.5 py-1.5">
               <span className="text-slate-200 font-medium truncate">
-                {currentAoi.label || "Moçambique (Geral)"}
+                {currentAoi.label || copy("studyArea.default")}
               </span>
               {activeProject && (
                 <span className="text-[10px] text-slate-400 shrink-0 ml-2">
-                  Proj: <strong className="text-slate-300">{activeProject.name}</strong>
+                  {copy("project")} <strong className="text-slate-300">{activeProject.name}</strong>
                 </span>
               )}
             </div>
 
             {agentContext?.domain === "geology" && agentContext.province && (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-2.5 py-2 text-[11px] text-sky-100" role="status">
-                <span><strong>Área efectiva da consulta:</strong> {agentContext.district ? agentContext.district + ", " : ""}{agentContext.province}</span>
+                <span><strong>{copy("studyArea.effective")}</strong> {agentContext.district ? agentContext.district + ", " : ""}{agentContext.province}</span>
                 <button type="button" className="rounded border border-sky-400/40 px-2 py-1 font-semibold hover:bg-sky-500/20"
                   onClick={() => {
                     const prov = agentContext.province || null;
@@ -817,7 +821,7 @@ export default function GeoMozAIAgentTab() {
                     const next = mozambiqueAOI(prov, dist);
                     setCurrentAoi(next);
                     if (activeProject) void updateProject(activeProject.id, { aoi: next });
-                  }}>Usar esta área no mapa</button>
+                  }}>{copy("studyArea.apply")}</button>
               </div>
             )}
 
@@ -867,7 +871,7 @@ export default function GeoMozAIAgentTab() {
             {showAoiSelector && (
               <div className="p-2.5 bg-slate-900 border border-slate-700/80 rounded-xl space-y-2 mt-1 shadow-lg">
                 <label className="block text-[10px] font-semibold text-slate-400">País — análises públicas mundiais
-                  <select aria-label="País para análise mundial" disabled={isRunning} value={currentAoi.source === "country" ? currentAoi.countryCode || "" : ""}
+                  <select aria-label={copy("studyArea.country")} disabled={isRunning} value={currentAoi.source === "country" ? currentAoi.countryCode || "" : ""}
                     onChange={(event) => {
                       const country = WORLD_COUNTRIES.find((item) => item.code === event.target.value);
                       if (!country) return;
@@ -875,13 +879,13 @@ export default function GeoMozAIAgentTab() {
                       setCurrentAoi(next); setSelectedProvince(null); setSelectedDistrict(null); setAgentContext(null);
                       if (activeProject) void updateProject(activeProject.id, { aoi: next });
                     }} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 p-1.5 text-xs text-slate-200">
-                    <option value="">Escolher país</option>
+                    <option value="">{copy("studyArea.countryChoose")}</option>
                     {WORLD_COUNTRIES.map((country) => <option key={country.code} value={country.code}>{country.flag} {country.name}</option>)}
                   </select>
                 </label>
                 {currentAoi.source === "country" && currentAoi.countryCode && <>
                   <label className="block text-[10px] font-semibold text-slate-400">Fonte dos limites
-                    <select aria-label="Fonte dos limites administrativos" disabled={isRunning} value={currentAoi.boundarySource || "geoboundaries"}
+                    <select aria-label={copy("studyArea.bounds")} disabled={isRunning} value={currentAoi.boundarySource || "geoboundaries"}
                       onChange={(event) => {
                         const next: AreaOfInterest = { ...currentAoi, boundarySource: event.target.value as "gaul2025" | "geoboundaries",
                           adminLevel: 0, admin1Code: null, admin1Name: null, admin2Code: null, admin2Name: null,
@@ -931,7 +935,7 @@ export default function GeoMozAIAgentTab() {
                       onChange={(e) => handleDistrictChange(e.target.value || null)}
                       className="w-full px-2 py-1 text-xs rounded-lg bg-slate-800 border border-slate-700 text-slate-200 focus:outline-none focus:border-sky-500 disabled:opacity-40 cursor-pointer"
                     >
-                      <option value="">Todos os Distritos</option>
+                      <option value="">{copy("studyArea.allDistricts")}</option>
                       {districtList.map((d) => (
                         <option key={d} value={d}>{d}</option>
                       ))}
@@ -966,7 +970,7 @@ export default function GeoMozAIAgentTab() {
             <div className="flex items-center justify-between text-slate-200">
               <span className="font-bold flex items-center gap-1.5 text-xs text-violet-300">
                 <BrainCircuit size={13} />
-                Configurar Motores de Inteligência Artificial
+                {copy("settings.heading")}
               </span>
               <button
                 type="button"
@@ -980,7 +984,7 @@ export default function GeoMozAIAgentTab() {
             <div className="space-y-2">
               <div>
                 <label className="text-[10px] font-semibold text-slate-400 uppercase flex items-center gap-1 mb-1">
-                  Chave OpenAI API (sk-...)
+                  {copy("settings.openai")}
                 </label>
                 <input
                   type="password"
@@ -993,7 +997,7 @@ export default function GeoMozAIAgentTab() {
 
               <div>
                 <label className="text-[10px] font-semibold text-slate-400 uppercase flex items-center gap-1 mb-1">
-                  Chave Gemini API (Google AI Studio)
+                  {copy("settings.gemini")}
                 </label>
                 <input
                   type="password"
@@ -1006,7 +1010,7 @@ export default function GeoMozAIAgentTab() {
 
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <div>
-                  <label className="text-[10px] font-semibold text-slate-400 block mb-1">Provedor Preferencial</label>
+                  <label className="text-[10px] font-semibold text-slate-400 block mb-1">{copy("settings.provider")}</label>
                   <select
                     value={tempProvider}
                     onChange={(e) => {
@@ -1017,14 +1021,14 @@ export default function GeoMozAIAgentTab() {
                       }}
                     className="w-full px-2 py-1 text-xs rounded-lg bg-slate-900 border border-slate-700 text-slate-200 focus:outline-none focus:border-violet-500"
                   >
-                    <option value="auto">Automático (Detecta Ativa)</option>
+                    <option value="auto">{copy("settings.providerAuto")}</option>
                     <option value="openai">OpenAI</option>
                     <option value="gemini">Google Gemini</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-semibold text-slate-400 block mb-1">Modelo compatível</label>
+                  <label className="text-[10px] font-semibold text-slate-400 block mb-1">{copy("settings.model")}</label>
                   <select
                     value={tempModel}
                     onChange={(e) => setTempModel(e.target.value)}
@@ -1040,7 +1044,7 @@ export default function GeoMozAIAgentTab() {
                 <button type="button" disabled={modelsBusy || tempProvider === "auto"}
                   onClick={() => void refreshModels()}
                   className="rounded-md border border-violet-500/40 px-2.5 py-1 text-[11px] font-semibold text-violet-200 hover:bg-violet-500/20 disabled:opacity-40">
-                  {modelsBusy ? "A consultar modelos..." : "Consultar modelos disponíveis na minha API"}
+                  {modelsBusy ? copy("settings.modelsLoading") : copy("settings.modelsRefresh")}
                 </button>
                 {modelsMessage && <span role="status" className="text-[10px] text-slate-300">{modelsMessage}</span>}
               </div>
@@ -1052,37 +1056,37 @@ export default function GeoMozAIAgentTab() {
                 onClick={() => setShowConfigModal(false)}
                 className="px-2.5 py-1 text-slate-400 hover:text-white text-[11px]"
               >
-                Cancelar
+                {copy("settings.cancel")}
               </button>
               <button
                 type="button"
                 onClick={handleSaveConfig}
                 className="px-3 py-1 bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-semibold rounded-lg flex items-center gap-1"
               >
-                <Check size={11} /> Guardar Definições
+                <Check size={11} /> {copy("settings.save")}
               </button>
             </div>
           </div>
         )}
 
         {/* Scrollable Conversation Thread & Quick Actions */}
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50/80 p-4 dark:bg-slate-950/30" role="log" aria-label="Conversa com GeoMoz AI" ref={chatScrollRef}>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50/80 p-4 dark:bg-slate-950/30" role="log" aria-label={copy("chat.log")} ref={chatScrollRef}>
           {messages.length === 0 && !isRunning && (
             <div className="space-y-5 px-1 py-4 sm:px-3">
               <div className="space-y-2">
                 <Sparkles size={22} className="text-violet-500" aria-hidden="true" />
-                <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">O que quer analisar?</h2>
+                <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{copy("chat.heading")}</h2>
                 <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                  Escolha a área no cabeçalho e descreva a análise. Os resultados aparecem no mapa e cada resposta inclui as fontes e limitações.
+                  {copy("chat.explanation")}
                 </p>
               </div>
               <div className="grid gap-2">
                 {[
-                  "Calcular estatísticas zonais de NDVI entre 2025-05-01 e 2025-09-01",
-                  "Mapear a cobertura do solo com WorldCover",
-                  "Comparar NDVI entre 2020 e 2025",
-                  "Calcular a precipitação acumulada ERA5-Land em 2025",
-                  "Quais são as principais litologias de Manica?",
+                  copy("chat.exampleNdvi"),
+                  copy("chat.exampleLandcover"),
+                  copy("chat.exampleCompare"),
+                  copy("chat.examplePrecip"),
+                  copy("chat.exampleGeology"),
                 ].map((example) => (
                   <button key={example} type="button" onClick={() => { setPrompt(example); promptRef.current?.focus(); }}
                     className="rounded-xl border border-slate-200 p-3 text-left text-sm text-slate-700 hover:border-violet-400 hover:bg-violet-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-violet-950/40">
@@ -1123,7 +1127,7 @@ export default function GeoMozAIAgentTab() {
                     {!msg.intelligence && msg.steps && msg.steps.length > 0 && (
                       <div className="p-2 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-100 dark:border-slate-800 space-y-1">
                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                          Ferramentas Executadas:
+                          {copy("chat.tools")}
                         </div>
                         {msg.steps.map((st, idx) => (
                           <div key={st.id || idx} className="flex items-center justify-between text-[11px]">
@@ -1180,16 +1184,16 @@ export default function GeoMozAIAgentTab() {
               <div className="flex items-center justify-between text-xs font-semibold text-violet-700 dark:text-violet-300">
                 <div className="flex items-center gap-2">
                   <Loader2 size={13} className="animate-spin" />
-                  <span>A executar a análise…</span>
+                  <span>{copy("chat.running")}</span>
                 </div>
                 <button
                   type="button"
                   onClick={handleCancelRunning}
                   className="px-2 py-0.5 text-[10px] font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-                  title="Interromper execução em curso"
+                  title={copy("chat.stopTooltip")}
                 >
                   <Square size={9} fill="currentColor" />
-                  <span>Cancelar</span>
+                  <span>{copy("chat.cancel")}</span>
                 </button>
               </div>
               <div className="space-y-1">
@@ -1213,14 +1217,14 @@ export default function GeoMozAIAgentTab() {
         {/* Bottom Input Area */}
         <div className="p-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex-none space-y-2">
           <details className="rounded-lg text-xs text-slate-600 dark:text-slate-300">
-            <summary className="cursor-pointer py-1 font-medium">Período e ferramentas de análise</summary>
+            <summary className="cursor-pointer py-1 font-medium">{copy("chat.advanced")}</summary>
             <div className="max-h-36 space-y-2 overflow-y-auto pt-1">
               <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-500 dark:text-slate-400">
-                <label>Data inicial
-                  <input type="date" aria-label="Data inicial da análise" disabled={isRunning} value={analysisPeriod.startDate} onChange={(e) => setAnalysisPeriod((p) => ({ ...p, startDate: e.target.value }))} className="block w-full rounded border border-slate-200 bg-transparent p-1 dark:border-slate-700" />
+                <label>{copy("chat.start")}
+                  <input type="date" aria-label={copy("chat.start")} disabled={isRunning} value={analysisPeriod.startDate} onChange={(e) => setAnalysisPeriod((p) => ({ ...p, startDate: e.target.value }))} className="block w-full rounded border border-slate-200 bg-transparent p-1 dark:border-slate-700" />
                 </label>
-                <label>Data final (exclusiva)
-                  <input type="date" aria-label="Data final da análise" disabled={isRunning} value={analysisPeriod.endDate} min={analysisPeriod.startDate} onChange={(e) => setAnalysisPeriod((p) => ({ ...p, endDate: e.target.value }))} className="block w-full rounded border border-slate-200 bg-transparent p-1 dark:border-slate-700" />
+                <label>{copy("chat.end")}
+                  <input type="date" aria-label={copy("chat.end")} disabled={isRunning} value={analysisPeriod.endDate} min={analysisPeriod.startDate} onChange={(e) => setAnalysisPeriod((p) => ({ ...p, endDate: e.target.value }))} className="block w-full rounded border border-slate-200 bg-transparent p-1 dark:border-slate-700" />
                 </label>
               </div>
               <PublicDataTools disabled={isRunning} onRun={(label, request) => { void handlePromptSubmit(label, request); }} />
@@ -1237,7 +1241,7 @@ export default function GeoMozAIAgentTab() {
             <textarea
               ref={promptRef}
               rows={2}
-              aria-label="Mensagem para GeoMoz AI"
+              aria-label={copy("chat.message")}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault();
@@ -1246,13 +1250,13 @@ export default function GeoMozAIAgentTab() {
               }}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Descreva a análise que pretende…"
+              placeholder={copy("chat.placeholder")}
               disabled={isRunning}
               className="min-w-0 flex-1 resize-none px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:bg-white"
             />
             <button
               type="submit"
-              aria-label="Enviar mensagem"
+              aria-label={copy("chat.send")}
               disabled={isRunning || !prompt.trim()}
               className="px-3.5 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-slate-200 dark:disabled:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer disabled:cursor-not-allowed"
             >
