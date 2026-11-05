@@ -10,6 +10,8 @@ import React, { useState, useRef, useMemo, useCallback } from "react";
 import GISWorkspaceCesium from "@/components/GISWorkspaceCesium";
 import GISWorkspaceOverview from "@/components/GISWorkspaceOverview";
 import "@/styles/gis-workspace.css";
+import TerrainStudio from "@/components/TerrainStudio";
+import WorkspaceCopernicusPanel from "@/components/WorkspaceCopernicusPanel";
 import TerrainWorkflowPanel from "@/components/TerrainWorkflowPanel";
 import type { TerrainResult } from "@/lib/terrain-workflow";
 import GISModelBuilderPanel from "@/components/GISModelBuilderPanel";
@@ -317,6 +319,15 @@ export default function GeoProcessamento({
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [basemap, setBasemap] = useState<BasemapType>("hybrid");
   const [drawingEnabled, setDrawingEnabled] = useState(false);
+  const [studioDem, setStudioDem] = useState<File>();
+  const [demOutline, setDemOutline] = useState<{ area: AreaOfInterest; geometry: GeoJSON.GeoJSON }>();
+  const [drawingShape, setDrawingShape] = useState<"polygon" | "rectangle">("polygon");
+  const startAreaDrawing = (shape: "polygon" | "rectangle" = "polygon") => {
+    setDrawingShape(shape);
+    setDrawingEnabled(true);
+    setSidebarOpen(false);
+    setDesktopSidebarOpen(false);
+  };
   React.useEffect(() => { workspacePanelRef.current?.scrollTo?.({ top: 0 }); }, [activeTab]);
 
   // User Layers
@@ -3181,7 +3192,7 @@ export default function GeoProcessamento({
           results={layers.filter(layer => layer.isResult).length + rasterLayers.filter(layer => layer.isResult).length}
           busy={isExecuting || demLoading} error={processingError}
           onImport={() => fileInputRef.current?.click()}
-          onDraw={() => { setDrawingEnabled(true); setSidebarOpen(false); setDesktopSidebarOpen(false); }}
+          onDraw={startAreaDrawing}
           onTerrain={() => setActiveTab("terrain_workflow")} onLayers={() => setActiveTab("layers")} />}
 
         {/* Top Processing Menu Tabs */}
@@ -3287,9 +3298,20 @@ export default function GeoProcessamento({
           <Mountain size={16} /> Terreno e Hidrologia
         </button>
         {workspaceHydrated && <div hidden={activeTab !== "terrain_workflow"}>
+          <WorkspaceCopernicusPanel user={user} aoi={aoi} onAOIChange={onAOIChange} onDraw={startAreaDrawing}
+            onPreview={geometry => setDemOutline({ area: aoi, geometry })}
+            onOpenTerrain={setStudioDem}
+            onRaster={(file, name) => {
+              const id = `copernicus_${crypto.randomUUID()}`;
+              setRasterLayers(previous => [{
+                id, name, file, fileName: file.name, mimeType: file.type, sizeBytes: file.size,
+                visible: true, opacity: 1, isResult: true, bandCount: 1,
+              }, ...previous]);
+              setSelectedWhiteboxRasterId(id);
+            }} />
           <TerrainWorkflowPanel aoi={aoi} rasters={rasterLayers}
             onComplete={handleTerrainComplete} onShowProduct={handleShowTerrainProduct}
-            onDraw={() => { setDrawingEnabled(true); setSidebarOpen(false); setDesktopSidebarOpen(false); }} />
+            onDraw={startAreaDrawing} />
         </div>}
 
         {/* ── Data Sources: local, URL and OGC services ─────────────────── */}
@@ -5855,6 +5877,10 @@ export default function GeoProcessamento({
           <span>Ferramentas</span>
         </button>
 
+        {studioDem && <div className="absolute inset-0 z-[1000]">
+          <TerrainStudio open initialDemFile={studioDem} onClose={() => setStudioDem(undefined)} />
+        </div>}
+
         <GISWorkspaceCesium
           layers={layers}
           rasterLayers={rasterLayers}
@@ -5863,8 +5889,9 @@ export default function GeoProcessamento({
           activeRasterId={selectedWhiteboxRasterId}
           basemap={basemap}
           onViewportBbox={setMapViewportBbox}
-          aoiGeometry={aoi.source !== "global" ? aoi.geometry : null}
+          aoiGeometry={aoi.geometry ?? (demOutline?.area === aoi ? demOutline.geometry : null)}
           drawingEnabled={drawingEnabled}
+          drawingShape={drawingShape}
           onSelectLayer={setSelectedLayerId}
           onDrawComplete={(geometry, label) => {
             setDrawingEnabled(false);

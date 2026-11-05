@@ -1383,6 +1383,34 @@ async def gee_index(req: GEEIndexRequest, uid: str = Depends(require_gee_auth)):
 
 
 
+from workspace_dem import WorkspaceDemRequest
+
+
+@app.post("/geomoz-api/terrain/gee-workspace-dem/preview")
+@app.post("/geomoz-api/terrain/gee-workspace-dem/geotiff")
+def workspace_dem(req: WorkspaceDemRequest, request: Request, uid: str = Depends(require_pro_gee_auth)):
+    import httpx
+    from terrain_gee import fetch_signed_gee_geotiff
+    from workspace_dem import prepare_dem, write_dem_geotiff
+
+    geometry = _region_geojson(req.province, req.district, req.geometry)
+    if geometry is None:
+        raise HTTPException(422, "Seleccione, desenhe ou importe uma área de estudo.")
+    preview = request.url.path.endswith("/preview")
+    try:
+        result = prepare_dem(req, geometry, preview)
+        if preview:
+            return result
+        tiff = write_dem_geotiff(fetch_signed_gee_geotiff(result))
+        return Response(tiff, media_type="image/tiff", headers={"Cache-Control": "no-store"})
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, "Não foi possível descarregar o GeoTIFF do Earth Engine.") from exc
+    except Exception as exc:
+        handle_gee_api_error(exc, prefix="DEM Copernicus", uid=uid)
+
+
 @app.post("/geomoz-api/gee/download-url")
 async def gee_download_url(req: GEEDownloadRequest, uid: str = Depends(require_gee_auth)):
     """

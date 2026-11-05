@@ -27,6 +27,7 @@ interface TerrainStudioProps {
   onClose: () => void;
   embedded?: boolean;
   geeEnabled?: boolean;
+  initialDemFile?: File;
   geeRegion?: {
     province: string | null;
     district: string | null;
@@ -35,7 +36,7 @@ interface TerrainStudioProps {
 }
 
 /** Native GeoMoz analysis module: same navigation, project context and design system. */
-export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRegion, embedded = false }: TerrainStudioProps) {
+export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRegion, embedded = false, initialDemFile }: TerrainStudioProps) {
   const { terrain, setTerrain } = useTerrainSession();
   const { activeProject } = useProject();
   const subscription=useSubscription();
@@ -141,7 +142,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
     }
   }, [open, terrain, exaggeration, style, textureUrl, composedTexture, pickTarget, picked, detailLevel, viewMode]);
 
-  async function loadGeoTiff(file: File | undefined) {
+  async function loadGeoTiff(file: File | undefined, signal?: AbortSignal) {
     if (!file) return;
     setError(null);
     setTerrain(null);
@@ -158,7 +159,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
       const body = new FormData();
       body.append("file", file, file.name);
       const response = await apiFetch("/geomoz-api/terrain/mesh", {
-        method: "POST", body,
+        method: "POST", body, signal,
       });
       const result = await response.json().catch(() => null);
       if (!response.ok) {
@@ -172,14 +173,23 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
           !Array.isArray(result.boundsMeters)) {
         throw new Error("O serviço devolveu uma malha inválida.");
       }
-      setTerrain(result as TerrainMeshData);
+      if (!signal?.aborted) setTerrain(result as TerrainMeshData);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível carregar o DEM.");
+      if (!signal?.aborted) setError(cause instanceof Error ? cause.message : "Não foi possível carregar o DEM.");
     } finally {
-      setBusy(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (!signal?.aborted) {
+        setBusy(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
     }
   }
+
+  useEffect(() => {
+    if (!open || !initialDemFile) return;
+    const controller = new AbortController();
+    void loadGeoTiff(initialDemFile, controller.signal);
+    return () => controller.abort();
+  }, [open, initialDemFile]);
 
   async function loadFromGEE() {
     if (!proGeeEnabled) {
