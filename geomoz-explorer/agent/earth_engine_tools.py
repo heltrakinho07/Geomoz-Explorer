@@ -186,6 +186,55 @@ def zonal_statistics(geometry, index, start, end, threshold=None, comparison="gt
     return result
 
 
+
+def temporal_pixel(geometry, index, start1, end1, start2, end2, lon, lat,
+                   threshold=0.2, scale_m=30, cloud_pct=30):
+    """Sample real A/B spectral indices at one map click (no synthetic values).
+
+    The point must be inside the selected AOI. Both values are masked to the
+    shared valid footprint and sampled on a common analysis grid.
+    """
+    import ee
+    validate_period(start1, end1, "2017-03-28")
+    validate_period(start2, end2, "2017-03-28")
+    if end1 > start2:
+        raise ValueError("Os períodos não podem sobrepor-se.")
+    if index not in INDEX_BANDS:
+        raise ValueError("Índice não suportado.")
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v)
+           for v in (lon, lat, threshold)):
+        raise ValueError("Coordenadas ou limiar inválidos.")
+    if not (-180 <= lon <= 180 and -90 <= lat <= 90 and 0 < threshold <= 2):
+        raise ValueError("Coordenadas ou limiar fora dos limites permitidos.")
+    region, grid, _ = _grid(geometry, scale_m, 10 if index in ("ndvi", "ndwi") else 20)
+    point = ee.Geometry.Point([lon, lat])
+    if not region.intersects(point, maxError=10).getInfo():
+        raise ValueError("O ponto está fora da área da análise.")
+    before, _ = _s2_image(region, index, start1, end1, cloud_pct)
+    after, _ = _s2_image(region, index, start2, end2, cloud_pct)
+    common = before.mask().gt(0).And(after.mask().gt(0))
+    paired = ee.Image.cat(before.rename("A"), after.rename("B")).updateMask(common)
+    values = (paired.reduceRegion(
+        reducer=ee.Reducer.first(), geometry=point,
+        scale=grid["scale"], crs=grid["crs"], maxPixels=10_000,
+        tileScale=4).getInfo() or {})
+    value_a, value_b = values.get("A"), values.get("B")
+    result = {"index": index.upper(), "longitude": lon, "latitude": lat,
+              "analysisScaleM": grid["scale"],
+              "periodA": {"startDate": start1, "endDate": end1},
+              "periodB": {"startDate": start2, "endDate": end2},
+              "threshold": threshold}
+    if value_a is None or value_b is None:
+        return {**result, "status": "no_data", "valueA": None, "valueB": None,
+                "delta": None, "classification": "no_data"}
+    difference = float(value_b) - float(value_a)
+    classification = ("increase" if difference >= threshold
+                      else "decrease" if difference <= -threshold else "stable")
+    return {**result, "status": "success", "valueA": float(value_a),
+            "valueB": float(value_b), "delta": difference,
+            "classification": classification}
+
+
 def temporal_change(geometry, index, start1, end1, start2, end2, scale_m=30, cloud_pct=30, threshold=0.2):
     validate_period(start1, end1, "2017-03-28")
     validate_period(start2, end2, "2017-03-28")
