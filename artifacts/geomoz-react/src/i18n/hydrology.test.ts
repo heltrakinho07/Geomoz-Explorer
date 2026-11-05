@@ -23,7 +23,7 @@ describe("HydroGeoMoz reactive localization", () => {
       '"delineate"',
       '"explore"',
       "HydroBASINS",
-      "Pfafstetter",
+
       "aoiToAPI(aoi)",
       'h("delineate.levelHint")',
       'h("basins.levelPoint")',
@@ -31,5 +31,6 @@ describe("HydroGeoMoz reactive localization", () => {
       "usePortalTranslation()",
     ]) expect(src, literal).toContain(literal);
     expect(src).toContain("toLocaleString(numberLocale)");
+    expect(hydrologyText("pt", "basins.level")).toContain("Pfafstetter");
   });
 });
