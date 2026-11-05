@@ -2853,11 +2853,57 @@ class GEEMapImageRequest(BaseModel):
         required = {"south", "north", "west", "east"}
         if not isinstance(v, dict) or not required.issubset(v.keys()):
             raise ValueError(f'bounds must contain {required}')
+        import math
+        for key in required:
+            value = v[key]
+            limit = 90 if key in {"south", "north"} else 180
+            if type(value) not in (float, int) or not math.isfinite(value) or not -limit <= value <= limit:
+                raise ValueError(f"Invalid map bound: {key}")
         if v["south"] >= v["north"]:
             raise ValueError('south must be < north')
         if v["west"] >= v["east"]:
             raise ValueError('west must be < east')
         return v
+
+    @field_validator("tile_url")
+    @classmethod
+    def validate_tile_url(cls, value):
+        if value is None:
+            return value
+        import re
+        from urllib.parse import urlsplit
+
+        url = urlsplit(value)
+        is_tile_path = re.fullmatch(
+            r"/(?:v1|v1alpha)/(?:projects/[^/]+/)?maps/[^/]+/tiles/\{z\}/\{x\}/\{y\}",
+            url.path,
+        )
+        if (url.scheme != "https"
+                or url.netloc not in {"earthengine.googleapis.com", "earthengine-highvolume.googleapis.com"}
+                or not is_tile_path or url.fragment):
+            raise ValueError("Use um URL HTTPS de mosaicos XYZ do Earth Engine.")
+        return value
+
+    @field_validator("width_mm", "height_mm")
+    @classmethod
+    def validate_dimensions(cls, value):
+        if not 10 <= value <= 500:
+            raise ValueError("As dimensões do mapa devem ficar entre 10 e 500 mm.")
+        return value
+
+    @field_validator("legend_items")
+    @classmethod
+    def validate_legend_size(cls, value):
+        if value is not None and len(value) > 30:
+            raise ValueError("O mapa admite até 30 entradas na legenda.")
+        return value
+
+    @field_validator("overlay_geojson")
+    @classmethod
+    def validate_overlay_size(cls, value):
+        if value is not None and len(json.dumps(value, separators=(",", ":")).encode("utf-8")) > 2_000_000:
+            raise ValueError("A sobreposição GeoJSON excede o limite de 2 MB.")
+        return value
 
     @field_validator('dpi')
     @classmethod
