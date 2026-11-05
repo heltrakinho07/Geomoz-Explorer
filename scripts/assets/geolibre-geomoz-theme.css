@@ -847,9 +847,6 @@ html[data-geomoz-reduced-motion="true"] .gm-workbench *::after {
   background:var(--gm-muted,#f8fafc);}
 .gm-prop-footer span{display:flex;align-items:center;gap:7px;
   color:var(--gm-subtle,#64748b);font-size:11px;}
-.gm-prop-dialog button:not(.gm-prop-nav button):not(.gm-prop-close button) {
-  transition:background .15s ease;
-}
 .gm-prop-dialog button:focus-visible,.gm-prop-dialog input:focus-visible,
 .gm-prop-dialog select:focus-visible{outline:2px solid #0ea5e9;outline-offset:2px;}
 .gm-prop-primary{display:inline-flex;align-items:center;justify-content:center;gap:7px;
@@ -857,7 +854,10 @@ html[data-geomoz-reduced-motion="true"] .gm-workbench *::after {
   border-radius:10px;background:linear-gradient(115deg,#0284c7,#4f46e5);
   color:#fff;font-size:12px;font-weight:750;cursor:pointer;}
 .gm-prop-primary:disabled{opacity:.5;cursor:not-allowed;}
-.gm-prop-content button:not(.gm-prop-primary){display:inline-flex;align-items:center;justify-content:center;gap:7px;
+.gm-prop-content > button:not(.gm-prop-primary),
+.gm-prop-classification-actions > button,
+.gm-prop-symbology-actions > button:not(.gm-prop-primary),
+.gm-prop-category-table > button:not(.gm-prop-primary){display:inline-flex;align-items:center;justify-content:center;gap:7px;
   min-height:35px;padding:7px 12px;border:1px solid var(--gm-line,#cbd5e1);
   border-radius:9px;color:var(--gm-text,#334155);background:var(--gm-muted,#f8fafc);
   font-size:12px;cursor:pointer;}
