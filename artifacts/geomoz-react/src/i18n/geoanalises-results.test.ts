@@ -31,7 +31,7 @@ describe("GeoMoz GeoAnalises scientific results and PDF locale", () => {
     for (const contract of [
       "/geomoz-api/gee/landcover",
       "stats.p10", "stats.p90",
-      "getGeometryCenter",
+      "aoiToAPI",
       "scienceUiText(language, key)",
       "analysisControlText(language, key)",
       "geoAnalisesResultText(language, key)",
