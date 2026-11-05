@@ -1,6 +1,7 @@
 /** Translated analysis results and cartographic export UI. Scientific IDs and server data remain unchanged. */
 import { resolvedPortalLocale, type PortalCatalogLocale } from "./portal";
 export const GEOANALISES_RESULT_MESSAGES = {
+  "overlay.showChart": ["Mostrar gráfico de correlação","Show correlation chart","Mostrar gráfico de correlación","Afficher le graphique de corrélation"],
   "pdf.title": [
     "Relatório de análise",
     "Analysis report",
