@@ -38,7 +38,7 @@ describe("GeoAnálises: scroll and responsive inspector", () => {
     expect(analytics).toContain("onClose={() => setResultsPanelOpen(false)}");
     expect(analytics).toContain("setResultsPanelOpen(value => !value)");
     expect(analytics).toContain("setResultsPanelOpen(true)");
-    expect(analytics).toContain('aria-label="Mostrar painel de resultados"');
+    expect(analytics).toContain('aria-label={ui("analysis.showPanel")}');
     expect(analytics).not.toContain("setGeeTile(null);\n    setResultsPanelOpen(false)");
   });
 
@@ -54,7 +54,7 @@ describe("GeoAnálises: scroll and responsive inspector", () => {
   it("fixes mobile filter drawer width and avoids static 100vh on smartphone shell", () => {
     expect(analytics).toContain("w-[min(94vw,26rem)]");
     expect(analytics).toContain('useState(false);\n  const [resultsPanelOpen');
-    expect(analytics).toContain('aria-label="Abrir filtros e parâmetros"');
+    expect(analytics).toContain('aria-label={ui("analysis.openFilters")}');
     expect(shell).toContain("h-[100dvh]");
     expect(shell).toContain('aria-label={copy("explorer.openNav")}');
   });
@@ -90,7 +90,7 @@ describe("GeoAnálises: translucent category cards", () => {
 
   it("retains scientific caveats and responsive highlighting without fake activation", () => {
     expect(analytics).toContain('className="geo-catalog-card__review"');
-    expect(analytics).toContain("Inclui ferramentas em revisão");
+    expect(analytics).toContain('ui("analysis.review")');
     expect(analytics).toContain('cat.highlights.slice(0, 3)');
     expect(analytics).toContain('cat.status === "development" ? "Ver estado do módulo"');
     expect(analytics).toContain("geo-catalog-grid grid");
