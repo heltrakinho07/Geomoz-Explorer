@@ -351,3 +351,45 @@
 .dark .gm-terrain-vertical-heading{color:#e2e8f0}
 .dark .gm-terrain-vertical-footer small{color:#cbd5e1}
 .dark .gm-terrain-vertical-footer button{background:#1e293b;color:#7dd3fc;border-color:#255879}
+
+
+/* Licensed XYZ drape controls: below camera toolbar, without hiding the map. */
+.gm-terrain-xyz-panel{
+  position:absolute;right:14px;top:74px;z-index:22;
+  width:min(340px,calc(100% - 28px));max-height:54%;
+  overflow:auto;border:1px solid #94a3b8;border-radius:11px;
+  background:rgba(248,250,252,.96);color:#0f172a;
+  box-shadow:0 8px 28px #02061744;padding:9px 12px;
+  font-size:11px;line-height:1.45;backdrop-filter:blur(12px);
+}
+.gm-terrain-xyz-panel summary{font-weight:750;color:#075985;cursor:pointer;}
+.gm-terrain-xyz-panel p{margin:7px 0;font-size:11px;color:#475569;}
+.gm-terrain-xyz-panel>label{display:flex;flex-direction:column;gap:4px;margin-top:9px;}
+.gm-terrain-xyz-panel input[type=url],.gm-terrain-xyz-panel input:not([type]){
+  width:100%;min-width:0;padding:7px 9px;border:1px solid #cbd5e1;
+  border-radius:7px;font:inherit;background:white;color:#0f172a;
+}
+.gm-terrain-xyz-panel .gm-terrain-xyz-consent{
+  flex-direction:row;align-items:center;gap:7px;font-size:11px;
+}
+.gm-terrain-xyz-buttons{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
+.gm-terrain-xyz-buttons button{border:1px solid #0284c7;border-radius:7px;
+  background:#0284c7;color:white;padding:6px 9px;cursor:pointer;font-size:11px;}
+.gm-terrain-xyz-buttons button:disabled{opacity:.4;cursor:not-allowed;}
+.gm-terrain-xyz-panel>small{display:block;margin-top:6px;color:#0369a1;}
+.gm-terrain-raster-stack{display:flex;flex-direction:column;gap:8px;
+  border:1px solid #cbd5e1;border-radius:12px;padding:8px;}
+.gm-terrain-raster-stack>strong{font-size:12px;color:#0369a1;}
+.gm-terrain-raster-stack>small{font-size:10px;color:#64748b;}
+.gm-terrain-raster-stack-item{display:flex;flex-direction:column;gap:6px;
+  padding:8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;}
+.gm-terrain-raster-stack-item .gm-terrain-panel-heading strong{flex:1;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;}
+.gm-terrain-raster-stack-item button{border:0;background:transparent;
+  color:#0369a1;cursor:pointer;padding:3px;}
+.gm-terrain-raster-stack-item button:disabled{opacity:.3;cursor:not-allowed;}
+.dark .gm-terrain-xyz-panel{background:rgba(15,23,42,.97);color:#e2e8f0;border-color:#475569;}
+.dark .gm-terrain-xyz-panel summary{color:#7dd3fc;}
+.dark .gm-terrain-xyz-panel p{color:#cbd5e1;}
+.dark .gm-terrain-raster-stack-item{background:#1e293b;}
+@media(max-width:740px){.gm-terrain-xyz-panel{top:125px;max-height:38%;}}
