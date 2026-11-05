@@ -17,6 +17,9 @@ export function prepareGeoMozLargeVector(rootDir) {
   const root = resolve(rootDir);
   const app = resolve(root, "apps/geolibre-desktop/src");
   const plugins = resolve(root, "packages/plugins/src");
+  if (existsSync(resolve(app, "lib/geomoz-large-vector.ts"))) {
+    throw new Error("GeoMoz large-vector source already exists; use a clean checkout.");
+  }
   if (!existsSync(resolve(root, "LICENSE"))) {
     throw new Error("Expected the pinned GeoLibre source checkout.");
   }
