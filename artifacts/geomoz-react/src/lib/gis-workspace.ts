@@ -64,6 +64,57 @@ export const WORKSPACE_GRADUATED_PALETTE = [
   "#075985",
 ];
 
+/** Bound interactive GIS operations to a browser-safe feature count.
+ * Larger imports may be managed separately without passing through this
+ * synchronous geoprocessing engine.
+ */
+export const MAX_WORKSPACE_FEATURES = 5000;
+
+/** Validate a GeoJSON FeatureCollection before computational operations.
+ * Do not mutate the input or silently discard invalid coordinates.
+ */
+export function normalizeWorkspaceGeoJSON(value: unknown): FeatureCollection {
+  const collection = asFeatureCollection(value);
+  if (collection.features.length > MAX_WORKSPACE_FEATURES) {
+    throw new Error("Demasiadas feições para processamento local.");
+  }
+  for (const feature of collection.features) {
+    if (!feature || feature.type !== "Feature" || !feature.geometry) {
+      throw new Error("GeoJSON inválido: todas as feições precisam de geometria.");
+    }
+    const geometry = feature.geometry;
+    const type = geometry.type;
+    if (!["Point","MultiPoint","LineString","MultiLineString","Polygon","MultiPolygon","GeometryCollection"].includes(type)) {
+      throw new Error("Tipo de geometria GeoJSON não suportado.");
+    }
+    const validateCoordinates = (coords: unknown): void => {
+      if (!Array.isArray(coords) || coords.length === 0) {
+        throw new Error("GeoJSON inválido: coordenadas vazias.");
+      }
+      if (typeof coords[0] === "number") {
+        const lon = coords[0], lat = coords[1];
+        if (coords.length < 2 || typeof lat !== "number" ||
+            !Number.isFinite(lon) || !Number.isFinite(lat) ||
+            Math.abs(lon) > 180 || Math.abs(lat) > 90) {
+          throw new Error("GeoJSON inválido: coordenadas fora de WGS84.");
+        }
+      } else {
+        for (const nested of coords) validateCoordinates(nested);
+      }
+    };
+    const validateGeometry = (item: Geometry): void => {
+      if (item.type === "GeometryCollection") {
+        if (!Array.isArray(item.geometries)) throw new Error("Colecção de geometrias inválida.");
+        for (const nested of item.geometries) validateGeometry(nested);
+      } else {
+        validateCoordinates(item.coordinates);
+      }
+    };
+    validateGeometry(geometry);
+  }
+  return collection;
+}
+
 function asFeatureCollection(value: unknown): FeatureCollection {
   if (!value || typeof value !== "object") {
     throw new Error("Ficheiro geoespacial inválido.");
