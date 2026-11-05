@@ -313,6 +313,29 @@
   .gm-terrain-geographic-tools{gap:5px;}
 }
 
+/* Thematic raster import — progress from bytes read and actual aligned rows. */
+.gm-terrain-import-progress{
+  display:flex;flex-direction:column;gap:9px;padding:12px;
+  border:1px solid #bae6fd;border-radius:14px;
+  background:linear-gradient(140deg,#f0f9ff,#eef2ff);
+  box-shadow:4px 6px 14px #8faacb22,-3px -3px 10px #ffffffd9;
+}
+.gm-terrain-import-status{display:flex;align-items:center;gap:8px;min-width:0;font-size:11px;color:#075985;}
+.gm-terrain-import-status span{flex:1;min-width:0;overflow-wrap:anywhere;}
+.gm-terrain-import-status strong{font-variant-numeric:tabular-nums;}
+.gm-terrain-import-progress progress{width:100%;height:8px;accent-color:#0284c7;border-radius:10px;overflow:hidden;}
+.gm-terrain-import-cancel{
+  display:inline-flex;justify-content:center;align-items:center;gap:7px;
+  min-height:38px;padding:7px 11px;border-radius:10px;
+  border:1px solid #fecaca;background:#fff;color:#991b1b;
+  font-size:11px;font-weight:700;cursor:pointer;
+}
+.gm-terrain-import-cancel:hover{background:#fff1f2;border-color:#fda4af;}
+.gm-terrain-import-cancel:focus-visible{outline:2px solid #0284c7;outline-offset:2px;}
+.dark .gm-terrain-import-progress{background:linear-gradient(140deg,#122b46,#18244c);border-color:#24547e;box-shadow:none;}
+.dark .gm-terrain-import-status{color:#bae6fd;}
+.dark .gm-terrain-import-cancel{background:#3b1726;color:#fecdd3;border-color:#881337;}
+
 /* Exagero vertical sempre acessível na barra lateral do GIS Workspace. */
 .gm-terrain-vertical-panel{margin:10px 12px 8px;padding:12px;border:1px solid #7dd3fc;
   border-radius:12px;background:#eff6ff;display:flex;flex-direction:column;gap:8px}

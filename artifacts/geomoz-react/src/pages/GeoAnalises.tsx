@@ -8,6 +8,7 @@ const SCIENCE: Record<string, ScienceEntry> = scienceCatalog;
 import { useProject } from "@/context/ProjectContext";
 import { usePortalTranslation } from "@/i18n/usePortalTranslation";
 import { scienceUiText, type ScienceUiKey } from "@/i18n/scienceUi";
+import { analysisControlText, type AnalysisControlKey } from "@/i18n/analysisControls";
 /**
  * GeoAnálises — Sentinel-2 spectral analysis module.
  *
@@ -2862,6 +2863,7 @@ export default function GeoAnalises({
 }: GeoAnalisesProps) {
   const { language } = usePortalTranslation();
   const scienceT = (key: ScienceUiKey) => scienceUiText(language, key);
+  const analysisT = (key: AnalysisControlKey) => analysisControlText(language, key);
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const categoryInDevelopment = GEO_CATEGORIES.some(cat => cat.id === selectedCategory && cat.status === "development");
@@ -3935,7 +3937,7 @@ export default function GeoAnalises({
               type="button"
               onClick={() => setDesktopSidebarOpen(v => !v)}
               style={{ left: desktopSidebarOpen ? sidebarSize.width : 0 }}
-              title={desktopSidebarOpen ? "Recolher painel lateral" : "Expandir painel lateral"}
+              title={desktopSidebarOpen ? analysisT("sidebar.collapse") : analysisT("sidebar.expand")}
               className="hidden md:flex z-[550] absolute top-1/2 -translate-y-1/2 w-4 h-12 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-l-0 border-slate-200 dark:border-slate-800 rounded-r-md items-center justify-center shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 cursor-pointer"
             >
               {desktopSidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
@@ -3946,7 +3948,7 @@ export default function GeoAnalises({
       <div
               ref={sidebarSize.ref}
         style={sidebarSize.style}
-        aria-label="Parâmetros da análise"
+        aria-label={analysisT("sidebar.parameters")}
               className={`geomoz-analysis-sidebar fixed md:relative inset-y-0 left-0 z-[700] flex w-[min(94vw,26rem)] min-h-0 flex-col overflow-y-auto overscroll-contain bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 shadow-xl md:shadow-none ${
                 sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
               } ${
@@ -3957,12 +3959,12 @@ export default function GeoAnalises({
               <div className="md:hidden px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
                   <SlidersHorizontal size={14} className="text-sky-500" />
-                  Filtros & Parâmetros
+                  {analysisT("sidebar.filters")}
                 </span>
                 <button
                   type="button"
                   onClick={() => setSidebarOpen(false)}
-                  aria-label="Fechar filtros"
+                  aria-label={analysisT("sidebar.closeFilters")}
                   className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                 >
                   <X size={18} />
@@ -3972,7 +3974,7 @@ export default function GeoAnalises({
               {/* Area filter — AOI global & Parâmetros GEE */}
               <div className="p-4 border-b border-slate-100 dark:border-slate-800 space-y-3">
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Área de Estudo</h4>
+                  <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{analysisT("sidebar.studyArea")}</h4>
                   <ZoneSelect aoi={aoi} onAOIChange={onAOIChange} onDrawingRequest={() => setDrawingEnabled(true)} />
                 </div>
 
@@ -3980,7 +3982,7 @@ export default function GeoAnalises({
                 <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <h5 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      Parâmetros GEE
+                      {analysisT("gee.parameters")}
                     </h5>
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
                       S-2 / L8
@@ -3989,7 +3991,7 @@ export default function GeoAnalises({
 
                   <div className="period-grid grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">{needsPrePeriod ? "Pós-incêndio: início" : "Data início"}</label>
+                      <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">{needsPrePeriod ? analysisT("gee.fireStart") : analysisT("gee.start")}</label>
                       <input
                         type="date"
                         value={geeStartDate}
@@ -3998,7 +4000,7 @@ export default function GeoAnalises({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">{needsPrePeriod ? "Pós-incêndio: fim exclusivo" : "Data fim (exclusiva)"}</label>
+                      <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">{needsPrePeriod ? analysisT("gee.fireEnd") : analysisT("gee.end")}</label>
                       <input
                         type="date"
                         value={geeEndDate}
@@ -4010,7 +4012,7 @@ export default function GeoAnalises({
 
                   <div>
                     <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 mb-1">
-                      <span>Cobertura de nuvens máx:</span>
+                      <span>{analysisT("gee.cloud")}</span>
                       <strong className="text-slate-700 dark:text-slate-200">{geeCloudPct}%</strong>
                     </div>
                     <input
@@ -4024,13 +4026,13 @@ export default function GeoAnalises({
                   </div>
 
                   <details className="space-y-2.5 rounded-xl border border-slate-200 bg-white/70 p-2.5 dark:border-slate-700 dark:bg-slate-900/40">
-                    <summary className="cursor-pointer text-sm font-semibold">Opções avançadas de processamento</summary>
+                    <summary className="cursor-pointer text-sm font-semibold">{analysisT("gee.advanced")}</summary>
                     <label htmlFor="gee-processing-mode" className="flex items-center justify-between gap-2 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-                      <span>Profundidade da análise</span>
+                      <span>{analysisT("gee.depth")}</span>
                       <Clock size={13} className="text-sky-500" />
                     </label>
-                    <div id="gee-processing-mode" role="radiogroup" aria-label="Profundidade da análise" className="space-y-1">
-                      {([['fast', 'Rápido — mapa primeiro'], ['balanced', 'Equilibrado — estatísticas básicas'], ['detailed', 'Detalhado — percentis e análise completa']] as const).map(([mode, label]) => (
+                    <div id="gee-processing-mode" role="radiogroup" aria-label={analysisT("gee.depth")} className="space-y-1">
+                      {([['fast', analysisT('gee.mode.fast')], ['balanced', analysisT('gee.mode.balanced')], ['detailed', analysisT('gee.mode.detailed')]] as const).map(([mode, label]) => (
                         <label key={mode} className="flex items-start gap-2 rounded-lg border border-slate-200 p-2 text-xs leading-relaxed dark:border-slate-700 cursor-pointer">
                           <input type="radio" name="gee-processing-mode" value={mode} checked={processingMode === mode} onChange={() => setProcessingMode(mode)} disabled={isCalculatingActiveIndex} className="mt-0.5 shrink-0" />
                           <span>{label}</span>
@@ -4039,14 +4041,14 @@ export default function GeoAnalises({
                     </div>
                     <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
                       {processingMode === "fast"
-                        ? "Reduz consultas de estatísticas; os píxeis e as cenas continuam reais."
+                        ? analysisT("gee.mode.fastHint")
                         : processingMode === "balanced"
-                          ? "Calcula média e extremos numa amostragem de 250 m; não altera a resolução do mapa."
-                          : "Calcula percentis, dispersão e área. Pode demorar mais em regiões extensas."}
-                      {" "}Aplica-se a índices espectrais, não a ferramentas especializadas.
+                          ? analysisT("gee.mode.balancedHint")
+                          : analysisT("gee.mode.detailedHint")}
+                      {" "}{analysisT("gee.mode.scope")}
                     </p>
                     <div className="flex items-center justify-between text-[10px] text-slate-600 dark:text-slate-300">
-                      <label htmlFor="gee-wait-limit">Limite de espera</label>
+                      <label htmlFor="gee-wait-limit">{analysisT("gee.timeout")}</label>
                       <strong>{processingTimeLimit} s</strong>
                     </div>
                     <input
@@ -4061,13 +4063,13 @@ export default function GeoAnalises({
                       className="w-full accent-sky-600"
                     />
                     <p className="text-[10px] text-slate-400">
-                      Este limite interrompe a espera no navegador, não garante cancelar o processamento no servidor.
+                      {analysisT("gee.timeoutHint")}
                     </p>
                   </details>
 
                   {needsPrePeriod && (
                     <fieldset className="space-y-2 rounded-lg border border-slate-200 p-2 dark:border-slate-700">
-                      <legend className="text-xs font-semibold">Período pré-incêndio</legend>
+                      <legend className="text-xs font-semibold">{analysisT("gee.preFire")}</legend>
                       <label className="block text-xs">Início<input aria-label="Início pré-incêndio" type="date" value={preStartDate} onChange={e => setPreStartDate(e.target.value)} className="block w-full rounded border p-1 text-slate-900" /></label>
                       <label className="block text-xs">Fim exclusivo<input aria-label="Fim pré-incêndio" type="date" max={geeStartDate || undefined} value={preEndDate} onChange={e => setPreEndDate(e.target.value)} className="block w-full rounded border p-1 text-slate-900" /></label>
                       <button type="button" className="w-full rounded-lg border border-sky-200 p-2 text-left text-xs font-semibold text-sky-700 dark:text-sky-300" onClick={() => {
@@ -4107,21 +4109,21 @@ export default function GeoAnalises({
                   className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 disabled:from-slate-300 dark:disabled:from-slate-700 disabled:to-slate-400 dark:disabled:to-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-sky-500/20 active:scale-[0.98] cursor-pointer"
                 >
                   {(isLineaments || indexBlocked) ? (
-                    <><Clock size={14} /><span>Em desenvolvimento</span></>
+                    <><Clock size={14} /><span>{analysisT("run.development")}</span></>
                   ) : isCalculatingActiveIndex ? (
                     <>
                       <Loader2 size={14} className="animate-spin" />
-                      <span>A processar no GEE...</span>
+                      <span>{analysisT("run.processing")}</span>
                     </>
                   ) : hasActiveResult ? (
                     <>
                       <RefreshCw size={14} />
-                      <span>Actualizar análise</span>
+                      <span>{analysisT("run.refresh")}</span>
                     </>
                   ) : (
                     <>
                       <Play size={14} className="fill-white" />
-                      <span>Executar análise</span>
+                      <span>{analysisT("run.start")}</span>
                     </>
                   )}
                 </button>
@@ -4130,12 +4132,12 @@ export default function GeoAnalises({
                   <div role="status" aria-live="polite" className="rounded-xl border border-sky-200 bg-sky-50 p-2.5 text-xs text-sky-900 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-200">
                     <div className="flex items-center justify-between gap-2">
                       <span className="flex items-center gap-1.5 font-semibold">
-                        <Loader2 size={13} className="animate-spin" /> A aguardar processamento GEE
+                        <Loader2 size={13} className="animate-spin" /> {analysisT("run.waiting")}
                       </span>
                       <span className="tabular-nums">{processingElapsed} / {processingTimeLimit} s</span>
                     </div>
                     <p className="mt-1 text-[10px] leading-relaxed text-sky-700 dark:text-sky-300">
-                      Tempo decorrido real; o Earth Engine não fornece percentagem de progresso para esta operação.
+                      {analysisT("run.progressHint")}
                     </p>
                     {!isProfile && (
                       <button
@@ -4143,14 +4145,14 @@ export default function GeoAnalises({
                         onClick={cancelActiveProcessing}
                         className="mt-2 inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-sky-300 bg-white px-3 text-[11px] font-semibold text-sky-800 hover:bg-sky-100 dark:bg-slate-900 dark:text-sky-200"
                       >
-                        <X size={12} /> Cancelar espera
+                        <X size={12} /> {analysisT("run.cancelWait")}
                       </button>
                     )}
                   </div>
                 )}
                 {lastProcessingDuration !== null && !isCalculatingActiveIndex && (
                   <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                    Último processamento: {lastProcessingDuration} s.
+                    {analysisT("run.last")} {lastProcessingDuration} s.
                   </p>
                 )}
 
@@ -4158,7 +4160,7 @@ export default function GeoAnalises({
                   <div className="flex items-center justify-between text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
                     <span className="flex items-center gap-1 font-medium">
                       <CheckCircle2 size={12} className="text-emerald-600" />
-                      Resultado Ativo
+                      {analysisT("run.active")}
                     </span>
                     <span className="text-[10px] text-slate-400">GEE 24h</span>
                   </div>
@@ -4166,7 +4168,7 @@ export default function GeoAnalises({
 
                 {activeIndexError && (
                   <div className="text-[11px] text-rose-600 bg-rose-50 dark:bg-rose-950/30 p-2 rounded-lg border border-rose-200 dark:border-rose-800 leading-tight">
-                    <strong>Erro:</strong> {activeIndexError}
+                    <strong>{analysisT("run.error")}</strong> {activeIndexError}
                   </div>
                 )}
               </div>
@@ -4175,7 +4177,7 @@ export default function GeoAnalises({
               <div className="p-3 border-b border-slate-100 dark:border-slate-800 space-y-2">
                 <div className="flex items-center justify-between">
                   <h4 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Legenda
+                    {analysisT("legend")}
                   </h4>
                   <span className="text-[9px] text-slate-400 whitespace-normal break-words text-right max-w-[65%]">
                     {activeIndexLabel}
