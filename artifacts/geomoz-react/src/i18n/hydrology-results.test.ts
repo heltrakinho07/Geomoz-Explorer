@@ -22,7 +22,7 @@ describe("GeoMoz Hydrology results and dialog localization", () => {
   it("references only keys defined in the localized results catalog", () => {
     const keys = Array.from(source.matchAll(/\bht\("([^"]+)"\)/g), match => match[1]);
     expect(keys.length).toBeGreaterThan(90);
-    for (const key of keys) expect(HYDROLOGY_RESULT_MESSAGES, key).toHaveProperty(key);
+    for (const key of keys) expect(Object.prototype.hasOwnProperty.call(HYDROLOGY_RESULT_MESSAGES, key), key).toBe(true);
   });
 
   it("retains unchanged hydrological request, shared-data and export contracts", () => {
@@ -46,6 +46,6 @@ describe("GeoMoz Hydrology results and dialog localization", () => {
     expect(source).toContain('ht("share.title")');
     expect(source).toContain('ht("pdf.title")');
     expect(source).toContain('ht("archive.title")');
-    expect(source).toContain("saveAnalysis");
+    expect(source).toContain("handleSaveAnalysis");
   });
 });
