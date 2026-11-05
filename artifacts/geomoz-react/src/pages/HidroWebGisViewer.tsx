@@ -503,12 +503,12 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       doc.text("GeoMoz Explorer", MARGIN + 20, 15);
       doc.setFontSize(9.5);
       doc.setFont("helvetica", "normal");
-      doc.text("Relatório Hidro-Ambiental de Bacia · WebGIS", MARGIN + 20, 23);
+      doc.text(ht("pdfContent.reportTitle"), MARGIN + 20, 23);
 
       // Area + Date right
       doc.setFontSize(13);
       doc.setFont("helvetica", "bold");
-      doc.text(`Área: ${totalArea.toLocaleString(numberLocale)} km²`, W - MARGIN, 14, { align: "right" });
+      doc.text(`${ht("result.area")}: ${totalArea.toLocaleString(numberLocale)} km²`, W - MARGIN, 14, { align: "right" });
       doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
       doc.text(date, W - MARGIN, 22, { align: "right" });
@@ -520,8 +520,8 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
       const infoParts = [
-        PP ? `Exutório: ${PP[0].toFixed(4)}°, ${PP[1].toFixed(4)}°` : "Área Delimitada",
-        `Fonte: ${wsData?.source === "polygon" ? "Recorte por Polígono / AOI" : "HydroSHEDS / D8"}`,
+        PP ? `${ht("viewer.outlet")} ${PP[0].toFixed(4)}°, ${PP[1].toFixed(4)}°` : ht("pdfContent.delimited"),
+        `${ht("pdfContent.source")} ${wsData?.source === "polygon" ? ht("pdfContent.clipPolygon") : "HydroSHEDS / D8"}`,
         `Datum: WGS 84 (EPSG:4326)`,
       ];
       doc.text(infoParts.join("   ·   "), MARGIN, 42);
@@ -529,20 +529,20 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       let y = 52;
 
       // Morfometria
-      y = sectionLabel("Morfometria da Bacia", y);
+      y = sectionLabel(ht("result.basinMorphometry"), y);
       const m = report.morphometry;
       const cards = [
-        { label: "Área", val: `${totalArea.toLocaleString(numberLocale)}`, unit: "km²" },
-        { label: "Perímetro", val: `${m.perimeterKm.toFixed(0)}`, unit: "km" },
-        { label: "Elev. mín.", val: `${m.elevMinM.toFixed(0)}`, unit: "m" },
-        { label: "Elev. média", val: `${m.elevMeanM.toFixed(0)}`, unit: "m" },
-        { label: "Elev. máx.", val: `${m.elevMaxM.toFixed(0)}`, unit: "m" },
-        { label: "Relevo", val: `${m.reliefM.toFixed(0)}`, unit: "m" },
-        { label: "Declive méd.", val: `${m.slopeMeanDeg.toFixed(1)}`, unit: "°" },
-        { label: "Declive máx.", val: `${m.slopeMaxDeg.toFixed(1)}`, unit: "°" },
-        { label: "Dens. dren.", val: `${m.drainageDensity}`, unit: "km/km²" },
-        { label: "Compacidade", val: `${m.compactness}`, unit: "" },
-        { label: "Fator forma", val: `${m.formFactor}`, unit: "" },
+        { label: ht("result.area"), val: `${totalArea.toLocaleString(numberLocale)}`, unit: "km²" },
+        { label: ht("result.perimeter"), val: `${m.perimeterKm.toFixed(0)}`, unit: "km" },
+        { label: ht("result.minElevation"), val: `${m.elevMinM.toFixed(0)}`, unit: "m" },
+        { label: ht("result.meanElevation"), val: `${m.elevMeanM.toFixed(0)}`, unit: "m" },
+        { label: ht("result.maxElevation"), val: `${m.elevMaxM.toFixed(0)}`, unit: "m" },
+        { label: ht("result.relief"), val: `${m.reliefM.toFixed(0)}`, unit: "m" },
+        { label: ht("result.meanSlopeShort"), val: `${m.slopeMeanDeg.toFixed(1)}`, unit: "°" },
+        { label: ht("result.meanSlope"), val: `${m.slopeMaxDeg.toFixed(1)}`, unit: "°" },
+        { label: ht("result.drainageDensityShort"), val: `${m.drainageDensity}`, unit: "km/km²" },
+        { label: ht("result.compactness"), val: `${m.compactness}`, unit: "" },
+        { label: ht("result.formFactor"), val: `${m.formFactor}`, unit: "" },
       ];
       const cCols = 4;
       const cW = (CONTENT_W - (cCols - 1) * 2.5) / cCols;
@@ -572,7 +572,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       y += Math.ceil(cards.length / cCols) * (cH + 2.5) + 4;
 
       // Uso e Cobertura do Solo
-      y = sectionLabel("Uso e Cobertura do Solo (ESA WorldCover 2021)", y);
+      y = sectionLabel(ht("pdfContent.lulc"), y);
       const lcItems = report.landcover.filter(lc => lc.areaKm2 > 0).slice(0, 8);
       const maxPct = lcItems[0]?.pct ?? 1;
 
@@ -581,9 +581,9 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       doc.setTextColor(71, 85, 105);
       doc.setFontSize(7.5);
       doc.setFont("helvetica", "bold");
-      doc.text("Classe", MARGIN + 4, y + 4.5);
-      doc.text("Área (km²)", W - MARGIN - 34, y + 4.5, { align: "right" });
-      doc.text("Proporção", W - MARGIN, y + 4.5, { align: "right" });
+      doc.text(ht("pdfContent.class"), MARGIN + 4, y + 4.5);
+      doc.text(ht("pdfContent.areaKm2"), W - MARGIN - 34, y + 4.5, { align: "right" });
+      doc.text(ht("pdfContent.proportion"), W - MARGIN, y + 4.5, { align: "right" });
       y += 6.5;
 
       lcItems.forEach((lc, i) => {
@@ -623,8 +623,8 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       y += 3;
 
       // Chuva mensal
-      y = sectionLabel(`Precipitação Mensal · ${report.precipAnnualMm.toLocaleString(numberLocale)} mm/ano`, y);
-      const months = "JanFevMarAbrMaiJunJulAgoSetOutNovDez".match(/.{3}/g) || [];
+      y = sectionLabel(`${ht("viewer.monthlyRain")} · ${report.precipAnnualMm.toLocaleString(numberLocale)} ${ht("result.mmYear")}`, y);
+      const months = Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat(numberLocale, { month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(2024, i, 1))).replace(/\.$/, "").slice(0, 3));
       const barH = 30;
       const barArea = CONTENT_W - 4;
       const barGap = 1.5;
@@ -658,7 +658,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       y += barH + 8;
 
       // Escoamento e CN
-      y = sectionLabel("Escoamento Superficial (SCS Curve Number)", y);
+      y = sectionLabel(ht("pdfContent.runoff"), y);
       const cn = report.runoff.cnMean;
       doc.setFillColor(26, 152, 80);
       doc.rect(MARGIN, y, CONTENT_W * 0.33, 5, "F");
@@ -671,11 +671,11 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
       doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
       const cnStr = cn != null ? `${cn.toFixed(1)}` : "—";
-      doc.text(`CN Médio da Bacia: ${cnStr}`, MARGIN, y + 9.5);
+      doc.text(`${ht("viewer.meanCN")}: ${cnStr}`, MARGIN, y + 9.5);
       doc.setFontSize(6.5);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(100, 116, 139);
-      doc.text("Classificação SCS: menor = infiltração favorável · maior = escoamento superficial rápido", MARGIN, y + 14);
+      doc.text(ht("pdfContent.scsNote"), MARGIN, y + 14);
       y += 18;
 
       addPDFFooter({ doc, pageNum, date, y: 0, title: "" });
@@ -707,7 +707,7 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
         doc.setTextColor(100, 116, 139);
         doc.setFontSize(7.5);
         doc.setFont("helvetica", "normal");
-        doc.text(`Escala 1:Bacia · Coordenadas WGS 84`, mapX + mapW - 4, startY + 5.5, { align: "right" });
+        doc.text(ht("pdfContent.scale"), mapX + mapW - 4, startY + 5.5, { align: "right" });
 
         // Map Image: Client-side Canvas rendering (CORS-safe, 100% reliable)
         let imgRendered = false;
@@ -729,15 +729,15 @@ export default function HidroWebGisViewer({ id: propId }: Props) {
             const legendPayload = legendType === "lulc"
               ? report.landcover.slice(0, 8).map(c => ({ label: c.label, color: c.color }))
               : [
-                  { label: "CN < 50 (Infiltração Alta)", color: "#1a9850" },
-                  { label: "CN 50-75 (Moderado)", color: "#fee08b" },
-                  { label: "CN > 75 (Escoamento Alto)", color: "#d73027" },
+                  { label: ht("pdfContent.cnLow"), color: "#1a9850" },
+                  { label: ht("pdfContent.cnMedium"), color: "#fee08b" },
+                  { label: ht("pdfContent.cnHigh"), color: "#d73027" },
                 ];
 
             const imgData = await fetchMapImage(b, {
               tileUrl,
               overlayGeojson: wsData?.geojson as any,
-              overlayLabel: "Bacia Delimitada",
+              overlayLabel: ht("result.basin"),
               legendItems: legendPayload,
               title: mapSubtitle,
               dpi: 200,
