@@ -190,7 +190,8 @@ module.exports=async function validateRasterProcessing(page){
    return c instanceof HTMLCanvasElement&&c.width>50&&c.height>50;
  },{timeout:12000});
  await terrain.getByTestId("terrain-tab-export").click();
- assert.match(await terrain.innerText(),/EPSG:4326 → EPSG:32736/);
+ // Allow React to commit the newly selected Export tab before checking its metadata.
+ await terrain.getByText("EPSG:4326 → EPSG:32736",{exact:false}).waitFor({state:"visible",timeout:15000});
 
  // The upstream Terrain Studio feature set must survive localization merges.
  await terrain.locator(".gm-terrain-display-options summary").click();
@@ -232,7 +233,13 @@ module.exports=async function validateRasterProcessing(page){
  await terrain.getByLabel("Importar GeoTIFF temático").setInputFiles({
    name:"solo_classes.tif",mimeType:"image/tiff",buffer:thematic
  });
- await terrain.getByText("solo_classes.tif").waitFor({timeout:25000});
+ // Preserve failure details from a real unsuccessful georeferenced raster import.
+ await terrain.getByText("solo_classes.tif").waitFor({timeout:25000}).catch(async cause=>{
+   const message=await terrain.locator(".gm-terrain-workspace-error").allInnerTexts();
+   const inline=await terrain.locator(".gm-terrain-layer-error").allInnerTexts();
+   throw new Error("Raster thematic import failed: "+[...message,...inline].join(" | ")+
+     "; original: "+String(cause));
+ });
  assert.match(await terrain.innerText(),/Raster categorizado/);
  await terrain.getByLabel("Transparência do raster").evaluate((el)=>{
    const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set;
