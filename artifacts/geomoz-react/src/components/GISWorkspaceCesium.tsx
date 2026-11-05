@@ -14,7 +14,7 @@ import "@/styles/gis-cesium.css";
 export interface GISWorkspaceMapLayer {id:string;name:string;geojson:FeatureCollection;color:string;visible:boolean}
 interface Props {
   layers:GISWorkspaceMapLayer[];rasterLayers?:GISWorkspaceRasterLayer[];serviceLayers?:GISWorkspaceServiceLayer[];
-  activeLayerId?:string;activeRasterId?:string;basemap:BasemapType;aoiGeometry?:GeoJSON.GeoJSON|null;drawingEnabled?:boolean;
+  activeLayerId?:string;activeRasterId?:string;basemap:BasemapType;aoiGeometry?:GeoJSON.GeoJSON|null;drawingEnabled?:boolean;drawingShape?:"polygon"|"rectangle";
   onSelectLayer?:(id:string)=>void;onDrawComplete?:(geometry:GeoJSON.GeoJSON,label:string)=>void;onDrawCancel?:()=>void;
   onViewportBbox?:(bounds:Bounds)=>void;onRasterMetadata?:(metadata:GISWorkspaceRasterMetadata)=>void;
   onRasterError?:(id:string,message:string)=>void;
@@ -28,6 +28,10 @@ interface Runtime {
   services:Map<string,ServiceEntry>;base?:ImageryLayer;sequence:number;tiles:number;alive:boolean;
 }
 interface Preview {draft:string;points:Array<{x:number;y:number}>;completed:string}
+function rectangleCorners(a: number[], b: number[]): number[][] {
+  return [a, [b[0], a[1]], b, [a[0], b[1]]];
+}
+
 function rings(geometry?:GeoJSON.GeoJSON|null):number[][][] {
   if(!geometry) return [];
   switch(geometry.type) {
@@ -85,18 +89,24 @@ export default function GISWorkspaceCesium(props:Props) {
       const pixel=r.C.SceneTransforms.worldToWindowCoordinates(r.viewer.scene,r.C.Cartesian3.fromDegrees(p[0],p[1]));
       return pixel??{x:NaN,y:NaN};
     };
-    const draft=cursor.current&&points.current.length?[...points.current,cursor.current]:points.current;
+    const drawPoints=cursor.current&&points.current.length&&
+      (current.current.drawingShape!=="rectangle"||points.current.length===1)
+      ? [...points.current,cursor.current] : points.current;
+    const rectangle=current.current.drawingShape==="rectangle"&&drawPoints.length===2;
+    const draft=rectangle?rectangleCorners(drawPoints[0],drawPoints[1]):drawPoints;
     const completed=rings(current.current.aoiGeometry).map(ring=>{
       const stride=Math.max(1,Math.ceil(ring.length/1200));
       return path(project,ring.filter((_,i)=>i%stride===0||i===ring.length-1),true);
     }).join(" ");
-    const next={draft:path(project,draft,points.current.length>=3),points:points.current.map(project),completed};
+    const next={draft:path(project,draft,rectangle||points.current.length>=3),points:points.current.map(project),completed};
     const key=JSON.stringify(next);
     if(key!==previewKey.current){previewKey.current=key;setPreview(next);}
   };
   finishRef.current=()=>{
-    if(!current.current.drawingEnabled||points.current.length<3)return;
-    const p=points.current,ring=[...p,p[0]];
+    const rectangle=current.current.drawingShape==="rectangle";
+    if(!current.current.drawingEnabled||points.current.length<(rectangle?2:3))return;
+    const p=rectangle?rectangleCorners(points.current[0],points.current[1]):points.current;
+    const ring=[...p,p[0]];
     const area=p.reduce((sum,a,i)=>sum+a[0]*ring[i+1][1]-ring[i+1][0]*a[1],0);
     if(Math.abs(area)<1e-12){setDrawError("Os pontos devem formar uma área. Adicione um ponto fora da linha.");return;}
     current.current.onDrawComplete?.({type:"Polygon",coordinates:[ring]},"Área desenhada no mapa");
@@ -131,6 +141,7 @@ export default function GISWorkspaceCesium(props:Props) {
       const input=new C.ScreenSpaceEventHandler(viewer.canvas);
       input.setInputAction((event:{position:{x:number;y:number}})=>{
         if(current.current.drawingEnabled) {
+          if(current.current.drawingShape==="rectangle"&&points.current.length===2)return;
           const point=pick(event.position);if(!point)return;
           const last=points.current.at(-1);
           if(last&&Math.abs(point[0]-last[0])+Math.abs(point[1]-last[1])<1e-9)return;
@@ -334,10 +345,10 @@ export default function GISWorkspaceCesium(props:Props) {
       <button type="button" aria-label="Ver Moçambique" className="h-10 w-10 border-t hover:bg-slate-100" onClick={()=>{if(runtime.current)fit(runtime.current,[30,-27,41,-10]);}}>⌂</button>
     </div>
     {props.drawingEnabled&&<div className="absolute left-1/2 top-16 z-20 w-[calc(100%-1.5rem)] max-w-lg -translate-x-1/2 rounded-xl border border-indigo-200 bg-white/95 p-3 text-xs text-indigo-800 shadow-md">
-      <p role="status">Clique ou toque no mapa para adicionar pontos · {count} ponto(s)</p>
+      <p role="status">{props.drawingShape==="rectangle"?"Marque dois cantos opostos":"Clique ou toque no mapa para adicionar pontos"} · {count} ponto(s)</p>
       {drawError&&<p role="alert" className="mt-1 text-rose-700">{drawError}</p>}
       <div className="mt-2 flex gap-3">
-        <button type="button" disabled={count<3} onClick={()=>finishRef.current()} className="rounded bg-indigo-700 px-3 py-2 text-white disabled:opacity-40">Concluir área</button>
+        <button type="button" disabled={count<(props.drawingShape==="rectangle"?2:3)} onClick={()=>finishRef.current()} className="rounded bg-indigo-700 px-3 py-2 text-white disabled:opacity-40">Concluir área</button>
         <button type="button" disabled={!count} onClick={()=>{points.current.pop();setCount(points.current.length);refreshPreview();}} className="disabled:opacity-40">Desfazer ponto</button>
         <button type="button" onClick={()=>props.onDrawCancel?.()} className="text-rose-700">Cancelar desenho</button>
       </div>
