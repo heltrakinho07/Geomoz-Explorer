@@ -2,6 +2,8 @@ import { GAULAreaSelect, type LoadGAULUnits } from "./GAULAreaSelect";
 import { WORLD_COUNTRIES } from "@/lib/world-countries";
 import { PublicDataTools, type PublicAnalysisRequest } from "./PublicDataTools";
 import { GeoIntelligenceDossier, type IntelligenceDossier } from "./GeoIntelligenceDossier";
+import { makeTemporalReplay, isTemporalReplay } from "@/lib/geoai-temporal-replay";
+import type { TemporalReplay } from "@/types/project";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useProject } from "../context/ProjectContext";
 import { collectGeoAiMapActions, type GeoAiTemporalChange } from "@/lib/geoai-map-actions";
@@ -140,7 +142,7 @@ interface ChatMessage {
 }
 
 export default function GeoMozAIAgentTab() {
-  const { activeProject, updateProject, saveRunToActiveProject } = useProject();
+  const { activeProject, activeRuns, updateProject, saveRunToActiveProject } = useProject();
   const { refreshStatus } = useGeeAuth();
   const { translatedLocale } = usePortalTranslation();
   const copy = useCallback((key: AiAgentCopyKey) => aiAgentText(translatedLocale, key), [translatedLocale]);
@@ -414,7 +416,7 @@ export default function GeoMozAIAgentTab() {
   const isAIActive = Boolean(openaiApiKey.trim() || geminiApiKey.trim());
 
   // Submit natural language prompt
-  const handlePromptSubmit = async (customText?: string, publicRequest?: PublicAnalysisRequest) => {
+  const handlePromptSubmit = async (customText?: string, publicRequest?: PublicAnalysisRequest, replay?: TemporalReplay) => {
     const textToSend = customText ?? prompt.trim();
     if (!textToSend || isRunning) return;
 
@@ -447,7 +449,7 @@ export default function GeoMozAIAgentTab() {
     try {
       const aoiPayload = aoiToAPI(currentAoi);
       const currentMapState = {
-        aoi: {
+        aoi: replay?.aoi ?? {
           source: currentAoi.source,
           countryCode: currentAoi.countryCode,
           countryName: currentAoi.countryName,
@@ -460,15 +462,15 @@ export default function GeoMozAIAgentTab() {
           district: aoiPayload.district || null,
           geometry: aoiPayload.geometry || null,
         },
-        temporalWindow: analysisPeriod,
+        temporalWindow: replay ? { startDate: replay.args.start_date_2, endDate: replay.args.end_date_2 } : analysisPeriod,
         uiLocale: translatedLocale,
-        agentContext,
-        publicAnalysis: publicRequest ? {
+        agentContext: replay ? null : agentContext,
+        publicAnalysis: replay ? { tool: replay.tool, args: replay.args } : publicRequest ? {
           ...publicRequest,
           args: publicRequest.tool === "detect_temporal_change" ? {
             ...publicRequest.args,
-            start_date_2: analysisPeriod.startDate,
-            end_date_2: analysisPeriod.endDate,
+            start_date_2: publicRequest.args.start_date_2 || analysisPeriod.startDate,
+            end_date_2: publicRequest.args.end_date_2 || analysisPeriod.endDate,
           } : publicRequest.args,
         } : undefined,
       };
@@ -535,6 +537,9 @@ export default function GeoMozAIAgentTab() {
           setCurrentAoi(mozambiqueAOI(act.province, act.district || null));
         }
         if (act.type === "ADD_LAYER" && act.tileUrl) {
+          const sourceRun = (data.runs || []).find((run: { output?: { map_action?: { id?: string } } }) =>
+            run.output?.map_action?.id === act.id);
+          const replayRecipe = act.temporalChange ? makeTemporalReplay(sourceRun, act.temporalChange) : null;
           computedLayers.push({
             name: act.name || diag("agent.viewLayer"),
             type: "remote_sensing",
@@ -544,6 +549,7 @@ export default function GeoMozAIAgentTab() {
             metrics: {},
             tileUrl: act.tileUrl,
             temporalChange: act.temporalChange || null,
+            replay: replayRecipe,
           });
         }
         if (act.type === "ADD_GEOJSON_LAYER" && act.id === "agent_geology") {
@@ -601,8 +607,24 @@ export default function GeoMozAIAgentTab() {
         setActiveTileName(preferredLayer.name);
         if (activeProject) {
           for (const resultLayer of computedLayers) {
-            // Do not persist large inline GeoJSON as a project run.
-            if (resultLayer.tileUrl) await saveRunToActiveProject(resultLayer);
+            try {
+              if (resultLayer.replay) {
+                const recipe = resultLayer.replay as TemporalReplay;
+                await saveRunToActiveProject({
+                  name: resultLayer.name, type: "remote_sensing",
+                  sensor: "Sentinel-2 SR Harmonized", code: `agent_change_${recipe.args.index}`,
+                  dateRange: { start: recipe.args.start_date_1, end: recipe.args.end_date_2 },
+                  replay: recipe,
+                  notes: `B − A; limiar ±${recipe.args.threshold}; dados Sentinel-2; reexecutar para obter novos mosaicos.`,
+                });
+              } else if (resultLayer.tileUrl && !resultLayer.temporalChange) {
+                // Legacy non-temporal layers keep their existing behaviour.
+                await saveRunToActiveProject(resultLayer);
+              }
+            } catch {
+              // A Firestore/local-storage failure must not hide a successful GEE result.
+              setMapLayerNotice(copy("map.saveError"));
+            }
           }
         }
       }
