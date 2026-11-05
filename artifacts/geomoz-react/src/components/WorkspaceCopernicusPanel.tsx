@@ -34,7 +34,7 @@ const products = {
 };
 
 function polygonGeometry(value: GeoJSON.GeoJSON | null): GeoJSON.Polygon | GeoJSON.MultiPolygon | undefined {
-  if (!value) return;
+  if (!value) return undefined;
   if (value.type === "Polygon" || value.type === "MultiPolygon") return value;
   if (value.type === "Feature") return polygonGeometry(value.geometry);
   if (value.type === "FeatureCollection") {
@@ -46,6 +46,7 @@ function polygonGeometry(value: GeoJSON.GeoJSON | null): GeoJSON.Polygon | GeoJS
       };
     }
   }
+  return undefined;
 }
 
 const action = "rounded border border-slate-300 px-2 py-1.5 disabled:opacity-50 dark:border-slate-600";
