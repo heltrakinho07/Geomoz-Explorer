@@ -2312,7 +2312,7 @@ export default function HidroGeoMoz({
                                 });
                               }}
                               className={`text-[10px] px-2.5 py-1 rounded-lg border font-semibold transition-colors ${reportLayer === "lulc" ? "bg-lime-100 dark:bg-lime-950/40 border-lime-300 dark:border-lime-800 text-lime-700 dark:text-lime-300" : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
-                              {reportLayer === "lulc" ? "Ocultar Camada" : "Ver no Mapa"}
+                              {reportLayer === "lulc" ? ht("result.hideLayer") : ht("result.showMap")}
                             </button>
                           </div>
                           <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-3 space-y-2 border border-slate-100 dark:border-slate-800">
@@ -2341,12 +2341,12 @@ export default function HidroGeoMoz({
                             {loadingReport ? (
                               <>
                                 <Loader2 size={13} className="animate-spin" />
-                                <span>A recalcular uso do solo...</span>
+                                <span>{ht("result.recalculatingLandcover")}</span>
                               </>
                             ) : (
                               <>
                                 <RefreshCw size={13} />
-                                <span>Recalcular Uso do Solo</span>
+                                <span>{ht("result.recalculateLandcover")}</span>
                               </>
                             )}
                           </button>
@@ -2354,10 +2354,10 @@ export default function HidroGeoMoz({
                       ) : (
                         <div className="py-8 text-center space-y-2">
                           <Activity size={24} className="mx-auto text-slate-300 dark:text-slate-600" />
-                          <p className="text-xs text-slate-500">Relatório de uso do solo ainda não calculado.</p>
+                          <p className="text-xs text-slate-500">{ht("result.landcoverMissing")}</p>
                           <button onClick={() => runBasinReport(basinStartYear, basinEndYear)} disabled={loadingReport}
                             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition-all shadow-sm cursor-pointer">
-                            {loadingReport ? "A calcular…" : "Calcular Uso do Solo"}
+                            {loadingReport ? ht("result.calculating") : ht("result.calculateLandcover")}
                           </button>
                         </div>
                       )}
@@ -2371,7 +2371,7 @@ export default function HidroGeoMoz({
                       <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-3 border border-slate-100 dark:border-slate-800 space-y-2.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                            Período de Análise (CHIRPS)
+                            {ht("result.analysisPeriod")}
                           </span>
                           <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                             {basinStartYear} a {basinEndYear}
@@ -2379,7 +2379,7 @@ export default function HidroGeoMoz({
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">Ano início</label>
+                            <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">{ht("result.startYear")}</label>
                             <input
                               type="number"
                               min={1981}
@@ -2390,7 +2390,7 @@ export default function HidroGeoMoz({
                             />
                           </div>
                           <div>
-                            <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">Ano fim</label>
+                            <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">{ht("result.endYear")}</label>
                             <input
                               type="number"
                               min={basinStartYear}
@@ -2411,12 +2411,12 @@ export default function HidroGeoMoz({
                           {loadingReport ? (
                             <>
                               <Loader2 size={13} className="animate-spin" />
-                              <span>A recalcular período...</span>
+                              <span>{ht("result.recalculatingPeriod")}</span>
                             </>
                           ) : (
                             <>
                               <RefreshCw size={13} />
-                              <span>Recalcular Análise ({basinStartYear} a {basinEndYear})</span>
+                              <span>{ht("result.recalculateAnalysis")} ({basinStartYear}–{basinEndYear})</span>
                             </>
                           )}
                         </button>
@@ -2425,14 +2425,14 @@ export default function HidroGeoMoz({
                       {basinReport?.precipMonthly && (
                         <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-3 border border-slate-100 dark:border-slate-800">
                           <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                            Chuva mensal · {basinReport.precipAnnualMm.toLocaleString(numberLocale)} mm/ano ({basinReport.startYear ?? basinStartYear}–{basinReport.endYear ?? basinEndYear})
+                            {ht("result.monthlyRain")} · {basinReport.precipAnnualMm.toLocaleString(numberLocale)} {ht("result.mmYear")} ({basinReport.startYear ?? basinStartYear}–{basinReport.endYear ?? basinEndYear})
                           </div>
                           <ResponsiveContainer width="100%" height={110}>
                             <BarChart data={basinReport.precipMonthly.map((v, i) => ({ m: "JFMAMJJASOND"[i], mm: v }))}
                               margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                               <XAxis dataKey="m" tick={{ fontSize: 9 }} interval={0} axisLine={false} tickLine={false} />
                               <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={28} />
-                              <Tooltip formatter={(v: number) => [`${v} mm`, "Chuva"]} />
+                              <Tooltip formatter={(v: number) => [`${v} mm`, ht("result.rain")]} />
                               <Bar dataKey="mm" fill="#0284c7" radius={[2, 2, 0, 0]} />
                             </BarChart>
                           </ResponsiveContainer>
@@ -2442,25 +2442,25 @@ export default function HidroGeoMoz({
                       {basinReport?.runoff && (
                         <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-3 border border-slate-100 dark:border-slate-800">
                           <div className="flex items-center justify-between mb-2">
-                            <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Escoamento — CN médio</div>
+                            <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">{ht("result.runoff")}</div>
                             <div className="text-base font-bold text-slate-900 dark:text-white font-mono">{basinReport.runoff.cnMean ?? "—"}</div>
                           </div>
                           <div className="h-2 rounded-full" style={{ background: "linear-gradient(to right,#1a9850,#fee08b,#d73027)" }} />
-                          <div className="flex justify-between text-[9px] text-slate-400 mt-1"><span>40 · infiltra</span><span>escoa · 100</span></div>
+                          <div className="flex justify-between text-[9px] text-slate-400 mt-1"><span>40 · {ht("result.infiltrate")}</span><span>{ht("result.runoffAction")} · 100</span></div>
                           <button onClick={() => setReportLayer(l => l === "cn" ? "none" : "cn")}
                             className={`mt-2.5 w-full text-[10px] py-1.5 rounded-lg border font-semibold transition-colors ${reportLayer === "cn" ? "bg-red-100 dark:bg-red-950/40 border-red-300 dark:border-red-800 text-red-700 dark:text-red-300" : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
-                            {reportLayer === "cn" ? "Ocultar Camada CN" : "Ver Mapa de Escoamento (CN)"}
+                            {reportLayer === "cn" ? ht("result.hideCn") : ht("result.showCn")}
                           </button>
                         </div>
                       )}
 
                       {wsStats && (
                         <div>
-                          <SectionHeader title="Índices de Risco & Potencial" icon={Gauge} />
+                          <SectionHeader title={ht("result.riskPotential")} icon={Gauge} />
                           <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-3 space-y-3 border border-slate-100 dark:border-slate-800">
-                            <RiskBar label="Erosão" value={wsStats.erosionRisk} icon={Wind} />
-                            <RiskBar label="Cheia / Inundação" value={wsStats.floodRisk} icon={Waves} />
-                            <RiskBar label="Pot. Hidrogeológico" value={wsStats.hydroPotential} icon={Zap} invert />
+                            <RiskBar label={ht("result.erosion")} value={wsStats.erosionRisk} icon={Wind} />
+                            <RiskBar label={ht("result.flood")} value={wsStats.floodRisk} icon={Waves} />
+                            <RiskBar label={ht("result.hydroPotential")} value={wsStats.hydroPotential} icon={Zap} invert />
                           </div>
                         </div>
                       )}
@@ -2481,7 +2481,7 @@ export default function HidroGeoMoz({
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">Ano início</label>
+                            <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">{ht("result.startYear")}</label>
                             <input
                               type="number"
                               min={1981}
@@ -2492,7 +2492,7 @@ export default function HidroGeoMoz({
                             />
                           </div>
                           <div>
-                            <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">Ano fim</label>
+                            <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">{ht("result.endYear")}</label>
                             <input
                               type="number"
                               min={basinStartYear}
@@ -2513,17 +2513,17 @@ export default function HidroGeoMoz({
                           {loadingReport ? (
                             <>
                               <Loader2 size={13} className="animate-spin" />
-                              <span>A processar no GEE... (~10 s)</span>
+                              <span>{ht("result.processingGee")}</span>
                             </>
                           ) : basinReport ? (
                             <>
                               <RefreshCw size={13} />
-                              <span>Recalcular Análise Completa</span>
+                              <span>{ht("result.recalculateFull")}</span>
                             </>
                           ) : (
                             <>
                               <BarChart2 size={13} />
-                              <span>Gerar Relatório Completo</span>
+                              <span>{ht("result.generateFull")}</span>
                             </>
                           )}
                         </button>
@@ -2534,7 +2534,7 @@ export default function HidroGeoMoz({
                         onClick={handleSaveAnalysis}
                         className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-emerald-600/20"
                       >
-                        <BookmarkCheck size={14} /> Guardar no Arquivo Permanente
+                        <BookmarkCheck size={14} /> {ht("result.save")}
                       </button>
 
                       <div className="grid grid-cols-2 gap-2">
@@ -2543,15 +2543,15 @@ export default function HidroGeoMoz({
                           onClick={handleShareWebGis}
                           className="flex items-center justify-center gap-1.5 py-2.5 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-cyan-300 border border-blue-200 dark:border-blue-800 text-xs font-semibold rounded-xl transition-all shadow-sm"
                         >
-                          <Share2 size={13} className="text-cyan-500" /> Partilhar Link
+                          <Share2 size={13} className="text-cyan-500" /> {ht("result.share")}
                         </button>
                         <button
                           type="button"
                           onClick={handleExportStandaloneHtml}
                           className="flex items-center justify-center gap-1.5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold rounded-xl transition-all shadow-sm"
-                          title="Exportar como ficheiro HTML autónomo que abre em qualquer computador offline"
+                          title={ht("result.exportHtmlHint")}
                         >
-                          <Globe size={13} className="text-blue-500" /> Exportar HTML
+                          <Globe size={13} className="text-blue-500" /> {ht("result.exportHtml")}
                         </button>
                       </div>
 
@@ -2560,7 +2560,7 @@ export default function HidroGeoMoz({
                         onClick={() => setPdfExportModalOpen(true)}
                         className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm"
                       >
-                        <FileDown size={14} /> Exportar Relatório PDF (QGIS)
+                        <FileDown size={14} /> {ht("result.exportPdf")}
                       </button>
 
                       <div className="grid grid-cols-2 gap-2 pt-1">
@@ -2573,7 +2573,7 @@ export default function HidroGeoMoz({
                           <button
                             onClick={() => exportCSV(wsStats, `watershed_${pourPoint?.[0].toFixed(3)}`)}
                             className="flex items-center justify-center gap-1.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl transition-colors border border-slate-200 dark:border-slate-700">
-                            <Download size={12} /> CSV Stats
+                            <Download size={12} /> {ht("result.csvStats")}
                           </button>
                         )}
                       </div>
@@ -2584,8 +2584,8 @@ export default function HidroGeoMoz({
                   <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-xl p-3 text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
                     <Info size={12} className="mt-0.5 shrink-0 text-blue-500" />
                     {watershedData.source === "polygon"
-                      ? "Métricas, rede de drenagem e bacias recortadas estritamente aos limites da sua área de estudo."
-                      : "Sub-bacia HydroBASINS (limite oficial WWF/HydroSHEDS). Para análise definitiva, recomenda-se validação de campo."}
+                      ? ht("result.notePolygon")
+                       : ht("result.noteBasin")}
                   </div>
                 </div>
               )}
@@ -2594,7 +2594,7 @@ export default function HidroGeoMoz({
               {!loadingWS && !watershedData && pourPoint && (
                 <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-400 py-10">
                   <AlertTriangle size={20} className="text-amber-400" />
-                  <span className="text-sm">Nenhum resultado. Verifique o ponto seleccionado.</span>
+                  <span className="text-sm">{ht("result.empty")}</span>
                 </div>
               )}
             </>
@@ -2608,7 +2608,7 @@ export default function HidroGeoMoz({
                   <div className="flex items-center gap-2">
                     <BarChart2 size={14} className="text-blue-500" />
                     <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                      {selectedFeat ? `Bacia ${selectedFeat.properties?.HYBAS_ID ?? "—"}` : "Análise da Área"}
+                      {selectedFeat ? `${ht("result.basin")} ${selectedFeat.properties?.HYBAS_ID ?? "—"}` : ht("result.areaAnalysis")}
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-400 mt-0.5">{province ?? "Moçambique"}{district ? ` / ${district}` : ""}</p>
@@ -2628,19 +2628,19 @@ export default function HidroGeoMoz({
                 {/* Basin morphometry (after click) */}
                 {(loadingStats || basinStats) && (
                   <div>
-                    <SectionHeader title="Morfometria da Bacia" icon={Mountain} />
+                    <SectionHeader title={ht("result.basinMorphometry")} icon={Mountain} />
                     {loadingStats && (
                       <div className="flex items-center gap-2 text-slate-400 text-sm py-3">
-                        <Loader2 size={14} className="animate-spin text-blue-400" /> A calcular via GEE…
+                        <Loader2 size={14} className="animate-spin text-blue-400" /> {ht("result.geeCalculating")}
                       </div>
                     )}
                     {basinStats && !loadingStats && (
                       <>
                         {/* Area highlight */}
                         <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-4 text-white mb-3">
-                          <div className="text-xs opacity-75 mb-1">Área da Bacia</div>
+                          <div className="text-xs opacity-75 mb-1">{ht("result.basinArea")}</div>
                           <div className="text-2xl font-bold">{basinStats.areaKm2.toLocaleString(numberLocale)}</div>
-                          <div className="text-xs opacity-75">km²  ·  Perím. {basinStats.perimeterKm.toFixed(0)} km</div>
+                          <div className="text-xs opacity-75">km² · {ht("result.perimeter")} {basinStats.perimeterKm.toFixed(0)} km</div>
                         </div>
                         <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-0 mb-3">
                           <StatRow label={ht("result.minElevation")} value={basinStats.elevMinM.toFixed(0)} unit=" m" />
@@ -2652,20 +2652,20 @@ export default function HidroGeoMoz({
                         </div>
 
                         <div className="mb-3">
-                          <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1"><Gauge size={10} /> Índices de Risco</div>
+                          <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1"><Gauge size={10} /> {ht("result.risk")}</div>
                           <div className="space-y-3">
-                            <RiskBar label="Erosão" value={basinStats.erosionRisk} icon={Wind} />
-                            <RiskBar label="Cheia / Inundação" value={basinStats.floodRisk} icon={Waves} />
-                            <RiskBar label="Pot. Hidrogeológico" value={basinStats.hydroPotential} icon={Zap} invert />
+                            <RiskBar label={ht("result.erosion")} value={basinStats.erosionRisk} icon={Wind} />
+                            <RiskBar label={ht("result.flood")} value={basinStats.floodRisk} icon={Waves} />
+                            <RiskBar label={ht("result.hydroPotential")} value={basinStats.hydroPotential} icon={Zap} invert />
                           </div>
                         </div>
 
                         <div>
-                          <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1"><Download size={10} /> Exportar</div>
+                          <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1"><Download size={10} /> {ht("result.export")}</div>
                           <div className="grid grid-cols-2 gap-2">
                             <button onClick={() => exportCSV(basinStats, `bacia_${selectedFeat?.properties?.HYBAS_ID ?? "sel"}`)}
                               className="flex items-center justify-center gap-1.5 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl transition-colors">
-                              <Download size={11} /> CSV Stats
+                              <Download size={11} /> {ht("result.csvStats")}
                             </button>
                             {selectedFeat && (
                               <button onClick={() => exportGeoJSON(selectedFeat as GeoJSON.Feature, `bacia_${selectedFeat.properties?.HYBAS_ID ?? "sel"}`)}
@@ -2685,12 +2685,12 @@ export default function HidroGeoMoz({
                 {/* Geology charts (Only for Mozambique and when no specific basin is selected) */}
                 {aoi.source === "mozambique" && !selectedFeat && lithoData.length > 0 && (
                   <div>
-                    <SectionHeader title="Top Litologias por Área" icon={Activity} />
+                    <SectionHeader title={ht("result.topLithologies")} icon={Activity} />
                     <ResponsiveContainer width="100%" height={160}>
                       <BarChart data={lithoData} layout="vertical" margin={{ left: 4, right: 8, top: 0, bottom: 0 }}>
                         <XAxis type="number" domain={[0,100]} tick={{ fontSize: 9 }} tickFormatter={v => `${v}%`} />
                         <YAxis type="category" dataKey="name" tick={{ fontSize: 9 }} width={74} />
-                        <Tooltip formatter={(v: number) => [`${v}%`, "Área"]} />
+                        <Tooltip formatter={(v: number) => [`${v}%`, ht("result.area")]} />
                         <Bar dataKey="value" radius={[0, 3, 3, 0]}>{lithoData.map((d,i) => <Cell key={i} fill={d.color} />)}</Bar>
                       </BarChart>
                     </ResponsiveContainer>
@@ -2700,12 +2700,12 @@ export default function HidroGeoMoz({
                 {/* Geology table (Only for Mozambique and when no specific basin is selected) */}
                 {aoi.source === "mozambique" && !selectedFeat && statsData && (
                   <div>
-                    <SectionHeader title="Unidades Geológicas" icon={Layers} />
+                    <SectionHeader title={ht("result.geologicalUnits")} icon={Layers} />
                     <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl overflow-hidden">
                       <table className="w-full text-[10px]">
                         <thead>
                           <tr className="bg-slate-100 dark:bg-slate-800">
-                            <th className="text-left p-2 text-slate-500 dark:text-slate-400 font-medium">Litologia</th>
+                            <th className="text-left p-2 text-slate-500 dark:text-slate-400 font-medium">{ht("result.lithology")}</th>
                             <th className="text-right p-2 text-slate-500 dark:text-slate-400 font-medium">km²</th>
                             <th className="text-right p-2 text-slate-500 dark:text-slate-400 font-medium">%</th>
                           </tr>
@@ -2723,7 +2723,7 @@ export default function HidroGeoMoz({
                     </div>
                     {statsData.dominant && (
                       <div className="text-[10px] text-slate-400 mt-1.5 flex items-center gap-1">
-                        <Info size={9} /> Dominante: <strong className="text-slate-600 dark:text-slate-300 ml-0.5">{statsData.dominant}</strong>
+                        <Info size={9} /> {ht("result.dominant")} <strong className="text-slate-600 dark:text-slate-300 ml-0.5">{statsData.dominant}</strong>
                       </div>
                     )}
                   </div>
@@ -2733,7 +2733,7 @@ export default function HidroGeoMoz({
                 {!selectedFeat && !basinStats && (!statsData || aoi.source !== "mozambique") && (
                   <div className="flex flex-col items-center justify-center gap-2 py-12 text-slate-400">
                     <Globe size={24} className="text-slate-300 dark:text-slate-600" />
-                    <span className="text-sm text-center">Selecione uma área ou carregue as bacias para ver análise geocientífica.</span>
+                    <span className="text-sm text-center">{ht("result.noArea")}</span>
                   </div>
                 )}
               </div>
