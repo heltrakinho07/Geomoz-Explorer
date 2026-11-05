@@ -14,6 +14,14 @@ describe("GeoMoz scientific UI internationalization", () => {
       }
     }
   });
+  it("keeps the stable scientific copy independent from the GEE runtime", () => {
+    for (const locale of ["pt","en","es","fr"] as const) {
+      const text = SCIENCE_UI_MESSAGES[locale];
+      expect(text["catalog.search"]).not.toBe(text["catalog.searchHint"]);
+      expect(text["catalog.moduleStatus"]).not.toBe(text["catalog.open"]);
+      expect(text["overview.error"]).not.toBe(text["overview.processing"]);
+    }
+  });
   it("translates visible scientific actions and keeps GIS-only fallback English", () => {
     expect(scienceUiText("en","catalog.title")).toBe("What would you like to analyse?");
     expect(scienceUiText("es","catalog.compare")).toBe("Comparar períodos");
