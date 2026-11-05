@@ -195,7 +195,10 @@ export default function TerrainBasemap({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    // The global DEM may keep tiles in flight; map.isStyleLoaded() can remain
+    // false even though style.load fired and the basemap select is interactive.
+    // Always apply the user's selection instead of silently ignoring it.
+    if (!map) return;
     if (appliedBasemapRef.current === basemap) return;
     // Rebuild the raster source and its attribution. Changing only setTiles()
     // can leave cached imagery from the previously selected basemap visible.
