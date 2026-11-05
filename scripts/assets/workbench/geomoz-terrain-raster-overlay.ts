@@ -51,6 +51,35 @@ function categoryColor(value:number,values:number[]):[string,string]{
   return ["Classe "+value,COLORS[values.indexOf(value)%COLORS.length]];
 }
 
+/**
+ * GeoTIFF.js v3 exposes TIFF metadata through ImageFileDirectory.getValue().
+ * Older readers expose properties directly. Both forms must work: a missing
+ * direct property does not mean the raster has no georeferencing.
+ */
+async function getTiffTag(directory:unknown,key:string):Promise<unknown>{
+  const tags=directory as Record<string,unknown>&{
+    getValue?:(name:string)=>unknown;
+    loadValue?:(name:string)=>Promise<unknown>;
+  };
+  if(typeof tags.getValue==="function"){
+    try {
+      const value=tags.getValue(key);
+      if(value!==undefined&&value!==null)return value;
+    }catch {
+      // Some tags are deferred in GeoTIFF.js 3. Fall through to loadValue().
+    }
+    if(typeof tags.loadValue==="function"){
+      try{
+        const value=await tags.loadValue(key);
+        if(value!==undefined&&value!==null)return value;
+      }catch {
+        // Tag absent; try the older fileDirectory property representation.
+      }
+    }
+  }
+  return tags[key];
+}
+
 /** Reproject and clip a categorical or true-colour georeferenced GeoTIFF. */
 export async function createTerrainRasterDrape(
   bytes:ArrayBuffer,name:string,terrain:TerrainMeshData
@@ -61,8 +90,27 @@ export async function createTerrainRasterDrape(
     const image=await tiff.getImage();
     const w=image.getWidth(),h=image.getHeight();
     if(w<2||h<2||w*h>100_000_000)throw Error("Raster demasiado grande.");
-    const geoTags=image.fileDirectory as unknown as Record<string,unknown>;
-    if(!geoTags.ModelPixelScale||!geoTags.ModelTiepoint)
+    const geoTags=image.fileDirectory;
+    const [scale,tiepoint,transform]=await Promise.all([
+      getTiffTag(geoTags,"ModelPixelScale"),
+      getTiffTag(geoTags,"ModelTiepoint"),
+      getTiffTag(geoTags,"ModelTransformation"),
+    ]);
+    // A north-up image can legitimately use either Scale+Tiepoint or an
+    // affine ModelTransformation matrix. Reject genuinely rotated grids:
+    // axis-aligned bounds alone cannot correctly sample their pixels.
+    if(!transform&&(!scale||!tiepoint))
+      throw Error("O GeoTIFF não contém uma georreferenciação utilizável.");
+    if(transform){
+      const matrix=transform as ArrayLike<number>;
+      if(matrix.length!==16||!Number.isFinite(Number(matrix[1]))||
+        !Number.isFinite(Number(matrix[4]))||
+        Math.abs(Number(matrix[1]))>1e-10||Math.abs(Number(matrix[4]))>1e-10)
+        throw Error("Reprojecte rasters inclinados para um GeoTIFF norte-acima.");
+    }
+    const resolution=image.getResolution();
+    if(!Number.isFinite(resolution[0])||!Number.isFinite(resolution[1])||
+      resolution[0]<=0||resolution[1]>=0)
       throw Error("Reprojecte rasters inclinados para um GeoTIFF norte-acima.");
     const sourceCrs=crsFromKeys(image.getGeoKeys() as Record<string,unknown>);
     const bounds=image.getBoundingBox() as number[];
