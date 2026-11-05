@@ -111,6 +111,19 @@ class PublicDataTests(unittest.TestCase):
         self.assertAlmostEqual(result["decreaseAreaKm2"], 1)
         self.assertAlmostEqual(result["commonValidAreaKm2"], 3)
 
+    def test_dossier_uses_actual_comparison_periods_not_project_window(self):
+        from agent.intelligence import build_dossier
+        comparison = {"A": {"startDate": "2020-01-01", "endDate": "2021-01-01"},
+                      "B": {"startDate": "2025-01-01", "endDate": "2026-01-01"}}
+        context = {"temporalWindow": {"startDate": "2024-01-01", "endDate": "2026-09-20"},
+                   "_execution_evidence": [{
+                       "tool": "detect_temporal_change", "status": "success",
+                       "period": comparison, "source": "Sentinel-2", "result": {"mean": 0.02},
+                   }]}
+        dossier = build_dossier({"status": "completed", "runs": [], "steps": []}, context)["intelligence"]
+        self.assertEqual(dossier["period"], comparison)
+        self.assertEqual(dossier["successfulTools"], 1)
+
     def test_zonal_percentage_denominator_excludes_clouds_and_preserves_zero(self):
         image = Raster([0, .5, .9, .8], [True, True, False, False])
         with patch.dict("sys.modules", {"ee": FAKE_EE}), patch.object(engine, "_grid", return_value=("region", GRID, 4_000_000)), \
