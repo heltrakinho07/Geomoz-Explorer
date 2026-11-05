@@ -41,9 +41,19 @@ export function prepareGeoMozCategorizedStyles(rootDir) {
       "  const count = clampClassCount(classCount, 1, Number.MAX_SAFE_INTEGER);",
       "generate a stop for every distinct value",
     ],
+    [
+      '  if (typeof value === "string") return `string:${value}`;',
+      '  if (typeof value === "string") return value.trim() ? `string:${value}` : null;',
+      "ignore empty or whitespace-only categories",
+    ],
   ]);
 
   edit("components/panels/style-panel/classification-helpers.ts", [
+    [
+      '          : typeof stop.value === "string"\n            ? stop.value.trim()\n            : stop.value,',
+      '          : stop.value,',
+      "preserve exact categorical string values",
+    ],
     [
       "  return count <= MAX_MANUAL_CATEGORIZED_VALUES ? count : 0;",
       "  return count;",
@@ -211,6 +221,36 @@ export function prepareGeoMozCategorizedStyles(rootDir) {
       "persist large categorized palettes",
     ),
   ]);
+
+  const originalTests = resolve(root, "tests/vector-style-classification.test.ts");
+  const originalContent = readFileSync(originalTests, "utf8");
+  let updatedTests = one(
+    originalContent,
+    "  MAX_MANUAL_CATEGORIZED_VALUES,\n",
+    "",
+    "remove obsolete manual ceiling test import",
+  );
+  updatedTests = one(
+    updatedTests,
+    '  it("bounds manual categorized stops to the editor safety limit", () => {\n' +
+      '    const values = Array.from(\n' +
+      '      { length: MAX_MANUAL_CATEGORIZED_VALUES + 10 },\n' +
+      '      (_, index) => `category-${index + 1}`,\n' +
+      '    );',
+    '  it("supports a categorical attribute with 513 distinct values", () => {\n' +
+      '    const values = Array.from(\n' +
+      '      { length: 513 },\n' +
+      '      (_, index) => `category-${index + 1}`,\n' +
+      '    );',
+    "update upstream regression data",
+  );
+  updatedTests = one(
+    updatedTests,
+    "    assert.equal(stops.length, MAX_MANUAL_CATEGORIZED_VALUES);",
+    "    assert.equal(stops.length, 513);",
+    "update upstream regression assertion",
+  );
+  edits.push([originalTests, updatedTests]);
 
   const testsDest = resolve(root, "tests/geomoz-categorized.test.ts");
   if (existsSync(testsDest)) throw new Error("GeoMoz categorized tests already installed.");
