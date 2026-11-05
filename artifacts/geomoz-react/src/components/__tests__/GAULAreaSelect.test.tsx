@@ -25,6 +25,24 @@ describe("GAULAreaSelect", () => {
     fireEvent.change(screen.getByLabelText("Unidade FAO GAUL ADM2"), { target: { value: "200" } });
     expect(changed).toHaveBeenLastCalledWith({ adminLevel: 2, admin1Code: 100, admin1Name: "Manica", admin2Code: 200, admin2Name: "Gondola" });
   });
+  it("labels Mozambique ADM2 as districts and filters names accent-insensitively", async () => {
+    const load = vi.fn<LoadGAULUnits>().mockImplementation(async (_country, level) => level === 1
+      ? [unit(100, "Sofala")]
+      : [unit(200, "Maringué", 2, 100), unit(201, "Gorongosa", 2, 100)]);
+    render(<Harness load={load} changed={vi.fn()} />);
+    await screen.findByRole("option", { name: "Sofala" });
+    expect(screen.getByText("Província (ADM1)")).toBeTruthy();
+    expect(screen.getByText("Distrito (ADM2)")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Unidade FAO GAUL ADM1"), { target: { value: "100" } });
+    await screen.findByRole("option", { name: "Maringué" });
+    fireEvent.change(screen.getByRole("searchbox", { name: "Pesquisar distrito" }), { target: { value: "maringue" } });
+    expect(screen.getByRole("option", { name: "Maringué" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "Gorongosa" })).toBeNull();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Pesquisar distrito" }), { target: { value: "inexistente" } });
+    expect(screen.getByRole("status").textContent).toContain("Nenhuma unidade");
+    fireEvent.change(screen.getByLabelText("Unidade FAO GAUL ADM1"), { target: { value: "" } });
+    expect((screen.getByRole("searchbox", { name: "Pesquisar distrito" }) as HTMLInputElement).disabled).toBe(true);
+  });
   it("clears the child code when the parent changes", async () => {
     const load = vi.fn<LoadGAULUnits>().mockImplementation(async (_country, level) => level === 1 ? [unit(100, "Manica"), unit(101, "Tete")] : [unit(200, "Gondola", 2, 100)]);
     const changed = vi.fn();
