@@ -393,3 +393,7 @@
 .dark .gm-terrain-xyz-panel p{color:#cbd5e1;}
 .dark .gm-terrain-raster-stack-item{background:#1e293b;}
 @media(max-width:740px){.gm-terrain-xyz-panel{top:125px;max-height:38%;}}
+
+.gm-terrain-xyz-preset{display:block;width:100%;padding:7px 8px;border:1px dashed #38bdf8;border-radius:8px;background:#f0f9ff;color:#075985;font-weight:650;font-size:11px;cursor:pointer;text-align:left}
+.gm-terrain-xyz-preset:disabled{opacity:.45;cursor:not-allowed}
+.dark .gm-terrain-xyz-preset{background:#1e293b;color:#7dd3fc}
