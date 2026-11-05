@@ -289,6 +289,17 @@ export default function TerrainBasemap({
     {!flat&&<details className="gm-terrain-xyz-panel">
       <summary>Mapa-base como textura 3D</summary>
       <p>Indique um serviço XYZ com licença para esta utilização. Não é efectuado download automático de mosaicos Esri/OSM.</p>
+      <button type="button" className="gm-terrain-xyz-preset"
+        disabled={basemap==="streets"||basemap==="licensed"}
+        title="Prepare a fonte actualmente seleccionada; só pode ser aplicada depois de confirmar autorização"
+        onClick={()=>{
+          if(basemap==="licensed"||basemap==="streets")return;
+          setXYZTemplate(BASEMAPS[basemap].url);
+          setXYZAttribution(BASEMAPS[basemap].attribution);
+          setXYZAuthorized(false);
+        }}>
+        Preparar fonte do mapa-base seleccionado (licença necessária)
+      </button>
       <label>Endereço XYZ HTTPS
         <input type="url" value={xyzTemplate} onChange={e=>setXYZTemplate(e.target.value)}
           placeholder="https://tiles.exemplo.com/{z}/{x}/{y}.png"
