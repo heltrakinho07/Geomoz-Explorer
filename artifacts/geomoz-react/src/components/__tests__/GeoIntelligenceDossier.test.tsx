@@ -22,6 +22,23 @@ describe("GeoIntelligenceDossier", () => {
     expect(html).toContain("0");
     expect(html).toContain("Exportar dossiê JSON");
   });
+  it("charts calculated temporal-change areas and preserves zero and negative values", () => {
+    const html = renderToStaticMarkup(<GeoIntelligenceDossier dossier={{
+      ...dossier, evidence: [{ ...dossier.evidence[0], tool: "detect_temporal_change",
+        result: { index: "ndvi", threshold: 0.2, increaseAreaKm2: 0, decreaseAreaKm2: 174.48,
+          stats: { min: -0.4, mean: -0.0128, max: 0.3 } } }],
+    }} />);
+    expect(html).toContain("Gráficos da análise");
+    expect(html).toContain("Aumento ≥ 0,2");
+    expect(html).toContain("174,48");
+    expect(html).toContain("-0,0128");
+  });
+  it("does not chart numeric fields from failed tools", () => {
+    const html = renderToStaticMarkup(<GeoIntelligenceDossier dossier={{
+      ...dossier, evidence: [{ ...dossier.evidence[1], result: { classes: [{ name: "Culturas", areaKm2: 10 }] } }],
+    }} />);
+    expect(html).not.toContain("Gráficos da análise");
+  });
   it("escapes external source text", () => {
     const html = renderToStaticMarkup(<GeoIntelligenceDossier dossier={dossier} />);
     expect(html).toContain("&lt;img");

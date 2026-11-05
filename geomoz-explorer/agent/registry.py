@@ -290,6 +290,25 @@ class ToolDispatcher:
                                   ToolDispatcher._execute_impl)
 
     @staticmethod
+    def _ensure_gee(context):
+        import gee_module
+        uid = context.get("_gee_uid")
+        if not uid:
+            raise RuntimeError("Autenticação GeoMoz necessária para utilizar o Google Earth Engine.")
+        gee_module._init_gee(uid=uid, project=None, token=None)
+
+    @staticmethod
+    async def resolve_named_area(country_code, name, kind, context):
+        import asyncio
+
+        def lookup():
+            from agent.administrative_boundaries import find_named_area
+            ToolDispatcher._ensure_gee(context)
+            return find_named_area(country_code, name, kind)
+
+        return await asyncio.to_thread(lookup)
+
+    @staticmethod
     async def _execute_impl(tool_name: str, args: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         """Dispatch a validated call to its underlying implementation."""
         logger.info("Executing Agent Tool '%s' with args: %s", tool_name, args)
@@ -304,15 +323,6 @@ class ToolDispatcher:
         start_date = args.get("start_date") or period.get("startDate") or "2024-01-01"
         end_date = args.get("end_date") or period.get("endDate") or "2024-12-31"
 
-        def _ensure_gee():
-            import gee_module
-            uid = context.get("_gee_uid")
-            if not uid:
-                raise RuntimeError("Autenticação GeoMoz necessária para utilizar o Google Earth Engine.")
-            # Use the same per-user store and project as the dedicated GEE APIs.
-            # Never fall back to another user's global EE session after an error.
-            gee_module._init_gee(uid=uid, project=None, token=None)
-
         try:
             # Existing GEE/GeoPandas tools also need the selected GAUL polygon,
             # rather than the navigation bbox supplied by the country picker.
@@ -324,7 +334,7 @@ class ToolDispatcher:
                     import json
                     from agent.administrative_boundaries import administrative_geometry
                     from agent.earth_engine_tools import validate_geometry
-                    _ensure_gee()
+                    ToolDispatcher._ensure_gee(context)
                     geom, meta = administrative_geometry(aoi.get("countryCode"), aoi.get("adminLevel", 0),
                                                           aoi.get("admin1Code"), aoi.get("admin2Code"))
                     geojson = geom.getInfo()
@@ -346,7 +356,7 @@ class ToolDispatcher:
                 import asyncio
                 def load_units():
                     from agent.administrative_boundaries import list_units
-                    _ensure_gee()
+                    ToolDispatcher._ensure_gee(context)
                     return list_units(args["country_code"], args["level"], args.get("parent_code"))
                 return await asyncio.to_thread(load_units)
 
@@ -374,7 +384,7 @@ class ToolDispatcher:
                 boundary_metadata = {}
                 def run_public_analysis():
                     from agent import earth_engine_tools as public
-                    _ensure_gee()
+                    ToolDispatcher._ensure_gee(context)
                     region = region_geom
                     if boundary_code:
                         if boundary_source == "gaul2025":
@@ -450,7 +460,7 @@ class ToolDispatcher:
             elif tool_name == "calculate_index":
                 import gee_module
                 import api
-                _ensure_gee()
+                ToolDispatcher._ensure_gee(context)
                 idx = args.get("index", "ndvi")
                 region = api._region_geojson(province=province, district=district, geometry=region_geom)
                 result = gee_module.compute_index_tile(
@@ -486,7 +496,7 @@ class ToolDispatcher:
             elif tool_name == "get_elevation_dem":
                 import gee_module
                 import api
-                _ensure_gee()
+                ToolDispatcher._ensure_gee(context)
                 region = api._region_geojson(province=province, district=district, geometry=region_geom)
                 interval = int(args.get("interval_m", 50))
                 result = gee_module.compute_contours_tile(region_geojson=region, interval_m=interval)
@@ -506,7 +516,7 @@ class ToolDispatcher:
             elif tool_name == "calculate_slope":
                 import gee_module
                 import api
-                _ensure_gee()
+                ToolDispatcher._ensure_gee(context)
                 region = api._region_geojson(province=province, district=district, geometry=region_geom)
                 result = gee_module.compute_index_tile(
                     index="slope",
@@ -530,7 +540,7 @@ class ToolDispatcher:
             elif tool_name == "extract_lineaments":
                 import gee_module
                 import api
-                _ensure_gee()
+                ToolDispatcher._ensure_gee(context)
                 region = api._region_geojson(province=province, district=district, geometry=region_geom)
                 rad = int(args.get("density_radius_m", 750))
                 result = gee_module.compute_lineaments_tile(region_geojson=region, density_radius_m=rad)
@@ -555,7 +565,7 @@ class ToolDispatcher:
             elif tool_name == "run_mineral_targeting":
                 import gee_module
                 import api
-                _ensure_gee()
+                ToolDispatcher._ensure_gee(context)
                 mineral = args.get("mineral", "gold")
                 region = api._region_geojson(province=province, district=district, geometry=region_geom)
                 thresh = float(args.get("score_threshold", 0.7))
@@ -585,7 +595,7 @@ class ToolDispatcher:
 
             elif tool_name == "delineate_watershed":
                 import gee_module
-                _ensure_gee()
+                ToolDispatcher._ensure_gee(context)
                 lat = float(args.get("lat", -25.96))
                 lon = float(args.get("lon", 32.58))
                 result = gee_module.compute_watershed_from_point(lat=lat, lon=lon, region_geojson=None)
@@ -606,7 +616,7 @@ class ToolDispatcher:
             elif tool_name == "get_river_network":
                 import gee_module
                 import api
-                _ensure_gee()
+                ToolDispatcher._ensure_gee(context)
                 region = api._region_geojson(province=province, district=district, geometry=region_geom)
                 result = gee_module.compute_river_network(region_geojson=region)
                 return {
@@ -626,7 +636,7 @@ class ToolDispatcher:
             elif tool_name == "run_alphaearth_pca":
                 import gee_module
                 import api
-                _ensure_gee()
+                ToolDispatcher._ensure_gee(context)
                 region = api._region_geojson(province=province, district=district, geometry=region_geom)
                 year = int(args.get("year", 2024))
                 result = gee_module.compute_embedding_tile(region_geojson=region, year=year)
@@ -659,7 +669,7 @@ class ToolDispatcher:
             elif tool_name == "get_flood_susceptibility":
                 import gee_module
                 import api
-                _ensure_gee()
+                ToolDispatcher._ensure_gee(context)
                 region = api._region_geojson(province=province, district=district, geometry=region_geom)
                 result = gee_module.compute_index_tile(
                     index="topo_class",
@@ -684,7 +694,7 @@ class ToolDispatcher:
             elif tool_name == "get_precipitation_chirps":
                 import gee_module
                 import api
-                _ensure_gee()
+                ToolDispatcher._ensure_gee(context)
                 region = api._region_geojson(province=province, district=district, geometry=region_geom)
                 if args.get("year") is not None:
                     start_date = f"{args['year']:04d}-01-01"
@@ -720,7 +730,7 @@ class ToolDispatcher:
                     return {"status": "error", "message": "Modelo multicritério ainda não implementado para este tema. Não foi calculada aptidão."}
                 import gee_module
                 import api
-                _ensure_gee()
+                ToolDispatcher._ensure_gee(context)
                 region = api._region_geojson(province=province, district=district, geometry=region_geom)
                 year = int(start_date[:4])
                 result = gee_module.compute_groundwater_ahp(region_geojson=region, year=year)
@@ -736,7 +746,7 @@ class ToolDispatcher:
             elif tool_name == "get_soil_moisture_smap":
                 import gee_module
                 import api
-                _ensure_gee()
+                ToolDispatcher._ensure_gee(context)
                 depth = args.get("depth", "rootzone")
                 region = api._region_geojson(province=province, district=district, geometry=region_geom)
                 result = gee_module.compute_soil_moisture_smap(
@@ -769,7 +779,7 @@ class ToolDispatcher:
             elif tool_name == "get_water_erosion_rusle":
                 import gee_module
                 import api
-                _ensure_gee()
+                ToolDispatcher._ensure_gee(context)
                 year = int(args.get("year", 2023))
                 region = api._region_geojson(province=province, district=district, geometry=region_geom)
                 result = gee_module.compute_erosion_rusle(region_geojson=region, year=year)
@@ -793,7 +803,7 @@ class ToolDispatcher:
             elif tool_name == "get_wildfire_activity":
                 import gee_module
                 import api
-                _ensure_gee()
+                ToolDispatcher._ensure_gee(context)
                 region = api._region_geojson(province=province, district=district, geometry=region_geom)
                 min_conf = int(args.get("min_confidence", 50))
                 result = gee_module.compute_wildfire(
