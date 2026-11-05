@@ -168,15 +168,15 @@ function riskColor(v: number) {
   if (v < 75) return "#f97316";
   return "#ef4444";
 }
-function riskLabel(v: number) {
-  if (v < 30) return "Baixo";
-  if (v < 55) return "Moderado";
-  if (v < 75) return "Alto";
-  return "Muito alto";
+function riskLabel(v: number, language: string) {
+  if (v < 30) return hydrologyResultText(language, "result.risk.low");
+  if (v < 55) return hydrologyResultText(language, "result.risk.moderate");
+  if (v < 75) return hydrologyResultText(language, "result.risk.high");
+  return hydrologyResultText(language, "result.risk.veryHigh");
 }
 
-function RiskBar({ label, value, icon: Icon, invert = false }: {
-  label: string; value: number; icon: React.ElementType; invert?: boolean;
+function RiskBar({ label, language, value, icon: Icon, invert = false }: {
+  label: string; language: string; value: number; icon: React.ElementType; invert?: boolean;
 }) {
   const eff   = invert ? 100 - value : value;
   const color = riskColor(eff);
@@ -188,7 +188,7 @@ function RiskBar({ label, value, icon: Icon, invert = false }: {
       <div className="flex-1 min-w-0">
         <div className="flex justify-between mb-0.5">
           <span className="text-[11px] text-slate-500 dark:text-slate-400">{label}</span>
-          <span className="text-[11px] font-bold" style={{ color }}>{riskLabel(eff)} · {value.toFixed(0)}</span>
+          <span className="text-[11px] font-bold" style={{ color }}>{riskLabel(eff, language)} · {value.toFixed(0)}</span>
         </div>
         <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
           <div className="h-full rounded-full" style={{ width: `${value}%`, background: color }} />
@@ -2458,9 +2458,9 @@ export default function HidroGeoMoz({
                         <div>
                           <SectionHeader title={ht("result.riskPotential")} icon={Gauge} />
                           <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-3 space-y-3 border border-slate-100 dark:border-slate-800">
-                            <RiskBar label={ht("result.erosion")} value={wsStats.erosionRisk} icon={Wind} />
-                            <RiskBar label={ht("result.flood")} value={wsStats.floodRisk} icon={Waves} />
-                            <RiskBar label={ht("result.hydroPotential")} value={wsStats.hydroPotential} icon={Zap} invert />
+                            <RiskBar language={translatedLocale} label={ht("result.erosion")} value={wsStats.erosionRisk} icon={Wind} />
+                            <RiskBar language={translatedLocale} label={ht("result.flood")} value={wsStats.floodRisk} icon={Waves} />
+                            <RiskBar language={translatedLocale} label={ht("result.hydroPotential")} value={wsStats.hydroPotential} icon={Zap} invert />
                           </div>
                         </div>
                       )}
@@ -2654,9 +2654,9 @@ export default function HidroGeoMoz({
                         <div className="mb-3">
                           <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1"><Gauge size={10} /> {ht("result.risk")}</div>
                           <div className="space-y-3">
-                            <RiskBar label={ht("result.erosion")} value={basinStats.erosionRisk} icon={Wind} />
-                            <RiskBar label={ht("result.flood")} value={basinStats.floodRisk} icon={Waves} />
-                            <RiskBar label={ht("result.hydroPotential")} value={basinStats.hydroPotential} icon={Zap} invert />
+                            <RiskBar language={translatedLocale} label={ht("result.erosion")} value={basinStats.erosionRisk} icon={Wind} />
+                            <RiskBar language={translatedLocale} label={ht("result.flood")} value={basinStats.floodRisk} icon={Waves} />
+                            <RiskBar language={translatedLocale} label={ht("result.hydroPotential")} value={basinStats.hydroPotential} icon={Zap} invert />
                           </div>
                         </div>
 
