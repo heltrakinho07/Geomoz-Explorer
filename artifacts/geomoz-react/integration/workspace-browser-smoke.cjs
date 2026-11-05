@@ -152,7 +152,7 @@ const server = createServer(async (req, res) => {
         {readyText,readySelector},{timeout:30000});
       if (await page.getByText("Módulo temporariamente indisponível",{exact:true}).isVisible()){
         console.log("Specialist module disabled by administrator; browser check skipped:",label);
-        await page.getByRole("button",{name:"Voltar ao painel",exact:true}).click();
+        await page.getByText("Voltar ao painel",{exact:true}).click();
         return false;
       }
       return true;
