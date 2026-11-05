@@ -3,6 +3,9 @@
  * For additional languages, custom labels fall back to English, not Portuguese.
  */
 const entries: Record<string, {en:string;es:string;fr:string}> = {
+  "3. Exagero vertical": {"en":"3. Vertical exaggeration","es":"3. Exageración vertical","fr":"3. Exagération verticale"},
+  "Ajuste apenas visual; as altitudes do DEM mantêm-se.": {"en":"Visual adjustment only; DEM elevations stay unchanged.","es":"Solo ajuste visual; las elevaciones del MDE no cambian.","fr":"Réglage visuel uniquement ; les altitudes du MNT restent inchangées."},
+  "Restaurar exagero vertical": {"en":"Reset vertical exaggeration","es":"Restablecer exageración vertical","fr":"Réinitialiser l'exagération verticale"},
   "Modelo sobre mapa 3D": {"en":"3D model on map","es":"Modelo sobre mapa 3D","fr":"Modèle superposé à la carte 3D"},
   "Sobrepor modelo 3D": {"en":"Overlay 3D model","es":"Superponer modelo 3D","fr":"Superposer le modèle 3D"},
   "Transparência do modelo": {"en":"Model transparency","es":"Transparencia del modelo","fr":"Transparence du modèle"},
