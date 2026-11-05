@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { jsPDF } from "jspdf";
 import { Download, FileUp, Image as ImageIcon, Loader2, Mountain, RotateCcw, Map as MapIcon, Box, X } from "lucide-react";
 import TerrainBasemap from "@/components/terrain/TerrainBasemap";
+import TerrainDrapePanel from "@/components/terrain/TerrainDrapePanel";
+import {composeTerrainDrapes,type TerrainDrapeLayer} from "@/lib/terrain-drape-stack";
 import { validTerrainGeography } from "@/lib/terrain-map-geo";
 import { apiFetch } from "@/lib/api";
 import { useTerrainSession } from "@/context/TerrainSessionContext";
@@ -46,6 +48,22 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
   const [style, setStyle] = useState<TerrainVisualStyle>("hypsometric");
   const [detailLevel, setDetailLevel] = useState<"auto"|"full"|"medium"|"low">("auto");
   const [textureUrl, setTextureUrl] = useState<string | null>(null);
+  const [drapes,setDrapes]=useState<TerrainDrapeLayer[]>([]);
+  const [composedTexture,setComposedTexture]=useState<string|null>(null);
+  useEffect(()=>{
+    if(!terrain){setComposedTexture(null);return;}
+    const abort=new AbortController();
+    const layers=[...(textureUrl?[{
+      id:"base-rgb",name:"Imagem RGB alinhada",imageDataUrl:textureUrl,
+      kind:"rgb" as const,opacity:1,visible:true,blend:"normal" as const,coverage:1
+    }]:[]),...drapes];
+    void composeTerrainDrapes(layers,1024,abort.signal).then(result=>{
+      if(!abort.signal.aborted)setComposedTexture(result);
+    }).catch(cause=>{
+      if(!abort.signal.aborted)setError(cause instanceof Error?cause.message:"Falha a compor texturas.");
+    });
+    return ()=>abort.abort();
+  },[terrain,textureUrl,drapes]);
   const [pickTarget,setPickTarget]=useState<"A"|"B"|null>(null);
   const [picked,setPicked]=useState<Partial<Record<"A"|"B",TerrainPick>>>({});
   const [lastPick,setLastPick]=useState<TerrainPickedPoint|null>(null);
@@ -79,6 +97,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
     setTextureBusy(false);
     setTextureUrl(null);
     setTextureDescription(null);
+    setDrapes([]);
   },[terrain]);
 
   const selectTerrainPoint=(point:TerrainPick)=>{
@@ -101,6 +120,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
     try {
       return createTerrainRenderer(canvasRef.current, terrain, {
         exaggeration, style, textureUrl, detailLevel,
+        rasterTextureUrl:composedTexture, rasterOpacity:composedTexture?1:0,
         pickEnabled:!!pickTarget,onPick:selectTerrainPoint,
         profileOverlay:picked.A&&picked.B?{
           start:[picked.A.xMeters,picked.A.yMeters],
@@ -111,7 +131,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
       setRendererError(cause instanceof Error ? cause.message : String(cause));
       return undefined;
     }
-  }, [open, terrain, exaggeration, style, textureUrl, pickTarget, picked, detailLevel, viewMode]);
+  }, [open, terrain, exaggeration, style, textureUrl, composedTexture, pickTarget, picked, detailLevel, viewMode]);
 
   async function loadGeoTiff(file: File | undefined) {
     if (!file) return;
@@ -568,6 +588,8 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               <RotateCcw size={12}/> Restaurar estilo
             </button>
           </div>
+          {terrain&&<TerrainDrapePanel terrain={terrain} layers={drapes}
+            onChange={setDrapes} onAdd={item=>setDrapes(previous=>[...previous,item])}/>}
           {terrain && (
             <section aria-label="Metadados de elevação" className="space-y-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-xs">
               <p className="truncate font-semibold" title={terrain.name}>{terrain.name}</p>
@@ -609,7 +631,7 @@ export default function TerrainStudio({ open, onClose, geeEnabled = false, geeRe
               ? <canvas ref={canvasRef} aria-label="Modelo tridimensional de elevação"
                   className="block h-full w-full cursor-grab touch-none active:cursor-grabbing"/>
               : <TerrainBasemap terrain={terrain} exaggeration={exaggeration}
-                  style={style} rasterTexture={textureUrl}/>
+                  style={style} rasterTexture={composedTexture??textureUrl}/>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
               <Mountain size={56} className="text-sky-500/60"/>

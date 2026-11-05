@@ -312,6 +312,29 @@ module.exports=async function validateRasterProcessing(page){
    el.dispatchEvent(new Event("change",{bubbles:true}));
  });
  assert.equal(await terrain.getByLabel("Transparência do raster").inputValue(),"35");
+ // A second 1-band GeoTIFF rendered as a continuous index must not replace
+ // the existing categorical soil layer. Both remain draped over one DEM.
+ await terrain.getByLabel("Renderização de GeoTIFF temático").selectOption("continuous");
+ await terrain.getByLabel("Paleta contínua").selectOption("ndvi");
+ const indexBytes=Buffer.from(writeArrayBuffer(Uint8Array.from(
+   {length:256},(_,i)=>i),{
+   width:16,height:16,ModelPixelScale:[30,30,0],
+   ModelTiepoint:[0,0,0,500000,7200000,0],
+   GTModelTypeGeoKey:1,GTRasterTypeGeoKey:1,ProjectedCSTypeGeoKey:32736
+ }));
+ await terrain.getByLabel("Importar GeoTIFF temático").setInputFiles({
+   name:"ndvi_demo.tif",mimeType:"image/tiff",buffer:indexBytes
+ });
+ await terrain.getByTestId("geomoz-terrain-raster-layer").nth(1)
+   .waitFor({state:"visible",timeout:25000});
+ assert.equal(await terrain.getByTestId("geomoz-terrain-raster-layer").count(),2,
+   "Adding an NDVI index must preserve the prior soil raster");
+ await terrain.getByTestId("geomoz-terrain-raster-layer").nth(1)
+   .getByText("Índice contínuo",{exact:false}).waitFor();
+ await terrain.getByLabel("Subir solo_classes.tif").click();
+ assert.equal(await terrain.getByTestId("geomoz-terrain-raster-layer").count(),2,
+   "Reordering draped layers must preserve both imported rasters");
+
  await terrain.getByTestId("terrain-tab-style").click();
  await terrain.getByLabel("Modo de simbologia").selectOption("categorized");
  await terrain.getByLabel("Campo para categorização").selectOption("lito");

@@ -232,11 +232,16 @@ export default function GeoMozTerrainGeoMap({
     };
   }, [terrain, isValid, flat]);
 
+  // Full style swap: changing tile URLs alone can retain the prior provider.
+  // style.load restores world terrain and our local DEM custom layer.
+  const lastBasemap = useRef<Basemap>("satellite");
   useEffect(() => {
+    if (lastBasemap.current === basemap) return;
+    lastBasemap.current = basemap;
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
-    const source = map.getSource(BASE_ID) as maplibregl.RasterTileSource | undefined;
-    if (source) source.setTiles([BASEMAPS[basemap].url]);
+    if (!map) return;
+    setMeshMounted(false);
+    map.setStyle(makeStyle(basemap), { diff: false });
   }, [basemap]);
 
   useEffect(() => {
