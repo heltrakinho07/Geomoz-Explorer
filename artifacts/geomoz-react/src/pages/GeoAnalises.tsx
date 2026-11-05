@@ -3568,47 +3568,47 @@ export default function GeoAnalises({
 
   // Tabs grouped by category — rendered below with section labels
   const tabGroups: { name: string; badge: string; badgeColor: string; tabs: { id: string; label: string; icon: React.ReactNode }[] }[] = [
-    { name: "Mosaico Óptico",         badge: "Sentinel-2 · EOX",    badgeColor: "bg-sky-100 text-sky-700",
+    { name: ui("analysis.group.optical"),         badge: "Sentinel-2 · EOX",    badgeColor: "bg-sky-100 text-sky-700",
       tabs: [{ id: "s2", label: "S-2 Cloudless", icon: <Satellite size={13} /> }] },
-    { name: "Vegetação & Solo",        badge: "Sentinel-2 · 10–20 m", badgeColor: "bg-emerald-100 text-emerald-700",
+    { name: ui("analysis.group.vegetation"),        badge: "Sentinel-2 · 10–20 m", badgeColor: "bg-emerald-100 text-emerald-700",
       tabs: INDEX_DEFS.filter(d => d.group === "spectral").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Landsat 8",              badge: "Landsat · 30 m",       badgeColor: "bg-orange-100 text-orange-700",
+    { name: ui("analysis.group.landsat"),              badge: "Landsat · 30 m",       badgeColor: "bg-orange-100 text-orange-700",
       tabs: INDEX_DEFS.filter(d => d.group === "landsat").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Relevo & Morfologia",    badge: "DEM GLO-30 · 30 m",   badgeColor: "bg-amber-100 text-amber-700",
+    { name: ui("analysis.group.terrain"),    badge: "DEM GLO-30 · 30 m",   badgeColor: "bg-amber-100 text-amber-700",
       tabs: [
         ...INDEX_DEFS.filter(d => d.group === "terrain").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
         { id: "topo_custom", label: "Classes personalizadas", icon: <Sliders size={13} /> },
         { id: "profile",     label: "Perfil A→B",     icon: <Route size={13} /> },
         { id: "contours",    label: "Curvas Nível",   icon: <Waves size={13} /> },
       ]},
-    { name: "Geologia & Minerais", badge: "Landsat-8 SWIR · S-2", badgeColor: "bg-amber-100 text-amber-800 font-semibold",
+    { name: ui("analysis.group.geology"), badge: "Landsat-8 SWIR · S-2", badgeColor: "bg-amber-100 text-amber-800 font-semibold",
       tabs: [
         { id: "targeting", label: "Targeting AI", icon: <Target size={13} /> },
         { id: "lineaments", label: "Lineamentos", icon: <Activity size={13} /> },
         ...INDEX_DEFS.filter(d => d.group === "minerals").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
       ]},
-    { name: "Uso & Cobertura",        badge: "ESA WorldCover · 10 m", badgeColor: "bg-lime-100 text-lime-700",
+    { name: ui("analysis.group.landcover"),        badge: "ESA WorldCover · 10 m", badgeColor: "bg-lime-100 text-lime-700",
       tabs: [{ id: "landcover", label: "Cobertura do Solo", icon: <Sprout size={13} /> }] },
-    { name: "Agricultura",              badge: "Sentinel-2 · 10–20 m",  badgeColor: "bg-green-100 text-green-700",
+    { name: ui("analysis.group.agriculture"),              badge: "Sentinel-2 · 10–20 m",  badgeColor: "bg-green-100 text-green-700",
       tabs: [
         ...INDEX_DEFS.filter(d => d.group === "agriculture").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
       ]},
-    { name: "Seca & Stress Hídrico",    badge: "Sentinel-2 · 10–20 m",  badgeColor: "bg-orange-100 text-orange-700",
+    { name: ui("analysis.group.drought"),    badge: "Sentinel-2 · 10–20 m",  badgeColor: "bg-orange-100 text-orange-700",
       tabs: [
         ...INDEX_DEFS.filter(d => d.group === "drought").map(d => ({ id: d.id, label: d.short, icon: d.icon })),
         { id: "spi_ndvi", label: "SPI × NDVI", icon: <Droplets size={13} /> },
       ]},
-    { name: "Incêndios & Desflorestação", badge: "Multi-sensor",          badgeColor: "bg-red-100 text-red-700",
+    { name: ui("analysis.group.fire"), badge: "Multi-sensor",          badgeColor: "bg-red-100 text-red-700",
       tabs: INDEX_DEFS.filter(d => d.group === "fire").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Recursos Hídricos & Índices de Água",  badge: "Sentinel-2 · SWIR/NIR", badgeColor: "bg-cyan-100 text-cyan-700",
+    { name: ui("analysis.group.water"),  badge: "Sentinel-2 · SWIR/NIR", badgeColor: "bg-cyan-100 text-cyan-700",
       tabs: INDEX_DEFS.filter(d => d.group === "water").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Clima & Desastres",          badge: "Multi-sensor",          badgeColor: "bg-violet-100 text-violet-700",
+    { name: ui("analysis.group.climate"),          badge: "Multi-sensor",          badgeColor: "bg-violet-100 text-violet-700",
       tabs: INDEX_DEFS.filter(d => d.group === "climate").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Urbano & Infraestruturas",    badge: "Multi-sensor",          badgeColor: "bg-stone-100 text-stone-700",
+    { name: ui("analysis.group.urban"),    badge: "Multi-sensor",          badgeColor: "bg-stone-100 text-stone-700",
       tabs: INDEX_DEFS.filter(d => d.group === "urban").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Saúde Pública",                badge: "Multi-sensor",          badgeColor: "bg-rose-100 text-rose-700",
+    { name: ui("analysis.group.health"),                badge: "Multi-sensor",          badgeColor: "bg-rose-100 text-rose-700",
       tabs: INDEX_DEFS.filter(d => d.group === "health").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
-    { name: "Biofísicos",                  badge: "Multi-sensor · L8/S2", badgeColor: "bg-emerald-100 text-emerald-700",
+    { name: ui("analysis.group.biophysics"),                  badge: "Multi-sensor · L8/S2", badgeColor: "bg-emerald-100 text-emerald-700",
       tabs: INDEX_DEFS.filter(d => d.group === "biophysical").map(d => ({ id: d.id, label: d.short, icon: d.icon })) },
 
   ];
@@ -3618,7 +3618,7 @@ export default function GeoAnalises({
     const g = tabGroups.find(grp => grp.tabs.some(t => t.id === activeTab));
     if (g) setOpenGroup(g.name);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, geeStartDate, geeEndDate, geeCloudPct, preStartDate, preEndDate, aoi]);
+  }, [activeTab, geeStartDate, geeEndDate, geeCloudPct, preStartDate, preEndDate, aoi, translatedLocale]);
 
   const activeCategory = useMemo(() => {
     if (selectedCategory) {
