@@ -69,10 +69,10 @@ export function overlayCategoryValues(geojson:FeatureCollection,field:string):st
   for(const feature of geojson.features) {
     const value=feature.properties?.[field];
     if(value!==null&&value!==undefined)unique.add(String(value));
-    if(unique.size>64)break;
   }
-  if(unique.size>64)throw Error("A classificação suporta até 64 categorias.");
-  return [...unique].sort((a,b)=>a.localeCompare(b)).slice(0,64);
+  // All distinct attribute values are eligible for categorization, not just
+  // the most frequent 64. Layer complexity is bounded by the feature limits.
+  return [...unique].sort((a,b)=>a.localeCompare(b));
 }
 export function defaultTerrainOverlay(
   id:string,name:string,geojson:FeatureCollection,opacity=0.8,
