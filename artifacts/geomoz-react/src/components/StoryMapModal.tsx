@@ -332,9 +332,9 @@ export default function StoryMapModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={`${isFullscreen ? "max-w-[98vw] h-[95vh]" : "max-w-4xl max-h-[88vh]"} p-0 overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col transition-all duration-200`}>
+      <DialogContent data-testid="geomoz-storymap-dialog" className={`gm-soft-dialog flex w-[calc(100vw-1rem)] min-w-0 flex-col overflow-hidden rounded-[24px] p-0 transition-[width,height] duration-200 ${isFullscreen ? "h-[95dvh] max-w-[98vw]" : "max-h-[90dvh] max-w-4xl"}`}>
         {/* Header with Title and Share / Download actions */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-850">
+        <div className="gm-soft-header flex shrink-0 flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-sky-600 text-white flex items-center justify-center shadow-xs shrink-0">
               <Sparkles size={16} />
@@ -354,13 +354,14 @@ export default function StoryMapModal({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             {/* Share Link Button */}
             <button
               type="button"
               onClick={handleShareLink}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold transition-colors cursor-pointer"
-              title="Copiar link direto para esta análise"
+              className="gm-soft-surface flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:text-sky-700 dark:text-slate-100"
+              title="Copiar link directo para esta análise"
+              aria-label="Partilhar ligação para esta análise"
             >
               <Share2 size={13} />
               <span className="hidden sm:inline">Partilhar Link</span>
@@ -370,8 +371,9 @@ export default function StoryMapModal({
             <button
               type="button"
               onClick={handleExportPdf}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold transition-colors shadow-xs cursor-pointer"
+              className="gm-soft-primary flex min-h-10 items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all"
               title="Descarregar apresentação completa em PDF"
+              aria-label="Exportar apresentação em PDF"
             >
               <Download size={13} />
               <span className="hidden sm:inline">PDF</span>
@@ -382,7 +384,9 @@ export default function StoryMapModal({
               type="button"
               onClick={() => setIsFullscreen(v => !v)}
               className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              title={isFullscreen ? "Sair de tela cheia" : "Tela cheia"}
+              title={isFullscreen ? "Sair do ecrã inteiro" : "Ecrã inteiro"}
+              aria-label={isFullscreen ? "Sair do ecrã inteiro" : "Abrir apresentação em ecrã inteiro"}
+              aria-pressed={isFullscreen}
             >
               {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
@@ -390,7 +394,7 @@ export default function StoryMapModal({
         </div>
 
         {/* Slide Content Body */}
-        <div className="flex-1 p-6 overflow-y-auto space-y-5 bg-white dark:bg-slate-900">
+        <div className="gm-soft-body min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-5 sm:p-6">
           {/* Chapter & Title */}
           <div>
             <div className="text-xs font-extrabold text-sky-600 dark:text-sky-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
@@ -407,9 +411,9 @@ export default function StoryMapModal({
 
           {/* Key Metrics Cards */}
           {activeSlide.metrics && activeSlide.metrics.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {activeSlide.metrics.map((m, idx) => (
-                <div key={idx} className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-3">
+                <div key={idx} className="gm-soft-surface min-w-0 rounded-2xl p-3.5">
                   <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
                     {m.label}
                   </div>
@@ -422,7 +426,7 @@ export default function StoryMapModal({
           )}
 
           {/* Narrative Content */}
-          <div className="bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 rounded-2xl p-5">
+          <div className="gm-soft-surface rounded-2xl p-4 sm:p-5">
             <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <FileText size={13} className="text-indigo-500" />
               <span>Análise Técnica & Evidências</span>
@@ -449,7 +453,7 @@ export default function StoryMapModal({
         </div>
 
         {/* Footer Navigation Bar */}
-        <div className="flex items-center justify-between px-5 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900 shrink-0">
+        <div className="gm-soft-header flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200/70 px-4 py-3 dark:border-slate-700 sm:px-6">
           {/* Play/Pause Presentation */}
           <button
             type="button"
@@ -475,6 +479,9 @@ export default function StoryMapModal({
                     ? "w-6 bg-sky-600 dark:bg-sky-400"
                     : "w-2 bg-slate-300 dark:bg-slate-700 hover:bg-slate-400"
                 }`}
+                type="button"
+                aria-label={`Ir para o slide ${idx + 1}`}
+                aria-current={currentIndex === idx ? "step" : undefined}
                 title={`Ir para o slide ${idx + 1}`}
               />
             ))}
@@ -486,6 +493,7 @@ export default function StoryMapModal({
               type="button"
               onClick={handlePrev}
               className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
+              aria-label="Slide anterior"
               title="Slide anterior (Seta esquerda)"
             >
               <ChevronLeft size={16} />
@@ -494,6 +502,7 @@ export default function StoryMapModal({
               type="button"
               onClick={handleNext}
               className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
+              aria-label="Próximo slide"
               title="Próximo slide (Seta direita ou Espaço)"
             >
               <ChevronRight size={16} />
