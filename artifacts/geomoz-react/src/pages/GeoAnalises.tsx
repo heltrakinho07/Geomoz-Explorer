@@ -9,6 +9,7 @@ import { useProject } from "@/context/ProjectContext";
 import { usePortalTranslation } from "@/i18n/usePortalTranslation";
 import { scienceUiText, type ScienceUiKey } from "@/i18n/scienceUi";
 import { analysisControlText, type AnalysisControlKey } from "@/i18n/analysisControls";
+import { geoAnalisesResultText, type GeoAnalisesResultKey } from "@/i18n/geoAnalisesResults";
 /**
  * GeoAnálises — Sentinel-2 spectral analysis module.
  *
@@ -1058,6 +1059,9 @@ function GeospatialAnalyticsPanel({
   onOpenStoryMap?: () => void;
 }) {
   const { activeProject, saveRunToActiveProject } = useProject();
+  const { language } = usePortalTranslation();
+  const rT = (key: GeoAnalisesResultKey) => geoAnalisesResultText(language, key);
+  const numberLocale = language === "pt" ? "pt-MZ" : language;
   const { toast } = useToast();
   const [savingRun, setSavingRun] = useState(false);
   const [runSaved, setRunSaved]   = useState(false);
@@ -1073,8 +1077,8 @@ function GeospatialAnalyticsPanel({
     if (!activeProject) {
       toast({
         variant: "destructive",
-        title: "Nenhum projeto selecionado",
-        description: "Selecione ou crie um projeto no menu superior para guardar esta análise.",
+        title: rT("project.none"),
+        description: rT("project.choose"),
       });
       return;
     }
@@ -1103,14 +1107,14 @@ function GeospatialAnalyticsPanel({
       });
       setRunSaved(true);
       toast({
-        title: "Análise guardada com sucesso!",
-        description: `Adicionada ao projeto "${activeProject.name}".`,
+        title: rT("project.saved"),
+        description: `${rT("project.added")} "${activeProject.name}".`,
       });
     } catch (e: any) {
       toast({
         variant: "destructive",
-        title: "Erro ao guardar análise",
-        description: e.message || "Tente novamente.",
+        title: rT("project.error"),
+        description: e.message || rT("project.retry"),
       });
     } finally {
       setSavingRun(false);
@@ -1137,7 +1141,7 @@ function GeospatialAnalyticsPanel({
             ? "Sentinel-2 · 10–20 m"
             : def.group === "terrain"
             ? "Copernicus DEM · 30 m"
-            : "Multi-sensor"}
+            : rT("analysis.multiSensor")}
         </p>
       </div>
 
@@ -1145,7 +1149,7 @@ function GeospatialAnalyticsPanel({
       {isCalculating && (
         <div className="bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 rounded-xl p-3 text-xs text-sky-700 dark:text-sky-300 leading-relaxed flex items-center gap-2">
           <Loader2 size={16} className="animate-spin text-sky-600 shrink-0" />
-          <span>O Google Earth Engine está a processar dados reais. A duração depende da área, das datas e do modo de processamento seleccionado.</span>
+          <span>{rT("analysis.running")}</span>
         </div>
       )}
 
@@ -1155,18 +1159,18 @@ function GeospatialAnalyticsPanel({
           <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
             <div className="flex items-center gap-1.5 font-semibold text-emerald-800 dark:text-emerald-300 text-xs">
               <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" />
-              <span>Processamento GEE Concluído</span>
+              <span>{rT("analysis.completed")}</span>
             </div>
             <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 px-1.5 py-0.5 rounded font-mono">
-              24h Ativo
+              {rT("analysis.active24h")}
             </span>
           </div>
           <div className="text-[11px] text-emerald-700 dark:text-emerald-400 space-y-0.5">
-            {result.sceneCount > 0 && <div><strong>{result.sceneCount}</strong> cenas ópticas no período principal</div>}
-            {result.preDateRange && <div>Pré-incêndio: <strong>{result.preDateRange}</strong></div>}
+            {result.sceneCount > 0 && <div><strong>{result.sceneCount}</strong> {rT("analysis.scenes")}</div>}
+            {result.preDateRange && <div>{rT("analysis.preFire")} <strong>{result.preDateRange}</strong></div>}
             {result.warning && <p role="status">{result.warning}</p>}
-            {result.stats.detectedAreaKm2 != null && <div>Área com detecção: <strong>{result.stats.detectedAreaKm2.toLocaleString()} km²</strong></div>}
-            <div>Período: <strong>{result.dateRange}</strong></div>
+            {result.stats.detectedAreaKm2 != null && <div>{rT("analysis.detected")} <strong>{result.stats.detectedAreaKm2.toLocaleString(numberLocale)} km²</strong></div>}
+            <div>{rT("analysis.period")} <strong>{result.dateRange}</strong></div>
           </div>
         </div>
       )}
@@ -1174,35 +1178,35 @@ function GeospatialAnalyticsPanel({
       {/* Quantitative Analytics Dashboard Cards */}
       <div>
         <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
-          <span>Métricas Geoestatísticas</span>
-          {result && <span className="text-[10px] text-sky-600 dark:text-sky-400 font-normal">Recorte Zonal</span>}
+          <span>{rT("analysis.statsTitle")}</span>
+          {result && <span className="text-[10px] text-sky-600 dark:text-sky-400 font-normal">{rT("analysis.zonalClip")}</span>}
         </h4>
 
         {hasStats ? (
           <div className="grid min-w-0 grid-cols-2 gap-2">
             <div className="min-w-0 bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
-              <div className="text-[10px] text-slate-400 uppercase font-semibold">Área Recortada</div>
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">{rT("analysis.clippedArea")}</div>
               <div className="text-sm font-bold text-slate-800 dark:text-slate-100 font-mono mt-0.5 truncate">
-                {stats.areaKm2 ? `${stats.areaKm2.toLocaleString()} km²` : district ? `${district}` : province ? `${province}` : "Moçambique"}
+                {stats.areaKm2 ? `${stats.areaKm2.toLocaleString(numberLocale)} km²` : district ? `${district}` : province ? `${province}` : rT("area.mozambique")}
               </div>
             </div>
 
             <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
-              <div className="text-[10px] text-slate-400 uppercase font-semibold">Média (μ)</div>
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">{rT("analysis.mean")}</div>
               <div className="text-sm font-bold text-slate-800 dark:text-slate-100 font-mono mt-0.5">
                 {stats.mean != null ? stats.mean.toFixed(3) : "—"}
               </div>
             </div>
 
             <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
-              <div className="text-[10px] text-slate-400 uppercase font-semibold">Mediana (P50)</div>
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">{rT("analysis.median")}</div>
               <div className="text-sm font-bold text-slate-800 dark:text-slate-100 font-mono mt-0.5">
                 {stats.p50 != null ? stats.p50.toFixed(3) : "—"}
               </div>
             </div>
 
             <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
-              <div className="text-[10px] text-slate-400 uppercase font-semibold">Desvio Padrão (σ)</div>
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">{rT("analysis.stdDev")}</div>
               <div className="text-sm font-bold text-slate-800 dark:text-slate-100 font-mono mt-0.5">
                 {stats.stdDev != null ? stats.stdDev.toFixed(3) : "—"}
               </div>
@@ -1210,7 +1214,7 @@ function GeospatialAnalyticsPanel({
 
             <div className="col-span-2 bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 rounded-xl p-2.5">
               <div className="flex justify-between items-center text-[10px] text-slate-400 font-semibold mb-1">
-                <span>Distribuição Percentil (P10 → P90)</span>
+                <span>{rT("analysis.percentiles")}</span>
                 <span className="font-mono text-slate-600 dark:text-slate-300">
                   {stats.p10 != null && stats.p90 != null ? `[${stats.p10.toFixed(2)}, ${stats.p90.toFixed(2)}]` : "—"}
                 </span>
@@ -1233,9 +1237,9 @@ function GeospatialAnalyticsPanel({
         ) : (
           <div className="bg-slate-50 dark:bg-slate-800/50 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-3 text-center">
             <BarChart2 size={24} className="mx-auto text-slate-400 mb-1.5" />
-            <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">Aguardando cálculo zonal</p>
+            <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">{rT("analysis.awaiting")}</p>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Clique em <strong>Calcular {def.short}</strong> nos filtros para gerar as métricas geoestatísticas. O modo Rápido mostra primeiro o mapa e dispensa as estatísticas extensas.
+              {rT("analysis.clickCalculate")} <strong>{def.short}</strong> {rT("analysis.statsHint")}
             </p>
           </div>
         )}
@@ -1248,10 +1252,10 @@ function GeospatialAnalyticsPanel({
             type="button"
             onClick={onOpenCompare}
             className="w-full flex items-center justify-center gap-2 py-2 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
-            title="Comparar este índice entre o período padrão 2023 e o período recente"
+            title={rT("analysis.compareTitle")}
           >
             <Columns2 size={13} />
-            <span>Comparar {def.short} (2023 ⟷ Recente)</span>
+            <span>{rT("analysis.compare")} {def.short} (2023 ⟷ {rT("analysis.recent")})</span>
           </button>
         )}
 
@@ -1262,9 +1266,9 @@ function GeospatialAnalyticsPanel({
                 <FolderKanban size={14} className="text-sky-600 shrink-0" />
                 <span className="truncate">
                   {activeProject ? (
-                    <>Projeto: <span className="text-sky-700 dark:text-sky-300 font-bold">{activeProject.name}</span></>
+                    <>{rT("project.label")} <span className="text-sky-700 dark:text-sky-300 font-bold">{activeProject.name}</span></>
                   ) : (
-                    <span className="text-slate-500 font-normal">Nenhum projeto ativo</span>
+                    <span className="text-slate-500 font-normal">{rT("project.inactive")}</span>
                   )}
                 </span>
               </div>
@@ -1285,17 +1289,17 @@ function GeospatialAnalyticsPanel({
               {savingRun ? (
                 <>
                   <Loader2 size={13} className="animate-spin" />
-                  <span>A guardar no estudo…</span>
+                  <span>{rT("project.saving")}</span>
                 </>
               ) : runSaved ? (
                 <>
                   <CheckCircle2 size={13} />
-                  <span>Guardado no Estudo</span>
+                  <span>{rT("project.savedButton")}</span>
                 </>
               ) : (
                 <>
                   <FolderPlus size={13} />
-                  <span>{activeProject ? "Guardar Análise no Projeto Ativo" : "Selecione um Estudo no Menu Superior"}</span>
+                  <span>{activeProject ? rT("project.save") : rT("project.select")}</span>
                 </>
               )}
             </button>
@@ -1307,7 +1311,7 @@ function GeospatialAnalyticsPanel({
                 className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white shadow-xs transition-all cursor-pointer"
               >
                 <Sparkles size={13} />
-                <span>Apresentação Executiva (StoryMap)</span>
+                <span>{rT("analysis.storymap")}</span>
               </button>
             )}
           </div>
@@ -1317,7 +1321,7 @@ function GeospatialAnalyticsPanel({
       {/* Escala / Legenda do Índice */}
       <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
         <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-          Escala Espectral
+          {rT("analysis.spectralScale")}
         </h4>
         <ColormapLegend index={activeIndex} />
       </div>
@@ -1331,7 +1335,7 @@ function GeospatialAnalyticsPanel({
         >
           <div className="flex items-center gap-1.5">
             <Info size={13} className="text-sky-500" />
-            <span>Interpretação Geocientífica & Fórmula</span>
+            <span>{rT("analysis.methodology")}</span>
           </div>
           {methodologyOpen ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
         </button>
@@ -1340,7 +1344,7 @@ function GeospatialAnalyticsPanel({
           <div className="p-3 space-y-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 text-xs">
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Interpretação Geocientífica
+                {rT("analysis.interpretation")}
               </span>
               <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                 {def.interpretation}
@@ -1349,13 +1353,13 @@ function GeospatialAnalyticsPanel({
 
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Fórmula Matemática
+                {rT("analysis.formula")}
               </span>
               <code className="block bg-slate-900 text-emerald-300 text-xs rounded-lg p-2.5 font-mono leading-relaxed overflow-x-auto">
                 {def.formula}
               </code>
               <p className="text-[11px] text-slate-400 mt-1.5">
-                <span className="font-semibold text-slate-500 dark:text-slate-400">Bandas: </span>{def.bands}
+                <span className="font-semibold text-slate-500 dark:text-slate-400">{rT("analysis.bands")} </span>{def.bands}
               </p>
             </div>
           </div>
@@ -2409,6 +2413,9 @@ function LandCoverPanel({
   geometry?: Record<string, unknown> | null;
   onResult: (r: LandCoverResult | null) => void;
 }) {
+  const { language } = usePortalTranslation();
+  const rT = (key: GeoAnalisesResultKey) => geoAnalisesResultText(language, key);
+  const numberLocale = language === "pt" ? "pt-MZ" : language;
   const [running, setRunning] = useState(false);
   const [error, setError]     = useState<string | null>(null);
   const [result, setResult]   = useState<LandCoverResult | null>(null);
@@ -2441,21 +2448,20 @@ function LandCoverPanel({
     <div className="space-y-4">
       <div>
         <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
-          Cobertura do Solo
+          {rT("landcover.title")}
         </h4>
         <div className="bg-lime-50 dark:bg-lime-950/40 border border-lime-200 dark:border-lime-900/50 rounded-xl p-3 text-xs text-lime-800 dark:text-lime-300 leading-relaxed">
-          Classificação <strong>ESA WorldCover 2021</strong> a 10 m — 11 classes
-          de uso e cobertura do solo (florestas, agricultura, água, mangais…).
+          {rT("landcover.details")}
         </div>
         <div className="mt-2.5">
-          <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Área (clipping)</label>
+          <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">{rT("landcover.clip")}</label>
           <div className="text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
             <MapPin size={12} className="text-lime-600" />
             {district
               ? <span>{district} <span className="text-slate-400">·</span> {province}</span>
               : province
-                ? <span>{province} <span className="text-slate-400">(toda a província)</span></span>
-                : <span className="text-slate-500 dark:text-slate-400">Moçambique (toda)</span>}
+                ? <span>{province} <span className="text-slate-400">({rT("landcover.provinceAll")})</span></span>
+                : <span className="text-slate-500 dark:text-slate-400">{rT("landcover.countryAll")}</span>}
           </div>
         </div>
       </div>
@@ -2463,20 +2469,20 @@ function LandCoverPanel({
       <button onClick={run} disabled={running}
         className="w-full flex items-center justify-center gap-2 py-2.5 bg-lime-600 hover:bg-lime-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-lime-200 cursor-pointer">
         {running
-          ? <><Loader2 size={14} className="animate-spin" /> A classificar cobertura…</>
-          : <><Sprout size={14} /> Calcular Cobertura do Solo</>}
+          ? <><Loader2 size={14} className="animate-spin" /> {rT("landcover.running")}</>
+          : <><Sprout size={14} /> {rT("landcover.run")}</>}
       </button>
 
       {running && (
         <div className="bg-lime-50 dark:bg-lime-950/40 border border-lime-200 dark:border-lime-900/50 rounded-xl p-3 text-xs text-lime-700 dark:text-lime-300 leading-relaxed">
           <Loader2 size={12} className="inline animate-spin mr-1.5" />
-          A computar áreas por classe a partir do ESA WorldCover (10 m). ~5–20 s.
+          {rT("landcover.computing")}
         </div>
       )}
 
       {error && (
         <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-xl p-3 text-xs text-red-700 dark:text-red-300">
-          <strong>Erro:</strong> {error}
+          <strong>{rT("analysis.error")}</strong> {error}
         </div>
       )}
 
@@ -2485,18 +2491,18 @@ function LandCoverPanel({
           <div className="bg-lime-50 dark:bg-lime-950/40 border border-lime-200 dark:border-lime-900/50 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
               <CheckCircle2 size={13} className="text-lime-600 dark:text-lime-400" />
-              <span className="text-xs font-semibold text-lime-700 dark:text-lime-300">Cobertura calculada</span>
+              <span className="text-xs font-semibold text-lime-700 dark:text-lime-300">{rT("landcover.completed")}</span>
             </div>
             <div className="text-xs text-lime-700 dark:text-lime-300">
-              Área total: <strong>{result.totalKm2.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²</strong>
-              {" · "}{ranked.length} classes presentes
+              {rT("landcover.total")} <strong>{result.totalKm2.toLocaleString(numberLocale, { maximumFractionDigits: 0 })} km²</strong>
+              {" · "}{ranked.length} {rT("landcover.classes")}
             </div>
           </div>
 
           {/* Complete area analysis (ranked, only classes > 0) */}
           <div>
             <h5 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-              Análise de Área (km² · %)
+              {rT("landcover.areaAnalysis")}
             </h5>
             <div className="space-y-1.5">
               {ranked.map(c => (
@@ -2504,7 +2510,7 @@ function LandCoverPanel({
                   <div className="flex items-center gap-2">
                     <span className="inline-block w-3 h-3 rounded shrink-0" style={{ background: c.color }} />
                     <span className="flex-1 truncate text-slate-700 dark:text-slate-200">{c.label}</span>
-                    <span className="text-slate-400 font-mono">{c.areaKm2.toLocaleString(undefined, { maximumFractionDigits: 1 })} km²</span>
+                    <span className="text-slate-400 font-mono">{c.areaKm2.toLocaleString(numberLocale, { maximumFractionDigits: 1 })} km²</span>
                     <span className="w-11 text-right font-semibold text-lime-700 dark:text-lime-400">{c.pct.toFixed(1)}%</span>
                   </div>
                   <div className="ml-5 mt-0.5 bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
@@ -2518,7 +2524,7 @@ function LandCoverPanel({
           {/* Full legend (official order, all 11 classes) */}
           <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
             <h5 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
-              Legenda (ESA WorldCover)
+              {rT("landcover.legend")}
             </h5>
             <div className="grid grid-cols-1 gap-0.5">
               {result.classes.map(c => (
@@ -2864,6 +2870,7 @@ export default function GeoAnalises({
   const { language } = usePortalTranslation();
   const scienceT = (key: ScienceUiKey) => scienceUiText(language, key);
   const analysisT = (key: AnalysisControlKey) => analysisControlText(language, key);
+  const resultT = (key: GeoAnalisesResultKey) => geoAnalisesResultText(language, key);
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const categoryInDevelopment = GEO_CATEGORIES.some(cat => cat.id === selectedCategory && cat.status === "development");
@@ -2976,9 +2983,9 @@ export default function GeoAnalises({
   async function exportGeoAnalisesPdf() {
     if (categoryInDevelopment || indexBlocked || !mapContainerRef.current) return;
     const ctx = createPDFContext(`${activeTab} — ${aoi.label}`);
-    drawCover(ctx, `Relatório de Análise — ${activeTab}`, [
-      `Análise: ${activeTab}`,
-      `${province ? `Província: ${province}` : "Área: Moçambique"}`,
+    drawCover(ctx, `${resultT("pdf.title")} — ${activeTab}`, [
+      `${resultT("pdf.analysis")} ${activeTab}`,
+      `${province ? `${resultT("pdf.province")} ${province}` : `${resultT("pdf.area")} ${resultT("area.mozambique")}`}`,
       ctx.date,
     ]);
     try {
@@ -3005,7 +3012,7 @@ export default function GeoAnalises({
         { south: -26.9, north: -10.4, west: 30.2, east: 41 },
         { tileUrl: analysisTile,
           legendItems: analysisLegendItems,
-          title: `Análise ${activeTab} — ${province ?? "Moçambique"}`, dpi: 200 },
+          title: `${resultT("pdf.mapTitle")} ${activeTab} — ${province ?? resultT("area.mozambique")}`, dpi: 200 },
       );
       addMapImage(ctx, imgData, 100);
     } catch (e) {
@@ -4200,7 +4207,7 @@ export default function GeoAnalises({
         {/* Draggable Results Panel */}
         {!indexBlocked && resultsPanelOpen && (activeDef || isComposite || isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || activeTab === "s2") && (
           <DraggablePanel
-            title={`Análise: ${descriptiveIndexName(activeTab)}`}
+            title={`${resultT("analysis.panelTitle")} ${descriptiveIndexName(activeTab)}`}
             icon={<Activity size={16} className="shrink-0 text-sky-500" />}
             isDocked={rightPanelDocked}
             onDockToggle={() => setRightPanelDocked(d => !d)}
@@ -4288,7 +4295,7 @@ export default function GeoAnalises({
                   <SpiNdviPanel province={province} district={district} geometry={apiParams.geometry} onResult={r => { setSpiNdviResult(r); setShowSpiChart(true); }} />
                   {spiNdviResult && (
                     <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
-                      <h5 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Camada no mapa</h5>
+                      <h5 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{resultT("overlay.results")}</h5>
                       <div className="flex gap-1.5">
                         {(["spi", "ndvi"] as const).map(m => (
                           <button key={m} onClick={() => setSpiLayerMode(m)}
@@ -4305,7 +4312,7 @@ export default function GeoAnalises({
                         <input type="checkbox" checked={showSpiChart}
                           onChange={e => setShowSpiChart(e.target.checked)}
                           className="accent-orange-500" />
-                        Mostrar gráfico de correlação
+                        {resultT("overlay.showChart")}
                       </label>
                     </div>
                   )}
@@ -4635,10 +4642,10 @@ export default function GeoAnalises({
                 setSidebarOpen(true);
               }}
               className="flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/95 px-3 text-xs font-semibold text-slate-700 shadow-md backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200"
-              aria-label="Abrir filtros e parâmetros"
+              aria-label={resultT("overlay.openFilters")}
             >
               <SlidersHorizontal size={15} className="text-sky-600 dark:text-sky-400" />
-              Filtros
+              {resultT("overlay.filters")}
             </button>
             {!resultsPanelOpen && (
               <button
@@ -4648,10 +4655,10 @@ export default function GeoAnalises({
                   setResultsPanelOpen(true);
                 }}
                 className="flex min-h-11 items-center gap-1.5 rounded-xl border border-sky-200 bg-white/95 px-3 text-xs font-semibold text-sky-700 shadow-md backdrop-blur-md dark:border-sky-800 dark:bg-slate-900/95 dark:text-sky-300"
-                aria-label="Mostrar painel de resultados"
+                aria-label={resultT("overlay.openResults")}
               >
                 <BarChart2 size={15} />
-                Resultados
+                {resultT("overlay.results")}
               </button>
             )}
           </div>
@@ -5045,13 +5052,13 @@ export default function GeoAnalises({
             <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-amber-200 dark:border-amber-900/50 p-3 w-64 pointer-events-none">
               <div className="flex items-center gap-1.5 mb-1">
                 <Waves size={12} className="text-amber-700 dark:text-amber-400" />
-                <div className="text-xs font-semibold text-amber-800 dark:text-amber-300">Curvas de Nível ({contoursTile.intervalM} m)</div>
+                <div className="text-xs font-semibold text-amber-800 dark:text-amber-300">{resultT("overlay.contours")} ({contoursTile.intervalM} m)</div>
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-300">
-                Elevação: {contoursTile.minElevM?.toFixed(0) ?? "—"} m → {contoursTile.maxElevM?.toFixed(0) ?? "—"} m
+                {resultT("overlay.elevation")} {contoursTile.minElevM?.toFixed(0) ?? "—"} m → {contoursTile.maxElevM?.toFixed(0) ?? "—"} m
               </div>
               <div className="text-xs text-slate-400">
-                {contoursTile.intervals.length} curvas · linhas-mestras a cada {contoursTile.indexIntervalM} m
+                {contoursTile.intervals.length} {resultT("overlay.curves")} · {resultT("overlay.indexContours")} {contoursTile.indexIntervalM} m
               </div>
             </div>
           )}
@@ -5064,13 +5071,13 @@ export default function GeoAnalises({
                 <div className="flex items-center gap-1.5">
                   <Route size={12} className="text-sky-600 dark:text-sky-400" />
                   <div className="text-xs font-semibold text-sky-800 dark:text-sky-300">
-                    Perfil Topográfico — {(profileResult.stats.totalDistanceM / 1000).toFixed(2)} km ·{" "}
+                    {resultT("overlay.topoProfile")} — {(profileResult.stats.totalDistanceM / 1000).toFixed(2)} km ·{" "}
                     Δ {(profileResult.stats.maxElevM - profileResult.stats.minElevM).toFixed(0)} m
                   </div>
                 </div>
                 <button onClick={() => { setProfileResult(null); setProfilePoints([]); }}
                   className="text-xs text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 flex items-center gap-1 cursor-pointer">
-                  <X size={11} /> fechar
+                  <X size={11} /> {resultT("overlay.close")}
                 </button>
               </div>
               <div style={{ height: 165 }}>
@@ -5088,12 +5095,12 @@ export default function GeoAnalises({
                   <Droplets size={12} className="text-orange-600 dark:text-orange-400" />
                   <div className="text-xs font-semibold text-orange-800 dark:text-orange-300">
                     SPI × NDVI {spiNdviResult.year} — r = {spiNdviResult.stats.pearsonR != null ? spiNdviResult.stats.pearsonR.toFixed(2) : "—"}
-                    {" · "}{spiNdviResult.stats.sampleCount} amostras
+                    {" · "}{spiNdviResult.stats.sampleCount} {resultT("overlay.samples")}
                   </div>
                 </div>
                 <button onClick={() => setShowSpiChart(false)}
                   className="text-xs text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 flex items-center gap-1 cursor-pointer">
-                  <X size={11} /> fechar
+                  <X size={11} /> {resultT("overlay.close")}
                 </button>
               </div>
               <div style={{ height: 190 }}>
@@ -5115,11 +5122,11 @@ export default function GeoAnalises({
                 background: `linear-gradient(to right, ${(spiLayerMode === "spi" ? spiNdviResult.spiPalette : spiNdviResult.ndviPalette).join(", ")})`,
               }} />
               <div className="flex justify-between text-[9px] text-slate-400 mt-0.5">
-                {spiLayerMode === "spi" ? <><span>−2 seca</span><span>+2 húmido</span></> : <><span>0</span><span>0.9</span></>}
+                {spiLayerMode === "spi" ? <><span>−2 {resultT("overlay.drought")}</span><span>+2 {resultT("overlay.wet")}</span></> : <><span>0</span><span>0.9</span></>}
               </div>
               <button onClick={() => setShowSpiChart(true)}
                 className="mt-1.5 text-[10px] text-orange-600 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-300 font-medium cursor-pointer">
-                ↺ reabrir gráfico
+                ↺ {resultT("overlay.reopen")}
               </button>
             </div>
           )}
@@ -5129,7 +5136,7 @@ export default function GeoAnalises({
             <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-emerald-200 dark:border-emerald-900/50 p-3 w-64 pointer-events-none">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <Sliders size={12} className="text-emerald-600 dark:text-emerald-400" />
-                <div className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">Classes Topográficas</div>
+                <div className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">{resultT("overlay.topoClasses")}</div>
               </div>
               <div className="space-y-0.5">
                 {topoClassesTile.labels.map((lbl, i) => (
@@ -5149,22 +5156,22 @@ export default function GeoAnalises({
             <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-amber-200 dark:border-amber-900/50 p-3 w-64 pointer-events-none">
               <div className="flex items-center gap-1.5 mb-1">
                 <Gem size={12} className="text-amber-500" />
-                <div className="text-xs font-semibold text-amber-700 dark:text-amber-400">Potencial: {targetingTile.mineralName}</div>
+                <div className="text-xs font-semibold text-amber-700 dark:text-amber-400">{resultT("overlay.potential")} {targetingTile.mineralName}</div>
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-300">
-                Score médio: <strong className="text-amber-700 dark:text-amber-400">{((targetingTile.stats.meanScore ?? 0) * 100).toFixed(0)}/100</strong>
+                {resultT("overlay.meanScore")} <strong className="text-amber-700 dark:text-amber-400">{((targetingTile.stats.meanScore ?? 0) * 100).toFixed(0)}/100</strong>
                 {" · "}P95: <strong className="text-amber-700 dark:text-amber-400">{((targetingTile.stats.p95 ?? 0) * 100).toFixed(0)}</strong>
               </div>
               <div className="text-xs text-slate-400">
-                Área favorável: {targetingTile.stats.favorableKm2 != null
+                {resultT("overlay.favorable")} {targetingTile.stats.favorableKm2 != null
                   ? `${targetingTile.stats.favorableKm2.toFixed(1)} km²`
                   : "—"}
               </div>
               {/* On-map legend: what the score raster means */}
               <div className="mt-2 pt-2 border-t border-amber-100 dark:border-amber-900/40">
-                <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Favorabilidade (0–100)</div>
+                <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mb-1">{resultT("overlay.favorability")}</div>
                 <div className="h-2 rounded-full" style={{ background: "linear-gradient(to right,#0d47a1,#7b1fa2,#e53935,#fdd835,#fffde7)" }} />
-                <div className="flex justify-between text-[9px] text-slate-400 mt-0.5"><span>0 · baixa</span><span>alta · 100</span></div>
+                <div className="flex justify-between text-[9px] text-slate-400 mt-0.5"><span>0 · {resultT("overlay.low")}</span><span>{resultT("overlay.high")} · 100</span></div>
               </div>
             </div>
           )}
@@ -5174,11 +5181,11 @@ export default function GeoAnalises({
             <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-emerald-200 dark:border-emerald-900/50 p-3 w-64 pointer-events-none">
               <div className="flex items-center gap-1.5 mb-1">
                 <CheckCircle2 size={12} className="text-emerald-500" />
-                <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">GEE Real</div>
+                <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">{resultT("overlay.realGee")}</div>
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-300">{geeTile.name.split("—")[0].trim()}</div>
               {geeTile.sceneCount > 0 && (
-                <div className="text-xs text-slate-400">{geeTile.sceneCount} cenas · {geeTile.dateRange}</div>
+                <div className="text-xs text-slate-400">{geeTile.sceneCount} {resultT("overlay.scenes")} · {geeTile.dateRange}</div>
               )}
               {isTopoClass && (
                 <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-x-2 gap-y-0.5">
@@ -5222,15 +5229,15 @@ export default function GeoAnalises({
                 : "Lineamentos · Em desenvolvimento"
               : isTargeting
                 ? targetingTile
-                  ? `Targeting · ${targetingTile.formula}${overlapResult ? ` · ${overlapResult.report.zoneCount} zonas cruzadas` : ""}`
-                  : "Targeting · escolha um mineral e execute"
+                  ? `Targeting · ${targetingTile.formula}${overlapResult ? ` · ${overlapResult.report.zoneCount} ${resultT("overlay.areas")}` : ""}`
+                  : `Targeting · ${resultT("overlay.startTarget")}`
                 : isSpiNdvi
                   ? spiNdviResult
                     ? `SPI×NDVI · ${spiNdviResult.formula}`
-                    : "SPI × NDVI · escolha o ano e execute"
+                    : `SPI × NDVI · ${resultT("overlay.startSpi")}`
                   : geeReady && geeTile
-                    ? `GEE Real · ${geeTile.formula}${geeTile.sceneCount ? ` · ${geeTile.sceneCount} cenas` : ""}`
-                    : `${isGeeOnly ? "GEE necessário" : "Proxy"} · ${activeDef?.formula ?? ""}`}
+                    ? `${resultT("overlay.realGee")} · ${geeTile.formula}${geeTile.sceneCount ? ` · ${geeTile.sceneCount} ${resultT("overlay.scenes")}` : ""}`
+                    : `${isGeeOnly ? resultT("overlay.requiredGee") : "Proxy"} · ${activeDef?.formula ?? ""}`}
         </span>
         {province && (
           <span className="ml-auto text-sky-500 font-medium">
