@@ -113,7 +113,7 @@ describe("GeoMoz authentication modal", () => {
     await waitFor(() => expect(authMocks.resetPassword).toHaveBeenCalledWith(
       "utilizador@example.org",
     ));
-    expect(screen.getByText("E-mail enviado!")).toBeInTheDocument();
+    expect(await screen.findByText("E-mail enviado!")).toBeInTheDocument();
   });
 
   it("opens guest mode without pretending Firebase authentication succeeded", () => {
