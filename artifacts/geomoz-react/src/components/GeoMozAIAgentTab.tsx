@@ -1295,6 +1295,25 @@ export default function GeoMozAIAgentTab() {
             </div>
           ))}
 
+          {/* Saved scientific recipes: old Earth Engine map URLs are never reused. */}
+          {activeProject && activeRuns.some(isTemporalReplay) && (
+            <section aria-label={copy("map.savedTitle")} className="mx-3 my-2 rounded-xl border border-violet-200 bg-violet-50/50 p-2.5 dark:border-violet-900 dark:bg-violet-950/20">
+              <div className="flex items-center gap-2 text-[11px] font-bold text-slate-800 dark:text-slate-100"><FolderKanban size={14} />{copy("map.savedTitle")}</div>
+              <div className="mt-2 flex flex-col gap-1.5">
+                {activeRuns.filter(isTemporalReplay).slice(0, 5).map((run) => (
+                  <button type="button" key={run.id} disabled={isRunning}
+                    onClick={() => void handlePromptSubmit(
+                      `${copy("map.replay")}: ${run.replay.args.index.toUpperCase()} ${run.replay.args.start_date_1.slice(0, 4)} / ${run.replay.args.start_date_2.slice(0, 4)}`,
+                      undefined, run.replay)}
+                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-left text-[11px] text-slate-700 hover:border-violet-400 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                    <span className="truncate">{run.name} · {run.replay.args.start_date_1.slice(0, 4)}–{run.replay.args.start_date_2.slice(0, 4)}</span>
+                    <span className="shrink-0 font-semibold text-violet-700 dark:text-violet-300"><RefreshCw size={11} className="inline" /> {copy("map.replay")}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Running Status Tracker */}
           {isRunning && (
             <div className="p-3 bg-violet-50/50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800 rounded-xl space-y-2">
