@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { ANALYSIS_CATEGORY_TRANSLATIONS, localizeAnalysisCategories } from "./analysis-catalog";
 import { SPECIALIST_UI_CATALOGS, specialistText } from "./specialist-ui";
 
@@ -66,11 +67,11 @@ describe("GeoMoz specialist UI translations", () => {
       "../components/GeoMozAIAgentTab.tsx",
     ];
     for (const file of files) {
-      const source = readFileSync(new URL(file, import.meta.url), "utf8");
+      const source = readFileSync(resolve(process.cwd(), "src/i18n", file), "utf8");
       expect(source).toContain("usePortalTranslation()");
       expect(source).toContain("specialistText(translatedLocale, key)");
     }
-    const analysis = readFileSync(new URL("../pages/GeoAnalises.tsx", import.meta.url), "utf8");
+    const analysis = readFileSync(resolve(process.cwd(), "src/pages/GeoAnalises.tsx"), "utf8");
     expect(analysis).toContain("localizeAnalysisCategories(translatedLocale, GEO_CATEGORIES)");
     expect(analysis).toContain("[categoryFilter, categories]");
     expect(analysis).toContain("activeCategory.title");
