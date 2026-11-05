@@ -32,6 +32,11 @@ export interface TerrainRenderOptions {
   exaggeration: number;
   style: TerrainVisualStyle;
   textureUrl?: string | null;
+  /** GIS vector and classified land cover draped transparently over relief. */
+  overlayTextureUrl?: string | null;
+  /** Theme/satellite GeoTIFF drape below GIS vector overlays. */
+  rasterTextureUrl?: string | null;
+  rasterOpacity?: number;
   /** Rendering-only LOD; scientific sample grid and coordinates never change. */
   detailLevel?: "auto" | "full" | "medium" | "low";
   /** Surface picking is active only when the user explicitly enables it. */
@@ -199,6 +204,10 @@ const FRAGMENT_SOURCE = [
   "uniform int uStyle;",
   "uniform int uOverlay;",
   "uniform sampler2D uTexture;",
+  "uniform sampler2D uOverlayTexture;",
+  "uniform int uHasOverlayTexture;",
+  "uniform sampler2D uRasterTexture;",
+  "uniform float uRasterOpacity;",
   "out vec4 fragColor;",
   "vec3 relief(float h) {",
   " if(h<0.30) return mix(vec3(0.12,0.34,0.22),vec3(0.32,0.54,0.29),h/0.30);",
@@ -211,7 +220,11 @@ const FRAGMENT_SOURCE = [
   " vec4 imagery=texture(uTexture,vUv);",
   " vec3 base=uStyle==2 ? mix(relief(vHeight),imagery.rgb,imagery.a) :",
   "   uStyle==1 ? vec3(0.29+0.63*vHeight) : relief(vHeight);",
-  " fragColor=vec4(base*(0.45+0.55*illumination),1.0);",
+  " vec3 lit=base*(0.45+0.55*illumination);",
+  " vec4 raster=texture(uRasterTexture,vUv);",
+  " lit=mix(lit,raster.rgb*(0.65+0.35*illumination),raster.a*uRasterOpacity);",
+  " vec4 overlay=texture(uOverlayTexture,vUv);",
+  " fragColor=vec4(uHasOverlayTexture==1 ? mix(lit,overlay.rgb*(0.65+0.35*illumination),overlay.a) : lit,1.0);",
   "}"
 ].join("\n");
 
@@ -232,8 +245,8 @@ export function createTerrainRenderer(
     throw new Error("Falha de ligação WebGL: "+gl.getProgramInfoLog(program));
   }
   const buffer = gl.createBuffer(), elementBuffer = gl.createBuffer();
-  const texture = gl.createTexture();
-  if (!buffer || !elementBuffer || !texture) throw new Error("Sem memória GPU para a malha.");
+  const texture = gl.createTexture(), overlayTexture=gl.createTexture(), rasterTexture=gl.createTexture();
+  if (!buffer || !elementBuffer || !texture || !overlayTexture || !rasterTexture) throw new Error("Sem memória GPU para a malha.");
   const [left,bottom,right,top] = data.boundsMeters;
   const extentX = right-left, extentZ = top-bottom;
   const extent = Math.max(extentX, extentZ, 1);
@@ -301,6 +314,21 @@ export function createTerrainRenderer(
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
   gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([150,170,140,255]));
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D,overlayTexture);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,0]));
+  gl.activeTexture(gl.TEXTURE2);
+  gl.bindTexture(gl.TEXTURE_2D,rasterTexture);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,0]));
+  gl.activeTexture(gl.TEXTURE0);
 
   // Add a georeferenced A→B profile overlay directly to the 3D renderer.
   // Only valid DEM samples are joined; NoData areas remain disconnected.
@@ -342,7 +370,7 @@ export function createTerrainRenderer(
     gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(overlayPoints),gl.STATIC_DRAW);}
   let lastMatrix:Float32Array|null=null;
 
-  let destroyed=false, imageLoaded=false, frame=0;
+  let destroyed=false, imageLoaded=false, overlayLoaded=false, frame=0;
   let yaw=0.72, pitch=0.90, distance=2.0;
   const draw=()=>{
     if(destroyed)return;
@@ -369,7 +397,15 @@ export function createTerrainRenderer(
     gl.uniform1i(gl.getUniformLocation(program,"uStyle"),
       options.style==="imagery"&&imageLoaded ? 2 : options.style==="grayscale" ? 1 : 0);
     gl.uniform1i(gl.getUniformLocation(program,"uTexture"),0);
+    gl.uniform1i(gl.getUniformLocation(program,"uOverlayTexture"),1);
+    gl.uniform1i(gl.getUniformLocation(program,"uRasterTexture"),2);
+    gl.uniform1f(gl.getUniformLocation(program,"uRasterOpacity"),
+      Math.max(0,Math.min(1,options.rasterOpacity??1)));
+    gl.uniform1i(gl.getUniformLocation(program,"uHasOverlayTexture"),overlayLoaded?1:0);
     gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
+    gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,overlayTexture);
+    gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,rasterTexture);
+    gl.activeTexture(gl.TEXTURE0);
     const selectedDetail = options.detailLevel && options.detailLevel !== "auto"
       ? options.detailLevel : distance > 4.1 ? "low" : distance > 2.8 ? "medium" : "full";
     const requested = levels[selectedDetail];
@@ -397,6 +433,34 @@ export function createTerrainRenderer(
       requestDraw();
     };
     image.src=options.textureUrl;
+  }
+  const overlayImage=new Image();
+  if(options.overlayTextureUrl){
+    overlayImage.onload=()=>{
+      if(destroyed)return;
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D,overlayTexture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,overlayImage);
+      gl.activeTexture(gl.TEXTURE0);
+      overlayLoaded=true;
+      requestDraw();
+    };
+    overlayImage.onerror=()=>{overlayLoaded=false;requestDraw();};
+    overlayImage.src=options.overlayTextureUrl;
+  }
+  const rasterImage=new Image();
+  if(options.rasterTextureUrl){
+    rasterImage.onload=()=>{
+      if(destroyed)return;
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D,rasterTexture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,rasterImage);
+      gl.activeTexture(gl.TEXTURE0);
+      requestDraw();
+    };
+    rasterImage.src=options.rasterTextureUrl;
   }
   let down: {x:number;y:number;initialX:number;initialY:number;dragged:boolean}|null=null;
   const pointerDown=(event: PointerEvent)=>{
@@ -437,6 +501,8 @@ export function createTerrainRenderer(
   return ()=>{
     destroyed=true; if(frame)cancelAnimationFrame(frame);resize.disconnect();
     image.onload=null;image.src="";
+    overlayImage.onload=null;overlayImage.onerror=null;overlayImage.src="";
+    rasterImage.onload=null;rasterImage.src="";
     canvas.removeEventListener("pointerdown",pointerDown);
     canvas.removeEventListener("pointermove",pointerMove);
     canvas.removeEventListener("pointerup",pointerUp);
@@ -446,7 +512,7 @@ export function createTerrainRenderer(
     gl.deleteBuffer(levels.medium.buffer);gl.deleteBuffer(levels.low.buffer);
     if(overlayLineBuffer)gl.deleteBuffer(overlayLineBuffer);
     if(overlayPointBuffer)gl.deleteBuffer(overlayPointBuffer);
-    gl.deleteTexture(texture);
+    gl.deleteTexture(texture);gl.deleteTexture(overlayTexture);gl.deleteTexture(rasterTexture);
     gl.deleteProgram(program);gl.deleteShader(vertex);gl.deleteShader(fragment);
   };
 }

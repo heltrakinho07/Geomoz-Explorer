@@ -94,3 +94,28 @@ O pipeline `GeoMoz Workbench CI` compila o motor GIS upstream e executa `scripts
 - **LOD de renderização:** «Automático» alterna entre índices de detalhe completo, 2 e 4 consoante o zoom. «Detalhe máximo», «Equilibrado» e «Rápido» permitem escolha manual. Triângulos de baixa resolução não atravessam células NoData. O LOD reduz o **número de triângulos desenhados**, mas não aumenta a resolução da malha de pré-visualização nem permite abrir DEM >32 MB; blocos COG com carregamento progressivo continuam para fase posterior.
 - **Compartilhamento:** o motor WebGL, o exportador GLB e as rotinas de LOD são o mesmo código-fonte nos módulos Explorer e GIS Workspace. A fonte `terrain-glb.ts` é copiada com import ajustado no build do GeoLibre.
 - **Testes:** `terrain-glb.test.ts` verifica cabeçalho GLB, chunks JSON/BIN, máscaras NoData, textura binária, tamanho do DEM 193×193 e níveis de detalhe. `test_terrain_satellite.py` executa verificação de grelha, períodos, filtros e pedido GEE simulado, sem credenciais reais. A autenticação real do GEE exige validação manual.
+
+
+## GeoMoz GIS Workspace — camadas temáticas sobre o relevo (04/11/2026)
+
+O módulo **Terreno 3D** partilha as camadas do projecto GIS e organiza a interface em separadores: **Camadas**, **Simbologia**, **Análise** e **Exportar**. O painel mantém uma área de visualização 3D ampla e os controlos de estilo base/LOD numa secção recolhível.
+
+### Camadas vectoriais
+
+- Adicionar polígonos, linhas e pontos GeoJSON **existentes no projecto**, sem segunda importação, ou importar `.geojson` / `.json` em WGS84.
+- Reprojectar para o mesmo SRC UTM/Web Mercator do DEM com proj4; o canvas de sobreposição só representa a parte situada na extensão do modelo, e o WebGL respeita triângulos NoData. O GeoJSON original **não é recortado fisicamente** nem alterado no projecto — o *recorte visual* é automático.
+- Reutilizar nomes, cores, contornos, opacidade e simbologia *categorizada* do GIS Workspace, incluindo valores e cores de `vectorStyleStops`.
+- Controlo de visibilidade, remoção da vista 3D, transparência por camada, símbolo único ou categorizado por campo; legenda por categoria, com edição de cores.
+- Segurança de dados: limite de 8000 feições / 350 mil vértices e GeoJSON WGS84 até 12 MB; validação de coordenadas. A camada original continua disponível no mapa 2D.
+
+### Rasters temáticos
+
+- Importação de GeoTIFF local ou de uma camada raster **já existente no catálogo do projecto** (até 32 MB). Reamostragem limitada a uma textura de 384 × 384 pixels no navegador, sem carregar o dataset inteiro em memória gráfica.
+- Reprojecção WGS84/UTM e recorte à extensão projectada do DEM; sem interpolar pixels categóricos entre classes e sem preencher NoData.
+- Um GeoTIFF de banda única é visualizado como raster categorizado (com cores oficiais para códigos **ESA WorldCover 2021** ou classes de textura USDA 1–12 quando aplicáveis); com três ou mais bandas, usa RGB. Legenda, visibilidade e transparência independentes das camadas vectoriais.
+- Raster temático fica abaixo da textura vectorial, sobre a hipsometria e o relevo sombreado. A alteração da transparência não modifica as elevações ou o DEM original.
+- A opção de **consulta directa ao GEE a partir do GIS Workspace** exige reutilização segura do estado de autenticação Firebase/GEE do utilizador no motor GeoLibre; não está incluída nesta fase. Pode exportar um GeoTIFF georreferenciado a partir das GeoAnálises/GEE existentes e adicioná-lo aqui. Não confundir um dataset ESA WorldCover de 2021 com cobertura anual de 2026.
+
+### Testes
+
+O teste de navegador `scripts/integration/geomoz-raster-browser.cjs` cobre um DEM autêntico no catálogo, importação de GeoJSON de geologia, classificação por atributo, transparência de 45%, importação de GeoTIFF pedológico classificado georreferenciado, transparência de 35%, selecção A→B, curvas de nível e exportação GLB. A compilação do GeoLibre e a estabilidade dos restantes módulos são verificadas na mesma execução.

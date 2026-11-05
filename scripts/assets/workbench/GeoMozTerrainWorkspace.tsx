@@ -26,6 +26,9 @@ import GeoMozTerrainSciencePanel, {type TerrainPickedPoint}
   from "./GeoMozTerrainSciencePanel";
 import { geomozNativeTerrainPreview } from "./geomoz-native-terrain-dem";
 import { encodeTerrainGLB } from "../../lib/geomoz-terrain-glb";
+import GeoMozTerrainLayers from "./GeoMozTerrainLayers";
+import { terrainOverlayTexture, type GeoMozTerrainOverlay } from "./geomoz-terrain-overlays";
+import { createTerrainRasterDrape, type GeoMozRasterDrape } from "./geomoz-terrain-raster-overlay";
 import "./geomoz-terrain-workspace.css";
 
 const LIMIT=32*1024*1024;
@@ -132,6 +135,11 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
   const [notice,setNotice]=useState("");
   const [style,setStyle]=useState<TerrainVisualStyle>("hypsometric");
   const [detailLevel,setDetailLevel]=useState<"auto"|"full"|"medium"|"low">("auto");
+  const [workspaceTab,setWorkspaceTab]=useState<"layers"|"style"|"analysis"|"export">("layers");
+  const [overlays,setOverlays]=useState<GeoMozTerrainOverlay[]>([]);
+  const [rasterDrape,setRasterDrape]=useState<(GeoMozRasterDrape & {opacity:number;visible:boolean})|null>(null);
+  const [rasterBusy,setRasterBusy]=useState(false);
+  const overlayTexture=useMemo(()=>terrain?terrainOverlayTexture(terrain,overlays):null,[terrain,overlays]);
   const [exaggeration,setExaggeration]=useState(2);
   const [pickTarget,setPickTarget]=useState<Target|null>(null);
   const [lastPick,setLastPick]=useState<TerrainPickedPoint|null>(null);
@@ -169,7 +177,9 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     setRendererError(null);
     try {
       return createTerrainRenderer(canvasRef.current,terrain,{
-        exaggeration,style,detailLevel,
+        exaggeration,style,detailLevel,overlayTextureUrl:overlayTexture,
+        rasterTextureUrl:rasterDrape?.visible?rasterDrape.imageDataUrl:null,
+        rasterOpacity:rasterDrape?.visible?rasterDrape.opacity:0,
         pickEnabled:!!pickTarget,onPick:selectPoint,
         profileOverlay:picked.A&&picked.B?
           {start:[picked.A.xMeters,picked.A.yMeters],
@@ -178,7 +188,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     }catch(cause){
       setRendererError(cause instanceof Error?cause.message:"O WebGL2 não pôde carregar o modelo.");
     }
-  },[open,terrain,exaggeration,style,detailLevel,pickTarget,picked]);
+  },[open,terrain,exaggeration,style,detailLevel,pickTarget,picked,overlayTexture,rasterDrape]);
 
   async function openSelectedDEM(){
     const layer=options.find(o=>o.id===selected);
@@ -191,6 +201,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
       const preview=await geomozNativeTerrainPreview(bytes,layer.name);
       if(controller.signal.aborted)return;
       setTerrain(preview);setPicked({});setLastPick(null);setPickTarget(null);
+      setOverlays([]);setRasterDrape(null);setWorkspaceTab("layers");
       setNotice("Modelo 3D do projecto: "+layer.name+
         " · "+preview.crs+" · "+preview.validFraction.toLocaleString("pt-PT",{style:"percent",maximumFractionDigits:1})+" válido");
     }catch(cause){
@@ -201,6 +212,22 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     }finally {
       if(abortRef.current===controller){abortRef.current=null;setBusy(false);}
     }
+  }
+  async function applyRasterOverlay(input:File|{source:string;name:string}){
+    if(!terrain)return;
+    if(rasterBusy)return;
+    setRasterBusy(true);setError(null);
+    try{
+      const name=input.name;
+      const buffer=input instanceof File
+        ?await input.arrayBuffer()
+        :await fetchBoundedTerrain(input.source,new AbortController().signal);
+      const prepared=await createTerrainRasterDrape(buffer,name,terrain);
+      setRasterDrape({...prepared,opacity:0.82,visible:true});
+      setNotice("Raster temático sobreposto e recortado à extensão do DEM ("+
+        Math.round(prepared.coverage*100)+"% de cobertura).");
+    }catch(cause){setError(cause instanceof Error?cause.message:"Não foi possível processar o raster.");}
+    finally{setRasterBusy(false);}
   }
   function exportGLB(){
     if(!terrain)return;
@@ -228,6 +255,7 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
       const scene=decodeTerrainScene(await file.text());
       setTerrain(scene.terrain);setStyle(scene.style);setExaggeration(scene.exaggeration);
       setPicked({});setPickTarget(null);setLastPick(null);
+      setOverlays([]);setRasterDrape(null);
       setNotice("Cena 3D reaberta. A camada raster original permanece no projecto SIG.");
     }catch(cause){setError(cause instanceof Error?cause.message:"Cena .geomoz inválida.");}
     finally{if(sceneInputRef.current)sceneInputRef.current.value="";}
@@ -299,54 +327,82 @@ export function GeoMozTerrainWorkspace({open,onClose,preferredLayerId}:Props) {
     {error&&<p className="gm-terrain-workspace-error" role="alert">{ui(error)}</p>}
     {!error&&notice&&<p className="gm-terrain-workspace-notice" role="status">{uiNotice(notice)}</p>}
     <div className="gm-terrain-native">
-      <aside className="gm-terrain-native-sidebar">
-        <h3>{ui("Dados, relevo e análise")}</h3>
-        <p>{ui("Modelo gerado a partir de uma camada do projecto GIS, sem reimportar o raster.")}</p>
-        <div className="gm-terrain-native-actions">
-          <button type="button" disabled={!terrain} onClick={saveScene}>
-            <Download size={14}/> {ui("Guardar .geomoz")}
-          </button>
-          <input className="sr-only" ref={sceneInputRef} type="file" accept=".geomoz"
-            aria-label={ui("Reabrir cena do terreno")} onChange={event=>void loadScene(event.target.files?.[0])}/>
-          <button type="button" onClick={()=>sceneInputRef.current?.click()}>{ui("Reabrir cena")}</button>
-          <button type="button" disabled={!terrain} onClick={exportGLB} data-testid="geomoz-terrain-export-glb">GLB 3D</button>
-          <button type="button" disabled={!terrain||!!rendererError} onClick={downloadPNG}>PNG</button>
-          <button type="button" disabled={!terrain||!!rendererError} onClick={()=>void downloadPDF()}>PDF</button>
+      <aside className="gm-terrain-native-sidebar" aria-label="Ferramentas do terreno 3D">
+        <nav className="gm-terrain-tabs" aria-label="Ferramentas 3D">
+          {([
+            ["layers","Camadas"],["style","Simbologia"],
+            ["analysis","Análise"],["export","Exportar"]
+          ] as const).map(([key,title])=>
+            <button key={key} type="button" aria-selected={workspaceTab===key}
+              data-testid={"terrain-tab-"+key} onClick={()=>setWorkspaceTab(key)}>{title}</button>)}
+        </nav>
+        <div className="gm-terrain-tab-content">
+          {(workspaceTab==="layers"||workspaceTab==="style")&&
+            <GeoMozTerrainLayers layers={layers} overlays={overlays} onChange={setOverlays}
+              activePanel={workspaceTab} terrainReady={!!terrain}
+              rasterOptions={options.filter(o=>o.id!==selected)} raster={rasterDrape}
+              rasterBusy={rasterBusy} onRasterChange={setRasterDrape}
+              onImportRaster={applyRasterOverlay}
+              onNotice={setNotice}/>}
+          {workspaceTab==="analysis"&&<>
+            <h3>{ui("Análise científica do DEM")}</h3>
+            {terrain?<GeoMozTerrainSciencePanel terrain={terrain} translate={ui}
+                pickedPoint={lastPick} activePickTarget={pickTarget}
+                onRequestPick={setPickTarget}
+                onAddContours={addContours} onAddProfile={addProfile}/>:
+              <p>Seleccione um DEM no cabeçalho para iniciar as análises.</p>}
+            <p className="gm-terrain-native-hint">{ui("Os resultados científicos provêm da malha simplificada. Para cálculos finais, execute as ferramentas de geoprocessamento sobre o GeoTIFF original.")}</p>
+          </>}
+          {workspaceTab==="export"&&<>
+            <h3>Exportar modelo e resultados</h3>
+            {terrain&&<div className="gm-terrain-native-info">
+              <strong>{terrain.name}</strong>
+              <small>{terrain.sourceCrs} → {terrain.crs}</small>
+              <span>{terrain.minElevation.toFixed(1)}–{terrain.maxElevation.toFixed(1)} m</span>
+              <small>{terrain.width} × {terrain.height} · {ui("pré-visualização")}</small>
+            </div>}
+            <div className="gm-terrain-native-actions">
+              <button type="button" disabled={!terrain} onClick={saveScene}>
+                <Download size={14}/> {ui("Guardar .geomoz")}
+              </button>
+              <input className="sr-only" ref={sceneInputRef} type="file" accept=".geomoz"
+                aria-label={ui("Reabrir cena do terreno")} onChange={event=>void loadScene(event.target.files?.[0])}/>
+              <button type="button" onClick={()=>sceneInputRef.current?.click()}>{ui("Reabrir cena")}</button>
+              <button type="button" disabled={!terrain} onClick={exportGLB} data-testid="geomoz-terrain-export-glb">GLB 3D</button>
+              <button type="button" disabled={!terrain||!!rendererError} onClick={downloadPNG}>PNG</button>
+              <button type="button" disabled={!terrain||!!rendererError} onClick={()=>void downloadPDF()}>PDF</button>
+            </div>
+            <p className="gm-terrain-native-hint">As camadas vectoriais do 3D ficam disponíveis na vista actual. O GLB exportado contém a malha do DEM; a textura vectorial deve ser exportada separadamente numa próxima versão.</p>
+          </>}
         </div>
-        {terrain&&<div className="gm-terrain-native-info">
-          <strong>{terrain.name}</strong>
-          <small>{terrain.sourceCrs} → {terrain.crs}</small>
-          <span>{terrain.minElevation.toFixed(1)}–{terrain.maxElevation.toFixed(1)} m</span>
-          <small>{terrain.width} × {terrain.height} · {ui("pré-visualização")}</small>
-        </div>}
-        <label className="gm-terrain-native-label">{ui("Estilo de relevo")}
-          <select value={style} onChange={e=>setStyle(e.target.value as TerrainVisualStyle)}>
-            <option value="hypsometric">{ui("Hipsometria · relevo sombreado")}</option>
-            <option value="grayscale">{ui("Relevo em escala de cinzentos")}</option>
-          </select>
-        </label>
-        <label className="gm-terrain-native-label">{ui("Nível de detalhe do relevo")}
-          <select value={detailLevel} aria-label={ui("Detalhe do terreno 3D")}
-            onChange={event=>setDetailLevel(event.target.value as typeof detailLevel)}>
-            <option value="auto">{ui("Automático com o zoom")}</option>
-            <option value="full">{ui("Detalhe máximo")}</option>
-            <option value="medium">{ui("LOD 2 · equilibrado")}</option>
-            <option value="low">{ui("LOD 4 · rápido")}</option>
-          </select>
-        </label>
-        <label className="gm-terrain-native-label">{ui("Exagero vertical")} · {exaggeration.toFixed(1)}×
-          <input type="range" min="1" max="15" step=".5" value={exaggeration}
-            onChange={event=>setExaggeration(Number(event.target.value))}/>
-        </label>
-        <button type="button" className="gm-terrain-native-reset"
-          onClick={()=>{setExaggeration(2);setStyle("hypsometric");}}>
-          <RotateCcw size={13}/> {ui("Restaurar estilo")}
-        </button>
-        {terrain&&<GeoMozTerrainSciencePanel terrain={terrain} translate={ui}
-          pickedPoint={lastPick} activePickTarget={pickTarget}
-          onRequestPick={setPickTarget}
-          onAddContours={addContours} onAddProfile={addProfile}/>}
-        <p className="gm-terrain-native-hint">{ui("Os resultados científicos provêm da malha simplificada. Para cálculos finais, execute as ferramentas de geoprocessamento sobre o GeoTIFF original.")}</p>
+        <div className="gm-terrain-display-options">
+          <details>
+            <summary>Visualização do relevo</summary>
+            <label className="gm-terrain-native-label">{ui("Estilo de relevo")}
+              <select value={style} onChange={e=>setStyle(e.target.value as TerrainVisualStyle)}>
+                <option value="hypsometric">{ui("Hipsometria · relevo sombreado")}</option>
+                <option value="grayscale">{ui("Relevo em escala de cinzentos")}</option>
+              </select>
+            </label>
+            <label className="gm-terrain-native-label">{ui("Nível de detalhe do relevo")}
+              <select value={detailLevel} aria-label={ui("Detalhe do terreno 3D")}
+                onChange={event=>setDetailLevel(event.target.value as typeof detailLevel)}>
+                <option value="auto">{ui("Automático com o zoom")}</option>
+                <option value="full">{ui("Detalhe máximo")}</option>
+                <option value="medium">{ui("LOD 2 · equilibrado")}</option>
+                <option value="low">{ui("LOD 4 · rápido")}</option>
+              </select>
+            </label>
+            <label className="gm-terrain-native-label">{ui("Exagero vertical")} · {exaggeration.toFixed(1)}×
+              <input type="range" min="1" max="15" step=".5" value={exaggeration}
+                onChange={event=>setExaggeration(Number(event.target.value))}/>
+            </label>
+            <button type="button" className="gm-terrain-native-reset"
+              onClick={()=>{setExaggeration(2);setStyle("hypsometric");}}>
+              <RotateCcw size={13}/> {ui("Restaurar estilo")}
+            </button>
+          </details>
+        </div>
       </aside>
       <div className="gm-terrain-native-viewport" aria-label={ui("Visualizador tridimensional")}>
         {terrain?<canvas ref={canvasRef} className="gm-terrain-native-canvas"
