@@ -8,6 +8,7 @@
 
 import React, { useState, useRef, useMemo, useCallback } from "react";
 import GISWorkspaceCesium from "@/components/GISWorkspaceCesium";
+import { categoricalFieldSummary, filterAttributeRows, toggleAttributeSelection } from "@/lib/gis-attribute-table";
 import GISWorkspaceOverview from "@/components/GISWorkspaceOverview";
 import "@/styles/gis-workspace.css";
 import TerrainStudio from "@/components/TerrainStudio";
@@ -384,6 +385,10 @@ export default function GeoProcessamento({
   const [selectedLayerId, setSelectedLayerId] = useState<string>("");
   const [secondLayerId, setSecondLayerId] = useState<string>("");
   const [tableLayerId, setTableLayerId] = useState<string | null>(null);
+  const [selectedTableRows, setSelectedTableRows] = useState<Record<string, number[]>>({});
+  const [showSelectedRows, setShowSelectedRows] = useState(false);
+  const [categoryField, setCategoryField] = useState("");
+  const [showCategoryStats, setShowCategoryStats] = useState(false);
 
   // Selected tool & parameters
   const [selectedToolId, setSelectedToolId] = useState<string>("vector_buffer");
@@ -5893,6 +5898,11 @@ export default function GeoProcessamento({
           drawingEnabled={drawingEnabled}
           drawingShape={drawingShape}
           onSelectLayer={setSelectedLayerId}
+          selectedFeatureIndices={selectedTableRows}
+          onSelectFeature={(layerId, featureIndex, additive) => {
+            setSelectedTableRows(old => ({...old, [layerId]: toggleAttributeSelection(old[layerId] ?? [], featureIndex, additive)}));
+            setTableLayerId(layerId);
+          }}
           onDrawComplete={(geometry, label) => {
             setDrawingEnabled(false);
             setDesktopSidebarOpen(true); setSidebarOpen(true);
@@ -5923,6 +5933,17 @@ export default function GeoProcessamento({
                   Tabela de Atributos — {layers.find((l) => l.id === tableLayerId)?.name}
                 </span>
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] text-slate-500">{(selectedTableRows[tableLayerId] ?? []).length} seleccionada(s)</span>
+                <label className="flex items-center gap-1 text-[11px]">
+                  <input type="checkbox" checked={showSelectedRows} onChange={event=>setShowSelectedRows(event.target.checked)} />
+                  Apenas seleccionadas
+                </label>
+                <button type="button" onClick={()=>setSelectedTableRows(old=>({...old,[tableLayerId]:[]}))}
+                  className="rounded border px-2 py-1 text-[11px]">Limpar selecção</button>
+                <button type="button" onClick={()=>setShowCategoryStats(value=>!value)}
+                  aria-expanded={showCategoryStats} className="rounded border px-2 py-1 text-[11px]">Categorias</button>
+              </div>
               <button
                 onClick={() => setTableLayerId(null)}
                 className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
@@ -5930,6 +5951,24 @@ export default function GeoProcessamento({
                 <X size={15} />
               </button>
             </div>
+            {showCategoryStats && (() => {
+              const layer=layers.find(item=>item.id===tableLayerId);
+              if(!layer) return null;
+              const field=layer.fields.includes(categoryField) ? categoryField : layer.fields[0] ?? "";
+              const chosen=selectedTableRows[tableLayerId] ?? [];
+              const features=showSelectedRows ? layer.geojson.features.filter((_,index)=>chosen.includes(index)) : layer.geojson.features;
+              const distribution=field ? categoricalFieldSummary(features,field) : [];
+              return <div className="border-b p-2 text-[11px]">
+                <label className="mr-2 font-semibold" htmlFor="geomoz-category-field">Campo categórico</label>
+                <select id="geomoz-category-field" value={field} onChange={event=>setCategoryField(event.target.value)} className="rounded border px-2 py-1 dark:bg-slate-900">
+                  {layer.fields.map(name=><option value={name} key={name}>{name}</option>)}
+                </select>
+                <p className="my-1 text-slate-500">{distribution.length} categorias · {features.length} feições (incluindo valores sem dados)</p>
+                <div className="flex max-h-24 flex-wrap gap-2 overflow-auto">
+                  {distribution.map(item=><span key={item.value} className="rounded border px-2 py-1">{item.value}: {item.count} ({item.percent.toFixed(1)}%)</span>)}
+                </div>
+              </div>;
+            })()}
             <div className="flex-1 overflow-auto p-2">
               {(() => {
                 const layer = layers.find((l) => l.id === tableLayerId);
@@ -5947,8 +5986,11 @@ export default function GeoProcessamento({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {layer.geojson.features.slice(0, 100).map((feat, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                      {filterAttributeRows(layer.geojson.features.map((feature,featureIndex)=>({feature,featureIndex})), selectedTableRows[layer.id] ?? [], showSelectedRows).slice(0, 100).map(({feature:feat, featureIndex:idx}) => (
+                        <tr key={idx} onClick={event=>setSelectedTableRows(old=>({...old,[layer.id]:toggleAttributeSelection(old[layer.id] ?? [],idx,event.shiftKey)}))}
+                          aria-selected={(selectedTableRows[layer.id] ?? []).includes(idx)}
+                          title="Clique para seleccionar; Shift + clique para adicionar ou remover"
+                          className={`cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 ${(selectedTableRows[layer.id] ?? []).includes(idx) ? "bg-amber-100 dark:bg-amber-950/40" : ""}`}>
                           {fields.map((f) => (
                             <td key={f} className="p-1.5 text-slate-700 dark:text-slate-300">
                               {String(feat.properties?.[f] ?? "—")}

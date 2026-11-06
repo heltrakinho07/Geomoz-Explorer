@@ -184,7 +184,7 @@ const server = createServer(async (req, res) => {
     const vectorBox=await map.boundingBox();
     await map.click({position:{x:vectorBox.width/2,y:vectorBox.height/2}});
     await page.getByRole("button",{name:"Fechar atributos",exact:true}).waitFor();
-    await page.getByText("Cesium vector",{exact:true}).waitFor();
+    await page.getByTestId("cesium-workspace").getByText("Cesium vector",{exact:true}).waitFor();
     await page.getByRole("button",{name:"Fechar atributos",exact:true}).click();
     // Deterministic local services verify real Cesium requests without an external provider.
     await page.getByRole("button",{name:"Dados",exact:true}).click();

@@ -27,9 +27,10 @@ export function pickWorkspaceFeature(layers:Layer[],lonlat:[number,number],pixel
   };
   // Local vectors are appended by the project, so the last feature is on top.
   for(const layer of [...layers].reverse())if(layer.visible){
-    for(const feature of [...layer.geojson.features].reverse()){
+    for(let featureIndex=layer.geojson.features.length-1;featureIndex>=0;featureIndex--){
+      const feature=layer.geojson.features[featureIndex];
       if(!feature.geometry)continue;
-      try{if(hit(feature.geometry))return {layerId:layer.id,name:String(feature.properties?.name??layer.name),properties:feature.properties??{}};}
+      try{if(hit(feature.geometry))return {layerId:layer.id,featureIndex,name:String(feature.properties?.name??layer.name),properties:feature.properties??{}};}
       catch{/* Skip malformed geometry without losing selection of other layers. */}
     }
   }
