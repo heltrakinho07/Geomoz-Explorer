@@ -15,6 +15,9 @@ MAX_FEATURES = 5000
 MAX_POSITIONS = 100_000
 _ALLOWED_PAPER = {"A4", "A3"}
 _ALLOWED_ORIENTATION = {"landscape", "portrait"}
+_ALLOWED_ENGINES = {"pyqgis", "cartopy"}
+_ALLOWED_GRIDS = {"none", "geographic", "utm", "both"}
+_ALLOWED_CRS = re.compile(r"^EPSG:(4326|32[67][0-9]{2})$")
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 _TYPES = {"Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon"}
 
@@ -74,6 +77,28 @@ def validate_job(raw: Any) -> dict:
     orientation = raw.get("orientation", "landscape")
     if paper not in _ALLOWED_PAPER or orientation not in _ALLOWED_ORIENTATION:
         raise InvalidJob("Formato de papel ou orientação inválidos.")
+    engine = raw.get("engine", "pyqgis")
+    if engine not in _ALLOWED_ENGINES:
+        raise InvalidJob("Motor de impressão inválido.")
+    map_crs = raw.get("map_crs", "EPSG:4326")
+    if not isinstance(map_crs, str) or not _ALLOWED_CRS.fullmatch(map_crs):
+        raise InvalidJob("CRS de impressão não suportado.")
+    if map_crs != "EPSG:4326" and not 1 <= int(map_crs[-2:]) <= 60:
+        raise InvalidJob("Zona UTM fora do intervalo válido.")
+    grid = raw.get("grid", {"type": "none"})
+    if not isinstance(grid, dict) or grid.get("type", "none") not in _ALLOWED_GRIDS:
+        raise InvalidJob("Configuração da grelha inválida.")
+    grid_type = grid.get("type", "none")
+    if engine == "cartopy" and grid_type in ("utm", "both"):
+        raise InvalidJob("Neste motor Cartopy, a anotação UTM requer PyQGIS.")
+    degree_step = grid.get("interval_degrees", 1.0)
+    metre_step = grid.get("interval_meters", 10000)
+    if (isinstance(degree_step, bool) or not isinstance(degree_step, (int, float))
+            or not math.isfinite(degree_step) or not 0.01 <= degree_step <= 30):
+        raise InvalidJob("Intervalo geográfico deve estar entre 0,01 e 30 graus.")
+    if (isinstance(metre_step, bool) or not isinstance(metre_step, (int, float))
+            or not math.isfinite(metre_step) or not 100 <= metre_step <= 1000000):
+        raise InvalidJob("Intervalo UTM deve estar entre 100 e 1 000 000 metros.")
     title = _text(raw.get("title", ""), "Título", 150, required=True)
     subtitle = _text(raw.get("subtitle", ""), "Subtítulo", 240)
     author = _text(raw.get("author", "GeoMoz Explorer"), "Autor", 100)
@@ -132,7 +157,10 @@ def validate_job(raw: Any) -> dict:
                 min(180,e+margin), min(90,n+margin)]
     else:
         raise InvalidJob("Não existem geometrias e o envelope não foi definido.")
-    return {"schema": 1, "paper": paper, "orientation": orientation, "dpi": dpi,
+    return {"schema": 1, "engine": engine, "map_crs": map_crs,
+            "grid": {"type": grid_type, "interval_degrees": float(degree_step),
+                     "interval_meters": float(metre_step)},
+            "paper": paper, "orientation": orientation, "dpi": dpi,
             "title": title, "subtitle": subtitle, "author": author,
             "attribution": attribution, "layers": normalized, "bbox": bbox}
 

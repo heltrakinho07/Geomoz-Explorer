@@ -18,6 +18,7 @@ from job import MAX_REQUEST_BYTES, InvalidJob, parse_request
 
 PORT = int(os.environ.get("GEOMOZ_PRINT_PORT", "8085"))
 TOKEN = os.environ.get("GEOMOZ_PRINT_WORKER_TOKEN", "")
+WORKER_ENGINE = os.environ.get("GEOMOZ_PRINT_ENGINE", "pyqgis")
 _MAX_CONCURRENT = threading.BoundedSemaphore(value=1)
 
 class Handler(BaseHTTPRequestHandler):
@@ -35,7 +36,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path != "/health":
             return self._error(404, "Rota não encontrada.")
-        payload = b'{"status":"ok","engine":"PyQGIS"}'
+        payload = json.dumps({"status": "ok", "engine": WORKER_ENGINE}).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
@@ -61,13 +62,17 @@ class Handler(BaseHTTPRequestHandler):
                 job = parse_request(self.rfile.read(int(length_str)))
             except InvalidJob as exc:
                 return self._error(422, str(exc))
+            if job["engine"] != WORKER_ENGINE:
+                return self._error(422, "Motor solicitado indisponível neste serviço.")
             with tempfile.TemporaryDirectory(prefix="geomoz-qgis-print-") as directory:
                 source = Path(directory) / "job.json"
                 output = Path(directory) / "mapa.pdf"
                 source.write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
                 try:
                     result = subprocess.run(
-                        [sys.executable, str(Path(__file__).with_name("render.py")), str(source), str(output)],
+                        [sys.executable, str(Path(__file__).with_name(
+                            "render_cartopy.py" if WORKER_ENGINE == "cartopy" else "render.py")),
+                         str(source), str(output)],
                         capture_output=True, timeout=90, check=False,
                         env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
                     )
@@ -91,6 +96,8 @@ class Handler(BaseHTTPRequestHandler):
             _MAX_CONCURRENT.release()
 
 if __name__ == "__main__":
+    if WORKER_ENGINE not in {"pyqgis", "cartopy"}:
+        raise SystemExit("Motor de impressão inválido.")
     if len(TOKEN) < 32:
         raise SystemExit("GEOMOZ_PRINT_WORKER_TOKEN obrigatório (mínimo 32 caracteres).")
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)

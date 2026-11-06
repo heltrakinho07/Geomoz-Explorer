@@ -20,7 +20,8 @@ def render(job: dict, output: str) -> None:
         QgsApplication, QgsFillSymbol, QgsLineSymbol, QgsMarkerSymbol,
         QgsPrintLayout, QgsLayoutExporter, QgsLayoutItemLabel, QgsLayoutItemMap,
         QgsLayoutItemScaleBar, QgsLayoutPoint, QgsLayoutSize, QgsProject,
-        QgsRectangle, QgsVectorLayer, QgsCoordinateReferenceSystem, Qgis,
+        QgsRectangle, QgsVectorLayer, QgsCoordinateReferenceSystem, QgsCoordinateTransform,
+        QgsLayoutItemMapGrid, Qgis,
     )
     from qgis.PyQt.QtCore import Qt
     from qgis.PyQt.QtGui import QFont, QColor
@@ -30,7 +31,7 @@ def render(job: dict, output: str) -> None:
     try:
         project = QgsProject.instance()
         project.clear()
-        project.setCrs(QgsCoordinateReferenceSystem("EPSG:4326"))
+        project.setCrs(QgsCoordinateReferenceSystem(job["map_crs"]))
         with tempfile.TemporaryDirectory(prefix="geomoz-qgis-layers-") as directory:
             for index, item in enumerate(job["layers"]):
                 src = Path(directory) / f"layer-{index}.geojson"
@@ -91,11 +92,42 @@ def render(job: dict, output: str) -> None:
             layout.addLayoutItem(map_item)
             map_item.attemptMove(QgsLayoutPoint(margin, header_end))
             map_item.attemptResize(QgsLayoutSize(map_width, map_height))
-            map_item.setCrs(QgsCoordinateReferenceSystem("EPSG:4326"))
+            map_crs = QgsCoordinateReferenceSystem(job["map_crs"])
+            map_item.setCrs(map_crs)
             map_item.setLayers(list(reversed(project.mapLayers().values())))
             map_item.setKeepLayerSet(True)
             bbox = job["bbox"]
-            map_item.zoomToExtent(QgsRectangle(*bbox))
+            geographic_crs = QgsCoordinateReferenceSystem("EPSG:4326")
+            projected_bbox = QgsCoordinateTransform(
+                geographic_crs, map_crs, project).transformBoundingBox(QgsRectangle(*bbox))
+            map_item.zoomToExtent(projected_bbox)
+            grid_config = job["grid"]
+            grid_modes = (["geographic", "utm"] if grid_config["type"] == "both"
+                          else [grid_config["type"]])
+            for mode in grid_modes:
+                if mode == "none":
+                    continue
+                coordinate_grid = QgsLayoutItemMapGrid("GeoMoz " + mode, map_item)
+                if mode == "geographic":
+                    coordinate_grid.setCrs(geographic_crs)
+                    interval = max(grid_config["interval_degrees"],
+                                   max(bbox[2]-bbox[0], bbox[3]-bbox[1]) / 12)
+                    coordinate_grid.setAnnotationPrecision(2)
+                else:
+                    zone = max(1, min(60, int(((bbox[0] + bbox[2]) / 2 + 180) // 6 + 1)))
+                    code = (32700 if (bbox[1] + bbox[3]) / 2 < 0 else 32600) + zone
+                    coordinate_grid.setCrs(QgsCoordinateReferenceSystem(f"EPSG:{code}"))
+                    interval = grid_config["interval_meters"]
+                    coordinate_grid.setAnnotationPrecision(0)
+                coordinate_grid.setIntervalX(interval)
+                coordinate_grid.setIntervalY(interval)
+                coordinate_grid.setStyle(QgsLayoutItemMapGrid.Solid)
+                coordinate_grid.setGridLineColor(QColor("#94a3b8"))
+                coordinate_grid.setGridLineWidth(0.12)
+                coordinate_grid.setAnnotationEnabled(True)
+                coordinate_grid.setAnnotationFont(QFont("DejaVu Sans", 7))
+                coordinate_grid.setAnnotationFrameDistance(1.5)
+                map_item.grids().addGrid(coordinate_grid)
             map_item.setFrameEnabled(True)
             map_item.setFrameStrokeColor(QColor("#94a3b8"))
             map_item.refresh()
