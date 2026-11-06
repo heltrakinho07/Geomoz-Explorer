@@ -264,7 +264,8 @@ async def isolate_gee_requests(request: Request, call_next):
     if (request.url.path.startswith("/geomoz-api/gee/") or
             request.url.path.startswith("/geomoz-api/terrain/gee-") or
             request.url.path in ("/geomoz-api/ai/agent-chat", "/geomoz-api/ai/temporal-pixel",
-                                 "/geomoz-api/ai/temporal-histogram", "/geomoz-api/ai/temporal-geotiff")):
+                                 "/geomoz-api/ai/temporal-histogram", "/geomoz-api/ai/temporal-geotiff",
+                                 "/geomoz-api/ai/temporal-monthly-series")):
         async with _gee_request_lock:
             return await call_next(request)
     return await call_next(request)
@@ -1575,6 +1576,8 @@ async def _geoai_run_temporal(req: GeoAiTemporalRecipeRequest, operation: str):
                 req.threshold, req.scale_m, req.cloud_pct)
         if operation == "histogram":
             return public.temporal_histogram(*args, req.scale_m, req.cloud_pct)
+        if operation == "monthly":
+            return public.temporal_monthly_series(*args, req.scale_m, req.cloud_pct)
         if operation == "geotiff":
             return public.temporal_geotiff_download(*args, req.scale_m, req.cloud_pct)
         raise ValueError("Operação temporal desconhecida.")
@@ -1599,6 +1602,13 @@ async def geoai_temporal_histogram(req: GeoAiTemporalRecipeRequest,
                                    uid: str = Depends(require_gee_auth)):
     """Compute bounded, on-demand histograms. Never derive values from tile colors."""
     return await _geoai_run_temporal(req, "histogram")
+
+
+@app.post("/geomoz-api/ai/temporal-monthly-series")
+async def geoai_temporal_monthly_series(req: GeoAiTemporalRecipeRequest,
+                                        uid: str = Depends(require_gee_auth)):
+    """Return observed monthly index means and explicit no-data months."""
+    return await _geoai_run_temporal(req, "monthly")
 
 
 @app.post("/geomoz-api/ai/temporal-geotiff")
