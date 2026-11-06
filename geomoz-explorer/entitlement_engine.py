@@ -65,7 +65,7 @@ def expire_stale_reservations(uid, max_results=30):
             continue
         if lease_end > now:
             continue
-        txn = db.transaction()
+        txn = db.transaction(max_attempts=20)
 
         @firestore.transactional
         def reclaim(tx):
@@ -102,7 +102,7 @@ def reserve_credits(uid, operation):
     reservation_ref = _reservation_ref(db, uid, operation_id)
     now = _utcnow()
     expires = (now + timedelta(seconds=LEASE_SECONDS)).isoformat()
-    tx = db.transaction()
+    tx = db.transaction(max_attempts=20)
 
     @firestore.transactional
     def allocate(transaction):
@@ -137,7 +137,7 @@ def settle_credits(reservation, *, success):
     reserve_ref = _reservation_ref(db, reservation["uid"], reservation["id"])
     event_ref = bill_ref.collection("usageEvents").document(reservation["id"])
     now = _utcnow()
-    tx = db.transaction()
+    tx = db.transaction(max_attempts=20)
 
     @firestore.transactional
     def settle(transaction):
