@@ -78,7 +78,7 @@ def validate_job(raw: Any) -> dict:
     if paper not in _ALLOWED_PAPER or orientation not in _ALLOWED_ORIENTATION:
         raise InvalidJob("Formato de papel ou orientação inválidos.")
     engine = raw.get("engine", "pyqgis")
-    if engine not in _ALLOWED_ENGINES:
+    if not isinstance(engine, str) or engine not in _ALLOWED_ENGINES:
         raise InvalidJob("Motor de impressão inválido.")
     map_crs = raw.get("map_crs", "EPSG:4326")
     if not isinstance(map_crs, str) or not _ALLOWED_CRS.fullmatch(map_crs):
@@ -86,7 +86,8 @@ def validate_job(raw: Any) -> dict:
     if map_crs != "EPSG:4326" and not 1 <= int(map_crs[-2:]) <= 60:
         raise InvalidJob("Zona UTM fora do intervalo válido.")
     grid = raw.get("grid", {"type": "none"})
-    if not isinstance(grid, dict) or grid.get("type", "none") not in _ALLOWED_GRIDS:
+    if (not isinstance(grid, dict) or not isinstance(grid.get("type", "none"), str)
+            or grid.get("type", "none") not in _ALLOWED_GRIDS):
         raise InvalidJob("Configuração da grelha inválida.")
     grid_type = grid.get("type", "none")
     if engine == "cartopy" and grid_type in ("utm", "both"):
