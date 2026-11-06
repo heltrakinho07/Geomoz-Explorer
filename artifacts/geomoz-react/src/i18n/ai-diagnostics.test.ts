@@ -52,6 +52,8 @@ describe("GeoMoz AI technical errors and dossier locale", () => {
     expect(dossier).toContain("JSON.stringify(dossier, null, 2)");
     expect(dossier).toContain("localizedAgentWarning(translatedLocale, text)");
     expect(dossier).toContain('t("dossier.export")');
-    expect(dossier).toContain("JSON.stringify({ parametros: record.parameters, resultado: record.result }, null, 2)");
+    expect(dossier).toContain('sourceLabel(record.source)');
+    expect(dossier).toContain('Ver parâmetros e JSON técnico');
+    expect(dossier).toContain("JSON.stringify({ parametros: record.parameters, fonte: record.source, resultado: record.result }, null, 2)");
   });
 });

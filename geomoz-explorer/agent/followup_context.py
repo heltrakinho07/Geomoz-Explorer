@@ -13,7 +13,7 @@ def fold(value):
 
 
 _RELATIVE = re.compile(
-    r"\b(?:a mesma (?:area|regiao|zona|localidade)|"
+    r"\b(?:(?:a|na|para a|sobre a) mesma (?:area|regiao|zona|localidade)|"
     r"o mesmo (?:distrito|local|municipio|territorio|sitio)|"
     r"(?:nessa|nesta|naquela) (?:area|regiao|zona)|"
     r"(?:nesse|neste) (?:distrito|local|territorio)|"
