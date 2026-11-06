@@ -50,6 +50,9 @@ jobs:
           source = {
             "title": "Mapa geológico de Manica",
             "paper": "A3",
+            "engine": "pyqgis",
+            "map_crs": "EPSG:32736",
+            "grid": {"type": "both", "interval_degrees": 0.1, "interval_meters": 10000},
             "orientation": "landscape",
             "dpi": 300,
             "layers": [{
@@ -81,5 +84,56 @@ jobs:
         with:
           name: geomoz-pyqgis-a3-vector-evidence
           path: services/geomoz-qgis-print/test-map.pdf
+          retention-days: 7
+          if-no-files-found: ignore
+
+  cartopy-render-smoke:
+    name: Generate a real Cartopy A4 scientific PDF
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Cartopy and PDF inspection tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            python3-cartopy python3-matplotlib python3-shapely poppler-utils fonts-dejavu-core
+      - name: Generate scientific map with geographic coordinates
+        run: |
+          cd services/geomoz-qgis-print
+          /usr/bin/python3 - <<'PY'
+          import json
+          from job import validate_job
+          source = {
+            "title": "Sismicidade de Manica",
+            "paper": "A4",
+            "orientation": "landscape",
+            "dpi": 300,
+            "engine": "cartopy",
+            "map_crs": "EPSG:32736",
+            "grid": {"type": "geographic", "interval_degrees": 0.1},
+            "layers": [{
+              "name": "Epicentros",
+              "color": "#dc2626",
+              "geojson": {"type": "FeatureCollection", "features": [
+                {"type": "Feature", "geometry": {"type": "Point",
+                 "coordinates": [33.2, -19.5]}, "properties": {"magnitude": 4.2}}
+              ]}
+            }]
+          }
+          with open("test-cartopy.json", "w") as f:
+              json.dump(validate_job(source), f)
+          PY
+          MPLBACKEND=Agg MPLCONFIGDIR=/tmp/geomoz-ci-mpl \
+            /usr/bin/python3 render_cartopy.py test-cartopy.json test-cartopy.pdf
+          test "$(stat -c%s test-cartopy.pdf)" -gt 1000
+          pdfinfo test-cartopy.pdf | grep -q 'Page size:'
+          pdftotext test-cartopy.pdf - | grep -q 'Manica'
+      - name: Retain PDF rendering evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: geomoz-cartopy-a4-vector-evidence
+          path: services/geomoz-qgis-print/test-cartopy.pdf
           retention-days: 7
           if-no-files-found: ignore

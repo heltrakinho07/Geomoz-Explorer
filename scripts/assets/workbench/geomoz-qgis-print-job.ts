@@ -9,6 +9,9 @@ export interface GeoMozPrintableLayer {
 }
 export interface GeoMozQgisJob {
   schema: 1;
+  engine: "pyqgis" | "cartopy";
+  map_crs: string;
+  grid: { type: "none" | "geographic" | "utm" | "both"; interval_degrees: number; interval_meters: number };
   title: string;
   subtitle: string;
   paper: "A4" | "A3";
@@ -26,7 +29,9 @@ export interface GeoMozQgisJob {
 export function buildGeoMozQgisPrintJob(
   layers: readonly GeoMozPrintableLayer[],
   selectedIds: readonly string[],
-  config: { title: string; paper: "A4" | "A3"; orientation: "landscape" | "portrait"; dpi: 150 | 300 | 600 },
+  config: { title: string; paper: "A4" | "A3"; orientation: "landscape" | "portrait"; dpi: 150 | 300 | 600;
+    engine?: "pyqgis" | "cartopy"; mapCrs?: string; gridType?: "none" | "geographic" | "utm" | "both";
+    intervalDegrees?: number; intervalMeters?: number; },
 ): GeoMozQgisJob {
   const title = config.title.trim();
   if (!title || title.length > 150) throw Error("Introduza um título válido até 150 caracteres.");
@@ -34,6 +39,24 @@ export function buildGeoMozQgisPrintJob(
       !["landscape", "portrait"].includes(config.orientation) ||
       ![150, 300, 600].includes(config.dpi)) {
     throw Error("Formato de impressão inválido.");
+  }
+  const engine = config.engine ?? "pyqgis";
+  const mapCrs = config.mapCrs ?? "EPSG:4326";
+  const gridType = config.gridType ?? "none";
+  const intervalDegrees = config.intervalDegrees ?? 1;
+  const intervalMeters = config.intervalMeters ?? 10000;
+  const utm = mapCrs.match(/^EPSG:(326|327)(\d{2})$/);
+  if (!["pyqgis", "cartopy"].includes(engine)) throw Error("Motor de impressão inválido.");
+  if (mapCrs !== "EPSG:4326" && (!utm || Number(utm[2]) < 1 || Number(utm[2]) > 60)) {
+    throw Error("CRS de impressão inválido.");
+  }
+  if (!["none", "geographic", "utm", "both"].includes(gridType)) throw Error("Grelha inválida.");
+  if (engine === "cartopy" && (gridType === "utm" || gridType === "both")) {
+    throw Error("Para anotações UTM seleccione o motor PyQGIS.");
+  }
+  if (!Number.isFinite(intervalDegrees) || intervalDegrees < 0.01 || intervalDegrees > 30 ||
+      !Number.isFinite(intervalMeters) || intervalMeters < 100 || intervalMeters > 1000000) {
+    throw Error("Intervalos da grelha inválidos.");
   }
   const ids = new Set(selectedIds);
   const chosen = layers.filter(layer => ids.has(layer.id) && layer.type === "geojson");
@@ -55,7 +78,9 @@ export function buildGeoMozQgisPrintJob(
     };
   });
   const job: GeoMozQgisJob = {
-    schema: 1, title, subtitle: "", paper: config.paper,
+    schema: 1, engine, map_crs: mapCrs,
+    grid: { type: gridType, interval_degrees: intervalDegrees, interval_meters: intervalMeters },
+    title, subtitle: "", paper: config.paper,
     orientation: config.orientation, dpi: config.dpi,
     author: "GeoMoz Explorer", attribution: "Created with GeoMoz Explorer",
     layers: converted,

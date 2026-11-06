@@ -20,6 +20,17 @@ class ServiceTests(unittest.TestCase):
         self.assertIn("BoundedSemaphore(value=1)", source)
         self.assertIn("MAX_REQUEST_BYTES", source)
 
+    def test_workers_reject_cross_engine_jobs_and_expose_no_browser_secret(self):
+        code = (root / "service.py").read_text()
+        self.assertIn('job["engine"] != WORKER_ENGINE', code)
+        self.assertIn('"render_cartopy.py"', code)
+        self.assertIn('WORKER_ENGINE not in {"pyqgis", "cartopy"}', code)
+        compose = (root / "compose.yaml").read_text()
+        self.assertIn("GEOMOZ_PRINT_ENGINE: cartopy", compose)
+        self.assertIn("GEOMOZ_PRINT_ENGINE: pyqgis", compose)
+        self.assertIn("127.0.0.1:", compose)
+        self.assertIn("read_only: true", compose)
+
     def test_compose_is_only_bound_to_localhost(self):
         compose = (root / "compose.yaml").read_text()
         self.assertIn("127.0.0.1:", compose)

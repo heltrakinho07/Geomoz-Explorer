@@ -78,6 +78,42 @@ class PrintJobTests(unittest.TestCase):
         item["layers"][0]["geojson"]["features"][0]["geometry"] = geom
         with self.assertRaises(InvalidJob): validate_job(item)
 
+    def test_cartopy_and_projection_grid_contract(self):
+        item = good()
+        item.update({
+            "engine": "cartopy", "map_crs": "EPSG:32736",
+            "grid": {"type": "geographic", "interval_degrees": 0.5, "interval_meters": 10000},
+        })
+        result = validate_job(item)
+        self.assertEqual(result["engine"], "cartopy")
+        self.assertEqual(result["map_crs"], "EPSG:32736")
+        self.assertEqual(result["grid"]["type"], "geographic")
+        item["engine"] = "pyqgis"
+        item["grid"]["type"] = "both"
+        self.assertEqual(validate_job(item)["grid"]["type"], "both")
+
+    def test_print_engine_and_crs_reject_untrusted_inputs(self):
+        for invalid in ("external", {"name": "pyqgis"}, None):
+            item = good()
+            item["engine"] = invalid
+            with self.subTest(engine=invalid), self.assertRaises(InvalidJob):
+                validate_job(item)
+        for invalid in ("EPSG:32700", "EPSG:32761", "EPSG:3857", "file:///etc/passwd"):
+            item = good()
+            item["map_crs"] = invalid
+            with self.subTest(crs=invalid), self.assertRaises(InvalidJob):
+                validate_job(item)
+        item = good()
+        item["engine"] = "cartopy"
+        item["grid"] = {"type": "utm"}
+        with self.assertRaises(InvalidJob):
+            validate_job(item)
+        for invalid in (0, -1, float("nan"), "1"):
+            item = good()
+            item["grid"] = {"type": "geographic", "interval_degrees": invalid}
+            with self.subTest(interval=invalid), self.assertRaises(InvalidJob):
+                validate_job(item)
+
     def test_roundtrip(self):
         self.assertEqual(parse_request(json.dumps(good()).encode())["title"],
                          "Mapa Geológico de Manica")
