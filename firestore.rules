@@ -70,6 +70,7 @@ service cloud.firestore {
     match /billingProjectQuota/{userId} { allow read, write: if false; }
     // Plan interests and eligibility are only written/read by authenticated server APIs.
     match /billingPlanRequests/{userId} { allow read, write: if false; }
+    match /billingUsage/{userId}/{document=**} { allow read, write: if false; }
 
     // Administrative data is only available through verified Firebase Admin SDK.
     match /platformConfig/{documentId} { allow read, write: if false; }
