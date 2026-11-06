@@ -1,0 +1,172 @@
+"""Gateway security and authenticated PDF lifecycle regression tests.
+
+All cloud integrations are mocked: tests never contact GCP or expose secrets.
+"""
+import json
+import os
+import sys
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import print_gateway as pg
+
+
+def good_job():
+    return {
+        "engine": "cartopy", "map_crs": "EPSG:32736",
+        "grid": {"type": "geographic", "interval_degrees": 0.5},
+        "title": "Sismicidade de Manica", "paper": "A4",
+        "orientation": "landscape", "dpi": 300,
+        "layers": [{
+            "name": "Epicentros", "color": "#c026d3",
+            "geojson": {"type": "FeatureCollection", "features": [
+                {"type": "Feature", "properties": {"mag": 4.2},
+                 "geometry": {"type": "Point", "coordinates": [33.1, -19.4]}}
+            ]}
+        }],
+    }
+
+
+CONFIG = {
+    "GEOMOZ_PRINT_BUCKET": "geomoz-private-print-ci",
+    "GEOMOZ_PRINT_TASKS_QUEUE": "projects/p/locations/europe-west1/queues/q",
+    "GEOMOZ_PRINT_TASKS_SERVICE_ACCOUNT": "print-tasks@example.iam.gserviceaccount.com",
+    "GEOMOZ_PRINT_DISPATCH_URL": "https://api.example.com/geomoz-api/v1/prints/internal/dispatch",
+    "GEOMOZ_PRINT_PYQGIS_URL": "https://qgis.example.com/v1/print/pdf",
+    "GEOMOZ_PRINT_CARTOPY_URL": "https://cartopy.example.com/v1/print/pdf",
+    "GEOMOZ_PRINT_WORKER_TOKEN": "x" * 40,
+}
+
+
+class FakeBlob:
+    def __init__(self):
+        self.data = None
+
+    def upload_from_string(self, data, **kwargs):
+        self.data = data
+
+    def download_as_bytes(self):
+        return self.data
+
+
+class FakeBucket:
+    def __init__(self):
+        self.blobs = {}
+
+    def blob(self, name):
+        return self.blobs.setdefault(name, FakeBlob())
+
+
+class GatewayTests(unittest.TestCase):
+    def setUp(self):
+        app = FastAPI()
+        app.include_router(pg.router)
+        app.dependency_overrides[pg._uid] = lambda: "u123"
+        self.client = TestClient(app)
+
+    def test_contract_parity(self):
+        root = Path(__file__).resolve().parents[2]
+        api_copy = (root / "geomoz-explorer/print_job.py").read_bytes()
+        worker = (root / "services/geomoz-qgis-print/job.py").read_bytes()
+        self.assertEqual(api_copy, worker, "API and renderer must accept exactly the same safe job schema.")
+
+    def test_disabled_without_provisioning_and_rejects_untrusted_urls(self):
+        with patch.dict(os.environ, {}, clear=True):
+            response = self.client.post("/geomoz-api/v1/prints", json=good_job(),
+                                        headers={"Idempotency-Key": "a" * 32})
+        self.assertEqual(response.status_code, 503)
+        self.assertNotIn("WORKER_TOKEN", response.text)
+        with patch.object(pg, "_settings", return_value=CONFIG):
+            response = self.client.post("/geomoz-api/v1/prints", json=good_job(),
+                                        headers={"Idempotency-Key": "bad"})
+            self.assertEqual(response.status_code, 422)
+            invalid = good_job()
+            invalid["layers"][0]["geojson"] = {
+                "type": "external", "url": "http://169.254.169.254/latest/meta-data"}
+            response = self.client.post("/geomoz-api/v1/prints", json=invalid,
+                                        headers={"Idempotency-Key": "a" * 32})
+            self.assertEqual(response.status_code, 422)
+
+    def test_pdf_job_create_status_and_owner_only_result(self):
+        print_id = "a" * 32
+        bucket = FakeBucket()
+        doc = {
+            "uid": "u123", "status": "queued", "engine": "cartopy",
+            "paper": "A4", "createdAt": pg._iso(pg._now()),
+            "expiresAt": pg._iso(pg._now() + pg.JOB_TTL),
+            "outputPath": "private.pdf", "sizeBytes": 0,
+        }
+        with (patch.object(pg, "_settings", return_value=CONFIG),
+              patch.object(pg, "_allocate", return_value=(print_id, True)) as allocate,
+              patch.object(pg, "_bucket", return_value=bucket),
+              patch.object(pg, "_enqueue") as enqueue,
+              patch.object(pg, "_owned", return_value=doc) as owned):
+            response = self.client.post("/geomoz-api/v1/prints",
+                                        headers={"Idempotency-Key": "b" * 32},
+                                        json=good_job())
+            self.assertEqual(response.status_code, 202)
+            self.assertEqual(response.json()["id"], print_id)
+            self.assertIn("statusUrl", response.json())
+            self.assertEqual(allocate.call_count, 1)
+            self.assertEqual(enqueue.call_count, 1)
+            response = self.client.get("/geomoz-api/v1/prints/" + print_id)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["status"], "queued")
+            response = self.client.get("/geomoz-api/v1/prints/" + print_id + "/result")
+            self.assertEqual(response.status_code, 409)
+            doc["status"] = "succeeded"
+            bucket.blob("private.pdf").data = b"%PDF-1.4\n" + b"x" * 400
+            response = self.client.get("/geomoz-api/v1/prints/" + print_id + "/result")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers["content-type"], "application/pdf")
+            self.assertEqual(response.headers["cache-control"], "private, no-store, max-age=0")
+            owned.assert_called()
+
+    def test_invalid_id_and_dispatch_unauthorized(self):
+        resp = self.client.get("/geomoz-api/v1/prints/not-an-id")
+        self.assertEqual(resp.status_code, 404)
+        with patch.object(pg, "_settings", return_value=CONFIG):
+            resp = self.client.post("/geomoz-api/v1/prints/internal/dispatch",
+                                    json={"jobId": "a" * 32})
+        self.assertEqual(resp.status_code, 401)
+
+    def test_storage_paths_do_not_contain_raw_uid(self):
+        a, b = pg._paths("user:private:uid", "a" * 32)
+        self.assertNotIn("user:private:uid", a)
+        self.assertTrue(a.endswith("/input.json"))
+        self.assertTrue(b.endswith("/result.pdf"))
+
+    def test_authenticated_dispatch_renders_and_finalizes(self):
+        class FakeHTTP:
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *_):
+                pass
+            async def post(self, url, content, headers):
+                self.url = url
+                self.headers = headers
+                return type("Result", (), {"status_code": 200,
+                      "content": b"%PDF-1.5\n" + b"p" * 120})()
+        bucket = FakeBucket()
+        bucket.blob("input.json").data = json.dumps(good_job()).encode()
+        doc = {"engine": "cartopy", "inputPath": "input.json", "outputPath": "output.pdf"}
+        with (patch.object(pg, "_verify_dispatch", return_value=CONFIG),
+              patch.object(pg, "_claim_job", return_value=doc),
+              patch.object(pg, "_bucket", return_value=bucket),
+              patch.object(pg, "_finish") as finish,
+              patch.object(pg.httpx, "AsyncClient", return_value=FakeHTTP())):
+            response = self.client.post("/geomoz-api/v1/prints/internal/dispatch",
+                                        json={"jobId": "a" * 32})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["status"], "succeeded")
+            self.assertTrue(bucket.blob("output.pdf").data.startswith(b"%PDF-"))
+            finish.assert_called_once()
+            self.assertEqual(finish.call_args.args[1], "succeeded")
+
+if __name__ == "__main__":
+    unittest.main()
