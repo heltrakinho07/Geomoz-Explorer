@@ -3,7 +3,7 @@ import pytest
 from rasterio.io import MemoryFile
 from rasterio.transform import from_origin
 
-from workspace_dem import MAX_PIXELS, NODATA, WorkspaceDemRequest, inspect_area, write_dem_geotiff
+from workspace_dem import MAX_PIXELS, NODATA, WorkspaceDemRequest, inspect_area, resolve_workspace_area, write_dem_geotiff
 
 
 AREA = {
@@ -48,3 +48,43 @@ def test_export_keeps_crs_zero_elevation_and_nodata():
         assert raster.transform == transform
         assert raster.read(1, masked=True).mask.tolist() == [[False, True], [False, False]]
         np.testing.assert_equal(raster.read(1), values)
+
+def test_gaul_dem_uses_server_geometry_not_browser_geometry(monkeypatch):
+    from agent import administrative_boundaries
+
+    class FakeGeometry:
+        def simplify(self, maxError):
+            assert maxError == 100
+            return self
+
+        def getInfo(self):
+            return AREA
+
+    calls = []
+
+    def fake_administrative_geometry(country, level, admin1, admin2):
+        calls.append((country, level, admin1, admin2))
+        return FakeGeometry(), {"dataset": "FAO/GAUL/2025/level2"}
+
+    monkeypatch.setattr(administrative_boundaries, "administrative_geometry", fake_administrative_geometry)
+    request = WorkspaceDemRequest(
+        boundarySource="gaul2025", countryCode="MOZ", adminLevel=2,
+        admin1Code=123, admin2Code=456,
+    )
+    def reject_legacy(*args):
+        raise AssertionError("GAUL must not silently fall back to another boundary source")
+    assert resolve_workspace_area(request, reject_legacy) == AREA
+    assert calls == [("MOZ", 2, 123, 456)]
+
+
+@pytest.mark.parametrize("fields", [
+    {"boundarySource": "gaul2025", "countryCode": "MOZ", "adminLevel": 2, "admin1Code": 123},
+    {"boundarySource": "gaul2025", "countryCode": "MOZ", "adminLevel": 1, "admin2Code": 456},
+    {"countryCode": "MOZ"},
+    {"boundarySource": "gaul2025", "countryCode": "MOZ", "geometry": AREA},
+    {"boundarySource": "gaul2025", "countryCode": "MOZ", "province": "Sofala"},
+])
+def test_gaul_dem_rejects_incomplete_or_mixed_selections(fields):
+    request = WorkspaceDemRequest(**fields)
+    with pytest.raises(ValueError):
+        resolve_workspace_area(request, lambda *_: AREA)
