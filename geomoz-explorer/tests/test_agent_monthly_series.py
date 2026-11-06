@@ -20,8 +20,8 @@ class MonthlySeriesTests(unittest.TestCase):
                 raise ValueError("Sem cenas Sentinel-2 no período/AOI e limiar de nuvens seleccionados.")
             return ("image", 3)
 
-        with patch.object(engine, "_grid", return_value=("region", {"scale": 30}, 1000)), \\
-             patch.object(engine, "_s2_image", side_effect=mock_image), \\
+        with patch.object(engine, "_grid", return_value=("region", {"scale": 30}, 1000)), \
+             patch.object(engine, "_s2_image", side_effect=mock_image), \
              patch.object(engine, "_summary", return_value={"mean": 0.0, "count": 10}):
             data = engine.temporal_monthly_series("area", "ndvi",
                 "2020-01-01", "2020-03-01", "2025-01-01", "2025-03-01")
