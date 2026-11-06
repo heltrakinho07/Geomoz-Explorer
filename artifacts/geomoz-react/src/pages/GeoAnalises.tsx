@@ -9,6 +9,7 @@ import { useProject } from "@/context/ProjectContext";
 import { usePortalTranslation } from "@/i18n/usePortalTranslation";
 import { scienceUiText, type ScienceUiKey } from "@/i18n/scienceUi";
 import { analysisControlText, type AnalysisControlKey } from "@/i18n/analysisControls";
+import { getAnalysisSidebarConfig } from "@/lib/geoanalises-sidebar-config";
 import { geoAnalisesResultText, type GeoAnalisesResultKey } from "@/i18n/geoAnalisesResults";
 /**
  * GeoAnálises — Sentinel-2 spectral analysis module.
@@ -630,12 +631,13 @@ const TERRAIN_CLASS_NAMES = [
 
 // ── Colormap legend ────────────────────────────────────────────────────────────
 
-function ColormapLegend({ index }: { index: SpectralIndex }) {
+function ColormapLegend({ index, palette }: { index: SpectralIndex; palette?: string[] }) {
   if (index === "burn_severity") return <IndexLegendView activeTab="burn_severity" />;
   const def = INDEX_DEFS.find(d => d.id === index)!;
-  const stops = Array.from({ length: 10 }, (_, i) =>
-    applyColormap(i / 9, index)
-  ).join(", ");
+  // Prefer the rendered GEE palette to the default index colour ramp.
+  const stops = palette && palette.length > 1
+    ? palette.map(color => /^[0-9a-fA-F]{6}$/.test(color) ? `#${color}` : color).join(", ")
+    : Array.from({ length: 10 }, (_, i) => applyColormap(i / 9, index)).join(", ");
   return (
     <div>
       <div className="h-3.5 w-full rounded" style={{ background: `linear-gradient(to right, ${stops})` }} />
@@ -1316,14 +1318,6 @@ function GeospatialAnalyticsPanel({
             )}
           </div>
         )}
-      </div>
-
-      {/* Escala / Legenda do Índice */}
-      <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-          {rT("analysis.spectralScale")}
-        </h4>
-        <ColormapLegend index={activeIndex} />
       </div>
 
       {/* Collapsible Methodology, Geoscientific Interpretation & Formula */}
@@ -2884,6 +2878,7 @@ export default function GeoAnalises({
   const { geeConnected, geeProject } = useGeeAuth();
   const { toast } = useToast();
   const [activeTab, setActiveTab]     = useState<SpectralTab>("s2");
+  const sidebarConfig = getAnalysisSidebarConfig(activeTab, INDEX_DEFS.find(def => def.id === activeTab)?.group);
   const indexScience = SCIENCE[activeTab];
   const indexBlocked = indexScience?.status === "experimental";
   const needsPrePeriod = activeTab === "dnbr" || activeTab === "burn_severity";
@@ -3989,14 +3984,16 @@ export default function GeoAnalises({
                 <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <h5 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      {analysisT("gee.parameters")}
+                      {sidebarConfig.title}
                     </h5>
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
-                      S-2 / L8
+                      {sidebarConfig.source}
                     </span>
                   </div>
 
-                  <div className="period-grid grid grid-cols-2 gap-2">
+                  <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400" data-testid="analysis-method-description">{sidebarConfig.description}</p>
+                  {sidebarConfig.showDateRange && (
+                    <div className="period-grid grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block mb-1">{needsPrePeriod ? analysisT("gee.fireStart") : analysisT("gee.start")}</label>
                       <input
@@ -4016,8 +4013,10 @@ export default function GeoAnalises({
                       />
                     </div>
                   </div>
+                  )}
 
-                  <div>
+                  {sidebarConfig.showCloudFilter && (
+                                      <div>
                     <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 mb-1">
                       <span>{analysisT("gee.cloud")}</span>
                       <strong className="text-slate-700 dark:text-slate-200">{geeCloudPct}%</strong>
@@ -4031,8 +4030,10 @@ export default function GeoAnalises({
                       className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
                     />
                   </div>
+                  )}
 
-                  <details className="space-y-2.5 rounded-xl border border-slate-200 bg-white/70 p-2.5 dark:border-slate-700 dark:bg-slate-900/40">
+                  {sidebarConfig.showProcessingOptions && (
+                    <details className="space-y-2.5 rounded-xl border border-slate-200 bg-white/70 p-2.5 dark:border-slate-700 dark:bg-slate-900/40">
                     <summary className="cursor-pointer text-sm font-semibold">{analysisT("gee.advanced")}</summary>
                     <label htmlFor="gee-processing-mode" className="flex items-center justify-between gap-2 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
                       <span>{analysisT("gee.depth")}</span>
@@ -4073,6 +4074,7 @@ export default function GeoAnalises({
                       {analysisT("gee.timeoutHint")}
                     </p>
                   </details>
+                  )}
 
                   {needsPrePeriod && (
                     <fieldset className="space-y-2 rounded-lg border border-slate-200 p-2 dark:border-slate-700">
@@ -4091,13 +4093,15 @@ export default function GeoAnalises({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-2 border-b border-slate-200 p-3 text-sm dark:border-slate-700">
+              {sidebarConfig.requiresGee && (
+               <div className="flex items-center justify-between gap-2 border-b border-slate-200 p-3 text-sm dark:border-slate-700">
                 <span role="status">{geeReady ? "Earth Engine ligado" : "Earth Engine desligado"}</span>
                 {!geeReady && <button type="button" onClick={() => {
                   if (geeConnected || geeStatus?.connected) setUseGEE(true);
                   else setGeeCredsOpen(true);
                 }} className="rounded-lg bg-sky-700 px-3 py-2 font-semibold text-white">Ligar GEE</button>}
               </div>
+               )}
 
         {indexScience && (
           <div role="status" className="mx-3 my-2 rounded-xl border border-sky-200 bg-white p-3 text-xs text-slate-700 shadow dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
@@ -4111,12 +4115,19 @@ export default function GeoAnalises({
               <div className="sticky bottom-0 z-10 p-3 border-t border-slate-200 dark:border-slate-700 space-y-2 bg-white dark:bg-slate-900">
                 <button
                   type="button"
-                  onClick={handleCalculateActiveIndex}
-                  disabled={isCalculatingActiveIndex || isLineaments || indexBlocked || Boolean(periodError || studyAreaError) || (activeTab !== "s2" && !geeReady)}
+                  onClick={sidebarConfig.useSpecializedPanel
+                    ? () => { setResultsPanelOpen(true); setSidebarOpen(false); }
+                    : handleCalculateActiveIndex}
+                  disabled={isLineaments || indexBlocked || (!sidebarConfig.useSpecializedPanel && (isCalculatingActiveIndex || Boolean(periodError || studyAreaError) || (activeTab !== "s2" && !geeReady)))}
                   className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 disabled:from-slate-300 dark:disabled:from-slate-700 disabled:to-slate-400 dark:disabled:to-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-sky-500/20 active:scale-[0.98] cursor-pointer"
                 >
                   {(isLineaments || indexBlocked) ? (
                     <><Clock size={14} /><span>{analysisT("run.development")}</span></>
+                  ) : sidebarConfig.useSpecializedPanel ? (
+                    <>
+                      <SlidersHorizontal size={14} />
+                      <span>Abrir ferramentas específicas</span>
+                    </>
                   ) : isCalculatingActiveIndex ? (
                     <>
                       <Loader2 size={14} className="animate-spin" />
@@ -4169,7 +4180,7 @@ export default function GeoAnalises({
                       <CheckCircle2 size={12} className="text-emerald-600" />
                       {analysisT("run.active")}
                     </span>
-                    <span className="text-[10px] text-slate-400">GEE 24h</span>
+                    <span className="text-[10px] text-slate-400">{sidebarConfig.requiresGee ? "GEE 24h" : "EOX"}</span>
                   </div>
                 )}
 
@@ -4180,31 +4191,9 @@ export default function GeoAnalises({
                 )}
               </div>
 
-              {/* Legenda do Índice Selecionado na Sidebar */}
-              <div className="p-3 border-b border-slate-100 dark:border-slate-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    {analysisT("legend")}
-                  </h4>
-                  <span className="text-[9px] text-slate-400 whitespace-normal break-words text-right max-w-[65%]">
-                    {activeIndexLabel}
-                  </span>
-                </div>
-                {!isLineaments && <IndexLegendView
-                  activeTab={activeTab}
-                  activeDef={activeDef}
-                  topoClassesTile={topoClassesTile}
-                  contoursTile={contoursTile}
-                  lineamentsTile={lineamentsTile}
-                  targetingTile={targetingTile}
-                  spiNdviResult={spiNdviResult}
-                  spiLayerMode={spiLayerMode}
-                  geeReady={geeReady}
-                />}
               </div>
-            </div>
 
-        {/* Draggable Results Panel */}
+         {/* Draggable Results Panel */}
         {!indexBlocked && resultsPanelOpen && (activeDef || isComposite || isLineaments || isTargeting || isProfile || isContours || isTopoCustom || isLandCover || isSpiNdvi || activeTab === "s2") && (
           <DraggablePanel
             title={`${resultT("analysis.panelTitle")} ${descriptiveIndexName(activeTab)}`}
@@ -4427,29 +4416,6 @@ export default function GeoAnalises({
                   </div>
                 )}
 
-                {/* Colormap legend — always visible */}
-                {!isGeeOnly && !isTopoClass && (
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                      Escala do índice
-                    </h4>
-                    <ColormapLegend index={activeTab as SpectralIndex} />
-                  </div>
-                )}
-                {isTopoClass && (
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Classes Topográficas</h4>
-                    <div className="space-y-1">
-                      {["#1a9850","#66bd63","#fee08b","#fdae61","#a50026","#3690c0"].map((c, i) => (
-                        <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
-                          <span className="inline-block w-3.5 h-3.5 rounded" style={{ background: c }} />
-                          {TERRAIN_CLASS_NAMES[i]}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {/* Interpretation */}
                 <div>
                   <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Interpretação Geocientífica</h4>
@@ -4494,15 +4460,7 @@ export default function GeoAnalises({
                   espectral, relevo e densidade estrutural para gerar score 0–100.
                 </p>
               </div>
-              <div>
-                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Escala — favorabilidade</h4>
-                <div className="h-3 w-full rounded" style={{
-                  background: "linear-gradient(to right, #0d0887, #8b0aa5, #db5c68, #febc2a, #ffff96)",
-                }} />
-                <div className="flex justify-between text-xs text-slate-400 mt-0.5">
-                  <span>0</span><span>100</span>
-                </div>
-              </div>
+              
             </div>
           )}
 
@@ -5018,19 +4976,20 @@ export default function GeoAnalises({
           )}
 
 
-          {/* Map overlay legend — proxy mode */}
-          {activeTab !== "s2" && !geeReady && !isGeeOnly && activeDef && (
-            <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 p-3 w-52 pointer-events-none">
-              <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1.5">{activeDef.label} (Proxy)</div>
-              <div className="h-3 w-full rounded" style={{
-                background: `linear-gradient(to right, ${Array.from({ length: 8 }, (_, i) => applyColormap(i / 7, activeDef.id as SpectralIndex)).join(", ")})`,
-              }} />
-              <div className="flex justify-between text-xs text-slate-400 mt-1">
-                <span>{(activeTab === "nbr" ? "NBR baixo" : activeDef.lowLabel.split("/")[0])}</span>
-                <span>{(activeTab === "nbr" ? "NBR alto" : activeDef.highLabel.split("/")[0])}</span>
-              </div>
+          {/* WorldCover is categorical: one legend, in the map only when the results panel is hidden. */}
+          {isLandCover && landCoverTile && !resultsPanelOpen && (
+            <div data-testid="geoanalises-worldcover-map-legend" className="absolute bottom-8 left-4 z-[500] max-h-[min(45vh,22rem)] w-64 overflow-y-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+              <div className="mb-2 text-xs font-semibold text-slate-700 dark:text-slate-200">ESA WorldCover {landCoverTile.year} · {landCoverTile.resolution_m} m</div>
+              {landCoverTile.classes.map(featureClass => (
+                <div key={featureClass.code} className="flex items-center gap-2 py-0.5 text-[10px] text-slate-600 dark:text-slate-300">
+                  <span className="h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: featureClass.color }} />
+                  <span className="min-w-0 flex-1">{featureClass.label}</span>
+                  <span className="shrink-0 tabular-nums text-slate-400">{featureClass.pct.toFixed(1)}%</span>
+                </div>
+              ))}
             </div>
           )}
+
           {/* Lineaments result badge */}
           {isLineaments && lineamentsTile && (
             <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-fuchsia-200 dark:border-fuchsia-900/50 p-3 w-64 pointer-events-none">
@@ -5110,7 +5069,7 @@ export default function GeoAnalises({
           )}
 
           {/* SPI × NDVI legend badge (when chart hidden) */}
-          {isSpiNdvi && spiNdviResult && !showSpiChart && (
+          {isSpiNdvi && spiNdviResult && !showSpiChart && !resultsPanelOpen && (
             <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-orange-200 dark:border-orange-900/50 p-3 w-60">
               <div className="flex items-center gap-1.5 mb-1">
                 <Droplets size={12} className="text-orange-600 dark:text-orange-400" />
@@ -5198,19 +5157,8 @@ export default function GeoAnalises({
                 </div>
               )}
               {!isTopoClass && activeDef && (
-                <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                  <div
-                    className="h-2.5 w-full rounded"
-                    style={{
-                      background: `linear-gradient(to right, ${Array.from({ length: 8 }, (_, i) =>
-                        applyColormap(i / 7, activeDef.id as SpectralIndex)
-                      ).join(", ")})`,
-                    }}
-                  />
-                  <div className="flex justify-between text-[9px] text-slate-400 mt-0.5 font-medium">
-                    <span>{(activeTab === "nbr" ? "NBR baixo" : activeDef.lowLabel.split("/")[0])}</span>
-                    <span>{(activeTab === "nbr" ? "NBR alto" : activeDef.highLabel.split("/")[0])}</span>
-                  </div>
+                <div data-testid="geoanalises-map-legend" className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <ColormapLegend index={activeTab as SpectralIndex} palette={geeTile.vis?.palette} />
                 </div>
               )}
             </div>
