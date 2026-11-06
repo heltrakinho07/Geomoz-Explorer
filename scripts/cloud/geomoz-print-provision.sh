@@ -62,7 +62,7 @@ if ! gcloud secrets describe "$SECRET" >/dev/null 2>&1; then
   gcloud secrets create "$SECRET" --replication-policy=automatic --quiet
 fi
 if [[ -z "$(gcloud secrets versions list "$SECRET" --filter='state=ENABLED' --format='value(name)' | head -n 1)" ]]; then
-  openssl rand -base64 48 | gcloud secrets versions add "$SECRET" --data-file=- --quiet >/dev/null
+  openssl rand -hex 48 | tr -d '\n' | gcloud secrets versions add "$SECRET" --data-file=- --quiet >/dev/null
 fi
 for account in "$API_SA" "$WORKER_SA"; do
   gcloud secrets add-iam-policy-binding "$SECRET" --member="serviceAccount:$account" \
