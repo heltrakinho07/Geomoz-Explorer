@@ -68,10 +68,19 @@ export default function WorkspaceCopernicusPanel({ user, aoi, onAOIChange, onDra
   useEffect(() => () => request.current?.abort(), [user]);
 
   const geometry = polygonGeometry(aoi.geometry);
-  const payload = JSON.stringify({ geometry, province: aoi.province, district: aoi.district, scale, crs, clip, product });
+  const gaul = aoi.source === "country" && aoi.boundarySource === "gaul2025";
+  const payload = JSON.stringify({
+    geometry: gaul ? null : geometry,
+    province: gaul ? null : aoi.province,
+    district: gaul ? null : aoi.district,
+    ...(gaul ? { boundarySource: "gaul2025", countryCode: aoi.countryCode,
+      adminLevel: aoi.adminLevel ?? 0, admin1Code: aoi.admin1Code ?? null,
+      admin2Code: aoi.admin2Code ?? null } : {}),
+    scale, crs, clip, product,
+  });
   useEffect(() => () => request.current?.abort(), [payload]);
   const estimate = preview?.key === payload ? preview.data : undefined;
-  const hasArea = Boolean(geometry || aoi.province || aoi.district);
+  const hasArea = Boolean(geometry || aoi.province || aoi.district || (gaul && aoi.countryCode));
   const exterior = geometry?.type === "Polygon" ? geometry.coordinates[0] : undefined;
   const point = exterior?.[vertex];
 
