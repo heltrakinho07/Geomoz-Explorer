@@ -31,6 +31,25 @@ FEATURE_LABELS = {
     "remote_sensing": "Detecção Remota",
     "seismic_catalogs": "Catálogos Sísmicos",
 }
+# Cobertura documentada: nenhuma flag garante bloqueio de serviços externos.
+FEATURE_COVERAGE = {
+    "gis_workspace": {"category": "SIG e cartografia", "coverage": "partial", "detail": "Aplicação SIG autónoma: é necessário validar o acesso no serviço próprio."},
+    "geo_ai": {"category": "IA", "coverage": "mapped_api_and_route", "detail": "Rota e endpoints /geomoz-api/ai/ mapeados."},
+    "hydrology": {"category": "Recursos hídricos", "coverage": "mapped_api_and_route", "detail": "Rotas e endpoints hidrológicos mapeados."},
+    "terrain_3d": {"category": "Terreno", "coverage": "mapped_api_and_route", "detail": "Rota e endpoints /geomoz-api/terrain/ mapeados."},
+    "remote_sensing": {"category": "Detecção remota", "coverage": "mapped_api_and_route", "detail": "Rota e endpoints GEE de detecção remota mapeados."},
+    "seismic_catalogs": {"category": "Sismologia", "coverage": "partial", "detail": "Catálogos sísmicos ainda exigem verificação de consumidores individuais."},
+}
+
+
+def get_feature_registry():
+    """Devolve apenas metadados não sensíveis dos módulos administráveis."""
+    return {
+        key: {"label": label, **FEATURE_COVERAGE[key]}
+        for key, label in FEATURE_LABELS.items()
+    }
+
+
 DEFAULT_FEATURES = {key: True for key in FEATURE_LABELS}
 ALLOWED_PLAN_FIELDS = frozenset({
     "enabled", "monthlyMzn", "yearlyMzn", "projects", "storageBytes",
