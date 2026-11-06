@@ -17,7 +17,7 @@ from pathlib import Path
 from job import MAX_REQUEST_BYTES, InvalidJob, parse_request
 
 PORT = int(os.environ.get("GEOMOZ_PRINT_PORT", "8085"))
-TOKEN = os.environ.get("GEOMOZ_PRINT_WORKER_TOKEN", "")
+TOKEN = os.environ.get("GEOMOZ_PRINT_WORKER_TOKEN", "").strip()
 WORKER_ENGINE = os.environ.get("GEOMOZ_PRINT_ENGINE", "pyqgis")
 WORKER_AUTH = os.environ.get("GEOMOZ_PRINT_WORKER_AUTH", "bearer")
 _MAX_CONCURRENT = threading.BoundedSemaphore(value=1)
