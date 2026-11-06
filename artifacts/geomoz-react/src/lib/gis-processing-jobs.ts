@@ -34,19 +34,42 @@ export interface GISHeavyTool {
   name: string;
 }
 
-export async function listGISHeavyTools(
+export interface GISHeavyCapabilities {
+  tools: GISHeavyTool[];
+  execution: string;
+  input: string;
+  limits: {max_upload_bytes: number; job_ttl_seconds: number};
+  runtime: {shared_across_instances: boolean; persistent: boolean; progress: "staged" | "measured"};
+}
+
+export async function getGISHeavyCapabilities(
   signal?: AbortSignal
-): Promise<GISHeavyTool[]> {
+): Promise<GISHeavyCapabilities> {
   const response = await apiFetch("/geomoz-api/processing/tools", { signal });
   if (!response.ok) {
-    throw new Error(
-      "Não foi possível obter as ferramentas backend (HTTP " +
-        response.status +
-        ")."
-    );
+    throw new Error("Não foi possível verificar os limites do processamento raster (HTTP " + response.status + ").");
   }
-  const data = (await response.json()) as { tools?: GISHeavyTool[] };
-  return Array.isArray(data.tools) ? data.tools : [];
+  const data = (await response.json()) as GISHeavyCapabilities;
+  if (!Array.isArray(data.tools) || !Number.isSafeInteger(data.limits?.max_upload_bytes) ||
+      data.limits.max_upload_bytes <= 0 || !data.runtime ||
+      typeof data.runtime.persistent !== "boolean") {
+    throw new Error("O servidor não informou limites válidos para os jobs GDAL.");
+  }
+  return data;
+}
+
+export async function listGISHeavyTools(signal?: AbortSignal): Promise<GISHeavyTool[]> {
+  return (await getGISHeavyCapabilities(signal)).tools;
+}
+
+export function ensureGISHeavyUploadSupported(capabilities: GISHeavyCapabilities, tool: GISHeavyToolId, bytes: number): void {
+  if (!capabilities.tools.some((item) => item.id === tool)) {
+    throw new Error("A ferramenta não está disponível neste servidor.");
+  }
+  if (!Number.isFinite(bytes) || bytes <= 0 || bytes > capabilities.limits.max_upload_bytes) {
+    const limit = Math.floor(capabilities.limits.max_upload_bytes / 1048576);
+    throw new Error("O ficheiro excede o limite do servidor (" + limit + " MB). Recorte localmente ou reduza a área antes do envio.");
+  }
 }
 
 export async function createGISHeavyJob(options: {
