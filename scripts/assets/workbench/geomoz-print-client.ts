@@ -21,7 +21,7 @@ type PrintStatus = {
 
 function getBridge() {
   const frame = document.querySelector<HTMLIFrameElement>('iframe[src="/auth/workspace-check"]');
-  if (!frame?.contentWindow || window.location.origin !== frame.contentWindow.location.origin) {
+  if (!frame?.contentWindow) {
     throw Error("A sessão GeoMoz não está disponível. Entre novamente na plataforma.");
   }
   return frame;
