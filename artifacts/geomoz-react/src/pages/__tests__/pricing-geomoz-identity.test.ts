@@ -38,6 +38,16 @@ describe("GeoMoz Explorer — unified plans experience", () => {
     expect(pricing).toContain('"/login?next=/planos"');
   });
 
+  it("shows server-accounted subscription metrics without overstating unverified limits", () => {
+    expect(pricing).toContain('"/geomoz-api/billing/entitlements"');
+    expect(pricing).toContain("A minha subscrição");
+    expect(pricing).toContain("entitlements.usage.projects");
+    expect(pricing).toContain("entitlements.usage.creditsReserved");
+    expect(pricing).toContain("entitlements.usage.creditResetAt");
+    expect(pricing).toContain("entitlements.periodEnd");
+    expect(pricing).toContain("contabilização integral do armazenamento ainda está em implementação");
+  });
+
   it("describes customer payment methods, not the gateway brand", () => {
     for (const text of ["M-Pesa", "e-Mola", "Cartão bancário", "sem renovação automática", "Pagamento seguro"]) {
       expect(pricing).toContain(text);

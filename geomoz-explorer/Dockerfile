@@ -40,6 +40,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY api.py .
 COPY billing.py .
 COPY entitlement_engine.py .
+COPY subscription_entitlements.py .
 COPY billing_plan_requests.py .
 COPY admin.py .
 COPY platform_config.py .

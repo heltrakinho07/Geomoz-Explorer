@@ -101,7 +101,8 @@ def create_project(
         "updatedAt": now,
     }
     project_ref = projects.document(project_id)
-    tx = database.transaction()
+    # Preserve atomic checks under concurrent requests with bounded retries.
+    tx = database.transaction(max_attempts=20)
 
     @firestore.transactional
     def allocate(transaction):
@@ -162,7 +163,8 @@ def delete_project(project_id: str, uid: str = Depends(_uid)):
 
     delete_children(project_ref)
 
-    tx = database.transaction()
+    # Preserve atomic checks under concurrent requests with bounded retries.
+    tx = database.transaction(max_attempts=20)
 
     @firestore.transactional
     def remove(transaction):
