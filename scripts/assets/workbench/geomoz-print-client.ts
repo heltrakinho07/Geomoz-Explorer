@@ -32,12 +32,13 @@ export async function requestPrintFirebaseToken(signal?: AbortSignal): Promise<s
   const id = uuid();
   return new Promise<string>((resolve, reject) => {
     let settled = false;
+    let timeout: number | undefined;
     const finish = (error?: Error, token?: string) => {
       if (settled) return;
       settled = true;
       window.removeEventListener("message", onMessage);
       signal?.removeEventListener("abort", onAbort);
-      clearTimeout(timeout);
+      if (timeout !== undefined) clearTimeout(timeout);
       if (error) reject(error);
       else if (token) resolve(token);
       else reject(Error("Sessão de impressão não autorizada."));
@@ -53,7 +54,7 @@ export async function requestPrintFirebaseToken(signal?: AbortSignal): Promise<s
     if (signal?.aborted) return finish(Error("Pedido de impressão cancelado."));
     window.addEventListener("message", onMessage);
     signal?.addEventListener("abort", onAbort, { once: true });
-    const timeout = window.setTimeout(
+    timeout = window.setTimeout(
       () => finish(Error("Não foi possível confirmar a sessão GeoMoz.")), 9000);
     frame.contentWindow!.postMessage({ type: REQUEST, id }, window.location.origin);
   });
