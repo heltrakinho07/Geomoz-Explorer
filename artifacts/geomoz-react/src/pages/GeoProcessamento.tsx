@@ -55,6 +55,7 @@ import {
   type GISPMTilesInfo,
 } from "@/lib/gis-pmtiles";
 import { bbox as turfBbox } from "@turf/turf";
+import { parseRasterSourceExtent } from "@/lib/gis-raster-source-extent";
 import {
   createGISHeavyJob,
   deleteGISHeavyJob,
@@ -415,6 +416,7 @@ export default function GeoProcessamento({
   const [selectedWhiteboxRasterId, setSelectedWhiteboxRasterId] = useState("");
   const [secondWhiteboxRasterId, setSecondWhiteboxRasterId] = useState("");
   const [heavyJob, setHeavyJob] = useState<GISHeavyProcessingJob | null>(null);
+  const [heavyClipExtent, setHeavyClipExtent] = useState<[string,string,string,string]>(["","","",""]);
   const heavyJobAbortRef = useRef<AbortController | null>(null);
 
   // Processing history and transient browser session; no database writes.
@@ -2311,11 +2313,13 @@ export default function GeoProcessamento({
     toast,
   ]);
 
-  const handleRunBackendRaster = useCallback(async () => {
-    if (!selectedBackendRasterTool || !selectedWhiteboxRaster) {
+  const handleRunBackendRaster = useCallback(async (overrideTool?: GISHeavyToolId) => {
+    const toolId = overrideTool ?? selectedBackendRasterTool;
+    const toolName = overrideTool === "clip-extent" ? "Recortar raster por extensão" : selectedWhiteboxTool ? whiteboxManifestName(selectedWhiteboxTool) : "GDAL";
+    if (!toolId || !selectedWhiteboxRaster) {
       toast({
         title: "Backend GDAL indisponível",
-        description: "Selecione Hillshade, Slope ou Aspect e uma camada raster.",
+        description: "Seleccione uma camada raster e uma operação GDAL.",
         variant: "destructive",
       });
       return;
@@ -2342,7 +2346,7 @@ export default function GeoProcessamento({
       }
 
       const params: Record<string, unknown> = {};
-      if (selectedBackendRasterTool === "hillshade") {
+      if (toolId === "hillshade") {
         params.azimuth = Number(
           whiteboxParams.azimuth ?? whiteboxParams.az ?? 315
         );
@@ -2352,17 +2356,21 @@ export default function GeoProcessamento({
         params.z_factor = Number(
           whiteboxParams.z_factor ?? whiteboxParams.zfactor ?? 1
         );
-      } else if (selectedBackendRasterTool === "slope") {
+      } else if (toolId === "slope") {
         params.scale = Number(whiteboxParams.scale ?? 1);
         params.percent =
           String(whiteboxParams.units ?? "").toLowerCase() === "percent" ||
           Boolean(whiteboxParams.percent);
-      } else if (selectedBackendRasterTool === "aspect") {
+      } else if (toolId === "aspect") {
         params.zero_for_flat = true;
       }
 
+      if (toolId === "clip-extent") {
+        params.bbox = parseRasterSourceExtent(heavyClipExtent);
+      }
+
       const created = await createGISHeavyJob({
-        tool: selectedBackendRasterTool,
+        tool: toolId,
         file: inputFile,
         parameters: params,
         signal: controller.signal,
@@ -2381,15 +2389,15 @@ export default function GeoProcessamento({
       );
 
       const preferredRasterColormap =
-        selectedBackendRasterTool === "hillshade"
+        toolId === "hillshade"
           ? "gray"
-          : selectedBackendRasterTool === "slope"
+          : toolId === "slope"
             ? "terrain"
             : "turbo";
       const raster: GISWorkspaceRasterLayer = {
         id: "backend_raster_" + crypto.randomUUID().slice(0, 12),
         name:
-          whiteboxManifestName(selectedWhiteboxTool!) +
+          toolName +
           " — Backend GDAL",
         file: resultFile,
         
@@ -2420,9 +2428,9 @@ export default function GeoProcessamento({
       setHistory((previous) => [
         {
           id: "hist_backend_gdal_" + Date.now(),
-          toolId: selectedBackendRasterTool,
+          toolId: toolId,
           toolName:
-            whiteboxManifestName(selectedWhiteboxTool!) + " · Backend GDAL",
+            toolName + " · Backend GDAL",
           engine: "Backend GDAL",
           timestamp: new Date().toLocaleTimeString("pt-PT"),
           durationMs,
@@ -2438,7 +2446,7 @@ export default function GeoProcessamento({
       toast({
         title: "Backend GDAL concluído",
         description:
-          whiteboxManifestName(selectedWhiteboxTool!) +
+          toolName +
           " processado no servidor em " +
           durationMs +
           " ms.",
@@ -2469,6 +2477,7 @@ export default function GeoProcessamento({
     }
   }, [
     readRasterBytes,
+    heavyClipExtent,
     selectedBackendRasterTool,
     selectedWhiteboxRaster,
     selectedWhiteboxTool,
@@ -4567,6 +4576,39 @@ export default function GeoProcessamento({
                         )}
                     </div>
                   )}
+
+                {selectedWhiteboxRaster && (
+                  <div className="space-y-2 rounded-xl border border-sky-200 bg-sky-50/60 p-3 dark:border-sky-900 dark:bg-sky-950/20" data-testid="geomoz-heavy-raster-extent">
+                    <div className="text-xs font-semibold text-sky-900 dark:text-sky-200">Recortar raster por extensão · GDAL (servidor)</div>
+                    <p className="text-[10px] text-slate-600 dark:text-slate-300">
+                      Indique os limites no SRC nativo do raster, não necessariamente em latitude/longitude. Esta operação envia o ficheiro ao servidor com a sua autorização.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["X mínimo","Y mínimo","X máximo","Y máximo"] as const).map((label, index) => (
+                        <label key={label} className="grid gap-1 text-[10px] text-slate-600 dark:text-slate-300">
+                          {label}
+                          <input type="number" step="any" aria-label={label} className="w-full rounded border border-slate-300 bg-white p-1.5 text-xs dark:border-slate-700 dark:bg-slate-900"
+                            disabled={isExecuting} value={heavyClipExtent[index]}
+                            onChange={(event) => setHeavyClipExtent((previous) => {
+                              const next = [...previous] as [string,string,string,string];
+                              next[index] = event.target.value; return next;
+                            })}/>
+                        </label>
+                      ))}
+                    </div>
+                    {heavyJob?.tool === "clip-extent" && (
+                      <p className="text-[10px]" role="status">{heavyJob.message || heavyJob.status} · {heavyJob.progress}%</p>
+                    )}
+                    <button type="button" onClick={() => void handleRunBackendRaster("clip-extent")}
+                      disabled={isExecuting} className="w-full rounded-lg bg-sky-700 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-800 disabled:opacity-50">
+                      {isExecuting && heavyJob?.tool === "clip-extent" ? "A processar recorte…" : "Enviar raster e recortar no servidor"}
+                    </button>
+                    {isExecuting && heavyJob?.tool === "clip-extent" && (
+                      <button type="button" onClick={() => heavyJobAbortRef.current?.abort()}
+                        className="w-full rounded-lg border border-rose-300 px-3 py-2 text-xs font-semibold text-rose-700 dark:text-rose-300">Cancelar job de recorte</button>
+                    )}
+                  </div>
+                )}
 
                 <button
                   onClick={() => void handleRunWhitebox()}
