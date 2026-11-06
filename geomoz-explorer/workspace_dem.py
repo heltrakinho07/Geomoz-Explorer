@@ -45,7 +45,8 @@ def resolve_workspace_area(req, legacy_resolver):
         raise ValueError("A área administrativa exige país e fonte FAO GAUL 2025.")
     if req.geometry is not None or req.province or req.district:
         raise ValueError("Não misture limites FAO GAUL com geometrias ou distritos de outra fonte.")
-    from agent.administrative_boundaries import administrative_geometry
+    from agent.administrative_boundaries import administrative_geometry, validate_selection
+    validate_selection(req.countryCode, req.adminLevel, req.admin1Code, req.admin2Code)
     geometry, _metadata = administrative_geometry(
         req.countryCode, req.adminLevel, req.admin1Code, req.admin2Code
     )
