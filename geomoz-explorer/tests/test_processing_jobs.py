@@ -57,7 +57,7 @@ def test_processing_tools_endpoint(client: TestClient) -> None:
     assert response.status_code == 200
     payload = response.json()
     ids = {tool["id"] for tool in payload["tools"]}
-    assert {"hillshade", "slope", "aspect", "cog"} <= ids
+    assert {"hillshade", "slope", "aspect", "cog", "clip-extent"} <= ids
     assert payload["execution"] == "async"
 
 
@@ -284,3 +284,32 @@ def test_running_job_delete_terminates_process_before_file_cleanup(
     jobs._cancellations.pop(job.id, None)
     jobs._job_dir(job.id).joinpath("dem.tif").unlink()
     jobs._job_dir(job.id).rmdir()
+
+
+def test_clip_extent_gdal_command_uses_source_crs_bounds(tmp_path: Path) -> None:
+    from processing_jobs import _gdal_tool_command
+
+    command = _gdal_tool_command(
+        "clip-extent", tmp_path / "dem.tif", tmp_path / "out.tif",
+        {"bbox": [450000, 7100000, 460000, 7110000]},
+    )
+    assert command == [
+        "gdal_translate", "-of", "GTiff", "-projwin",
+        "450000.0", "7110000.0", "460000.0", "7100000.0",
+        str(tmp_path / "dem.tif"), str(tmp_path / "out.tif"),
+    ]
+
+
+@pytest.mark.parametrize("bbox", [
+    None, [], [1, 2, 3], [0, 0, 0, 1], [3, 0, 2, 1],
+    [0, 1, 2, 0], [float("nan"), 1, 2, 3],
+    [float("inf"), 1, 2, 3], ["--config", 1, 2, 3],
+])
+def test_clip_extent_rejects_invalid_bbox(tmp_path: Path, bbox) -> None:
+    from processing_jobs import _gdal_tool_command
+
+    with pytest.raises(ValueError, match="bbox"):
+        _gdal_tool_command(
+            "clip-extent", tmp_path / "dem.tif", tmp_path / "out.tif",
+            {"bbox": bbox},
+        )
