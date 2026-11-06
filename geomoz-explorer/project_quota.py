@@ -101,7 +101,9 @@ def create_project(
         "updatedAt": now,
     }
     project_ref = projects.document(project_id)
-    tx = database.transaction()
+    # Concurrency spikes in Firestore can exhaust the default five retries.
+    # The complete read/check/write operation remains atomic.
+    tx = database.transaction(max_attempts=20)
 
     @firestore.transactional
     def allocate(transaction):
@@ -162,7 +164,9 @@ def delete_project(project_id: str, uid: str = Depends(_uid)):
 
     delete_children(project_ref)
 
-    tx = database.transaction()
+    # Concurrency spikes in Firestore can exhaust the default five retries.
+    # The complete read/check/write operation remains atomic.
+    tx = database.transaction(max_attempts=20)
 
     @firestore.transactional
     def remove(transaction):
