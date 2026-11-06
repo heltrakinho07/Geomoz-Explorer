@@ -248,7 +248,7 @@ def me(uid: str = Depends(_uid)):
     return {
         "plan": plan, "status": state.get("status", "active"),
         "periodEnd": state.get("periodEnd"), "limits": get_plan_limits(plan),
-        "creditsUsed": state.get("creditsUsed", 0),
+        "creditsUsed": state.get("creditsUsed", 0),  # Legacy UI field; authoritative ledger: /billing/usage
         "storageUsedBytes": state.get("storageUsedBytes", 0),
         "cancelAtPeriodEnd": False,
         "academicApproved": state.get("academicApproved") is True,
