@@ -417,6 +417,9 @@ export default function GeoProcessamento({
   const [secondWhiteboxRasterId, setSecondWhiteboxRasterId] = useState("");
   const [heavyJob, setHeavyJob] = useState<GISHeavyProcessingJob | null>(null);
   const [heavyClipExtent, setHeavyClipExtent] = useState<[string,string,string,string]>(["","","",""]);
+  const [heavyMaskLayerId, setHeavyMaskLayerId] = useState("");
+  const [heavyMaskDstCrs, setHeavyMaskDstCrs] = useState("");
+  const [heavyMaskResampling, setHeavyMaskResampling] = useState<"nearest" | "bilinear" | "cubic">("nearest");
   const heavyJobAbortRef = useRef<AbortController | null>(null);
 
   // Processing history and transient browser session; no database writes.
@@ -2315,7 +2318,7 @@ export default function GeoProcessamento({
 
   const handleRunBackendRaster = useCallback(async (overrideTool?: GISHeavyToolId) => {
     const toolId = overrideTool ?? selectedBackendRasterTool;
-    const toolName = overrideTool === "clip-extent" ? "Recortar raster por extensão" : selectedWhiteboxTool ? whiteboxManifestName(selectedWhiteboxTool) : "GDAL";
+    const toolName = overrideTool === "clip-extent" ? "Recortar raster por extensão" : overrideTool === "clip-mask" ? "Recortar raster por máscara" : selectedWhiteboxTool ? whiteboxManifestName(selectedWhiteboxTool) : "GDAL";
     if (!toolId || !selectedWhiteboxRaster) {
       toast({
         title: "Backend GDAL indisponível",
@@ -2368,10 +2371,28 @@ export default function GeoProcessamento({
       if (toolId === "clip-extent") {
         params.bbox = parseRasterSourceExtent(heavyClipExtent);
       }
+      let maskGeojson: string | undefined;
+      if (toolId === "clip-mask") {
+        const vector = layers.find(layer => layer.id === heavyMaskLayerId);
+        if (!vector?.geojson?.features.length || !vector.geojson.features.every(feature => feature.geometry && ["Polygon","MultiPolygon"].includes(feature.geometry.type))) {
+          throw new Error("Seleccione uma camada vectorial composta por polígonos.");
+        }
+        maskGeojson = JSON.stringify({type:"FeatureCollection",features:vector.geojson.features.map(feature => ({
+          type:"Feature",properties:{},geometry:feature.geometry,
+        }))});
+        if (new Blob([maskGeojson]).size > 8 * 1024 * 1024) {
+          throw new Error("A máscara excede 8 MB; simplifique ou filtre a camada antes de enviar.");
+        }
+        if (heavyMaskDstCrs.trim()) params.dst_crs = heavyMaskDstCrs.trim();
+        params.resampling = heavyMaskResampling;
+        params.crop = true;
+        params.alpha = true;
+      }
 
       const created = await createGISHeavyJob({
         tool: toolId,
         file: inputFile,
+        maskGeojson,
         parameters: params,
         signal: controller.signal,
       });
@@ -2477,7 +2498,11 @@ export default function GeoProcessamento({
     }
   }, [
     readRasterBytes,
+    layers,
     heavyClipExtent,
+    heavyMaskLayerId,
+    heavyMaskDstCrs,
+    heavyMaskResampling,
     selectedBackendRasterTool,
     selectedWhiteboxRaster,
     selectedWhiteboxTool,
@@ -4606,6 +4631,54 @@ export default function GeoProcessamento({
                     {isExecuting && heavyJob?.tool === "clip-extent" && (
                       <button type="button" onClick={() => heavyJobAbortRef.current?.abort()}
                         className="w-full rounded-lg border border-rose-300 px-3 py-2 text-xs font-semibold text-rose-700 dark:text-rose-300">Cancelar job de recorte</button>
+                    )}
+                  </div>
+                )}
+
+                {selectedWhiteboxRaster && (
+                  <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 dark:border-emerald-900 dark:bg-emerald-950/20" data-testid="geomoz-heavy-raster-mask">
+                    <div className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">Recortar por camada máscara · GDAL (servidor)</div>
+                    <p className="text-[10px] text-slate-600 dark:text-slate-300">
+                      Seleccione polígonos GeoJSON do projecto em WGS84. O GDAL reprojeta a máscara para o SRC do raster; o envio do raster e da máscara requer a sua autorização.
+                    </p>
+                    <label className="grid gap-1 text-[10px]">
+                      Camada poligonal de máscara
+                      <select aria-label="Camada poligonal de máscara" value={heavyMaskLayerId} disabled={isExecuting}
+                        onChange={(e) => setHeavyMaskLayerId(e.target.value)}
+                        className="w-full rounded border border-slate-300 bg-white p-2 text-xs dark:border-slate-700 dark:bg-slate-900">
+                        <option value="">Seleccione uma máscara…</option>
+                        {layers.filter(layer => layer.geojson.features.length > 0 && layer.geojson.features.every(feature => feature.geometry && ["Polygon","MultiPolygon"].includes(feature.geometry.type))).map(layer => (
+                          <option key={layer.id} value={layer.id}>{layer.name} ({layer.featureCount} feições)</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="grid gap-1 text-[10px]">
+                      SRC de destino (opcional)
+                      <input aria-label="SRC destino do recorte" value={heavyMaskDstCrs} disabled={isExecuting}
+                        placeholder="EPSG:32736" onChange={(e) => setHeavyMaskDstCrs(e.target.value)}
+                        className="w-full rounded border border-slate-300 bg-white p-2 text-xs dark:border-slate-700 dark:bg-slate-900"/>
+                    </label>
+                    <label className="grid gap-1 text-[10px]">
+                      Reamostragem
+                      <select aria-label="Reamostragem do recorte" value={heavyMaskResampling} disabled={isExecuting}
+                        onChange={(e) => setHeavyMaskResampling(e.target.value as "nearest" | "bilinear" | "cubic")}
+                        className="w-full rounded border border-slate-300 bg-white p-2 text-xs dark:border-slate-700 dark:bg-slate-900">
+                        <option value="nearest">Vizinho mais próximo (classes)</option>
+                        <option value="bilinear">Bilinear (DEM contínuo)</option>
+                        <option value="cubic">Cúbica (DEM contínuo)</option>
+                      </select>
+                    </label>
+                    {heavyJob?.tool === "clip-mask" && <p role="status" className="text-[10px]">{heavyJob.message || heavyJob.status} · {heavyJob.progress}%</p>}
+                    <button type="button" onClick={() => void handleRunBackendRaster("clip-mask")}
+                      disabled={isExecuting || !heavyMaskLayerId}
+                      className="w-full rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50">
+                      {isExecuting && heavyJob?.tool === "clip-mask" ? "A processar máscara…" : "Enviar raster e máscara e recortar"}
+                    </button>
+                    {isExecuting && heavyJob?.tool === "clip-mask" && (
+                      <button type="button" onClick={() => heavyJobAbortRef.current?.abort()}
+                        className="w-full rounded-lg border border-rose-300 px-3 py-2 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                        Cancelar recorte GDAL
+                      </button>
                     )}
                   </div>
                 )}
