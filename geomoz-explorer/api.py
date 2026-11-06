@@ -329,6 +329,7 @@ SUPPORTED_HEAVY_GIS_TOOLS = {
     "aspect": "GDAL DEM aspect",
     "cog": "Cloud Optimized GeoTIFF conversion",
     "clip-extent": "GDAL raster clip by extent (source CRS)",
+    "clip-mask": "GDAL raster clip by GeoJSON polygon mask",
 }
 
 
@@ -350,6 +351,7 @@ async def create_processing_job_endpoint(
     tool: str = Form(...),
     parameters: str = Form("{}"),
     input_file: UploadFile = File(...),
+    mask_geojson: Optional[str] = Form(None),
     uid: str = Depends(require_firebase_auth),
 ):
     """Queue a heavy raster job and return immediately with a job id."""
@@ -372,6 +374,7 @@ async def create_processing_job_endpoint(
             input_name=input_file.filename or "input.tif",
             input_stream=input_file.file,
             parameters=parsed_parameters,
+            mask_geojson=mask_geojson,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
