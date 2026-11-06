@@ -265,6 +265,43 @@ def temporal_quality(start1, end1, start2, end2, scenes1, scenes2, valid_km2, ao
     }
 
 
+def temporal_monthly_series(geometry, index, start1, end1, start2, end2, scale_m=30, cloud_pct=30):
+    """Monthly Sentinel-2 AOI means, with missing months left as null."""
+    from agent.monthly_time_windows import month_slices
+    validate_period(start1, end1, "2017-03-28")
+    validate_period(start2, end2, "2017-03-28")
+    if end1 > start2 or index not in INDEX_BANDS:
+        raise ValueError("Intervalos ou índice inválidos para série mensal.")
+    a, b = month_slices(start1, end1), month_slices(start2, end2)
+    if len(a) > 12 or len(b) > 12:
+        raise ValueError("Limite de 12 meses por período para análise interactiva.")
+    region, grid, _ = _grid(geometry, scale_m, 10 if index in ("ndvi", "ndwi") else 20)
+    def observe(rows):
+        output = []
+        for row in rows:
+            item = {**row, "mean": None, "sceneCount": 0, "validPixelCount": 0}
+            try:
+                image, scenes = _s2_image(region, index, row["startDate"], row["endDate"], cloud_pct)
+                item["sceneCount"] = int(scenes)
+                try:
+                    stats = _summary(image, grid)
+                    item["mean"] = float(stats["mean"])
+                    item["validPixelCount"] = int(stats["count"])
+                except ValueError as exc:
+                    if "Sem pixels válidos" not in str(exc):
+                        raise
+            except ValueError as exc:
+                if "Sem cenas Sentinel-2" not in str(exc):
+                    raise
+            output.append(item)
+        return output
+    return {"status": "success", "index": index.upper(),
+            "analysisScaleM": grid["scale"], "source": source(S2),
+            "months": {"A": observe(a), "B": observe(b)},
+            "note": "Média mensal da AOI, sem interpolação. Null significa falta de observações válidas. "
+                    "Meses parciais respeitam as datas. Máscaras mensais independentes."}
+
+
 def temporal_histogram(geometry, index, start1, end1, start2, end2, scale_m=30, cloud_pct=30):
     """On-demand Earth Engine histograms at the original analysis grid, common footprint.
 
