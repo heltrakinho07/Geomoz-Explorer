@@ -14,7 +14,9 @@ Issue: https://github.com/heltrakinho07/Geomoz-Explorer/issues/265
    A task is queued on Cloud Tasks with a signed Google OIDC service-account
    identity, never a browser-provided credential.
 4. The authenticated internal task route requests a PDF from the selected
-   private PyQGIS or Cartopy worker using the server-only worker secret.
+   private PyQGIS or Cartopy worker using a Google-signed Cloud Run ID token
+   (Authorization: Bearer) **and** an independent server-only worker secret
+   (X-Geomoz-Worker-Token). Both gates must pass before rendering.
    Successful PDF bytes are validated and stored privately; job status is
    updated to succeeded/failed and active quota is released.
 5. The browser polls the Firebase-authenticated status endpoint and fetches
@@ -24,7 +26,29 @@ Issue: https://github.com/heltrakinho07/Geomoz-Explorer/issues/265
    policy deletes input and output objects. Firestore TTL can remove job docs
    using the dedicated expireAt timestamp field.
 
-## Production configuration — NOT provisioned automatically
+## Provisioning — explicit manual action (not executed by merging)
+
+The repository includes `.github/workflows/geomoz-print-private-provision.yml`
+and `scripts/cloud/geomoz-print-provision.sh`. The workflow is **manual only**;
+a merge does not create or bill GCP resources. Open
+[Actions → Provision GeoMoz private print infrastructure](https://github.com/heltrakinho07/Geomoz-Explorer/actions/workflows/geomoz-print-private-provision.yml),
+choose `plan` to see the non-mutating preview, or `apply` and enter the exact
+confirmation `APPLY_PRIVATE_PRINT_INFRA`. Apply uses GitHub Workload Identity
+Federation and requires a GCP deployment service account with permission to
+create Cloud Run services, IAM bindings, Cloud Tasks, GCS and Secret Manager
+resources. GitHub environment `production` may require additional reviewers
+if configured.
+
+The script is idempotent: it reuses existing service accounts, secret,
+bucket and queue; creates two IAM-only Cloud Run workers, rejects public
+worker invoker grants, then activates the existing API gateway via environment
+variables. Existing GEE settings and the API runtime identity are preserved.
+
+**Billing/cost:** Cloud Run CPU/memory, image storage, Cloud Tasks dispatches,
+Secret Manager and GCS storage may incur charges. Apply requires deliberate
+operator approval. Do not run in an unverified project.
+
+## Production configuration — not automatically provisioned
 
 The API cannot print until all these variables are configured in the
 Cloud Run service geomoz-explorer-api:
@@ -36,6 +60,7 @@ Cloud Run service geomoz-explorer-api:
     GEOMOZ_PRINT_PYQGIS_URL=https://PRIVATE_PYQGIS_ENDPOINT/v1/print/pdf
     GEOMOZ_PRINT_CARTOPY_URL=https://PRIVATE_CARTOPY_ENDPOINT/v1/print/pdf
     GEOMOZ_PRINT_WORKER_TOKEN=SecretManager:geomoz-print-worker-token
+    GEOMOZ_PRINT_WORKER_AUTH_MODE=iam
     GEOMOZ_PRINT_REQUIRE_APP_CHECK=false
 
 Never commit an actual token or put the worker token in Vite environment
@@ -55,18 +80,25 @@ variables. Use Cloud Run Secret Manager integration for the worker token.
   signed token, issuer, audience and exact service account email itself.
 - PyQGIS and Cartopy workers deployed to private, HTTPS-reachable endpoints
   accessible ONLY to the gateway's service identity/network. The workers
-  already require the shared server-side token and remain bound to loopback
-  when run using Docker Compose. Do not open their ports to the Internet.
+  require a Google-signed Cloud Run invoker token and an independent private
+  worker-secret header. Local Docker Compose remains bound to loopback.
 - Firestore IAM access for the gateway runtime service account, and Firestore
   TTL policy for printJobs.expireAt if automatic metadata cleanup is desired.
-- Explicit operational checks for ingress, VPC egress and worker certificate
-  validity. Cloud Run private IAM-only endpoints cannot be called with a
-  different bearer worker token unless the network/identity layer is adapted;
-  use a private HTTPS worker ingress with the existing worker-secret protocol.
+- Worker Cloud Run services use `--invoker-iam-check` and are **not**
+  accessible to unauthenticated callers; only the existing API Cloud Run
+  service identity receives `roles/run.invoker`. The endpoint URLs can be
+  resolved publicly, but IAM denies anonymous access. The script verifies
+  their policy and `/health` anonymous response before enabling printing.
+- Cloud Run's `Authorization: Bearer <Google ID token>` is separate from
+  `X-Geomoz-Worker-Token: <Secret Manager secret>`, so the two mechanisms
+  are not competing for the same header.
+- Explicitly verify workers' IAM policy on subsequent deploys. App Check
+  is initially optional pending a standalone GIS Workspace integration.
 
-Do not enable worker URLs based solely on receiving an HTTP 200 from a public
-untrusted hostname; that would risk leakage of the private worker credential.
-Network access to the workers must be constrained operationally.
+Never pass worker tokens from the browser. The gateway IAM worker mode only
+accepts `*.run.app` hosts, and OAuth tokens are scoped to the destination
+service origin. Configure private workers via the provisioning script rather
+than copying an arbitrary HTTPS endpoint.
 
 ## Scope and plan limits
 
@@ -91,9 +123,11 @@ GeoMoz AI, Hidrologia and other modules remains follow-up work.
 - [x] Task queue and Cloud Storage PDF processing code.
 - [x] GIS Workspace Export PDF, progress, preview/download and JSON fallback.
 - [x] Unit and simulated end-to-end tests added to CI.
-- [ ] Provision and configure actual private worker endpoints, bucket and queue.
+- [x] Manual, explicit-approval IAM worker/bucket/queue provisioning automation added.
+- [ ] Execute provisioning in the GCP project and verify actual resources.
 - [ ] Confirm Firebase App Check strategy for the standalone GIS bundle.
-- [ ] Validate real Cloud Tasks → workers → signed gateway download in staging.
+- [ ] Validate real Cloud Tasks → workers → owner-authenticated gateway download
+  after provisioning (mocked tests do not prove cloud execution).
 - [ ] Wire remaining GIS/GeoAnálises/AI/Hidrologia module print actions.
 - [ ] Confirm production rendering, internationalisation and bucket lifecycle.
 - [ ] Verify Cloud Run deployment and user-visible workflow in production.
