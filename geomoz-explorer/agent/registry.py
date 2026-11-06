@@ -324,11 +324,22 @@ class ToolDispatcher:
         end_date = args.get("end_date") or period.get("endDate") or "2024-12-31"
 
         try:
+            municipal = None
+            if aoi.get("municipalDistrict") and tool_name not in ("list_administrative_units", "list_public_datasets"):
+                import asyncio
+                from agent.municipal_boundaries import municipal_district
+
+                if aoi.get("countryCode") != "MOZ":
+                    raise ValueError("Seleccione Moçambique para utilizar um distrito municipal de Maputo.")
+                municipal = await asyncio.to_thread(municipal_district, aoi["municipalDistrict"])
+                region_geom = municipal["geometry"]
+                context["aoi"] = {**aoi, "label": f'{municipal["name"]}, Cidade de Maputo, Moçambique',
+                                  "boundaryDataset": municipal["dataset"], "geometry": region_geom}
             # Existing GEE/GeoPandas tools also need the selected GAUL polygon,
             # rather than the navigation bbox supplied by the country picker.
             public_tools = {"list_administrative_units", "list_public_datasets", "calculate_zonal_statistics",
                             "detect_temporal_change", "get_public_landcover", "get_global_climate", "resolve_aoi"}
-            if aoi.get("source") == "country" and aoi.get("boundarySource") == "gaul2025" and tool_name not in public_tools:
+            if not municipal and aoi.get("source") == "country" and aoi.get("boundarySource") == "gaul2025" and tool_name not in public_tools:
                 import asyncio
                 def resolve_legacy_region():
                     import json
@@ -378,6 +389,8 @@ class ToolDispatcher:
                 import asyncio
                 boundary_code = aoi.get("countryCode") if aoi.get("source") == "country" else (
                     "MOZ" if aoi.get("source") == "mozambique" and not province and region_geom is None else None)
+                if municipal:
+                    boundary_code = None
                 boundary_source = aoi.get("boundarySource") or "geoboundaries"
                 if boundary_source not in ("gaul2025", "geoboundaries"):
                     return {"status": "error", "message": "Fonte de limites administrativos não suportada."}
@@ -419,6 +432,10 @@ class ToolDispatcher:
                         return public.landcover(region, args.get("scale_m", 30))
                     return public.climate(region, start, end, args.get("variable") or "precipitation", args.get("scale_m", 11132))
                 result = await asyncio.to_thread(run_public_analysis)
+                if municipal and result.get("status") == "success":
+                    result["boundarySource"] = {"id": municipal["dataset"], "name": "GeoMoz — cartografia nacional",
+                                                "url": "https://github.com/geolithicamz-hub/geomoz"}
+                    result["warning"] += " Limite de distrito municipal da cartografia nacional GeoMoz."
                 if boundary_code and result.get("status") == "success":
                     from agent.public_datasets import source
                     boundary_asset = boundary_metadata.get("dataset") or "WM/geoLab/geoBoundaries/600/ADM0"

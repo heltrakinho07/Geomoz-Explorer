@@ -389,6 +389,24 @@ class PublicDataTests(unittest.TestCase):
         execute.assert_not_awaited()
         self.assertIn("vários limites FAO GAUL", result["synthesis"])
 
+    def test_maputo_municipal_request_uses_national_polygon(self):
+        from agent import municipal_boundaries
+
+        state = {"_gee_uid": "user-test", "aoi": {"source": "country", "countryCode": "MOZ",
+                                                   "boundarySource": "gaul2025", "label": "Cidade de Maputo"}}
+        district = {"name": "KaMavota", "geometry": GEOMETRY, "dataset": "district_2017.gpkg"}
+        with patch.dict("sys.modules", {"gee_module": MagicMock()}), \
+             patch.object(municipal_boundaries, "municipal_district", return_value=district) as resolve, \
+             patch.object(ToolDispatcher, "resolve_named_area", new_callable=AsyncMock) as gaul, \
+             patch.object(engine, "landcover", return_value={"status": "success", "warning": ""}) as analyze:
+            result = asyncio.run(GeoMozAgent.process_user_request(
+                "Cobertura de solo no distrito municipal de KaMavota", state))
+        resolve.assert_called_once_with("kamavota")
+        gaul.assert_not_awaited()
+        analyze.assert_called_once_with(GEOMETRY, 30)
+        self.assertEqual(result["runs"][0]["output"]["boundarySource"]["id"], "district_2017.gpkg")
+        self.assertIn("KaMavota", result["intelligence"]["scope"]["label"])
+
     def test_structured_request_bypasses_llm_but_uses_audited_dispatcher(self):
         state = {"aoi": {"source": "country", "countryCode": "PRT", "geometry": GEOMETRY},
                  "publicAnalysis": {"tool": "get_public_landcover", "args": {}}}
