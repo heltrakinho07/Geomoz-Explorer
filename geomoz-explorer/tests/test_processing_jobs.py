@@ -313,3 +313,109 @@ def test_clip_extent_rejects_invalid_bbox(tmp_path: Path, bbox) -> None:
             "clip-extent", tmp_path / "dem.tif", tmp_path / "out.tif",
             {"bbox": bbox},
         )
+
+def _mask_geojson() -> str:
+    return json.dumps({
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature", "properties": {"private": "not exported"},
+            "geometry": {"type": "Polygon", "coordinates": [[
+                [33.0, -20.0], [34.0, -20.0], [34.0, -19.0],
+                [33.0, -19.0], [33.0, -20.0],
+            ]]},
+        }],
+    })
+
+
+def test_clip_mask_gdal_uses_private_validated_cutline(tmp_path: Path) -> None:
+    from processing_jobs import _gdal_tool_command
+    source = tmp_path / "dem.tif"
+    target = tmp_path / "cut.tif"
+    mask_file = tmp_path / "mask.geojson"
+    cmd = _gdal_tool_command("clip-mask", source, target, {
+        "dst_crs": "EPSG:32736", "resampling": "bilinear",
+        "crop": True, "alpha": True, "all_touched": True,
+        "x_resolution": 30, "y_resolution": 30, "nodata": -9999,
+    }, mask_path=mask_file)
+    assert cmd[0] == "gdalwarp"
+    assert cmd[cmd.index("-cutline") + 1] == str(mask_file)
+    assert cmd[cmd.index("-t_srs") + 1] == "EPSG:32736"
+    assert cmd[cmd.index("-tr") + 1:cmd.index("-tr") + 3] == ["30.0", "30.0"]
+    assert cmd[cmd.index("-dstnodata") + 1] == "-9999.0"
+    assert "-dstalpha" in cmd and "-crop_to_cutline" in cmd
+    with pytest.raises(ValueError, match="Caminho"):
+        _gdal_tool_command("clip-mask", source, target, {},
+                           mask_path=tmp_path.parent / "external.geojson")
+
+
+def test_clip_mask_queued_job_writes_sanitised_geojson(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import processing_jobs as jobs
+    monkeypatch.setattr(jobs, "JOB_ROOT", tmp_path)
+    monkeypatch.setattr(jobs, "_executor", DeferredExecutor())
+    job = jobs.create_processing_job(
+        uid="mask-owner", tool="clip-mask", input_name="dem.tif",
+        input_bytes=b"II*\x00" + b"small-raster",
+        mask_geojson=_mask_geojson(), parameters={"resampling": "nearest"},
+    )
+    try:
+        mask = json.loads((tmp_path / job.id / "mask.geojson").read_text())
+        assert mask["features"][0]["properties"] == {}
+        assert mask["features"][0]["geometry"]["type"] == "Polygon"
+        assert jobs.get_processing_job(job.id, "another-user") is None
+    finally:
+        jobs.delete_processing_job(job.id, "mask-owner")
+
+
+@pytest.mark.parametrize("geometry", [
+    {"type": "Point", "coordinates": [33, -20]},
+    {"type": "Polygon", "coordinates": [[[33,-20],[34,-20],[34,-19],[33,-19]]]},
+    {"type": "Polygon", "coordinates": [[[333,-20],[34,-20],[34,-19],[333,-20]]]},
+    {"type": "Polygon", "coordinates": [[[33,-20],[34,-20],[34,-19],[33,-20.5]]]},
+])
+def test_cutline_rejects_invalid_or_nonpolygon_geometry(geometry) -> None:
+    from raster_mask import normalise_cutline
+    raw = json.dumps({"type": "FeatureCollection", "features": [{
+        "type": "Feature", "properties": {}, "geometry": geometry,
+    }]})
+    if geometry["type"] == "Polygon" and geometry["coordinates"][0][0] == geometry["coordinates"][0][-1]:
+        # The third sample above has out-of-range longitude; the first
+        # polygon sample is valid and is handled separately below.
+        pass
+    with pytest.raises(ValueError):
+        normalise_cutline(raw)
+
+
+def test_cutline_accepts_valid_polygon_and_rejects_oversized_data() -> None:
+    from raster_mask import normalise_cutline
+    from raster_mask import MAX_CUTLINE_BYTES
+    result = json.loads(normalise_cutline(_mask_geojson()))
+    assert len(result["features"]) == 1
+    with pytest.raises(ValueError, match="8 MB"):
+        normalise_cutline("x" * (MAX_CUTLINE_BYTES + 1))
+
+
+def test_create_mask_job_endpoint_requires_valid_cutline(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured = {}
+
+    def create_job_mock(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            id="mask-job", public_dict=lambda: {
+                "id": "mask-job", "tool": "clip-mask", "status": "queued",
+                "progress": 0,
+            },
+        )
+
+    monkeypatch.setattr("api.create_processing_job", create_job_mock)
+    monkeypatch.setattr("api.cleanup_expired_jobs", lambda: 0)
+    response = client.post("/geomoz-api/processing/jobs", data={
+        "tool": "clip-mask", "parameters": "{}",
+        "mask_geojson": _mask_geojson(),
+    }, files={"input_file": ("dem.tif", b"II*\x00" + b"test", "image/tiff")})
+    assert response.status_code == 202
+    assert captured["mask_geojson"] == _mask_geojson()
+    assert captured["tool"] == "clip-mask"

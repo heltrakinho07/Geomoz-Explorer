@@ -22,6 +22,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, BinaryIO, Dict, Optional
 
+from raster_mask import cutline_warp_args, normalise_cutline
+
 JOB_ROOT = Path(os.getenv("GEOMOZ_JOB_ROOT", "/tmp/geomoz-processing-jobs"))
 JOB_TTL_SECONDS = max(60, int(os.getenv("GEOMOZ_JOB_TTL_SECONDS", "7200")))
 MAX_UPLOAD_BYTES = max(1024, int(os.getenv("GEOMOZ_JOB_MAX_UPLOAD_BYTES", str(256 * 1024 * 1024))))
@@ -132,6 +134,7 @@ def _gdal_tool_command(
     input_path: Path,
     output_path: Path,
     parameters: Dict[str, Any],
+    mask_path: Optional[Path] = None,
 ) -> list[str]:
     if tool == "hillshade":
         azimuth = float(parameters.get("azimuth", 315))
@@ -182,6 +185,11 @@ def _gdal_tool_command(
             "-co", "COMPRESS=" + compression, "-co", "BLOCKSIZE=" + str(blocksize),
             "-co", "OVERVIEWS=AUTO",
         ]
+
+    if tool == "clip-mask":
+        if mask_path is None:
+            raise ValueError("Seleccione uma máscara poligonal GeoJSON.")
+        return cutline_warp_args(input_path, output_path, mask_path, parameters)
 
     if tool == "clip-extent":
         # These coordinates are expressed in the source raster's CRS, not
@@ -242,7 +250,8 @@ def _run_job(job_id: str, input_path: Path, output_path: Path) -> None:
         if cancelled.is_set():
             return
         _set_job(job_id, status="running", progress=10, message="A preparar GDAL.")
-        cmd = _gdal_tool_command(job.tool, input_path, output_path, job.parameters)
+        cmd = _gdal_tool_command(job.tool, input_path, output_path, job.parameters,
+                                 mask_path=(input_path.parent / "mask.geojson") if job.tool == "clip-mask" else None)
         timeout = _execution_timeout(job.parameters)
 
         if cancelled.is_set():
@@ -306,6 +315,7 @@ def create_processing_job(
     input_bytes: Optional[bytes] = None,
     input_stream: Optional[BinaryIO] = None,
     parameters: Optional[Dict[str, Any]] = None,
+    mask_geojson: Optional[str] = None,
 ) -> ProcessingJob:
     if not uid:
         raise ValueError("Autenticação necessária.")
@@ -313,7 +323,11 @@ def create_processing_job(
         raise ValueError("Forneça exatamente uma fonte binária de entrada.")
 
     parameters = dict(parameters or {})
-    _gdal_tool_command(tool, Path("input.tif"), Path("output.tif"), parameters)
+    cutline = normalise_cutline(mask_geojson) if tool == "clip-mask" else None
+    if mask_geojson is not None and tool != "clip-mask":
+        raise ValueError("A máscara GeoJSON só é permitida para clip-mask.")
+    _gdal_tool_command(tool, Path("input.tif"), Path("output.tif"), parameters,
+                       mask_path=Path("mask.geojson") if cutline is not None else None)
     _execution_timeout(parameters)
     input_file = _safe_file_name(input_name, "input.tif")
     if not input_file.lower().endswith((".tif", ".tiff")):
@@ -342,6 +356,8 @@ def create_processing_job(
         source = io.BytesIO(input_bytes) if input_bytes is not None else input_stream
         assert source is not None
         _write_input(directory / input_file, source)
+        if cutline is not None:
+            (directory / "mask.geojson").write_text(cutline, encoding="utf-8")
         _set_job(job_id, status="queued", progress=0, message="Job recebido.")
         output_path = directory / (tool + "_" + job_id[:8] + ".tif")
         future = _executor.submit(_run_job, job_id, directory / input_file, output_path)
