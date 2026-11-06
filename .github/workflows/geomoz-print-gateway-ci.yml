@@ -62,4 +62,4 @@ jobs:
         with:
           node-version: "24"
       - name: Run browser adapter and print-contract source tests
-        run: node --experimental-strip-types --test scripts/tests/geomoz-qgis-print-job.test.mjs
+        run: node --experimental-strip-types --test scripts/tests/geomoz-qgis-print-job.test.mjs scripts/tests/geomoz-print-client.test.mjs
