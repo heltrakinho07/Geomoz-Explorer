@@ -216,7 +216,7 @@ class GatewayTests(unittest.TestCase):
         with (patch.object(pg, "_db", return_value=Database()),
               patch.object(pg, "require_plan_feature", return_value="pro"),
               patch("platform_config.get_plan_limits", return_value={"concurrent_jobs": 2}),
-              patch.object(pg.firestore, "transactional", side_effect=lambda fn: fn)):
+              patch.object(pg, "firestore", type("FakeFirestore", (), {"transactional": staticmethod(lambda fn: fn)})())):
             first, created = pg._allocate("owner", "a" * 32, "1" * 64, good_job(), CONFIG)
             self.assertTrue(created)
             same, created = pg._allocate("owner", "a" * 32, "1" * 64, good_job(), CONFIG)
