@@ -446,13 +446,24 @@ class ToolDispatcher:
                                           else " Limite nacional geoBoundaries v6.") + " Não foi usada a caixa envolvente como limite de cálculo."
                     context["aoi"] = {**aoi, "geometry": None,
                                       "boundaryDataset": boundary_asset}
-                if tool_name == "get_public_landcover" and result.get("map_action"):
+                export_kind = {"get_public_landcover": "worldcover", "calculate_zonal_statistics": "zonal",
+                               "get_global_climate": "climate"}.get(tool_name)
+                if export_kind and result.get("map_action"):
                     keys = ("source", "countryCode", "boundarySource", "adminLevel",
                             "admin1Code", "admin2Code", "municipalDistrict", "province", "district")
                     recipe = {key: aoi[key] for key in keys if key in aoi}
                     if not boundary_code and not municipal and region_geom is not None:
                         recipe["geometry"] = region_geom
-                    result["map_action"]["worldCoverAoi"] = recipe
+                    action = result["map_action"]
+                    if export_kind == "worldcover":
+                        action["worldCoverAoi"] = recipe
+                    action["rasterExport"] = {"aoi": recipe, "kind": export_kind}
+                    if export_kind != "worldcover":
+                        period = result["period"]
+                        action["rasterExport"].update(
+                            scale_m=result["analysisScaleM"], start=period["startDate"], end=period["endDate"],
+                            index=result.get("index"), variable=result.get("variable"), cloud_pct=args.get("cloud_pct", 30),
+                        )
                 return result
 
             if tool_name == "resolve_aoi":

@@ -12,6 +12,7 @@ interface Props {
   moduleName:string;
   projectName?:string;
   printSourceId:string;
+  defaults?: { title: string; source: string; legend: { name: string; color: string }[] };
 }
 const paperSize={a4:{w:210,h:297},a3:{w:297,h:420}};
 export function printPageDimensions(paper:GeoMozPrintPaper,orientation:GeoMozPrintOrientation) {
@@ -24,7 +25,7 @@ export function printPageDimensions(paper:GeoMozPrintPaper,orientation:GeoMozPri
  * from the visible module, not generated/approximated geographic information.
  * Printing is blocked if browser security prevents faithful screen capture.
  */
-export default function GeoMozPrintLayout({open,onClose,moduleName,projectName,printSourceId}:Props){
+export default function GeoMozPrintLayout({open,onClose,moduleName,projectName,printSourceId,defaults}:Props){
   const [title,setTitle]=useState("");
   const [subtitle,setSubtitle]=useState("");
   const [sourceText,setSourceText]=useState("");
@@ -47,13 +48,13 @@ export default function GeoMozPrintLayout({open,onClose,moduleName,projectName,p
   const canPrint=Boolean(snapshot&&!busy&&!error);
   useEffect(()=>{
     if(!open)return;
-    setTitle(moduleName==="Mapa"?"Mapa do estudo — GeoMoz":moduleName+" — GeoMoz");
+    setTitle(defaults?.title ?? (moduleName==="Mapa"?"Mapa do estudo — GeoMoz":moduleName+" — GeoMoz"));
     setSubtitle(projectName??"");
-    setSourceText("GeoMoz Explorer · indicar a origem dos dados e o fundo cartográfico utilizado");
-    setNotes("");setCrs("");setScale("");setNorth(false);setShowLegend(false);setLegend("");
+    setSourceText(defaults?.source ?? "GeoMoz Explorer · indicar a origem dos dados e o fundo cartográfico utilizado");
+    setNotes("");setCrs("");setScale("");setNorth(false);setShowLegend(Boolean(defaults?.legend.length));setLegend(defaults?.legend.map(item=>item.name).join("\n") ?? "");
     setError("");setWarning("");setSnapshot(null);
     setDate(new Date().toLocaleDateString("pt-PT"));
-  },[open,moduleName,projectName]);
+  },[open,moduleName,projectName,defaults]);
   const capture=useCallback(async()=>{
     if(!open||isCapturing)return;
     const element=document.getElementById(printSourceId);
@@ -65,6 +66,7 @@ export default function GeoMozPrintLayout({open,onClose,moduleName,projectName,p
       const canvas=await html2canvas(element,{
         backgroundColor:document.documentElement.classList.contains("dark")?"#020617":"#ffffff",
         useCORS:true,allowTaint:false,logging:false,
+        ignoreElements:element=>Boolean(defaults&&element.classList.contains("leaflet-control-zoom")),
         scale:Math.min(2,Math.max(1,window.devicePixelRatio||1)),
         windowWidth:window.innerWidth,
         width:element.clientWidth,height:element.clientHeight
@@ -80,7 +82,7 @@ export default function GeoMozPrintLayout({open,onClose,moduleName,projectName,p
         ? "Não foi possível interpretar as cores desta vista. Actualize a página e tente novamente. "+detail
         : "O navegador não conseguiu capturar esta vista. Verifique a ligação e as permissões CORS dos mapas, ou utilize a «Composição de mapa» nativa do GIS Workspace. "+detail);
     }finally{setBusy(false);setIsCapturing(false);}
-  },[open,printSourceId,isCapturing]);
+  },[open,printSourceId,isCapturing,defaults]);
   useEffect(()=>{
     if(!open)return;
     // One async capture per opening. Refresh explicitly if the map changes.
@@ -151,7 +153,7 @@ export default function GeoMozPrintLayout({open,onClose,moduleName,projectName,p
             <div className="gm-print-map-area">
               {snapshot?<img src={snapshot} alt={"Vista capturada do módulo "+moduleName}/>:<div className="gm-print-map-empty"><ImageIcon size={25}/>{busy?"A captar o mapa e o conteúdo actual…":"Sem captura disponível"}</div>}
               {north&&<div className="gm-print-north" aria-label="Norte (indicado manualmente)"><span>N</span><strong>↑</strong></div>}
-              {showLegend&&legend.trim()&&<div className="gm-print-legend"><strong>Legenda</strong>{legend.split(/\r?\n/).filter(Boolean).map((x,i)=><span key={i}>{x}</span>)}</div>}
+              {showLegend&&legend.trim()&&<div className="gm-print-legend"><strong>Legenda</strong>{legend.split(/\r?\n/).filter(Boolean).map((x,i)=><span key={i}>{defaults?.legend.find(item=>item.name===x)?.color && <span aria-hidden="true" style={{display:"inline-block",width:10,height:10,marginRight:5,backgroundColor:defaults.legend.find(item=>item.name===x)?.color}} />}{x}</span>)}</div>}
             </div>
             <div className="gm-print-metadata"><span><b>Módulo</b> {moduleName}</span><span><b>Data</b> {date}</span>{crs&&<span><b>CRS</b> {crs}</span>}{scale&&<span><b>Escala declarada</b> {scale}</span>}</div>
             {notes.trim()&&<div className="gm-print-notes"><b>Notas técnicas</b><p>{notes}</p></div>}
