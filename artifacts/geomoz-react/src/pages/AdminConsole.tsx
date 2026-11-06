@@ -12,6 +12,7 @@ import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
 import "@/components/dashboard-glass.css";
 import "./admin-geomoz.css";
 import { apiFetch } from "@/lib/api";
+import { ADMIN_MODULE_GROUPS } from "./adminModuleCatalog";
 import { PLAN_ORDER, formatMzn, type PlanId } from "@/lib/plans";
 
 type AdminRole = "superadmin" | "admin" | "support";
@@ -407,19 +408,56 @@ export default function AdminConsole() {
             <p className="text-xs text-slate-500 lg:col-span-2 2xl:col-span-3">Alterações de preços aplicam-se apenas a novas sessões de checkout. Planos já pagos mantêm o período contratado. Quotas de armazenamento, processos simultâneos e equipas continuam dependentes dos respectivos serviços de execução.</p>
           </div>}
 
-          {section === "features" && <div className="grid md:grid-cols-2 gap-4">
-            {Object.entries(FEATURE_NAMES).map(([key,label]) => <section className={card + " p-5 flex items-center justify-between gap-4"} key={key}>
-              <div className="flex items-center gap-3">
-                <div className="p-3 rounded-xl bg-sky-50 dark:bg-sky-900/25 text-sky-600 dark:text-sky-300"><Zap size={18}/></div>
-                <div><h2 className="font-bold text-sm">{label}</h2><p className="text-xs text-slate-500 mt-1">Disponibilidade do módulo</p></div>
+          {section === "features" && <div className="space-y-6">
+            <section aria-labelledby="admin-module-controls" className="space-y-4">
+              <div>
+                <h3 id="admin-module-controls" className="font-extrabold text-lg">Controlos globais</h3>
+                <p className="text-xs text-slate-500 mt-1">Apenas os módulos com integração administrativa existente podem ser activados ou desactivados aqui.</p>
               </div>
-              <button role="switch" aria-label={"Alternar " + label} aria-checked={features[key] !== false} disabled={!isRoot || busy}
-                onClick={() => { const state = features[key] !== false; if (guard((state ? "Desactivar" : "Activar") + " " + label + " para os utilizadores?")) void act(() => jsonApi("/geomoz-api/admin/features", "PATCH", { changes: { [key]: !state } }), "Estado do módulo actualizado.", "features"); }}
-                className={"relative shrink-0 w-12 h-7 rounded-full p-1 transition-colors " + (features[key] !== false ? "bg-sky-600" : "bg-slate-300 dark:bg-slate-700")}>
-                <span className={"block rounded-full bg-white h-5 w-5 shadow-sm transition-transform " + (features[key] !== false ? "translate-x-5" : "")} />
-              </button>
-            </section>)}
-            <p className="text-xs text-slate-500 md:col-span-2">Os bloqueios também são aplicados aos endpoints científicos mapeados no servidor. A protecção de motores externos e módulos independentes requer controlos específicos nos respectivos serviços.</p>
+              <div className="grid md:grid-cols-2 gap-4">
+                {Object.entries(FEATURE_NAMES).map(([key,label]) => <section className={card + " p-5 flex items-center justify-between gap-4"} key={key}>
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-xl bg-sky-50 dark:bg-sky-900/25 text-sky-600 dark:text-sky-300"><Zap size={18}/></div>
+                    <div><h4 className="font-bold text-sm">{label}</h4><p className="text-xs text-slate-500 mt-1">{features[key] === false ? "Desactivado" : "Activado"} · Controlo global</p></div>
+                  </div>
+                  <button role="switch" aria-label={"Alternar " + label} aria-checked={features[key] !== false} disabled={!isRoot || busy}
+                    onClick={() => { const state = features[key] !== false; if (guard((state ? "Desactivar" : "Activar") + " " + label + " para os utilizadores?")) void act(() => jsonApi("/geomoz-api/admin/features", "PATCH", { changes: { [key]: !state } }), "Estado do módulo actualizado.", "features"); }}
+                    className={"relative shrink-0 w-12 h-7 rounded-full p-1 transition-colors " + (features[key] !== false ? "bg-sky-600" : "bg-slate-300 dark:bg-slate-700")}>
+                    <span className={"block rounded-full bg-white h-5 w-5 shadow-sm transition-transform " + (features[key] !== false ? "translate-x-5" : "")} />
+                  </button>
+                </section>)}
+              </div>
+            </section>
+            <section aria-labelledby="admin-module-inventory" className="space-y-4">
+              <div>
+                <h3 id="admin-module-inventory" className="font-extrabold text-lg">Inventário de módulos e ferramentas</h3>
+                <p className="text-xs text-slate-500 mt-1">Catálogo das áreas disponíveis na plataforma. «Associado» identifica o controlo global; «Sem controlo independente» indica que ainda não existe um bloqueio administrativo próprio.</p>
+              </div>
+              {ADMIN_MODULE_GROUPS.map(group => (
+                <section key={group.title} className={card + " p-5"}>
+                  <h4 className="font-bold mb-3">{group.title}</h4>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    {group.entries.map(entry => (
+                      <div key={entry.title} className="rounded-xl border border-slate-200 dark:border-slate-700 p-3.5 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-semibold text-sm">{entry.title}</div>
+                          <p className="text-xs text-slate-500 mt-1">{entry.description}</p>
+                          <p className="text-[11px] text-slate-500 mt-2">
+                            {entry.controlledBy
+                              ? "Associado a " + FEATURE_NAMES[entry.controlledBy] + " · " + (features[entry.controlledBy] === false ? "desactivado" : "activo")
+                              : "Sem controlo independente"}
+                          </p>
+                        </div>
+                        <WLink href={entry.route} title={"Abrir " + entry.title} className="text-sky-600 dark:text-sky-400 shrink-0 rounded-lg p-1 hover:bg-sky-50 dark:hover:bg-slate-800" aria-label={"Abrir " + entry.title}>
+                          <ExternalLink size={16}/>
+                        </WLink>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </section>
+            <p className="text-xs text-slate-500">A listagem não constitui garantia de bloqueio técnico. Os bloqueios existentes aplicam-se apenas às rotas e aos endpoints efectivamente protegidos; serviços externos e o GIS Workspace autónomo necessitam de protecção adicional.</p>
           </div>}
 
           {section === "requests" && <section className={card + " gm-admin-table-wrap overflow-hidden"}>
