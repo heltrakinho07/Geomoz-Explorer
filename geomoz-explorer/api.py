@@ -1402,14 +1402,11 @@ def workspace_dem(req: WorkspaceDemRequest, request: Request, uid: str = Depends
     from terrain_gee import fetch_signed_gee_geotiff
     from workspace_dem import prepare_dem, resolve_workspace_area, write_dem_geotiff
 
-    try:
-        geometry = resolve_workspace_area(req, _region_geojson)
-    except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
-    if geometry is None:
-        raise HTTPException(422, "Seleccione, desenhe ou importe uma área de estudo.")
     preview = request.url.path.endswith("/preview")
     try:
+        geometry = resolve_workspace_area(req, _region_geojson)
+        if geometry is None:
+            raise ValueError("Seleccione, desenhe ou importe uma área de estudo.")
         result = prepare_dem(req, geometry, preview)
         if preview:
             return result
