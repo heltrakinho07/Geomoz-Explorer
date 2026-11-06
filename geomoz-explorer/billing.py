@@ -307,8 +307,31 @@ def _checkout_enabled():
     return os.environ.get("GEOMOZ_BILLING_ENABLED", "false").strip().lower() == "true"
 
 
+def _module_uid(request: Request) -> str:
+    """Strict Firebase verification for browser launch decisions.
+
+    A signed but revoked token or disabled account must not launch a module.
+    """
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer ") or not header[7:].strip():
+        raise HTTPException(401, "Inicie sessão para aceder aos módulos.")
+    if firebase_auth is None:
+        raise HTTPException(503, "Autenticação Firebase indisponível.")
+    try:
+        payload = firebase_auth.verify_id_token(header[7:].strip(), check_revoked=True)
+        uid = str(payload.get("uid") or "")
+        if not uid:
+            raise ValueError("UID inválido.")
+        account = firebase_auth.get_user(uid)
+    except Exception as exc:
+        raise HTTPException(401, "Sessão inválida ou expirada.") from exc
+    if account.disabled:
+        raise HTTPException(403, "Conta desactivada.")
+    return uid
+
+
 @router.get("/module-access")
-def module_access(uid: str = Depends(_uid)):
+def module_access(uid: str = Depends(_module_uid)):
     """Permissões efectivas: assinatura validada no servidor + estado global."""
     snap = _billing_ref(uid).get()
     state = snap.to_dict() if snap.exists else {}
