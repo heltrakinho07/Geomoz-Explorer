@@ -191,6 +191,34 @@ module.exports=async function validateRasterProcessing(page){
  // from the existing local COG's layer metadata and are reprojected in-browser.
  const layerCountBefore=await page.locator(".gm-layer-row").count();
  await realDem.locator(".gm-layer-select").click();
+ // QGIS-style properties must operate on the real GeoTIFF via the exact same
+ // RasterSymbologySection that edits native COG layers in the Style sidebar.
+ const openProps=page.getByTestId("geomoz-layer-properties-open");
+ await openProps.click();
+ const rasterProps=page.getByTestId("geomoz-layer-properties-dialog");
+ await rasterProps.waitFor({state:"visible"});
+ assert.equal(await rasterProps.getAttribute("data-layer-kind"),"raster");
+ await rasterProps.getByRole("button",{name:"Simbologia"}).click();
+ const nativeEditor=rasterProps.getByTestId("geomoz-raster-symbology-editor");
+ await nativeEditor.waitFor({state:"visible",timeout:25000});
+ assert.equal(await nativeEditor.locator("#rasterMode").count(),1,
+   "Native renderer must expose actual band-rendering controls");
+ assert.equal(await nativeEditor.locator("#rasterBand").count(),1,
+   "Native renderer must expose the selected GeoTIFF band");
+ const nodata=nativeEditor.locator("#rasterNodata");
+ await nodata.selectOption("off");
+ assert.equal(await nodata.inputValue(),"off",
+   "NoData setting must be applied through the native raster editor");
+ await rasterProps.getByRole("button",{name:"Fechar propriedades da camada"}).click();
+ await rasterProps.waitFor({state:"hidden"});
+ // The actual rasterState must be persisted by GeoLibre's project store.
+ await openProps.click();
+ await rasterProps.getByRole("button",{name:"Simbologia"}).click();
+ assert.equal(await rasterProps.locator("#rasterNodata").inputValue(),"off");
+ await rasterProps.locator("#rasterNodata").selectOption("auto");
+ await rasterProps.getByRole("button",{name:"Fechar propriedades da camada"}).click();
+ await rasterProps.waitFor({state:"hidden"});
+ console.log("GeoTIFF layer properties expose working native raster band and NoData controls.");
  await page.getByTestId("geomoz-layer-open-terrain").click();
  const terrain=page.getByTestId("geomoz-workbench-terrain");
  await terrain.waitFor({state:"visible"});
