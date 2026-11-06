@@ -88,7 +88,7 @@ def test_ai_credit_reservations_are_atomic_and_release_on_failure(account, monke
 
     client, database, uid = account
     monkeypatch.setattr(engine, "_db", lambda: database)
-    monkeypatch.setattr(engine, "get_plan_limits", lambda plan: {"credits": 3})
+    monkeypatch.setattr(engine, "get_plan_limits", lambda plan: {"credits": 3, "projects": 3})
     monkeypatch.setattr(billing, "get_plan_limits", lambda plan: {"credits": 3})
 
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -127,7 +127,7 @@ def test_expired_credit_holds_are_recovered(account, monkeypatch):
 
     client, database, uid = account
     monkeypatch.setattr(engine, "_db", lambda: database)
-    monkeypatch.setattr(engine, "get_plan_limits", lambda plan: {"credits": 2})
+    monkeypatch.setattr(engine, "get_plan_limits", lambda plan: {"credits": 2, "projects": 3})
     monkeypatch.setattr(billing, "get_plan_limits", lambda plan: {"credits": 2})
     hold = engine.reserve_credits(uid, "ai.agent_chat")
     database.collection("billing").document(uid).collection("creditReservations").document(
