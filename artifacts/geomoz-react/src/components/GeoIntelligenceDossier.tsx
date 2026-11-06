@@ -25,6 +25,15 @@ export interface IntelligenceDossier {
   }>;
 }
 
+function sourceLabel(source: unknown): string | null {
+  if (typeof source === "string") return source.slice(0, 280);
+  if (!source || typeof source !== "object") return null;
+  const entry = source as Record<string, unknown>;
+  const name = typeof entry.name === "string" ? entry.name : "";
+  const id = typeof entry.id === "string" ? entry.id : "";
+  return [name, id && id !== name ? `(${id})` : ""].filter(Boolean).join(" ") || null;
+}
+
 const statusKeys: Record<string, AiDiagnosticKey> = {
   completed: "dossier.status.completed", partial: "dossier.status.partial", error: "dossier.status.error",
   unverified: "dossier.status.unverified", needs_input: "dossier.status.needs_input", reference: "dossier.status.reference",
@@ -68,8 +77,11 @@ export function GeoIntelligenceDossier({ dossier }: { dossier: IntelligenceDossi
               {record.status === "success" ? "✓" : "!"} {record.tool.replaceAll("_", " ")}
               {record.durationMs !== undefined && ` · ${(record.durationMs / 1000).toFixed(1)} s`}
             </summary>
-            <p className="mt-2 break-words">{t("dossier.source")} {record.source ? (typeof record.source === "string" ? record.source : JSON.stringify(record.source)) : t("dossier.noSource")}</p>
-            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[10px]">{JSON.stringify({ parametros: record.parameters, resultado: record.result }, null, 2)}</pre>
+            <p className="mt-2 break-words">{t("dossier.source")} {sourceLabel(record.source) || t("dossier.noSource")}</p>
+            <details className="mt-2 rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+              <summary className="cursor-pointer font-medium">Ver parâmetros e JSON técnico</summary>
+              <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[10px]">{JSON.stringify({ parametros: record.parameters, fonte: record.source, resultado: record.result }, null, 2)}</pre>
+            </details>
           </details>
         ))}
         <button type="button" onClick={download} className="rounded-lg bg-violet-600 px-3 py-2 font-semibold text-white hover:bg-violet-700">{t("dossier.export")}</button>

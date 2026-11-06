@@ -14,6 +14,7 @@ import urllib.request
 import urllib.error
 from typing import Dict, Any, List, Optional
 from agent.registry import TOOL_DECLARATIONS, ToolDispatcher
+from agent.followup_context import followup_scope, refers_to_current_area
 from agent.municipal_boundaries import municipal_district_code
 from agent.geology_intent import is_catalogue_request, is_geology_followup, resolve_geology_scope
 
@@ -158,6 +159,14 @@ class GeoMozAgent:
         """Orchestrate plan, execute tools, and return map actions and synthesis."""
         current_map_state = current_map_state if isinstance(current_map_state, dict) else {}
         public_request = current_map_state.get("publicAnalysis")
+        # Resolve demonstratives before any place-name lookup or LLM routing.
+        # A previously selected FAO GAUL ADM2 keeps its hierarchy codes.
+        selected_scope = followup_scope(current_map_state, user_message)
+        if isinstance(selected_scope, str):
+            return {"status": "needs_input", "steps": [], "runs": [],
+                    "map_actions": [], "synthesis": selected_scope}
+        if selected_scope is not None:
+            current_map_state["aoi"] = selected_scope
         catalogue_requested = any(phrase in _fold_text(user_message) for phrase in
                                   ("dados publicos", "fontes publicas", "catalogo de dados", "fontes globais"))
         if public_request is None:
@@ -177,7 +186,7 @@ class GeoMozAgent:
                     _fold_text(user_message),
                 )
                 aoi = current_map_state.get("aoi") or {}
-                if place and place[2].strip() not in {"toda a area", "toda a regiao"}:
+                if place and not refers_to_current_area(user_message) and place[2].strip() not in {"toda a area", "toda a regiao"}:
                     kind, name = place[1], place[2].strip()
                     label = _fold_text(str(aoi.get("label") or "")).split(",")[0].strip()
                     if kind or name != label:
@@ -211,16 +220,40 @@ class GeoMozAgent:
             args = public_request.get("args", {})
             if args.get("start_date") and args.get("end_date"):
                 current_map_state["temporalWindow"] = {"startDate": args["start_date"], "endDate": args["end_date"]}
-            output = await ToolDispatcher.execute(name, args, current_map_state)
-            success = output.get("status") == "success"
-            return {"status": "reference" if name in ("list_public_datasets", "list_administrative_units") and success else "completed" if success else "error",
-                    "provider": "public-data-engine", "model": "Earth Engine / dados públicos",
-                    "steps": [{"id": "public", "name": name.replace("_", " "),
-                               "status": "completed" if success else "error",
-                               "resultSummary": output.get("summary") or output.get("message", "Sem resultado.")}],
-                    "map_actions": [output["map_action"]] if output.get("map_action") else [],
-                    "runs": [{"tool": name, "output": output}],
-                    "synthesis": output.get("summary") or output.get("message", "Sem resultado.")}
+            # Explicit joint analysis: bounded to two already-allowlisted tools.
+            # Never infer correlation between WorldCover 2021 and ERA5 periods.
+            folded = _fold_text(user_message)
+            joint = (name == "get_public_landcover"
+                     and any(t in folded for t in ("precipit", "era5", "chuva", "clima"))
+                     and any(t in folded for t in ("cruz", "integr", "relacion", "combin", "junt", "compar")))
+            operations = ([("get_global_climate", {"variable": "precipitation"}), ("get_public_landcover", {})]
+                          if joint else [(name, args)])
+            runs, steps, actions, notes = [], [], [], []
+            for tool_name, tool_args in operations:
+                output = await ToolDispatcher.execute(tool_name, tool_args, current_map_state)
+                success = output.get("status") == "success" and not output.get("error")
+                runs.append({"tool": tool_name, "output": output})
+                steps.append({"id": f"public_{len(steps) + 1}", "name": tool_name.replace("_", " "),
+                              "status": "completed" if success else "error",
+                              "resultSummary": output.get("summary") or output.get("message", "Sem resultado.")})
+                if success and output.get("map_action"):
+                    actions.append(output["map_action"])
+                notes.append(output.get("summary") or output.get("message", "Sem resultado."))
+            successes = sum(run["output"].get("status") == "success" for run in runs)
+            status = ("reference" if len(runs) == 1 and name in ("list_public_datasets", "list_administrative_units") and successes
+                      else "completed" if successes == len(runs) else "partial" if successes else "error")
+            synthesis = "\n\n".join(notes)
+            if joint and successes:
+                synthesis += ("\n\nAnálise conjunta exploratória: WorldCover representa 2021; "
+                              "ERA5-Land é reanálise climática do período seleccionado. "
+                              "Não implica correlação causal nem classificação climática das classes de solo.")
+            elif selected_scope is not None and successes:
+                label = selected_scope.get("label") or "área anteriormente seleccionada"
+                synthesis += f"\n\nÁrea mantida: {label}. A delimitação é a mesma; as datas e fontes de cada produto podem diferir."
+            return {"status": status, "provider": "public-data-engine",
+                    "model": "Earth Engine / dados públicos",
+                    "steps": steps, "map_actions": actions,
+                    "runs": runs, "synthesis": synthesis}
 
         # Published GeoMoz geology is a deterministic public catalogue. Even if
         # an OpenAI/Gemini key is configured, catalogue-only questions must not

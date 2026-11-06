@@ -36,6 +36,16 @@ service cloud.firestore {
         }
       }
 
+      // Private, user-scoped GeoMoz AI conversation history. Never public.
+      match /geoaiThreads/{threadId} {
+        allow read, delete: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && request.resource.data.keys().hasOnly(["version", "messages", "lastAnalysis", "updatedAt"])
+          && request.resource.data.version == 1
+          && request.resource.data.messages is list
+          && request.resource.data.messages.size() <= 32;
+      }
+
       // Credentials & GEE OAuth tokens
       match /credentials/{credId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
