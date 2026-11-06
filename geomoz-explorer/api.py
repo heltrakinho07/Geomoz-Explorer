@@ -231,11 +231,13 @@ from project_quota import router as project_quota_router
 from admin import router as admin_router
 from billing_plan_requests import router as plan_requests_router, admin_router as admin_plan_requests_router
 from entitlement_engine import metering_enabled, reserve_credits, settle_credits
+from subscription_entitlements import router as entitlements_router, require_plan_feature, processing_gate_enabled
 app.include_router(billing_router)
 app.include_router(project_quota_router)
 app.include_router(admin_router)
 app.include_router(plan_requests_router)
 app.include_router(admin_plan_requests_router)
+app.include_router(entitlements_router)
 
 # ee.Initialize mutates global Earth Engine SDK state. Serialize the complete
 # authentication + computation lifecycle of GEE requests in each Python worker.
@@ -355,6 +357,8 @@ async def create_processing_job_endpoint(
     uid: str = Depends(require_firebase_auth),
 ):
     """Queue a heavy raster job and return immediately with a job id."""
+    if processing_gate_enabled():
+        require_plan_feature(uid, "cloud_jobs")
     cleanup_expired_jobs()
     tool_id = tool.strip().lower()
     if tool_id not in SUPPORTED_HEAVY_GIS_TOOLS:
