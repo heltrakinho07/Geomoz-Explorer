@@ -422,7 +422,7 @@ export default function AdminConsole() {
                 {Object.entries(moduleRegistry).map(([key,info]) => <section className={card + " p-5 flex items-center justify-between gap-4"} key={key}>
                   <div className="flex items-center gap-3">
                     <div className="p-3 rounded-xl bg-sky-50 dark:bg-sky-900/25 text-sky-600 dark:text-sky-300"><Zap size={18}/></div>
-                    <div><h4 className="font-bold text-sm">{info.label}</h4><p className="text-xs text-slate-500 mt-1">{features[key] === true ? "Activado" : "Desactivado"} · {info.category} · {info.coverage === "mapped_api_and_route" ? "Rotas e API mapeadas" : "Cobertura parcial"}</p><p className="text-[11px] text-slate-500 mt-1">{info.detail}</p></div>
+                    <div><h4 className="font-bold text-sm">{info.label}</h4><p className="text-xs text-slate-500 mt-1">{features[key] === true ? "Activado" : "Desactivado"} · {info.category} · {info.coverage === "mapped_api_and_route" ? "Rotas e API mapeadas" : info.coverage === "client_launch" ? "Entrada controlada" : "Cobertura parcial"}</p><p className="text-[11px] text-slate-500 mt-1">{info.detail}</p></div>
                   </div>
                   <button role="switch" aria-label={"Alternar " + info.label} aria-checked={features[key] === true} disabled={!isRoot || busy || typeof features[key] !== "boolean"}
                     onClick={() => { const state = features[key] === true; if (guard((state ? "Desactivar" : "Activar") + " " + info.label + " para os utilizadores?")) void act(() => jsonApi("/geomoz-api/admin/features", "PATCH", { changes: { [key]: !state } }), "Estado do módulo actualizado.", "features"); }}
@@ -450,7 +450,7 @@ export default function AdminConsole() {
                       <tr key={key} className="border-t border-slate-200 dark:border-slate-700">
                         <th scope="row" className="py-3 px-3 font-medium">{info.label}</th>
                         {PLAN_ORDER.map(code => {
-                          const managed = info.coverage === "mapped_api_and_route";
+                          const managed = info.coverage === "mapped_api_and_route" || info.coverage === "client_launch";
                           const current = planFeatures[code]?.[key];
                           return <td key={code} className="py-3 px-3 text-center">
                             {managed ? <input type="checkbox"
@@ -471,6 +471,7 @@ export default function AdminConsole() {
                   </tbody>
                 </table>
               </div>
+              <p className="text-[11px] text-slate-500">GIS Workspace e Catálogos Sísmicos: restrição de entrada na interface GeoMoz, não um bloqueio dos ficheiros estáticos nem dos serviços científicos públicos. Os restantes módulos têm verificações de API nas rotas mapeadas.</p>
               <p className="text-[11px] text-slate-500">As permissões desta matriz não substituem as restrições Pro já existentes, as quotas de créditos nem a autorização do Google Earth Engine.</p>
             </section>
             <section aria-labelledby="admin-module-inventory" className="space-y-4">
