@@ -307,6 +307,23 @@ def _checkout_enabled():
     return os.environ.get("GEOMOZ_BILLING_ENABLED", "false").strip().lower() == "true"
 
 
+@router.get("/module-access")
+def module_access(uid: str = Depends(_uid)):
+    """Permissões efectivas: assinatura validada no servidor + estado global."""
+    snap = _billing_ref(uid).get()
+    state = snap.to_dict() if snap.exists else {}
+    plan = _effective_plan(state or {})
+    config = read_config()
+    return {
+        "plan": plan,
+        "features": {
+            key: config["features"].get(key, False)
+            and config["planFeatures"][plan].get(key, False)
+            for key in config["features"]
+        },
+    }
+
+
 @router.get("/catalog")
 def public_catalog():
     """Public catalogue is server-sourced; clients never choose the price."""

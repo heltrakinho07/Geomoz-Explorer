@@ -121,6 +121,7 @@ export default function AdminConsole() {
   const [drafts, setDrafts] = useState<Catalog | null>(null);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
   const [moduleRegistry, setModuleRegistry] = useState<Record<string, { label: string; category: string; coverage: string; detail: string }>>({});
+  const [planFeatures, setPlanFeatures] = useState<Record<string, Record<string, boolean>>>({});
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [grantPlan, setGrantPlan] = useState<PlanId>("pro");
   const [grantThrough, setGrantThrough] = useState("");
@@ -140,11 +141,12 @@ export default function AdminConsole() {
         setUsers(response.users);
         setNextPageToken(response.nextPageToken || null);
       } else if (target === "plans" || target === "features") {
-        const response = await jsonApi<{ plans: Catalog; features: Record<string, boolean>; moduleRegistry?: Record<string, { label: string; category: string; coverage: string; detail: string }> }>("/geomoz-api/admin/plans");
+        const response = await jsonApi<{ plans: Catalog; features: Record<string, boolean>; moduleRegistry?: Record<string, { label: string; category: string; coverage: string; detail: string }>; planFeatures?: Record<string, Record<string, boolean>> }>("/geomoz-api/admin/plans");
         setCatalog(response.plans);
         setDrafts(JSON.parse(JSON.stringify(response.plans)) as Catalog);
         setFeatures(response.features);
         setModuleRegistry(response.moduleRegistry || {});
+        setPlanFeatures(response.planFeatures || {});
       } else if (target === "payments") {
         const response = await jsonApi<{ payments: Payment[] }>("/geomoz-api/admin/payments?limit=80");
         setPayments(response.payments);
@@ -429,6 +431,47 @@ export default function AdminConsole() {
                   </button>
                 </section>)}
               </div>
+            </section>
+            <section aria-labelledby="admin-module-plan-rights" className={card + " p-5 space-y-4"}>
+              <div>
+                <h3 id="admin-module-plan-rights" className="font-extrabold text-lg">Permissões por plano</h3>
+                <p className="text-xs text-slate-500 mt-1">As alterações são guardadas imediatamente, auditadas e aplicadas aos endpoints protegidos. Módulos com cobertura parcial são apenas informativos.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] text-sm text-left">
+                  <thead className="text-xs text-slate-500 uppercase">
+                    <tr>
+                      <th scope="col" className="py-3 px-3">Módulo</th>
+                      {PLAN_ORDER.map(code => <th scope="col" key={code} className="py-3 px-3 text-center">{code}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(moduleRegistry).map(([key, info]) => (
+                      <tr key={key} className="border-t border-slate-200 dark:border-slate-700">
+                        <th scope="row" className="py-3 px-3 font-medium">{info.label}</th>
+                        {PLAN_ORDER.map(code => {
+                          const managed = info.coverage === "mapped_api_and_route";
+                          const current = planFeatures[code]?.[key];
+                          return <td key={code} className="py-3 px-3 text-center">
+                            {managed ? <input type="checkbox"
+                              aria-label={info.label + " no plano " + code}
+                              className="h-4 w-4 accent-sky-600"
+                              checked={current === true}
+                              disabled={!isRoot || busy || typeof current !== "boolean"}
+                              onChange={e => {
+                                const desired = e.target.checked;
+                                if (guard((desired ? "Permitir " : "Restringir ") + info.label + " no plano " + code + "?"))
+                                  void act(() => jsonApi("/geomoz-api/admin/plan-features/" + code, "PATCH", { changes: { [key]: desired } }), "Permissão do plano actualizada.", "features");
+                              }}
+                            /> : <span title="Bloqueio por plano ainda não disponível" className="text-slate-400">—</span>}
+                          </td>;
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[11px] text-slate-500">As permissões desta matriz não substituem as restrições Pro já existentes, as quotas de créditos nem a autorização do Google Earth Engine.</p>
             </section>
             <section aria-labelledby="admin-module-inventory" className="space-y-4">
               <div>

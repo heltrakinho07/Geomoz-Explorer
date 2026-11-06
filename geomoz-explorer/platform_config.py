@@ -51,6 +51,17 @@ def get_feature_registry():
 
 
 DEFAULT_FEATURES = {key: True for key in FEATURE_LABELS}
+
+# Sem alterações retroactivas: só uma configuração administrativa explícita
+# restringe módulos de planos existentes. Restrições Pro antigas mantêm-se.
+DEFAULT_PLAN_FEATURES = {
+    code: {key: True for key in FEATURE_LABELS}
+    for code in PLAN_ORDER
+}
+PLAN_GATED_FEATURES = frozenset(
+    key for key, info in FEATURE_COVERAGE.items()
+    if info["coverage"] == "mapped_api_and_route"
+)
 ALLOWED_PLAN_FIELDS = frozenset({
     "enabled", "monthlyMzn", "yearlyMzn", "projects", "storageBytes",
     "credits", "seats", "concurrentJobs",
@@ -71,7 +82,8 @@ def read_config(*, fresh=False):
     if os.environ.get("CI", "").lower() == "true" and (
         firestore is None or os.environ.get("GEOMOZ_FEATURE_FLAGS_TEST_MODE", "").lower() == "true"
     ):
-        return {"plans": deepcopy(DEFAULT_PLANS), "features": deepcopy(DEFAULT_FEATURES)}
+        return {"plans": deepcopy(DEFAULT_PLANS), "features": deepcopy(DEFAULT_FEATURES),
+                "planFeatures": deepcopy(DEFAULT_PLAN_FEATURES)}
     now = monotonic()
     with _cache_lock:
         if not fresh and _cached["value"] is not None and now < _cached["until"]:
@@ -88,7 +100,15 @@ def read_config(*, fresh=False):
     raw_features = data.get("features") if isinstance(data.get("features"), dict) else {}
     features = {k: raw_features.get(k, v) if isinstance(raw_features.get(k, v), bool) else v
                 for k, v in DEFAULT_FEATURES.items()}
-    result = {"plans": plans, "features": features}
+    raw_plan_features = data.get("planFeatures") if isinstance(data.get("planFeatures"), dict) else {}
+    plan_features = {}
+    for code, defaults in DEFAULT_PLAN_FEATURES.items():
+        override = raw_plan_features.get(code) if isinstance(raw_plan_features.get(code), dict) else {}
+        plan_features[code] = {
+            key: override[key] if isinstance(override.get(key), bool) else default
+            for key, default in defaults.items()
+        }
+    result = {"plans": plans, "features": features, "planFeatures": plan_features}
     with _cache_lock:
         _cached.update(value=deepcopy(result), until=monotonic() + _CACHE_TTL)
     return result
@@ -116,6 +136,29 @@ def get_plan_limits(code):
 
 def get_features():
     return read_config()["features"]
+
+
+def get_plan_feature_permissions(plan):
+    """A escolha do plano é feita pelo servidor, nunca pelo navegador."""
+    if plan not in DEFAULT_PLAN_FEATURES:
+        raise ValueError("Plano desconhecido.")
+    return read_config()["planFeatures"][plan]
+
+
+def update_plan_features(plan, changes):
+    if plan not in DEFAULT_PLAN_FEATURES:
+        raise ValueError("Plano desconhecido.")
+    if not changes or set(changes) - PLAN_GATED_FEATURES:
+        raise ValueError("Módulo sem controlo técnico independente ou desconhecido.")
+    if any(type(value) is not bool for value in changes.values()):
+        raise ValueError("Permissões de módulos têm de ser booleanas.")
+    _doc().set(
+        {"planFeatures": {plan: changes},
+         "updatedAt": datetime.now(timezone.utc).isoformat()},
+        merge=True,
+    )
+    invalidate_cache()
+    return get_plan_feature_permissions(plan)
 
 
 def update_plan_config(code, changes):

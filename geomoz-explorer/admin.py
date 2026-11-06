@@ -20,6 +20,7 @@ from platform_config import (
     get_features,
     read_config,
     update_features,
+    update_plan_features,
     update_plan_config,
 )
 
@@ -324,6 +325,20 @@ def change_features(payload: FeatureChange, operator=Depends(require_superadmin)
         raise HTTPException(422, str(exc)) from exc
     _audit(operator, "features.updated", "platform", {"changes": payload.changes})
     return {"features": new_flags, "labels": FEATURE_LABELS}
+
+
+class PlanFeaturesChange(BaseModel):
+    changes: dict[str, bool] = Field(min_length=1, max_length=6)
+
+
+@router.patch("/plan-features/{plan}")
+def change_plan_features(plan: str, payload: PlanFeaturesChange, operator=Depends(require_superadmin)):
+    try:
+        current = update_plan_features(plan, payload.changes)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    _audit(operator, "plan_features.updated", plan, {"changes": payload.changes})
+    return {"plan": plan, "features": current}
 
 
 @router.get("/payments")
