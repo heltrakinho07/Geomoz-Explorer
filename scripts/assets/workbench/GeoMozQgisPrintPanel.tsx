@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "@geolibre/core";
 import { useLanguage } from "../../hooks/useLanguage";
 import { geoMozSpecialistText } from "./geomoz-specialist-locale";
 import { Download, FileText, Info, X } from "lucide-react";
 import { buildGeoMozQgisPrintJob } from "../../lib/geomoz-qgis-print-job";
+import { submitGeoMozPrint } from "../../lib/geomoz-print-client";
 
 /** Prepares a self-contained print job for the autonomous QGIS PDF engine.
  * Does not send user geospatial data to a network host. */
@@ -27,10 +28,43 @@ export function GeoMozQgisPrintPanel({ onClose }: { onClose: () => void }) {
   const [intervalMeters, setIntervalMeters] = useState(10000);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
+  const [processing, setProcessing] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
+  useEffect(() => () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); }, [pdfUrl]);
+  const buildPrintJob = () => buildGeoMozQgisPrintJob(
+    layers, selected, { title, paper, orientation, dpi, engine, mapCrs,
+      gridType, intervalDegrees, intervalMeters }
+  );
+  const requestPdf = async () => {
+    const controller = new AbortController();
+    abortRef.current?.abort();
+    abortRef.current = controller;
+    setProcessing(true);
+    setError("");
+    setDone(ui("A validar o pedido de impressão…"));
+    try {
+      const job = buildPrintJob();
+      const pdf = await submitGeoMozPrint(job, message => {
+        if (!controller.signal.aborted) setDone(ui(message));
+      }, controller.signal);
+      if (controller.signal.aborted) return;
+      setPdfUrl(URL.createObjectURL(pdf));
+      setDone(ui("PDF cartográfico concluído. Pode pré-visualizar ou descarregar."));
+    } catch (cause) {
+      if (!controller.signal.aborted) {
+        setDone("");
+        setError(cause instanceof Error ? cause.message : ui("Não foi possível imprimir o mapa."));
+      }
+    } finally {
+      if (!controller.signal.aborted) setProcessing(false);
+    }
+  };
 
   const download = () => {
     try {
-      const job = buildGeoMozQgisPrintJob(layers, selected, { title, paper, orientation, dpi, engine, mapCrs, gridType, intervalDegrees, intervalMeters });
+      const job = buildPrintJob();
       const file = new Blob([JSON.stringify(job, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(file);
       const anchor = document.createElement("a");
@@ -50,10 +84,10 @@ export function GeoMozQgisPrintPanel({ onClose }: { onClose: () => void }) {
   return <section className="gm-qgis-print-panel" role="dialog" aria-label={ui("Exportação cartográfica GeoMoz")}>
     <header><div><strong><FileText size={17}/> {ui("Impressão cartográfica · PyQGIS / Cartopy")}</strong>
       <small>{ui("Exportação preparada para o motor cartográfico dedicado")}</small></div>
-      <button type="button" onClick={onClose} aria-label={ui("Fechar exportação QGIS")}><X size={17}/></button>
+      <button type="button" onClick={()=>{abortRef.current?.abort();onClose();}} aria-label={ui("Fechar exportação QGIS")}><X size={17}/></button>
     </header>
     <p className="gm-qgis-print-tip"><Info size={15}/> {ui("Este comando cria um pacote local de camadas GeoJSON para o motor seleccionado.")}
-      {ui("O PDF não é gerado no navegador. Para impressão imediata em PDF, utilize «Layout de impressão».")}</p>
+      {ui("O PDF é gerado pelo serviço remoto autenticado. Se não estiver disponível, pode guardar o pacote JSON ou utilizar «Layout de impressão».")}</p>
     <div className="gm-qgis-print-fields">
       <label>{ui("Motor cartográfico")}
         <select aria-label={ui("Motor cartográfico")} value={engine} onChange={event=>{
@@ -119,7 +153,19 @@ export function GeoMozQgisPrintPanel({ onClose }: { onClose: () => void }) {
     </fieldset>
     {error && <p role="alert" className="gm-qgis-print-error">{error}</p>}
     {done && <p role="status" className="gm-qgis-print-done">{done}</p>}
-    <button type="button" className="gm-qgis-print-submit" onClick={download}
-      disabled={printable.length === 0 || selected.length === 0}><Download size={16}/> {ui("Exportar pacote (.json)")}</button>
+    <div className="gm-qgis-print-fields">
+      <button type="button" className="gm-qgis-print-submit" onClick={requestPdf}
+        disabled={printable.length === 0 || selected.length === 0 || processing}>
+        <Download size={16}/>{processing ? ui("A processar impressão…") : ui("Exportar PDF")}
+      </button>
+      <button type="button" className="gm-qgis-print-submit" onClick={download}
+        disabled={printable.length === 0 || selected.length === 0 || processing}>
+        <Download size={16}/>{ui("Guardar pacote (.json)")}
+      </button>
+    </div>
+    {pdfUrl && <div className="gm-qgis-print-fields" role="group" aria-label={ui("Resultados de impressão")}>
+      <a href={pdfUrl} target="_blank" rel="noopener noreferrer">{ui("Pré-visualizar PDF")}</a>
+      <a href={pdfUrl} download="geomoz-mapa.pdf">{ui("Descarregar PDF")}</a>
+    </div>}
   </section>;
 }

@@ -45,6 +45,8 @@ COPY billing_plan_requests.py .
 COPY admin.py .
 COPY platform_config.py .
 COPY project_quota.py .
+COPY print_job.py .
+COPY print_gateway.py .
 COPY processing_jobs.py .
 COPY raster_mask.py .
 COPY gee_module.py .
