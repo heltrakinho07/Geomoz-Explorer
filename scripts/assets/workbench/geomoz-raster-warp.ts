@@ -22,7 +22,7 @@ export function rasterWarpArgs(id:string, params:Record<string,unknown>, maskPat
     args.push("-cutline",maskPath);
     const dstCrs=String(params.dst_crs??"").trim().toUpperCase();
     if(dstCrs){
-      if(!/^EPSG:[1-9]\\d{2,5}$/.test(dstCrs))throw Error("Indique um SRC de destino válido, por exemplo EPSG:32736.");
+      if(!/^EPSG:[1-9]\d{2,5}$/.test(dstCrs))throw Error("Indique um SRC de destino válido, por exemplo EPSG:32736.");
       args.push("-t_srs",dstCrs);
     }
     const resampling=String(params.resampling??"nearest");
