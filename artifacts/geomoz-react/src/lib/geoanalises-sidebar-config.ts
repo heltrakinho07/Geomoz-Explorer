@@ -36,7 +36,7 @@ const DATA_PRODUCTS: Record<string, SidebarOverrides> = {
     source: "EOX / S-2",
     description: "Escolha o ano e a comparação no painel de resultados. O mosaico anual já foi preparado; datas e filtro de nuvens não se aplicam.",
     showDateRange: false, showCloudFilter: false,
-    showProcessingOptions: false, requiresGee: false,,
+    showProcessingOptions: false, requiresGee: false,
     useSpecializedPanel: true
   },
   elevation: {
@@ -61,49 +61,49 @@ const DATA_PRODUCTS: Record<string, SidebarOverrides> = {
     title: "Classificação topográfica",
     source: "GLO-30",
     description: "Configure limites, cores e água no painel de resultados. Não são necessários datas ou filtros de nuvens.",
-    showDateRange: false, showCloudFilter: false, showProcessingOptions: false,,
+    showDateRange: false, showCloudFilter: false, showProcessingOptions: false,
     useSpecializedPanel: true
   },
   profile: {
     title: "Perfil topográfico A–B",
     source: "GLO-30",
     description: "Marque os pontos A e B e ajuste a amostragem no painel de resultados. A análise utiliza elevação, não imagens multitemporais.",
-    showDateRange: false, showCloudFilter: false, showProcessingOptions: false,,
+    showDateRange: false, showCloudFilter: false, showProcessingOptions: false,
     useSpecializedPanel: true
   },
   contours: {
     title: "Curvas de nível",
     source: "GLO-30",
     description: "Defina a equidistância no painel de resultados. As curvas derivam do DEM e não dependem de datas ou nuvens.",
-    showDateRange: false, showCloudFilter: false, showProcessingOptions: false,,
+    showDateRange: false, showCloudFilter: false, showProcessingOptions: false,
     useSpecializedPanel: true
   },
   lineaments: {
     title: "Estruturas e lineamentos",
     source: "DEM",
     description: "Filtros de direcção e densidade estrutural não usam nebulosidade. Funcionalidade sujeita ao estado de desenvolvimento.",
-    showDateRange: false, showCloudFilter: false, showProcessingOptions: false,,
+    showDateRange: false, showCloudFilter: false, showProcessingOptions: false,
     useSpecializedPanel: true
   },
   landcover: {
     title: "Cobertura terrestre de referência",
     source: "WorldCover 2021",
     description: "Produto categórico ESA WorldCover de 2021. Alterar datas ou nuvens não gera um novo mapa de uso do solo.",
-    showDateRange: false, showCloudFilter: false, showProcessingOptions: false,,
+    showDateRange: false, showCloudFilter: false, showProcessingOptions: false,
     useSpecializedPanel: true
   },
   targeting: {
     title: "Prospectividade mineral",
     source: "Modelo multicritério",
     description: "Configure o mineral e os pesos das variáveis no painel de resultados. Não confunda o índice de favorabilidade com uma banda espectral.",
-    showDateRange: false, showCloudFilter: false, showProcessingOptions: false,,
+    showDateRange: false, showCloudFilter: false, showProcessingOptions: false,
     useSpecializedPanel: true
   },
   spi_ndvi: {
     title: "Seca meteorológica × vegetação",
     source: "CHIRPS / MODIS",
     description: "Configure o ano e a correlação SPI × NDVI no painel de resultados. O filtro de nuvens de cenas Sentinel-2 não se aplica.",
-    showDateRange: false, showCloudFilter: false, showProcessingOptions: false,,
+    showDateRange: false, showCloudFilter: false, showProcessingOptions: false,
     useSpecializedPanel: true
   },
   burned_area: {
