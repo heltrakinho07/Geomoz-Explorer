@@ -15,6 +15,7 @@ test("pinned GeoLibre is patched at the Add Vector Layer source", () => {
     "packages/plugins/src/types.ts",
     "packages/plugins/src/plugins/maplibre-vector.ts",
     "apps/geolibre-desktop/src/lib/app-api.ts",
+    "apps/geolibre-desktop/src/lib/duckdb-vector-loader.ts",
   ];
   try {
     writeFileSync(join(temp, "LICENSE"), "MIT");
@@ -23,7 +24,7 @@ test("pinned GeoLibre is patched at the Add Vector Layer source", () => {
       cpSync(join(pinned, path), join(temp, path));
     }
     const changes = prepareGeoMozLargeVector(temp);
-    assert.equal(changes.length, 6);
+    assert.equal(changes.length, 7);
     const plugin = readFileSync(join(temp, files[1]), "utf8");
     const host = readFileSync(join(temp, files[2]), "utf8");
     const api = readFileSync(join(temp, files[0]), "utf8");
@@ -38,6 +39,15 @@ test("pinned GeoLibre is patched at the Add Vector Layer source", () => {
     assert.match(api, /prepareLargeGeoJSONFile\?/);
     assert.match(worker, /convertDuckDbVectorToGeoParquet/);
     assert.match(worker, /readAsArrayBuffer\(file\)/);
+    const geoParquetLoader = readFileSync(join(temp, files[3]), "utf8");
+    // Every record stays in the GeoParquet output, including features with
+    // NULL or EMPTY geometry; only the Hilbert sort key becomes NULL.
+    assert.match(geoParquetLoader, /SELECT \* FROM src\s+ORDER BY CASE/);
+    assert.match(geoParquetLoader, /IS NULL OR ST_IsEmpty\(\$\{geometrySql\}\) THEN NULL/);
+    assert.match(geoParquetLoader, /ELSE ST_Hilbert\(\$\{geometrySql\}/);
+    assert.match(geoParquetLoader, /END NULLS LAST/);
+    assert.match(geoParquetLoader, /WHERE \$\{geometrySql\} IS NOT NULL AND NOT ST_IsEmpty/);
+    assert.doesNotMatch(geoParquetLoader, /FROM src\s+WHERE .* NOT ST_IsEmpty.*ORDER BY/);
     assert.match(panel, /DUCKDB_VECTOR_ROUTE_BYTES/);
     assert.match(panel, /controller.abort\(\)/);
     assert.match(panel, /renderMode: "tiles"/);

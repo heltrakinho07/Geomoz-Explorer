@@ -33,6 +33,28 @@ export function prepareGeoMozLargeVector(rootDir) {
     }
     changes.push([target, content]);
   };
+  // ST_Hilbert raises on EMPTY geometries, which are valid in many geological
+  // datasets. Keep every source record and sort only georeferenced features.
+  // Filtering out EMPTY would silently discard attributes and row counts.
+  edit(app, "lib/duckdb-vector-loader.ts", [[
+    [
+      "        WITH src AS (\${source}),",
+      "        b AS (SELECT ST_Extent(ST_Extent_Agg(\${geometrySql})) AS box FROM src)",
+      "        SELECT * FROM src",
+      "        ORDER BY ST_Hilbert(\${geometrySql}, (SELECT box FROM b))",
+    ].join("\n"),
+    [
+      "        WITH src AS (\${source}),",
+      "        b AS (SELECT ST_Extent(ST_Extent_Agg(\${geometrySql})) AS box FROM src",
+      "                WHERE \${geometrySql} IS NOT NULL AND NOT ST_IsEmpty(\${geometrySql}))",
+      "        SELECT * FROM src",
+      "        ORDER BY CASE",
+      "          WHEN \${geometrySql} IS NULL OR ST_IsEmpty(\${geometrySql}) THEN NULL",
+      "          ELSE ST_Hilbert(\${geometrySql}, (SELECT box FROM b))",
+      "        END NULLS LAST",
+    ].join("\n"),
+    "Hilbert ordering tolerates NULL and EMPTY geometry",
+  ]]);
   edit(plugins, "types.ts", [[
     "  pickVectorFilesWithSidecars?: () => Promise<GeoLibrePickedVectorFile[]>;",
     [
