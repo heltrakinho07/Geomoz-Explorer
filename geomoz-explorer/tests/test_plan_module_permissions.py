@@ -105,19 +105,23 @@ def test_authenticated_module_access_uses_effective_billing_plan(monkeypatch):
 
 def test_workspace_and_seismic_plan_permissions_are_explicitly_configurable(monkeypatch):
     records = []
+    config = {"planFeatures": {"academic": {"gis_workspace": False}}}
 
     class Snapshot:
         exists = True
 
         def to_dict(self):
-            return {"planFeatures": {"academic": {"gis_workspace": False}}}
+            return config
 
     class Doc:
         def get(self):
             return Snapshot()
 
         def set(self, value, merge=False):
-            records.append((value, merge))
+            assert merge is True
+            records.append(value)
+            for plan, changes in value.get("planFeatures", {}).items():
+                config.setdefault("planFeatures", {}).setdefault(plan, {}).update(changes)
 
     monkeypatch.setattr(platform_config, "_doc", lambda: Doc())
     monkeypatch.delenv("CI", raising=False)
@@ -126,10 +130,9 @@ def test_workspace_and_seismic_plan_permissions_are_explicitly_configurable(monk
         rights = platform_config.update_plan_features("academic", {"seismic_catalogs": False})
         assert rights["gis_workspace"] is False
         assert rights["seismic_catalogs"] is False
-        assert records[-1][1] is True
+        assert records[-1]["planFeatures"]["academic"]["seismic_catalogs"] is False
     finally:
         platform_config.invalidate_cache()
-
 
 def _auth_request(token="valid"):
     return Request({
