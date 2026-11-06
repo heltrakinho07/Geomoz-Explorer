@@ -26,6 +26,24 @@ def account(monkeypatch):
     monkeypatch.setattr(project_quota, "_db", lambda: database)
     monkeypatch.setattr(billing, "get_plan_limits", DEFAULT_PLANS.__getitem__)
     monkeypatch.setattr(project_quota, "get_plan_limits", DEFAULT_PLANS.__getitem__)
+    # The server-authoritative entitlements endpoint reuses the same ledger.
+    # In the emulator, substitute the same database/clock/limits rather than
+    # requiring a live Firebase Admin default application.
+    import subscription_entitlements as entitlements
+    monkeypatch.setattr(entitlements, "_db", lambda: database)
+    monkeypatch.setattr(entitlements, "get_features", lambda: {})
+    monkeypatch.setattr(entitlements, "_utcnow", lambda: billing._utcnow())
+
+    def emulated_limits(plan):
+        current = billing.get_plan_limits(plan)
+        return {
+            "projects": current["projects"], "credits": current["credits"],
+            "storage_bytes": current.get("storage_bytes", current.get("storageBytes", 0)),
+            "seats": current.get("seats", 1),
+            "concurrent_jobs": current.get("concurrent_jobs", current.get("concurrentJobs", 1)),
+        }
+
+    monkeypatch.setattr(entitlements, "get_plan_limits", emulated_limits)
     app = FastAPI()
     app.include_router(billing.router)
     app.include_router(project_quota.router)
