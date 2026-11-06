@@ -1,3 +1,4 @@
+import { WorldCoverInspector } from "./WorldCoverInspector";
 import { GAULAreaSelect, type LoadGAULUnits } from "./GAULAreaSelect";
 import { MaputoMunicipalSelect, isMaputoCity } from "./MaputoMunicipalSelect";
 import { WORLD_COUNTRIES } from "@/lib/world-countries";
@@ -607,6 +608,7 @@ export default function GeoMozAIAgentTab() {
             dateRange: act.temporalChange?.periodB || layerPeriod,
             metrics: {},
             tileUrl: act.tileUrl,
+            worldCoverAoi: act.worldCoverAoi,
             temporalChange: act.temporalChange || null,
             replay: replayRecipe,
             quality: sourceRun?.output?.quality || null,
@@ -1575,8 +1577,16 @@ export default function GeoMozAIAgentTab() {
               </>
             )}
             <TemporalPixelClick enabled={Boolean(selectedTemporal && selectedRecipe && activeTileUrl)} onProbe={probeTemporalPixel} />
+            {activeTileUrl && completedRuns[selectedLayerIndex]?.worldCoverAoi && (
+              <WorldCoverInspector key={selectedLayerIndex} aoi={completedRuns[selectedLayerIndex].worldCoverAoi} />
+            )}
             <ScaleControl position="bottomleft" />
           </MapContainer>
+          {activeTileUrl && completedRuns[selectedLayerIndex]?.worldCoverAoi && (
+            <p className="pointer-events-none absolute bottom-6 right-4 z-[900] rounded-lg bg-slate-900/85 px-3 py-2 text-xs text-white">
+              WorldCover 2021 · Clique no mapa para consultar a classe
+            </p>
+          )}
           {showComparison && selectedTemporal && (
             <>
               <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 z-[900] w-0.5 bg-white shadow-[0_0_0_1px_rgba(30,41,59,0.7)]" style={{ left: `${swipePosition}%` }} />

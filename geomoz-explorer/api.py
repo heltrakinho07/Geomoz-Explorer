@@ -1541,6 +1541,11 @@ def _geoai_temporal_region(aoi: dict):
     from agent import earth_engine_tools as public
     if len(json.dumps(aoi)) > 125_000:
         raise ValueError("A área de estudo é demasiado complexa.")
+    if aoi.get("municipalDistrict"):
+        from agent.municipal_boundaries import municipal_district
+        if aoi.get("countryCode") != "MOZ":
+            raise ValueError("Distrito municipal inválido.")
+        return public.validate_geometry(municipal_district(aoi["municipalDistrict"])["geometry"])
     geometry = aoi.get("geometry")
     if geometry is not None:
         return public.validate_geometry(geometry)
@@ -1588,6 +1593,27 @@ async def _geoai_run_temporal(req: GeoAiTemporalRecipeRequest, operation: str):
     except Exception as exc:
         logger.error("GeoMoz temporal %s failed: %s", operation, type(exc).__name__)
         raise HTTPException(status_code=503, detail="Falha no processamento Earth Engine. Verifique a ligação e os limites da área.") from None
+
+
+class WorldCoverPixelRequest(BaseModel):
+    aoi: dict
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
+@app.post("/geomoz-api/ai/worldcover-pixel")
+async def geoai_worldcover_pixel(req: WorldCoverPixelRequest, uid: str = Depends(require_gee_auth)):
+    def execute():
+        from agent.earth_engine_tools import worldcover_pixel
+        return worldcover_pixel(_geoai_temporal_region(req.aoi), req.longitude, req.latitude)
+
+    try:
+        return await run_in_threadpool(execute)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except Exception as exc:
+        logger.error("GeoMoz WorldCover inspector failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Não foi possível consultar o WorldCover no Earth Engine.") from None
 
 
 @app.post("/geomoz-api/ai/temporal-pixel")

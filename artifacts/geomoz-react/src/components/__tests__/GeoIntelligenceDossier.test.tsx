@@ -33,6 +33,16 @@ describe("GeoIntelligenceDossier", () => {
     expect(html).toContain("174,48");
     expect(html).toContain("-0,0128");
   });
+  it("uses the WorldCover map colour and offers statistics export", () => {
+    const html = renderToStaticMarkup(<GeoIntelligenceDossier dossier={{
+      ...dossier, evidence: [{ ...dossier.evidence[0], tool: "get_public_landcover",
+        result: { classes: [{ id: 80, name: "Água permanente", areaKm2: 19.19,
+          color: "#0064c8", percentOfValidArea: 0.1 }] } }],
+    }} />);
+    expect(html).toContain("background-color:#0064c8");
+    expect(html).toContain("Água permanente");
+    expect(html).toContain("Exportar CSV");
+  });
   it("does not chart numeric fields from failed tools", () => {
     const html = renderToStaticMarkup(<GeoIntelligenceDossier dossier={{
       ...dossier, evidence: [{ ...dossier.evidence[1], result: { classes: [{ name: "Culturas", areaKm2: 10 }] } }],
