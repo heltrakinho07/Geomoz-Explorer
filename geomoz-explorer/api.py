@@ -244,21 +244,45 @@ _gee_request_lock = asyncio.Lock()
 
 @app.middleware("http")
 async def restrict_disabled_modules(request: Request, call_next):
-    # Server-side controls complement SPA route visibility; direct API access
-    # to a disabled scientific module must also be blocked.
-    from platform_config import blocked_api_module, get_features
+    """Apply global and plan-specific rights to known scientific APIs.
+
+    No new entitlement check is needed until an administrator explicitly
+    disables at least one plan/module pair. This preserves legacy behaviour
+    and avoids billing reads on the unrestricted hot path.
+    """
+    from platform_config import blocked_api_module, PLAN_GATED_FEATURES, read_config
     from fastapi.responses import JSONResponse
+
     module = blocked_api_module(request.url.path)
     if module:
         try:
-            active = get_features().get(module, True)
+            config = read_config()
+            global_active = config["features"].get(module, False)
+            matrix = config["planFeatures"]
         except Exception:
-            # Fail closed for module APIs, not for health or payment callbacks.
             return JSONResponse(status_code=503, content={"detail": "Configuração dos módulos indisponível."})
-        if not active:
+        if not global_active:
             return JSONResponse(status_code=403, content={"detail": "Módulo temporariamente indisponível."})
-    return await call_next(request)
 
+        # Only modules with mapped API coverage can be restricted by plan.
+        if module in PLAN_GATED_FEATURES and any(
+            not row.get(module, False) for row in matrix.values()
+        ):
+            uid = _extract_uid_from_header(request.headers.get("Authorization", ""))
+            plan = "community"
+            if uid:
+                try:
+                    from billing import _billing_ref, _effective_plan
+                    snapshot = _billing_ref(uid).get()
+                    plan = _effective_plan(snapshot.to_dict() if snapshot.exists else {})
+                except Exception:
+                    return JSONResponse(status_code=503, content={"detail": "Não foi possível verificar a subscrição."})
+            if not matrix.get(plan, {}).get(module, False):
+                return JSONResponse(status_code=403, content={
+                    "detail": "Este módulo não está incluído no plano actual.",
+                    "code": "plan_module_unavailable",
+                })
+    return await call_next(request)
 
 @app.middleware("http")
 async def isolate_gee_requests(request: Request, call_next):
