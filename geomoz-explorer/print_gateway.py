@@ -73,6 +73,13 @@ def _settings():
     return config
 
 
+def _mint_cloud_run_id_token(audience):
+    """Fetch a Google-signed Cloud Run service identity (only on GCP)."""
+    from google.auth.transport.requests import Request as GoogleRequest
+    from google.oauth2 import id_token
+    return id_token.fetch_id_token(GoogleRequest(), audience)
+
+
 def _worker_request_headers(url, config):
     """Authorize private Cloud Run via Google OIDC and retain worker-secret defence.
 
@@ -83,13 +90,11 @@ def _worker_request_headers(url, config):
     secret = config["GEOMOZ_PRINT_WORKER_TOKEN"]
     headers = {"Content-Type": "application/json", "Accept": "application/pdf"}
     if config.get("GEOMOZ_PRINT_WORKER_AUTH_MODE", "bearer") == "iam":
-        from google.auth.transport.requests import Request as GoogleRequest
-        from google.oauth2 import id_token
         parsed = urlsplit(url)
         if parsed.scheme != "https" or not parsed.hostname or not parsed.hostname.endswith(".run.app"):
             raise ValueError("Destino IAM Cloud Run inválido.")
         audience = f"https://{parsed.netloc}"
-        identity = id_token.fetch_id_token(GoogleRequest(), audience)
+        identity = _mint_cloud_run_id_token(audience)
         headers["Authorization"] = "Bearer " + identity
         headers["X-Geomoz-Worker-Token"] = secret
     else:
