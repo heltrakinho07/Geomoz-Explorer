@@ -39,6 +39,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # ── Application code ────────────────────────────────────────────────────────
 COPY api.py .
 COPY billing.py .
+COPY entitlement_engine.py .
 COPY billing_plan_requests.py .
 COPY admin.py .
 COPY platform_config.py .

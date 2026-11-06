@@ -95,6 +95,9 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
       projectsUsed: number;
       projectLimit: number | null;
       remainingCredits: number | null;
+      creditLimit: number | null;
+      creditsUsed: number;
+      creditsReserved: number;
       creditResetAt: string;
     } | null;
   }>();
@@ -926,6 +929,27 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
                     <div className="font-bold mt-1">{usage ? usage.remainingCredits ?? t("settings.custom") : "—"}</div>
                   </div>
                 </div>
+                {usage && (
+                  <section aria-label="Consumo de créditos GeoMoz" className="rounded-xl border border-sky-200/60 bg-white/75 p-3.5 dark:border-sky-900/50 dark:bg-slate-900/70">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-sky-700 dark:text-sky-300">Créditos GeoMoz · {new Date().toISOString().slice(0,7)}</span>
+                      <span className="text-xs font-semibold tabular-nums text-slate-600 dark:text-slate-300">
+                        {usage.creditsUsed} utilizado(s){usage.creditsReserved ? ` · ${usage.creditsReserved} em análise` : ""}
+                      </span>
+                    </div>
+                    {usage.creditLimit !== null && (
+                      <div role="progressbar" aria-label="Percentagem de créditos utilizados"
+                        aria-valuemin={0} aria-valuenow={usage.creditsUsed} aria-valuemax={usage.creditLimit}
+                        className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                        <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-600"
+                          style={{width: `${Math.min(100, usage.creditLimit > 0 ? 100*usage.creditsUsed/usage.creditLimit : 0)}%`}} />
+                      </div>
+                    )}
+                    <p className="mt-2 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                      Os créditos GeoMoz são distintos das quotas do Google Earth Engine. O débito automático será aplicado gradualmente às ferramentas elegíveis.
+                    </p>
+                  </section>
+                )}
                 {usage?.periodEnd && (
                   <p className="text-xs text-slate-500">{t("settings.validUntil")} {new Date(usage.periodEnd).toLocaleDateString(translatedLocale === "pt" ? "pt-MZ" : translatedLocale)}. {t("settings.renewalHint")}</p>
                 )}

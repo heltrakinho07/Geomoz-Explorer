@@ -246,7 +246,16 @@ def _credit_usage(state, limit, now):
     return {
         "creditCycle": cycle,
         "creditsUsed": used,
-        "remainingCredits": None if limit is None else max(0, limit - used),
+        "remainingCredits": None if limit is None else max(
+            0, limit - used - (
+                int(state.get("creditsReserved", 0) or 0)
+                if state.get("reservationCycle") == cycle else 0
+            )
+        ),
+        "creditsReserved": (
+            max(0, int(state.get("creditsReserved", 0) or 0))
+            if state.get("reservationCycle") == cycle else 0
+        ),
         "creditResetAt": _iso(_add_months(now.replace(day=1, hour=0, minute=0, second=0, microsecond=0), 1)),
     }
 
@@ -264,6 +273,7 @@ def subscription_usage(uid: str = Depends(_uid)):
         "periodEnd": state.get("periodEnd") if plan != "community" else None,
         "projectsUsed": projects.count().get()[0][0].value,
         "projectLimit": limits["projects"],
+        "creditLimit": limits["credits"],
         **_credit_usage(state, limits["credits"], _utcnow()),
     }
 
@@ -539,11 +549,13 @@ def charge_managed_cloud_credits(uid: str, cost: int, operation_id: str):
         limit = get_plan_limits(plan)["credits"]
         usage = _credit_usage(state, limit, _utcnow())
         used, cycle = usage["creditsUsed"], usage["creditCycle"]
-        if limit is not None and used + cost > limit:
+        reserved = (max(0, int(state.get("creditsReserved", 0) or 0))
+                    if state.get("reservationCycle") == cycle else 0)
+        if limit is not None and used + reserved + cost > limit:
             raise HTTPException(402, "Créditos insuficientes.")
         transaction.set(event_ref, {"credits": cost, "cycle": cycle, "createdAt": firestore.SERVER_TIMESTAMP})
         transaction.set(billing_ref, {"creditsUsed": used + cost, "creditCycle": cycle,
                                       "updatedAt": firestore.SERVER_TIMESTAMP}, merge=True)
-        return {"charged": cost, "remaining": None if limit is None else limit - used - cost}
+        return {"charged": cost, "remaining": None if limit is None else limit - used - reserved - cost}
 
     return debit(tx)
