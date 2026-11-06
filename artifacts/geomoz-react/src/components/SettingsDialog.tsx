@@ -885,6 +885,31 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
                     <div className="font-bold mt-1">{subscription.planData.credits === null ? t("settings.custom") : subscription.remainingCredits}</div>
                   </div>
                 </div>
+                <div className="rounded-xl border border-sky-200/70 dark:border-sky-900/50 bg-sky-50/60 dark:bg-sky-950/25 p-3.5">
+                  <div className="flex flex-wrap justify-between gap-2 text-xs">
+                    <span className="font-bold text-sky-800 dark:text-sky-200">Consumo GeoMoz · {new Date().toISOString().slice(0,7)}</span>
+                    <span className="font-semibold text-slate-600 dark:text-slate-300">
+                      {subscription.creditsUsed} utilizado(s)
+                      {subscription.creditsReserved > 0 ? ` · ${subscription.creditsReserved} reservado(s)` : ""}
+                    </span>
+                  </div>
+                  {subscription.planData.credits !== null && (
+                    <div role="progressbar" aria-label="Créditos GeoMoz utilizados"
+                      aria-valuenow={subscription.creditsUsed}
+                      aria-valuemin={0}
+                      aria-valuemax={subscription.planData.credits}
+                      className="mt-3 h-2 overflow-hidden rounded-full bg-sky-100 dark:bg-slate-700">
+                      <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-600"
+                        style={{ width: `${Math.min(100, subscription.planData.credits > 0 ? 100 * subscription.creditsUsed / subscription.planData.credits : 0)}%` }} />
+                    </div>
+                  )}
+                  <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                    {subscription.meteringLive
+                      ? "Saldo confirmado pelo servidor. Os créditos GeoMoz são separados das quotas Google Earth Engine."
+                      : "Saldo em sincronização. A utilização efectivamente medida é confirmada pelo servidor."}
+                    {" "}A contabilização automática está a ser introduzida por ferramenta.
+                  </p>
+                </div>
                 {subscription.periodEnd && (
                   <p className="text-xs text-slate-500">{t("settings.validUntil")} {new Date(subscription.periodEnd).toLocaleDateString(translatedLocale === "pt" ? "pt-MZ" : translatedLocale)}. {t("settings.renewalHint")}</p>
                 )}
