@@ -125,7 +125,11 @@ def _allocate(uid, key, digest, job, config):
         minute = now.strftime("%Y-%m-%dT%H:%M")
         monthly_used = int(old.get("monthlyCount", 0)) if old.get("month") == month else 0
         minute_used = int(old.get("minuteCount", 0)) if old.get("minute") == minute else 0
-        active = max(0, int(old.get("active", 0)))
+        # Reclaim abandoned jobs after TTL on every new reservation.
+        existing = old.get("activeJobs") if isinstance(old.get("activeJobs"), dict) else {}
+        active_jobs = {ident: expiry for ident, expiry in existing.items()
+                       if isinstance(expiry, str) and expiry > _iso(now)}
+        active = len(active_jobs)
         if monthly_used >= limit:
             raise HTTPException(429, "Limite mensal de impressões do plano atingido.")
         if minute_used >= MINUTE_LIMIT:
@@ -136,16 +140,19 @@ def _allocate(uid, key, digest, job, config):
             "uid": uid, "engine": job["engine"], "paper": job["paper"],
             "mapCrs": job["map_crs"], "status": "queued",
             "plan": plan, "createdAt": _iso(now), "updatedAt": _iso(now),
-            "expiresAt": _iso(now + JOB_TTL), "inputPath": input_path,
+            "expiresAt": _iso(now + JOB_TTL), "expireAt": now + JOB_TTL,
+            "inputPath": input_path,
             "outputPath": result_path, "sha256": digest,
             "attempt": 0, "sizeBytes": 0, "error": "",
         })
         transaction.create(key_ref, {"jobId": job_id, "sha256": digest,
                                       "createdAt": _iso(now)})
+        active_jobs[job_id] = _iso(now + JOB_TTL)
         transaction.set(quota_ref, {
             "month": month, "monthlyCount": monthly_used + 1,
             "minute": minute, "minuteCount": minute_used + 1,
-            "active": active + 1, "updatedAt": _iso(now),
+            "active": len(active_jobs), "activeJobs": active_jobs,
+            "updatedAt": _iso(now),
         }, merge=True)
         return job_id, True
 
@@ -172,7 +179,9 @@ def _finish(job_id, status, size=0, error=""):
             "status": status, "sizeBytes": size, "error": error[:200],
             "updatedAt": _iso(now),
         }, merge=True)
-        transaction.set(quota_ref, {"active": max(0, int(quota.get("active", 0)) - 1)},
+        active_jobs = quota.get("activeJobs") if isinstance(quota.get("activeJobs"), dict) else {}
+        active_jobs.pop(job_id, None)
+        transaction.set(quota_ref, {"active": len(active_jobs), "activeJobs": active_jobs},
                         merge=True)
         return True
 
