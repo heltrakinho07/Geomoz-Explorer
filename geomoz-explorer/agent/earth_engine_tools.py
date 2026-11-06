@@ -437,6 +437,22 @@ def temporal_change(geometry, index, start1, end1, start2, end2, scale_m=30, clo
     return result
 
 
+def worldcover_geotiff_download(geometry):
+    """Export original categorical class IDs on a bounded geographic grid."""
+    import ee
+    from gee_download_grid import bounded_download_grid
+
+    region = ee.Geometry(validate_geometry(geometry), "EPSG:4326", False) if isinstance(geometry, dict) else geometry
+    grid = bounded_download_grid(region.bounds(maxError=1).getInfo(), 10, 4_000_000)
+    image = ee.ImageCollection(WORLDCOVER).first().select("Map").clip(region).unmask(0, False).toUint8()
+    url = image.getDownloadURL({
+        "name": "geomoz_worldcover_2021", "format": "GEO_TIFF", "filePerBand": False,
+        "crs": "EPSG:4326", "crs_transform": grid["crsTransform"], "dimensions": grid["dimensions"],
+    })
+    return {"downloadUrl": url, "dimensions": grid["dimensions"], "estimatedGridScaleM": grid["scale"],
+            "resolutionAdjusted": grid["resolutionAdjusted"], "crs": "EPSG:4326", "noDataCode": 0}
+
+
 def worldcover_pixel(geometry, lon, lat):
     import ee
 

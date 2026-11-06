@@ -1,3 +1,4 @@
+import { WorldCoverOutput } from "./WorldCoverOutput";
 import { WorldCoverInspector } from "./WorldCoverInspector";
 import { GAULAreaSelect, type LoadGAULUnits } from "./GAULAreaSelect";
 import { MaputoMunicipalSelect, isMaputoCity } from "./MaputoMunicipalSelect";
@@ -609,6 +610,7 @@ export default function GeoMozAIAgentTab() {
             metrics: {},
             tileUrl: act.tileUrl,
             worldCoverAoi: act.worldCoverAoi,
+            worldCoverClasses: act.worldCoverAoi ? sourceRun?.output?.classes : undefined,
             temporalChange: act.temporalChange || null,
             replay: replayRecipe,
             quality: sourceRun?.output?.quality || null,
@@ -1329,6 +1331,12 @@ export default function GeoMozAIAgentTab() {
             </div>
           ))}
 
+          {completedRuns[selectedLayerIndex]?.worldCoverAoi && (
+            <WorldCoverOutput key={selectedLayerIndex} aoi={completedRuns[selectedLayerIndex].worldCoverAoi}
+              classes={completedRuns[selectedLayerIndex].worldCoverClasses}
+              projectName={activeProject?.name} printSourceId="geomoz-ai-map" />
+          )}
+
           {selectedRecipe && (
             <GeoTemporalAnalysisPanel
               replay={selectedRecipe}
@@ -1448,10 +1456,10 @@ export default function GeoMozAIAgentTab() {
       </div>
 
       {/* Right Map Panel */}
-      <div className="flex-1 flex flex-col relative overflow-hidden" ref={mapRef}>
+      <div className="flex-1 flex flex-col relative overflow-hidden" id="geomoz-ai-map" ref={mapRef}>
         {/* Floating Layer Switcher & Opacity Controls */}
         {completedRuns.length > 0 && (
-          <div className="absolute top-3 left-3 right-3 z-[1001] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-md flex items-center justify-between gap-3 overflow-x-auto">
+          <div data-html2canvas-ignore className="absolute top-3 left-3 right-3 z-[1001] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-md flex items-center justify-between gap-3 overflow-x-auto">
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1">
                 <Layers size={13} className="text-violet-500" />
@@ -1583,7 +1591,7 @@ export default function GeoMozAIAgentTab() {
             <ScaleControl position="bottomleft" />
           </MapContainer>
           {activeTileUrl && completedRuns[selectedLayerIndex]?.worldCoverAoi && (
-            <p className="pointer-events-none absolute bottom-6 right-4 z-[900] rounded-lg bg-slate-900/85 px-3 py-2 text-xs text-white">
+            <p data-html2canvas-ignore className="pointer-events-none absolute bottom-6 right-4 z-[900] rounded-lg bg-slate-900/85 px-3 py-2 text-xs text-white">
               WorldCover 2021 · Clique no mapa para consultar a classe
             </p>
           )}
