@@ -4969,6 +4969,20 @@ export default function GeoAnalises({
           )}
 
 
+          {/* WorldCover is categorical: one legend, in the map only when the results panel is hidden. */}
+          {isLandCover && landCoverTile && !resultsPanelOpen && (
+            <div data-testid="geoanalises-worldcover-map-legend" className="absolute bottom-8 left-4 z-[500] max-h-[min(45vh,22rem)] w-64 overflow-y-auto rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+              <div className="mb-2 text-xs font-semibold text-slate-700 dark:text-slate-200">ESA WorldCover {landCoverTile.year} · {landCoverTile.resolution_m} m</div>
+              {landCoverTile.classes.map(featureClass => (
+                <div key={featureClass.code} className="flex items-center gap-2 py-0.5 text-[10px] text-slate-600 dark:text-slate-300">
+                  <span className="h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: featureClass.color }} />
+                  <span className="min-w-0 flex-1">{featureClass.label}</span>
+                  <span className="shrink-0 tabular-nums text-slate-400">{featureClass.pct.toFixed(1)}%</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Lineaments result badge */}
           {isLineaments && lineamentsTile && (
             <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-fuchsia-200 dark:border-fuchsia-900/50 p-3 w-64 pointer-events-none">
@@ -5048,7 +5062,7 @@ export default function GeoAnalises({
           )}
 
           {/* SPI × NDVI legend badge (when chart hidden) */}
-          {isSpiNdvi && spiNdviResult && !showSpiChart && (
+          {isSpiNdvi && spiNdviResult && !showSpiChart && !resultsPanelOpen && (
             <div className="absolute bottom-8 left-4 z-[500] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-xl shadow-lg border border-orange-200 dark:border-orange-900/50 p-3 w-60">
               <div className="flex items-center gap-1.5 mb-1">
                 <Droplets size={12} className="text-orange-600 dark:text-orange-400" />
