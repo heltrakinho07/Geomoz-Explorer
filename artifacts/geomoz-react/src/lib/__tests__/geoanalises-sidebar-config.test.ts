@@ -80,6 +80,8 @@ describe("GeoAnálises: contextual sidebar settings", () => {
     expect(page).toContain('activeTab === "landcover"');
     expect(page).toContain('activeTab === "burn_severity"');
     expect(page).toContain("topoClassesTile.labels.map");
-    expect(page).toContain("landCoverTile.classes");
+    expect(page).toContain("landCoverTile.classes.map");
+    expect(page).toContain('data-testid="geoanalises-worldcover-map-legend"');
+    expect(page).toContain("!showSpiChart && !resultsPanelOpen");
   });
 });
