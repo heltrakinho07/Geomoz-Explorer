@@ -66,6 +66,7 @@ export function GeoMozLayerProperties({layer,props}:{layer:GeoLibreLayer;props:C
     {!editable&&<p>{ui("As propriedades estão disponíveis para consulta nesta sessão.")}</p>}
   </details>
   {detailsOpen&&<GeoMozLayerDetailsDialog layer={layer} editable={editable}
+    mapControllerRef={props.mapControllerRef}
     onClose={()=>setDetailsOpen(false)}
     onOpenStylePanel={props.onOpenStylePanel?()=>props.onOpenStylePanel?.():undefined}/>}
   </>;
