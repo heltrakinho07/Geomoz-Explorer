@@ -168,5 +168,97 @@ class GatewayTests(unittest.TestCase):
             finish.assert_called_once()
             self.assertEqual(finish.call_args.args[1], "succeeded")
 
+
+    def test_transactional_idempotency_and_concurrent_quota(self):
+        from platform_config import get_plan_limits
+        store = {}
+
+        class Snapshot:
+            def __init__(self, data):
+                self.exists = data is not None
+                self._data = data
+            def to_dict(self):
+                return dict(self._data) if self._data is not None else None
+
+        class Ref:
+            def __init__(self, path):
+                self.path = path
+            def collection(self, name):
+                return Collection(self.path + "/" + name)
+            def get(self, transaction=None):
+                return Snapshot(store.get(self.path))
+
+        class Collection:
+            def __init__(self, path):
+                self.path = path
+            def document(self, name):
+                return Ref(self.path + "/" + name)
+
+        class Tx:
+            def create(self, ref, value):
+                assert ref.path not in store
+                store[ref.path] = dict(value)
+            def set(self, ref, value, merge=False):
+                if merge:
+                    store.setdefault(ref.path, {}).update(value)
+                else:
+                    store[ref.path] = dict(value)
+            def update(self, ref, value):
+                assert ref.path in store
+                store[ref.path].update(value)
+
+        class Database:
+            def collection(self, name):
+                return Collection(name)
+            def transaction(self, **kwargs):
+                return Tx()
+
+        with (patch.object(pg, "_db", return_value=Database()),
+              patch.object(pg, "require_plan_feature", return_value="pro"),
+              patch("platform_config.get_plan_limits", return_value={"concurrent_jobs": 2}),
+              patch.object(pg.firestore, "transactional", side_effect=lambda fn: fn)):
+            first, created = pg._allocate("owner", "a" * 32, "1" * 64, good_job(), CONFIG)
+            self.assertTrue(created)
+            same, created = pg._allocate("owner", "a" * 32, "1" * 64, good_job(), CONFIG)
+            self.assertEqual((first, created), (same, False))
+            self.assertEqual(store["printQuotas/owner"]["monthlyCount"], 1)
+            with self.assertRaises(HTTPException) as err:
+                pg._allocate("owner", "a" * 32, "2" * 64, good_job(), CONFIG)
+            self.assertEqual(err.exception.status_code, 409)
+            second, _ = pg._allocate("owner", "b" * 32, "2" * 64, good_job(), CONFIG)
+            self.assertEqual(store["printQuotas/owner"]["active"], 2)
+            with self.assertRaises(HTTPException) as err:
+                pg._allocate("owner", "c" * 32, "3" * 64, good_job(), CONFIG)
+            self.assertEqual(err.exception.status_code, 429)
+            pg._finish(first, "succeeded", size=512)
+            self.assertEqual(store["printQuotas/owner"]["active"], 1)
+            self.assertNotIn(first, store["printQuotas/owner"]["activeJobs"])
+            third, _ = pg._allocate("owner", "c" * 32, "3" * 64, good_job(), CONFIG)
+            self.assertNotEqual(third, second)
+            self.assertEqual(store["printQuotas/owner"]["active"], 2)
+
+    def test_owner_isolation_and_pdf_expiration(self):
+        record = {
+            "uid": "alice", "status": "succeeded",
+            "expiresAt": pg._iso(pg._now() + pg.JOB_TTL),
+        }
+        class Ref:
+            def get(self):
+                return type("Snap", (), {"exists": True, "to_dict": lambda self: record})()
+        class Database:
+            def collection(self, name):
+                return self
+            def document(self, name):
+                return Ref()
+        with patch.object(pg, "_db", return_value=Database()):
+            with self.assertRaises(HTTPException) as err:
+                pg._owned("a" * 32, "bob")
+            self.assertEqual(err.exception.status_code, 404)
+            self.assertEqual(pg._owned("a" * 32, "alice")["uid"], "alice")
+            record["expiresAt"] = "2020-01-01T00:00:00+00:00"
+            with self.assertRaises(HTTPException) as err:
+                pg._owned("a" * 32, "alice")
+            self.assertEqual(err.exception.status_code, 410)
+
 if __name__ == "__main__":
     unittest.main()
