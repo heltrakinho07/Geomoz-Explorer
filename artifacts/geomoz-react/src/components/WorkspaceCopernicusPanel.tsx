@@ -148,7 +148,7 @@ export default function WorkspaceCopernicusPanel({ user, aoi, onAOIChange, onDra
         : !subscription.can("gee_terrain_pro") ? <p>Disponível para planos Pro, Teams e Enterprise.</p> : <>
         <p>Modelo digital de superfície Copernicus, com resolução nativa aproximada de 30 m. Ligue o seu Google Earth Engine nas Definições.</p>
         <fieldset disabled={Boolean(busy)} className="space-y-3">
-          <ZoneSelect aoi={aoi} onAOIChange={next => { setVertex(0); onAOIChange(next); }} onDrawingRequest={() => onDraw("polygon")} />
+          <ZoneSelect enableAdministrative aoi={aoi} onAOIChange={next => { setVertex(0); onAOIChange(next); }} onDrawingRequest={() => onDraw("polygon")} />
           <p><strong>Área de estudo</strong> · {aoi.label}</p>
           <div className="flex flex-wrap gap-2">
             <button type="button" className={action} onClick={() => { setVertex(0); onDraw("polygon"); }}>Desenhar polígono</button>
