@@ -1,0 +1,58 @@
+name: Provision GeoMoz private print infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Non-mutating plan or billable private Cloud Run / Cloud Tasks / GCS provisioning'
+        type: choice
+        options: [plan, apply]
+        default: plan
+        required: true
+      confirmation:
+        description: 'For apply only, type APPLY_PRIVATE_PRINT_INFRA'
+        type: string
+        required: false
+
+concurrency:
+  group: geomoz-print-private-provision
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Validate private print infrastructure plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax and non-mutating plan
+        run: |
+          bash -n scripts/cloud/geomoz-print-provision.sh
+          bash scripts/cloud/geomoz-print-provision.sh plan
+
+  apply:
+    name: Create private workers, queue and bucket
+    if: inputs.mode == 'apply'
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_REGION: europe-west1
+      GEOMOZ_PRINT_APPLY_CONFIRM: ${{ inputs.confirmation }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require explicit production confirmation
+        run: |
+          test "$GEOMOZ_PRINT_APPLY_CONFIRM" = APPLY_PRIVATE_PRINT_INFRA
+          test "$GCP_PROJECT_ID" = geoprocessamento-426809
+      - name: Authenticate via GitHub Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deploy IAM-authenticated print workers
+        run: bash scripts/cloud/geomoz-print-provision.sh apply
