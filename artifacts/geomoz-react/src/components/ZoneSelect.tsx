@@ -20,6 +20,8 @@ interface ZoneSelectProps {
   onDrawingRequest?: () => void;
   /** Compact mode for navbar display (smaller, inline) */
   compact?: boolean;
+  /** Enable GAUL only in tools that resolve administrative codes server-side. */
+  enableAdministrative?: boolean;
 }
 
 type ActiveTab = "upload" | "draw" | null;
@@ -37,6 +39,7 @@ export default function ZoneSelect({
   onAOIChange,
   onDrawingRequest,
   compact,
+  enableAdministrative = false,
 }: ZoneSelectProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>(null);
   const [showAdministrative, setShowAdministrative] = useState(false);
@@ -228,8 +231,8 @@ export default function ZoneSelect({
         )}
       </div>
 
-      {/* FAO GAUL selection shares the AOI with analyses, workspace and Copernicus. */}
-      <section className="rounded-xl border border-slate-200 p-3 dark:border-slate-700 space-y-2">
+      {/* Administrative IDs require server-side resolution in the consuming tool. */}
+      {enableAdministrative && <section className="rounded-xl border border-slate-200 p-3 dark:border-slate-700 space-y-2">
         <button type="button" aria-expanded={showAdministrative} onClick={() => setShowAdministrative((value) => !value)}
           className="w-full text-left text-xs font-semibold text-slate-800 dark:text-slate-200">
           Área administrativa · País / Província / Distrito
@@ -260,7 +263,7 @@ export default function ZoneSelect({
             Os limites FAO GAUL 2025 são resolvidos no servidor GEE ao processar a área. Não correspondem a limites cadastrais.
           </p>
         </>}
-      </section>
+      </section>}
 
       {/* ── Two Primary Modes: Upload de Área & Desenhar Polígono ── */}
       <div className="grid grid-cols-2 gap-1.5">
