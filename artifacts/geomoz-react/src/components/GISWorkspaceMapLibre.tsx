@@ -3,6 +3,7 @@ import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap, MapMouseEvent, StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { createFeatureInspector } from "@/lib/gis-feature-inspector";
+import { createSelectionInspector, selectionKey, selectedFeatureCollection, updateFeatureSelection, type SelectedMapFeature } from "@/lib/gis-feature-selection";
 import { gisWidgetRegistry } from "@/lib/gis-widget-registry";
 import GISWidgetManager, { initialDisabled } from "./GISWidgetManager";
 import { bbox } from "@turf/turf";
@@ -50,6 +51,10 @@ const DRAW_SOURCE = "__geomoz_draw";
 const DRAW_FILL = "__geomoz_draw_fill";
 const DRAW_LINE = "__geomoz_draw_line";
 const DRAW_POINTS = "__geomoz_draw_points";
+const SELECTION_SOURCE = "__geomoz_selection";
+const SELECTION_FILL = "__geomoz_selection_fill";
+const SELECTION_LINE = "__geomoz_selection_line";
+const SELECTION_POINT = "__geomoz_selection_point";
 
 function safeId(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -176,6 +181,8 @@ export default function GISWorkspaceMapLibre({
   const [disabledWidgets, setDisabledWidgets] = useState<string[]>(initialDisabled);
   const disabledWidgetsRef = useRef(disabledWidgets);
   disabledWidgetsRef.current = disabledWidgets;
+  const selectedFeaturesRef = useRef<SelectedMapFeature[]>([]);
+  const [selectionCount, setSelectionCount] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const layersRef = useRef(layers);
@@ -319,6 +326,30 @@ export default function GISWorkspaceMapLibre({
     onDrawCompleteRef.current?.(feature.geometry, "Área desenhada no mapa");
   };
 
+  const syncSelectionHighlight = (map: MapLibreMap) => {
+    if (!styleReadyRef.current) return;
+    const data = selectedFeatureCollection(selectedFeaturesRef.current);
+    const source = map.getSource(SELECTION_SOURCE) as maplibregl.GeoJSONSource | undefined;
+    if (source) { source.setData(data); return; }
+    map.addSource(SELECTION_SOURCE, { type: "geojson", data });
+    map.addLayer({ id: SELECTION_FILL, source: SELECTION_SOURCE, type: "fill",
+      filter: ["==", ["geometry-type"], "Polygon"],
+      paint: { "fill-color": "#facc15", "fill-opacity": 0.35 } });
+    map.addLayer({ id: SELECTION_LINE, source: SELECTION_SOURCE, type: "line",
+      filter: ["!=", ["geometry-type"], "Point"],
+      paint: { "line-color": "#f59e0b", "line-width": 4 } });
+    map.addLayer({ id: SELECTION_POINT, source: SELECTION_SOURCE, type: "circle",
+      filter: ["==", ["geometry-type"], "Point"],
+      paint: { "circle-color": "#facc15", "circle-radius": 9,
+        "circle-stroke-color": "#0f172a", "circle-stroke-width": 2 } });
+  };
+
+  const clearSelection = () => {
+    selectedFeaturesRef.current = [];
+    setSelectionCount(0);
+    if (mapRef.current) syncSelectionHighlight(mapRef.current);
+  };
+
   const syncLayers = (map: MapLibreMap) => {
     if (!styleReadyRef.current) return;
     const desiredSources = new Set<string>();
@@ -409,6 +440,10 @@ export default function GISWorkspaceMapLibre({
     }
 
     renderedLayerLookupRef.current = lookup;
+    selectedFeaturesRef.current = selectedFeaturesRef.current.filter(item =>
+      layersRef.current.some(layer => layer.id === item.layerId && layer.visible));
+    setSelectionCount(selectedFeaturesRef.current.length);
+    syncSelectionHighlight(map);
     syncAoi(map);
     syncDrawPreview(map);
     raiseAoiLayers(map);
@@ -431,6 +466,7 @@ export default function GISWorkspaceMapLibre({
     map.on("style.load", () => {
       styleReadyRef.current = true;
       syncDrawPreview(map);
+      syncSelectionHighlight(map);
     });
     map.on("load", () => {
       syncLayers(map);
@@ -473,21 +509,39 @@ export default function GISWorkspaceMapLibre({
       if (!renderedIds.length) return;
       const features = map.queryRenderedFeatures(event.point, { layers: renderedIds });
       const hit = features[0];
-      if (!hit) return;
-
+      if (!hit) {
+        if (!event.originalEvent?.shiftKey) clearSelection();
+        return;
+      }
       const ownerId = renderedLayerLookupRef.current.get(hit.layer.id);
-      if (ownerId) onSelectLayerRef.current?.(ownerId);
-      const owner = layersRef.current.find((layer) => layer.id === ownerId);
-
-      // The inspector is a lazily registered GIS widget. Avoid truncating attributes.
+      if (!ownerId) return;
+      onSelectLayerRef.current?.(ownerId);
+      const owner = layersRef.current.find(layer => layer.id === ownerId);
       if (disabledWidgetsRef.current.includes("feature-inspector")) return;
       if (!gisWidgetRegistry.list({ mapId: "workspace", layerId: ownerId }, "vector")
         .some(widget => widget.id === "feature-inspector")) return;
-      const popup = createFeatureInspector(owner?.name ?? "Camada", (hit.properties ?? {}) as Record<string, unknown>, {
-        lng: event.lngLat.lng, lat: event.lngLat.lat,
-      });
-
-      new maplibregl.Popup({ closeButton: true, maxWidth: "320px" })
+      const feature = {
+        type: "Feature", id: hit.id, geometry: hit.geometry,
+        properties: hit.properties ?? {},
+      } as GeoJSON.Feature;
+      const candidate: SelectedMapFeature = {
+        key: selectionKey(ownerId, feature),
+        layerId: ownerId,
+        layerName: owner?.name ?? "Camada",
+        feature,
+      };
+      const additive = Boolean(event.originalEvent?.shiftKey);
+      const next = updateFeatureSelection(selectedFeaturesRef.current, candidate, additive);
+      selectedFeaturesRef.current = next;
+      setSelectionCount(next.length);
+      syncSelectionHighlight(map);
+      if (!next.length) return;
+      const popup = additive || next.length > 1
+        ? createSelectionInspector(next, clearSelection)
+        : createFeatureInspector(owner?.name ?? "Camada", feature.properties ?? {}, {
+          lng: event.lngLat.lng, lat: event.lngLat.lat,
+        });
+      new maplibregl.Popup({ closeButton: true, maxWidth: "390px" })
         .setLngLat(event.lngLat)
         .setDOMContent(popup)
         .addTo(map);
@@ -656,6 +710,12 @@ export default function GISWorkspaceMapLibre({
               onDrawCancelRef.current?.();
             }} className="text-rose-600 hover:underline">Cancelar desenho</button>
           </div>
+        </div>
+      )}
+      {selectionCount > 0 && !drawingEnabled && (
+        <div role="status" className="absolute bottom-3 left-3 z-20 flex items-center gap-2 rounded-lg border border-amber-300 bg-white/95 px-3 py-2 text-xs text-slate-800 shadow-md dark:bg-slate-900 dark:text-white">
+          <span>{selectionCount} feição(ões) seleccionada(s) · Shift + clique para adicionar</span>
+          <button type="button" onClick={clearSelection} className="font-semibold text-amber-700 dark:text-amber-400">Limpar</button>
         </div>
       )}
       {coords && (
