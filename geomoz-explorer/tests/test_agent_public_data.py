@@ -448,6 +448,21 @@ class PublicDataTests(unittest.TestCase):
         self.assertEqual(result["classes"][1]["name"], "Água permanente")
         self.assertEqual(result["classes"][1]["color"], "#0064c8")
 
+    def test_zonal_geotiff_reuses_index_period_and_cloud_mask(self):
+        ee = MagicMock()
+        region = MagicMock()
+        region.bounds.return_value.getInfo.return_value = GEOMETRY
+        source = MagicMock()
+        raster = source.clip.return_value.unmask.return_value.toFloat.return_value
+        raster.getDownloadURL.return_value = "https://example.com/ndvi.tif"
+        with patch.dict("sys.modules", {"ee": ee}), \
+             patch.object(engine, "_s2_image", return_value=(source, 3)) as image:
+            result = engine.analysis_geotiff_download(
+                region, "zonal", 30, "2025-01-01", "2026-01-01", "ndvi", cloud_pct=20)
+        image.assert_called_once_with(region, "ndvi", "2025-01-01", "2026-01-01", 20)
+        source.clip.return_value.unmask.assert_called_once_with(-9999, False)
+        self.assertEqual(result["noDataCode"], -9999)
+
     def test_worldcover_geotiff_keeps_class_codes_and_masks_outside_polygon(self):
         ee = MagicMock()
         region = MagicMock()

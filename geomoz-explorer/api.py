@@ -266,7 +266,7 @@ async def isolate_gee_requests(request: Request, call_next):
             request.url.path in ("/geomoz-api/ai/agent-chat", "/geomoz-api/ai/temporal-pixel",
                                  "/geomoz-api/ai/temporal-histogram", "/geomoz-api/ai/temporal-geotiff",
                                  "/geomoz-api/ai/temporal-monthly-series", "/geomoz-api/ai/worldcover-pixel",
-                                 "/geomoz-api/ai/worldcover-geotiff")):
+                                 "/geomoz-api/ai/analysis-geotiff")):
         async with _gee_request_lock:
             return await call_next(request)
     return await call_next(request)
@@ -1603,23 +1603,31 @@ class WorldCoverPixelRequest(BaseModel):
     longitude: float = Field(ge=-180, le=180)
 
 
-class WorldCoverExportRequest(BaseModel):
+class AnalysisRasterExportRequest(BaseModel):
     aoi: dict
+    kind: str
+    scale_m: float = Field(default=30, ge=10)
+    start: Optional[str] = None
+    end: Optional[str] = None
+    index: Optional[str] = None
+    variable: Optional[str] = None
+    cloud_pct: float = Field(default=30, ge=0, le=100)
 
 
-@app.post("/geomoz-api/ai/worldcover-geotiff")
-async def geoai_worldcover_geotiff(req: WorldCoverExportRequest, uid: str = Depends(require_gee_auth)):
+@app.post("/geomoz-api/ai/analysis-geotiff")
+async def geoai_analysis_geotiff(req: AnalysisRasterExportRequest, uid: str = Depends(require_gee_auth)):
     def execute():
-        from agent.earth_engine_tools import worldcover_geotiff_download
-        return worldcover_geotiff_download(_geoai_temporal_region(req.aoi))
+        from agent.earth_engine_tools import analysis_geotiff_download
+        return analysis_geotiff_download(_geoai_temporal_region(req.aoi), req.kind, req.scale_m,
+                                         req.start, req.end, req.index, req.variable, req.cloud_pct)
 
     try:
         return await run_in_threadpool(execute)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except Exception as exc:
-        logger.error("GeoMoz WorldCover export failed: %s", type(exc).__name__)
-        raise HTTPException(status_code=503, detail="Não foi possível preparar o GeoTIFF WorldCover.") from None
+        logger.error("GeoMoz analysis raster export failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Não foi possível preparar o GeoTIFF da análise.") from None
 
 
 @app.post("/geomoz-api/ai/worldcover-pixel")

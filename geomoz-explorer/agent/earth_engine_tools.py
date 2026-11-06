@@ -437,6 +437,37 @@ def temporal_change(geometry, index, start1, end1, start2, end2, scale_m=30, clo
     return result
 
 
+def analysis_geotiff_download(geometry, kind, scale_m=30, start=None, end=None,
+                              index=None, variable=None, cloud_pct=30):
+    """Replay supported scientific rasters from their original area and parameters."""
+    import ee
+    from gee_download_grid import bounded_download_grid
+
+    if kind == "worldcover":
+        return worldcover_geotiff_download(geometry)
+    if kind == "zonal":
+        validate_period(start, end, "2017-03-28")
+        if index not in INDEX_BANDS:
+            raise ValueError("Índice espectral inválido.")
+    elif kind != "climate":
+        raise ValueError("Este tipo de análise não disponibiliza GeoTIFF.")
+    region = ee.Geometry(validate_geometry(geometry), "EPSG:4326", False) if isinstance(geometry, dict) else geometry
+    grid = bounded_download_grid(region.bounds(maxError=1).getInfo(), scale_m, 4_000_000)
+    if kind == "zonal":
+        image, _ = _s2_image(region, index, start, end, cloud_pct)
+        name = index
+    else:
+        image, _ = _climate_image(region, start, end, variable)
+        name = "era5_" + variable
+    raster = image.clip(region).unmask(-9999, False).toFloat()
+    url = raster.getDownloadURL({
+        "name": "geomoz_" + name, "format": "GEO_TIFF", "filePerBand": False,
+        "crs": "EPSG:4326", "crs_transform": grid["crsTransform"], "dimensions": grid["dimensions"],
+    })
+    return {"downloadUrl": url, "dimensions": grid["dimensions"], "estimatedGridScaleM": grid["scale"],
+            "resolutionAdjusted": grid["resolutionAdjusted"], "crs": "EPSG:4326", "noDataCode": -9999}
+
+
 def worldcover_geotiff_download(geometry):
     """Export original categorical class IDs on a bounded geographic grid."""
     import ee
@@ -491,12 +522,12 @@ def landcover(geometry, scale_m=30):
     return result
 
 
-def climate(geometry, start, end, variable="precipitation", scale_m=11132):
+def _climate_image(region, start, end, variable):
     import ee
+
     first, last = validate_period(start, end, "1950-01-02")
     if variable not in ("precipitation", "temperature"):
         raise ValueError("Variável climática inválida.")
-    region, grid, area = _grid(geometry, scale_m, 11132)
     band = "total_precipitation_sum" if variable == "precipitation" else "temperature_2m"
     collection = ee.ImageCollection(ERA5).filterBounds(region).filterDate(start, end).select(band)
     count = collection.size().getInfo()
@@ -504,7 +535,15 @@ def climate(geometry, start, end, variable="precipitation", scale_m=11132):
     if count != expected:
         raise ValueError(f"Período ERA5-Land incompleto: {count} dias disponíveis de {expected}. Escolha um período integralmente disponível.")
     image = collection.sum().multiply(1000) if variable == "precipitation" else collection.mean().subtract(273.15)
-    image = image.rename("value").clip(region)
+    return image.rename("value").clip(region), count
+
+
+def climate(geometry, start, end, variable="precipitation", scale_m=11132):
+    validate_period(start, end, "1950-01-02")
+    if variable not in ("precipitation", "temperature"):
+        raise ValueError("Variável climática inválida.")
+    region, grid, area = _grid(geometry, scale_m, 11132)
+    image, count = _climate_image(region, start, end, variable)
     stats = _summary(image, grid)
     unit = "mm no período" if variable == "precipitation" else "°C (média no período)"
     result = _base(ERA5, grid, area, "Reanálise climática modelada, não observações de estação nem previsão meteorológica. Precipitação pode apresentar artefactos de acumulação do produto original; não são corrigidos silenciosamente.")

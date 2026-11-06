@@ -1,4 +1,4 @@
-import { WorldCoverOutput } from "./WorldCoverOutput";
+import { AnalysisMapOutput } from "./AnalysisMapOutput";
 import { WorldCoverInspector } from "./WorldCoverInspector";
 import { GAULAreaSelect, type LoadGAULUnits } from "./GAULAreaSelect";
 import { MaputoMunicipalSelect, isMaputoCity } from "./MaputoMunicipalSelect";
@@ -610,6 +610,8 @@ export default function GeoMozAIAgentTab() {
             metrics: {},
             tileUrl: act.tileUrl,
             worldCoverAoi: act.worldCoverAoi,
+            rasterExport: act.rasterExport,
+            printSource: sourceRun?.output?.source?.name,
             worldCoverClasses: act.worldCoverAoi ? sourceRun?.output?.classes : undefined,
             temporalChange: act.temporalChange || null,
             replay: replayRecipe,
@@ -1331,9 +1333,12 @@ export default function GeoMozAIAgentTab() {
             </div>
           ))}
 
-          {completedRuns[selectedLayerIndex]?.worldCoverAoi && (
-            <WorldCoverOutput key={selectedLayerIndex} aoi={completedRuns[selectedLayerIndex].worldCoverAoi}
-              classes={completedRuns[selectedLayerIndex].worldCoverClasses}
+          {(activeTileUrl || activeGeology) && (
+            <AnalysisMapOutput key={selectedLayerIndex} recipe={completedRuns[selectedLayerIndex]?.rasterExport}
+              classes={completedRuns[selectedLayerIndex]?.worldCoverClasses}
+              vector={activeGeology} temporal={Boolean(selectedRecipe)}
+              title={activeTileName || "Mapa da análise"}
+              source={completedRuns[selectedLayerIndex]?.printSource || completedRuns[selectedLayerIndex]?.sensor}
               projectName={activeProject?.name} printSourceId="geomoz-ai-map" />
           )}
 
