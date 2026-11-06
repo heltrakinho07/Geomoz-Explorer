@@ -18,6 +18,7 @@ interface Props {
   onSelectLayer?:(id:string)=>void;onSelectFeature?:(layerId:string,featureIndex:number,additive:boolean)=>void;onDrawComplete?:(geometry:GeoJSON.GeoJSON,label:string)=>void;onDrawCancel?:()=>void;
   onViewportBbox?:(bounds:Bounds)=>void;onRasterMetadata?:(metadata:GISWorkspaceRasterMetadata)=>void;
   onRasterError?:(id:string,message:string)=>void;
+  selectedFeatureIndices?: Record<string,number[]>;
 }
 type Point=[number,number];
 interface RasterEntry {source:File|string|undefined;key:string;bounds?:Bounds;bandCount?:number;imagery?:ImageryLayer;style?:string;failed?:boolean}
@@ -25,7 +26,7 @@ interface VectorEntry {data:FeatureCollection;color:string;source?:GeoJsonDataSo
 interface ServiceEntry {key:string;imagery?:ImageryLayer}
 interface Runtime {
   C:CesiumSDK;viewer:Viewer;worker:RasterWorkerClient;rasters:Map<string,RasterEntry>;vectors:Map<string,VectorEntry>;
-  services:Map<string,ServiceEntry>;base?:ImageryLayer;sequence:number;tiles:number;alive:boolean;
+  services:Map<string,ServiceEntry>;selectionOverlay?:GeoJsonDataSource;base?:ImageryLayer;sequence:number;tiles:number;alive:boolean;
 }
 interface Preview {draft:string;points:Array<{x:number;y:number}>;completed:string}
 function rectangleCorners(a: number[], b: number[]): number[][] {
@@ -225,6 +226,29 @@ export default function GISWorkspaceCesium(props:Props) {
     if(host.current)host.current.dataset.vectorCount=String(r.vectors.size);
     r.viewer.scene.requestRender();
   },[ready,props.layers]);
+
+  useEffect(()=>{
+    const r=runtime.current;
+    if(!r?.alive)return;
+    let cancelled=false;
+    const old=r.selectionOverlay;
+    r.selectionOverlay=undefined;
+    if(old)r.viewer.dataSources.remove(old,true);
+    const features=props.layers.flatMap(layer=>
+      (props.selectedFeatureIndices?.[layer.id]??[]).filter(index=>layer.visible && index>=0 && index<layer.geojson.features.length)
+        .map(index=>layer.geojson.features[index]));
+    if(!features.length){r.viewer.scene.requestRender();return;}
+    void r.C.GeoJsonDataSource.load({type:"FeatureCollection",features},{
+      stroke:r.C.Color.YELLOW,fill:r.C.Color.YELLOW.withAlpha(0.45),
+      strokeWidth:5,markerColor:r.C.Color.YELLOW,markerSize:44,clampToGround:false,
+    }).then(source=>{
+      if(cancelled||!r.alive)return;
+      r.selectionOverlay=source;
+      return r.viewer.dataSources.add(source);
+    }).then(()=>{if(!cancelled&&r.alive)r.viewer.scene.requestRender();})
+      .catch(()=>{/* Selection overlay must never disrupt the workspace map. */});
+    return ()=>{cancelled=true;const overlay=r.selectionOverlay;if(overlay){r.viewer.dataSources.remove(overlay,true);r.selectionOverlay=undefined;}};
+  },[ready,props.layers,props.selectedFeatureIndices]);
 
   useEffect(()=>{
     const r=runtime.current;if(!r?.alive)return;
