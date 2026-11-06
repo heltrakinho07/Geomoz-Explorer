@@ -25,7 +25,7 @@ test("reprojection enforces explicit CRS and categorical-safe nearest resampling
 test("mask runs a real cutline with cropping and transparency; closes both inputs",async()=>{
  const {gdal,closed,calls}=fixture();
  await warpRaster(gdal,"clip-mask",new ArrayBuffer(4),{crop:true,all_touched:true},mask);
- assert.deepEqual(calls[2],["warp","-of","COG","-co","COMPRESS=DEFLATE","-cutline","/input/mask.geojson","-dstalpha","-crop_to_cutline","-wo","CUTLINE_ALL_TOUCHED=TRUE"]);
+ assert.deepEqual(calls[2],["warp","-of","COG","-co","COMPRESS=DEFLATE","-cutline","/input/mask.geojson","-r","near","-dstalpha","-crop_to_cutline","-wo","CUTLINE_ALL_TOUCHED=TRUE"]);
  assert.deepEqual(closed,["mask.geojson","input.tif"]);
 });
 test("failed warp releases datasets without returning a success",async()=>{
@@ -37,5 +37,29 @@ test("invalid masks and oversized files fail before GDAL opens anything",async()
  const {gdal,calls}=fixture();
  await assert.rejects(warpRaster(gdal,"clip-mask",new ArrayBuffer(4),{},{type:"FeatureCollection",features:[]}),/polígonos/);
  await assert.rejects(warpRaster(gdal,"reproject",new ArrayBuffer(GEOMOZ_WARP_LIMIT+1),{dst_crs:"EPSG:4326"}),/64 MB/);
+ assert.deepEqual(calls,[]);
+});
+
+test("cutline supports validated target CRS, pixel resolution, NoData and resampling",()=>{
+ const args=rasterWarpArgs("clip-mask",{
+   dst_crs:"epsg:32736",resampling:"bilinear",
+   x_resolution:30,y_resolution:30,nodata:-9999,alpha:false,crop:true
+ },"/input/mask.geojson");
+ assert.ok(args.includes("EPSG:32736"));
+ assert.deepEqual(args.slice(args.indexOf("-tr"),args.indexOf("-tr")+3),["-tr","30","30"]);
+ assert.deepEqual(args.slice(args.indexOf("-dstnodata"),args.indexOf("-dstnodata")+2),["-dstnodata","-9999"]);
+ assert.ok(args.includes("bilinear"));
+ assert.ok(!args.includes("-dstalpha"));
+ assert.ok(args.includes("-crop_to_cutline"));
+});
+test("invalid cutline options reject before opening source data",async()=>{
+ const {gdal,calls}=fixture();
+ for(const params of [
+   {dst_crs:"../../etc/passwd"},{resampling:"invalid"},
+   {x_resolution:30},{x_resolution:0,y_resolution:30},
+   {x_resolution:Infinity,y_resolution:30},{nodata:"nonsense"}
+ ]){
+   await assert.rejects(warpRaster(gdal,"clip-mask",new ArrayBuffer(4),params,mask));
+ }
  assert.deepEqual(calls,[]);
 });
