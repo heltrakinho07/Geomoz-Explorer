@@ -57,6 +57,15 @@ describe("GeoAnálises: contextual sidebar settings", () => {
     }
   });
 
+  it("routes specialist analyses through their own parameter panels", () => {
+    for (const tab of ["s2", "profile", "contours", "topo_custom", "landcover", "targeting", "spi_ndvi"]) {
+      expect(getAnalysisSidebarConfig(tab).useSpecializedPanel).toBe(true);
+    }
+    expect(getAnalysisSidebarConfig("ndvi", "spectral").useSpecializedPanel).toBe(false);
+    expect(page).toContain("sidebarConfig.useSpecializedPanel");
+    expect(page).toContain("Abrir ferramentas específicas");
+  });
+
   it("renders the correct controls according to the active index", () => {
     expect(page).toContain("getAnalysisSidebarConfig(activeTab");
     expect(page).toContain("sidebarConfig.showDateRange && (");
