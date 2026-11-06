@@ -9,6 +9,11 @@ import { makeTemporalReplay, isTemporalReplay } from "@/lib/geoai-temporal-repla
 import type { TemporalReplay } from "@/types/project";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useProject } from "../context/ProjectContext";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  loadGeoAiConversation, saveGeoAiConversation, compactGeoAiHistory,
+  makeGeoAiAnalysisMemory, type GeoAiLastAnalysis,
+} from "@/services/geoaiConversationService";
 import { collectGeoAiMapActions, type GeoAiTemporalChange } from "@/lib/geoai-map-actions";
 import { apiFetch } from "@/lib/api";
 import { useGeeAuth } from "@/hooks/useGeeAuth";
@@ -162,6 +167,7 @@ interface ChatMessage {
 
 export default function GeoMozAIAgentTab() {
   const { activeProject, activeRuns, updateProject, saveRunToActiveProject } = useProject();
+  const { user } = useAuth();
   const { refreshStatus } = useGeeAuth();
   const { translatedLocale } = usePortalTranslation();
   const copy = useCallback((key: AiAgentCopyKey) => aiAgentText(translatedLocale, key), [translatedLocale]);
@@ -355,6 +361,47 @@ export default function GeoMozAIAgentTab() {
 
   // Chat conversation history
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [analysisMemory, setAnalysisMemory] = useState<GeoAiLastAnalysis | null>(null);
+  const [historyNotice, setHistoryNotice] = useState<string | null>(null);
+  const [hydratedScope, setHydratedScope] = useState<string | null>(null);
+  const historyScope = user && !user.isAnonymous && !user.uid.startsWith("guest_")
+    ? `${user.uid}:${activeProject?.id || "general"}` : "";
+  const historyQueue = useRef<Promise<void>>(Promise.resolve());
+  const previousSnapshot = useRef<string>("");
+  useEffect(() => {
+    let mounted = true;
+    setHydratedScope(null);
+    setHistoryNotice(null);
+    setMessages([]);
+    setAnalysisMemory(null);
+    previousSnapshot.current = "";
+    if (!historyScope || !user) return () => { mounted = false; };
+    void loadGeoAiConversation(user.uid, activeProject?.id).then((data) => {
+      if (!mounted) return;
+      const restored = compactGeoAiHistory(data.messages);
+      previousSnapshot.current = JSON.stringify({ messages: restored, lastAnalysis: data.lastAnalysis });
+      setMessages(restored);
+      setAnalysisMemory(data.lastAnalysis);
+      setHydratedScope(historyScope);
+    }).catch(() => {
+      if (mounted) setHistoryNotice("Histórico privado indisponível. Esta conversa continuará apenas nesta sessão.");
+    });
+    return () => { mounted = false; };
+  }, [historyScope, user?.uid, activeProject?.id]);
+
+  useEffect(() => {
+    if (!historyScope || hydratedScope !== historyScope || !user) return;
+    const snapshot = { messages: compactGeoAiHistory(messages), lastAnalysis: analysisMemory };
+    const serialized = JSON.stringify(snapshot);
+    if (serialized === previousSnapshot.current) return;
+    previousSnapshot.current = serialized;
+    historyQueue.current = historyQueue.current.catch(() => {}).then(() =>
+      saveGeoAiConversation(user.uid, activeProject?.id, snapshot)
+    ).catch(() => {
+      setHistoryNotice("Não foi possível guardar o histórico. Confirme a ligação e a sessão Firebase.");
+    });
+  }, [historyScope, hydratedScope, user?.uid, activeProject?.id, messages, analysisMemory]);
+
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
@@ -525,6 +572,10 @@ export default function GeoMozAIAgentTab() {
         temporalWindow: replay ? { startDate: replay.args.start_date_2, endDate: replay.args.end_date_2 } : analysisPeriod,
         uiLocale: translatedLocale,
         agentContext: replay ? null : agentContext,
+        analysisMemory: analysisMemory ? {
+          aoi: analysisMemory.aoi, tool: analysisMemory.tool,
+          sourceId: analysisMemory.sourceId, period: analysisMemory.period,
+        } : null,
         publicAnalysis: replay ? { tool: replay.tool, args: replay.args } : publicRequest ? {
           ...publicRequest,
           args: publicRequest.tool === "detect_temporal_change" ? {
@@ -536,9 +587,9 @@ export default function GeoMozAIAgentTab() {
       };
 
       // Multi-turn message history conversion
-      const historyPayload = messages.map((m) => ({
+      const historyPayload = messages.slice(-12).map((m) => ({
         role: m.sender === "user" ? "user" : "assistant",
-        content: m.text,
+        content: m.text.slice(0, 1200),
       }));
 
       const res = await apiFetch("/geomoz-api/ai/agent-chat", {
@@ -719,6 +770,10 @@ export default function GeoMozAIAgentTab() {
       };
 
       setMessages((prev) => [...prev, agentMsg]);
+      const rememberedAoi = currentMapState.aoi.source === "global" && analysisMemory
+        ? analysisMemory.aoi : currentMapState.aoi;
+      const remembered = makeGeoAiAnalysisMemory(rememberedAoi, data.runs, currentMapState.temporalWindow);
+      if (remembered) setAnalysisMemory(remembered);
     } catch (err: any) {
       const isAborted = controller.signal.aborted;
       const errorText = isAborted
@@ -904,6 +959,8 @@ export default function GeoMozAIAgentTab() {
                     setSteps([]);
                     setSynthesis(null);
                     setAgentContext(null);
+                    setAnalysisMemory(null);
+                    setHistoryNotice(null);
                   }}
                   className="p-1 rounded-full text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
                   title={copy("history.clear")}
@@ -1243,6 +1300,17 @@ export default function GeoMozAIAgentTab() {
             </div>
           )}
 
+          {historyNotice && (
+            <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              {historyNotice}
+            </div>
+          )}
+          {analysisMemory && (
+            <div role="note" className="flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-200">
+              <BrainCircuit size={13} />
+              <span>Contexto de análise: <strong>{String(analysisMemory.aoi.label || "área anterior")}</strong> · {analysisMemory.tool.replaceAll("_", " ")}</span>
+            </div>
+          )}
           {/* Messages History List */}
           {messages.map((msg) => (
             <div key={msg.id} className="space-y-2">
