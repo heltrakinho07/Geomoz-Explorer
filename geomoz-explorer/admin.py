@@ -16,6 +16,7 @@ from platform_config import (
     DEFAULT_FEATURES,
     DEFAULT_PLANS,
     FEATURE_LABELS,
+    get_feature_registry,
     get_features,
     read_config,
     update_features,
@@ -282,7 +283,7 @@ def update_role(uid: str, payload: RoleChange, operator=Depends(require_superadm
 
 @router.get("/plans")
 def list_plans(operator=Depends(require_admin)):
-    return read_config(fresh=True)
+    return {**read_config(fresh=True), "moduleRegistry": get_feature_registry()}
 
 
 class PlanChange(BaseModel):
