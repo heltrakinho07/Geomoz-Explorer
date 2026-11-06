@@ -7,7 +7,7 @@
 
 import { apiFetch } from "@/lib/api";
 
-export type GISHeavyToolId = "hillshade" | "slope" | "aspect" | "cog";
+export type GISHeavyToolId = "hillshade" | "slope" | "aspect" | "cog" | "clip-extent";
 
 export interface GISHeavyProcessingJob {
   id: string;

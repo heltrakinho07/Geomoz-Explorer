@@ -327,6 +327,7 @@ SUPPORTED_HEAVY_GIS_TOOLS = {
     "slope": "GDAL DEM slope",
     "aspect": "GDAL DEM aspect",
     "cog": "Cloud Optimized GeoTIFF conversion",
+    "clip-extent": "GDAL raster clip by extent (source CRS)",
 }
 
 
