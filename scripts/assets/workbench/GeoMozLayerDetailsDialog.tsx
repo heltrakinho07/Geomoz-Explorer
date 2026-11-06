@@ -1,6 +1,10 @@
 import {useEffect,useMemo,useRef,useState} from "react";
 import {createPortal} from "react-dom";
 import {useAppStore,type GeoLibreLayer} from "@geolibre/core";
+import {RASTER_SOURCE_KIND} from "@geolibre/plugins";
+import type {MapEngine} from "@geolibre/map";
+import type {RefObject} from "react";
+import {RasterSymbologySection} from "../panels/RasterSymbologySection";
 
 type Tab = "information" | "source" | "symbology" | "data";
 const VECTOR = new Set(["geojson","geoparquet","flatgeobuf","duckdb-query","vector-tiles","mvt","shapefile","geopackage","csv"]);
@@ -29,8 +33,9 @@ function sourceRows(layer:GeoLibreLayer):[string,string][]{
 function LayerPropertyRows({rows}:{rows:[string,string][]}){
   return <dl className="gm-detail-rows">{rows.map(([name,value])=><div key={name}><dt>{name}</dt><dd title={value}>{value}</dd></div>)}</dl>;
 }
-export function GeoMozLayerDetailsDialog({layer,onClose,onOpenStylePanel,editable}:{
+export function GeoMozLayerDetailsDialog({layer,onClose,onOpenStylePanel,editable,mapControllerRef}:{
   layer:GeoLibreLayer;onClose:()=>void;onOpenStylePanel?:()=>void;editable:boolean;
+  mapControllerRef?:RefObject<MapEngine|null>;
 }){
   const [tab,setTab]=useState<Tab>("information");
   const dialog=useRef<HTMLDivElement>(null);
@@ -38,6 +43,10 @@ export function GeoMozLayerDetailsDialog({layer,onClose,onOpenStylePanel,editabl
   const update=useAppStore(s=>s.updateLayer);
   const raster=isRaster(layer);
   const vector=!raster&&VECTOR.has(layer.type);
+  // Only GeoLibre RasterControl-owned COGs expose pixel reads, band metadata,
+  // live histogram and GPU colormap updates. XYZ/WMS are rendered tiles and
+  // must not be offered controls that cannot alter their underlying pixels.
+  const nativeRaster=raster&&layer.metadata.sourceKind===RASTER_SOURCE_KIND;
   const columns=useMemo(()=>{
     const fields=new Set<string>();
     for(const feature of layer.geojson?.features??[]){
@@ -117,9 +126,15 @@ export function GeoMozLayerDetailsDialog({layer,onClose,onOpenStylePanel,editabl
           </>}
           {tab==="symbology"&&<>
             <h3>{raster?"Representação do raster":vector?"Simbologia vectorial":"Representação do serviço"}</h3>
-            {raster?<><p>As classes de um raster correspondem a valores de píxeis ou intervalos numéricos, não a campos de uma tabela de atributos vectoriais.</p>
-              <LayerPropertyRows rows={[["Bandas",bandInfo===null?"Não disponíveis nos metadados":String(bandInfo)],["Estilo",textValue(layer.metadata.renderType??layer.metadata.renderer)],["Opacidade",Math.round(layer.opacity*100)+"%"]]}/>
-              <p className="gm-layer-detail-note">Para DEM contínuos, escolha uma rampa e intervalos de valores no editor de estilos, quando suportados. Para rasters categóricos, utilize classes de valores inteiros com cores distintas. As opções exactas dependem do motor raster e do ficheiro.</p></>
+            {raster?<><p>As classes de um raster representam valores de píxeis ou intervalos. A simbologia vectorial continua independente, baseada nos atributos das feições.</p>
+              <LayerPropertyRows rows={[["Bandas",bandInfo===null?"A carregar ou indisponíveis":String(bandInfo)],["Origem do processamento",nativeRaster?"COG / GeoTIFF com leitura de píxeis":"Serviço de imagens / mosaico renderizado"],["Opacidade",Math.round(layer.opacity*100)+"%"]]}/>
+              {nativeRaster?(editable?<div className="gm-layer-raster-native-editor" data-testid="geomoz-raster-symbology-editor">
+                <h4>Editor raster · bandas, cores e intervalos</h4>
+                <p>Os controlos seguintes actuam directamente no motor raster do mapa e guardam a configuração no projecto. Para classes discretas, active a classificação; para elevação contínua, utilize uma rampa e ajuste o intervalo no histograma.</p>
+                <RasterSymbologySection key={layer.id} layer={layer} mapControllerRef={mapControllerRef}/>
+              </div>:<p className="gm-layer-detail-note">Simbologia raster disponível apenas para consulta nesta sessão. Para editar as bandas e as cores é necessária permissão de edição do projecto.</p>)
+                :<p className="gm-layer-detail-note" role="note">Esta camada é um mosaico/serviço raster sem acesso directo aos píxeis pelo editor. Os controlos de bandas, histogramas e classificação não se aplicam a esta fonte. Use a opacidade ou o editor de estilos para os ajustes suportados.</p>}
+            </>
             :vector?<><p>Uma camada vectorial pode ter símbolo único, categorias por valores distintos de um atributo ou classes graduadas de um atributo numérico. A categorização de vectores <strong>também usa classes</strong>, mas classes de feições, não classes de píxeis.</p>
               <LayerPropertyRows rows={[["Renderizador",textValue(layer.style.vectorStyleMode)],["Campo de categorização",textValue(layer.style.vectorStyleProperty)],["Categorias configuradas",String(layer.style.vectorStyleStops?.length??0)]]}/>
               {layer.style.vectorStyleMode==="categorized"&&!!layer.style.vectorStyleStops?.length&&
@@ -129,8 +144,8 @@ export function GeoMozLayerDetailsDialog({layer,onClose,onOpenStylePanel,editabl
             {editable&&onOpenStylePanel&&<button type="button" className="gm-layer-detail-primary" onClick={openStyle}>Abrir editor avançado de estilos</button>}
           </>}
           {tab==="data"&&(raster?<><h3>Bandas e valores do raster</h3>
-            <LayerPropertyRows rows={[["Número de bandas",bandInfo===null?"Indisponível":String(bandInfo)],["Valor mínimo",textValue(layer.metadata.min??layer.source.min)],["Valor máximo",textValue(layer.metadata.max??layer.source.max)],["NoData",textValue(layer.metadata.nodata??layer.source.nodata)],["Resolução",textValue(layer.metadata.resolution??layer.source.resolution)]]}/>
-            <p className="gm-layer-detail-note">Um raster contínuo (por exemplo DEM) utiliza valores de elevação e intervalos. Um raster discreto de uso e cobertura do solo utiliza códigos de classe. Não aplique o categorizador de campos vectoriais a um raster.</p>
+            <LayerPropertyRows rows={[["Número de bandas",bandInfo===null?"Indisponível":String(bandInfo)],["Bandas seleccionadas",Array.isArray((layer.metadata.rasterState as {bands?:unknown}|undefined)?.bands)?String((layer.metadata.rasterState as {bands:number[]}).bands.join(", ")):"—"],["Valor mínimo",textValue(layer.metadata.min??layer.source.min)],["Valor máximo",textValue(layer.metadata.max??layer.source.max)],["NoData",textValue((layer.metadata.rasterState as {nodata?:unknown}|undefined)?.nodata??layer.metadata.nodata??layer.source.nodata)],["Resolução",textValue(layer.metadata.resolution??layer.source.resolution)]]}/>
+            <p className="gm-layer-detail-note">Um DEM representa valores contínuos de elevação; mapas de uso e cobertura do solo podem representar códigos discretos. Abra «Simbologia» para consultar ou editar bandas, histograma, intervalo Min/Max, NoData e cores quando a fonte raster o permitir. As estatísticas só são calculadas a partir de píxeis efectivamente acessíveis.</p>
           </>:vector?<><h3>Campos da tabela de atributos</h3>
             <p>{layer.geojson?"Campos identificados nas feições disponíveis:":"Esta camada pode estar optimizada em GeoParquet/tile. Os atributos completos devem ser consultados pelo painel de tabela e pelo motor DuckDB, sem carregar todas as geometrias na memória."}</p>
             {columns.length?<div className="gm-layer-detail-fields">{columns.map(name=><span key={name}>{name}</span>)}</div>:<p className="gm-layer-detail-note">Sem campos materializados no catálogo. Abra a tabela de atributos da camada para consultar a fonte.</p>}
