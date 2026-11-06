@@ -205,6 +205,13 @@ module.exports=async function validateRasterProcessing(page){
    "Native renderer must expose actual band-rendering controls");
  assert.equal(await nativeEditor.locator("#rasterBand").count(),1,
    "Native renderer must expose the selected GeoTIFF band");
+ const classify=nativeEditor.locator("label")
+   .filter({hasText:/Classificar em classes discretas|Classify into discrete classes/})
+   .locator('input[type="checkbox"]');
+ await classify.check();
+ await nativeEditor.locator("#rasterClasses").waitFor({state:"visible"});
+ assert.equal(await classify.isChecked(),true,
+   "Native raster class rendering must be enabled, not a decorative checkbox");
  const nodata=nativeEditor.locator("#rasterNodata");
  await nodata.selectOption("off");
  assert.equal(await nodata.inputValue(),"off",
@@ -215,6 +222,12 @@ module.exports=async function validateRasterProcessing(page){
  await openProps.click();
  await rasterProps.getByRole("button",{name:"Simbologia"}).click();
  assert.equal(await rasterProps.locator("#rasterNodata").inputValue(),"off");
+ const savedClasses=rasterProps.locator("label")
+   .filter({hasText:/Classificar em classes discretas|Classify into discrete classes/})
+   .locator('input[type="checkbox"]');
+ assert.equal(await savedClasses.isChecked(),true,
+   "Raster classified renderer must survive closing and reopening properties");
+ await savedClasses.uncheck();
  await rasterProps.locator("#rasterNodata").selectOption("auto");
  await rasterProps.getByRole("button",{name:"Fechar propriedades da camada"}).click();
  await rasterProps.waitFor({state:"hidden"});
