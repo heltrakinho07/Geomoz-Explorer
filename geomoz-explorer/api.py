@@ -230,11 +230,13 @@ from billing import router as billing_router
 from project_quota import router as project_quota_router
 from admin import router as admin_router
 from billing_plan_requests import router as plan_requests_router, admin_router as admin_plan_requests_router
+from entitlement_engine import router as entitlement_router, metering_enabled, reserve_credits, settle_credits
 app.include_router(billing_router)
 app.include_router(project_quota_router)
 app.include_router(admin_router)
 app.include_router(plan_requests_router)
 app.include_router(admin_plan_requests_router)
+app.include_router(entitlement_router)
 
 # ee.Initialize mutates global Earth Engine SDK state. Serialize the complete
 # authentication + computation lifecycle of GEE requests in each Python worker.
@@ -1651,6 +1653,14 @@ async def agent_chat(req: AgentChatRequest, request: Request):
     GeoMoz AI Agent — Interprets spatial intent, executes deterministic GIS tools via ReAct,
     and returns map actions, step checklists, and technical diagnostic synthesis.
     """
+    # Meter only explicit server-owned scientific operations; disabled by default
+    # until the client has been migrated and production smoke-tested.
+    reservation = None
+    if metering_enabled():
+        uid = _extract_uid_from_header(request.headers.get("Authorization", ""))
+        if not uid:
+            raise HTTPException(401, "Inicie sessão para utilizar os créditos GeoMoz.")
+        reservation = reserve_credits(uid, "ai.agent_chat")
     try:
         from agent.planner import GeoMozAgent
         # Only verified Firebase identity selects the private GEE credential store.
@@ -1668,8 +1678,18 @@ async def agent_chat(req: AgentChatRequest, request: Request):
             provider=req.provider or "auto",
             model=req.model
         )
+        settle_credits(reservation, success=not (
+            isinstance(result, dict) and (
+                result.get("success") is False or result.get("error")
+            )
+        ))
         return result
     except Exception:
+        if reservation is not None:
+            try:
+                settle_credits(reservation, success=False)
+            except Exception:
+                logger.exception("Failed to release GeoMoz AI credit reservation")
         # Never disclose Google/OpenAI API keys, internal paths or stack traces
         # through user-facing HTTP 500 response bodies.
         from uuid import uuid4
