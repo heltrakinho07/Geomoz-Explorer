@@ -27,6 +27,23 @@ type PaymentRecord = {
 };
 type Region = "mz" | "international";
 
+interface SubscriptionEntitlements {
+  plan: PlanId;
+  subscriptionStatus: string;
+  periodEnd: string | null;
+  limits: {
+    projects: number | null; credits: number | null; storageBytes: number | null;
+    seats: number | null; concurrentJobs: number | null;
+  };
+  usage: {
+    projects: number; projectsRemaining: number | null;
+    storageBytes: number; storageVerified: boolean;
+    credits: number; creditsReserved: number; creditsRemaining: number | null;
+    creditCycle: string; creditResetAt: string;
+  };
+  enforcement: { projects: string; credits: string; storage: string; seats: string; concurrentJobs: string };
+}
+
 const planIcons: Record<PlanId, React.ElementType> = {
   community: Layers3, academic: GraduationCap, pro: Zap, teams: Users, enterprise: Building2,
 };
@@ -56,6 +73,8 @@ export default function PricingPage() {
   const [academicApproved, setAcademicApproved] = useState(false);
   const [requestMessage, setRequestMessage] = useState("");
   const [recentRequest, setRecentRequest] = useState<{plan: PlanId; status: string} | null>(null);
+  const [entitlements, setEntitlements] = useState<SubscriptionEntitlements | null>(null);
+  const [entitlementError, setEntitlementError] = useState("");
   const [serverPlans, setServerPlans] = useState<Record<string, Partial<GeoMozPlan> & {enabled?:boolean}>>({});
 
   useEffect(() => {
@@ -113,6 +132,23 @@ export default function PricingPage() {
     } catch {}
     return () => { mounted = false; };
   }, [user?.uid, authLoading]);
+
+  useEffect(() => {
+    if (authLoading || !user || user.uid === "guest_user") {
+      setEntitlements(null);
+      setEntitlementError("");
+      return;
+    }
+    let mounted = true;
+    apiFetch("/geomoz-api/billing/entitlements")
+      .then(async response => {
+        if (!response.ok) throw new Error("Não foi possível consultar os recursos do plano.");
+        return response.json();
+      })
+      .then(data => { if (mounted) { setEntitlements(data); setEntitlementError(""); } })
+      .catch(() => { if (mounted) { setEntitlements(null); setEntitlementError("Recursos temporariamente indisponíveis."); } });
+    return () => { mounted = false; };
+  }, [user?.uid, authLoading, billing.plan, billing.creditsUsed, billing.periodEnd]);
 
   useEffect(() => {
     setCustomerName(user?.displayName || "");
@@ -457,6 +493,69 @@ export default function PricingPage() {
             <span className="inline-flex items-center gap-2"><LockKeyhole size={15} className="text-sky-600 dark:text-sky-300"/> O GeoMoz não armazena dados de cartões; a confirmação é feita no servidor.</span>
           </div>
         </section>
+
+        {user && user.uid !== "guest_user" && (
+          <section className="gm-dashboard-panel mt-8 rounded-2xl p-5 sm:p-7" aria-labelledby="my-subscription-heading">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-sky-600 dark:text-sky-300">Recursos da conta</p>
+                <h2 id="my-subscription-heading" className="mt-1.5 text-xl sm:text-2xl font-extrabold">A minha subscrição</h2>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  Direitos e utilização consultados directamente no servidor GeoMoz.
+                </p>
+              </div>
+              {entitlements && <span className="inline-flex items-center rounded-full border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/40 px-3 py-1.5 text-xs font-bold text-sky-700 dark:text-sky-300">
+                {PLANS[entitlements.plan]?.name || entitlements.plan}
+              </span>}
+            </div>
+            {entitlementError && <p role="status" className="mt-4 text-sm text-amber-700 dark:text-amber-300">{entitlementError}</p>}
+            {!entitlements && !entitlementError && <p className="mt-4 text-sm text-slate-500">A carregar recursos da subscrição...</p>}
+            {entitlements && (
+              <>
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  {[
+                    {label:"Projectos cloud", used:entitlements.usage.projects,
+                      max:entitlements.limits.projects, suffix:"", verified:true},
+                    {label:"Créditos GeoMoz", used:entitlements.usage.credits + entitlements.usage.creditsReserved,
+                      max:entitlements.limits.credits, suffix:"", verified:true},
+                  ].map(metric => {
+                    const percent = metric.max === null ? 0 : metric.max > 0 ?
+                      Math.min(100, Math.max(0, (metric.used / metric.max) * 100)) : 100;
+                    return <div key={metric.label} className="rounded-xl border border-slate-200/80 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-4">
+                      <div className="flex flex-wrap justify-between gap-2 text-sm">
+                        <span className="font-semibold">{metric.label}</span>
+                        <span className="font-bold tabular-nums">{metric.used.toLocaleString("pt-PT")} / {metric.max === null ? "À medida" : metric.max.toLocaleString("pt-PT")}</span>
+                      </div>
+                      {metric.max !== null && <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700" role="progressbar" aria-label={metric.label} aria-valuenow={metric.used} aria-valuemin={0} aria-valuemax={metric.max}>
+                        <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-600" style={{width: percent + "%"}}/>
+                      </div>}
+                      {metric.label === "Créditos GeoMoz" && <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                        {entitlements.usage.creditsReserved} reservados · Reinício do ciclo: {new Date(entitlements.usage.creditResetAt).toLocaleDateString("pt-PT")}
+                      </p>}
+                    </div>;
+                  })}
+                </div>
+                <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200/80 dark:border-slate-700 p-4">
+                    <div className="text-xs font-semibold text-slate-500">Validade do plano</div>
+                    <div className="mt-1 font-bold">{entitlements.periodEnd ? new Date(entitlements.periodEnd).toLocaleDateString("pt-PT") : "Community — sem vencimento"}</div>
+                    <div className="mt-2 text-xs text-slate-500">Sem renovação automática</div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200/80 dark:border-slate-700 p-4">
+                    <div className="text-xs font-semibold text-slate-500">Armazenamento anunciado</div>
+                    <div className="mt-1 font-bold">{formatStorage(entitlements.limits.storageBytes)}</div>
+                    <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                      A contabilização integral do armazenamento ainda está em implementação.
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-4 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                  Projectos cloud sujeitos a quota no servidor. O consumo de créditos das operações científicas está a ser activado por módulos; os valores apresentados não representam quotas do Google Earth Engine. Lugares de equipa e processamento simultâneo ainda exigem aplicação integral.
+                </p>
+              </>
+            )}
+          </section>
+        )}
 
         {user && user.uid !== "guest_user" && (
           <section className="gm-dashboard-panel mt-6 rounded-2xl p-5 sm:p-6" aria-label="Pagamentos e renovações">
