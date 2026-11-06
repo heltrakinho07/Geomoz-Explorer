@@ -7,7 +7,7 @@
 
 import { apiFetch } from "@/lib/api";
 
-export type GISHeavyToolId = "hillshade" | "slope" | "aspect" | "cog" | "clip-extent";
+export type GISHeavyToolId = "hillshade" | "slope" | "aspect" | "cog" | "clip-extent" | "clip-mask";
 
 export interface GISHeavyProcessingJob {
   id: string;
@@ -52,6 +52,7 @@ export async function listGISHeavyTools(
 export async function createGISHeavyJob(options: {
   tool: GISHeavyToolId;
   file: File;
+  maskGeojson?: string;
   parameters?: Record<string, unknown>;
   signal?: AbortSignal;
 }): Promise<GISHeavyJobCreateResult> {
@@ -59,6 +60,7 @@ export async function createGISHeavyJob(options: {
   body.set("tool", options.tool);
   body.set("parameters", JSON.stringify(options.parameters ?? {}));
   body.set("input_file", options.file, options.file.name);
+  if (options.maskGeojson !== undefined) body.set("mask_geojson", options.maskGeojson);
 
   const response = await apiFetch("/geomoz-api/processing/jobs", {
     method: "POST",
