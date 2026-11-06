@@ -446,6 +446,23 @@ class PublicDataTests(unittest.TestCase):
         self.assertEqual(result["validAreaKm2"], 4)
         self.assertEqual(result["classes"][0]["percentOfValidArea"], 75)
         self.assertEqual(result["classes"][1]["name"], "Água permanente")
+        self.assertEqual(result["classes"][1]["color"], "#0064c8")
+
+    def test_worldcover_pixel_uses_source_class_and_checks_analysis_boundary(self):
+        ee = MagicMock()
+        region = MagicMock()
+        region.intersects.return_value.getInfo.return_value = False
+        image = ee.ImageCollection.return_value.first.return_value.select.return_value
+        image.reduceRegion.return_value.getInfo.return_value = {"Map": 80}
+        with patch.dict("sys.modules", {"ee": ee}):
+            self.assertEqual(engine.worldcover_pixel(region, 32.6, -25.9), {"status": "outside"})
+            image.reduceRegion.assert_not_called()
+            region.intersects.return_value.getInfo.return_value = True
+            result = engine.worldcover_pixel(region, 32.6, -25.9)
+            self.assertEqual(result, {"status": "success", "id": 80, "name": "Água permanente", "color": "#0064c8"})
+            self.assertEqual(image.reduceRegion.call_args.kwargs["scale"], 10)
+            image.reduceRegion.return_value.getInfo.return_value = {}
+            self.assertEqual(engine.worldcover_pixel(region, 32.6, -25.9), {"status": "no_data"})
 
     def test_catalogue_does_not_authenticate_gee_or_claim_a_calculation(self):
         with patch.dict("sys.modules", {"gee_module": MagicMock()}) as modules:

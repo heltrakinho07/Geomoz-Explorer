@@ -26,6 +26,8 @@ WC_CLASSES = {10: "Árvores", 20: "Arbustos", 30: "Herbáceas", 40: "Culturas",
 WC_COLORS = ["006400", "ffbb22", "ffff4c", "f096ff", "fa0000", "b4b4b4",
              "f0f0f0", "0064c8", "0096a0", "00cf75", "fae6a0"]
 
+WC_PALETTE = {code: f"#{color}" for code, color in zip(WC_CLASSES, WC_COLORS)}
+
 
 def validate_period(start, end, earliest=None):
     try:
@@ -398,6 +400,22 @@ def temporal_change(geometry, index, start1, end1, start2, end2, scale_m=30, clo
     return result
 
 
+def worldcover_pixel(geometry, lon, lat):
+    import ee
+
+    region = ee.Geometry(validate_geometry(geometry), "EPSG:4326", False) if isinstance(geometry, dict) else geometry
+    point = ee.Geometry.Point([lon, lat])
+    if not region.intersects(point, maxError=1).getInfo():
+        return {"status": "outside"}
+    image = ee.ImageCollection(WORLDCOVER).first().select("Map")
+    value = (image.reduceRegion(reducer=ee.Reducer.first(), geometry=point, scale=10,
+                                crs=image.projection(), maxPixels=100).getInfo() or {}).get("Map")
+    if value is None or int(value) not in WC_CLASSES:
+        return {"status": "no_data"}
+    code = int(value)
+    return {"status": "success", "id": code, "name": WC_CLASSES[code], "color": WC_PALETTE[code]}
+
+
 def landcover(geometry, scale_m=30):
     import ee
     region, grid, area = _grid(geometry, scale_m)
@@ -409,6 +427,7 @@ def landcover(geometry, scale_m=30):
     if valid <= 0:
         raise ValueError("WorldCover sem cobertura válida na área escolhida.")
     classes = [{"id": int(row["class"]), "name": WC_CLASSES.get(int(row["class"]), "Classe não identificada"),
+                "color": WC_PALETTE.get(int(row["class"])),
                 "areaKm2": row["sum"] / 1e6, "percentOfValidArea": row["sum"] / 1e6 / valid * 100} for row in groups]
     classes.sort(key=lambda row: row["areaKm2"], reverse=True)
     display = image.remap(list(WC_CLASSES), list(range(11)))

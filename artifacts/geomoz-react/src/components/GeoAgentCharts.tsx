@@ -1,5 +1,5 @@
-type Point = { label: string; value: number; time?: number };
-type Chart = { title: string; unit: string; points: Point[]; kind?: "line" };
+type Point = { label: string; value: number; time?: number; color?: string; classId?: number; percentage?: number };
+type Chart = { title: string; unit: string; points: Point[]; kind?: "line"; worldCover?: boolean };
 
 const number = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const object = (v: unknown): Record<string, unknown> =>
@@ -23,8 +23,17 @@ export function chartsFor(tool: string, result: Record<string, unknown>): Chart[
   for (const [key, label] of [["classes", "Área por classe"], ["dominantUnits", "Área das unidades geológicas apresentadas"]]) {
     const rows = result[key];
     if (!Array.isArray(rows)) continue;
-    add(label, "km²", points(rows.map(object).flatMap(row =>
-      typeof row.name === "string" ? [[row.name, row.areaKm2]] as Array<[string, unknown]> : [])));
+    const worldCover = tool === "get_public_landcover" && key === "classes";
+    const data = rows.map(object).flatMap(row => {
+      if (typeof row.name !== "string" || !number(row.areaKm2)) return [];
+      return [{
+        label: row.name, value: row.areaKm2,
+        color: worldCover && typeof row.color === "string" && /^#[0-9a-f]{6}$/i.test(row.color) ? row.color : undefined,
+        classId: worldCover && number(row.id) ? row.id : undefined,
+        percentage: worldCover && number(row.percentOfValidArea) ? row.percentOfValidArea : undefined,
+      }];
+    });
+    if (data.length) charts.push({ title: label, unit: "km²", points: data, worldCover });
   }
 
   if (tool === "detect_temporal_change") {
@@ -67,6 +76,18 @@ export function chartsFor(tool: string, result: Record<string, unknown>): Chart[
   return charts;
 }
 
+function exportWorldCover(points: Point[]) {
+  const rows = [["ano", "codigo_classe", "classe", "area_km2", "percentagem_area_valida", "cor"],
+    ...points.map(point => [2021, point.classId ?? "", point.label, point.value, point.percentage ?? "", point.color ?? ""])];
+  const csv = rows.map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "worldcover-2021-estatisticas.csv";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function ChartFigure({ chart }: { chart: Chart }) {
   const values = chart.points.map(point => point.value);
   const min = Math.min(0, ...values), max = Math.max(0, ...values);
@@ -79,6 +100,7 @@ function ChartFigure({ chart }: { chart: Chart }) {
     <figure className="space-y-2 rounded-xl border border-slate-200 p-3 text-xs dark:border-slate-700">
       <figcaption className="font-semibold text-slate-800 dark:text-slate-100">
         {chart.title}{chart.unit && ` · ${chart.unit}`}
+        {chart.worldCover && <button type="button" className="ml-3 underline" onClick={() => exportWorldCover(chart.points)}>Exportar CSV</button>}
       </figcaption>
       {line && (
         <svg aria-hidden="true" viewBox="0 0 320 96" className="w-full text-violet-600 dark:text-violet-400">
@@ -88,17 +110,17 @@ function ChartFigure({ chart }: { chart: Chart }) {
         </svg>
       )}
       <ul className="max-h-64 space-y-2 overflow-auto">
-        {chart.points.map(({ label, value }, i) => (
+        {chart.points.map(({ label, value, color }, i) => (
           <li key={i}>
             <div className="flex justify-between gap-2">
-              <span className="break-words">{label}</span>
+              <span className="break-words">{color && <span aria-hidden="true" className="mr-1.5 inline-block size-3 rounded-sm border border-slate-500/40" style={{ backgroundColor: color }} />}{label}</span>
               <span className="shrink-0 tabular-nums">{format.format(value)}</span>
             </div>
             {!line && (
               <div aria-hidden="true" className="relative mt-1 h-2 rounded bg-slate-100 dark:bg-slate-800">
                 <div className="absolute inset-y-0 w-px bg-slate-400" style={{ left: `${zero}%` }} />
                 <div className={`absolute inset-y-0 rounded ${value < 0 || /^(Diminuição|diminuição)/.test(label) ? "bg-amber-600" : "bg-violet-600"}`}
-                  style={{ left: `${((Math.min(0, value) - min) / span) * 100}%`, width: `${Math.abs(value) / span * 100}%` }} />
+                  style={{ backgroundColor: color, left: `${((Math.min(0, value) - min) / span) * 100}%`, width: `${Math.abs(value) / span * 100}%` }} />
               </div>
             )}
           </li>
