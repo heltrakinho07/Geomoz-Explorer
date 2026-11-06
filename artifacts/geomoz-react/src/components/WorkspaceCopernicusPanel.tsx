@@ -68,10 +68,19 @@ export default function WorkspaceCopernicusPanel({ user, aoi, onAOIChange, onDra
   useEffect(() => () => request.current?.abort(), [user]);
 
   const geometry = polygonGeometry(aoi.geometry);
-  const payload = JSON.stringify({ geometry, province: aoi.province, district: aoi.district, scale, crs, clip, product });
+  const gaul = aoi.source === "country" && aoi.boundarySource === "gaul2025";
+  const payload = JSON.stringify({
+    geometry: gaul ? null : geometry,
+    province: gaul ? null : aoi.province,
+    district: gaul ? null : aoi.district,
+    ...(gaul ? { boundarySource: "gaul2025", countryCode: aoi.countryCode,
+      adminLevel: aoi.adminLevel ?? 0, admin1Code: aoi.admin1Code ?? null,
+      admin2Code: aoi.admin2Code ?? null } : {}),
+    scale, crs, clip, product,
+  });
   useEffect(() => () => request.current?.abort(), [payload]);
   const estimate = preview?.key === payload ? preview.data : undefined;
-  const hasArea = Boolean(geometry || aoi.province || aoi.district);
+  const hasArea = Boolean(geometry || aoi.province || aoi.district || (gaul && aoi.countryCode));
   const exterior = geometry?.type === "Polygon" ? geometry.coordinates[0] : undefined;
   const point = exterior?.[vertex];
 
@@ -139,7 +148,7 @@ export default function WorkspaceCopernicusPanel({ user, aoi, onAOIChange, onDra
         : !subscription.can("gee_terrain_pro") ? <p>Disponível para planos Pro, Teams e Enterprise.</p> : <>
         <p>Modelo digital de superfície Copernicus, com resolução nativa aproximada de 30 m. Ligue o seu Google Earth Engine nas Definições.</p>
         <fieldset disabled={Boolean(busy)} className="space-y-3">
-          <ZoneSelect aoi={aoi} onAOIChange={next => { setVertex(0); onAOIChange(next); }} onDrawingRequest={() => onDraw("polygon")} />
+          <ZoneSelect enableAdministrative aoi={aoi} onAOIChange={next => { setVertex(0); onAOIChange(next); }} onDrawingRequest={() => onDraw("polygon")} />
           <p><strong>Área de estudo</strong> · {aoi.label}</p>
           <div className="flex flex-wrap gap-2">
             <button type="button" className={action} onClick={() => { setVertex(0); onDraw("polygon"); }}>Desenhar polígono</button>

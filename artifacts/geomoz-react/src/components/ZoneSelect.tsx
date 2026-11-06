@@ -1,4 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
+import { apiFetch } from "@/lib/api";
+import { GAULAreaSelect, type LoadGAULUnits } from "./GAULAreaSelect";
+import { WORLD_COUNTRIES } from "@/lib/world-countries";
 import { usePortalTranslation } from "@/i18n/usePortalTranslation";
 import { sharedMapText, type SharedMapKey } from "@/i18n/sharedMap";
 import {
@@ -8,7 +11,7 @@ import {
 } from "lucide-react";
 import AreaUpload from "./AreaUpload";
 import type { AreaOfInterest } from "@/lib/aoi";
-import { customAOI, GLOBAL_AOI, computeAOIMetrics } from "@/lib/aoi";
+import { customAOI, countryAOI, GLOBAL_AOI, computeAOIMetrics } from "@/lib/aoi";
 
 interface ZoneSelectProps {
   aoi: AreaOfInterest;
@@ -17,6 +20,8 @@ interface ZoneSelectProps {
   onDrawingRequest?: () => void;
   /** Compact mode for navbar display (smaller, inline) */
   compact?: boolean;
+  /** Enable GAUL only in tools that resolve administrative codes server-side. */
+  enableAdministrative?: boolean;
 }
 
 type ActiveTab = "upload" | "draw" | null;
@@ -34,8 +39,10 @@ export default function ZoneSelect({
   onAOIChange,
   onDrawingRequest,
   compact,
+  enableAdministrative = false,
 }: ZoneSelectProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>(null);
+  const [showAdministrative, setShowAdministrative] = useState(false);
   const { translatedLocale } = usePortalTranslation();
   const copy = (key: SharedMapKey) => sharedMapText(translatedLocale, key);
   const numberLocale = translatedLocale === "pt" ? "pt-MZ" : translatedLocale;
@@ -64,6 +71,27 @@ export default function ZoneSelect({
   function handleFlyToAOI() {
     window.dispatchEvent(new CustomEvent("geomoz_fly_to_aoi"));
   }
+
+  const loadGAULUnits = useCallback<LoadGAULUnits>(async (countryCode, level, parentCode, signal) => {
+    const response = await apiFetch("/geomoz-api/ai/agent-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal,
+      body: JSON.stringify({
+        message: `Listar unidades FAO GAUL ADM${level}`,
+        current_map_state: { publicAnalysis: { tool: "list_administrative_units", args: {
+          country_code: countryCode, level, ...(parentCode === null ? {} : { parent_code: parentCode }),
+        } } },
+      }),
+    });
+    if (!response.ok) throw new Error(`Não foi possível consultar FAO GAUL (HTTP ${response.status}). Verifique a autorização GEE.`);
+    const result = await response.json();
+    const output = result.runs?.find((run: { output?: { units?: unknown[] } }) => Array.isArray(run.output?.units))?.output;
+    if (output?.status !== "success" || !Array.isArray(output.units)) {
+      throw new Error("Não foi possível obter as unidades administrativas FAO GAUL. Verifique a ligação GEE.");
+    }
+    return output.units;
+  }, []);
 
   const isCustom = aoi.source === "upload" || aoi.source === "draw";
 
@@ -202,6 +230,40 @@ export default function ZoneSelect({
           </div>
         )}
       </div>
+
+      {/* Administrative IDs require server-side resolution in the consuming tool. */}
+      {enableAdministrative && <section className="rounded-xl border border-slate-200 p-3 dark:border-slate-700 space-y-2">
+        <button type="button" aria-expanded={showAdministrative} onClick={() => setShowAdministrative((value) => !value)}
+          className="w-full text-left text-xs font-semibold text-slate-800 dark:text-slate-200">
+          Área administrativa · País / Província / Distrito
+        </button>
+        {showAdministrative && <>
+          <label className="block text-[11px] text-slate-600 dark:text-slate-300">País (ADM0)
+            <select aria-label="País para área de estudo FAO GAUL" value={aoi.source === "country" && aoi.boundarySource === "gaul2025" ? aoi.countryCode ?? "" : ""}
+              onChange={(event) => {
+                const country = WORLD_COUNTRIES.find((item) => item.code === event.target.value);
+                if (!country) { onAOIChange(GLOBAL_AOI); return; }
+                onAOIChange({ ...countryAOI(country), boundarySource: "gaul2025", adminLevel: 0,
+                  admin1Code: null, admin1Name: null, admin2Code: null, admin2Name: null, geometry: null });
+              }}
+              className="mt-1 block w-full rounded-lg border border-slate-700 bg-slate-800 p-2 text-xs text-white">
+              <option value="">Escolher país…</option>
+              {WORLD_COUNTRIES.map((country) => <option key={country.code} value={country.code}>{country.name}</option>)}
+            </select>
+          </label>
+          {aoi.source === "country" && aoi.boundarySource === "gaul2025" && aoi.countryCode && (
+            <GAULAreaSelect countryCode={aoi.countryCode} loadUnits={loadGAULUnits}
+              selection={{ adminLevel: aoi.adminLevel ?? 0, admin1Code: aoi.admin1Code ?? null,
+                admin1Name: aoi.admin1Name ?? null, admin2Code: aoi.admin2Code ?? null,
+                admin2Name: aoi.admin2Name ?? null }}
+              onChange={(selection) => onAOIChange({ ...aoi, ...selection, geometry: null,
+                label: [selection.admin2Name, selection.admin1Name, aoi.countryName].filter(Boolean).join(", ") })} />
+          )}
+          <p className="text-[10px] text-slate-500 dark:text-slate-400">
+            Os limites FAO GAUL 2025 são resolvidos no servidor GEE ao processar a área. Não correspondem a limites cadastrais.
+          </p>
+        </>}
+      </section>}
 
       {/* ── Two Primary Modes: Upload de Área & Desenhar Polígono ── */}
       <div className="grid grid-cols-2 gap-1.5">

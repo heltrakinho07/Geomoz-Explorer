@@ -17,12 +17,42 @@ NODATA = -9999.0
 
 class WorkspaceDemRequest(BaseModel):
     geometry: dict | None = None
+    boundarySource: Literal["gaul2025"] | None = None
+    countryCode: str | None = Field(default=None, min_length=3, max_length=3)
+    adminLevel: int = Field(default=0, ge=0, le=2)
+    admin1Code: int | None = Field(default=None, ge=0)
+    admin2Code: int | None = Field(default=None, ge=0)
     province: str | None = Field(default=None, max_length=100)
     district: str | None = Field(default=None, max_length=100)
     scale: int = Field(default=30, ge=30, le=500)
     crs: Literal["EPSG:4326", "EPSG:32736", "EPSG:32737"] = "EPSG:4326"
     clip: bool = True
     product: Literal["elevation", "slope", "aspect", "hillshade"] = "elevation"
+
+
+def resolve_workspace_area(req, legacy_resolver):
+    """Resolve an administrative AOI server-side; never trust a client-supplied outline.
+
+    GAUL identifiers must be a valid parent-child chain, and no alternative
+    geometry or free-text province is allowed to bypass that selection.
+    """
+    has_admin = bool(req.boundarySource or req.countryCode or req.admin1Code is not None or req.admin2Code is not None)
+    if not has_admin:
+        if req.adminLevel != 0:
+            raise ValueError("Seleccione a fonte FAO GAUL para usar níveis administrativos.")
+        return legacy_resolver(req.province, req.district, req.geometry)
+    if req.boundarySource != "gaul2025" or not req.countryCode:
+        raise ValueError("A área administrativa exige país e fonte FAO GAUL 2025.")
+    if req.geometry is not None or req.province or req.district:
+        raise ValueError("Não misture limites FAO GAUL com geometrias ou distritos de outra fonte.")
+    from agent.administrative_boundaries import administrative_geometry, validate_selection
+    validate_selection(req.countryCode, req.adminLevel, req.admin1Code, req.admin2Code)
+    geometry, _metadata = administrative_geometry(
+        req.countryCode, req.adminLevel, req.admin1Code, req.admin2Code
+    )
+    # The export endpoint checks and bounds the resulting polygon before
+    # creating a GEE download. Simplification avoids oversized server responses.
+    return geometry.simplify(maxError=100).getInfo()
 
 
 def inspect_area(geometry, scale, crs):

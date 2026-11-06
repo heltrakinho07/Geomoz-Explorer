@@ -51,3 +51,25 @@ it("validates coverage before export and invalidates the estimate on a scale cha
   fireEvent.change(screen.getByLabelText("Escala (m)"), { target: { value: 60 } });
   expect(generate).toBeDisabled();
 });
+
+it("sends stable GAUL hierarchy rather than a country bounding-box polygon", async () => {
+  subscription(true);
+  vi.mocked(apiFetch).mockResolvedValue(Response.json({
+    geometry, areaKm2: 25, rows: 150, columns: 200, estimatedBytes: 120000, coverage: 0.98, coverageScale: 90,
+  }));
+  const aoi = {
+    source: "country" as const, countryCode: "MOZ", countryName: "Moçambique",
+    boundarySource: "gaul2025" as const, adminLevel: 2 as const,
+    admin1Code: 123, admin1Name: "Sofala", admin2Code: 456, admin2Name: "Maringué",
+    province: null, district: null, geometry: null, label: "Maringué, Sofala",
+  };
+  render(<WorkspaceCopernicusPanel {...props} aoi={aoi} />);
+  fireEvent.click(screen.getByRole("button", { name: "Validar área e cobertura" }));
+  expect(await screen.findByText("98.0%")).toBeInTheDocument();
+  const [, options] = vi.mocked(apiFetch).mock.calls[0];
+  const body = JSON.parse(String(options?.body));
+  expect(body).toMatchObject({
+    boundarySource: "gaul2025", countryCode: "MOZ", adminLevel: 2,
+    admin1Code: 123, admin2Code: 456, geometry: null, province: null, district: null,
+  });
+});
