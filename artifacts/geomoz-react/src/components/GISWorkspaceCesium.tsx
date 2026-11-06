@@ -15,7 +15,7 @@ export interface GISWorkspaceMapLayer {id:string;name:string;geojson:FeatureColl
 interface Props {
   layers:GISWorkspaceMapLayer[];rasterLayers?:GISWorkspaceRasterLayer[];serviceLayers?:GISWorkspaceServiceLayer[];
   activeLayerId?:string;activeRasterId?:string;basemap:BasemapType;aoiGeometry?:GeoJSON.GeoJSON|null;drawingEnabled?:boolean;drawingShape?:"polygon"|"rectangle";
-  onSelectLayer?:(id:string)=>void;onDrawComplete?:(geometry:GeoJSON.GeoJSON,label:string)=>void;onDrawCancel?:()=>void;
+  onSelectLayer?:(id:string)=>void;onSelectFeature?:(layerId:string,featureIndex:number,additive:boolean)=>void;onDrawComplete?:(geometry:GeoJSON.GeoJSON,label:string)=>void;onDrawCancel?:()=>void;
   onViewportBbox?:(bounds:Bounds)=>void;onRasterMetadata?:(metadata:GISWorkspaceRasterMetadata)=>void;
   onRasterError?:(id:string,message:string)=>void;
 }
@@ -139,7 +139,7 @@ export default function GISWorkspaceCesium(props:Props) {
         return Number.isFinite(lon)&&Number.isFinite(lat)?[lon,lat]:null;
       };
       const input=new C.ScreenSpaceEventHandler(viewer.canvas);
-      input.setInputAction((event:{position:{x:number;y:number}})=>{
+      input.setInputAction((event:{position:{x:number;y:number};shiftKey?:boolean;modifiers?:number})=>{
         if(current.current.drawingEnabled) {
           if(current.current.drawingShape==="rectangle"&&points.current.length===2)return;
           const point=pick(event.position);if(!point)return;
@@ -152,7 +152,7 @@ export default function GISWorkspaceCesium(props:Props) {
         if(lonlat){
           const feature=pickWorkspaceFeature(current.current.layers,lonlat,event.position,position=>
             C.SceneTransforms.worldToWindowCoordinates(viewer.scene,C.Cartesian3.fromDegrees(position[0],position[1])));
-          if(feature){current.current.onSelectLayer?.(feature.layerId);setSelected(feature);return;}
+          if(feature){current.current.onSelectLayer?.(feature.layerId);current.current.onSelectFeature?.(feature.layerId,feature.featureIndex,Boolean(event.shiftKey));setSelected(feature);return;}
         }
         const hit=viewer.scene.pick(new C.Cartesian2(event.position.x,event.position.y));
         if(hit?.id){
