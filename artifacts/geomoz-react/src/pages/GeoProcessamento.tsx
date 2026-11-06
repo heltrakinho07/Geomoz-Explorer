@@ -5898,6 +5898,7 @@ export default function GeoProcessamento({
           drawingEnabled={drawingEnabled}
           drawingShape={drawingShape}
           onSelectLayer={setSelectedLayerId}
+          selectedFeatureIndices={selectedTableRows}
           onSelectFeature={(layerId, featureIndex, additive) => {
             setSelectedTableRows(old => ({...old, [layerId]: toggleAttributeSelection(old[layerId] ?? [], featureIndex, additive)}));
             setTableLayerId(layerId);
