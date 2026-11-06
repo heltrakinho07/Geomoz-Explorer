@@ -92,7 +92,7 @@ jobs:
         run: >-
           npx --yes firebase-tools@14.22.0 emulators:exec
           --config firebase.emulators.json --only firestore --project demo-geomoz-usage
-          "python -m pytest -q geomoz-explorer/tests/test_subscription_usage_emulator.py"
+          "python -m pytest --noconftest -q geomoz-explorer/tests/test_subscription_usage_emulator.py"
 
   lint:
     name: Lint (ruff)
