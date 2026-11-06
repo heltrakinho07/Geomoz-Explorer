@@ -46,6 +46,21 @@ Módulos configuráveis: GIS Workspace, GeoMoz AI, Hidrologia, Terrain Studio 3D
 
 Limitação: GIS Workspace servido como aplicação estática em /gis-workspace e integrações/serviços externos não são bloqueados completamente apenas com uma flag. Exigem controlo nos próprios serviços.
 
+## Permissões de módulos por plano (controlo incremental)
+
+A administração dispõe agora de uma matriz `planFeatures` em `platformConfig/commerce`, com os planos Community, Academic, Pro, Teams e Enterprise. Todos os módulos começam permitidos por defeito, preservando as subscrições existentes; o superadmin deve aplicar bloqueios explícitos. A matriz não altera preços, quotas ou autorizações Google Earth Engine.
+
+- `GET /geomoz-api/admin/plans` devolve `planFeatures` e `moduleRegistry`, apenas para perfis administrativos.
+- `PATCH /geomoz-api/admin/plan-features/{plan}`, apenas superadmin, valida chaves e valores booleanos, grava alterações com merge por plano e audita o operador.
+- `GET /geomoz-api/billing/module-access` exige Firebase Auth e determina o plano efectivo a partir de `billing/{uid}`, incluindo estado e expiração; devolve os direitos efectivos para o frontend.
+- O middleware aplica bloqueios por plano aos endpoints científicos mapeados de IA, hidrologia, terreno e detecção remota, além das flags globais.
+- GIS Workspace estático e Catálogos Sísmicos continuam com cobertura parcial: não há interruptores *por plano* para estas duas áreas até existir um guard efectivo no respectivo serviço.
+- O bloqueio Pro pré-existente para geração Copernicus pelo Earth Engine permanece cumulativo: conceder acesso ao módulo 3D não concede automaticamente direito de computação Pro.
+- Na ausência de restrições explícitas, o middleware preserva o percurso anterior e não faz leituras adicionais de billing. Quando existe restrição, a falha na leitura da subscrição não concede permissões por engano.
+- Uma flag administrativa não substitui permissões IAM, quotas GEE ou autorização de APIs independentes.
+
+**Testar em ensaio antes de restringir planos em produção:** desactivar GeoMoz AI no plano Academic e confirmar resposta 403 para chamada directa ao endpoint do AI sob uma conta Academic válida; confirmar acesso Pro e que o estado geral permanece activo; repetir após expiração da assinatura, autenticação inválida e falha simulada de Firestore. Por fim, restaurar a política original.
+
 ## Operação, testes e limitações
 
 - CI verifica claims, sessão revogada, protecção de superadmin, validação de concessões e módulos.
