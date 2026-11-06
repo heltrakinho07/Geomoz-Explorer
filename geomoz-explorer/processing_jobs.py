@@ -183,6 +183,26 @@ def _gdal_tool_command(
             "-co", "OVERVIEWS=AUTO",
         ]
 
+    if tool == "clip-extent":
+        # These coordinates are expressed in the source raster's CRS, not
+        # necessarily WGS84. The order is west, south, east, north.
+        bbox = parameters.get("bbox")
+        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+            raise ValueError("bbox deve conter [xmin, ymin, xmax, ymax].")
+        try:
+            xmin, ymin, xmax, ymax = (float(v) for v in bbox)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("bbox deve conter quatro coordenadas numéricas.") from exc
+        if not all(math.isfinite(v) for v in (xmin, ymin, xmax, ymax)):
+            raise ValueError("bbox deve conter coordenadas finitas.")
+        if xmin >= xmax or ymin >= ymax:
+            raise ValueError("bbox inválida: xmin < xmax e ymin < ymax.")
+        return [
+            "gdal_translate", "-of", "GTiff",
+            "-projwin", str(xmin), str(ymax), str(xmax), str(ymin),
+            str(input_path), str(output_path),
+        ]
+
     raise ValueError('Ferramenta "' + tool + '" não é suportada pelo backend pesado.')
 
 
