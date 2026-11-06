@@ -273,6 +273,7 @@ def subscription_usage(uid: str = Depends(_uid)):
         "periodEnd": state.get("periodEnd") if plan != "community" else None,
         "projectsUsed": projects.count().get()[0][0].value,
         "projectLimit": limits["projects"],
+        "creditLimit": limits["credits"],
         **_credit_usage(state, limits["credits"], _utcnow()),
     }
 
