@@ -17,6 +17,12 @@ Os eventos de fontes distintas são mantidos separadamente: o ISC e USGS podem a
 
 O botão «Adicionar ao mapa» só aparece habilitado quando a implementação permite \`data:add\`; o modo viewer não apresenta a tarefa. Guardar explicitamente o projecto pelo motor GeoLibre se for necessário persistir o mapa no dispositivo. No caso de um browser impedir pedidos CORS a determinado serviço, a consulta apresenta erro visível — não simula resultados. O ISC poderá necessitar de um **proxy próprio GeoMoz** com validação e caching, a desenvolver caso a política CORS da origem o exija.
 
+## Gestão de acesso pelo GeoMoz
+
+O Centro de Administração pode activar/desactivar **Catálogos sísmicos** globalmente ou por plano. Ao abrir o GeoMoz GIS Workspace, o portal verifica no backend o plano efectivo, a validade da sessão Firebase e os interruptores de GIS e Sismologia. O painel sísmico só é apresentado quando a permissão de sismologia é positiva; a verificação periódica fecha o painel após revogação.
+
+**Âmbito exacto:** esta autorização controla a interface GeoMoz, não os próprios serviços públicos FDSN. Os utilizadores continuam a poder consultar directamente USGS, ISC e EarthScope fora do GeoMoz. Os pedidos originais permanecem efectuados pelo navegador, sujeitos a CORS e limites oficiais; os dados não passam a ser protegidos nem privatizados pelo GeoMoz.
+
 ## Segurança, desempenho e extensão
 
 \`scripts/assets/workbench/seismic-data.ts\` apenas constrói URLs para dois hosts permitidos; rejeita intervalos, áreas e magnitudes inválidas e respostas excessivas. Não guarda eventos remotamente. Formatos de exportação são gerados com Blob apenas quando solicitados. A UI e o mapper do GeoLibre mantêm a responsabilidade de adicionar, consultar e exportar camadas.

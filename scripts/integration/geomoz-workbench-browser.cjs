@@ -41,9 +41,9 @@ async function settleRecovery(page){
  page.on("pageerror",error=>{errors.push(error.message);console.error("Runtime error:",error.message);});
  page.setDefaultTimeout(90000);
  try{
-  const portalMessage = authenticated =>
+  const portalMessage = (authenticated, allowed=authenticated, seismicAllowed=authenticated) =>
     '<!doctype html><html><body><script>window.parent.postMessage(' +
-    JSON.stringify({type:"geomoz:workspace-auth-state",authenticated}) +
+    JSON.stringify({type:"geomoz:workspace-auth-state",authenticated,allowed,seismicAllowed}) +
     ',window.location.origin);</script></body></html>';
 
   // Test an unauthenticated deep link: the real engine must never start.
@@ -56,6 +56,16 @@ async function settleRecovery(page){
   assert.equal(await visitor.getByTestId("geomoz-workbench-chrome").count(),0,
     "Unauthenticated visitors must not run the GIS engine");
   await visitor.close();
+
+  // A valid Firebase session is not enough if the backend revokes Workspace.
+  const denied = await context.newPage();
+  await denied.route("**/auth/workspace-check", route =>
+    route.fulfill({status:200,contentType:"text/html",body:portalMessage(true,false,true)}));
+  await denied.goto("http://127.0.0.1:4182/gis-workspace/");
+  await denied.getByText("O GIS Workspace não está disponível para esta conta.").waitFor({timeout:10000});
+  assert.equal(await denied.getByTestId("geomoz-workbench-chrome").count(),0,
+    "Disabled GIS Workspace must not start for an authenticated account");
+  await denied.close();
 
   // Only the CI browser harness simulates a real Firebase session; this route
   // never exists in the deployed application. The actual portal bridge checks
@@ -529,6 +539,11 @@ async function settleRecovery(page){
       place:"Centro de Moçambique",net:"us",url:"https://earthquake.usgs.gov/earthquakes/eventpage/mz-test-001"}}
     ]})
   }));
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("geomoz:module-access",{detail:{seismicAllowed:false}})));
+  assert.equal(await page.locator('[data-action="geomoz-seismic"]').count(),0,
+    "Disabled seismic feature must not present an active Workbench control");
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("geomoz:module-access",{detail:{seismicAllowed:true}})));
+  await page.locator('[data-action="geomoz-seismic"]').first().waitFor();
   await page.locator('.gm-compact-tool-list [data-action="geomoz-seismic"]').click();
   await page.getByTestId("geomoz-seismic-panel").waitFor();
   await page.getByRole("button",{name:"Consultar eventos"}).click();

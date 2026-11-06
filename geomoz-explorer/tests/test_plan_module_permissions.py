@@ -2,6 +2,9 @@
 from datetime import timedelta
 from types import SimpleNamespace
 
+from fastapi import HTTPException
+from starlette.requests import Request
+
 import pytest
 
 import billing
@@ -17,14 +20,14 @@ def test_legacy_module_permissions_default_to_allowed(monkeypatch):
         all(row.values()) for row in config["planFeatures"].values()
     )
     assert platform_config.PLAN_GATED_FEATURES == frozenset(
-        {"geo_ai", "hydrology", "terrain_3d", "remote_sensing"}
+        {"geo_ai", "hydrology", "terrain_3d", "remote_sensing",
+         "gis_workspace", "seismic_catalogs"}
     )
 
 
 @pytest.mark.parametrize(("plan", "changes"), [
     ("unknown", {"geo_ai": False}),
-    ("pro", {"gis_workspace": False}),
-    ("academic", {"seismic_catalogs": False}),
+    ("pro", {"nonexistent_ui_module": False}),
     ("pro", {"nonexistent": True}),
     ("pro", {"geo_ai": "false"}),
     ("pro", {"geo_ai": 0}),
@@ -98,3 +101,72 @@ def test_authenticated_module_access_uses_effective_billing_plan(monkeypatch):
     result = billing.module_access(uid="verified-user")
     assert result["plan"] == "community"
     assert result["features"]["geo_ai"] is True
+
+
+def test_workspace_and_seismic_plan_permissions_are_explicitly_configurable(monkeypatch):
+    records = []
+    config = {"planFeatures": {"academic": {"gis_workspace": False}}}
+
+    class Snapshot:
+        exists = True
+
+        def to_dict(self):
+            return config
+
+    class Doc:
+        def get(self):
+            return Snapshot()
+
+        def set(self, value, merge=False):
+            assert merge is True
+            records.append(value)
+            for plan, changes in value.get("planFeatures", {}).items():
+                config.setdefault("planFeatures", {}).setdefault(plan, {}).update(changes)
+
+    monkeypatch.setattr(platform_config, "_doc", lambda: Doc())
+    monkeypatch.delenv("CI", raising=False)
+    platform_config.invalidate_cache()
+    try:
+        rights = platform_config.update_plan_features("academic", {"seismic_catalogs": False})
+        assert rights["gis_workspace"] is False
+        assert rights["seismic_catalogs"] is False
+        assert records[-1]["planFeatures"]["academic"]["seismic_catalogs"] is False
+    finally:
+        platform_config.invalidate_cache()
+
+def _auth_request(token="valid"):
+    return Request({
+        "type": "http", "method": "GET", "path": "/geomoz-api/billing/module-access",
+        "headers": [(b"authorization", ("Bearer " + token).encode())]
+    })
+
+
+def test_launch_access_checks_token_revocation_and_disabled_account(monkeypatch):
+    calls = []
+    def verify(token, check_revoked):
+        calls.append((token, check_revoked))
+        return {"uid": "user"}
+    monkeypatch.setattr(billing, "firebase_auth", SimpleNamespace(
+        verify_id_token=verify,
+        get_user=lambda uid: SimpleNamespace(disabled=False),
+    ))
+    assert billing._module_uid(_auth_request()) == "user"
+    assert calls == [("valid", True)]
+
+    monkeypatch.setattr(billing, "firebase_auth", SimpleNamespace(
+        verify_id_token=verify,
+        get_user=lambda uid: SimpleNamespace(disabled=True),
+    ))
+    with pytest.raises(HTTPException) as exc:
+        billing._module_uid(_auth_request())
+    assert exc.value.status_code == 403
+
+    monkeypatch.setattr(billing, "firebase_auth", SimpleNamespace(
+        verify_id_token=lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("revoked")),
+    ))
+    with pytest.raises(HTTPException) as exc:
+        billing._module_uid(_auth_request())
+    assert exc.value.status_code == 401
+    with pytest.raises(HTTPException) as exc:
+        billing._module_uid(Request({"type": "http", "method": "GET", "headers": []}))
+    assert exc.value.status_code == 401

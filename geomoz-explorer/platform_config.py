@@ -33,12 +33,12 @@ FEATURE_LABELS = {
 }
 # Cobertura documentada: nenhuma flag garante bloqueio de serviços externos.
 FEATURE_COVERAGE = {
-    "gis_workspace": {"category": "SIG e cartografia", "coverage": "partial", "detail": "Aplicação SIG autónoma: é necessário validar o acesso no serviço próprio."},
+    "gis_workspace": {"category": "SIG e cartografia", "coverage": "client_launch", "detail": "Abertura protegida por verificação do servidor; os ficheiros estáticos continuam públicos."},
     "geo_ai": {"category": "IA", "coverage": "mapped_api_and_route", "detail": "Rota e endpoints /geomoz-api/ai/ mapeados."},
     "hydrology": {"category": "Recursos hídricos", "coverage": "mapped_api_and_route", "detail": "Rotas e endpoints hidrológicos mapeados."},
     "terrain_3d": {"category": "Terreno", "coverage": "mapped_api_and_route", "detail": "Rota e endpoints /geomoz-api/terrain/ mapeados."},
     "remote_sensing": {"category": "Detecção remota", "coverage": "mapped_api_and_route", "detail": "Rota e endpoints GEE de detecção remota mapeados."},
-    "seismic_catalogs": {"category": "Sismologia", "coverage": "partial", "detail": "Catálogos sísmicos ainda exigem verificação de consumidores individuais."},
+    "seismic_catalogs": {"category": "Sismologia", "coverage": "client_launch", "detail": "Painel GeoMoz condicionado ao plano; fontes FDSN públicas continuam acessíveis directamente."},
 }
 
 
@@ -60,7 +60,7 @@ DEFAULT_PLAN_FEATURES = {
 }
 PLAN_GATED_FEATURES = frozenset(
     key for key, info in FEATURE_COVERAGE.items()
-    if info["coverage"] == "mapped_api_and_route"
+    if info["coverage"] in ("mapped_api_and_route", "client_launch")
 )
 ALLOWED_PLAN_FIELDS = frozenset({
     "enabled", "monthlyMzn", "yearlyMzn", "projects", "storageBytes",

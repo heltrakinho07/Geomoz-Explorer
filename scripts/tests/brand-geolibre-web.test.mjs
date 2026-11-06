@@ -40,6 +40,10 @@ test("bundles the real web shell under the GIS subpath with branding and MIT not
     const securedIndexRevision = createHash("md5").update(html).digest("hex");
     assert.match(readFileSync(join(f.dst, "sw.js"), "utf8"), new RegExp(securedIndexRevision));
     assert.match(gate, /geomoz:workspace-auth-state/);
+    assert.match(gate, /event\.data\.allowed !== true/, "Global and plan rights must gate startup");
+    assert.match(gate, /event\.data\.seismicAllowed/, "Seismic module access must be propagated");
+    assert.match(gate, /geomoz:module-access/, "Workbench must receive module updates");
+    assert.match(gate, /geomozSeismic/, "Workbench startup must receive the initial seismic state");
     assert.ok(gate.indexOf('"/gis-workspace/geolibre-runtime-config.js"') < gate.indexOf('"/gis-workspace/assets/app.js"'), "Config must load before the app");
     assert.match(gate, /\/auth\/workspace-check/);
     assert.match(gate, /\/gis-workspace\/assets\/app\.js/);

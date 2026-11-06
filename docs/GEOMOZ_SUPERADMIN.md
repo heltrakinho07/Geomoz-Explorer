@@ -54,7 +54,9 @@ A administração dispõe agora de uma matriz `planFeatures` em `platformConfig/
 - `PATCH /geomoz-api/admin/plan-features/{plan}`, apenas superadmin, valida chaves e valores booleanos, grava alterações com merge por plano e audita o operador.
 - `GET /geomoz-api/billing/module-access` exige Firebase Auth e determina o plano efectivo a partir de `billing/{uid}`, incluindo estado e expiração; devolve os direitos efectivos para o frontend.
 - O middleware aplica bloqueios por plano aos endpoints científicos mapeados de IA, hidrologia, terreno e detecção remota, além das flags globais.
-- GIS Workspace estático e Catálogos Sísmicos continuam com cobertura parcial: não há interruptores *por plano* para estas duas áreas até existir um guard efectivo no respectivo serviço.
+- GIS Workspace e Catálogos Sísmicos passaram a aceitar permissões por plano para **entrada na interface**, verificadas pelo endpoint de direitos efectivos. A iframe de autenticação consulta o backend antes de carregar o bundle GeoLibre e reavalia o acesso a cada 30 segundos; o painel sísmico fecha quando a permissão é revogada.
+- **Limitação relevante:** o Firebase Hosting continua a servir os ficheiros JavaScript estáticos publicamente, e os FDSN USGS, ISC e EarthScope são fornecedores públicos. Estes dois controlos são `client_launch`, não uma barreira server-side a dados públicos. As APIs internas científicas mapeadas continuam com controlo efectivo no backend.
+- O endpoint `/geomoz-api/billing/module-access` verifica também revogação do ID token e contas desactivadas via Firebase Admin. Sem resposta válida, o Workbench não arranca.
 - O bloqueio Pro pré-existente para geração Copernicus pelo Earth Engine permanece cumulativo: conceder acesso ao módulo 3D não concede automaticamente direito de computação Pro.
 - Na ausência de restrições explícitas, o middleware preserva o percurso anterior e não faz leituras adicionais de billing. Quando existe restrição, a falha na leitura da subscrição não concede permissões por engano.
 - Uma flag administrativa não substitui permissões IAM, quotas GEE ou autorização de APIs independentes.
