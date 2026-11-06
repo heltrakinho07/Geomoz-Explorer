@@ -119,6 +119,21 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
   const [more,setMore]=useState(false);
   const [aboutOpen,setAboutOpen]=useState(false);
   const [seismicOpen,setSeismicOpen]=useState(false);
+  const [seismicAllowed,setSeismicAllowed]=useState(
+    () => typeof document !== "undefined" && document.body.dataset.geomozSeismic === "allowed"
+  );
+  useEffect(()=>{
+    const update=(event:Event)=>{
+      const allowed=(event as CustomEvent<{seismicAllowed?:boolean}>).detail?.seismicAllowed === true;
+      setSeismicAllowed(allowed);
+      if(!allowed){
+        setSeismicOpen(false);
+        setTask(current=>current==="seismic"?"data":current);
+      }
+    };
+    window.addEventListener("geomoz:module-access",update);
+    return ()=>window.removeEventListener("geomoz:module-access",update);
+  },[]);
   const [topoOpen,setTopoOpen]=useState(false);
   const [terrainOpen,setTerrainOpen]=useState(false);
   const [terrainLayerId,setTerrainLayerId]=useState<string|null>(null);
@@ -207,7 +222,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
             <a href="/agua-subterranea" target="_blank" rel="noopener noreferrer" onClick={()=>setOpenToolCard(null)}>{txt("groundwater")} <ArrowUpRight size={13}/></a>
             <a href="/geoprocessamento" target="_blank" rel="noopener noreferrer" onClick={()=>setOpenToolCard(null)}>{txt("terrainWater")} <ArrowUpRight size={13}/></a>
           </GeoMozFloatingToolCard>}
-          {!viewer&&<button type="button" className="gm-compact-seismic" data-action="geomoz-seismic"
+          {!viewer&&seismicAllowed&&<button type="button" className="gm-compact-seismic" data-action="geomoz-seismic"
             aria-expanded={seismicOpen} onClick={()=>{setOpenToolCard(null);setSeismicOpen(!seismicOpen);window.dispatchEvent(new CustomEvent("geomoz:task",{detail:"data"}));}}>
             <Activity size={16}/><span>{txt("seismic")}</span>
           </button>}
@@ -215,7 +230,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
         <span className="gm-session-badge"><i/>{viewer?txt("readOnly"):txt("projectOpen")}<span className="gm-session-detail"> · {layers.length} {layers.length===1?txt("layer"):txt("layers")}</span></span>
       </div>}
       {GEOMOZ_ROLLOUT.fullMenus&&<>
-      <div className="gm-taskbar"><nav aria-label={txt("gisTasks")} className="gm-task-tabs">{TASKS.filter(([id])=>!viewer||id==="map").map(([id,label])=>
+      <div className="gm-taskbar"><nav aria-label={txt("gisTasks")} className="gm-task-tabs">{TASKS.filter(([id])=>(!viewer||id==="map") && (id!=="seismic"||seismicAllowed)).map(([id,label])=>
         <button key={id} type="button" aria-current={activeTask===id?"page":undefined} onClick={()=>{setTask(id);setOpenToolCard(null);setMore(false);setSeismicOpen(id==="seismic");window.dispatchEvent(new CustomEvent("geomoz:task",{detail:id}));}} data-task={id}>{categoryLabel(label)}</button>)}</nav>
         <span className="gm-session-badge"><i/>{viewer?txt("readOnly"):txt("projectOpen")}<span className="gm-session-detail"> · {layers.length} {layers.length===1?txt("layer"):txt("layers")}</span></span>
       </div>
@@ -249,7 +264,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
           </GeoMozFloatingToolCard>
         </section>}
         {!viewer&&activeTask==="map"&&<section className="gm-ribbon-group"><div><button type="button" data-testid="geomoz-create-layer" onClick={()=>setLayerWizardOpen(true)}><Layers3 size={19}/><span>{txt("newLayerShort")}</span></button></div><small>{txt("geology")}</small></section>}
-        {!viewer&&activeTask==="data"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-seismic" aria-expanded={seismicOpen} onClick={()=>setSeismicOpen(!seismicOpen)}><Activity size={19}/><span>{txt("seismic")}</span></button></div><small>{txt("seismicData")}</small></section>}
+        {!viewer&&seismicAllowed&&activeTask==="data"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-seismic" aria-expanded={seismicOpen} onClick={()=>setSeismicOpen(!seismicOpen)}><Activity size={19}/><span>{txt("seismic")}</span></button></div><small>{txt("seismicData")}</small></section>}
         {!viewer&&activeTask==="output"&&<section className="gm-ribbon-group"><div><button type="button" data-action="geomoz-qgis-print" aria-expanded={qgisPrintOpen} onClick={()=>setQgisPrintOpen(!qgisPrintOpen)}><FileText size={19}/><span>{txt("print")}</span></button></div><small>{txt("mapLayout")}</small></section>}
         {!groups.length&&<p className="gm-ribbon-empty"><Compass size={22}/> {txt("taskOptions")}</p>}
         {activeTask==="map"&&<span className="gm-digitizing-ribbon-tip"><Info size={15}/> {txt("editingHint")}</span>}</div>
@@ -262,7 +277,7 @@ export function GeoMozWorkbenchChrome({children,commands,themeMode,onToggleTheme
       {ngwOpen&&!viewer&&<GeoMozNextgisWebCatalog onClose={()=>setNgwOpen(false)}/>}
       {qmsOpen&&!viewer&&<GeoMozQmsCatalog onClose={()=>setQmsOpen(false)}/>}
       {topoOpen&&!viewer&&<GeoMozTopographicProfile mapControllerRef={mapControllerRef} onClose={()=>setTopoOpen(false)}/>}
-      {seismicOpen&&!viewer&&<GeoMozSeismicPanel mapControllerRef={mapControllerRef} onClose={()=>{setSeismicOpen(false);if(task==="seismic")setTask("data");}}/>}
+      {seismicOpen&&!viewer&&seismicAllowed&&<GeoMozSeismicPanel mapControllerRef={mapControllerRef} onClose={()=>{setSeismicOpen(false);if(task==="seismic")setTask("data");}}/>}
     </header>
     <GeoMozTerrainWorkspace open={terrainOpen} preferredLayerId={terrainLayerId} onClose={()=>setTerrainOpen(false)}/>
     <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} renderTrigger={false}/>
