@@ -262,21 +262,18 @@ def _credit_usage(state, limit, now):
 
 @router.get("/usage")
 def subscription_usage(uid: str = Depends(_uid)):
-    database = _db()
-    snap = database.collection("billing").document(uid).get()
-    state = snap.to_dict() if snap.exists else {}
-    plan = _effective_plan(state)
-    limits = get_plan_limits(plan)
-    projects = database.collection("users").document(uid).collection("projects")
+    """Legacy usage response backed by the authoritative entitlement snapshot."""
+    from subscription_entitlements import user_subscription_snapshot
+    info = user_subscription_snapshot(uid)
+    limits, usage = info["limits"], info["usage"]
     return {
-        "plan": plan,
-        "periodEnd": state.get("periodEnd") if plan != "community" else None,
-        "projectsUsed": projects.count().get()[0][0].value,
-        "projectLimit": limits["projects"],
-        "creditLimit": limits["credits"],
-        **_credit_usage(state, limits["credits"], _utcnow()),
+        "plan": info["plan"], "periodEnd": info["periodEnd"],
+        "projectsUsed": usage["projects"], "projectLimit": limits["projects"],
+        "creditLimit": limits["credits"], "creditCycle": usage["creditCycle"],
+        "creditsUsed": usage["credits"], "creditsReserved": usage["creditsReserved"],
+        "remainingCredits": usage["creditsRemaining"],
+        "creditResetAt": usage["creditResetAt"],
     }
-
 
 @router.get("/usage/history")
 def credit_history(uid: str = Depends(_uid)):
