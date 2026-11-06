@@ -555,6 +555,6 @@ def charge_managed_cloud_credits(uid: str, cost: int, operation_id: str):
         transaction.set(event_ref, {"credits": cost, "cycle": cycle, "createdAt": firestore.SERVER_TIMESTAMP})
         transaction.set(billing_ref, {"creditsUsed": used + cost, "creditCycle": cycle,
                                       "updatedAt": firestore.SERVER_TIMESTAMP}, merge=True)
-        return {"charged": cost, "remaining": None if limit is None else limit - used - cost}
+        return {"charged": cost, "remaining": None if limit is None else limit - used - reserved - cost}
 
     return debit(tx)
