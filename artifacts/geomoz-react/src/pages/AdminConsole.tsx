@@ -120,6 +120,7 @@ export default function AdminConsole() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [drafts, setDrafts] = useState<Catalog | null>(null);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
+  const [moduleRegistry, setModuleRegistry] = useState<Record<string, { label: string; category: string; coverage: string; detail: string }>>({});
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [grantPlan, setGrantPlan] = useState<PlanId>("pro");
   const [grantThrough, setGrantThrough] = useState("");
@@ -139,10 +140,11 @@ export default function AdminConsole() {
         setUsers(response.users);
         setNextPageToken(response.nextPageToken || null);
       } else if (target === "plans" || target === "features") {
-        const response = await jsonApi<{ plans: Catalog; features: Record<string, boolean> }>("/geomoz-api/admin/plans");
+        const response = await jsonApi<{ plans: Catalog; features: Record<string, boolean>; moduleRegistry?: Record<string, { label: string; category: string; coverage: string; detail: string }> }>("/geomoz-api/admin/plans");
         setCatalog(response.plans);
         setDrafts(JSON.parse(JSON.stringify(response.plans)) as Catalog);
         setFeatures(response.features);
+        setModuleRegistry(response.moduleRegistry || {});
       } else if (target === "payments") {
         const response = await jsonApi<{ payments: Payment[] }>("/geomoz-api/admin/payments?limit=80");
         setPayments(response.payments);
@@ -415,15 +417,15 @@ export default function AdminConsole() {
                 <p className="text-xs text-slate-500 mt-1">Apenas os módulos com integração administrativa existente podem ser activados ou desactivados aqui.</p>
               </div>
               <div className="grid md:grid-cols-2 gap-4">
-                {Object.entries(FEATURE_NAMES).map(([key,label]) => <section className={card + " p-5 flex items-center justify-between gap-4"} key={key}>
+                {Object.entries(moduleRegistry).map(([key,info]) => <section className={card + " p-5 flex items-center justify-between gap-4"} key={key}>
                   <div className="flex items-center gap-3">
                     <div className="p-3 rounded-xl bg-sky-50 dark:bg-sky-900/25 text-sky-600 dark:text-sky-300"><Zap size={18}/></div>
-                    <div><h4 className="font-bold text-sm">{label}</h4><p className="text-xs text-slate-500 mt-1">{features[key] === false ? "Desactivado" : "Activado"} · Controlo global</p></div>
+                    <div><h4 className="font-bold text-sm">{info.label}</h4><p className="text-xs text-slate-500 mt-1">{features[key] === true ? "Activado" : "Desactivado"} · {info.category} · {info.coverage === "mapped_api_and_route" ? "Rotas e API mapeadas" : "Cobertura parcial"}</p><p className="text-[11px] text-slate-500 mt-1">{info.detail}</p></div>
                   </div>
-                  <button role="switch" aria-label={"Alternar " + label} aria-checked={features[key] !== false} disabled={!isRoot || busy}
-                    onClick={() => { const state = features[key] !== false; if (guard((state ? "Desactivar" : "Activar") + " " + label + " para os utilizadores?")) void act(() => jsonApi("/geomoz-api/admin/features", "PATCH", { changes: { [key]: !state } }), "Estado do módulo actualizado.", "features"); }}
-                    className={"relative shrink-0 w-12 h-7 rounded-full p-1 transition-colors " + (features[key] !== false ? "bg-sky-600" : "bg-slate-300 dark:bg-slate-700")}>
-                    <span className={"block rounded-full bg-white h-5 w-5 shadow-sm transition-transform " + (features[key] !== false ? "translate-x-5" : "")} />
+                  <button role="switch" aria-label={"Alternar " + info.label} aria-checked={features[key] === true} disabled={!isRoot || busy || typeof features[key] !== "boolean"}
+                    onClick={() => { const state = features[key] === true; if (guard((state ? "Desactivar" : "Activar") + " " + info.label + " para os utilizadores?")) void act(() => jsonApi("/geomoz-api/admin/features", "PATCH", { changes: { [key]: !state } }), "Estado do módulo actualizado.", "features"); }}
+                    className={"relative shrink-0 w-12 h-7 rounded-full p-1 transition-colors " + (features[key] === true ? "bg-sky-600" : "bg-slate-300 dark:bg-slate-700")}>
+                    <span className={"block rounded-full bg-white h-5 w-5 shadow-sm transition-transform " + (features[key] === true ? "translate-x-5" : "")} />
                   </button>
                 </section>)}
               </div>
