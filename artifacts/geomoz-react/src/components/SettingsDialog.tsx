@@ -43,7 +43,6 @@ import { useGeoMozTheme } from "@/hooks/useGeoMozTheme";
 import { useGeoMozPreferences } from "@/hooks/useGeoMozPreferences";
 import { usePortalTranslation } from "@/i18n/usePortalTranslation";
 import { GEOLIBRE_LANGUAGE_OPTIONS, PORTAL_TRANSLATED_LANGUAGES } from "@/i18n/portal";
-import { useSubscription } from "@/hooks/useSubscription";
 import GeoMozBrandIcon from "@/components/GeoMozBrandIcon";
 import { Link } from "wouter";
 
@@ -76,7 +75,6 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
     refreshStatus,
   } = useGeeAuth();
   const { projects } = useProject();
-  const subscription = useSubscription();
   const [adminAccess, setAdminAccess] = React.useState(false);
   React.useEffect(() => {
     if (!open || !user || user.uid === "guest_user") { setAdminAccess(false); return; }
@@ -88,6 +86,49 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
   }, [open, user?.uid]);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("gee");
+  const uid = user?.uid;
+  const [usageResult, setUsageResult] = useState<{
+    uid: string;
+    usage: {
+      plan: string;
+      periodEnd: string | null;
+      projectsUsed: number;
+      projectLimit: number | null;
+      remainingCredits: number | null;
+      creditResetAt: string;
+    } | null;
+  }>();
+  const usage = usageResult?.uid === uid ? usageResult?.usage : undefined;
+  React.useEffect(() => {
+    if (!(open || embedded) || activeTab !== "billing" || !uid || uid.startsWith("guest_")) return;
+    const controller = new AbortController();
+    let pending = false;
+    const refresh = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const response = await apiFetch("/geomoz-api/billing/usage", {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error(String(response.status));
+        const snapshot = await response.json();
+        if (!controller.signal.aborted) setUsageResult({ uid, usage: snapshot });
+      } catch {
+        if (!controller.signal.aborted) setUsageResult({ uid, usage: null });
+      } finally {
+        pending = false;
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 15_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [open, embedded, activeTab, uid, projects.length]);
   const [projectIdInput, setProjectIdInput] = useState(
     geeProject && geeProject !== "eengine-project" ? geeProject : "geoprocessamento-426809"
   );
@@ -872,22 +913,28 @@ export default function SettingsDialog({ open, onOpenChange, embedded = false }:
             <div className="space-y-4">
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-3">
                 <div>
-                  <h4 className="text-lg font-bold text-slate-900 dark:text-slate-50">{subscription.planData.name}</h4>
+                  <h4 className="text-lg font-bold text-slate-900 dark:text-slate-50">{usage?.plan ? usage.plan[0].toUpperCase() + usage.plan.slice(1) : t("settings.billingTab")}</h4>
                   <p className="text-xs text-slate-500">{t("settings.billingDescription")}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
                     <div className="text-xs text-slate-500">{t("settings.projectQuota")}</div>
-                    <div className="font-bold mt-1">{projects.length} / {subscription.planData.projects ?? t("settings.unlimited")}</div>
+                    <div className="font-bold mt-1">{usage ? `${usage.projectsUsed} / ${usage.projectLimit ?? t("settings.unlimited")}` : "—"}</div>
                   </div>
                   <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
                     <div className="text-xs text-slate-500">{t("settings.remainingCredits")}</div>
-                    <div className="font-bold mt-1">{subscription.planData.credits === null ? t("settings.custom") : subscription.remainingCredits}</div>
+                    <div className="font-bold mt-1">{usage ? usage.remainingCredits ?? t("settings.custom") : "—"}</div>
                   </div>
                 </div>
-                {subscription.periodEnd && (
-                  <p className="text-xs text-slate-500">{t("settings.validUntil")} {new Date(subscription.periodEnd).toLocaleDateString(translatedLocale === "pt" ? "pt-MZ" : translatedLocale)}. {t("settings.renewalHint")}</p>
+                {usage?.periodEnd && (
+                  <p className="text-xs text-slate-500">{t("settings.validUntil")} {new Date(usage.periodEnd).toLocaleDateString(translatedLocale === "pt" ? "pt-MZ" : translatedLocale)}. {t("settings.renewalHint")}</p>
                 )}
+                <p className="text-xs text-slate-500" role="status">
+                  {!uid || uid.startsWith("guest_") ? t("settings.billingSignIn")
+                    : usage === null ? t("settings.billingUnavailable")
+                    : !usage ? t("settings.billingLoading")
+                    : `${t("settings.creditReset")} ${new Date(usage.creditResetAt).toISOString().slice(0, 10)} (UTC)`}
+                </p>
                 <a href="/planos" className="inline-flex items-center gap-2 rounded-lg bg-sky-600 text-white px-4 py-2 text-sm font-semibold hover:bg-sky-700">
                   <CreditCard size={16} /> {t("settings.plansAndPayments")}
                 </a>

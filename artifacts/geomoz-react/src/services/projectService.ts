@@ -177,7 +177,7 @@ export async function createProject(
   if (uid && !uid.startsWith("guest_")) {
     const response = await apiFetch("/geomoz-api/projects", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
       body: JSON.stringify(stripUndefined({
         name: input.name,
         description: input.description || "",

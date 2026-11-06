@@ -71,6 +71,29 @@ jobs:
           DISABLE_RATE_LIMIT: "true"
           CI: "true"
 
+  subscription-integration:
+    name: Subscription usage (Firestore emulator)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: pip install "firebase-admin>=6.5,<8" fastapi httpx pytest
+      - env:
+          PYTHONPATH: geomoz-explorer
+        run: >-
+          npx --yes firebase-tools@14.22.0 emulators:exec
+          --config firebase.emulators.json --only firestore --project demo-geomoz-usage
+          "python -m pytest -q geomoz-explorer/tests/test_subscription_usage_emulator.py"
+
   lint:
     name: Lint (ruff)
     runs-on: ubuntu-latest
