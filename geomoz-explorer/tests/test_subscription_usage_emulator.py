@@ -81,3 +81,61 @@ def test_credits_are_atomic_isolated_and_reset_in_utc(account, monkeypatch):
     assert billing.charge_managed_cloud_credits(uid, 20, "job-a") == {"alreadyCharged": True}
     assert client.get("/geomoz-api/billing/usage").json()["remainingCredits"] == 20
     assert billing.charge_managed_cloud_credits(uid, 1, "job-b")["remaining"] == 19
+
+
+def test_ai_credit_reservations_are_atomic_and_release_on_failure(account, monkeypatch):
+    import entitlement_engine as engine
+
+    client, database, uid = account
+    monkeypatch.setattr(engine, "_db", lambda: database)
+    monkeypatch.setattr(engine, "get_plan_limits", lambda plan: {"credits": 3})
+    monkeypatch.setattr(billing, "get_plan_limits", lambda plan: {"credits": 3})
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        def reserve(_):
+            try:
+                return engine.reserve_credits(uid, "ai.agent_chat")
+            except billing.HTTPException as exc:
+                return exc.status_code
+
+        results = list(pool.map(reserve, range(4)))
+    holds = [value for value in results if isinstance(value, dict)]
+    assert len(holds) == 3
+    assert results.count(402) == 1
+
+    usage = client.get("/geomoz-api/billing/usage").json()
+    assert usage["creditsReserved"] == 3
+    assert usage["remainingCredits"] == 0
+
+    assert engine.settle_credits(holds[0], success=True) == "committed"
+    assert engine.settle_credits(holds[0], success=True) == "committed"
+    assert engine.settle_credits(holds[1], success=False) == "released"
+    usage = client.get("/geomoz-api/billing/usage").json()
+    assert (usage["creditsUsed"], usage["creditsReserved"], usage["remainingCredits"]) == (1, 1, 1)
+
+    assert billing.charge_managed_cloud_credits(uid, 1, "other-cloud-job")["remaining"] == 1 - 1
+    with pytest.raises(billing.HTTPException) as exc:
+        billing.charge_managed_cloud_credits(uid, 1, "over-quota")
+    assert exc.value.status_code == 402
+
+    assert engine.settle_credits(holds[2], success=False) == "released"
+    assert client.get("/geomoz-api/billing/usage").json()["remainingCredits"] == 1
+
+
+def test_expired_credit_holds_are_recovered(account, monkeypatch):
+    import entitlement_engine as engine
+
+    client, database, uid = account
+    monkeypatch.setattr(engine, "_db", lambda: database)
+    monkeypatch.setattr(engine, "get_plan_limits", lambda plan: {"credits": 2})
+    monkeypatch.setattr(billing, "get_plan_limits", lambda plan: {"credits": 2})
+    hold = engine.reserve_credits(uid, "ai.agent_chat")
+    database.collection("billing").document(uid).collection("creditReservations").document(
+        hold["id"]
+    ).update({"expiresAt": "2000-01-01T00:00:00+00:00"})
+
+    assert engine.expire_stale_reservations(uid) == 1
+    assert engine.expire_stale_reservations(uid) == 0
+    assert engine.settle_credits(hold, success=True) == "expired"
+    usage = client.get("/geomoz-api/billing/usage").json()
+    assert (usage["creditsUsed"], usage["creditsReserved"], usage["remainingCredits"]) == (0, 0, 2)
