@@ -1,12 +1,37 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
 import service
 
 class ServiceTests(unittest.TestCase):
+    def test_cloud_run_iam_mode_requires_second_worker_secret(self):
+        # Cloud Run handles IAM; this is the worker's independent secret check.
+        handler = service.Handler.__new__(service.Handler)
+        handler.path = "/v1/print/pdf"
+        handler.headers = {"X-Geomoz-Worker-Token": "correct-secret"}
+        handler._error = MagicMock()
+        with patch.object(service, "TOKEN", "correct-secret"), \
+                patch.object(service, "WORKER_AUTH", "iam"):
+            handler.do_POST()
+        handler._error.assert_called_once()
+        self.assertEqual(handler._error.call_args.args[0], 413)
+        handler._error.reset_mock()
+        handler.headers = {"X-Geomoz-Worker-Token": "bad-secret"}
+        with patch.object(service, "TOKEN", "correct-secret"), \
+                patch.object(service, "WORKER_AUTH", "iam"):
+            handler.do_POST()
+        self.assertEqual(handler._error.call_args.args[0], 401)
+        handler._error.reset_mock()
+        handler.headers = {"Authorization": "Bearer correct-secret"}
+        with patch.object(service, "TOKEN", "correct-secret"), \
+                patch.object(service, "WORKER_AUTH", "iam"):
+            handler.do_POST()
+        self.assertEqual(handler._error.call_args.args[0], 401)
+
     def test_does_not_accept_missing_token_on_post(self):
         source = (root / "service.py").read_text()
         self.assertIn("compare_digest", source)

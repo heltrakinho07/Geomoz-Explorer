@@ -61,7 +61,45 @@ def _settings():
         url = urlsplit(config[name])
         if url.scheme != "https" or not url.hostname or url.username or url.password or url.fragment:
             raise HTTPException(503, "Destinos privados de impressão inválidos.")
+    mode = os.getenv("GEOMOZ_PRINT_WORKER_AUTH_MODE", "bearer").strip().lower()
+    if mode not in ("bearer", "iam"):
+        raise HTTPException(503, "Modo de autenticação dos motores inválido.")
+    if mode == "iam" and any(
+        not urlsplit(config[key]).hostname.endswith(".run.app")
+        for key in ("GEOMOZ_PRINT_PYQGIS_URL", "GEOMOZ_PRINT_CARTOPY_URL")
+    ):
+        raise HTTPException(503, "Os motores IAM requerem endpoints Cloud Run oficiais.")
+    config["GEOMOZ_PRINT_WORKER_AUTH_MODE"] = mode
     return config
+
+
+def _mint_cloud_run_id_token(audience):
+    """Fetch a Google-signed Cloud Run service identity (only on GCP)."""
+    from google.auth.transport.requests import Request as GoogleRequest
+    from google.oauth2 import id_token
+    return id_token.fetch_id_token(GoogleRequest(), audience)
+
+
+def _worker_request_headers(url, config):
+    """Authorize private Cloud Run via Google OIDC and retain worker-secret defence.
+
+    Cloud Run checks the Google ID token BEFORE the request reaches the worker.
+    The worker additionally checks X-Geomoz-Worker-Token. The legacy Bearer
+    worker token is only for explicitly configured, isolated local deployments.
+    """
+    secret = config["GEOMOZ_PRINT_WORKER_TOKEN"]
+    headers = {"Content-Type": "application/json", "Accept": "application/pdf"}
+    if config.get("GEOMOZ_PRINT_WORKER_AUTH_MODE", "bearer") == "iam":
+        parsed = urlsplit(url)
+        if parsed.scheme != "https" or not parsed.hostname or not parsed.hostname.endswith(".run.app"):
+            raise ValueError("Destino IAM Cloud Run inválido.")
+        audience = f"https://{parsed.netloc}"
+        identity = _mint_cloud_run_id_token(audience)
+        headers["Authorization"] = "Bearer " + identity
+        headers["X-Geomoz-Worker-Token"] = secret
+    else:
+        headers["Authorization"] = "Bearer " + secret
+    return headers
 
 
 def _check_app_check(request):
@@ -373,11 +411,9 @@ async def dispatch_print(request: Request):
         if len(data) > MAX_REQUEST_BYTES:
             raise ValueError("Pacote excede 4 MB.")
         url = config["GEOMOZ_PRINT_PYQGIS_URL"] if engine == "pyqgis" else config["GEOMOZ_PRINT_CARTOPY_URL"]
+        headers = await run_in_threadpool(_worker_request_headers, url, config)
         async with httpx.AsyncClient(timeout=105, follow_redirects=False, trust_env=False) as client:
-            worker_response = await client.post(
-                url, content=data, headers={"Authorization": "Bearer " + config["GEOMOZ_PRINT_WORKER_TOKEN"],
-                                             "Content-Type": "application/json",
-                                             "Accept": "application/pdf"})
+            worker_response = await client.post(url, content=data, headers=headers)
         if worker_response.status_code != 200:
             raise ValueError("Motor de impressão indisponível.")
         output = worker_response.content

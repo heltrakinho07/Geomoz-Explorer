@@ -17,8 +17,9 @@ from pathlib import Path
 from job import MAX_REQUEST_BYTES, InvalidJob, parse_request
 
 PORT = int(os.environ.get("GEOMOZ_PRINT_PORT", "8085"))
-TOKEN = os.environ.get("GEOMOZ_PRINT_WORKER_TOKEN", "")
+TOKEN = os.environ.get("GEOMOZ_PRINT_WORKER_TOKEN", "").strip()
 WORKER_ENGINE = os.environ.get("GEOMOZ_PRINT_ENGINE", "pyqgis")
+WORKER_AUTH = os.environ.get("GEOMOZ_PRINT_WORKER_AUTH", "bearer")
 _MAX_CONCURRENT = threading.BoundedSemaphore(value=1)
 
 class Handler(BaseHTTPRequestHandler):
@@ -47,8 +48,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path != "/v1/print/pdf":
             return self._error(404, "Rota não encontrada.")
-        auth = self.headers.get("Authorization", "")
-        if not TOKEN or not hmac.compare_digest(auth, "Bearer " + TOKEN):
+        # IAM mode: Cloud Run itself rejects unauthenticated requests before
+        # forwarding them here. Require a separate shared secret as defence in depth.
+        # Local Compose continues to use the original Bearer secret.
+        auth = (self.headers.get("X-Geomoz-Worker-Token", "")
+                if WORKER_AUTH == "iam" else self.headers.get("Authorization", ""))
+        expected = TOKEN if WORKER_AUTH == "iam" else "Bearer " + TOKEN
+        if not TOKEN or not hmac.compare_digest(auth, expected):
             return self._error(401, "Credenciais do serviço inválidas.")
         length_str = self.headers.get("Content-Length", "")
         if not length_str.isdigit() or not 0 < int(length_str) <= MAX_REQUEST_BYTES:
@@ -96,6 +102,8 @@ class Handler(BaseHTTPRequestHandler):
             _MAX_CONCURRENT.release()
 
 if __name__ == "__main__":
+    if WORKER_AUTH not in {"bearer", "iam"}:
+        raise SystemExit("Modo de autenticação do worker inválido.")
     if WORKER_ENGINE not in {"pyqgis", "cartopy"}:
         raise SystemExit("Motor de impressão inválido.")
     if len(TOKEN) < 32:

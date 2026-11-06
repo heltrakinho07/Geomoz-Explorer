@@ -135,6 +135,22 @@ class GatewayTests(unittest.TestCase):
                                     json={"jobId": "a" * 32})
         self.assertEqual(resp.status_code, 401)
 
+    def test_cloudrun_worker_authentication_uses_google_id_token(self):
+        config = {**CONFIG, "GEOMOZ_PRINT_WORKER_AUTH_MODE": "iam"}
+        url = "https://geomoz-print-cartopy-example-ew.a.run.app/v1/print/pdf"
+        with patch.object(pg, "_mint_cloud_run_id_token", return_value="google-signed-id") as identity:
+            headers = pg._worker_request_headers(url, config)
+        self.assertEqual(headers["Authorization"], "Bearer google-signed-id")
+        self.assertEqual(headers["X-Geomoz-Worker-Token"], CONFIG["GEOMOZ_PRINT_WORKER_TOKEN"])
+        self.assertEqual(headers["Content-Type"], "application/json")
+        identity.assert_called_once_with("https://geomoz-print-cartopy-example-ew.a.run.app")
+        self.assertNotEqual(headers["Authorization"], "Bearer " + CONFIG["GEOMOZ_PRINT_WORKER_TOKEN"])
+        with self.assertRaises(ValueError):
+            pg._worker_request_headers("https://untrusted.example/v1/print/pdf", config)
+        local = pg._worker_request_headers(url, CONFIG)
+        self.assertNotIn("X-Geomoz-Worker-Token", local)
+        self.assertEqual(local["Authorization"], "Bearer " + CONFIG["GEOMOZ_PRINT_WORKER_TOKEN"])
+
     def test_storage_paths_do_not_contain_raw_uid(self):
         a, b = pg._paths("user:private:uid", "a" * 32)
         self.assertNotIn("user:private:uid", a)

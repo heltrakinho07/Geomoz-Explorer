@@ -41,6 +41,11 @@ jobs:
           python -m pip install "fastapi>=0.100" "httpx>=0.25" \
             "firebase-admin>=6.5.0" "google-cloud-storage>=2.16.0" \
             "google-cloud-tasks>=2.16.0"
+      - name: Validate opt-in provisioning plan and worker IAM tests
+        run: |
+          bash -n scripts/cloud/geomoz-print-provision.sh
+          bash scripts/cloud/geomoz-print-provision.sh plan
+          python -m unittest discover -s services/geomoz-qgis-print/tests -p test_service.py -v
       - name: Compile gateway files
         run: python -m py_compile geomoz-explorer/print_job.py geomoz-explorer/print_gateway.py
       - name: Test bounded schema, API authentication and worker lifecycle
