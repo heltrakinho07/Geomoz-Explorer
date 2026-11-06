@@ -356,7 +356,7 @@ def test_clip_mask_queued_job_writes_sanitised_geojson(
     monkeypatch.setattr(jobs, "_executor", DeferredExecutor())
     job = jobs.create_processing_job(
         uid="mask-owner", tool="clip-mask", input_name="dem.tif",
-        input_bytes=b"II*\\x00" + b"small-raster",
+        input_bytes=b"II*\x00" + b"small-raster",
         mask_geojson=_mask_geojson(), parameters={"resampling": "nearest"},
     )
     try:
@@ -415,7 +415,7 @@ def test_create_mask_job_endpoint_requires_valid_cutline(
     response = client.post("/geomoz-api/processing/jobs", data={
         "tool": "clip-mask", "parameters": "{}",
         "mask_geojson": _mask_geojson(),
-    }, files={"input_file": ("dem.tif", b"II*\\x00" + b"test", "image/tiff")})
+    }, files={"input_file": ("dem.tif", b"II*\x00" + b"test", "image/tiff")})
     assert response.status_code == 202
     assert captured["mask_geojson"] == _mask_geojson()
     assert captured["tool"] == "clip-mask"
