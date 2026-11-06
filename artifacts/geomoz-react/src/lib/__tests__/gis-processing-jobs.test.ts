@@ -53,6 +53,28 @@ describe("GIS heavy processing client", () => {
     expect(result.job.status).toBe("queued");
   });
 
+  it("uploads a WGS84 cutline as a separate, explicit multipart field", async () => {
+    const mask = JSON.stringify({type:"FeatureCollection",features:[{
+      type:"Feature",properties:{},geometry:{type:"Polygon",coordinates:[[
+        [33,-20],[34,-20],[34,-19],[33,-20]
+      ]]}
+    }]});
+    vi.stubGlobal("fetch", vi.fn(async (_url, init?: RequestInit) => {
+      const body = init?.body as FormData;
+      expect(body.get("tool")).toBe("clip-mask");
+      expect(body.get("mask_geojson")).toBe(mask);
+      expect((body.get("input_file") as File).name).toBe("dem.tif");
+      return new Response(JSON.stringify({job:{id:"mask-1",tool:"clip-mask",status:"queued",progress:0}}),{
+        status:202,headers:{"Content-Type":"application/json"},
+      });
+    }));
+    const job=await createGISHeavyJob({
+      tool:"clip-mask",file:new File(["test"],"dem.tif"),
+      maskGeojson:mask,parameters:{resampling:"bilinear"},
+    });
+    expect(job.job.id).toBe("mask-1");
+  });
+
   it("reads job status and returns completed job immediately from poller", async () => {
     const completed = {
       id: "job-2",
