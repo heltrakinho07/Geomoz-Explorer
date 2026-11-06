@@ -4115,12 +4115,19 @@ export default function GeoAnalises({
               <div className="sticky bottom-0 z-10 p-3 border-t border-slate-200 dark:border-slate-700 space-y-2 bg-white dark:bg-slate-900">
                 <button
                   type="button"
-                  onClick={handleCalculateActiveIndex}
-                  disabled={isCalculatingActiveIndex || isLineaments || indexBlocked || Boolean(periodError || studyAreaError) || (activeTab !== "s2" && !geeReady)}
+                  onClick={sidebarConfig.useSpecializedPanel
+                    ? () => { setResultsPanelOpen(true); setSidebarOpen(false); }
+                    : handleCalculateActiveIndex}
+                  disabled={isLineaments || indexBlocked || (!sidebarConfig.useSpecializedPanel && (isCalculatingActiveIndex || Boolean(periodError || studyAreaError) || (activeTab !== "s2" && !geeReady)))}
                   className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 disabled:from-slate-300 dark:disabled:from-slate-700 disabled:to-slate-400 dark:disabled:to-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-sky-500/20 active:scale-[0.98] cursor-pointer"
                 >
                   {(isLineaments || indexBlocked) ? (
                     <><Clock size={14} /><span>{analysisT("run.development")}</span></>
+                  ) : sidebarConfig.useSpecializedPanel ? (
+                    <>
+                      <SlidersHorizontal size={14} />
+                      <span>Abrir ferramentas específicas</span>
+                    </>
                   ) : isCalculatingActiveIndex ? (
                     <>
                       <Loader2 size={14} className="animate-spin" />
@@ -4173,7 +4180,7 @@ export default function GeoAnalises({
                       <CheckCircle2 size={12} className="text-emerald-600" />
                       {analysisT("run.active")}
                     </span>
-                    <span className="text-[10px] text-slate-400">GEE 24h</span>
+                    <span className="text-[10px] text-slate-400">{sidebarConfig.requiresGee ? "GEE 24h" : "EOX"}</span>
                   </div>
                 )}
 
