@@ -3,12 +3,13 @@
 Browser-local/offline guest projects remain available as local-only work.
 Cloud projects for signed-in accounts are created/deleted only by this router.
 """
+import hashlib
 import json
 import secrets
 from datetime import date, datetime, timezone
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from billing import _db, _effective_plan, _uid, firestore
@@ -67,19 +68,25 @@ def _quota_ref(database, uid):
     return database.collection("billingProjectQuota").document(uid)
 
 
-def _existing_project_count(projects):
-    # Initial migration of existing cloud projects. Never delete grandfathered data.
-    return sum(1 for _ in projects.stream())
+def _project_count(projects, transaction):
+    # Read actual documents in the same transaction as the quota write.
+    # The quota document serializes mutations; its stored count is advisory.
+    return sum(1 for _ in projects.select([]).stream(transaction=transaction))
 
 
 @router.post("")
-def create_project(payload: CreateProjectRequest, uid: str = Depends(_uid)):
+def create_project(
+    payload: CreateProjectRequest,
+    uid: str = Depends(_uid),
+    idempotency_key: str | None = Header(default=None, pattern=r"^[a-zA-Z0-9_-]{16,80}$"),
+):
     validate_project(payload)
     database = _db()
     projects = _project_collection(database, uid)
     quota_ref = _quota_ref(database, uid)
     billing_ref = database.collection("billing").document(uid)
-    existing_count = _existing_project_count(projects)
+    request_ref = quota_ref.collection("createRequests").document(idempotency_key) if idempotency_key else None
+    fingerprint = hashlib.sha256(json.dumps(payload.model_dump(), sort_keys=True).encode()).hexdigest()
     project_id = "proj_" + secrets.token_hex(12)
     now = datetime.now(timezone.utc).isoformat()
     record = {
@@ -98,10 +105,19 @@ def create_project(payload: CreateProjectRequest, uid: str = Depends(_uid)):
 
     @firestore.transactional
     def allocate(transaction):
-        quota_snap = quota_ref.get(transaction=transaction)
+        quota_ref.get(transaction=transaction)
+        if request_ref is not None:
+            request = request_ref.get(transaction=transaction)
+            if request.exists:
+                prior = request.to_dict()
+                if prior["fingerprint"] != fingerprint:
+                    raise HTTPException(409, "Identificador já utilizado para outro projecto.")
+                existing = projects.document(prior["projectId"]).get(transaction=transaction)
+                if not existing.exists:
+                    raise HTTPException(410, "O projecto desta operação já foi eliminado.")
+                return {"id": existing.id, **existing.to_dict(), "plan": prior["plan"]}
         billing_snap = billing_ref.get(transaction=transaction)
-        current = quota_snap.to_dict() if quota_snap.exists else None
-        count = int(current.get("count", 0)) if current is not None else existing_count
+        count = _project_count(projects, transaction)
         entitlement = billing_snap.to_dict() if billing_snap.exists else {}
         plan = _effective_plan(entitlement)
         quota_check(count, get_plan_limits(plan)["projects"])
@@ -110,10 +126,11 @@ def create_project(payload: CreateProjectRequest, uid: str = Depends(_uid)):
             "count": count + 1,
             "updatedAt": firestore.SERVER_TIMESTAMP,
         }, merge=True)
-        return plan
+        if request_ref is not None:
+            transaction.create(request_ref, {"projectId": project_id, "plan": plan, "fingerprint": fingerprint})
+        return {"id": project_id, **record, "plan": plan}
 
-    plan = allocate(tx)
-    return {"id": project_id, **record, "plan": plan}
+    return allocate(tx)
 
 
 @router.delete("/{project_id}")
@@ -145,18 +162,15 @@ def delete_project(project_id: str, uid: str = Depends(_uid)):
 
     delete_children(project_ref)
 
-    # Before the first quota write, bootstrap the count from current cloud data.
-    existing_count = _existing_project_count(projects)
     tx = database.transaction()
 
     @firestore.transactional
     def remove(transaction):
         project_snap = project_ref.get(transaction=transaction)
-        quota_snap = quota_ref.get(transaction=transaction)
+        quota_ref.get(transaction=transaction)
         if not project_snap.exists:
             raise HTTPException(404, "Projecto já eliminado.")
-        current = quota_snap.to_dict() if quota_snap.exists else None
-        count = int(current.get("count", 0)) if current is not None else existing_count
+        count = _project_count(projects, transaction)
         transaction.delete(project_ref)
         transaction.set(quota_ref, {
             "count": max(0, count - 1),

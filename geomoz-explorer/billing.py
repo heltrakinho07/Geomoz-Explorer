@@ -240,6 +240,42 @@ def _normalise_phone(value):
     return (value or "").strip()
 
 
+def _credit_usage(state, limit, now):
+    cycle = now.strftime("%Y-%m")
+    used = int(state.get("creditsUsed", 0) or 0) if state.get("creditCycle") == cycle else 0
+    return {
+        "creditCycle": cycle,
+        "creditsUsed": used,
+        "remainingCredits": None if limit is None else max(0, limit - used),
+        "creditResetAt": _iso(_add_months(now.replace(day=1, hour=0, minute=0, second=0, microsecond=0), 1)),
+    }
+
+
+@router.get("/usage")
+def subscription_usage(uid: str = Depends(_uid)):
+    database = _db()
+    snap = database.collection("billing").document(uid).get()
+    state = snap.to_dict() if snap.exists else {}
+    plan = _effective_plan(state)
+    limits = get_plan_limits(plan)
+    projects = database.collection("users").document(uid).collection("projects")
+    return {
+        "plan": plan,
+        "periodEnd": state.get("periodEnd") if plan != "community" else None,
+        "projectsUsed": projects.count().get()[0][0].value,
+        "projectLimit": limits["projects"],
+        **_credit_usage(state, limits["credits"], _utcnow()),
+    }
+
+
+@router.get("/usage/history")
+def credit_history(uid: str = Depends(_uid)):
+    events = _billing_ref(uid).collection("usageEvents").order_by(
+        "createdAt", direction="DESCENDING"
+    ).limit(50)
+    return {"events": [{"operationId": snap.id, **snap.to_dict()} for snap in events.stream()]}
+
+
 @router.get("/me")
 def me(uid: str = Depends(_uid)):
     snap = _billing_ref(uid).get()
@@ -481,14 +517,13 @@ async def webhook(request: Request):
 
 def charge_managed_cloud_credits(uid: str, cost: int, operation_id: str):
     """Trusted workers only. Not a browser endpoint; BYO-GEE does not consume credits."""
-    if not isinstance(cost, int) or cost <= 0 or cost > 100000:
+    if type(cost) is not int or cost <= 0 or cost > 100000:
         raise ValueError("Créditos inválidos.")
     if not operation_id or len(operation_id) > 160 or "/" in operation_id:
         raise ValueError("Identificador inválido.")
     database = _db()
     billing_ref = database.collection("billing").document(uid)
     event_ref = billing_ref.collection("usageEvents").document(operation_id)
-    cycle = _utcnow().strftime("%Y-%m")
     tx = database.transaction()
 
     @firestore.transactional
@@ -496,11 +531,14 @@ def charge_managed_cloud_credits(uid: str, cost: int, operation_id: str):
         event = event_ref.get(transaction=transaction)
         bill_snap = billing_ref.get(transaction=transaction)
         if event.exists:
+            if event.to_dict().get("credits") != cost:
+                raise ValueError("Operação já registada com outro custo.")
             return {"alreadyCharged": True}
         state = bill_snap.to_dict() if bill_snap.exists else {}
         plan = _effective_plan(state)
-        used = int(state.get("creditsUsed", 0) or 0) if state.get("creditCycle") == cycle else 0
         limit = get_plan_limits(plan)["credits"]
+        usage = _credit_usage(state, limit, _utcnow())
+        used, cycle = usage["creditsUsed"], usage["creditCycle"]
         if limit is not None and used + cost > limit:
             raise HTTPException(402, "Créditos insuficientes.")
         transaction.set(event_ref, {"credits": cost, "cycle": cycle, "createdAt": firestore.SERVER_TIMESTAMP})
