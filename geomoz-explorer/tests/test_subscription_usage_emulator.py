@@ -6,7 +6,6 @@ import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
-from google.cloud.firestore import Client
 import pytest
 
 import billing
@@ -20,6 +19,8 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture
 def account(monkeypatch):
+    from google.cloud.firestore import Client
+
     database = Client(project="demo-geomoz-usage")
     monkeypatch.setattr(billing, "_db", lambda: database)
     monkeypatch.setattr(project_quota, "_db", lambda: database)
