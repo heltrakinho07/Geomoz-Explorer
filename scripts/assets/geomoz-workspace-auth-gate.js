@@ -10,17 +10,23 @@
   const ENTRYPOINTS = __GEOMOZ_ENTRYPOINTS__;
   const MESSAGE_TYPE = "geomoz:workspace-auth-state";
   const LOGIN_URL = "/login?next=%2Fgis-workspace%2F";
+  const DASHBOARD_URL = "/dashboard";
   let loaded = false;
   let authorized = false;
   let timeoutId;
   let bridge;
 
   const splash = () => document.getElementById("geomoz-auth-splash");
-  const setStatus = (message, failed) => {
+  const setStatus = (message, action) => {
     const text = document.getElementById("geomoz-auth-status");
     if (text) text.textContent = message;
-    const login = document.getElementById("geomoz-auth-login");
-    if (login) login.hidden = !failed;
+    const button = document.getElementById("geomoz-auth-login");
+    if (button) {
+      button.hidden = !action;
+      button.textContent = action === "dashboard" ? "Voltar ao painel" : "Iniciar sessão";
+      button.onclick = action === "dashboard"
+        ? () => window.location.assign(DASHBOARD_URL) : redirectToLogin;
+    }
   };
 
   function redirectToLogin() {
@@ -64,23 +70,38 @@
     ) return;
 
     clearTimeout(timeoutId);
-    authorized = event.data.authenticated;
-    if (!authorized) {
-      // Includes guest/demo mode and sessions revoked from another tab.
+    if (!event.data.authenticated) {
+      authorized = false;
       document.body.dataset.geomozAuth = "pending";
       redirectToLogin();
       return;
     }
+    // The sign-in bridge also checks server-owned module flags and plan.
+    if (event.data.allowed !== true || typeof event.data.seismicAllowed !== "boolean") {
+      authorized = false;
+      document.body.dataset.geomozAuth = "pending";
+      const unavailable = event.data.reason === "verification_unavailable";
+      setStatus(unavailable
+        ? "Não foi possível confirmar as permissões. Verifique a ligação e tente novamente."
+        : "O GIS Workspace não está disponível para esta conta.", "dashboard");
+      if (loaded) window.location.replace(DASHBOARD_URL);
+      return;
+    }
+    authorized = true;
+    document.body.dataset.geomozSeismic = event.data.seismicAllowed ? "allowed" : "denied";
+    window.dispatchEvent(new CustomEvent("geomoz:module-access", {
+      detail: { seismicAllowed: event.data.seismicAllowed }
+    }));
     loadWorkspace();
   }
 
   function initialize() {
     if (!Array.isArray(ENTRYPOINTS) || !ENTRYPOINTS.length) {
-      setStatus("O GIS Workspace não pôde ser iniciado em segurança.", true);
+      setStatus("O GIS Workspace não pôde ser iniciado em segurança.", "dashboard");
       return;
     }
     const btn = document.getElementById("geomoz-auth-login");
-    btn?.addEventListener("click", redirectToLogin);
+    if (btn) btn.onclick = redirectToLogin;
     document.body.dataset.geomozAuth = "pending";
     window.addEventListener("message", handleMessage);
 
@@ -91,12 +112,12 @@
     bridge.setAttribute("aria-hidden", "true");
     bridge.setAttribute("tabindex", "-1");
     bridge.style.display = "none";
-    bridge.onerror = () => setStatus("Erro na verificação da sessão. Inicie sessão no GeoMoz.", true);
+    bridge.onerror = () => setStatus("Erro na verificação da sessão. Inicie sessão no GeoMoz.", "login");
     document.body.appendChild(bridge);
 
     // Fail closed on network/offline errors: never start GIS without auth.
     timeoutId = window.setTimeout(() => {
-      if (!authorized) setStatus("Não foi possível validar a sessão. Verifique a ligação e entre novamente.", true);
+      if (!authorized) setStatus("Não foi possível validar a sessão. Verifique a ligação e entre novamente.", "login");
     }, 15000);
   }
 
