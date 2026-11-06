@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createGISHeavyJob,
+  getGISHeavyCapabilities,
+  ensureGISHeavyUploadSupported,
   downloadGISHeavyJobResult,
   getGISHeavyJob,
   waitForGISHeavyJob,
@@ -9,6 +11,22 @@ import {
 describe("GIS heavy processing client", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("refuses oversized uploads before sending the raster and reports ephemeral execution", async () => {
+    const capabilities = {
+      tools:[{id:"clip-mask",name:"GDAL clip by mask"}],execution:"async",input:"GeoTIFF/COG",
+      limits:{max_upload_bytes:256*1048576,job_ttl_seconds:7200},
+      runtime:{shared_across_instances:false,persistent:false,progress:"staged" as const},
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(capabilities),{
+      status:200,headers:{"Content-Type":"application/json"},
+    })));
+    const server = await getGISHeavyCapabilities();
+    expect(server.runtime.persistent).toBe(false);
+    expect(() => ensureGISHeavyUploadSupported(server,"clip-mask",256*1048576+1)).toThrow(/limite/);
+    expect(() => ensureGISHeavyUploadSupported(server,"clip-mask",10*1048576)).not.toThrow();
+    expect(() => ensureGISHeavyUploadSupported(server,"slope",10*1048576)).toThrow(/não está disponível/);
   });
 
   it("creates multipart backend jobs with tool, parameters and file", async () => {

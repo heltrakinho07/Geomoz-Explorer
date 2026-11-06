@@ -59,6 +59,8 @@ def test_processing_tools_endpoint(client: TestClient) -> None:
     ids = {tool["id"] for tool in payload["tools"]}
     assert {"hillshade", "slope", "aspect", "cog", "clip-extent"} <= ids
     assert payload["execution"] == "async"
+    assert payload["limits"]["max_upload_bytes"] > 0
+    assert payload["runtime"] == {"shared_across_instances": False, "persistent": False, "progress": "staged"}
 
 
 def test_create_processing_job_endpoint_queues_upload(

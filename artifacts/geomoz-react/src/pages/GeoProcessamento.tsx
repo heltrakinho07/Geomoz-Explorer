@@ -58,6 +58,8 @@ import { bbox as turfBbox } from "@turf/turf";
 import { parseRasterSourceExtent } from "@/lib/gis-raster-source-extent";
 import {
   createGISHeavyJob,
+  getGISHeavyCapabilities,
+  ensureGISHeavyUploadSupported,
   deleteGISHeavyJob,
   downloadGISHeavyJobResult,
   waitForGISHeavyJob,
@@ -2337,6 +2339,10 @@ export default function GeoProcessamento({
     let jobId: string | null = null;
 
     try {
+      const capabilities = await getGISHeavyCapabilities(controller.signal);
+      // File size is checked before reading remote data into browser memory.
+      const knownSize = selectedWhiteboxRaster.file?.size ?? selectedWhiteboxRaster.sizeBytes;
+      if (knownSize) ensureGISHeavyUploadSupported(capabilities, toolId, knownSize);
       let inputFile = selectedWhiteboxRaster.file;
       if (!inputFile) {
         const bytes = await readRasterBytes(selectedWhiteboxRaster);
@@ -2348,6 +2354,7 @@ export default function GeoProcessamento({
         inputFile = new File([uploadBuffer], name, { type: "image/tiff" });
       }
 
+      ensureGISHeavyUploadSupported(capabilities, toolId, inputFile.size);
       const params: Record<string, unknown> = {};
       if (toolId === "hillshade") {
         params.azimuth = Number(
@@ -4553,7 +4560,7 @@ export default function GeoProcessamento({
                             Backend GDAL
                           </span>
                           <p className="text-[9px] text-orange-700/80 dark:text-orange-400">
-                            Opcional: envia o DEM ao servidor. Para o fluxo local com grelha UTM, use Terreno e Hidrologia.
+                            Opcional: envia o DEM ao servidor. Os jobs actuais são temporários e podem perder-se após reinícios ou em múltiplas instâncias. Para o fluxo local com grelha UTM, use Terreno e Hidrologia.
                           </p>
                         </div>
                         {heavyJob && (
@@ -4622,7 +4629,7 @@ export default function GeoProcessamento({
                       ))}
                     </div>
                     {heavyJob?.tool === "clip-extent" && (
-                      <p className="text-[10px]" role="status">{heavyJob.message || heavyJob.status} · {heavyJob.progress}%</p>
+                      <p className="text-[10px]" role="status">{heavyJob.message || heavyJob.status} · {heavyJob.status}</p>
                     )}
                     <button type="button" onClick={() => void handleRunBackendRaster("clip-extent")}
                       disabled={isExecuting} className="w-full rounded-lg bg-sky-700 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-800 disabled:opacity-50">
@@ -4668,7 +4675,7 @@ export default function GeoProcessamento({
                         <option value="cubic">Cúbica (DEM contínuo)</option>
                       </select>
                     </label>
-                    {heavyJob?.tool === "clip-mask" && <p role="status" className="text-[10px]">{heavyJob.message || heavyJob.status} · {heavyJob.progress}%</p>}
+                    {heavyJob?.tool === "clip-mask" && <p role="status" className="text-[10px]">{heavyJob.message || heavyJob.status} · {heavyJob.status}</p>}
                     <button type="button" onClick={() => void handleRunBackendRaster("clip-mask")}
                       disabled={isExecuting || !heavyMaskLayerId}
                       className="w-full rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50">

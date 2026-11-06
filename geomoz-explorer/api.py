@@ -152,6 +152,8 @@ def handle_gee_api_error(exc: Exception, prefix: str = "Cálculo GEE", uid: str 
 from pydantic import BaseModel, field_validator, constr, Field
 
 from processing_jobs import (
+    MAX_UPLOAD_BYTES,
+    JOB_TTL_SECONDS,
     cleanup_expired_jobs,
     create_processing_job,
     delete_processing_job,
@@ -368,6 +370,15 @@ async def processing_tools(uid: str = Depends(require_firebase_auth)):
         ],
         "execution": "async",
         "input": "GeoTIFF/COG",
+        "limits": {
+            "max_upload_bytes": MAX_UPLOAD_BYTES,
+            "job_ttl_seconds": JOB_TTL_SECONDS,
+        },
+        "runtime": {
+            "shared_across_instances": False,
+            "persistent": False,
+            "progress": "staged",
+        },
     }
 
 
