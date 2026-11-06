@@ -1,0 +1,16 @@
+# Dedicated Cartopy-only worker, isolated from the QGIS runtime.
+FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive \
+    MPLBACKEND=Agg \
+    MPLCONFIGDIR=/tmp/geomoz-matplotlib \
+    PYTHONUNBUFFERED=1
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-cartopy python3-matplotlib python3-shapely \
+    fonts-dejavu-core ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY job.py render_cartopy.py service.py ./
+RUN useradd -r -m -U --shell /usr/sbin/nologin geomoz
+USER geomoz
+EXPOSE 8085
+CMD ["python3", "service.py"]
