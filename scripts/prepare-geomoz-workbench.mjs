@@ -207,6 +207,7 @@ write("components/geomoz/geomoz-topographic-profile.ts",readFileSync(new URL("./
 write("lib/geomoz-qms-catalog.ts",readFileSync(new URL("../artifacts/geomoz-react/src/lib/qms-catalog.ts",import.meta.url),"utf8"));
 write("lib/geomoz-nextgis-web.ts",readFileSync(new URL("../artifacts/geomoz-react/src/lib/nextgis-web.ts",import.meta.url),"utf8"));
 write("lib/geomoz-qgis-print-job.ts",readFileSync(new URL("./assets/workbench/geomoz-qgis-print-job.ts",import.meta.url),"utf8"));
+write("lib/geomoz-print-client.ts",readFileSync(new URL("./assets/workbench/geomoz-print-client.ts",import.meta.url),"utf8"));
 write("hooks/useThemeMode.ts",readFileSync(new URL("./assets/workbench/useThemeMode.ts",import.meta.url),"utf8"));
 // Portuguese is the GeoMoz default; explicit saved engine-language settings still win.
 let i18n=read("i18n/index.ts");

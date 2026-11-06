@@ -234,12 +234,14 @@ from admin import router as admin_router
 from billing_plan_requests import router as plan_requests_router, admin_router as admin_plan_requests_router
 from entitlement_engine import metering_enabled, reserve_credits, settle_credits
 from subscription_entitlements import router as entitlements_router, require_plan_feature, processing_gate_enabled
+from print_gateway import router as print_gateway_router
 app.include_router(billing_router)
 app.include_router(project_quota_router)
 app.include_router(admin_router)
 app.include_router(plan_requests_router)
 app.include_router(admin_plan_requests_router)
 app.include_router(entitlements_router)
+app.include_router(print_gateway_router)
 
 # ee.Initialize mutates global Earth Engine SDK state. Serialize the complete
 # authentication + computation lifecycle of GEE requests in each Python worker.

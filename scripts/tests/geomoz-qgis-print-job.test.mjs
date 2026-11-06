@@ -74,3 +74,21 @@ test("print-panel exposes engine and grid selection explicitly", () => {
   assert.match(panel, /Grelha de coordenadas/);
   assert.match(panel, /CRS do mapa/);
 });
+
+test("GeoMoz print gateway UI uses only same-origin portal auth and API", () => {
+  const panel = read("../assets/workbench/GeoMozQgisPrintPanel.tsx");
+  const client = read("../assets/workbench/geomoz-print-client.ts");
+  const bridge = read("../../artifacts/geomoz-react/src/components/WorkspaceAuthBridge.tsx");
+  const prepare = read("../prepare-geomoz-workbench.mjs");
+  assert.match(panel, /submitGeoMozPrint/);
+  assert.match(panel, /Exportar PDF/);
+  assert.match(panel, /Pré-visualizar PDF/);
+  assert.match(panel, /Guardar pacote/);
+  assert.match(client, /"\/geomoz-api\/v1\/prints"/);
+  assert.match(client, /event\.origin !== window\.location\.origin/);
+  assert.match(client, /event\.source !== frame\.contentWindow/);
+  assert.match(bridge, /workspace-print-token-request/);
+  assert.match(bridge, /event\.source !== window\.parent/);
+  assert.doesNotMatch(client + bridge, /GEOMOZ_PRINT_WORKER_TOKEN/);
+  assert.match(prepare, /geomoz-print-client\.ts/);
+});
