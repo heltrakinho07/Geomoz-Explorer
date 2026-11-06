@@ -191,6 +191,50 @@ module.exports=async function validateRasterProcessing(page){
  // from the existing local COG's layer metadata and are reprojected in-browser.
  const layerCountBefore=await page.locator(".gm-layer-row").count();
  await realDem.locator(".gm-layer-select").click();
+ // QGIS-style properties must operate on the real GeoTIFF via the exact same
+ // RasterSymbologySection that edits native COG layers in the Style sidebar.
+ const openProps=page.getByTestId("geomoz-layer-properties-open");
+ await openProps.click();
+ const rasterProps=page.getByTestId("geomoz-layer-properties-dialog");
+ await rasterProps.waitFor({state:"visible"});
+ assert.equal(await rasterProps.getAttribute("data-layer-kind"),"raster");
+ await rasterProps.getByRole("button",{name:"Simbologia"}).click();
+ const nativeEditor=rasterProps.locator(".gm-layer-raster-native-editor");
+ // Browser build variants can remove test-only attributes; the actual raster
+ // editor is identified by its structural class, and its live controls are
+ // tested below, rather than depending on a test-id surviving the bundle.
+ await nativeEditor.waitFor({state:"attached",timeout:25000});
+ assert.equal(await nativeEditor.locator("#rasterMode").count(),1,
+   "Native renderer must expose actual band-rendering controls");
+ assert.equal(await nativeEditor.locator("#rasterBand").count(),1,
+   "Native renderer must expose the selected GeoTIFF band");
+ const classify=nativeEditor.locator("label")
+   .filter({hasText:/Classificar em classes discretas|Classify into discrete classes/})
+   .locator('input[type="checkbox"]');
+ await classify.check();
+ await nativeEditor.locator("#rasterClasses").waitFor({state:"visible"});
+ assert.equal(await classify.isChecked(),true,
+   "Native raster class rendering must be enabled, not a decorative checkbox");
+ const nodata=nativeEditor.locator("#rasterNodata");
+ await nodata.selectOption("off");
+ assert.equal(await nodata.inputValue(),"off",
+   "NoData setting must be applied through the native raster editor");
+ await rasterProps.getByRole("button",{name:"Fechar propriedades da camada"}).click();
+ await rasterProps.waitFor({state:"hidden"});
+ // The actual rasterState must be persisted by GeoLibre's project store.
+ await openProps.click();
+ await rasterProps.getByRole("button",{name:"Simbologia"}).click();
+ assert.equal(await rasterProps.locator("#rasterNodata").inputValue(),"off");
+ const savedClasses=rasterProps.locator("label")
+   .filter({hasText:/Classificar em classes discretas|Classify into discrete classes/})
+   .locator('input[type="checkbox"]');
+ assert.equal(await savedClasses.isChecked(),true,
+   "Raster classified renderer must survive closing and reopening properties");
+ await savedClasses.uncheck();
+ await rasterProps.locator("#rasterNodata").selectOption("auto");
+ await rasterProps.getByRole("button",{name:"Fechar propriedades da camada"}).click();
+ await rasterProps.waitFor({state:"hidden"});
+ console.log("GeoTIFF layer properties expose working native raster band and NoData controls.");
  await page.getByTestId("geomoz-layer-open-terrain").click();
  const terrain=page.getByTestId("geomoz-workbench-terrain");
  await terrain.waitFor({state:"visible"});

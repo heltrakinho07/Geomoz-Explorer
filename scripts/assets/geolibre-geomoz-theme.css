@@ -858,3 +858,46 @@ html[data-geomoz-reduced-motion="true"] .gm-workbench *::after {
   .gm-layer-detail-nav button{white-space:nowrap;}
   .gm-layer-detail-content{padding:17px;}
 }
+
+
+/* Native RasterControl editor in the dedicated layer-properties dialog.
+ * Controls are the same React components that actually update the map's GPU
+ * color ramp, classification texture, RGB bands and source NoData state.
+ */
+.gm-layer-raster-native-editor{
+  margin-top:20px;padding:18px 20px 22px;
+  border:1px solid #bae6fd;border-radius:16px;
+  background:linear-gradient(150deg,#f8fcff,#f0f6ff);
+  box-shadow:4px 7px 20px rgba(15,55,100,.055),-3px -3px 12px rgba(255,255,255,.8);
+  color:#0f172a;min-width:0;
+}
+.gm-layer-raster-native-editor h4{
+  font-size:14px;font-weight:800;color:#075985;margin:0 0 7px;
+}
+.gm-layer-raster-native-editor>p{
+  margin:0 0 14px;color:#475569;font-size:12px;line-height:1.6;
+}
+.gm-layer-raster-native-editor>div{
+  max-width:740px;
+}
+.gm-layer-raster-native-editor input[type="number"],
+.gm-layer-raster-native-editor select{
+  min-height:36px;min-width:0;max-width:100%;
+}
+.gm-layer-raster-native-editor input[type="checkbox"]{
+  accent-color:#0284c7;
+}
+.gm-layer-raster-native-editor input:focus-visible,
+.gm-layer-raster-native-editor select:focus-visible{
+  outline:2px solid #0284c7;outline-offset:2px;
+}
+.dark .gm-layer-raster-native-editor{
+  border-color:#155e85;background:linear-gradient(150deg,#132940,#171d39);
+  box-shadow:none;color:#e2e8f0;
+}
+.dark .gm-layer-raster-native-editor h4{color:#7dd3fc;}
+.dark .gm-layer-raster-native-editor>p{color:#cbd5e1;}
+@media(max-width:640px){
+  .gm-layer-raster-native-editor{padding:12px 11px 16px;border-radius:12px;}
+  .gm-layer-raster-native-editor .grid{min-width:0;}
+}
