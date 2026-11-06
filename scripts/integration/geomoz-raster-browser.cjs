@@ -200,7 +200,9 @@ module.exports=async function validateRasterProcessing(page){
  assert.equal(await rasterProps.getAttribute("data-layer-kind"),"raster");
  await rasterProps.getByRole("button",{name:"Simbologia"}).click();
  const nativeEditor=rasterProps.getByTestId("geomoz-raster-symbology-editor");
- await nativeEditor.waitFor({state:"visible",timeout:25000});
+ // The properties panel scrolls independently. An editor may be attached
+ // below the current scroll viewport even though it is fully usable.
+ await nativeEditor.waitFor({state:"attached",timeout:25000});
  assert.equal(await nativeEditor.locator("#rasterMode").count(),1,
    "Native renderer must expose actual band-rendering controls");
  assert.equal(await nativeEditor.locator("#rasterBand").count(),1,
