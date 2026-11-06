@@ -19,6 +19,7 @@ export function useSubscription() {
   const {user} = useAuth();
   const [state,setState] = useState<BillingState>(FREE);
   const [catalog,setCatalog] = useState<Record<PlanId,GeoMozPlan>>(PLANS);
+  const [metering, setMetering] = useState<{cycle:string;creditsUsed:number;creditsReserved:number;creditsRemaining:number|null}|null>(null);
   useEffect(()=>{
     let mounted=true;
     apiFetch("/geomoz-api/billing/catalog")
@@ -30,6 +31,19 @@ export function useSubscription() {
       }).catch(()=>undefined);
     return ()=>{mounted=false;};
   },[]);
+  useEffect(()=>{
+    if(!user || user.uid==="guest_user"){setMetering(null);return;}
+    let active=true;
+    const poll=()=>{
+      apiFetch("/geomoz-api/billing/usage")
+        .then(async response=>response.ok?response.json():null)
+        .then(data=>{if(active)setMetering(data?.cycle?data:null);})
+        .catch(()=>{if(active)setMetering(null);});
+    };
+    poll();
+    const timer=window.setInterval(poll,60000);
+    return ()=>{active=false;window.clearInterval(timer);};
+  },[user?.uid]);
   const [loading,setLoading] = useState(true);
   const [now,setNow] = useState(Date.now());
   useEffect(()=>{const timer=window.setInterval(()=>setNow(Date.now()),60_000);return ()=>window.clearInterval(timer);},[]);
@@ -56,8 +70,14 @@ export function useSubscription() {
   const plan=stillValid?state.plan:"community";
   const utcMonth=new Date(now).toISOString().slice(0,7);
   const consumed=state.creditCycle===utcMonth?state.creditsUsed:0;
+  const live=!!metering && metering.cycle===utcMonth;
   return { ...state, plan, planData:catalog[plan], loading, error,
+    creditsUsed:live?metering.creditsUsed:consumed,
+    creditsReserved:live?metering.creditsReserved:0,
+    meteringLive:live,
     can:(feature:PlanFeature)=>hasPlanFeature(plan,feature),
-    remainingCredits:Math.max(0,(catalog[plan].credits??Number.MAX_SAFE_INTEGER)-consumed),
+    remainingCredits:live && metering.creditsRemaining!==null
+      ? metering.creditsRemaining
+      : Math.max(0,(catalog[plan].credits??Number.MAX_SAFE_INTEGER)-consumed),
   };
 }
