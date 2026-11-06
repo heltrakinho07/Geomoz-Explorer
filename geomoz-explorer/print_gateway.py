@@ -153,7 +153,7 @@ def _allocate(uid, key, digest, job, config):
             "minute": minute, "minuteCount": minute_used + 1,
             "active": len(active_jobs), "activeJobs": active_jobs,
             "updatedAt": _iso(now),
-        }, merge=True)
+        })
         return job_id, True
 
     return claim(tx)
@@ -181,8 +181,9 @@ def _finish(job_id, status, size=0, error=""):
         }, merge=True)
         active_jobs = quota.get("activeJobs") if isinstance(quota.get("activeJobs"), dict) else {}
         active_jobs.pop(job_id, None)
-        transaction.set(quota_ref, {"active": len(active_jobs), "activeJobs": active_jobs},
-                        merge=True)
+        # Firestore map-merge retains removed nested keys; update replaces the
+        # entire activeJobs map, so expired/finished leases are actually cleared.
+        transaction.update(quota_ref, {"active": len(active_jobs), "activeJobs": active_jobs})
         return True
 
     return complete(tx)
