@@ -13,8 +13,35 @@ from fastapi import HTTPException
 from billing import _credit_usage, _db, _effective_plan, _utcnow, firestore
 from platform_config import get_plan_limits
 
-OPERATION_COSTS = {"ai.agent_chat": 1}
+# Fixed, server-owned provisional tariffs. They measure GeoMoz credits, NOT
+# Google Earth Engine usage or actual Google Cloud billing.
+OPERATION_COSTS = {
+    "ai.agent_chat": 1,
+    "gee.index": 1,
+    "gee.landcover": 2,
+    "gee.spi_ndvi": 2,
+    "gee.wildfire": 1,
+}
 LEASE_SECONDS = 3600
+
+
+# Only verified, synchronous API result endpoints are covered in this rollout.
+# This explicit allowlist excludes OAuth, metadata, downloads and AI agent-chat.
+GEE_CREDIT_ROUTES = {
+    "/geomoz-api/gee/index": "gee.index",
+    "/geomoz-api/gee/landcover": "gee.landcover",
+    "/geomoz-api/gee/spi-ndvi": "gee.spi_ndvi",
+    "/geomoz-api/gee/wildfire": "gee.wildfire",
+}
+
+
+def gee_metering_enabled():
+    return os.environ.get("GEOMOZ_ENFORCE_GEE_CREDITS", "false").strip().lower() == "true"
+
+
+def gee_operation_for_request(method, path):
+    """Lookup an exact API route; never use user-controlled credit amounts."""
+    return GEE_CREDIT_ROUTES.get(path) if method == "POST" else None
 
 
 def metering_enabled():
