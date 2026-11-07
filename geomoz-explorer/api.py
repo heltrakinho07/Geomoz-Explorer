@@ -844,52 +844,54 @@ class GEEServiceAccountKeyRequest(BaseModel):
 
 
 @app.get("/geomoz-api/gee/config")
-def gee_config():
+def gee_config(uid: str = Depends(require_firebase_auth)):
+    """Show only the authenticated user's own GEE configuration.
+
+    The GeoMoz Cloud Run service identity and environment credentials are
+    never disclosed, offered as a selectable GEE account, or used as fallback.
     """
-    Return current GEE configuration (with sensitive values masked).
-    Used by the Settings page to show the user what's configured.
-    """
-    from gee_module import _init_gee, gee_status as _gee_status
+    import gee_session_store
 
-    sa_key_raw = os.environ.get("GEE_SERVICE_ACCOUNT_KEY", "").strip()
-    project_id = os.environ.get("GEE_PROJECT_ID", "").strip()
-
-    # Build a masked version of the key for display
-    masked_key = None
-    has_key = bool(sa_key_raw)
-    if has_key:
-        try:
-            key_data = json.loads(sa_key_raw)
-            email = key_data.get("client_email", "")
-            proj = key_data.get("project_id", "")
-            masked_key = {
-                "client_email": email,
-                "project_id": proj or "(n/a)",
-                "key_prefix": sa_key_raw[:40] + "…" if len(sa_key_raw) > 40 else sa_key_raw[:20] + "…",
-                "has_private_key": bool(key_data.get("private_key", "")),
-            }
-        except (json.JSONDecodeError, Exception):
-            masked_key = {"error": "Invalid JSON in GEE_SERVICE_ACCOUNT_KEY"}
-
-    status = _gee_status()
-
+    try:
+        credentials = gee_session_store.get_token(uid) or {}
+    except Exception as exc:
+        logger.error("Personal GEE configuration read failed: %s", type(exc).__name__)
+        raise HTTPException(503, "Não foi possível consultar a ligação GEE do utilizador.") from None
+    user_project = credentials.get("project")
+    has_user_credentials = any(credentials.get(field) for field in (
+        "access_token", "refresh_token", "service_account_key"
+    ))
     return {
-        "status": status,
+        "status": {
+            "connected": bool(user_project and has_user_credentials),
+            "user_connected": bool(user_project and has_user_credentials),
+            "server_connected": False,
+            "allow_server_fallback": False,
+            "project": user_project,
+            "auth_type": "user_credentials" if has_user_credentials else "none",
+            "message": (
+                "Credenciais pessoais configuradas; confirme o estado da ligação."
+                if user_project and has_user_credentials
+                else "Ligue a sua conta Google Earth Engine e indique o seu projecto Google Cloud."
+            ),
+        },
         "config": {
-            "hasServiceAccountKey": has_key,
-            "maskedServiceAccount": masked_key,
-            "envProjectId": project_id or None,
-            "envProjectSource": "env_var" if project_id else ("key_file" if has_key else None),
+            "hasServiceAccountKey": bool(credentials.get("service_account_key")),
+            "maskedServiceAccount": None,
+            "envProjectId": None,
+            "envProjectSource": None,
+            "userProjectId": user_project,
+            "credentialSource": "user_only",
         },
         "endpoints": {
             "configure": {
                 "method": "POST",
                 "path": "/geomoz-api/gee/configure",
                 "body": {
-                    "service_account_key": "(optional) JSON string of the service account",
-                    "project_id": "(optional) GCP project ID",
+                    "service_account_key": "(optional) private user-owned JSON",
+                    "project_id": "(required) user's Google Cloud project",
                 },
-            }
+            },
         },
     }
 
