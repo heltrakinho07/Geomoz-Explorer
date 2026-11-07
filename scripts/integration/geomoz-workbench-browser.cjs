@@ -472,6 +472,32 @@ async function settleRecovery(page){
   assert.equal(await properties.getAttribute("data-layer-kind"),"vector");
   await properties.getByRole("button",{name:"Simbologia"}).click();
   await properties.getByText("Simbologia vectorial").waitFor();
+  const vectorEditor=properties.getByTestId("geomoz-vector-symbology-editor");
+  await vectorEditor.waitFor();
+  assert.equal(await properties.getByTestId("geomoz-raster-symbology-editor").count(),0,
+    "Vector layers must never contain raster Band Rendering controls");
+  // QGIS workflow: choose renderer, choose a real attribute, classify.
+  await vectorEditor.getByLabel("Tipo de simbologia vectorial").selectOption("categorized");
+  await vectorEditor.getByLabel("Campo de classificação vectorial").selectOption("name");
+  await vectorEditor.getByRole("button",{name:"Classificar"}).click();
+  await vectorEditor.getByText("2 classes aplicadas ao mapa e guardadas no projecto.").waitFor();
+  assert.equal(await vectorEditor.locator(".gm-vector-class-table tbody tr").count(),2);
+  await vectorEditor.getByLabel("Cor da classe Beira").fill("#ff0000");
+  await vectorEditor.getByText("Cor da classe actualizada no mapa.").waitFor();
+  await properties.getByRole("button",{name:"Fechar propriedades da camada"}).click();
+  await page.getByTestId("geomoz-layer-properties-open").click();
+  await properties.getByRole("button",{name:"Simbologia"}).click();
+  const reopenedEditor=properties.getByTestId("geomoz-vector-symbology-editor");
+  assert.equal(await reopenedEditor.getByLabel("Tipo de simbologia vectorial").inputValue(),"categorized");
+  assert.equal(await reopenedEditor.getByLabel("Cor da classe Beira").inputValue(),"#ff0000",
+    "Vector category colours must survive closing the properties modal");
+  await reopenedEditor.getByLabel("Tipo de simbologia vectorial").selectOption("graduated");
+  await reopenedEditor.getByLabel("Campo de classificação vectorial").selectOption("population");
+  await reopenedEditor.getByRole("button",{name:"Classificar"}).click();
+  await reopenedEditor.getByText("2 classes aplicadas ao mapa e guardadas no projecto.").waitFor();
+  assert.equal(await reopenedEditor.locator(".gm-vector-class-table tbody tr").count(),2,
+    "Graduated symbology must use numeric feature breaks, not raster bins");
+
   assert.equal(await properties.getByText("As classes de um raster", {exact:false}).count(),0);
   await properties.getByRole("button",{name:"Atributos"}).click();
   await properties.getByText("Campos da tabela de atributos").waitFor();
