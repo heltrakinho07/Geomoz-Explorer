@@ -41,6 +41,14 @@ interface Payment {
   id: string; uid: string; plan: string; period: string; amountMzn: number;
   currency: string; status: string; reference: string; createdAt: string; paidAt?: string;
 }
+interface AdminCreditUsage {
+  uid: string; plan: string; subscriptionStatus: string; periodEnd: string | null;
+  limits: { credits: number | null; projects: number | null; concurrentJobs: number | null };
+  usage: { credits: number; creditsReserved: number; creditsRemaining: number | null; creditCycle: string; projects: number };
+  enforcement: { credits: string; cloudJobsPlan: string };
+  recentCreditEvents: { id: string; operation: string; credits: number; cycle: string; createdAt: string }[];
+  eventsScope: "recent_only"; eventsLimit: number;
+}
 interface AuditEntry {
   id: string; actorUid: string; actorRole: string; action: string; target: string;
   details?: Record<string, unknown>; at: string;
@@ -123,6 +131,9 @@ export default function AdminConsole() {
   const [moduleRegistry, setModuleRegistry] = useState<Record<string, { label: string; category: string; coverage: string; detail: string }>>({});
   const [planFeatures, setPlanFeatures] = useState<Record<string, Record<string, boolean>>>({});
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [creditUsage, setCreditUsage] = useState<AdminCreditUsage | null>(null);
+  const [creditLoading, setCreditLoading] = useState(false);
+  const [creditError, setCreditError] = useState("");
   const [grantPlan, setGrantPlan] = useState<PlanId>("pro");
   const [grantThrough, setGrantThrough] = useState("");
   const [grantReason, setGrantReason] = useState("");
@@ -177,6 +188,23 @@ export default function AdminConsole() {
   useEffect(() => {
     if (identity) void loadSection(section, undefined, section === "users" ? searchEmail.trim() || undefined : undefined);
   }, [identity?.uid, section, loadSection]);
+
+  useEffect(() => {
+    if (!selectedUser || !identity) {
+      setCreditUsage(null);
+      setCreditError("");
+      return;
+    }
+    let active = true;
+    setCreditUsage(null);
+    setCreditError("");
+    setCreditLoading(true);
+    void jsonApi<AdminCreditUsage>("/geomoz-api/admin/users/" + encodeURIComponent(selectedUser.uid) + "/usage?limit=25")
+      .then(result => { if (active) setCreditUsage(result); })
+      .catch(error => { if (active) setCreditError(error instanceof Error ? error.message : "Não foi possível obter os créditos."); })
+      .finally(() => { if (active) setCreditLoading(false); });
+    return () => { active = false; };
+  }, [selectedUser?.uid, identity?.uid]);
 
   const act = async (callback: () => Promise<unknown>, success: string, refresh: Section = section) => {
     setBusy(true);
@@ -591,6 +619,35 @@ export default function AdminConsole() {
             <div><div className="text-xs text-sky-600 dark:text-sky-300 font-extrabold uppercase tracking-widest">Gestão da conta</div><h2 className="text-xl font-bold mt-1">{selectedUser.displayName || selectedUser.email}</h2><p className="text-xs break-all text-slate-500 mt-1">{selectedUser.email} · {selectedUser.uid}</p></div>
             <button aria-label="Fechar" onClick={() => setSelectedUser(null)}><X size={20}/></button>
           </div>
+          <section className="mb-5 rounded-2xl border border-slate-200 dark:border-slate-700 p-4" aria-label="Utilização da subscrição">
+            <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+              <h3 className="font-bold text-sm">Utilização da subscrição</h3>
+              {creditUsage && <StatusTag tone={creditUsage.enforcement.credits === "enforced" ? "good" : "warn"}>{creditUsage.enforcement.credits === "enforced" ? "Créditos aplicados" : "Créditos em validação"}</StatusTag>}
+            </div>
+            {creditLoading && <p className="text-sm text-slate-500" role="status">A consultar os créditos…</p>}
+            {creditError && <p className="text-sm text-rose-600" role="alert">{creditError}</p>}
+            {creditUsage && <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                <div><span className="block text-xs text-slate-500">Plano efectivo</span><strong className="capitalize">{creditUsage.plan}</strong></div>
+                <div><span className="block text-xs text-slate-500">Créditos usados</span><strong className="tabular-nums">{creditUsage.usage.credits}</strong></div>
+                <div><span className="block text-xs text-slate-500">Reservados</span><strong className="tabular-nums">{creditUsage.usage.creditsReserved}</strong></div>
+                <div><span className="block text-xs text-slate-500">Disponíveis</span><strong className="tabular-nums">{creditUsage.usage.creditsRemaining ?? "Ilimitado"}</strong></div>
+              </div>
+              <p className="mt-3 text-xs text-slate-500">Ciclo UTC: {creditUsage.usage.creditCycle} · Validade: {fmtDate(creditUsage.periodEnd)} · Limite mensal: {creditUsage.limits.credits ?? "Ilimitado"}</p>
+              {creditUsage.limits.credits !== null && creditUsage.limits.credits > 0 && <div className="mt-3 h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden" role="progressbar" aria-label="Créditos consumidos e reservados" aria-valuemin={0} aria-valuemax={creditUsage.limits.credits} aria-valuenow={Math.min(creditUsage.limits.credits, creditUsage.usage.credits + creditUsage.usage.creditsReserved)}>
+                <div className="h-full bg-sky-500" style={{ width: Math.min(100, 100 * (creditUsage.usage.credits + creditUsage.usage.creditsReserved) / creditUsage.limits.credits) + "%" }} />
+              </div>}
+              <h4 className="mt-4 text-xs font-bold">Eventos recentes (máximo {creditUsage.eventsLimit})</h4>
+              <div className="mt-2 max-h-36 overflow-auto text-xs">
+                {creditUsage.recentCreditEvents.map(event => <div key={event.id} className="flex justify-between gap-3 border-b last:border-0 border-slate-100 dark:border-slate-800 py-2">
+                  <span className="truncate" title={event.operation}>{event.operation}</span>
+                  <span className="shrink-0 tabular-nums">{event.credits} crédito(s) · {fmtTime(event.createdAt)}</span>
+                </div>)}
+                {!creditUsage.recentCreditEvents.length && <p className="text-slate-500">Sem eventos recentes de consumo.</p>}
+              </div>
+              <p className="mt-2 text-[11px] text-slate-500">Histórico parcial; não representa o consumo histórico total. As quotas externas do Google Earth Engine são independentes.</p>
+            </>}
+          </section>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-4 space-y-3">
               <h3 className="font-bold text-sm">Estado e elegibilidade</h3>
