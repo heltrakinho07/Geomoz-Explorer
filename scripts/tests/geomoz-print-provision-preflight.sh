@@ -84,4 +84,19 @@ else
 fi
 [[ "$RC" == 3 ]]
 grep -Fq 'Explicit approval required for one-time administrator resource setup' <<<"$OUTPUT"
+# The human bootstrap must grant only metadata visibility to GitHub CI.
+# Never grant roles/secretmanager.secretAccessor to the CI deployer.
+for role in \
+  roles/secretmanager.viewer \
+  roles/storage.bucketViewer \
+  roles/cloudtasks.viewer \
+  roles/iam.serviceAccountUser; do
+  grep -Fq -- "--role=$role" "$SCRIPT"
+done
+grep -Fq 'CI metadata-only access granted' "$SCRIPT"
+grep -Fq 'GEOMOZ_PRINT_CI_DEPLOY_SA' "$SCRIPT"
+if grep -Fq -- '--filter=state=ENABLED' "$SCRIPT"; then
+  echo "Potential repeated secret-version generation detected" >&2
+  exit 1
+fi
 echo "GeoMoz print provision API and bootstrap permission preflight tests passed"
