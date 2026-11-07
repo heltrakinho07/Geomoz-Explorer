@@ -14,8 +14,8 @@ TASK_ID="geomoz-print-tasks"
 WORKER_ID="geomoz-print-worker"
 ARTIFACT_REPO="geomoz-explorer-api"
 
-if [[ "$MODE" != plan && "$MODE" != apply ]]; then
-  echo "Usage: bash scripts/cloud/geomoz-print-provision.sh plan|apply" >&2
+if [[ "$MODE" != plan && "$MODE" != apply && "$MODE" != bootstrap ]]; then
+  echo "Usage: bash scripts/cloud/geomoz-print-provision.sh plan|bootstrap|apply" >&2
   exit 2
 fi
 if [[ "$PROJECT" != geoprocessamento-426809 || "$REGION" != europe-west1 ]]; then
@@ -34,11 +34,16 @@ if [[ "$MODE" == plan ]]; then
   echo "Plan only: no GCP resources have been changed."
   exit 0
 fi
-if [[ "${GEOMOZ_PRINT_APPLY_CONFIRM:-}" != APPLY_PRIVATE_PRINT_INFRA ]]; then
-  echo "Explicit approval required for billable GCP provisioning." >&2
+if [[ "$MODE" == apply && "${GEOMOZ_PRINT_APPLY_CONFIRM:-}" != APPLY_PRIVATE_PRINT_INFRA ]]; then
+  echo "Explicit approval required for deploying billable GCP workers." >&2
   exit 3
 fi
-for cmd in gcloud docker openssl python3 curl; do command -v "$cmd" >/dev/null; done
+if [[ "$MODE" == bootstrap && "${GEOMOZ_PRINT_BOOTSTRAP_CONFIRM:-}" != BOOTSTRAP_PRIVATE_PRINT_INFRA ]]; then
+  echo "Explicit approval required for one-time administrator resource setup." >&2
+  exit 3
+fi
+for cmd in gcloud python3 openssl curl; do command -v "$cmd" >/dev/null; done
+if [[ "$MODE" == apply ]]; then command -v docker >/dev/null; fi
 gcloud config set project "$PROJECT" >/dev/null
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
 TASK_SA="$TASK_ID@$PROJECT.iam.gserviceaccount.com"
@@ -79,6 +84,10 @@ if (( ${#MISSING_APIS[@]} > 0 )); then
   exit 5
 fi
 echo "Required Google Cloud APIs are already enabled."
+# Privileged resources are created once in Cloud Shell by a human
+# administrator, NOT by the GitHub WIF deployment identity.
+if [[ "$MODE" == bootstrap ]]; then
+  echo "One-time administrator bootstrap: service accounts, private storage, queue, secret and IAM."
 for identity in "$TASK_ID" "$WORKER_ID"; do
   email="$identity@$PROJECT.iam.gserviceaccount.com"
   if ! gcloud iam service-accounts describe "$email" >/dev/null 2>&1; then
@@ -128,6 +137,48 @@ gcloud iam service-accounts add-iam-policy-binding "$TASK_SA" \
 gcloud projects add-iam-policy-binding "$PROJECT" \
   --member="serviceAccount:$TASKS_AGENT" --role=roles/cloudtasks.serviceAgent \
   --condition=None --quiet >/dev/null
+
+  # Optional narrow actAs grant on the new worker identity, not project-wide.
+  # Use the exact GitHub Workload Identity deployer service account email.
+  CI_DEPLOY_SA="${GEOMOZ_PRINT_CI_DEPLOY_SA:-}"
+  if [[ -n "$CI_DEPLOY_SA" ]]; then
+    if [[ ! "$CI_DEPLOY_SA" =~ ^[a-z0-9][a-z0-9-]*@[a-z0-9-]+\.iam\.gserviceaccount\.com$ ]]; then
+      echo "Invalid GEOMOZ_PRINT_CI_DEPLOY_SA service account address." >&2
+      exit 4
+    fi
+    gcloud iam service-accounts add-iam-policy-binding "$WORKER_SA" \
+      --member="serviceAccount:$CI_DEPLOY_SA" \
+      --role=roles/iam.serviceAccountUser --quiet >/dev/null
+  else
+    echo "::warning::GEOMOZ_PRINT_CI_DEPLOY_SA is unset. The GitHub deployer may need roles/iam.serviceAccountUser ON $WORKER_SA."
+  fi
+  echo "Bootstrap resources configured. Review the IAM bindings and re-run GitHub Actions in apply mode."
+  exit 0
+fi
+
+# Production CI may deploy the workers but cannot create privileged resources.
+# Fail early and identify what a human administrator must bootstrap first.
+echo "Checking one-time administrator resources (read-only preflight)..."
+for identity in "$TASK_SA" "$WORKER_SA"; do
+  if ! gcloud iam service-accounts describe "$identity" --project="$PROJECT" >/dev/null 2>&1; then
+    echo "::error::Missing service account $identity, or cannot read it." >&2
+    echo "Run in Cloud Shell with admin credentials: GEOMOZ_PRINT_BOOTSTRAP_CONFIRM=BOOTSTRAP_PRIVATE_PRINT_INFRA bash scripts/cloud/geomoz-print-provision.sh bootstrap" >&2
+    exit 7
+  fi
+done
+if ! gcloud secrets describe "$SECRET" --project="$PROJECT" >/dev/null 2>&1; then
+  echo "::error::Missing or inaccessible Secret Manager secret $SECRET; run administrator bootstrap in Cloud Shell." >&2
+  exit 7
+fi
+if ! gcloud storage buckets describe "gs://$BUCKET" >/dev/null 2>&1; then
+  echo "::error::Missing or inaccessible private GCS bucket gs://$BUCKET; run administrator bootstrap in Cloud Shell." >&2
+  exit 7
+fi
+if ! gcloud tasks queues describe "$QUEUE" --project="$PROJECT" --location="$REGION" >/dev/null 2>&1; then
+  echo "::error::Missing or inaccessible Cloud Tasks queue $QUEUE; run administrator bootstrap in Cloud Shell." >&2
+  exit 7
+fi
+echo "Administrator resources are present; proceeding with IAM-private worker deployment."
 
 gcloud artifacts repositories describe "$ARTIFACT_REPO" --location="$REGION" >/dev/null
 REGISTRY="$REGION-docker.pkg.dev"

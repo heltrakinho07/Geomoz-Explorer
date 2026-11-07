@@ -19,6 +19,9 @@ case "$1 $2" in
      printf '%s\n' \
        run.googleapis.com storage.googleapis.com iam.googleapis.com \
        secretmanager.googleapis.com artifactregistry.googleapis.com
+     if [[ "${MOCK_ALL_APIS:-0}" == 1 ]]; then
+       echo cloudtasks.googleapis.com
+     fi
      exit 0 ;;
   *) echo "Unexpected state-changing gcloud command: $*" >&2; exit 98 ;;
 esac
@@ -52,4 +55,33 @@ else
 fi
 [[ "$RC" == 5 ]]
 grep -Fq 'roles/serviceusage.serviceUsageViewer' <<<"$OUTPUT"
-echo "GeoMoz print provision API permission preflight tests passed"
+
+# If the APIs are enabled, missing privileged administrator resources must be
+# reported BEFORE any attempt to create a service account or secret from CI.
+if OUTPUT="$(PATH="$TMP:$PATH" MOCK_DENY_LIST=0 MOCK_ALL_APIS=1 \
+     GEOMOZ_PRINT_APPLY_CONFIRM=APPLY_PRIVATE_PRINT_INFRA \
+     bash "$SCRIPT" apply 2>&1)"; then
+  echo "Unexpected provisioning success without bootstrap resources" >&2
+  exit 1
+else
+  RC=$?
+fi
+[[ "$RC" == 7 ]]
+grep -Fq 'Missing service account geomoz-print-tasks@geoprocessamento-426809.iam.gserviceaccount.com' <<<"$OUTPUT"
+grep -Fq 'bash scripts/cloud/geomoz-print-provision.sh bootstrap' <<<"$OUTPUT"
+if grep -Fq 'gcloud iam service-accounts create' <<<"$OUTPUT"; then
+  echo "CI attempted privileged service account provisioning" >&2
+  exit 1
+fi
+
+# Human bootstrap requires a separate explicit confirmation.
+if OUTPUT="$(PATH="$TMP:$PATH" MOCK_DENY_LIST=0 MOCK_ALL_APIS=1 \
+     bash "$SCRIPT" bootstrap 2>&1)"; then
+  echo "Unexpected administrator bootstrap without confirmation" >&2
+  exit 1
+else
+  RC=$?
+fi
+[[ "$RC" == 3 ]]
+grep -Fq 'Explicit approval required for one-time administrator resource setup' <<<"$OUTPUT"
+echo "GeoMoz print provision API and bootstrap permission preflight tests passed"

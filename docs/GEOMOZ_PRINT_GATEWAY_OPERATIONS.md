@@ -83,6 +83,67 @@ granting `roles/owner` or `roles/editor` to GitHub Actions. If subsequent
 apply runs fail, inspect the exact permission reported by the next stage.
 Never claim the workers are provisioned based on a successful `plan` job.
 
+## Administrator bootstrap before GitHub `apply` (workflow #5)
+
+On 7 November 2026, GitHub Actions workflow
+[#42358814343](https://github.com/heltrakinho07/Geomoz-Explorer/actions/runs/42358814343)
+successfully validated **all required APIs enabled**, but failed on
+`iam.serviceAccounts.create` while trying to create the Cloud Tasks and
+print-worker service identities using the GitHub deployment account.
+
+Do **not** grant the GitHub WIF deployer `roles/owner` or project-wide
+`roles/iam.serviceAccountAdmin`. The script now has two distinct privileged
+stages:
+
+- `bootstrap` — a **one-time human administrative** operation via authenticated
+  Google Cloud Shell. Creates the exact two service accounts, one private bucket,
+  one Cloud Tasks queue, the Secret Manager worker credential and the minimal
+  runtime IAM bindings. It **does not build Docker images or deploy the API**.
+  Cloud resources may incur charges. It is idempotent and requires a separate,
+  explicit `GEOMOZ_PRINT_BOOTSTRAP_CONFIRM`.
+- `apply` — GitHub Actions with the existing WIF deployer. Validates the
+  bootstrap resources **read-only** before building or deploying the two workers.
+  It must never create SAs, GCS buckets, Cloud Tasks queues, Secret Manager
+  secrets or project-wide IAM bindings. Its permissions still need to permit
+  Cloud Run worker deployment, Artifact Registry image push, and `actAs`
+  for the new **worker** service account; provide those narrowly if needed.
+
+From Cloud Shell, after cloning the repository with your existing GitHub
+credentials (a private repo requires authenticated `gh repo clone` or `git`
+clone), at the repository root:
+
+```bash
+gcloud config set project geoprocessamento-426809
+git checkout main
+git pull --ff-only
+GEOMOZ_PRINT_BOOTSTRAP_CONFIRM=BOOTSTRAP_PRIVATE_PRINT_INFRA \
+  bash scripts/cloud/geomoz-print-provision.sh bootstrap
+```
+
+To allow the GitHub deployment identity to deploy using the **new worker**
+identity without project-wide Service Account User permissions, optionally set:
+
+```bash
+GEOMOZ_PRINT_CI_DEPLOY_SA="EXACT_GITHUB_WIF_DEPLOYER@geoprocessamento-426809.iam.gserviceaccount.com" \
+GEOMOZ_PRINT_BOOTSTRAP_CONFIRM=BOOTSTRAP_PRIVATE_PRINT_INFRA \
+  bash scripts/cloud/geomoz-print-provision.sh bootstrap
+```
+
+Replace the placeholder with the actual GitHub Actions `GCP_SERVICE_ACCOUNT`
+secret **email**; do not copy credentials or private key material into the
+terminal. The `GCP_SERVICE_ACCOUNT` value must be read by its account owner
+from their GCP IAM or infrastructure records; GitHub secret values cannot be
+retrieved from Actions. If the deployment identity already has
+`iam.serviceAccounts.actAs` on the new worker identity, the optional setting
+is unnecessary.
+
+Next, from GitHub Actions, trigger
+`Provision GeoMoz private print infrastructure` with `mode=apply` and
+the confirmation `APPLY_PRIVATE_PRINT_INFRA`. A subsequent permission
+failure should be handled with the narrowly-scoped role it identifies,
+**not** a blanket administrator grant to GitHub CI. Check both workers
+reject anonymous HTTP requests before allowing the API to use them.
+
 ## Production configuration — not automatically provisioned
 
 The API cannot print until all these variables are configured in the

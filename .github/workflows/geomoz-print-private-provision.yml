@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Non-mutating plan or billable private Cloud Run / Cloud Tasks / GCS provisioning'
+        description: 'Plan or deploy workers; requires prior one-time Cloud Shell administrator bootstrap'
         type: choice
         options: [plan, apply]
         default: plan
