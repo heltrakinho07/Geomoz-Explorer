@@ -371,3 +371,46 @@ def audit(
     docs = _db().collection("adminAudit").order_by(
         "at", direction=firestore.Query.DESCENDING).limit(limit).stream()
     return {"events": [{"id": snap.id, **(snap.to_dict() or {})} for snap in docs]}
+
+
+@router.get("/users/{uid}/usage")
+def user_credit_usage(
+    uid: str,
+    limit: int = Query(25, ge=1, le=100),
+    operator=Depends(require_admin),
+):
+    """Read-only, bounded account usage for administrative reconciliation.
+
+    Credits and plan use the same server-authoritative billing document as
+    /billing/entitlements. The event sample is not an all-time aggregate.
+    """
+    _get_account(uid)
+    from subscription_entitlements import user_subscription_snapshot
+
+    database = _db()
+    snapshot = user_subscription_snapshot(uid, database=database)
+    events = database.collection("billing").document(uid).collection(
+        "usageEvents"
+    ).order_by("createdAt", direction=firestore.Query.DESCENDING).limit(limit).stream()
+    rows = []
+    for event in events:
+        data = event.to_dict() or {}
+        rows.append({
+            "id": event.id,
+            "operation": data.get("operation"),
+            "credits": data.get("credits"),
+            "cycle": data.get("cycle"),
+            "createdAt": data.get("createdAt"),
+        })
+    return {
+        "uid": uid,
+        "plan": snapshot["plan"],
+        "subscriptionStatus": snapshot["subscriptionStatus"],
+        "periodEnd": snapshot["periodEnd"],
+        "limits": snapshot["limits"],
+        "usage": snapshot["usage"],
+        "enforcement": snapshot["enforcement"],
+        "recentCreditEvents": rows,
+        "eventsScope": "recent_only",
+        "eventsLimit": limit,
+    }
