@@ -45,6 +45,7 @@ class FakeDb:
 def test_admin_usage_reuses_authoritative_entitlements_and_redacts_events(monkeypatch):
     db = FakeDb()
     monkeypatch.setattr(admin, "_db", lambda: db)
+    monkeypatch.setattr(admin, "firestore", SimpleNamespace(Query=SimpleNamespace(DESCENDING="DESCENDING")))
     monkeypatch.setattr(admin, "_get_account", lambda uid: SimpleNamespace(uid=uid))
     import subscription_entitlements
     monkeypatch.setattr(subscription_entitlements, "user_subscription_snapshot",
