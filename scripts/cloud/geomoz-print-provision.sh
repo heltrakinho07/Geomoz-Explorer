@@ -97,7 +97,7 @@ done
 if ! gcloud secrets describe "$SECRET" >/dev/null 2>&1; then
   gcloud secrets create "$SECRET" --replication-policy=automatic --quiet
 fi
-if [[ -z "$(gcloud secrets versions list "$SECRET" --filter='state=ENABLED' --format='value(name)' | head -n 1)" ]]; then
+if [[ -z "$(gcloud secrets versions list "$SECRET" --format='value(name)' | head -n 1)" ]]; then
   openssl rand -hex 48 | tr -d '\n' | gcloud secrets versions add "$SECRET" --data-file=- --quiet >/dev/null
 fi
 for account in "$API_SA" "$WORKER_SA"; do
@@ -146,11 +146,24 @@ gcloud projects add-iam-policy-binding "$PROJECT" \
       echo "Invalid GEOMOZ_PRINT_CI_DEPLOY_SA service account address." >&2
       exit 4
     fi
+    # Grant the GitHub deploy identity metadata read only, scoped to the exact
+    # resources checked by apply. Secret payload access remains limited to
+    # the API and worker runtime identities, never GitHub CI.
+    gcloud secrets add-iam-policy-binding "$SECRET" \
+      --member="serviceAccount:$CI_DEPLOY_SA" \
+      --role=roles/secretmanager.viewer --quiet >/dev/null
+    gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" \
+      --member="serviceAccount:$CI_DEPLOY_SA" \
+      --role=roles/storage.bucketViewer --quiet >/dev/null
+    gcloud projects add-iam-policy-binding "$PROJECT" \
+      --member="serviceAccount:$CI_DEPLOY_SA" \
+      --role=roles/cloudtasks.viewer --condition=None --quiet >/dev/null
     gcloud iam service-accounts add-iam-policy-binding "$WORKER_SA" \
       --member="serviceAccount:$CI_DEPLOY_SA" \
       --role=roles/iam.serviceAccountUser --quiet >/dev/null
+    echo "CI metadata-only access granted to the named deploy identity; secret payload remains private."
   else
-    echo "::warning::GEOMOZ_PRINT_CI_DEPLOY_SA is unset. The GitHub deployer may need roles/iam.serviceAccountUser ON $WORKER_SA."
+    echo "::warning::GEOMOZ_PRINT_CI_DEPLOY_SA is unset. After identifying the GitHub WIF deploy service account, re-run bootstrap with that email to grant metadata-only access and worker actAs."
   fi
   echo "Bootstrap resources configured. Review the IAM bindings and re-run GitHub Actions in apply mode."
   exit 0

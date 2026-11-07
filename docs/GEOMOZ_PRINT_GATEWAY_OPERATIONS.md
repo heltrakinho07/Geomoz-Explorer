@@ -144,6 +144,58 @@ failure should be handled with the narrowly-scoped role it identifies,
 **not** a blanket administrator grant to GitHub CI. Check both workers
 reject anonymous HTTP requests before allowing the API to use them.
 
+## GitHub WIF metadata access after successful administrator bootstrap
+
+The successful Cloud Shell bootstrap of 7 November 2026 created both service
+accounts, the private GCS bucket, Cloud Tasks queue and Secret Manager secret.
+The next GitHub `apply` ([run #42359910417](https://github.com/heltrakinho07/Geomoz-Explorer/actions/runs/42359910417))
+passed API checks and both service-account checks, but failed at
+`gcloud secrets describe geomoz-print-worker-token` with **missing OR
+inaccessible**. The secret exists; the GitHub deploy identity likely lacks
+`secretmanager.secrets.get`.
+
+The human `bootstrap` now accepts **GEOMOZ_PRINT_CI_DEPLOY_SA**. If supplied,
+it grants that exact deploy identity only:
+
+- `roles/secretmanager.viewer` **on the one print-worker secret**, to read
+  secret *metadata*, **not the secret payload**.
+- `roles/storage.bucketViewer` **on the print bucket**, to verify its metadata
+  without downloading private maps.
+- `roles/cloudtasks.viewer` **on the GCP project**, to validate queue metadata.
+- `roles/iam.serviceAccountUser` **on the print-worker service account only**,
+  to deploy the private Cloud Run worker revisions.
+
+The actual Cloud Run **runtime identities** retain
+`roles/secretmanager.secretAccessor`. Never grant that role to the GitHub
+deployer for this workflow, and never paste token values or service-account
+private keys.
+
+First identify the Workload Identity Federation deployment service account,
+usually visible in the GCP IAM service-account list. To find likely GitHub WIF
+identities from Cloud Shell without displaying secret values:
+
+```bash
+gcloud iam service-accounts list \
+  --project=geoprocessamento-426809 \
+  --format='table(email,displayName)'
+```
+
+For ambiguous names, inspect the Workload Identity User bindings using
+`gcloud iam service-accounts get-iam-policy SERVICE_ACCOUNT_EMAIL` and verify
+that the principal refers to the intended GitHub repository/pool. Do not
+guess the identity. Once it is confirmed, from the freshly updated repo:
+
+```bash
+export GEOMOZ_PRINT_CI_DEPLOY_SA='EXACT_GITHUB_WIF_DEPLOYER@geoprocessamento-426809.iam.gserviceaccount.com'
+GEOMOZ_PRINT_BOOTSTRAP_CONFIRM=BOOTSTRAP_PRIVATE_PRINT_INFRA \
+  bash scripts/cloud/geomoz-print-provision.sh bootstrap
+```
+
+This is an idempotent bootstrap re-run; **it does not rotate an existing worker
+token or change its plaintext**. After successful IAM updates, re-run the GitHub
+workflow with `mode=apply`, and confirm worker IAM rejection of anonymous
+requests plus a real Firebase-authenticated PDF.
+
 ## Production configuration — not automatically provisioned
 
 The API cannot print until all these variables are configured in the
