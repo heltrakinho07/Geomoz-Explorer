@@ -72,9 +72,9 @@ for api in "${REQUIRED_APIS[@]}"; do
   fi
 done
 if (( ${#MISSING_APIS[@]} > 0 )); then
-  printf '::error::Required APIs are not enabled: %s\\n' "${MISSING_APIS[*]}" >&2
-  printf 'As a project administrator, run in Cloud Shell:\\n' >&2
-  printf 'gcloud services enable %s --project=%s\\n' "${MISSING_APIS[*]}" "$PROJECT" >&2
+  echo "::error::Required APIs are not enabled: ${MISSING_APIS[*]}" >&2
+  echo "As a project administrator, run in Cloud Shell:" >&2
+  echo "gcloud services enable ${MISSING_APIS[*]} --project=$PROJECT" >&2
   echo "Then re-run the apply workflow; do not grant Service Usage Admin to CI." >&2
   exit 5
 fi
