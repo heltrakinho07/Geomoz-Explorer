@@ -48,6 +48,41 @@ variables. Existing GEE settings and the API runtime identity are preserved.
 Secret Manager and GCS storage may incur charges. Apply requires deliberate
 operator approval. Do not run in an unverified project.
 
+## Service Usage IAM preflight — workflow #4 failure (2026-11-07)
+
+The apply run [#42354048810](https://github.com/heltrakinho07/Geomoz-Explorer/actions/runs/42354048810)
+authenticated through Workload Identity Federation successfully but stopped at
+`gcloud services enable`, because the GitHub deployment service account lacks
+`serviceusage.services.enable`. This is unrelated to Node.js / Ubuntu warnings
+and occurred **before** resource provisioning.
+
+To avoid granting broad Service Usage Admin privileges to an automation that
+deploys production code, the provisioning script now checks enabled APIs
+**read-only**. An Owner or Service Usage Admin can do the one-time bootstrap
+using their own privileged Cloud Shell identity:
+
+```bash
+gcloud config set project geoprocessamento-426809
+gcloud services enable \
+  run.googleapis.com cloudtasks.googleapis.com storage.googleapis.com \
+  iam.googleapis.com secretmanager.googleapis.com artifactregistry.googleapis.com \
+  --project=geoprocessamento-426809
+```
+
+If all are already enabled, the human bootstrap command is unnecessary.
+The GitHub identity needs permission to *list* service states (for example,
+`roles/serviceusage.serviceUsageViewer`). The workflow will report missing
+APIs with the exact single-command bootstrap; **it no longer attempts to enable
+or disable APIs automatically**.
+
+Cloud Run IAM-only worker deployment, GCS bucket creation, Cloud Tasks queue,
+secret creation and project IAM bindings require additional permissions which
+are independent of the Service Usage permission. The production deployment
+identity should be explicitly reviewed for least privilege rather than
+granting `roles/owner` or `roles/editor` to GitHub Actions. If subsequent
+apply runs fail, inspect the exact permission reported by the next stage.
+Never claim the workers are provisioned based on a successful `plan` job.
+
 ## Production configuration — not automatically provisioned
 
 The API cannot print until all these variables are configured in the

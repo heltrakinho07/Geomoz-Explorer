@@ -4,6 +4,8 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - "scripts/cloud/geomoz-print-provision.sh"
+      - "scripts/tests/geomoz-print-provision-preflight.sh"
       - "geomoz-explorer/print_gateway.py"
       - "geomoz-explorer/print_job.py"
       - "geomoz-explorer/tests/test_print_gateway.py"
@@ -18,6 +20,8 @@ on:
   push:
     branches: [main]
     paths:
+      - "scripts/cloud/geomoz-print-provision.sh"
+      - "scripts/tests/geomoz-print-provision-preflight.sh"
       - "geomoz-explorer/print_gateway.py"
       - "geomoz-explorer/print_job.py"
       - "geomoz-explorer/tests/test_print_gateway.py"
@@ -45,6 +49,7 @@ jobs:
         run: |
           bash -n scripts/cloud/geomoz-print-provision.sh
           bash scripts/cloud/geomoz-print-provision.sh plan
+          bash scripts/tests/geomoz-print-provision-preflight.sh
           python -m unittest discover -s services/geomoz-qgis-print/tests -p test_service.py -v
       - name: Compile gateway files
         run: python -m py_compile geomoz-explorer/print_job.py geomoz-explorer/print_gateway.py

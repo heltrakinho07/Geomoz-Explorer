@@ -49,9 +49,36 @@ API_SA="${API_SA:-$PROJECT_NUMBER-compute@developer.gserviceaccount.com}"
 [[ "$API_SA" == *@* ]] || { echo "API service identity unknown." >&2; exit 4; }
 echo "Using existing API runtime identity $API_SA"
 
-gcloud services enable run.googleapis.com cloudtasks.googleapis.com \
-  storage.googleapis.com iam.googleapis.com secretmanager.googleapis.com \
-  artifactregistry.googleapis.com --project="$PROJECT" --quiet
+# Service activation requires serviceusage.services.enable; the GitHub WIF
+# deployment identity SHOULD NOT receive this project-wide permission.
+# An administrator bootstraps required APIs once; this step is read-only.
+REQUIRED_APIS=(
+  run.googleapis.com
+  cloudtasks.googleapis.com
+  storage.googleapis.com
+  iam.googleapis.com
+  secretmanager.googleapis.com
+  artifactregistry.googleapis.com
+)
+echo "Checking project API enablement (read-only preflight)..."
+if ! ENABLED_APIS="$(gcloud services list --enabled --project="$PROJECT" --format='value(config.name)' --quiet)"; then
+  echo "::error::Unable to list enabled Google Cloud APIs. Grant the deploy identity roles/serviceusage.serviceUsageViewer or inspect APIs from Cloud Shell." >&2
+  exit 5
+fi
+MISSING_APIS=()
+for api in "${REQUIRED_APIS[@]}"; do
+  if ! grep -Fxq "$api" <<<"$ENABLED_APIS"; then
+    MISSING_APIS+=("$api")
+  fi
+done
+if (( ${#MISSING_APIS[@]} > 0 )); then
+  echo "::error::Required APIs are not enabled: ${MISSING_APIS[*]}" >&2
+  echo "As a project administrator, run in Cloud Shell:" >&2
+  echo "gcloud services enable ${MISSING_APIS[*]} --project=$PROJECT" >&2
+  echo "Then re-run the apply workflow; do not grant Service Usage Admin to CI." >&2
+  exit 5
+fi
+echo "Required Google Cloud APIs are already enabled."
 for identity in "$TASK_ID" "$WORKER_ID"; do
   email="$identity@$PROJECT.iam.gserviceaccount.com"
   if ! gcloud iam service-accounts describe "$email" >/dev/null 2>&1; then
