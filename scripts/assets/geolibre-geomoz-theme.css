@@ -901,3 +901,43 @@ html[data-geomoz-reduced-motion="true"] .gm-workbench *::after {
   .gm-layer-raster-native-editor{padding:12px 11px 16px;border-radius:12px;}
   .gm-layer-raster-native-editor .grid{min-width:0;}
 }
+
+
+/* QGIS-inspired vector classification: independent from raster band rendering.
+   Live classification and swatches update the native vector style store. */
+.gm-vector-editor {display:flex;flex-direction:column;gap:14px;min-width:0}
+.gm-vector-editor label {display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:700;color:#334155;min-width:0}
+.gm-vector-editor-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.gm-vector-editor>label {max-width:650px}
+.gm-vector-editor select,.gm-vector-editor input[type="number"]{
+  display:block;min-height:38px;width:100%;max-width:100%;padding:7px 10px;
+  border:1px solid #cbd5e1;border-radius:9px;background:#fff;color:#0f172a;font-size:13px
+}
+.gm-vector-editor input[type="color"]{display:block;width:58px;height:34px;border:1px solid #cbd5e1;border-radius:7px;background:transparent;padding:2px;cursor:pointer}
+.gm-vector-editor select:focus-visible,.gm-vector-editor input:focus-visible,.gm-vector-editor button:focus-visible{
+  outline:2px solid #0ea5e9;outline-offset:2px
+}
+.gm-vector-editor select:disabled,.gm-vector-editor input:disabled {opacity:.64;cursor:not-allowed}
+.gm-vector-editor-actions {display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.gm-vector-editor-actions small{color:#64748b}
+.gm-vector-class-table {overflow:auto;max-height:390px;max-width:100%;border:1px solid #d7e0eb;border-radius:10px}
+.gm-vector-class-table table {border-collapse:collapse;width:100%;min-width:360px;font-size:12px}
+.gm-vector-class-table th {position:sticky;top:0;z-index:1;background:#f1f5f9;color:#334155;font-weight:700;text-align:left}
+.gm-vector-class-table td,.gm-vector-class-table th {padding:6px 9px;border-bottom:1px solid #e2e8f0}
+.gm-vector-class-table td:first-child{width:74px}
+.gm-vector-class-table tr:last-child td {border-bottom:0}
+.gm-vector-class-table tr:hover td {background:#f8fafc}
+.gm-vector-editor-advanced{align-self:flex-start;border:0;background:transparent;color:#0369a1;font-size:12px;text-decoration:underline;cursor:pointer;padding:5px 0}
+.gm-vector-editor-error{color:#b91c1c;font-weight:600;font-size:12px}
+.gm-vector-editor-status{color:#047857;font-size:12px}
+.dark .gm-vector-editor label {color:#dbeafe}
+.dark .gm-vector-editor select,.dark .gm-vector-editor input[type="number"]{background:#122137;color:#e2e8f0;border-color:#475569}
+.dark .gm-vector-class-table{border-color:#475569}
+.dark .gm-vector-class-table th {background:#1e293b;color:#e2e8f0}
+.dark .gm-vector-class-table td {border-color:#334155}
+.dark .gm-vector-class-table tr:hover td{background:#19283c}
+.dark .gm-vector-editor-actions small{color:#cbd5e1}
+.dark .gm-vector-editor-advanced{color:#7dd3fc}
+.dark .gm-vector-editor-error{color:#fda4af}
+.dark .gm-vector-editor-status{color:#6ee7b7}
+@media(max-width:640px){.gm-vector-editor-fields{grid-template-columns:1fr}.gm-vector-class-table{max-height:42dvh}}
