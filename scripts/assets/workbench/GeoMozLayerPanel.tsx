@@ -27,6 +27,8 @@ export function GeoMozLayerPanel(props:Props) {
   const opacity=useAppStore(s=>s.setLayerOpacity);
   const setLayerStyle=useAppStore(s=>s.setLayerStyle);
   const [quickStyle,setQuickStyle]=useState(false);
+  const [copiedStyle,setCopiedStyle]=useState<{sourceId:string;style:(typeof layers)[number]["style"]}|null>(null);
+  const canEditProject=useAppStore(s=>s.deploymentCapabilities.has("project:edit"))&&!viewer;
   const openTable=useAppStore(s=>s.setAttributeTableOpen);
   const runs=useAppStore(s=>s.processingHistory);
   const openHistory=useAppStore(s=>s.setProcessingHistoryOpen);
@@ -56,6 +58,20 @@ export function GeoMozLayerPanel(props:Props) {
   },[props.autoCollapse,props.collapsed,internalCollapsed]);
   useEffect(()=>{setLayersPanelCollapsed(collapsed);return ()=>setLayersPanelCollapsed(false);},[collapsed,advanced]);
   const selected=layers.find(layer=>layer.id===selectedId);
+  const copyVectorStyle=()=>{
+    if(!selected||selected.type!=="geojson")return;
+    setCopiedStyle({sourceId:selected.id,style:structuredClone(selected.style)});
+    setNotice(ui("Estilo copiado. Seleccione outra camada vectorial para aplicar."));
+  };
+  const pasteVectorStyle=()=>{
+    if(!canEditProject||!selected||selected.type!=="geojson"||!copiedStyle)return;
+    try{
+      setLayerStyle(selected.id,structuredClone(copiedStyle.style));
+      setNotice(ui("Estilo aplicado à camada seleccionada."));
+    }catch{
+      setNotice(ui("Não foi possível aplicar o estilo a esta camada."));
+    }
+  };
   const filtered=[...layers].reverse().filter(layer=>(tab==="all"||rendered(layer))&&layer.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   if(collapsed)return props.hideOwnRail?null:<aside className="gm-layer-rail" aria-label={ui("Catálogo recolhido")}><button className="gm-icon-button" aria-label={ui("Expandir catálogo")} onClick={()=>changeCollapsed(false)}><Layers3 size={19}/></button><span>{ui("CATÁLOGO")}</span></aside>;
   return <aside className="gm-catalog" data-testid="geomoz-layer-catalog" aria-label={ui("Catálogo de camadas")}>
@@ -74,7 +90,7 @@ export function GeoMozLayerPanel(props:Props) {
       </div>
       {selected&&<section className="gm-layer-inspector" data-selected-layer-name={selected.name} data-selected-layer-id={selected.id} aria-label={ui("Camada seleccionada")}><small>{ui("CAMADA SELECCIONADA")}</small><h3 title={selected.name}>{selected.name}</h3>
         {(!pluginOwnsPaint(selected)||supportsBridgedOpacity(selected.id)||rendererAppliesOpacity(selected,renderer))&&<label className="gm-opacity">{ui("Opacidade")} <output>{Math.round(selected.opacity*100)}%</output><input aria-label={ui("Opacidade da camada")} type="range" min="0" max="1" step="0.01" value={selected.opacity} onChange={event=>opacity(selected.id,Number(event.target.value))}/></label>}
-        <div className="gm-inspector-actions">{resolveLayerCapabilities(selected).query&&["geojson","duckdb-query","geoparquet","flatgeobuf"].includes(selected.type)&&<button type="button" onClick={()=>openTable(true)}><Table2 size={14}/> {ui("Tabela")}</button>}{!viewer&&selected.type==="geojson"&&<button type="button" aria-expanded={quickStyle} aria-label={ui("Editar simbologia")} onClick={()=>setQuickStyle(!quickStyle)}><Palette size={14}/> {ui("Simbologia")}</button>}{!viewer&&(selected.type==="cog"||selected.type==="raster")&&<button
+        <div className="gm-inspector-actions">{resolveLayerCapabilities(selected).query&&["geojson","duckdb-query","geoparquet","flatgeobuf"].includes(selected.type)&&<button type="button" onClick={()=>openTable(true)}><Table2 size={14}/> {ui("Tabela")}</button>}{!viewer&&selected.type==="geojson"&&<button type="button" onClick={copyVectorStyle} title={ui("Copiar simbologia da camada seleccionada")}><Palette size={14}/>{ui("Copiar estilo")}</button>}{canEditProject&&selected.type==="geojson"&&copiedStyle&&copiedStyle.sourceId!==selected.id&&<button type="button" onClick={pasteVectorStyle} title={ui("Aplicar simbologia copiada à camada seleccionada")}><Palette size={14}/>{ui("Colar estilo")}</button>}{!viewer&&selected.type==="geojson"&&<button type="button" aria-expanded={quickStyle} aria-label={ui("Editar simbologia")} onClick={()=>setQuickStyle(!quickStyle)}><Palette size={14}/> {ui("Simbologia")}</button>}{!viewer&&(selected.type==="cog"||selected.type==="raster")&&<button
           type="button" data-testid="geomoz-layer-open-terrain"
           disabled={!rasterExportUrl(selected)}
           title={rasterExportUrl(selected)?"Visualizar DEM do projecto em 3D":"Este raster não tem ficheiro GeoTIFF acessível"}
