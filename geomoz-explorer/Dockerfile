@@ -37,6 +37,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # ── Application code ────────────────────────────────────────────────────────
+COPY geological_model.py geological_examples.py geological_store.py geological_gateway.py ./
 COPY api.py .
 COPY billing.py .
 COPY entitlement_engine.py .
