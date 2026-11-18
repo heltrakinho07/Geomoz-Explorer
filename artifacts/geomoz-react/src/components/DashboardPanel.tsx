@@ -77,6 +77,17 @@ const MODULE_LAUNCHERS: ModuleLauncher[] = [
     tagKey: "dashboard.tag.copernicus",
   },
   {
+    id: "geological_modelling",
+    tab: "Geologia 3D",
+    titleKey: "sidebar.nav.geology",
+    descriptionKey: "dashboard.module.geology.description",
+    icon: <Layers size={22} />,
+    colorClass: "text-sky-500",
+    badgeBgClass: "bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400",
+    accentBorder: "hover:border-sky-500/40",
+    tagKey: "dashboard.tag.gempy",
+  },
+  {
     id: "geoanalises",
     tab: "GeoAnálises",
     titleKey: "dashboard.module.analyses.title",
@@ -412,7 +423,6 @@ export default function DashboardPanel({
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 sm:gap-5">
-            <a href="/geologia-3d" className="rounded-2xl border border-teal-500/30 bg-teal-500/5 p-5 text-teal-700 dark:text-teal-300"><Layers size={22}/><strong className="block mt-3">{t("sidebar.nav.geology")}</strong><span className="text-xs">GemPy · CSV · 3D · XZ / YZ</span></a>
             {MODULE_LAUNCHERS.map((mod) => (
               <button
                 type="button"
