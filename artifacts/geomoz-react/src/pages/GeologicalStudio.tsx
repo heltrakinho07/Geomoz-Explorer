@@ -791,6 +791,7 @@ function Studio() {
                           });
                           setDeleting(null);
                           if (job?.id === item.id) {
+                            idempotency.current = null;
                             setJob(null);
                             setResult(null);
                           }

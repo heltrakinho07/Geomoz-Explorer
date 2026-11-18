@@ -17,7 +17,7 @@ const orientation = contact.extend({
 const modelSchema = z
   .object({
     schemaVersion: z.literal(1),
-    name,
+    name: z.string().trim().pipe(name),
     crs: z.string().regex(/^(LOCAL|EPSG:\d{4,6})$/),
     extent: z.tuple([finite, finite, finite, finite, finite, finite]),
     resolution: z.union([z.literal(16), z.literal(24), z.literal(32)]),

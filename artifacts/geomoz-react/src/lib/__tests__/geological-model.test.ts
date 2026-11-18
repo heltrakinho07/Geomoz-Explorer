@@ -57,6 +57,10 @@ function result(): GeologicalResult {
   };
 }
 describe("geological contracts", () => {
+  it("canonicalises the model name before computing and comparing results", () => {
+    expect(parseGeologicalModel({ ...model, name: "  Test  " })).toEqual(model);
+    expect(() => parseGeologicalModel({ ...model, name: "   " })).toThrow();
+  });
   it("reads BOM, quoted names and semicolon decimal commas", () => {
     expect(
       parseGeologyCsv('\uFEFFX;Y;Z;formation\n1,5;2;3;"Sand"', "contacts")[0],
