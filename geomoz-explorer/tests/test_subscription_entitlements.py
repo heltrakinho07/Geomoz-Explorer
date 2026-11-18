@@ -82,6 +82,7 @@ class FakeDb:
 def test_entitlement_snapshot_uses_existing_billing_cycle_and_project_count(monkeypatch):
     now = datetime(2026, 11, 6, 12, tzinfo=timezone.utc)
     monkeypatch.setattr(entitlement, "_utcnow", lambda: now)
+    monkeypatch.setattr("billing._utcnow", lambda: now)
     monkeypatch.setattr(entitlement, "get_features", lambda: {
         "gis_workspace": True, "remote_sensing": True, "terrain_3d": True
     })

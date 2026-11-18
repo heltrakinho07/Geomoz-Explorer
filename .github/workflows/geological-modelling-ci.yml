@@ -1,0 +1,58 @@
+name: Geological modelling CI
+on:
+  pull_request:
+    branches: [main]
+    paths: ['services/geomoz-gempy/**', 'geomoz-explorer/geological_*.py', 'artifacts/geomoz-react/src/**', '.github/workflows/geological-modelling-ci.yml', 'scripts/cloud/geomoz-geology-provision.sh']
+  push:
+    branches: [main]
+    paths: ['services/geomoz-gempy/**', 'geomoz-explorer/geological_*.py', 'artifacts/geomoz-react/src/**', '.github/workflows/geological-modelling-ci.yml', 'scripts/cloud/geomoz-geology-provision.sh']
+concurrency:
+  group: geology-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  scientific:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: services/geomoz-gempy/requirements.txt
+      - run: pip install -r services/geomoz-gempy/requirements.txt pytest httpx firebase-admin
+      - run: python -m pytest --noconftest -q services/geomoz-gempy/tests
+        env:
+          PYTHONPATH: geomoz-explorer:services/geomoz-gempy
+          OPENBLAS_NUM_THREADS: '1'
+      - run: bash -n scripts/cloud/geomoz-geology-provision.sh && bash scripts/cloud/geomoz-geology-provision.sh plan
+      - run: docker build -f services/geomoz-gempy/Dockerfile -t geomoz-gempy:test .
+      - run: docker run --rm --entrypoint python geomoz-gempy:test -c 'import engine,service; print(service.health())'
+  persistence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: pip install google-cloud-firestore pytest
+      - run: npx --yes firebase-tools@14.22.0 emulators:exec --config firebase.emulators.json --only firestore --project demo-geomoz-geology 'python -m pytest --noconftest -q services/geomoz-gempy/tests/test_firestore.py'
+  browser-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm --dir artifacts/geomoz-react exec vitest run src/lib/__tests__/geological-model.test.ts src/pages/__tests__/GeologicalStudio.test.tsx

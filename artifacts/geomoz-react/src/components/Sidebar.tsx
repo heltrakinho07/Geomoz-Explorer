@@ -66,6 +66,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "Dashboard", labelKey: "sidebar.nav.dashboard", icon: <LayoutDashboard size={20} /> },
   { id: "Mapa", labelKey: "sidebar.nav.map", icon: <Globe size={20} /> },
   { id: "GIS Workspace", labelKey: "sidebar.nav.workspace", icon: <Database size={20} /> },
+  { id: "Geologia 3D", labelKey: "sidebar.nav.geology", icon: <Mountain size={20} /> },
   { id: "Terreno 3D", labelKey: "sidebar.nav.terrain", icon: <Mountain size={20} /> },
   { id: "GeoAnálises", labelKey: "sidebar.nav.analyses", icon: <Satellite size={20} /> },
   { id: "Bacias Hidrográficas", labelKey: "sidebar.nav.watersheds", icon: <Droplets size={20} /> },
@@ -115,6 +116,7 @@ export default function Sidebar({
   };
 
   const handleNavClick = (tabId: string) => {
+    if (tabId === "Geologia 3D") { window.location.assign("/geologia-3d"); return; }
     onTabChange(tabId);
     if (mobileOpen && onMobileClose) {
       onMobileClose();

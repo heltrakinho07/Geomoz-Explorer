@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import LandingPage from "@/pages/LandingPage";
 import PricingPage from "@/pages/PricingPage";
 import { apiFetch } from "@/lib/api";
+const GeologicalStudio = React.lazy(() => import("@/pages/GeologicalStudio"));
 const AdminConsole = React.lazy(() => import("@/pages/AdminConsole"));
 import { PrivacyPolicy, TermsOfService } from "@/pages/LegalPages";
 import Explorer from "@/pages/Explorer";
@@ -175,6 +176,7 @@ export default function App() {
                 <Route path="/mapa">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/estatisticas">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/analises">{() => <ProtectedRoute><FeatureRoute feature="remote_sensing"><Explorer /></FeatureRoute></ProtectedRoute>}</Route>
+                <Route path="/geologia-3d">{() => <ProtectedRoute><FeatureRoute feature="geological_modelling"><React.Suspense fallback={<div>A abrir modelação geológica...</div>}><GeologicalStudio /></React.Suspense></FeatureRoute></ProtectedRoute>}</Route>
                 <Route path="/terreno-3d">{() => <ProtectedRoute><FeatureRoute feature="terrain_3d"><Explorer /></FeatureRoute></ProtectedRoute>}</Route>
                 <Route path="/hidrografia">{() => <ProtectedRoute><FeatureRoute feature="hydrology"><Explorer /></FeatureRoute></ProtectedRoute>}</Route>
                 <Route path="/agua-subterranea">{() => <ProtectedRoute><FeatureRoute feature="hydrology"><Explorer /></FeatureRoute></ProtectedRoute>}</Route>

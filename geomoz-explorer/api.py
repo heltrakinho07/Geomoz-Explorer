@@ -228,6 +228,7 @@ _thread_pool_executor = ThreadPoolExecutor(max_workers=4)
 app = FastAPI(title="GeoMoz API", version="2.1.0")
 
 # GeoMoz PayZeno subscriptions and server-enforced cloud project limits.
+from geological_gateway import router as geological_router
 from billing import router as billing_router
 from project_quota import router as project_quota_router
 from admin import router as admin_router
@@ -235,6 +236,7 @@ from billing_plan_requests import router as plan_requests_router, admin_router a
 from entitlement_engine import metering_enabled, reserve_credits, settle_credits
 from subscription_entitlements import router as entitlements_router, require_plan_feature, processing_gate_enabled
 from print_gateway import router as print_gateway_router
+app.include_router(geological_router)
 app.include_router(billing_router)
 app.include_router(project_quota_router)
 app.include_router(admin_router)

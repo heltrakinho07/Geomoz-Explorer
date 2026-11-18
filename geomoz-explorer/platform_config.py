@@ -24,6 +24,7 @@ DEFAULT_PLANS = {
     "enterprise": {"name": "Enterprise", "enabled": True, "monthlyMzn": None, "yearlyMzn": None, "projects": None, "storageBytes": None, "credits": None, "seats": None, "concurrentJobs": None},
 }
 FEATURE_LABELS = {
+    "geological_modelling": "Modelação Geológica 3D",
     "gis_workspace": "GIS Workspace",
     "geo_ai": "GeoMoz AI Agent",
     "hydrology": "Hidrologia",
@@ -33,6 +34,7 @@ FEATURE_LABELS = {
 }
 # Cobertura documentada: nenhuma flag garante bloqueio de serviços externos.
 FEATURE_COVERAGE = {
+    "geological_modelling": {"category": "Geologia", "coverage": "mapped_api_and_route", "detail": "Rota e endpoints /geomoz-api/geology/ mapeados."},
     "gis_workspace": {"category": "SIG e cartografia", "coverage": "partial", "detail": "Aplicação SIG autónoma: é necessário validar o acesso no serviço próprio."},
     "geo_ai": {"category": "IA", "coverage": "mapped_api_and_route", "detail": "Rota e endpoints /geomoz-api/ai/ mapeados."},
     "hydrology": {"category": "Recursos hídricos", "coverage": "mapped_api_and_route", "detail": "Rotas e endpoints hidrológicos mapeados."},
@@ -203,6 +205,8 @@ def blocked_api_module(path):
     """Block known module API endpoints; all other routes remain unchanged."""
     if path.startswith("/geomoz-api/ai/"):
         return "geo_ai"
+    if path.startswith("/geomoz-api/geology/"):
+        return "geological_modelling"
     if path.startswith("/geomoz-api/terrain/"):
         return "terrain_3d"
     if path.startswith("/geomoz-api/gee/"):
