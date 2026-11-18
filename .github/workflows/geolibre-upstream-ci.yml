@@ -29,7 +29,7 @@ on:
 jobs:
   upstream-build:
     name: GeoMoz Workbench build and browser validation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
