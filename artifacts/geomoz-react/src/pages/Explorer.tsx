@@ -37,6 +37,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import L from "leaflet";
+import FeatureRoute from "@/components/FeatureRoute";
 import Sidebar, { LayerState } from "@/components/Sidebar";
 import MapView from "@/components/MapView";
 import StatsPanel from "@/components/StatsPanel";
@@ -44,6 +45,7 @@ import ExportPanel from "@/components/ExportPanel";
 import GeoMozPrintLayout from "@/components/GeoMozPrintLayout";
 import DashboardPanel from "@/components/DashboardPanel";
 import {
+  LazyGeologicalStudio,
   LazyGeoAnalises,
   LazyHidroGeoMoz,
   LazyGeoperigos,
@@ -76,6 +78,7 @@ type Tab =
   | "Dashboard"
   | "Mapa"
   | "GIS Workspace"
+  | "Geologia 3D"
   | "Terreno 3D"
   | "Análise"
   | "GeoAnálises"
@@ -110,6 +113,7 @@ function ExplorerContent() {
     const hash = window.location.hash.toLowerCase();
     const search = new URLSearchParams(window.location.search);
     const tabParam = search.get("tab")?.toLowerCase();
+    if (path === "/geologia-3d" || path === "/geologia-3d/") return "Geologia 3D";
     if (path.includes("terreno-3d") || hash.includes("terreno-3d") || search.get("terrain3d") === "1" || tabParam === "terreno-3d") return "Terreno 3D";
 
     if (path.includes("analis") || hash.includes("analis") || tabParam?.includes("analis")) {
@@ -169,6 +173,7 @@ function ExplorerContent() {
         Dashboard: "dashboard",
         Mapa: "mapa",
         "GIS Workspace": "gis-workspace",
+        "Geologia 3D": "geologia-3d",
         "Terreno 3D": "terreno-3d",
         Análise: "estatisticas",
         GeoAnálises: "analises",
@@ -424,6 +429,12 @@ function ExplorerContent() {
           icon: <Globe size={18} className="text-sky-500 shrink-0" />,
           title: copy("explorer.map.title"),
           subtitle: copy("explorer.map.subtitle"),
+        };
+      case "Geologia 3D":
+        return {
+          icon: <Layers size={18} className="text-sky-500 shrink-0" />,
+          title: copy("explorer.geology.title"),
+          subtitle: copy("explorer.geology.subtitle"),
         };
       case "Terreno 3D":
         return {
@@ -819,6 +830,13 @@ function ExplorerContent() {
             />
           )}
 
+          {activeTab === "Geologia 3D" && (
+            <FeatureRoute feature="geological_modelling">
+              <Suspense fallback={<LoadingSkeleton label={currentTabMeta.title} />}>
+                <LazyGeologicalStudio />
+              </Suspense>
+            </FeatureRoute>
+          )}
           {activeTab === "Terreno 3D" && (
             <TerrainStudio open onClose={() => setActiveTab("Mapa")}
               geeEnabled={geeConnected} geeRegion={{ province, district, geometry: aoiToAPI(aoi).geometry }} />

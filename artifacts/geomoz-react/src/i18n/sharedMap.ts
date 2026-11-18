@@ -48,6 +48,8 @@ export const SHARED_MAP_MESSAGES = {
   "explorer.dashboard.subtitle": ["Centro de comando e gestão de projectos","Command centre and project management","Centro de mando y gestión de proyectos","Centre de pilotage et gestion des projets"],
   "explorer.map.title": ["Mapa geoespacial","Geospatial map","Mapa geoespacial","Carte géospatiale"],
   "explorer.map.subtitle": ["2D / 3D · Hipsometria e relevo","2D / 3D · Elevation and terrain","2D / 3D · Hipsometría y relieve","2D / 3D · Hypsométrie et relief"],
+  "explorer.geology.title": ["Modelação Geológica 3D","3D Geological Modelling","Modelado geológico 3D","Modélisation géologique 3D"],
+  "explorer.geology.subtitle": ["Superfícies e secções geológicas","Geological surfaces and sections","Superficies y secciones geológicas","Surfaces et coupes géologiques"],
   "explorer.terrain.title": ["Terreno 3D","3D terrain","Terreno 3D","Terrain 3D"],
   "explorer.terrain.subtitle": ["DEM, modelação de relevo e visualização 3D","DEM, terrain modelling and 3D visualization","DEM, modelado del relieve y visualización 3D","MNT, modélisation du relief et visualisation 3D"],
   "explorer.workspace.title": ["GIS Workspace","GIS Workspace","GIS Workspace","GIS Workspace"],

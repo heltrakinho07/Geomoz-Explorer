@@ -1,12 +1,11 @@
-import React, { Component, useEffect, useState, type ReactNode, type ErrorInfo } from "react";
+import React, { Component, type ReactNode, type ErrorInfo } from "react";
 import "@/styles/geomoz-system.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Switch, Route } from "wouter";
 import { Toaster } from "@/components/ui/toaster";
 import LandingPage from "@/pages/LandingPage";
 import PricingPage from "@/pages/PricingPage";
-import { apiFetch } from "@/lib/api";
-const GeologicalStudio = React.lazy(() => import("@/pages/GeologicalStudio"));
+import FeatureRoute from "@/components/FeatureRoute";
 const AdminConsole = React.lazy(() => import("@/pages/AdminConsole"));
 import { PrivacyPolicy, TermsOfService } from "@/pages/LegalPages";
 import Explorer from "@/pages/Explorer";
@@ -129,27 +128,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function FeatureRoute({ feature, children }: { feature: string; children: ReactNode }) {
-  const [enabled, setEnabled] = useState<boolean | null>(null);
-  useEffect(() => {
-    let current = true;
-    apiFetch("/geomoz-api/billing/module-access")
-      .then(async response => response.ok ? response.json() : null)
-      .then(data => { if (current) setEnabled(data?.features?.[feature] === true); })
-      .catch(() => { if (current) setEnabled(false); });
-    return () => { current = false; };
-  }, [feature]);
-  if (enabled === null) return <div className="min-h-screen grid place-items-center text-slate-500">A verificar a disponibilidade do módulo...</div>;
-  if (!enabled) return <div className="min-h-screen grid place-items-center p-5 bg-slate-950 text-slate-100">
-    <div className="max-w-md text-center rounded-2xl border border-slate-700 p-8">
-      <h1 className="font-bold text-xl">Módulo temporariamente indisponível</h1>
-      <p className="text-slate-400 text-sm mt-3">Este módulo está indisponível para o plano da conta ou foi desactivado pela administração.</p>
-      <a href="/dashboard" className="inline-block text-sky-300 mt-5">Voltar ao painel</a>
-    </div>
-  </div>;
-  return <>{children}</>;
-}
-
 export default function App() {
   return (
     <AuthProvider>
@@ -176,7 +154,7 @@ export default function App() {
                 <Route path="/mapa">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/estatisticas">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/analises">{() => <ProtectedRoute><FeatureRoute feature="remote_sensing"><Explorer /></FeatureRoute></ProtectedRoute>}</Route>
-                <Route path="/geologia-3d">{() => <ProtectedRoute><FeatureRoute feature="geological_modelling"><React.Suspense fallback={<div>A abrir modelação geológica...</div>}><GeologicalStudio /></React.Suspense></FeatureRoute></ProtectedRoute>}</Route>
+                <Route path="/geologia-3d">{() => <ProtectedRoute><Explorer /></ProtectedRoute>}</Route>
                 <Route path="/terreno-3d">{() => <ProtectedRoute><FeatureRoute feature="terrain_3d"><Explorer /></FeatureRoute></ProtectedRoute>}</Route>
                 <Route path="/hidrografia">{() => <ProtectedRoute><FeatureRoute feature="hydrology"><Explorer /></FeatureRoute></ProtectedRoute>}</Route>
                 <Route path="/agua-subterranea">{() => <ProtectedRoute><FeatureRoute feature="hydrology"><Explorer /></FeatureRoute></ProtectedRoute>}</Route>

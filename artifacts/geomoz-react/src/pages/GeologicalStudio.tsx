@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "wouter";
-import { ArrowLeft, Layers3, Play, Download, FolderOpen } from "lucide-react";
+import { Layers3, Play, Download, FolderOpen } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useProject } from "@/context/ProjectContext";
 import { useGeoMozPreferences } from "@/hooks/useGeoMozPreferences";
@@ -311,28 +310,10 @@ function Studio() {
       cancelled: t("Cancelado", "Cancelled"),
     })[s] ?? s;
   return (
-    <main className="geology-studio">
-      <header className="geology-header">
-        <Link href="/dashboard">
-          <ArrowLeft size={18} /> GeoMoz
-        </Link>
-        <div>
-          <span className="geology-eyebrow">
-            GEOLOGICAL MODELLING STUDIO · BETA
-          </span>
-          <h1>{t("Modelação Geológica 3D", "3D Geological Modelling")}</h1>
-          <p>
-            {t(
-              "Dos contactos de campo à interpretação do subsolo.",
-              "From field contacts to subsurface interpretation.",
-            )}
-          </p>
-        </div>
-        <button onClick={() => setProjectModal(true)}>
-          <FolderOpen size={16} />
-          {t("Gerir projectos", "Manage projects")}
-        </button>
-      </header>
+    <div
+      className="geology-studio"
+      aria-label={t("Modelação Geológica 3D", "3D Geological Modelling")}
+    >
       <div className="geology-project">
         <label>
           {t("Projecto activo", "Active project")}
@@ -350,12 +331,10 @@ function Studio() {
             ))}
           </select>
         </label>
-        <span>
-          {t(
-            "X/Y/Z em metros · Z = cota, positiva para cima",
-            "X/Y/Z in metres · Z = elevation, positive upwards",
-          )}
-        </span>
+        <button onClick={() => setProjectModal(true)}>
+          <FolderOpen size={16} />
+          {t("Gerir projectos", "Manage projects")}
+        </button>
       </div>
       {error && (
         <p role="alert" className="geology-alert">
@@ -455,8 +434,8 @@ function Studio() {
                 </label>
                 <p className="geology-hint">
                   {t(
-                    "Use um CRS projectado em metros ou LOCAL. A importação não reprojecta coordenadas.",
-                    "Use a projected CRS in metres or LOCAL. Import does not reproject coordinates.",
+                    "Use um CRS projectado em metros ou LOCAL. Z é a cota, positiva para cima. A importação não reprojecta coordenadas.",
+                    "Use a projected CRS in metres or LOCAL. Z is elevation, positive upwards. Import does not reproject coordinates.",
                   )}
                 </p>
                 <details open>
@@ -716,25 +695,14 @@ function Studio() {
             </>
           ) : (
             <section className="geology-card geology-empty">
-              <Layers3 size={52} />
-              <h2>
-                {t(
-                  "Construa a interpretação do subsolo",
-                  "Build your subsurface interpretation",
-                )}
-              </h2>
+              <Layers3 size={32} aria-hidden="true" />
+              <h2>{t("Visualizador geológico 3D", "3D geological viewer")}</h2>
               <p>
                 {t(
                   "Carregue contactos e orientações, organize a sequência e execute o modelo. As superfícies 3D e secções aparecerão aqui.",
                   "Load contacts and orientations, organise the sequence and compute. 3D surfaces and sections will appear here.",
                 )}
               </p>
-              <span>
-                {t(
-                  "Contactos → Estrutura → Modelo → Secções",
-                  "Contacts → Structure → Model → Sections",
-                )}
-              </span>
             </section>
           )}
           <section className="geology-card">
@@ -831,6 +799,6 @@ function Studio() {
         onOpenChange={setProjectModal}
         currentPlatformAOI={activeProject?.aoi ?? mozambiqueAOI()}
       />
-    </main>
+    </div>
   );
 }
