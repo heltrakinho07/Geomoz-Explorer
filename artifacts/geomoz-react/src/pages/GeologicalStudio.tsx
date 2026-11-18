@@ -141,6 +141,7 @@ function Studio() {
         }
         setJob(next);
         if (!activeJob(next)) {
+          idempotency.current = null;
           if (next.error) setError(next.error);
           void reloadHistory().catch(() => {});
           return;

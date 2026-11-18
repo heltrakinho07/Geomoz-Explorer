@@ -53,7 +53,6 @@ jobs:
             libgeos-dev \
             libproj-dev \
             gfortran \
-            libatlas-base-dev \
             libopenblas-dev
 
       - name: Install Python dependencies
