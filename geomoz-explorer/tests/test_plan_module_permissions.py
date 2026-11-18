@@ -17,8 +17,12 @@ def test_legacy_module_permissions_default_to_allowed(monkeypatch):
         all(row.values()) for row in config["planFeatures"].values()
     )
     assert platform_config.PLAN_GATED_FEATURES == frozenset(
-        {"geo_ai", "hydrology", "terrain_3d", "remote_sensing"}
+        {"geo_ai", "hydrology", "terrain_3d", "remote_sensing", "geological_modelling"}
     )
+
+
+def test_geological_jobs_are_covered_by_module_permissions():
+    assert platform_config.blocked_api_module("/geomoz-api/geology/jobs") == "geological_modelling"
 
 
 @pytest.mark.parametrize(("plan", "changes"), [
